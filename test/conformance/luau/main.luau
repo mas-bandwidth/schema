@@ -501,7 +501,13 @@ local function surfaceMessage(lines: { { string } })
 			local v = M.NewVocabulary()
 			local r = report()
 			if not M.AnnounceRead(v, file(conn[5]), r) then
-				error(f[2] .. ": the announcement was refused (" .. tostring(r.reason) .. ")")
+				if not r.malformed then
+					error(f[2] .. ": the announcement was refused (" .. tostring(r.reason) .. ")")
+				end
+				-- an announcement the read refuses as damage sets no vocabulary
+				-- (§3.3), and the row is answered by name
+				print(f[2] .. " absent malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)")
+				continue
 			end
 			local count, bodies = M.LoadMessages(v, f[4], file(f[6]), 256, r)
 			if count < 1 or r.malformed or r.verdict ~= 0 then

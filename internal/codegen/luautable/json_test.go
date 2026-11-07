@@ -154,6 +154,8 @@ print((r1.malformed and "1" or "0") .. (r2.malformed and "1" or "0"))
 
 // jsonHostileProbe reads one hostile text and prints the manifest's verdict
 // line (`u,k,w,c,d,m,verdict`, or `refused`), docs/SPEC-TABLES.md §16.2, §4.
+// A read also prints the §16 text of the value it left, as hex, on a second
+// line: the value half of the json-hostile answer (test/conformance/README.md).
 func jsonHostileProbe(g *generatedUnit, rootName string) string {
 	return jsonModules(g) + jsonFlags(g) + fmt.Sprintf(`local json = require("./schema_json")
 json.SetFlags(SCHEMA_JSON_FLAGS)
@@ -167,8 +169,26 @@ else
 	print(string.format("%%d,%%d,%%d,%%d,%%d,%%s,read",
 		report.unknown, report.kindMismatch, report.widened, report.clamped,
 		report.duplicate, tostring(report.malformed)))
+	local text = json.ToJson(%q, v, { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 })
+	if text == nil then
+		print("nil")
+	else
+		local parts = table.create(buffer.len(text))
+		for i = 0, buffer.len(text) - 1 do
+			parts[i + 1] = string.format("%%02x", buffer.readu8(text, i))
+		end
+		print(table.concat(parts))
+	end
 end
-`, rootName)
+`, rootName, rootName)
+}
+
+// jsonHostileValuePinned names the json-hostile rows whose value half this test
+// compares against the oracle's value golden, and requires each to be compared.
+var jsonHostileValuePinned = []string{
+	// a map value of the wrong shape, skipped at the depth cap, keeps its
+	// entry at the value's default (docs/SPEC-TABLES.md §16.2, the map row)
+	"nesting-at-depth-cap-through-skipped-map-value",
 }
 
 func hexBytes(data []byte) string {
@@ -189,6 +209,7 @@ func TestLuauJsonAgreesWithTheCorpus(t *testing.T) {
 	units, _ := readManifest(t)
 	cache := map[string]*generatedUnit{}
 	readCompared, writeCompared, hostileCompared := 0, 0, 0
+	valueCompared := map[string]bool{}
 	instances, skipped, ungenerated := 0, 0, 0
 	var mismatches []string
 	for _, row := range jsonManifestRows(t) {
@@ -253,10 +274,25 @@ func TestLuauJsonAgreesWithTheCorpus(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(jsonHostileProbe(g, row.root)), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		got := strings.TrimRight(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": text})), "\n")
-		if got != row.expected {
-			mismatches = append(mismatches, fmt.Sprintf("hostile %s: got %s, want %s", row.caseName, got, row.expected))
+		out := strings.Split(strings.TrimRight(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": text})), "\n"), "\n")
+		if out[0] != row.expected {
+			mismatches = append(mismatches, fmt.Sprintf("hostile %s: got %s, want %s", row.caseName, out[0], row.expected))
 			continue
+		}
+		// the value half of a pinned row: the read's §16 text equals the
+		// oracle's value golden
+		if slices.Contains(jsonHostileValuePinned, row.caseName) {
+			valueCompared[row.caseName] = false
+			value, err := os.ReadFile(filepath.Join(root, row.path+".value.json"))
+			if err != nil {
+				mismatches = append(mismatches, fmt.Sprintf("hostile %s: read value: %v", row.caseName, err))
+				continue
+			}
+			if len(out) != 2 || out[1] != hexBytes(value) {
+				mismatches = append(mismatches, fmt.Sprintf("hostile %s: the verdict agrees and the value differs from %s.value.json", row.caseName, row.path))
+				continue
+			}
+			valueCompared[row.caseName] = true
 		}
 		hostileCompared++
 	}
@@ -273,8 +309,13 @@ func TestLuauJsonAgreesWithTheCorpus(t *testing.T) {
 	if hostileCompared == 0 {
 		t.Fatal("no json-hostile row compared")
 	}
-	t.Logf("%d instances compared (json-read %d, json-write %d), %d json-hostile rows compared, %d text-less instances skipped, %d rows of units the target refuses to generate",
-		instances, readCompared, writeCompared, hostileCompared, skipped, ungenerated)
+	for _, name := range jsonHostileValuePinned {
+		if _, ok := valueCompared[name]; !ok {
+			t.Errorf("hostile %s: the value half was never compared", name)
+		}
+	}
+	t.Logf("%d instances compared (json-read %d, json-write %d), %d json-hostile rows compared (%d with their value), %d text-less instances skipped, %d rows of units the target refuses to generate",
+		instances, readCompared, writeCompared, hostileCompared, valueCount(valueCompared), skipped, ungenerated)
 }
 
 // TestLuauJsonNegativeControl patches the emitted runtime in memory — one
@@ -396,4 +437,15 @@ func TestLuauJsonReadKeepsFalseElements(t *testing.T) {
 			t.Errorf("%s: ToJson, then Save, Load and ToJson, wrote\n%s\nwant the text, entries and length kept, twice:\n%s", tc.name, rest, want)
 		}
 	}
+}
+
+// valueCount is how many pinned rows matched their value golden.
+func valueCount(compared map[string]bool) int {
+	n := 0
+	for _, ok := range compared {
+		if ok {
+			n++
+		}
+	}
+	return n
 }

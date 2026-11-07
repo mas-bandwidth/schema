@@ -88,7 +88,8 @@ end
 -- message begins with the refusal's name: count_over_extent_cap,
 -- unknown_form, integrity_mismatch,
 -- wire_damaged, missing_required, malformed, blob_shared, clamped,
--- kind_mismatch or non_finite_float.
+-- kind_mismatch, non_finite_float or storage_over_cap (a wire whose region
+-- measure passes the 2^40-byte storage cap, refused before anything is built).
 -- The form-byte reasons previous_form, newer_form and message_form_as_file are
 -- the REPORT's reasons; TableReport.Err() folds them all into unknown_form.
 -- `integrity` is the root's declared check (§2.14), "crc32c" when the unit
@@ -145,6 +146,7 @@ function R.ReadStrict(T, name, bytes, integrity)
   -- non-finite float (§3.3: it outranks every verdict the walk reached after
   -- it), wire damage, missing_required, malformed, blob_shared, clamped,
   -- kind_mismatch.
+  if report.reason == "storage_over_cap" then refuse("storage_over_cap", name) end
   if report.reason == "count_over_extent_cap" then refuse("count_over_extent_cap", name) end
   if report.refused ~= 0 then refuse("unknown_form", name) end
   if report.reason == "integrity_mismatch" then refuse("integrity_mismatch", name) end

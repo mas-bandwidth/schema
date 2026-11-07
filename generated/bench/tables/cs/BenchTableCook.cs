@@ -64,15 +64,15 @@ namespace Benchtable
     public sealed class TableCookFieldInfo
     {
         public string Name;
-        public int Offset;      // the field's offset in the record this descriptor describes
-        public int Size;        // its whole storage there, companions included
-        public int ElemSize;    // one element's size, for an array; the field's own otherwise
+        public long Offset;      // the field's offset in the record this descriptor describes
+        public long Size;        // its whole storage there, companions included
+        public long ElemSize;    // one element's size, for an array; the field's own otherwise
         public bool IsArray;
         public int ArrayBound;  // the DECLARED bound: a counted array's N, a string's or bytes' length
         public bool IsPointer;
         public bool Unbounded;  // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
-        public int CountOffset; // the count companion's offset, or -1 when the field has none
-        public int PresentOffset; // an optional's presence bool, or -1
+        public long CountOffset; // the count companion's offset, or -1 when the field has none
+        public long PresentOffset; // an optional's presence bool, or -1
         public TableCookStorage Storage; // what one slot HOLDS, at ElemSize bytes
         // the record this field NAMES, behind a delegate so the table stays
         // constructible in any order. null when the field is a scalar. Following it
@@ -89,7 +89,7 @@ namespace Benchtable
     public sealed class TableCookInfo
     {
         public string Name;
-        public int Size;
+        public long Size;
         public int Align;
         public int NumFields;
         public TableCookFieldInfo[] Fields;
@@ -244,7 +244,7 @@ namespace Benchtable
             { TableEventRow probe = default; byte* at = (byte*)&probe; Offset("TableEventRow.Type", (byte*)&probe.Type - at, 0); Offset("TableEventRow.Hit", (byte*)&probe.Hit - at, 4); Offset("TableEventRow.Chat", (byte*)&probe.Chat - at, 4); Offset("TableEventRow.Pickup", (byte*)&probe.Pickup - at, 4); }
         }
 
-        internal static void Size(string what, int got, int want)
+        internal static void Size(string what, long got, long want)
         {
             if (got != want)
             {

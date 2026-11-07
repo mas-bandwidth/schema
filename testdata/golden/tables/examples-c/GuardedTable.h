@@ -124,18 +124,18 @@ struct tabledemo_table_field_info_t;
    twice (docs/SPEC-TABLES.md §8). */
 typedef struct tabledemo_table_union_arm_info_t
 {
-    uint32_t offset;                    /* offsetof the arm's payload within the union storage */
+    uint64_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct tabledemo_table_type_info_t * table; /* the arm payload's descriptor */
     const struct tabledemo_table_field_info_t * field; /* non-body arm, relative to union storage */
-    uint32_t size; /* bytes established when this arm is selected */
+    uint64_t size; /* bytes established when this arm is selected */
 } tabledemo_table_union_arm_info_t;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
    [0, enum_max]; index 0 is the EMPTY arm and carries no payload. */
 typedef struct tabledemo_table_union_info_t
 {
-    uint32_t tag_offset; /* offsetof the tag within the union storage */
-    uint32_t tag_size;   /* sizeof the tag */
+    uint64_t tag_offset; /* offsetof the tag within the union storage */
+    uint64_t tag_size;   /* sizeof the tag */
     const tabledemo_table_union_arm_info_t * arms;
 } tabledemo_table_union_info_t;
 
@@ -179,10 +179,10 @@ typedef struct tabledemo_table_field_info_t
     int optional;           /* a ?T field: a _present companion decides whether it rides */
     int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
-    uint32_t offset;        /* offsetof the storage member */
-    uint32_t elem_size;     /* sizeof the member (element size for arrays) */
-    uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */
-    uint32_t present_offset; /* offsetof the _present companion, or 0xffffffff */
+    uint64_t offset;        /* offsetof the storage member */
+    uint64_t elem_size;     /* sizeof the member (element size for arrays) */
+    uint64_t count_offset;  /* offsetof the _count/_length companion, or UINT64_MAX */
+    uint64_t present_offset; /* offsetof the _present companion, or UINT64_MAX */
     const struct tabledemo_table_type_info_t * table; /* nested table's descriptor, or NULL */
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
@@ -225,7 +225,7 @@ typedef struct tabledemo_table_field_info_t
 typedef struct tabledemo_table_type_info_t
 {
     const char * name;   /* schema type name */
-    uint32_t size;       /* sizeof the storage struct */
+    uint64_t size;       /* sizeof the storage struct */
     int32_t num_fields;
     const tabledemo_table_field_info_t * fields;
     /* put one instance back at its declared defaults, in place. A generic
@@ -2444,8 +2444,12 @@ enum {
     SCHEMA_TABLEDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
     SCHEMA_TABLEDEMO_TABLE_REFUSE_NON_FINITE_FLOAT=23,
     SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_SHARED=24,
-    SCHEMA_TABLEDEMO_TABLE_REFUSE_MISSING_REQUIRED=25
+    SCHEMA_TABLEDEMO_TABLE_REFUSE_MISSING_REQUIRED=25,
+    SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP=26
 };
+/* the STORAGE CAP (docs/SPEC-TABLES.md §11): a wire whose region measure passes it is refused as
+   storage_over_cap, and no count times an element size is summed past it */
+#define SCHEMA_TABLEDEMO_TABLE_STORAGE_CAP INT64_C(1099511627776)
 static SCHEMA_UNUSED const uint8_t * tabledemo_table_cook_refuse(tabledemo_table_refuse_reason_t * out,tabledemo_table_refuse_reason_t reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
 /* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
@@ -2460,6 +2464,7 @@ static SCHEMA_UNUSED int tabledemo_table_report_strict_refuses( tabledemo_table_
 {
     tabledemo_table_refuse_reason_t reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OK;
     if ( report->refused && report->reason == SCHEMA_TABLEDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
+    else if ( report->refused && report->reason == SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; }
     else if ( report->refused && report->reason == SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
     else if ( report->refused ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
     else if ( report->damage_reason == SCHEMA_TABLEDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH; }
@@ -2821,7 +2826,7 @@ static SCHEMA_UNUSED uint32_t tabledemo_table_worker_alloc( tabledemo_table_work
     }
     at=worker->next; worker->next+=(uint32_t)bytes; return at;
 }
-static SCHEMA_UNUSED uint32_t tabledemo_table_worker_bump( tabledemo_table_worker_t * worker, uint32_t bytes )
+static SCHEMA_UNUSED uint32_t tabledemo_table_worker_bump( tabledemo_table_worker_t * worker, int64_t bytes )
 { return tabledemo_table_worker_alloc(worker,bytes); }
 
 /* ---- the resolution context: which encoding a walk is reading ----
@@ -5734,7 +5739,7 @@ static SCHEMA_UNUSED int tabledemo_patrol_builder_init_with_allocator( tabledemo
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an patrol_emplace
        that only a pointed-at table has */
-    at = tabledemo_table_worker_bump( &builder->main, (uint32_t) sizeof( tabledemo_patrol_t ) );
+    at = tabledemo_table_worker_bump( &builder->main, (int64_t) sizeof( tabledemo_patrol_t ) );
     if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     tabledemo_patrol_reset( (tabledemo_patrol_t *) (void *) tabledemo_table_arena_at( &builder->arena, at ) );
@@ -5794,15 +5799,16 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_load_layout_(const tabledem
     tabledemo_table_node_scan_t scan=tabledemo_table_node_scan_begin(reader); tabledemo_table_reader_t body; uint64_t id;
     int64_t data=schema_tabledemo_patrol_wire_storage_(reader), records=0;
     if(data<0) { return -1; }
+    if(data>SCHEMA_TABLEDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* the storage cap (docs/SPEC-TABLES.md §11) */
     while (tabledemo_table_node_scan_next(&scan,&id,&body)) {
         const tabledemo_table_node_type_t * type=schema_tabledemo_patrol_node_lookup_(id);
-        if (type!=NULL) { int64_t size=tabledemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }
+        if (type!=NULL) { int64_t size=tabledemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; if (data>SCHEMA_TABLEDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } }
         records++;
     }
     if (records>=INT64_MAX/(int64_t)sizeof(tabledemo_table_node_dir_entry_t)-1 || (records+1)*(int64_t)sizeof(tabledemo_table_node_dir_entry_t)>INT64_MAX-data) { return -1; }
+    if (data+(records+1)*(int64_t)sizeof(tabledemo_table_node_dir_entry_t)>SCHEMA_TABLEDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* each term is at most the cap, so the sum never overflows */
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(tabledemo_table_node_dir_entry_t);
 }
-static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t tabledemo_patrol_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, tabledemo_table_refuse_reason_t * reason)
 {
     tabledemo_table_report_t report; tabledemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
@@ -5810,7 +5816,6 @@ static SCHEMA_UNUSED int64_t tabledemo_patrol_load_measure_ex(const uint8_t * wi
     if (!tabledemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_tabledemo_patrol_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
-    if(total>=0 && schema_tabledemo_patrol_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(tabledemo_table_node_dir_entry_t); } return total;
 }
 static SCHEMA_UNUSED int64_t tabledemo_patrol_load_measure(const uint8_t * wire, int64_t bytes)
@@ -5896,7 +5901,9 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_tolerant(u
     tabledemo_table_report_t ignored; tabledemo_table_reader_t reader; tabledemo_table_node_map_t nodes; tabledemo_table_node_dir_entry_t * directory; tabledemo_table_region_sink_t place; tabledemo_table_sink_t sink; int64_t data,records,total; int malformed_before,reason_before; int32_t non_finite_before;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!tabledemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }
-    total=schema_tabledemo_patrol_load_layout_(&reader,&data,&records); report->reason=(tabledemo_table_refuse_reason_t)reason_before;
+    report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OK; total=schema_tabledemo_patrol_load_layout_(&reader,&data,&records);
+    if(total<0 && report->reason==SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP) { report->refused=1; report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; report->malformed=malformed_before; return NULL; } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name before any region or builder is filled */
+    report->reason=(tabledemo_table_refuse_reason_t)reason_before;
     if(total<0) {
         tabledemo_patrol_builder_t builder; tabledemo_table_node_scan_t scan; tabledemo_table_reader_t body; uint64_t id; tabledemo_patrol_t * root;
         if(region!=NULL && region_bytes>0 && ((uintptr_t)region & (TABLEDEMO_K_TABLE_ALIGN-1))==0) { memset(region,0,(size_t)region_bytes); }
@@ -5958,18 +5965,6 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_builder( tabledemo_patrol_builder
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = tabledemo_patrol_load_builder_tolerant( builder, wire, wire_bytes, report );
     return !tabledemo_table_report_strict_refuses( report, decoded );
-}
-/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
-static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
-{
-    uint8_t * region; tabledemo_table_report_t report; const tabledemo_patrol_t * loaded; int shared;
-    region=(uint8_t *)tabledemo_table_allocate(tabledemo_table_default_allocator(),total);
-    if(region==NULL) { return 1; }
-    memset(&report,0,sizeof(report));
-    loaded=tabledemo_patrol_load_tolerant(region,total,wire,bytes,&report);
-    tabledemo_table_release(tabledemo_table_default_allocator(),region);
-    if(loaded==NULL) { return 1; }
-    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_table_reader_t * reader, tabledemo_patrol_t * root, tabledemo_table_node_map_t * nodes, tabledemo_table_node_dir_entry_t * directory, tabledemo_table_sink_t * sink, tabledemo_table_retain_walk_t retention)
 {
@@ -6091,7 +6086,13 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_retain(uin
  tabledemo_table_retain_reset(retain,NULL,NULL);
  if(!tabledemo_table_wire_open(&reader,wire,wire_bytes,report)){report->malformed=report->malformed||malformed_before;
  return NULL;
- }total=schema_tabledemo_patrol_load_layout_(&reader,&data,&records);
+ }report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OK;
+ total=schema_tabledemo_patrol_load_layout_(&reader,&data,&records);
+ if(total<0&&report->reason==SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP){report->refused=1;
+ report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_STORAGE_OVER_CAP;
+ report->malformed=malformed_before;
+ return NULL;
+ } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name */
  report->reason=(tabledemo_table_refuse_reason_t)reason_before;
  if(total<0){
   tabledemo_patrol_builder_t builder;

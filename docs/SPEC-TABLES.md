@@ -3975,7 +3975,7 @@ declared widths (§19, §20), and a `time.Time` holds a pointer — and the
 `time.Time` is two methods generated beside it: `<Field>Time()` answers the
 count as a `time.Time` in UTC, and `Set<Field>Time(t time.Time) error` stores
 one. **The setter is where a time is refused**: a `t` outside
-`Time.UnixNano`'s domain, the years 1678 through 2262, has no count, so the <!-- limit name=timestamp_min_year value=1678 --> <!-- limit name=timestamp_max_year value=2262 -->
+`Time.UnixNano`'s domain, 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z, has no count, so the <!-- limit name=timestamp_min_year value=1677 --> <!-- limit name=timestamp_max_year value=2262 -->
 setter stores nothing and returns a `TableTimestampError` naming the field.
 Go's own zero `time.Time{}` is the zero time and stores `0`. Every `int64` the
 field can hold is a time, so nothing after the setter can refuse: the variable
@@ -3991,8 +3991,8 @@ minutes `00`–`59`; nothing before it and nothing after it. A comma is not a
 fraction separator. **A leap second is refused: second `60` is not accepted.**
 This kind counts UTC seconds from the epoch, and an instant in a second that a
 leap repeats has no distinct nanosecond count in that model, so no spelling of
-one lands a value. A text outside `Time.UnixNano`'s domain — the years 1678
-through 2262 — names no count and is refused with it.
+one lands a value. A text outside `Time.UnixNano`'s domain — 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z
+— names no count and is refused with it.
 
 **GO CARRIES IT FIRST.** Every other target refuses the construct by name,
 naming the construct, the target and that Go carries it first (§11); no other
@@ -8034,6 +8034,16 @@ three and not one.
   dropping the form in silence. The two sides agree by construction: the writer
   never produces a record the reader's own bound refuses.
 
+  **NO LAYOUT DATA IS WRITTEN FOR SUCH A TABLE EITHER.** The shared layout
+  encoder refuses an entry past 65536 by the reader's own name,
+  `layout_record_too_large`, rather than write its size in the 32-bit field
+  modulo 2^32, so no leg can emit a layout, a hash or a descriptor of the form
+  for a table the compiler has declined it to. Nor does the LOCK record a layout for
+  one (§2.10): a table with no fixed form has no lineage, so it locks in every
+  language at any size and no size is ever stored truncated. A lineage entry a
+  lock already holds for such a table is history: it stays (the lock is
+  append-only), the check reads it as history, and nothing is appended to it.
+
   **THIS IS NOT A COMPILE REFUSAL, AND THE `fixed` KEYWORD DOES NOT MAKE IT ONE
   — because the keyword declares the CLASS and this bound is the FORM's.** The
   MODE and the FORM are two different words (below), and 65536 is the FORM's
@@ -10006,7 +10016,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   is the record count the framing actually carries, which the scan proves
   before a byte of body is believed. `LoadMeasure` is the caller's traversal
   limit in that sense — the caller refuses a size it will not pay — and
-  nothing in the runtime decides that for it.
+  below the storage cap nothing in the runtime decides that for it. Past the
+  cap the measure refuses on its own, `storage_over_cap` (§11).
 - **A MESSAGE BATCH (form `2`) HAS NOTHING TO AMPLIFY.** Its bodies are fixed
   tables (§3.3), so a batch loads into the caller's own array of values, at
   most `min(256, the caller's capacity)` bodies, and commands no region: no
@@ -10081,6 +10092,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `text_ill_formed` | a fixed-form TEXT payload that is not the declared text kind: not valid UTF-8, or a wide or bytes payload that does not decode (§3.4) |
   | `count_over_bound` | a fixed record's count past the count bound its plan declares (§3.4) |
   | `length_over_bound` | a fixed text or blob length past the length bound its plan declares (§3.4) |
+  | `storage_over_cap` | a wire whose region measure passes the 2^40-byte storage cap: `LoadMeasure` answers `-1` with it before any region is sized, the strict read refuses with it, and a region `Load` refuses it (§11) |
   | `no_vocabulary` | a message batch read before any vocabulary was announced (§3.3) |
   | `second_announcement` | a second announcement on a vocabulary that already has one, or after a refusal (§3.3) |
   | `vocabulary_too_large` | an announced vocabulary past the reader's declared byte or entry storage (§3.3); the fixed plan's `plan_too_large` is the same rule on the same codec |
@@ -10101,7 +10113,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `json_root_not_array` | an array-root table's text is not a top-level array (§16.10). The report's reason is `json_root_not_array: <Table>` |
   | `text_holds_zero` | a text field that holds a NUL where the declaration does not allow one (§16.3). The report's reason is `text_holds_zero: <Table>.<field>` |
   | `timestamp_not_rfc3339` | a timestamp string outside RFC 3339 §5.6's exact `date-time` production (§2.11). The report's reason is `timestamp_not_rfc3339: <field>` |
-  | `timestamp_out_of_range` | a `time.Time` whose nanoseconds do not fit an `int64`: outside the years 1678 through 2262 (§2.11). Carried as the typed `TableTimestampError`, whose `Error()` is `timestamp_out_of_range: <field> <time> is outside the years 1678 through 2262` |
+  | `timestamp_out_of_range` | a `time.Time` whose nanoseconds do not fit an `int64`: outside 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z (§2.11). Carried as the typed `TableTimestampError`, whose `Error()` is `timestamp_out_of_range: <field> <time> is outside 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z` |
   <!-- refusal-names:end -->
 
   **THE TABLE IS THE WHOLE ENUM, AND EVERY PORT SPELLS THE SAME SET.**
@@ -13535,8 +13547,30 @@ in build version (§20.5).
   the field and the product, so a schema of individually legal bounds cannot
   hand a backend a number the arithmetic no longer represents. The wire
   itself frames a body of any size (§3), so this cap is the STORAGE side's,
-  and a wire body past it is refused at LOAD rather than at compile time
-  (§3.1). It sits far below where an int64 size stops being exact.
+  and a wire whose region measure passes it is refused at LOAD, by name,
+  `storage_over_cap` (§6.5). A few kilobytes of wire reach it: an element or
+  record costs two wire bytes and commands its whole storage, so 8192 empty
+  bodies of a 2^27-byte record measure past 2^40. `LoadMeasure` answers `-1`
+  with it before any region is sized, the strict read refuses with it, and a
+  region `Load` refuses it before it writes; each extent term (a count times
+  an element size) is checked against the cap before it is added, so the
+  measure never overflows. It sits far below where an int64 size stops being
+  exact. A port whose read builds values rather than a region measures
+  before it builds, so a wire past the cap is refused without materializing
+  any of it; the Go oracle (`internal/tablewire`) refuses it the same way.
+  C++, C, C#, Go, Rust, Java, Dart, JavaScript, Elixir, Lua, Squirrel, Goose,
+  MOO and Luau hold it on the shared vectors in
+  `testdata/wire/tables/storage-cap`, each through its measure and its strict
+  read; Lobster is owed it. Each of those legs stores a type's size, its field offsets and its
+  element, entry and cook element sizes at 64 bits, so a record past 4 GiB
+  (`testdata/wire/tables/storage-cap/wide`) generates and compiles with
+  its sizes exact, except in C#. Two platform limits stand below the cap. C#
+  spells every record as a struct too (its block and cook rows), and CoreCLR
+  loads no struct over 2^31-1 bytes or with a field past offset 2^27-8, so
+  the C# generator refuses such a unit by name, `cs_value_type_too_large`,
+  naming the record, its struct and its size. A Java `byte[]` view reads no
+  position past 2^31-1, so its accessor for one throws
+  `ArithmeticException`.
 - **A `fixed table` whose BY-VALUE CLOSURE cannot hold the class** (§2.2),
   naming the field and the fixed table it breaks: a pointer (§2.1), a byte
   buffer at its used size (§2.5), a map (§2.8), an unbounded array (§2.9), a
@@ -13879,7 +13913,7 @@ in build version (§20.5).
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
-  SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadBuilder  TableType  Builder
+  SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadMeasureFramed  LoadBuilder  TableType  Builder
   At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
@@ -15936,7 +15970,7 @@ Per kind:
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
 | `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, while a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape currently decodes to `U+FFFD` across all nine original ports (pending the stricter named refusal `string_lone_surrogate` under deferred card `sprint-out/schema-go-json-refuses-lone-surrogates`, §16.3, §16.12). So an unpaired surrogate in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted. A string that is valid JSON but not base64 (a byte outside the alphabet, misplaced padding) is `kind_mismatch`, the field at its default. The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string makes the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
-| `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
+| `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted; a flags element that is not a string is `kind_mismatch`, skipped and counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |

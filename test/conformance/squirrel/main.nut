@@ -649,7 +649,15 @@ if (mode == "message") {
     }
     local v = {};
     local ar = {};
-    if (!T.AnnounceRead(v, readBytes(conn.file), ar)) throw name + ": AnnounceRead refused: " + (("reason" in ar) ? ar.reason : "?");
+    if (!T.AnnounceRead(v, readBytes(conn.file), ar)) {
+      // a malformed announcement sets no vocabulary (§3.3), and the row is
+      // answered by name
+      if (("malformed" in ar) && ar.malformed) {
+        writeText(outdir + "/" + name + ".absent", "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)");
+        continue;
+      }
+      throw name + ": AnnounceRead refused: " + (("reason" in ar) ? ar.reason : "?");
+    }
     local storage = array(T.TableMessageBatchMax);
     for (local i = 0; i < storage.len(); i++) storage[i] = T[root]();
     local lr = {};

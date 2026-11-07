@@ -54,6 +54,7 @@ final class TableWireReport {
   bool integrityMismatch = false;
   bool refused = false;
   bool _countRefused = false;
+  bool _storageRefused = false;
   int missingRequired = 0;
   String missingFields = '';
   int retained = 0;
@@ -78,14 +79,16 @@ final class TableWireReport {
   // does not carry is unknown_form, framing the reader cannot follow is
   // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
   // leg's measure gives its two verdicts. It is DERIVED from the flags and the
-  // stored field; _countRefused records a builder storage refusal without
-  // adding a malformed event. Earlier report events remain available.
+  // stored field; _countRefused records a builder storage refusal and
+  // _storageRefused a wire whose region measure passes the storage cap (§11),
+  // each without adding a malformed event. Earlier report events remain available.
   // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
     if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
     if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
+    if (_storageRefused) return 'storage_over_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
     return 'ok';
@@ -302,6 +305,11 @@ final class TableWireWriter {
   int refFor(int id) => state.refFor(id);
 }
 
+// _kTableStorageCap is the storage cap (docs/SPEC-TABLES.md §11): a wire whose
+// region measure passes it is refused as storage_over_cap, and no count times
+// an element size is summed past it.
+const int _kTableStorageCap = 1099511627776;
+
 // _round is the region's alignment (§6.2, ir.TableRegionAlign).
 int _round(int n) => (n + 15) & -16;
 
@@ -403,11 +411,15 @@ final class _MF {
 // out-of-line storage the walked bodies carry (docs/SPEC-TABLES.md §6.2): every
 // map's and list's aligned count-times-size, reached by value through nested
 // tables, element tables, map entries and union arms. A false answer is a
-// count the framing cannot hold; a caller refuses.
+// count the framing cannot hold, or, with overCap set, a list or map term that
+// would take base + at past the storage cap (docs/SPEC-TABLES.md §11); a
+// caller refuses. base is the storage the measure counted before this scan.
 final class _ExtentScan {
   final List<Map<int, _MF>> structs;
   final List<Map<int, _MF>> unions;
   int at = 0;
+  int base = 0;
+  bool overCap = false;
   _ExtentScan(this.structs, this.unions);
 
   // _body reads one length-prefixed payload (extentBody): null, with the
@@ -470,6 +482,11 @@ final class _ExtentScan {
       if (count < 0 || count > 0x7FFFFFFF) return false;
       if (count > (r.limit - r.pos) ~/ _kindFloor(kind)) return false;
       at = (at + f.align - 1) & -f.align;
+      // a term past the storage cap is refused before it is summed (§11)
+      if (count > 0 && f.size > 0 && count > (_kTableStorageCap - base - at) ~/ f.size) {
+        overCap = true;
+        return false;
+      }
       at += count * f.size;
     }
     if (kind != 13 && kind != 15 && !(kind == 12 && f.mode == 4)) return true;
@@ -1572,7 +1589,7 @@ List<int>? _retainBody(TableWireReader r, int depth) {
     if (id == null) return null;
     if (!r.has(1)) return null;
     final kind = r.readByte();
-    final sub = _retainResolve(r, kind, depth + 1);
+    final sub = _retainResolve(r, kind, depth);
     if (sub == null) return null;
     out.addAll(_u64le(id));
     out.add(kind);
@@ -1592,12 +1609,12 @@ List<int>? _retainArray(TableWireReader r, int kind, int depth) {
       if (ref == null) return null;
       final id = _retainId(r, ref);
       if (id == null) return null;
-      final framed = _retainFramed(r, ek, depth + 1);
+      final framed = _retainFramed(r, ek, depth);
       if (framed == null) return null;
       out.addAll(_u64le(id));
       out.addAll(framed);
     } else {
-      final sub = _retainResolve(r, ek, depth + 1);
+      final sub = _retainResolve(r, ek, depth);
       if (sub == null) return null;
       out.addAll(sub);
     }
@@ -1743,7 +1760,7 @@ List<int>? _retainEmitBody(WireState state, _RetainCursor c, int end, int depth)
     if (ref == 0) return null;
     final kind = c.byte();
     if (kind == null) return null;
-    final sub = _retainEmitPayload(state, kind, c, depth + 1);
+    final sub = _retainEmitPayload(state, kind, c, depth);
     if (sub == null) return null;
     _lebOut(o, ref);
     o.add(kind);
@@ -1764,12 +1781,12 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
       if (keyId == null) return null;
       final ref = state.retainRefFor(keyId);
       if (ref == 0) return null;
-      final framed = _retainEmitFramed(state, ek, c, depth + 1);
+      final framed = _retainEmitFramed(state, ek, c, depth);
       if (framed == null) return null;
       _lebOut(o, ref);
       o.addAll(framed);
     } else {
-      final sub = _retainEmitPayload(state, ek, c, depth + 1);
+      final sub = _retainEmitPayload(state, ek, c, depth);
       if (sub == null) return null;
       o.addAll(sub);
     }
@@ -4408,11 +4425,18 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report._storageRefused) r.report.refused = false;
+  r.report._storageRefused = false;
   if (r.report.missingFields.isNotEmpty) r.report.refused = false;
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
+  if (data.length > 746950833 && _fixedTableWireMeasureFramed(data).$2 == 'storage_over_cap') {
+    r.report.refused = true;
+    r.report._storageRefused = true;
+    return FixedTable();
+  }
   try {
     r.pos = 1;
     fixedTableWireLoadBody(r, v, false);
@@ -4518,17 +4542,23 @@ const _measureUnionsFixedTable = <Map<int, _MF>>[
   },
 ];
 
-int fixedTableWireMeasure(Uint8List data) {
+int fixedTableWireMeasure(Uint8List data) => fixedTableWireMeasureReason(data).$1;
+
+(int, String) fixedTableWireMeasureReason(Uint8List data) {
+  return _fixedTableWireMeasureFramed(data);
+}
+
+(int, String) _fixedTableWireMeasureFramed(Uint8List data) {
   final r = TableWireReader(data, data.length);
-  if (data.length < 9 || data[0] != 1) return 0;
+  if (data.length < 9 || data[0] != 1) return (0, 'ok');
   final idCount = readU64(data, data.length - 8);
-  if (idCount < 0 || idCount > 4096 || idCount > (data.length - 9) ~/ 8) return 0;
+  if (idCount < 0 || idCount > 4096 || idCount > (data.length - 9) ~/ 8) return (0, 'ok');
   final idStart = data.length - 8 - idCount * 8;
-  if (idStart < 1) return 0;
+  if (idStart < 1) return (0, 'ok');
   final idSeen = <int>{};
   for (var k = 0; k < idCount; k++) {
     final id = readU64(data, idStart + k * 8);
-    if (!idSeen.add(id)) return 0;
+    if (!idSeen.add(id)) return (0, 'ok');
     r.refToId[k + 1] = id;
   }
   r.entryCount = idCount;
@@ -4537,7 +4567,7 @@ int fixedTableWireMeasure(Uint8List data) {
   // the root body and every node record walk Go's extentScan rule (§6.2):
   // map entries, list and array elements, nested tables and union arms
   final rootScan = _ExtentScan(_measureStructsFixedTable, _measureUnionsFixedTable);
-  if (!rootScan.record(r, 0)) return -1;
+  if (!rootScan.record(r, 0)) return (-1, rootScan.overCap ? 'storage_over_cap' : 'ok');
   var total = _round(_round(1376) + rootScan.at);
   final nodeSpec = <int, List<int>>{
   };
@@ -4564,37 +4594,41 @@ int fixedTableWireMeasure(Uint8List data) {
       if (!r.skipKind(kind)) break;
     }
   }
-  if (unframed) return 0;
+  if (unframed) return (0, 'ok');
   var records = 0;
   var nodeTotal = 0;
   if (seen) {
     r.pos = pstart;
     final cnt = r.readLeb();
-    if (cnt == null) return 0;
+    if (cnt == null) return (0, 'ok');
     var read = 0;
     while (r.pos < pend) {
       final typeRef = r.readLeb();
-      if (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return 0;
+      if (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return (0, 'ok');
       final blen = r.readLeb();
-      if (blen == null || blen < 0 || blen > pend - r.pos) return 0;
+      if (blen == null || blen < 0 || blen > pend - r.pos) return (0, 'ok');
       final tid = r.refToId[typeRef] ?? 0;
       final bodyStart = r.pos;
       final sn = nodeSpec[tid];
       if (sn != null) {
         final over = TableWireReader.over(r.data.buffer.asUint8List(r.data.offsetInBytes + bodyStart, blen), r);
         final nodeScan = _ExtentScan(_measureStructsFixedTable, _measureUnionsFixedTable);
-        if (!nodeScan.record(over, sn[1])) return -1;
+        nodeScan.base = total + nodeTotal;
+        if (!nodeScan.record(over, sn[1])) return (-1, nodeScan.overCap ? 'storage_over_cap' : 'ok');
         nodeTotal += _round(_round(sn[0]) + nodeScan.at);
       } else if (tid == _kBytesBlobId) {
       } else if (tid == _kStringBlobId) {
       }
+      if (total + nodeTotal > _kTableStorageCap) return (-1, 'storage_over_cap');
       r.pos += blen;
       records++;
       read++;
     }
-    if (read != cnt) return 0;
+    if (read != cnt) return (0, 'ok');
   }
-  return total + nodeTotal + (records + 1) * 16;
+  final size = total + nodeTotal + (records + 1) * 16;
+  if (size > _kTableStorageCap) return (-1, 'storage_over_cap');
+  return (size, 'ok');
 }
 
 const String fixedTableWireLoadRetain = "FixedTable: retention requires a variable root and its region directory";
@@ -4780,11 +4814,18 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
 }
 
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
-// float, placed and range-clamped; anything else is a kind mismatch.
+// float, placed and range-clamped; anything else is a kind mismatch. lo and hi
+// are the declared range, or the storage width below 64 bits; an unsigned
+// field's bounds are 64-bit patterns. A token an int holds is placed by int
+// compares. Every other integral value (a token at or past +-2^63, a negative
+// token in an unsigned field, an integral float) is placed EXACTLY as the
+// engine places it (internal/tabletext interpretInteger, integerInDomain): its
+// sign and magnitude, saturated at 2^64-1 and counted; the declared range;
+// then the 64-bit storage domain, each move counted.
 int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
-  int clamp(int v) {
+  if (val is int && (!unsigned || val >= 0)) {
+    var v = val;
     if (unsigned) {
-      if (v < 0 && hi != null && hi >= 0) { v = lo ?? 0; r.clamped++; }
       if (lo != null && _u64Below(v, lo)) { v = lo; r.clamped++; }
       if (hi != null && _u64Above(v, hi)) { v = hi; r.clamped++; }
     } else {
@@ -4793,28 +4834,47 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
     }
     return v;
   }
-  if (val is int) return clamp(val);
-  if (unsigned && val is _JNum && (hi == null || hi < 0)) {
-    final wide = BigInt.tryParse(val.token);
-    if (wide != null && wide >= BigInt.zero && wide <= BigInt.parse('18446744073709551615')) {
-      final signed = wide > BigInt.from(9223372036854775807)
-          ? wide - (BigInt.one << 64) : wide;
-      return clamp(signed.toInt());
+  BigInt wide;
+  if (val is int) {
+    wide = BigInt.from(val);
+  } else if (val is _JNum && val.integral) {
+    wide = BigInt.parse(val.token);
+  } else {
+    final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
+    if (!d.isFinite || d != d.truncateToDouble()) {
+      r.kindMismatch++;
+      return def;
     }
+    wide = d.abs() >= 18446744073709551616.0 ? (d.isNegative ? -_jsonU64Span : _jsonU64Span) : BigInt.from(d);
   }
-  if (val is num && val.isFinite && val.toDouble() == val.toDouble().truncateToDouble()) {
-    if (val.toDouble() > 9223372036854775807.0) { r.clamped++; return clamp(9223372036854775807); }
-    if (val.toDouble() < -9223372036854775808.0) { r.clamped++; return clamp(-9223372036854775808); }
-    return clamp(val.toInt());
+  if (wide.abs() > _jsonU64Max) {
+    wide = wide.isNegative ? -_jsonU64Max : _jsonU64Max;
+    r.clamped++;
   }
-  if (val is _JNum && val.d.isFinite && val.d == val.d.truncateToDouble()) {
-    if (val.d > 9223372036854775807.0) { r.clamped++; return clamp(9223372036854775807); }
-    if (val.d < -9223372036854775808.0) { r.clamped++; return clamp(-9223372036854775808); }
-    return clamp(val.d.toInt());
+  BigInt bound(int b) => unsigned ? BigInt.from(b).toUnsigned(64) : BigInt.from(b);
+  if (lo != null && wide < bound(lo)) {
+    wide = bound(lo);
+    r.clamped++;
+  } else if (hi != null && wide > bound(hi)) {
+    wide = bound(hi);
+    r.clamped++;
   }
-  r.kindMismatch++;
-  return def;
+  if (unsigned) {
+    if (wide.isNegative) { wide = BigInt.zero; r.clamped++; }
+  } else if (wide < _jsonI64Min) {
+    wide = _jsonI64Min;
+    r.clamped++;
+  } else if (wide > _jsonI64Max) {
+    wide = _jsonI64Max;
+    r.clamped++;
+  }
+  return wide.toSigned(64).toInt();
 }
+
+final _jsonU64Span = BigInt.one << 64;
+final _jsonU64Max = _jsonU64Span - BigInt.one;
+final _jsonI64Min = -(BigInt.one << 63);
+final _jsonI64Max = (BigInt.one << 63) - BigInt.one;
 
 // _jsonFloat spells a float at the shortest precision that reads back the same
 // value AT ITS OWN WIDTH (§16.2): a float32 from six significant digits up to
@@ -5187,7 +5247,8 @@ String _jsonPrepare(String text, TableTextReport r) {
       continue;
     }
     if (c == 0x7b || c == 0x5b) {
-      if (++depth > 128) throw const FormatException('JSON nesting past 128');
+      // the root container is depth 0 and a container deeper than 128 is refused
+      if (depth++ > 128) throw const FormatException('JSON nesting past 128');
     } else if (c == 0x7d || c == 0x5d) {
       depth--;
     }
@@ -5248,11 +5309,16 @@ String _jsonPrepare(String text, TableTextReport r) {
 }
 
 // _JNum is a JSON number the int type cannot hold exactly, kept as its
-// token so a wide field reads it without rounding (docs/SPEC-TABLES.md §16.2).
+// token so a wide or 64-bit field reads it without rounding
+// (docs/SPEC-TABLES.md §16.2). integral is the token's spelling: no fraction
+// and no exponent.
 final class _JNum {
   final String token;
   final double d;
-  _JNum(this.token) : d = double.parse(token);
+  final bool integral;
+  _JNum(this.token)
+      : d = double.parse(token),
+        integral = !token.contains('.') && !token.contains('e') && !token.contains('E');
 }
 
 final class _JObj {
@@ -5371,7 +5437,9 @@ final class _JParse {
       }
     }
     final token = number.group(0)!;
-    if (!token.contains('.') && !token.contains('e') && !token.contains('E')) {
+    // -0 stays a _JNum: an int has no negative zero, and a float field owes
+    // the sign the token spells (§16.2)
+    if (token != '-0' && !token.contains('.') && !token.contains('e') && !token.contains('E')) {
       final n = int.tryParse(token);
       if (n != null) return n;
     }
@@ -5860,7 +5928,7 @@ int _mixedDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
       case "Shielded": bits |= 32;
       case "Airborne": bits |= 64;
       case "Downed": bits |= 128;
-      default: r.unknown++;
+      default: if (item is String) { r.unknown++; } else { r.kindMismatch++; }
     }
   }
   return bits;

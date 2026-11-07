@@ -239,8 +239,8 @@ func descriptorFor(u *ir.Unit, st *ir.Struct, outside, valued bool) string {
 		fv := fmt.Sprintf("f%d", i)
 		p := cookedPlace(u, st, f)
 		emitFieldDescriptor(&b, fv, f, variableWireKind(f), fieldCapacity(f), outside)
-		fmt.Fprintf(&b, "            %s.at(%v, %v, %d, %d, %d, %d);\n",
-			fv, p.isArray, p.counted, p.offset, p.elementSize, p.countOffset, p.presentOffset)
+		fmt.Fprintf(&b, "            %s.at(%v, %v, %s, %s, %s, %s);\n",
+			fv, p.isArray, p.counted, javaSize(p.offset), javaSize(p.elementSize), javaSize(p.countOffset), javaSize(p.presentOffset))
 		if valued {
 			emitAccessorColumns(&b, &helpers, descClass, holder, fv, i, f)
 		} else if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
@@ -450,13 +450,13 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
      * the field's byte offset in the COOKED record (§7.2, the layout <Name>Row reads); 0 for every
      * union arm, which all overlay the payload.
      */
-    public int offset;
+    public long offset;
     /** one element's cooked size: the scalar, one array element, one list element. */
-    public int elementSize;
+    public long elementSize;
     /** the count/length companion's cooked offset, or -1. */
-    public int countOffset;
+    public long countOffset;
     /** the presence companion's cooked offset (an optional field), or -1. */
-    public int presentOffset;
+    public long presentOffset;
     public String doc;
     public String[] tags;
 
@@ -508,7 +508,7 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
         return f;
     }
 
-    TableFieldInfo at(boolean isArray, boolean counted, int offset, int elementSize, int countOffset, int presentOffset) {
+    TableFieldInfo at(boolean isArray, boolean counted, long offset, long elementSize, long countOffset, long presentOffset) {
         this.isArray = isArray;
         this.counted = counted;
         this.offset = offset;

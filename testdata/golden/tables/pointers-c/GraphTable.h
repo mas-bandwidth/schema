@@ -126,18 +126,18 @@ struct graphdemo_table_field_info_t;
    twice (docs/SPEC-TABLES.md §8). */
 typedef struct graphdemo_table_union_arm_info_t
 {
-    uint32_t offset;                    /* offsetof the arm's payload within the union storage */
+    uint64_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct graphdemo_table_type_info_t * table; /* the arm payload's descriptor */
     const struct graphdemo_table_field_info_t * field; /* non-body arm, relative to union storage */
-    uint32_t size; /* bytes established when this arm is selected */
+    uint64_t size; /* bytes established when this arm is selected */
 } graphdemo_table_union_arm_info_t;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
    [0, enum_max]; index 0 is the EMPTY arm and carries no payload. */
 typedef struct graphdemo_table_union_info_t
 {
-    uint32_t tag_offset; /* offsetof the tag within the union storage */
-    uint32_t tag_size;   /* sizeof the tag */
+    uint64_t tag_offset; /* offsetof the tag within the union storage */
+    uint64_t tag_size;   /* sizeof the tag */
     const graphdemo_table_union_arm_info_t * arms;
 } graphdemo_table_union_info_t;
 
@@ -181,10 +181,10 @@ typedef struct graphdemo_table_field_info_t
     int optional;           /* a ?T field: a _present companion decides whether it rides */
     int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
-    uint32_t offset;        /* offsetof the storage member */
-    uint32_t elem_size;     /* sizeof the member (element size for arrays) */
-    uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */
-    uint32_t present_offset; /* offsetof the _present companion, or 0xffffffff */
+    uint64_t offset;        /* offsetof the storage member */
+    uint64_t elem_size;     /* sizeof the member (element size for arrays) */
+    uint64_t count_offset;  /* offsetof the _count/_length companion, or UINT64_MAX */
+    uint64_t present_offset; /* offsetof the _present companion, or UINT64_MAX */
     const struct graphdemo_table_type_info_t * table; /* nested table's descriptor, or NULL */
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
@@ -227,7 +227,7 @@ typedef struct graphdemo_table_field_info_t
 typedef struct graphdemo_table_type_info_t
 {
     const char * name;   /* schema type name */
-    uint32_t size;       /* sizeof the storage struct */
+    uint64_t size;       /* sizeof the storage struct */
     int32_t num_fields;
     const graphdemo_table_field_info_t * fields;
     /* put one instance back at its declared defaults, in place. A generic
@@ -2446,8 +2446,12 @@ enum {
     SCHEMA_GRAPHDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
     SCHEMA_GRAPHDEMO_TABLE_REFUSE_NON_FINITE_FLOAT=23,
     SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED=24,
-    SCHEMA_GRAPHDEMO_TABLE_REFUSE_MISSING_REQUIRED=25
+    SCHEMA_GRAPHDEMO_TABLE_REFUSE_MISSING_REQUIRED=25,
+    SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP=26
 };
+/* the STORAGE CAP (docs/SPEC-TABLES.md §11): a wire whose region measure passes it is refused as
+   storage_over_cap, and no count times an element size is summed past it */
+#define SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP INT64_C(1099511627776)
 static SCHEMA_UNUSED const uint8_t * graphdemo_table_cook_refuse(graphdemo_table_refuse_reason_t * out,graphdemo_table_refuse_reason_t reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
 /* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
@@ -2462,6 +2466,7 @@ static SCHEMA_UNUSED int graphdemo_table_report_strict_refuses( graphdemo_table_
 {
     graphdemo_table_refuse_reason_t reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK;
     if ( report->refused && report->reason == SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
+    else if ( report->refused && report->reason == SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; }
     else if ( report->refused && report->reason == SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
     else if ( report->refused ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
     else if ( report->damage_reason == SCHEMA_GRAPHDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH; }
@@ -2823,7 +2828,7 @@ static SCHEMA_UNUSED uint32_t graphdemo_table_worker_alloc( graphdemo_table_work
     }
     at=worker->next; worker->next+=(uint32_t)bytes; return at;
 }
-static SCHEMA_UNUSED uint32_t graphdemo_table_worker_bump( graphdemo_table_worker_t * worker, uint32_t bytes )
+static SCHEMA_UNUSED uint32_t graphdemo_table_worker_bump( graphdemo_table_worker_t * worker, int64_t bytes )
 { return graphdemo_table_worker_alloc(worker,bytes); }
 
 /* ---- the resolution context: which encoding a walk is reading ----
@@ -5191,7 +5196,7 @@ static SCHEMA_UNUSED graphdemo_settings_t * graphdemo_settings_emplace( graphdem
     }
     if ( sink->worker != NULL )
     {
-        uint32_t at = graphdemo_table_worker_bump( sink->worker, (uint32_t) sizeof( graphdemo_settings_t ) );
+        uint32_t at = graphdemo_table_worker_bump( sink->worker, (int64_t) sizeof( graphdemo_settings_t ) );
         graphdemo_settings_t * node;
         if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
         node = (graphdemo_settings_t *) (void *) graphdemo_table_arena_at( sink->worker->arena, at );
@@ -5233,7 +5238,7 @@ static SCHEMA_UNUSED graphdemo_list_node_t * graphdemo_list_node_emplace( graphd
     }
     if ( sink->worker != NULL )
     {
-        uint32_t at = graphdemo_table_worker_bump( sink->worker, (uint32_t) sizeof( graphdemo_list_node_t ) );
+        uint32_t at = graphdemo_table_worker_bump( sink->worker, (int64_t) sizeof( graphdemo_list_node_t ) );
         graphdemo_list_node_t * node;
         if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
         node = (graphdemo_list_node_t *) (void *) graphdemo_table_arena_at( sink->worker->arena, at );
@@ -5275,7 +5280,7 @@ static SCHEMA_UNUSED graphdemo_tree_node_t * graphdemo_tree_node_emplace( graphd
     }
     if ( sink->worker != NULL )
     {
-        uint32_t at = graphdemo_table_worker_bump( sink->worker, (uint32_t) sizeof( graphdemo_tree_node_t ) );
+        uint32_t at = graphdemo_table_worker_bump( sink->worker, (int64_t) sizeof( graphdemo_tree_node_t ) );
         graphdemo_tree_node_t * node;
         if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
         node = (graphdemo_tree_node_t *) (void *) graphdemo_table_arena_at( sink->worker->arena, at );
@@ -10702,7 +10707,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_builder_init_with_allocator( graphd
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an list_node_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_list_node_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_list_node_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_list_node_reset( (graphdemo_list_node_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -10763,15 +10768,16 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_list_node_load_layout_(const graph
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id;
     int64_t data=schema_graphdemo_list_node_wire_storage_(reader), records=0;
     if(data<0) { return -1; }
+    if(data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* the storage cap (docs/SPEC-TABLES.md §11) */
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_list_node_node_lookup_(id);
-        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }
+        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; if (data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } }
         records++;
     }
     if (records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1 || (records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>INT64_MAX-data) { return -1; }
+    if (data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* each term is at most the cap, so the sum never overflows */
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t);
 }
-static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t graphdemo_list_node_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, graphdemo_table_refuse_reason_t * reason)
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
@@ -10779,7 +10785,6 @@ static SCHEMA_UNUSED int64_t graphdemo_list_node_load_measure_ex(const uint8_t *
     if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
-    if(total>=0 && schema_graphdemo_list_node_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t); } return total;
 }
 static SCHEMA_UNUSED int64_t graphdemo_list_node_load_measure(const uint8_t * wire, int64_t bytes)
@@ -10866,7 +10871,9 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_tole
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total; int malformed_before,reason_before; int32_t non_finite_before;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }
-    total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records); report->reason=(graphdemo_table_refuse_reason_t)reason_before;
+    report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK; total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records);
+    if(total<0 && report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP) { report->refused=1; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; report->malformed=malformed_before; return NULL; } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name before any region or builder is filled */
+    report->reason=(graphdemo_table_refuse_reason_t)reason_before;
     if(total<0) {
         graphdemo_list_node_builder_t builder; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; graphdemo_list_node_t * root;
         if(region!=NULL && region_bytes>0 && ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))==0) { memset(region,0,(size_t)region_bytes); }
@@ -10929,18 +10936,6 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_builder( graphdemo_list_node_b
     decoded = graphdemo_list_node_load_builder_tolerant( builder, wire, wire_bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
-/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
-static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
-{
-    uint8_t * region; graphdemo_table_report_t report; const graphdemo_list_node_t * loaded; int shared;
-    region=(uint8_t *)graphdemo_table_allocate(graphdemo_table_default_allocator(),total);
-    if(region==NULL) { return 1; }
-    memset(&report,0,sizeof(report));
-    loaded=graphdemo_list_node_load_tolerant(region,total,wire,bytes,&report);
-    graphdemo_table_release(graphdemo_table_default_allocator(),region);
-    if(loaded==NULL) { return 1; }
-    shared=report.blob_shared>0; return shared;
-}
 /* ---- TreeNode: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 
    MUTABLE: TreeNodeBuilder — allocate nodes, wire them together, then Lock.
@@ -10978,7 +10973,7 @@ static SCHEMA_UNUSED int graphdemo_tree_node_builder_init_with_allocator( graphd
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an tree_node_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_tree_node_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_tree_node_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_tree_node_reset( (graphdemo_tree_node_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -11039,15 +11034,16 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_tree_node_load_layout_(const graph
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id;
     int64_t data=schema_graphdemo_tree_node_wire_storage_(reader), records=0;
     if(data<0) { return -1; }
+    if(data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* the storage cap (docs/SPEC-TABLES.md §11) */
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_tree_node_node_lookup_(id);
-        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }
+        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; if (data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } }
         records++;
     }
     if (records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1 || (records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>INT64_MAX-data) { return -1; }
+    if (data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* each term is at most the cap, so the sum never overflows */
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t);
 }
-static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t graphdemo_tree_node_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, graphdemo_table_refuse_reason_t * reason)
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
@@ -11055,7 +11051,6 @@ static SCHEMA_UNUSED int64_t graphdemo_tree_node_load_measure_ex(const uint8_t *
     if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
-    if(total>=0 && schema_graphdemo_tree_node_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t); } return total;
 }
 static SCHEMA_UNUSED int64_t graphdemo_tree_node_load_measure(const uint8_t * wire, int64_t bytes)
@@ -11142,7 +11137,9 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_tole
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total; int malformed_before,reason_before; int32_t non_finite_before;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }
-    total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records); report->reason=(graphdemo_table_refuse_reason_t)reason_before;
+    report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK; total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records);
+    if(total<0 && report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP) { report->refused=1; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; report->malformed=malformed_before; return NULL; } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name before any region or builder is filled */
+    report->reason=(graphdemo_table_refuse_reason_t)reason_before;
     if(total<0) {
         graphdemo_tree_node_builder_t builder; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; graphdemo_tree_node_t * root;
         if(region!=NULL && region_bytes>0 && ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))==0) { memset(region,0,(size_t)region_bytes); }
@@ -11205,18 +11202,6 @@ static SCHEMA_UNUSED int graphdemo_tree_node_load_builder( graphdemo_tree_node_b
     decoded = graphdemo_tree_node_load_builder_tolerant( builder, wire, wire_bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
-/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
-static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
-{
-    uint8_t * region; graphdemo_table_report_t report; const graphdemo_tree_node_t * loaded; int shared;
-    region=(uint8_t *)graphdemo_table_allocate(graphdemo_table_default_allocator(),total);
-    if(region==NULL) { return 1; }
-    memset(&report,0,sizeof(report));
-    loaded=graphdemo_tree_node_load_tolerant(region,total,wire,bytes,&report);
-    graphdemo_table_release(graphdemo_table_default_allocator(),region);
-    if(loaded==NULL) { return 1; }
-    shared=report.blob_shared>0; return shared;
-}
 /* ---- Layer: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 
    MUTABLE: LayerBuilder — allocate nodes, wire them together, then Lock.
@@ -11254,7 +11239,7 @@ static SCHEMA_UNUSED int graphdemo_layer_builder_init_with_allocator( graphdemo_
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an layer_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_layer_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_layer_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_layer_reset( (graphdemo_layer_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -11315,15 +11300,16 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_layer_load_layout_(const graphdemo
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id;
     int64_t data=schema_graphdemo_layer_wire_storage_(reader), records=0;
     if(data<0) { return -1; }
+    if(data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* the storage cap (docs/SPEC-TABLES.md §11) */
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_layer_node_lookup_(id);
-        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }
+        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; if (data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } }
         records++;
     }
     if (records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1 || (records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>INT64_MAX-data) { return -1; }
+    if (data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* each term is at most the cap, so the sum never overflows */
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t);
 }
-static SCHEMA_UNUSED int schema_graphdemo_layer_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t graphdemo_layer_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, graphdemo_table_refuse_reason_t * reason)
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
@@ -11331,7 +11317,6 @@ static SCHEMA_UNUSED int64_t graphdemo_layer_load_measure_ex(const uint8_t * wir
     if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_layer_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
-    if(total>=0 && schema_graphdemo_layer_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t); } return total;
 }
 static SCHEMA_UNUSED int64_t graphdemo_layer_load_measure(const uint8_t * wire, int64_t bytes)
@@ -11421,7 +11406,9 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_tolerant(uin
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total; int malformed_before,reason_before; int32_t non_finite_before;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }
-    total=schema_graphdemo_layer_load_layout_(&reader,&data,&records); report->reason=(graphdemo_table_refuse_reason_t)reason_before;
+    report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK; total=schema_graphdemo_layer_load_layout_(&reader,&data,&records);
+    if(total<0 && report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP) { report->refused=1; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; report->malformed=malformed_before; return NULL; } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name before any region or builder is filled */
+    report->reason=(graphdemo_table_refuse_reason_t)reason_before;
     if(total<0) {
         graphdemo_layer_builder_t builder; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; graphdemo_layer_t * root;
         if(region!=NULL && region_bytes>0 && ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))==0) { memset(region,0,(size_t)region_bytes); }
@@ -11484,18 +11471,6 @@ static SCHEMA_UNUSED int graphdemo_layer_load_builder( graphdemo_layer_builder_t
     decoded = graphdemo_layer_load_builder_tolerant( builder, wire, wire_bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
-/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
-static SCHEMA_UNUSED int schema_graphdemo_layer_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
-{
-    uint8_t * region; graphdemo_table_report_t report; const graphdemo_layer_t * loaded; int shared;
-    region=(uint8_t *)graphdemo_table_allocate(graphdemo_table_default_allocator(),total);
-    if(region==NULL) { return 1; }
-    memset(&report,0,sizeof(report));
-    loaded=graphdemo_layer_load_tolerant(region,total,wire,bytes,&report);
-    graphdemo_table_release(graphdemo_table_default_allocator(),region);
-    if(loaded==NULL) { return 1; }
-    shared=report.blob_shared>0; return shared;
-}
 /* ---- Scene: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 
    MUTABLE: SceneBuilder — allocate nodes, wire them together, then Lock.
@@ -11533,7 +11508,7 @@ static SCHEMA_UNUSED int graphdemo_scene_builder_init_with_allocator( graphdemo_
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an scene_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_scene_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_scene_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_scene_reset( (graphdemo_scene_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -11596,15 +11571,16 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_scene_load_layout_(const graphdemo
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id;
     int64_t data=schema_graphdemo_scene_wire_storage_(reader), records=0;
     if(data<0) { return -1; }
+    if(data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* the storage cap (docs/SPEC-TABLES.md §11) */
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_scene_node_lookup_(id);
-        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }
+        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; if (data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } }
         records++;
     }
     if (records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1 || (records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>INT64_MAX-data) { return -1; }
+    if (data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* each term is at most the cap, so the sum never overflows */
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t);
 }
-static SCHEMA_UNUSED int schema_graphdemo_scene_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t graphdemo_scene_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, graphdemo_table_refuse_reason_t * reason)
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
@@ -11612,7 +11588,6 @@ static SCHEMA_UNUSED int64_t graphdemo_scene_load_measure_ex(const uint8_t * wir
     if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_scene_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
-    if(total>=0 && schema_graphdemo_scene_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t); } return total;
 }
 static SCHEMA_UNUSED int64_t graphdemo_scene_load_measure(const uint8_t * wire, int64_t bytes)
@@ -11710,7 +11685,9 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_tolerant(uin
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total; int malformed_before,reason_before; int32_t non_finite_before;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }
-    total=schema_graphdemo_scene_load_layout_(&reader,&data,&records); report->reason=(graphdemo_table_refuse_reason_t)reason_before;
+    report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK; total=schema_graphdemo_scene_load_layout_(&reader,&data,&records);
+    if(total<0 && report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP) { report->refused=1; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; report->malformed=malformed_before; return NULL; } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name before any region or builder is filled */
+    report->reason=(graphdemo_table_refuse_reason_t)reason_before;
     if(total<0) {
         graphdemo_scene_builder_t builder; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; graphdemo_scene_t * root;
         if(region!=NULL && region_bytes>0 && ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))==0) { memset(region,0,(size_t)region_bytes); }
@@ -11773,18 +11750,6 @@ static SCHEMA_UNUSED int graphdemo_scene_load_builder( graphdemo_scene_builder_t
     decoded = graphdemo_scene_load_builder_tolerant( builder, wire, wire_bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
-/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
-static SCHEMA_UNUSED int schema_graphdemo_scene_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
-{
-    uint8_t * region; graphdemo_table_report_t report; const graphdemo_scene_t * loaded; int shared;
-    region=(uint8_t *)graphdemo_table_allocate(graphdemo_table_default_allocator(),total);
-    if(region==NULL) { return 1; }
-    memset(&report,0,sizeof(report));
-    loaded=graphdemo_scene_load_tolerant(region,total,wire,bytes,&report);
-    graphdemo_table_release(graphdemo_table_default_allocator(),region);
-    if(loaded==NULL) { return 1; }
-    shared=report.blob_shared>0; return shared;
-}
 /* ---- Depot: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 
    MUTABLE: DepotBuilder — allocate nodes, wire them together, then Lock.
@@ -11822,7 +11787,7 @@ static SCHEMA_UNUSED int graphdemo_depot_builder_init_with_allocator( graphdemo_
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an depot_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_depot_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_depot_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_depot_reset( (graphdemo_depot_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -11883,15 +11848,16 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_depot_load_layout_(const graphdemo
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id;
     int64_t data=schema_graphdemo_depot_wire_storage_(reader), records=0;
     if(data<0) { return -1; }
+    if(data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* the storage cap (docs/SPEC-TABLES.md §11) */
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_depot_node_lookup_(id);
-        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }
+        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; if (data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } }
         records++;
     }
     if (records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1 || (records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>INT64_MAX-data) { return -1; }
+    if (data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* each term is at most the cap, so the sum never overflows */
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t);
 }
-static SCHEMA_UNUSED int schema_graphdemo_depot_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t graphdemo_depot_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, graphdemo_table_refuse_reason_t * reason)
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
@@ -11899,7 +11865,6 @@ static SCHEMA_UNUSED int64_t graphdemo_depot_load_measure_ex(const uint8_t * wir
     if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_depot_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
-    if(total>=0 && schema_graphdemo_depot_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t); } return total;
 }
 static SCHEMA_UNUSED int64_t graphdemo_depot_load_measure(const uint8_t * wire, int64_t bytes)
@@ -11989,7 +11954,9 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_tolerant(uin
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total; int malformed_before,reason_before; int32_t non_finite_before;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }
-    total=schema_graphdemo_depot_load_layout_(&reader,&data,&records); report->reason=(graphdemo_table_refuse_reason_t)reason_before;
+    report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK; total=schema_graphdemo_depot_load_layout_(&reader,&data,&records);
+    if(total<0 && report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP) { report->refused=1; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; report->malformed=malformed_before; return NULL; } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name before any region or builder is filled */
+    report->reason=(graphdemo_table_refuse_reason_t)reason_before;
     if(total<0) {
         graphdemo_depot_builder_t builder; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; graphdemo_depot_t * root;
         if(region!=NULL && region_bytes>0 && ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))==0) { memset(region,0,(size_t)region_bytes); }
@@ -12052,18 +12019,6 @@ static SCHEMA_UNUSED int graphdemo_depot_load_builder( graphdemo_depot_builder_t
     decoded = graphdemo_depot_load_builder_tolerant( builder, wire, wire_bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
-/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
-static SCHEMA_UNUSED int schema_graphdemo_depot_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
-{
-    uint8_t * region; graphdemo_table_report_t report; const graphdemo_depot_t * loaded; int shared;
-    region=(uint8_t *)graphdemo_table_allocate(graphdemo_table_default_allocator(),total);
-    if(region==NULL) { return 1; }
-    memset(&report,0,sizeof(report));
-    loaded=graphdemo_depot_load_tolerant(region,total,wire,bytes,&report);
-    graphdemo_table_release(graphdemo_table_default_allocator(),region);
-    if(loaded==NULL) { return 1; }
-    shared=report.blob_shared>0; return shared;
-}
 /* ---- Album: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 
    MUTABLE: AlbumBuilder — allocate nodes, wire them together, then Lock.
@@ -12101,7 +12056,7 @@ static SCHEMA_UNUSED int graphdemo_album_builder_init_with_allocator( graphdemo_
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an album_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_album_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_album_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_album_reset( (graphdemo_album_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -12164,15 +12119,16 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_album_load_layout_(const graphdemo
     graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id;
     int64_t data=schema_graphdemo_album_wire_storage_(reader), records=0;
     if(data<0) { return -1; }
+    if(data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* the storage cap (docs/SPEC-TABLES.md §11) */
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_album_node_lookup_(id);
-        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }
+        if (type!=NULL) { int64_t size=graphdemo_table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; if (data>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } }
         records++;
     }
     if (records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1 || (records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>INT64_MAX-data) { return -1; }
+    if (data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t)>SCHEMA_GRAPHDEMO_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* each term is at most the cap, so the sum never overflows */
     *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t);
 }
-static SCHEMA_UNUSED int schema_graphdemo_album_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total);
 static SCHEMA_UNUSED int64_t graphdemo_album_load_measure_ex(const uint8_t * wire, int64_t bytes, int64_t * attribution, graphdemo_table_refuse_reason_t * reason)
 {
     graphdemo_table_report_t report; graphdemo_table_reader_t reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));
@@ -12180,7 +12136,6 @@ static SCHEMA_UNUSED int64_t graphdemo_album_load_measure_ex(const uint8_t * wir
     if (!graphdemo_table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }
     report.reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH; total=schema_graphdemo_album_load_layout_(&reader,&data,&records);
     if(total<0 && reason!=NULL) { *reason=report.reason; }
-    if(total>=0 && schema_graphdemo_album_wire_blob_shared_(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; } return -1; }
     if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(graphdemo_table_node_dir_entry_t); } return total;
 }
 static SCHEMA_UNUSED int64_t graphdemo_album_load_measure(const uint8_t * wire, int64_t bytes)
@@ -12278,7 +12233,9 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_tolerant(uin
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total; int malformed_before,reason_before; int32_t non_finite_before;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }
-    total=schema_graphdemo_album_load_layout_(&reader,&data,&records); report->reason=(graphdemo_table_refuse_reason_t)reason_before;
+    report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK; total=schema_graphdemo_album_load_layout_(&reader,&data,&records);
+    if(total<0 && report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP) { report->refused=1; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP; report->malformed=malformed_before; return NULL; } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name before any region or builder is filled */
+    report->reason=(graphdemo_table_refuse_reason_t)reason_before;
     if(total<0) {
         graphdemo_album_builder_t builder; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; graphdemo_album_t * root;
         if(region!=NULL && region_bytes>0 && ((uintptr_t)region & (GRAPHDEMO_K_TABLE_ALIGN-1))==0) { memset(region,0,(size_t)region_bytes); }
@@ -12340,18 +12297,6 @@ static SCHEMA_UNUSED int graphdemo_album_load_builder( graphdemo_album_builder_t
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     decoded = graphdemo_album_load_builder_tolerant( builder, wire, wire_bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
-}
-/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
-static SCHEMA_UNUSED int schema_graphdemo_album_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
-{
-    uint8_t * region; graphdemo_table_report_t report; const graphdemo_album_t * loaded; int shared;
-    region=(uint8_t *)graphdemo_table_allocate(graphdemo_table_default_allocator(),total);
-    if(region==NULL) { return 1; }
-    memset(&report,0,sizeof(report));
-    loaded=graphdemo_album_load_tolerant(region,total,wire,bytes,&report);
-    graphdemo_table_release(graphdemo_table_default_allocator(),region);
-    if(loaded==NULL) { return 1; }
-    shared=report.blob_shared>0; return shared;
 }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_retain_(graphdemo_table_reader_t * reader, graphdemo_list_node_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink, graphdemo_table_retain_walk_t retention)
 {
@@ -12476,7 +12421,13 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_reta
  graphdemo_table_retain_reset(retain,NULL,NULL);
  if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)){report->malformed=report->malformed||malformed_before;
  return NULL;
- }total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records);
+ }report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK;
+ total=schema_graphdemo_list_node_load_layout_(&reader,&data,&records);
+ if(total<0&&report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP){report->refused=1;
+ report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP;
+ report->malformed=malformed_before;
+ return NULL;
+ } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name */
  report->reason=(graphdemo_table_refuse_reason_t)reason_before;
  if(total<0){
   graphdemo_list_node_builder_t builder;
@@ -12698,7 +12649,13 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_reta
  graphdemo_table_retain_reset(retain,NULL,NULL);
  if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)){report->malformed=report->malformed||malformed_before;
  return NULL;
- }total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records);
+ }report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK;
+ total=schema_graphdemo_tree_node_load_layout_(&reader,&data,&records);
+ if(total<0&&report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP){report->refused=1;
+ report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP;
+ report->malformed=malformed_before;
+ return NULL;
+ } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name */
  report->reason=(graphdemo_table_refuse_reason_t)reason_before;
  if(total<0){
   graphdemo_tree_node_builder_t builder;
@@ -12920,7 +12877,13 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_retain(uint8
  graphdemo_table_retain_reset(retain,NULL,NULL);
  if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)){report->malformed=report->malformed||malformed_before;
  return NULL;
- }total=schema_graphdemo_layer_load_layout_(&reader,&data,&records);
+ }report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK;
+ total=schema_graphdemo_layer_load_layout_(&reader,&data,&records);
+ if(total<0&&report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP){report->refused=1;
+ report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP;
+ report->malformed=malformed_before;
+ return NULL;
+ } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name */
  report->reason=(graphdemo_table_refuse_reason_t)reason_before;
  if(total<0){
   graphdemo_layer_builder_t builder;
@@ -13149,7 +13112,13 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_retain(uint8
  graphdemo_table_retain_reset(retain,NULL,NULL);
  if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)){report->malformed=report->malformed||malformed_before;
  return NULL;
- }total=schema_graphdemo_scene_load_layout_(&reader,&data,&records);
+ }report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK;
+ total=schema_graphdemo_scene_load_layout_(&reader,&data,&records);
+ if(total<0&&report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP){report->refused=1;
+ report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP;
+ report->malformed=malformed_before;
+ return NULL;
+ } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name */
  report->reason=(graphdemo_table_refuse_reason_t)reason_before;
  if(total<0){
   graphdemo_scene_builder_t builder;
@@ -13374,7 +13343,13 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_retain(uint8
  graphdemo_table_retain_reset(retain,NULL,NULL);
  if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)){report->malformed=report->malformed||malformed_before;
  return NULL;
- }total=schema_graphdemo_depot_load_layout_(&reader,&data,&records);
+ }report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK;
+ total=schema_graphdemo_depot_load_layout_(&reader,&data,&records);
+ if(total<0&&report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP){report->refused=1;
+ report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP;
+ report->malformed=malformed_before;
+ return NULL;
+ } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name */
  report->reason=(graphdemo_table_refuse_reason_t)reason_before;
  if(total<0){
   graphdemo_depot_builder_t builder;
@@ -13603,7 +13578,13 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_retain(uint8
  graphdemo_table_retain_reset(retain,NULL,NULL);
  if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)){report->malformed=report->malformed||malformed_before;
  return NULL;
- }total=schema_graphdemo_album_load_layout_(&reader,&data,&records);
+ }report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK;
+ total=schema_graphdemo_album_load_layout_(&reader,&data,&records);
+ if(total<0&&report->reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP){report->refused=1;
+ report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_STORAGE_OVER_CAP;
+ report->malformed=malformed_before;
+ return NULL;
+ } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name */
  report->reason=(graphdemo_table_refuse_reason_t)reason_before;
  if(total<0){
   graphdemo_album_builder_t builder;

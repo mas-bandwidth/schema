@@ -81,7 +81,7 @@ type TableReport struct {
 // inline "" of its own.
 const TableDocNone = ""
 
-func TableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+func TableJSONGetRaw(storage unsafe.Pointer, width int64) uint64 {
 	switch width {
 	case 1:
 		return uint64(*(*uint8)(storage))
@@ -95,7 +95,7 @@ func TableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	return 0
 }
 
-func TableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+func TableJSONSetRaw(storage unsafe.Pointer, width int64, value uint64) {
 	switch width {
 	case 1:
 		*(*uint8)(storage) = uint8(value)
@@ -108,7 +108,7 @@ func TableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	}
 }
 
-func TableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
+func TableJSONGetSigned(storage unsafe.Pointer, width int64) int64 {
 	raw := TableJSONGetRaw(storage, width)
 	if width < 8 {
 		sign := uint64(1) << (width*8 - 1)
@@ -182,6 +182,10 @@ const (
 	TableRefuseTextIllFormed
 	TableRefuseCountOverBound
 	TableRefuseLengthOverBound
+	// TableRefuseStorageOverCap: a wire whose region measure passes the storage cap,
+	// 2^40 bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §11): LoadMeasure answers -1 with it
+	// before any region is sized, and no count past the cap is multiplied out.
+	TableRefuseStorageOverCap
 )
 
 func (r TableRefuseReason) Error() string {
@@ -276,6 +280,8 @@ func (r TableRefuseReason) Error() string {
 		return "count_over_bound"
 	case TableRefuseLengthOverBound:
 		return "length_over_bound"
+	case TableRefuseStorageOverCap:
+		return "storage_over_cap"
 	}
 	return "invalid refusal reason"
 }
@@ -2231,4 +2237,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xa9a32f918d49425e
+const Version uint64 = 0x47dd492b76f04c4d

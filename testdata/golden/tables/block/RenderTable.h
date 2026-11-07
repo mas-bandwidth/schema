@@ -119,7 +119,8 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    storage_over_cap         // a wire whose region measure passes the 2^40-byte storage cap, refused before any region is sized (§6.5, §11)
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -192,6 +193,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason storage_over_cap = TableRefuseReason::storage_over_cap;
     static constexpr TableRefuseReason no_vocabulary = ::blockdemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::blockdemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::blockdemo::vocabulary_too_large;
@@ -321,7 +323,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -329,15 +331,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -367,10 +369,10 @@ struct TableFieldInfo
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -451,7 +453,7 @@ struct TableFieldInfo
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -24370,181 +24372,181 @@ inline const TableTypeInfo * RenderQuaternionTableType();
 inline const TableTypeInfo * RenderCameraTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, position ), (uint32_t) sizeof( RenderCamera::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, rotation ), (uint32_t) sizeof( RenderCamera::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_id ), (uint32_t) sizeof( RenderCamera::camera_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_type ), (uint32_t) sizeof( RenderCamera::camera_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, target_object_id ), (uint32_t) sizeof( RenderCamera::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, false, false, false, 0, (uint32_t) offsetof( RenderCamera, fov ), (uint32_t) sizeof( RenderCamera::fov ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (int64_t) offsetof( RenderCamera, position ), (int64_t) sizeof( RenderCamera::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (int64_t) offsetof( RenderCamera, rotation ), (int64_t) sizeof( RenderCamera::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, false, false, false, 0, (int64_t) offsetof( RenderCamera, camera_id ), (int64_t) sizeof( RenderCamera::camera_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, false, false, false, 0, (int64_t) offsetof( RenderCamera, camera_type ), (int64_t) sizeof( RenderCamera::camera_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (int64_t) offsetof( RenderCamera, target_object_id ), (int64_t) sizeof( RenderCamera::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, false, false, false, 0, (int64_t) offsetof( RenderCamera, fov ), (int64_t) sizeof( RenderCamera::fov ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderCamera", (uint32_t) sizeof( RenderCamera ), 6, fields, +[]( void * p ) { RenderCameraReset( *(RenderCamera *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderCamera", (int64_t) sizeof( RenderCamera ), 6, fields, +[]( void * p ) { RenderCameraReset( *(RenderCamera *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderShipTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, position ), (uint32_t) sizeof( RenderShip::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, rotation ), (uint32_t) sizeof( RenderShip::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderShip, flags ), (uint32_t) sizeof( RenderShip::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return FlagNameShipFlags( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_id ), (uint32_t) sizeof( RenderShip::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, target_object_id ), (uint32_t) sizeof( RenderShip::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, false, false, false, 0, (uint32_t) offsetof( RenderShip, thrust ), (uint32_t) sizeof( RenderShip::thrust ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_sequence ), (uint32_t) sizeof( RenderShip::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, ship_type ), (uint32_t) sizeof( RenderShip::ship_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, team ), (uint32_t) sizeof( RenderShip::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, has_target_lock ), (uint32_t) sizeof( RenderShip::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, predicted_explode ), (uint32_t) sizeof( RenderShip::predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (int64_t) offsetof( RenderShip, position ), (int64_t) sizeof( RenderShip::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (int64_t) offsetof( RenderShip, rotation ), (int64_t) sizeof( RenderShip::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (int64_t) offsetof( RenderShip, flags ), (int64_t) sizeof( RenderShip::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return FlagNameShipFlags( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (int64_t) offsetof( RenderShip, object_id ), (int64_t) sizeof( RenderShip::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (int64_t) offsetof( RenderShip, target_object_id ), (int64_t) sizeof( RenderShip::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, false, false, false, 0, (int64_t) offsetof( RenderShip, thrust ), (int64_t) sizeof( RenderShip::thrust ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (int64_t) offsetof( RenderShip, object_sequence ), (int64_t) sizeof( RenderShip::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, false, false, false, 0, (int64_t) offsetof( RenderShip, ship_type ), (int64_t) sizeof( RenderShip::ship_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (int64_t) offsetof( RenderShip, team ), (int64_t) sizeof( RenderShip::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (int64_t) offsetof( RenderShip, has_target_lock ), (int64_t) sizeof( RenderShip::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, false, false, false, 0, (int64_t) offsetof( RenderShip, predicted_explode ), (int64_t) sizeof( RenderShip::predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderShip", (uint32_t) sizeof( RenderShip ), 11, fields, +[]( void * p ) { RenderShipReset( *(RenderShip *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderShip", (int64_t) sizeof( RenderShip ), 11, fields, +[]( void * p ) { RenderShipReset( *(RenderShip *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderTurretTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderTurret, rotation ), (uint32_t) sizeof( RenderTurret::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderTurret, flags ), (uint32_t) sizeof( RenderTurret::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_id ), (uint32_t) sizeof( RenderTurret::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, parent_object_id ), (uint32_t) sizeof( RenderTurret::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, turret_index ), (uint32_t) sizeof( RenderTurret::turret_index ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, target_object_id ), (uint32_t) sizeof( RenderTurret::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_sequence ), (uint32_t) sizeof( RenderTurret::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderTurret, team ), (uint32_t) sizeof( RenderTurret::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderTurret, has_target_lock ), (uint32_t) sizeof( RenderTurret::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (int64_t) offsetof( RenderTurret, rotation ), (int64_t) sizeof( RenderTurret::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (int64_t) offsetof( RenderTurret, flags ), (int64_t) sizeof( RenderTurret::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (int64_t) offsetof( RenderTurret, object_id ), (int64_t) sizeof( RenderTurret::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (int64_t) offsetof( RenderTurret, parent_object_id ), (int64_t) sizeof( RenderTurret::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, false, false, false, 0, (int64_t) offsetof( RenderTurret, turret_index ), (int64_t) sizeof( RenderTurret::turret_index ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (int64_t) offsetof( RenderTurret, target_object_id ), (int64_t) sizeof( RenderTurret::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (int64_t) offsetof( RenderTurret, object_sequence ), (int64_t) sizeof( RenderTurret::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (int64_t) offsetof( RenderTurret, team ), (int64_t) sizeof( RenderTurret::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (int64_t) offsetof( RenderTurret, has_target_lock ), (int64_t) sizeof( RenderTurret::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderTurret", (uint32_t) sizeof( RenderTurret ), 9, fields, +[]( void * p ) { RenderTurretReset( *(RenderTurret *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderTurret", (int64_t) sizeof( RenderTurret ), 9, fields, +[]( void * p ) { RenderTurretReset( *(RenderTurret *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderMissileTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, position ), (uint32_t) sizeof( RenderMissile::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, rotation ), (uint32_t) sizeof( RenderMissile::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderMissile, flags ), (uint32_t) sizeof( RenderMissile::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_id ), (uint32_t) sizeof( RenderMissile::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_sequence ), (uint32_t) sizeof( RenderMissile::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, missile_type ), (uint32_t) sizeof( RenderMissile::missile_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( MissileType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( MissileType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, team ), (uint32_t) sizeof( RenderMissile::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (int64_t) offsetof( RenderMissile, position ), (int64_t) sizeof( RenderMissile::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (int64_t) offsetof( RenderMissile, rotation ), (int64_t) sizeof( RenderMissile::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (int64_t) offsetof( RenderMissile, flags ), (int64_t) sizeof( RenderMissile::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (int64_t) offsetof( RenderMissile, object_id ), (int64_t) sizeof( RenderMissile::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (int64_t) offsetof( RenderMissile, object_sequence ), (int64_t) sizeof( RenderMissile::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, false, false, false, 0, (int64_t) offsetof( RenderMissile, missile_type ), (int64_t) sizeof( RenderMissile::missile_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( MissileType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( MissileType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (int64_t) offsetof( RenderMissile, team ), (int64_t) sizeof( RenderMissile::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderMissile", (uint32_t) sizeof( RenderMissile ), 7, fields, +[]( void * p ) { RenderMissileReset( *(RenderMissile *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderMissile", (int64_t) sizeof( RenderMissile ), 7, fields, +[]( void * p ) { RenderMissileReset( *(RenderMissile *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderDynamicPropTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, position ), (uint32_t) sizeof( RenderDynamicProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, rotation ), (uint32_t) sizeof( RenderDynamicProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, flags ), (uint32_t) sizeof( RenderDynamicProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_id ), (uint32_t) sizeof( RenderDynamicProp::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_sequence ), (uint32_t) sizeof( RenderDynamicProp::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, prop_type ), (uint32_t) sizeof( RenderDynamicProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, team ), (uint32_t) sizeof( RenderDynamicProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (int64_t) offsetof( RenderDynamicProp, position ), (int64_t) sizeof( RenderDynamicProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (int64_t) offsetof( RenderDynamicProp, rotation ), (int64_t) sizeof( RenderDynamicProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (int64_t) offsetof( RenderDynamicProp, flags ), (int64_t) sizeof( RenderDynamicProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (int64_t) offsetof( RenderDynamicProp, object_id ), (int64_t) sizeof( RenderDynamicProp::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (int64_t) offsetof( RenderDynamicProp, object_sequence ), (int64_t) sizeof( RenderDynamicProp::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (int64_t) offsetof( RenderDynamicProp, prop_type ), (int64_t) sizeof( RenderDynamicProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (int64_t) offsetof( RenderDynamicProp, team ), (int64_t) sizeof( RenderDynamicProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderDynamicProp", (uint32_t) sizeof( RenderDynamicProp ), 7, fields, +[]( void * p ) { RenderDynamicPropReset( *(RenderDynamicProp *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderDynamicProp", (int64_t) sizeof( RenderDynamicProp ), 7, fields, +[]( void * p ) { RenderDynamicPropReset( *(RenderDynamicProp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderStaticPropTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, position ), (uint32_t) sizeof( RenderStaticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, rotation ), (uint32_t) sizeof( RenderStaticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, scale ), (uint32_t) sizeof( RenderStaticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, flags ), (uint32_t) sizeof( RenderStaticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, static_prop_id ), (uint32_t) sizeof( RenderStaticProp::static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, prop_type ), (uint32_t) sizeof( RenderStaticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, team ), (uint32_t) sizeof( RenderStaticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (int64_t) offsetof( RenderStaticProp, position ), (int64_t) sizeof( RenderStaticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (int64_t) offsetof( RenderStaticProp, rotation ), (int64_t) sizeof( RenderStaticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (int64_t) offsetof( RenderStaticProp, scale ), (int64_t) sizeof( RenderStaticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (int64_t) offsetof( RenderStaticProp, flags ), (int64_t) sizeof( RenderStaticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, false, false, false, 0, (int64_t) offsetof( RenderStaticProp, static_prop_id ), (int64_t) sizeof( RenderStaticProp::static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (int64_t) offsetof( RenderStaticProp, prop_type ), (int64_t) sizeof( RenderStaticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (int64_t) offsetof( RenderStaticProp, team ), (int64_t) sizeof( RenderStaticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderStaticProp", (uint32_t) sizeof( RenderStaticProp ), 7, fields, +[]( void * p ) { RenderStaticPropReset( *(RenderStaticProp *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderStaticProp", (int64_t) sizeof( RenderStaticProp ), 7, fields, +[]( void * p ) { RenderStaticPropReset( *(RenderStaticProp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderCosmeticPropTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, position ), (uint32_t) sizeof( RenderCosmeticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, rotation ), (uint32_t) sizeof( RenderCosmeticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, scale ), (uint32_t) sizeof( RenderCosmeticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, flags ), (uint32_t) sizeof( RenderCosmeticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, cosmetic_prop_id ), (uint32_t) sizeof( RenderCosmeticProp::cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_sequence ), (uint32_t) sizeof( RenderCosmeticProp::prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_type ), (uint32_t) sizeof( RenderCosmeticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, team ), (uint32_t) sizeof( RenderCosmeticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (int64_t) offsetof( RenderCosmeticProp, position ), (int64_t) sizeof( RenderCosmeticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (int64_t) offsetof( RenderCosmeticProp, rotation ), (int64_t) sizeof( RenderCosmeticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (int64_t) offsetof( RenderCosmeticProp, scale ), (int64_t) sizeof( RenderCosmeticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (int64_t) offsetof( RenderCosmeticProp, flags ), (int64_t) sizeof( RenderCosmeticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, false, false, false, 0, (int64_t) offsetof( RenderCosmeticProp, cosmetic_prop_id ), (int64_t) sizeof( RenderCosmeticProp::cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, false, false, false, 0, (int64_t) offsetof( RenderCosmeticProp, prop_sequence ), (int64_t) sizeof( RenderCosmeticProp::prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (int64_t) offsetof( RenderCosmeticProp, prop_type ), (int64_t) sizeof( RenderCosmeticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (int64_t) offsetof( RenderCosmeticProp, team ), (int64_t) sizeof( RenderCosmeticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderCosmeticProp", (uint32_t) sizeof( RenderCosmeticProp ), 8, fields, +[]( void * p ) { RenderCosmeticPropReset( *(RenderCosmeticProp *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderCosmeticProp", (int64_t) sizeof( RenderCosmeticProp ), 8, fields, +[]( void * p ) { RenderCosmeticPropReset( *(RenderCosmeticProp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderLaserTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, start ), (uint32_t) sizeof( RenderLaser::start ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, finish ), (uint32_t) sizeof( RenderLaser::finish ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderLaser, t ), (uint32_t) sizeof( RenderLaser::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_id ), (uint32_t) sizeof( RenderLaser::laser_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_type ), (uint32_t) sizeof( RenderLaser::laser_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( LaserType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( LaserType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, team ), (uint32_t) sizeof( RenderLaser::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, false, false, false, 0, (int64_t) offsetof( RenderLaser, start ), (int64_t) sizeof( RenderLaser::start ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, false, false, false, 0, (int64_t) offsetof( RenderLaser, finish ), (int64_t) sizeof( RenderLaser::finish ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (int64_t) offsetof( RenderLaser, t ), (int64_t) sizeof( RenderLaser::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, false, false, false, 0, (int64_t) offsetof( RenderLaser, laser_id ), (int64_t) sizeof( RenderLaser::laser_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, false, false, false, 0, (int64_t) offsetof( RenderLaser, laser_type ), (int64_t) sizeof( RenderLaser::laser_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( LaserType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( LaserType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (int64_t) offsetof( RenderLaser, team ), (int64_t) sizeof( RenderLaser::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderLaser", (uint32_t) sizeof( RenderLaser ), 6, fields, +[]( void * p ) { RenderLaserReset( *(RenderLaser *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderLaser", (int64_t) sizeof( RenderLaser ), 6, fields, +[]( void * p ) { RenderLaserReset( *(RenderLaser *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderExplosionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, position ), (uint32_t) sizeof( RenderExplosion::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, rotation ), (uint32_t) sizeof( RenderExplosion::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, t ), (uint32_t) sizeof( RenderExplosion::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_id ), (uint32_t) sizeof( RenderExplosion::explosion_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, parent_object_id ), (uint32_t) sizeof( RenderExplosion::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_type ), (uint32_t) sizeof( RenderExplosion::explosion_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( ExplosionType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ExplosionType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, team ), (uint32_t) sizeof( RenderExplosion::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (int64_t) offsetof( RenderExplosion, position ), (int64_t) sizeof( RenderExplosion::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (int64_t) offsetof( RenderExplosion, rotation ), (int64_t) sizeof( RenderExplosion::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (int64_t) offsetof( RenderExplosion, t ), (int64_t) sizeof( RenderExplosion::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, false, false, false, 0, (int64_t) offsetof( RenderExplosion, explosion_id ), (int64_t) sizeof( RenderExplosion::explosion_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (int64_t) offsetof( RenderExplosion, parent_object_id ), (int64_t) sizeof( RenderExplosion::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, false, false, false, 0, (int64_t) offsetof( RenderExplosion, explosion_type ), (int64_t) sizeof( RenderExplosion::explosion_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( ExplosionType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ExplosionType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (int64_t) offsetof( RenderExplosion, team ), (int64_t) sizeof( RenderExplosion::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderExplosion", (uint32_t) sizeof( RenderExplosion ), 7, fields, +[]( void * p ) { RenderExplosionReset( *(RenderExplosion *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderExplosion", (int64_t) sizeof( RenderExplosion ), 7, fields, +[]( void * p ) { RenderExplosionReset( *(RenderExplosion *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderFrameTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( RenderFrame, version ), (uint32_t) sizeof( RenderFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, true, true, false, 1, (uint32_t) offsetof( RenderFrame, cameras ), (uint32_t) sizeof( RenderFrame::cameras[0] ), (uint32_t) offsetof( RenderFrame, cameras_count ), 0xffffffffu, RenderCameraTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, ships ), (uint32_t) sizeof( RenderFrame::ships[0] ), (uint32_t) offsetof( RenderFrame, ships_count ), 0xffffffffu, RenderShipTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, true, true, false, 1024, (uint32_t) offsetof( RenderFrame, turrets ), (uint32_t) sizeof( RenderFrame::turrets[0] ), (uint32_t) offsetof( RenderFrame, turrets_count ), 0xffffffffu, RenderTurretTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, missiles ), (uint32_t) sizeof( RenderFrame::missiles[0] ), (uint32_t) offsetof( RenderFrame, missiles_count ), 0xffffffffu, RenderMissileTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, dynamic_props ), (uint32_t) sizeof( RenderFrame::dynamic_props[0] ), (uint32_t) offsetof( RenderFrame, dynamic_props_count ), 0xffffffffu, RenderDynamicPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, true, true, false, 20000, (uint32_t) offsetof( RenderFrame, static_props ), (uint32_t) sizeof( RenderFrame::static_props[0] ), (uint32_t) offsetof( RenderFrame, static_props_count ), 0xffffffffu, RenderStaticPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, true, true, false, 8192, (uint32_t) offsetof( RenderFrame, cosmetic_props ), (uint32_t) sizeof( RenderFrame::cosmetic_props[0] ), (uint32_t) offsetof( RenderFrame, cosmetic_props_count ), 0xffffffffu, RenderCosmeticPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, lasers ), (uint32_t) sizeof( RenderFrame::lasers[0] ), (uint32_t) offsetof( RenderFrame, lasers_count ), 0xffffffffu, RenderLaserTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, explosions ), (uint32_t) sizeof( RenderFrame::explosions[0] ), (uint32_t) offsetof( RenderFrame, explosions_count ), 0xffffffffu, RenderExplosionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (int64_t) offsetof( RenderFrame, version ), (int64_t) sizeof( RenderFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, true, true, false, 1, (int64_t) offsetof( RenderFrame, cameras ), (int64_t) sizeof( RenderFrame::cameras[0] ), (int64_t) offsetof( RenderFrame, cameras_count ), 0xffffffffu, RenderCameraTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, true, true, false, 4096, (int64_t) offsetof( RenderFrame, ships ), (int64_t) sizeof( RenderFrame::ships[0] ), (int64_t) offsetof( RenderFrame, ships_count ), 0xffffffffu, RenderShipTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, true, true, false, 1024, (int64_t) offsetof( RenderFrame, turrets ), (int64_t) sizeof( RenderFrame::turrets[0] ), (int64_t) offsetof( RenderFrame, turrets_count ), 0xffffffffu, RenderTurretTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, true, true, false, 4096, (int64_t) offsetof( RenderFrame, missiles ), (int64_t) sizeof( RenderFrame::missiles[0] ), (int64_t) offsetof( RenderFrame, missiles_count ), 0xffffffffu, RenderMissileTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, true, true, false, 4096, (int64_t) offsetof( RenderFrame, dynamic_props ), (int64_t) sizeof( RenderFrame::dynamic_props[0] ), (int64_t) offsetof( RenderFrame, dynamic_props_count ), 0xffffffffu, RenderDynamicPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, true, true, false, 20000, (int64_t) offsetof( RenderFrame, static_props ), (int64_t) sizeof( RenderFrame::static_props[0] ), (int64_t) offsetof( RenderFrame, static_props_count ), 0xffffffffu, RenderStaticPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, true, true, false, 8192, (int64_t) offsetof( RenderFrame, cosmetic_props ), (int64_t) sizeof( RenderFrame::cosmetic_props[0] ), (int64_t) offsetof( RenderFrame, cosmetic_props_count ), 0xffffffffu, RenderCosmeticPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, true, true, false, 32000, (int64_t) offsetof( RenderFrame, lasers ), (int64_t) sizeof( RenderFrame::lasers[0] ), (int64_t) offsetof( RenderFrame, lasers_count ), 0xffffffffu, RenderLaserTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, true, true, false, 32000, (int64_t) offsetof( RenderFrame, explosions ), (int64_t) sizeof( RenderFrame::explosions[0] ), (int64_t) offsetof( RenderFrame, explosions_count ), 0xffffffffu, RenderExplosionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderFrame", (uint32_t) sizeof( RenderFrame ), 10, fields, +[]( void * p ) { RenderFrameReset( *(RenderFrame *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderFrame", (int64_t) sizeof( RenderFrame ), 10, fields, +[]( void * p ) { RenderFrameReset( *(RenderFrame *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderVector3TableType()
 {
     static const TableFieldInfo fields[] = {
-        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, x ), (uint32_t) sizeof( RenderVector3::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, y ), (uint32_t) sizeof( RenderVector3::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, z ), (uint32_t) sizeof( RenderVector3::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (int64_t) offsetof( RenderVector3, x ), (int64_t) sizeof( RenderVector3::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (int64_t) offsetof( RenderVector3, y ), (int64_t) sizeof( RenderVector3::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (int64_t) offsetof( RenderVector3, z ), (int64_t) sizeof( RenderVector3::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderVector3", (uint32_t) sizeof( RenderVector3 ), 3, fields, +[]( void * p ) { RenderVector3Reset( *(RenderVector3 *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderVector3", (int64_t) sizeof( RenderVector3 ), 3, fields, +[]( void * p ) { RenderVector3Reset( *(RenderVector3 *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RenderQuaternionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, x ), (uint32_t) sizeof( RenderQuaternion::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, y ), (uint32_t) sizeof( RenderQuaternion::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, z ), (uint32_t) sizeof( RenderQuaternion::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, w ), (uint32_t) sizeof( RenderQuaternion::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (int64_t) offsetof( RenderQuaternion, x ), (int64_t) sizeof( RenderQuaternion::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (int64_t) offsetof( RenderQuaternion, y ), (int64_t) sizeof( RenderQuaternion::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (int64_t) offsetof( RenderQuaternion, z ), (int64_t) sizeof( RenderQuaternion::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, false, false, false, 0, (int64_t) offsetof( RenderQuaternion, w ), (int64_t) sizeof( RenderQuaternion::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RenderQuaternion", (uint32_t) sizeof( RenderQuaternion ), 4, fields, +[]( void * p ) { RenderQuaternionReset( *(RenderQuaternion *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RenderQuaternion", (int64_t) sizeof( RenderQuaternion ), 4, fields, +[]( void * p ) { RenderQuaternionReset( *(RenderQuaternion *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -24658,6 +24660,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // BLOCKDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // RenderCameraLoadTextForm reads one RenderCamera from the hand-editable text form
@@ -24665,6 +24682,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderCameraLoadTextForm( const char * text, int64_t bytes, RenderCamera & value, const char ** refusal );
+
+// RenderCameraLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderCameraLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderCamera & value, const char ** refusal );
 
 // RenderCameraLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24691,6 +24712,10 @@ bool RenderCameraEditTextForm( const char * document, int64_t document_bytes, co
 // names itself in *refusal (§16.9.4).
 bool RenderShipLoadTextForm( const char * text, int64_t bytes, RenderShip & value, const char ** refusal );
 
+// RenderShipLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderShipLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderShip & value, const char ** refusal );
+
 // RenderShipLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderShipSaveTextForm with no edit is the input byte for byte.
@@ -24715,6 +24740,10 @@ bool RenderShipEditTextForm( const char * document, int64_t document_bytes, cons
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderTurretLoadTextForm( const char * text, int64_t bytes, RenderTurret & value, const char ** refusal );
+
+// RenderTurretLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderTurretLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderTurret & value, const char ** refusal );
 
 // RenderTurretLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24741,6 +24770,10 @@ bool RenderTurretEditTextForm( const char * document, int64_t document_bytes, co
 // names itself in *refusal (§16.9.4).
 bool RenderMissileLoadTextForm( const char * text, int64_t bytes, RenderMissile & value, const char ** refusal );
 
+// RenderMissileLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderMissileLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderMissile & value, const char ** refusal );
+
 // RenderMissileLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderMissileSaveTextForm with no edit is the input byte for byte.
@@ -24765,6 +24798,10 @@ bool RenderMissileEditTextForm( const char * document, int64_t document_bytes, c
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderDynamicPropLoadTextForm( const char * text, int64_t bytes, RenderDynamicProp & value, const char ** refusal );
+
+// RenderDynamicPropLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderDynamicPropLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderDynamicProp & value, const char ** refusal );
 
 // RenderDynamicPropLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24791,6 +24828,10 @@ bool RenderDynamicPropEditTextForm( const char * document, int64_t document_byte
 // names itself in *refusal (§16.9.4).
 bool RenderStaticPropLoadTextForm( const char * text, int64_t bytes, RenderStaticProp & value, const char ** refusal );
 
+// RenderStaticPropLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderStaticPropLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderStaticProp & value, const char ** refusal );
+
 // RenderStaticPropLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderStaticPropSaveTextForm with no edit is the input byte for byte.
@@ -24815,6 +24856,10 @@ bool RenderStaticPropEditTextForm( const char * document, int64_t document_bytes
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderCosmeticPropLoadTextForm( const char * text, int64_t bytes, RenderCosmeticProp & value, const char ** refusal );
+
+// RenderCosmeticPropLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderCosmeticPropLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderCosmeticProp & value, const char ** refusal );
 
 // RenderCosmeticPropLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24841,6 +24886,10 @@ bool RenderCosmeticPropEditTextForm( const char * document, int64_t document_byt
 // names itself in *refusal (§16.9.4).
 bool RenderLaserLoadTextForm( const char * text, int64_t bytes, RenderLaser & value, const char ** refusal );
 
+// RenderLaserLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderLaserLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderLaser & value, const char ** refusal );
+
 // RenderLaserLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderLaserSaveTextForm with no edit is the input byte for byte.
@@ -24865,6 +24914,10 @@ bool RenderLaserEditTextForm( const char * document, int64_t document_bytes, con
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderExplosionLoadTextForm( const char * text, int64_t bytes, RenderExplosion & value, const char ** refusal );
+
+// RenderExplosionLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderExplosionLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderExplosion & value, const char ** refusal );
 
 // RenderExplosionLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24891,6 +24944,10 @@ bool RenderExplosionEditTextForm( const char * document, int64_t document_bytes,
 // names itself in *refusal (§16.9.4).
 bool RenderFrameLoadTextForm( const char * text, int64_t bytes, RenderFrame & value, const char ** refusal );
 
+// RenderFrameLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderFrameLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderFrame & value, const char ** refusal );
+
 // RenderFrameLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderFrameSaveTextForm with no edit is the input byte for byte.
@@ -24916,6 +24973,10 @@ bool RenderFrameEditTextForm( const char * document, int64_t document_bytes, con
 // names itself in *refusal (§16.9.4).
 bool RenderVector3LoadTextForm( const char * text, int64_t bytes, RenderVector3 & value, const char ** refusal );
 
+// RenderVector3LoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderVector3LoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderVector3 & value, const char ** refusal );
+
 // RenderVector3LoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderVector3SaveTextForm with no edit is the input byte for byte.
@@ -24940,6 +25001,10 @@ bool RenderVector3EditTextForm( const char * document, int64_t document_bytes, c
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderQuaternionLoadTextForm( const char * text, int64_t bytes, RenderQuaternion & value, const char ** refusal );
+
+// RenderQuaternionLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderQuaternionLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderQuaternion & value, const char ** refusal );
 
 // RenderQuaternionLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

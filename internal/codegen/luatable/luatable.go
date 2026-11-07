@@ -327,6 +327,10 @@ func emit(m *Module) {
 	m.Printf("local _M = {}\n\n")
 	m.Printf("_M.Package = %q\n", u.Package)
 	m.Printf("_M.RegionAlign = %d\n", regionAlign)
+	// the most storage one wire byte can command (docs/SPEC-TABLES.md §11):
+	// the load measures a wire against the storage cap before it builds
+	// anything only where the wire is long enough to pass it
+	m.Printf("_M.StorageScale = %d\n", ir.TableStorageScale(u))
 	// the cook's Open needs the build version it was written for and the two
 	// reserved blob type ids a directory names (§7.1, §7.4, §6.3)
 	m.Printf("_M.BuildVersion = %s\n", idLit(ir.BuildVersion(u)))
@@ -947,9 +951,9 @@ func defaultExpr(f *ir.Field) string {
 	case f.MapEntry != nil:
 		return "{}"
 	case f.Array == ir.ArrayFixed:
-		return lua.TableOf(repeatList(zeroExpr(f), f.ArrayBound))
+		return arrayDefault(zeroExpr(f), f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		return lua.TableOf(repeatList(zeroExpr(f), f.BornCount()))
+		return arrayDefault(zeroExpr(f), f.BornCount())
 	case f.Array == ir.ArrayList:
 		return "{}"
 	case t.Pointer:
@@ -1025,6 +1029,20 @@ func zeroExpr(f *ir.Field) string {
 		return "{ lo = 0, hi = 0 }"
 	}
 	return "0"
+}
+
+// arrayInlineMax is the longest array default written out element by element;
+// a longer one is filled by a loop, so the emitted source and the generator's
+// memory stay proportional to the schema rather than to the array bound.
+const arrayInlineMax = 256
+
+// arrayDefault is an array's default of n elements, each a fresh evaluation
+// of expr: a table constructor up to arrayInlineMax, and past it a loop.
+func arrayDefault(expr string, n int64) string {
+	if n <= arrayInlineMax {
+		return lua.TableOf(repeatList(expr, n))
+	}
+	return fmt.Sprintf("(function() local t = {} for i = 1, %d do t[i] = %s end return t end)()", n, expr)
 }
 
 func repeatList(expr string, n int64) []string {

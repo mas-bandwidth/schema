@@ -17,6 +17,7 @@ package javatable
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -200,19 +201,19 @@ func (g *rowGen) emitUnionRow(un *ir.Union) {
 	g.f("public final class %sRow {\n", name)
 	g.f("    private %sRow() {}\n\n", name)
 	g.f("    /** the union's own size and alignment, from the ONE layout model (§19.3). */\n")
-	g.f("    public static final int size = %d;\n", size)
+	g.f("    public static final long size = %s;\n", javaSize(size))
 	g.f("    public static final int align = %d;\n", align)
 	g.f("    /** the tag's width in bytes; the arms start at armOffset. */\n")
 	g.f("    public static final int tagWidth = %d;\n", tag)
 	g.f("    public static final int armOffset = %d;\n\n", armAt)
 	g.f("    /** where each ARM starts, in declaration order — checked by\n")
 	g.f("     *  TableCookLayout against the descriptors below (§19.3). */\n")
-	g.f("    static final int[] offsets = {")
+	g.f("    static final long[] offsets = {")
 	for i, fl := range arms {
 		if i > 0 {
 			g.f(",")
 		}
-		g.f(" %d", fl.Offset)
+		g.f(" %s", javaSize(fl.Offset))
 	}
 	g.f(" };\n\n")
 	g.f("    /** the TAG: 0 is None, k is the k-th declared arm. */\n")
@@ -227,8 +228,8 @@ func (g *rowGen) emitUnionRow(un *ir.Union) {
 	g.f("        static final TableCookInfo INFO = build();\n\n")
 	g.f("        private static TableCookInfo build() {\n")
 	g.f("            TableCookInfo info = new TableCookInfo();\n")
-	g.f("            info.name = %q; info.size = %d; info.align = %d; info.numFields = %d;\n",
-		name, size, align, len(arms))
+	g.f("            info.name = %q; info.size = %s; info.align = %d; info.numFields = %d;\n",
+		name, javaSize(size), align, len(arms))
 	g.f("            info.tagWidth = %d; info.armCount = %d;\n", tag, un.Max)
 	if cookUnionHasExtent(g.unit, un) {
 		g.f("            info.hasExtent = true;\n")
@@ -274,17 +275,17 @@ func (g *rowGen) emitRow(name string, ml *ir.MemberLayout, blocks *ir.BlockUnit,
 	g.f("public final class %sRow {\n", name)
 	g.f("    private %sRow() {}\n\n", name)
 	g.f("    /** the record's own size and alignment, from the ONE layout model (§19.3). */\n")
-	g.f("    public static final int size = %d;\n", ml.Size)
+	g.f("    public static final long size = %s;\n", javaSize(ml.Size))
 	g.f("    public static final int align = %d;\n\n", ml.Align)
 	g.f("    /** where each field starts, in declaration order — the accessors' own\n")
 	g.f("     *  constants, which TableBlockLayout / TableCookLayout check against the\n")
 	g.f("     *  descriptors below (§19.3). */\n")
-	g.f("    static final int[] offsets = {")
+	g.f("    static final long[] offsets = {")
 	for i, fl := range ml.Fields {
 		if i > 0 {
 			g.f(",")
 		}
-		g.f(" %d", fl.Offset)
+		g.f(" %s", javaSize(fl.Offset))
 	}
 	g.f(" };\n\n")
 	for _, fl := range ml.Fields {
@@ -315,26 +316,26 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		// offset is the slot's plus the delta — which is what <T>Cook.at resolves,
 		// bounded by the region.
 		g.f("    /** *%s: the slot's own offset — <Root>Cook.at resolves it (§6.3). */\n", f.Type.Name)
-		g.f("    public static int %sSlot(int at) { return at + %d; }\n", name, pieces[0].Offset)
+		g.f("    public static int %sSlot(int at) { return %s; }\n", name, javaPos("at + %d", pieces[0].Offset))
 		g.f("    /** the raw SIGNED SELF-RELATIVE delta; zero is null. */\n")
-		g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n\n", name, pieces[0].Offset)
+		g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, %s); }\n\n", name, javaPos("at + %d", pieces[0].Offset))
 	case f.Type.TextUnbounded():
 		g.f("    /** string: the 8-byte self-relative reference slot to its blob in the node extent (§2.13.1, §6.3, §7.2). */\n")
-		g.f("    public static int %sSlot(int at) { return at + %d; }\n", name, pieces[0].Offset)
+		g.f("    public static int %sSlot(int at) { return %s; }\n", name, javaPos("at + %d", pieces[0].Offset))
 		g.f("    /** the raw SIGNED SELF-RELATIVE delta; zero is the empty string. */\n")
-		g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n", name, pieces[0].Offset)
+		g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, %s); }\n", name, javaPos("at + %d", pieces[0].Offset))
 		g.f("    /** the UTF-8 bytes' offset inside data, or 0 when empty or out of bounds. */\n")
 		g.f("    public static int %sAt(byte[] data, int at) {\n", name)
-		g.f("        long delta = TableBytes.i64(data, at + %d);\n", pieces[0].Offset)
+		g.f("        long delta = TableBytes.i64(data, %s);\n", javaPos("at + %d", pieces[0].Offset))
 		g.f("        if (delta == 0L) { return 0; }\n")
-		g.f("        long blob = (long) (at + %d) + delta;\n", pieces[0].Offset)
+		g.f("        long blob = (long) (%s) + delta;\n", javaPos("at + %d", pieces[0].Offset))
 		g.f("        return blob < 0L || blob + 8L > data.length ? 0 : (int) (blob + 8L);\n")
 		g.f("    }\n")
 		g.f("    /** the UTF-8 byte length, or 0 when empty or out of bounds. */\n")
 		g.f("    public static int %sLength(byte[] data, int at) {\n", name)
-		g.f("        long delta = TableBytes.i64(data, at + %d);\n", pieces[0].Offset)
+		g.f("        long delta = TableBytes.i64(data, %s);\n", javaPos("at + %d", pieces[0].Offset))
 		g.f("        if (delta == 0L) { return 0; }\n")
-		g.f("        long blob = (long) (at + %d) + delta;\n", pieces[0].Offset)
+		g.f("        long blob = (long) (%s) + delta;\n", javaPos("at + %d", pieces[0].Offset))
 		g.f("        if (blob < 0L || blob + 8L > data.length) { return 0; }\n")
 		g.f("        int used = TableBytes.i32(data, (int) blob);\n")
 		g.f("        return used < 0 || blob + 8L + used > data.length ? 0 : used;\n")
@@ -353,9 +354,9 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		} else {
 			g.f("     *  The used bytes are data[%sAt(at) .. +%sLength(data, at)]. */\n", name, name)
 		}
-		g.f("    public static int %sAt(int at) { return at + %d; }\n", name, pieces[0].Offset)
+		g.f("    public static int %sAt(int at) { return %s; }\n", name, javaPos("at + %d", pieces[0].Offset))
 		g.f("    public static int %sLength(byte[] data, int at) {\n", name)
-		g.f("        int used = TableBytes.i32(data, at + %d);\n", pieces[1].Offset)
+		g.f("        int used = TableBytes.i32(data, %s);\n", javaPos("at + %d", pieces[1].Offset))
 		g.f("        // a companion outside its bound is cook-check's refusal, not a read\n")
 		g.f("        return used < 0 || used > %d ? 0 : used;\n", f.Type.Size)
 		g.f("    }\n\n")
@@ -366,16 +367,16 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		case isClassRef(f.Type):
 			g.f("    /** [%d]%s: the element's own offset — read it with %sRow's accessors. */\n",
 				f.ArrayBound, f.Type.Name, f.Type.Name)
-			g.f("    public static int %sAt(int at, int i) { return at + %d + i * %d; }\n\n", name, pieces[0].Offset, elemSize)
+			g.f("    public static int %sAt(int at, int i) { return %s; }\n\n", name, javaPos("at + %d + i * %d", pieces[0].Offset, elemSize))
 		case isWide(f.Type):
 			g.f("    /** element i's low and high 64-bit halves (§7.2). */\n")
-			g.f("    public static long %sLo(byte[] data, int at, int i) { return TableBytes.i64(data, at + %d + i * %d); }\n",
-				name, pieces[0].Offset, elemSize)
-			g.f("    public static long %sHi(byte[] data, int at, int i) { return TableBytes.i64(data, at + %d + i * %d); }\n",
-				name, pieces[0].Offset+8, elemSize)
+			g.f("    public static long %sLo(byte[] data, int at, int i) { return TableBytes.i64(data, %s); }\n",
+				name, javaPos("at + %d + i * %d", pieces[0].Offset, elemSize))
+			g.f("    public static long %sHi(byte[] data, int at, int i) { return TableBytes.i64(data, %s); }\n",
+				name, javaPos("at + %d + i * %d", pieces[0].Offset+8, elemSize))
 		default:
 			g.f("    public static %s %s(byte[] data, int at, int i) { return %s; }\n",
-				elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize), g.fieldName(f)))
+				elem, name, readCall(elem, javaPos("at + %d + i * %d", pieces[0].Offset, elemSize), g.fieldName(f)))
 		}
 		if f.KeyEnum != "" {
 			g.emitRowKeyForm(f, name, elem, pieces[0].Offset, elemSize)
@@ -383,28 +384,28 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		if f.Array == ir.ArrayCounted {
 			at := pieces[1].Offset
 			g.f("    public static int %sCount(byte[] data, int at) {\n", name)
-			g.f("        int used = TableBytes.i32(data, at + %d);\n", at)
+			g.f("        int used = TableBytes.i32(data, %s);\n", javaPos("at + %d", at))
 			g.f("        return used < 0 || used > %d ? 0 : used;\n", f.ArrayBound)
 			g.f("    }\n")
 		}
 		g.f("\n")
 	case isClassRef(f.Type):
 		g.f("    /** %s by value: its own offset — read it with %sRow's accessors. */\n", f.Type.Name, f.Type.Name)
-		g.f("    public static int %sAt(int at) { return at + %d; }\n\n", name, pieces[0].Offset)
+		g.f("    public static int %sAt(int at) { return %s; }\n\n", name, javaPos("at + %d", pieces[0].Offset))
 	case isWide(f.Type):
 		// SIXTEEN BYTES AT SIXTEEN (§7.2): the low half first in this reader's
 		// little-endian order, each half one eight-byte lane
 		g.f("    /** a 128-bit slot's low and high 64-bit halves (§7.2). */\n")
-		g.f("    public static long %sLo(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n", name, pieces[0].Offset)
-		g.f("    public static long %sHi(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n\n", name, pieces[0].Offset+8)
+		g.f("    public static long %sLo(byte[] data, int at) { return TableBytes.i64(data, %s); }\n", name, javaPos("at + %d", pieces[0].Offset))
+		g.f("    public static long %sHi(byte[] data, int at) { return TableBytes.i64(data, %s); }\n\n", name, javaPos("at + %d", pieces[0].Offset+8))
 	default:
 		typ := javaRecordType(f.Type)
 		g.f("    public static %s %s(byte[] data, int at) { return %s; }\n\n",
-			typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset), g.fieldName(f)))
+			typ, name, readCall(typ, javaPos("at + %d", pieces[0].Offset), g.fieldName(f)))
 	}
 	if f.Type.Optional {
-		g.f("    public static boolean %sPresent(byte[] data, int at) { return TableBytes.bool(data, at + %d); }\n\n",
-			name, pieces[len(pieces)-1].Offset)
+		g.f("    public static boolean %sPresent(byte[] data, int at) { return TableBytes.bool(data, %s); }\n\n",
+			name, javaPos("at + %d", pieces[len(pieces)-1].Offset))
 	}
 }
 
@@ -424,7 +425,7 @@ func (g *rowGen) emitRowKeyForm(f *ir.Field, name, elem string, base, elemSize i
 			f.KeyEnum, f.Type.Name, keyedFormMarker)
 		g.f("    public static int %sAtKey(int at, int key) {\n", name)
 		g.f("%s", javaKeyRefusal("        ", "key", f))
-		g.f("        return at + %d + (key - 1) * %d;\n", base, elemSize)
+		g.f("        return %s;\n", javaPos("at + %d + (key - 1) * %d", base, elemSize))
 		g.f("    }\n")
 		return
 	}
@@ -432,7 +433,7 @@ func (g *rowGen) emitRowKeyForm(f *ir.Field, name, elem string, base, elemSize i
 		ir.FieldTypeSpelling(f), keyedFormMarker)
 	g.f("    public static %s %sByKey(byte[] data, int at, int key) {\n", elem, name)
 	g.f("%s", javaKeyRefusal("        ", "key", f))
-	g.f("        return %s;\n", readCall(elem, fmt.Sprintf("at + %d + (key - 1) * %d", base, elemSize), g.fieldName(f)))
+	g.f("        return %s;\n", readCall(elem, javaPos("at + %d + (key - 1) * %d", base, elemSize), g.fieldName(f)))
 	g.f("    }\n")
 }
 
@@ -449,8 +450,8 @@ func (g *rowGen) emitBlockRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("        static final TableBlockInfo INFO = build();\n\n")
 	g.f("        private static TableBlockInfo build() {\n")
 	g.f("            TableBlockInfo info = new TableBlockInfo();\n")
-	g.f("            info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
-		name, ml.Size, ml.Align, len(ml.Fields))
+	g.f("            info.name = %q; info.buildVersion = BuildVersion.value; info.size = %s; info.align = %d; info.numFields = %d;\n",
+		name, javaSize(ml.Size), ml.Align, len(ml.Fields))
 	g.f("            TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(ml.Fields))
 	for i, fl := range ml.Fields {
 		g.f("            fields[%d] = %s;\n", i, g.blockFieldInfo(fl, false, nil))
@@ -469,9 +470,9 @@ func (g *rowGen) blockFieldInfo(fl ir.FieldLayout, projection bool, array *ir.Bl
 		kind = tkU8
 	}
 	if array != nil {
-		return fmt.Sprintf("TableBlockFieldInfo.array(%q, %d, %d, %d, %d, %d, %d, %d, %d, () -> %sRow.blockInfo())",
-			f.Name, fl.Offset, fl.Size, kind, array.OffsetOfOffset, array.CountOffset, array.StrideOffset,
-			array.Stride, array.Max, array.ElemName)
+		return fmt.Sprintf("TableBlockFieldInfo.array(%q, %s, %s, %d, %s, %s, %s, %s, %d, () -> %sRow.blockInfo())",
+			f.Name, javaSize(fl.Offset), javaSize(fl.Size), kind, javaSize(array.OffsetOfOffset), javaSize(array.CountOffset), javaSize(array.StrideOffset),
+			javaSize(array.Stride), array.Max, array.ElemName)
 	}
 	facts := ir.BlockFieldOf(g.unit, f, fl.Offset, projection)
 	element := "null"
@@ -483,10 +484,10 @@ func (g *rowGen) blockFieldInfo(fl ir.FieldLayout, projection bool, array *ir.Bl
 			element = fmt.Sprintf("() -> %sRow.blockInfo()", ref.Name)
 		}
 	}
-	return fmt.Sprintf("TableBlockFieldInfo.of(%q, %d, %d, %d, %d, %v, %v, %v, %d, %d, %d, %s)",
-		f.Name, fl.Offset, fl.Size, kind, facts.CountOffset,
-		facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.ElemSize,
-		facts.PresentOffset, element)
+	return fmt.Sprintf("TableBlockFieldInfo.of(%q, %s, %s, %d, %s, %v, %v, %v, %d, %s, %s, %s)",
+		f.Name, javaSize(fl.Offset), javaSize(fl.Size), kind, javaSize(facts.CountOffset),
+		facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, javaSize(facts.ElemSize),
+		javaSize(facts.PresentOffset), element)
 }
 
 // emitCookRecordInfo is §7's descriptor for one cooked record.
@@ -500,8 +501,8 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("        static final TableCookInfo INFO = build();\n\n")
 	g.f("        private static TableCookInfo build() {\n")
 	g.f("            TableCookInfo info = new TableCookInfo();\n")
-	g.f("            info.name = %q; info.size = %d; info.align = %d; info.numFields = %d;\n",
-		name, ml.Size, ml.Align, len(ml.Fields))
+	g.f("            info.name = %q; info.size = %s; info.align = %d; info.numFields = %d;\n",
+		name, javaSize(ml.Size), ml.Align, len(ml.Fields))
 	if st := g.unit.Tables[name]; st != nil {
 		g.f("            info.typeId = 0x%016xL;\n", ir.TableWireId(st.WireName()))
 	}
@@ -569,8 +570,8 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	if f.Type.Optional {
 		presentOffset = pieces[len(pieces)-1].Offset
 	}
-	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)",
-		f.Name, varMember(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
+	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %s, %s, %s, %v, %d, %v, %s, %s, TableCookStorage.%s, %s)",
+		f.Name, varMember(f), javaSize(fl.Offset), javaSize(fl.Size), javaSize(elemSize), isArray, bound, f.Type.Pointer, javaSize(countOffset), javaSize(presentOffset),
 		cookStorageKind(f), names)
 }
 
@@ -628,8 +629,8 @@ func (g *rowGen) cookHolderInfo(fl ir.FieldLayout) string {
 	if f.IsMap() {
 		ml := ir.RecordLayout(g.unit, f.MapEntry)
 		size, align = ml.Size, max(ml.Align, 1)
-		elem = fmt.Sprintf("TableCookFieldInfo.of(%q, %q, 0, %d, %d, false, 1, false, -1, -1, TableCookStorage.RECORD, () -> %sRow.cookInfo())",
-			f.Name, varMember(f), size, size, f.MapEntry.Name)
+		elem = fmt.Sprintf("TableCookFieldInfo.of(%q, %q, 0, %s, %s, false, 1, false, -1, -1, TableCookStorage.RECORD, () -> %sRow.cookInfo())",
+			f.Name, varMember(f), javaSize(size), javaSize(size), f.MapEntry.Name)
 		kind = "MAP"
 	} else {
 		size, align = ir.ListElementLayout(g.unit, f)
@@ -640,8 +641,8 @@ func (g *rowGen) cookHolderInfo(fl ir.FieldLayout) string {
 	if f.Type.Optional {
 		presentOffset = pieces[len(pieces)-1].Offset
 	}
-	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, false, 1, false, -1, %d, TableCookStorage.%s, null).extent(%d, %d, %s)",
-		f.Name, varMember(f), fl.Offset, fl.Size, pieces[0].Size, presentOffset, kind, size, align, elem)
+	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %s, %s, %s, false, 1, false, -1, %s, TableCookStorage.%s, null).extent(%s, %d, %s)",
+		f.Name, varMember(f), javaSize(fl.Offset), javaSize(fl.Size), javaSize(pieces[0].Size), javaSize(presentOffset), kind, javaSize(size), align, elem)
 }
 
 // emitRowHolder is a LIST's or a MAP's sixteen-byte holder (docs/SPEC-TABLES.md
@@ -660,13 +661,13 @@ func (g *rowGen) emitRowHolder(f *ir.Field, name string, off int64) {
 	g.f("    /** %s: the holder's slot; <Root>Cook.at(%sSlot(at), %sCount(data, at) * %sStride)\n",
 		ir.FieldTypeSpelling(f), name, name, name)
 	g.f("     *  resolves the element array (§2.8, §2.9, §6.3). */\n")
-	g.f("    public static int %sSlot(int at) { return at + %d; }\n", name, off)
+	g.f("    public static int %sSlot(int at) { return %s; }\n", name, javaPos("at + %d", off))
 	g.f("    /** the raw SIGNED SELF-RELATIVE delta to the element array; zero is empty. */\n")
-	g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n", name, off)
+	g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, %s); }\n", name, javaPos("at + %d", off))
 	g.f("    /** one element's size in the array: a list's element or a map's entry. */\n")
-	g.f("    public static final int %sStride = %d;\n", name, stride)
+	g.f("    public static final long %sStride = %s;\n", name, javaSize(stride))
 	g.f("    public static int %sCount(byte[] data, int at) {\n", name)
-	g.f("        int n = TableBytes.i32(data, at + %d);\n", off+8)
+	g.f("        int n = TableBytes.i32(data, %s);\n", javaPos("at + %d", off+8))
 	g.f("        return n < 0 ? 0 : n;\n")
 	g.f("    }\n")
 	if f.IsMap() {
@@ -693,7 +694,7 @@ func (g *rowGen) emitRowFind(f *ir.Field, name string, stride int64) {
 		g.f("        int low = 0, high = count;\n")
 		g.f("        while (low < high) {\n")
 		g.f("            int mid = (low + high) >>> 1;\n")
-		g.f("            int at = entries + mid * %d;\n", stride)
+		g.f("            int at = %s;\n", javaPos("entries + mid * %d", stride))
 		g.f("            int k = %s, n = %s.%sLength(data, at);\n", atCall, entry, kname)
 		g.f("            int order = java.util.Arrays.compareUnsigned(data, k, k + n, key, 0, key.length);\n")
 		g.f("            if (order == 0) { return at; }\n")
@@ -720,9 +721,45 @@ func (g *rowGen) emitRowFind(f *ir.Field, name string, stride int64) {
 	g.f("        int low = 0, high = count;\n")
 	g.f("        while (low < high) {\n")
 	g.f("            int mid = (low + high) >>> 1;\n")
-	g.f("            int at = entries + mid * %d;\n", stride)
+	g.f("            int at = %s;\n", javaPos("entries + mid * %d", stride))
 	g.f("            int order = %s(%s, want);\n", cmp, fmt.Sprintf(widen, entry+"."+kname+"(data, at)"))
 	g.f("            if (order == 0) { return at; }\n")
 	g.f("            if (order < 0) { low = mid + 1; } else { high = mid; }\n")
 	g.f("        }\n        return -1;\n    }\n")
+}
+
+// javaSize spells a stored size, offset or stride (docs/SPEC-TABLES.md §11): a
+// Java long holds every size the compiler allows (up to 2^40), and a literal
+// past Integer.MAX_VALUE carries the L that makes it one.
+func javaSize(v int64) string {
+	if v > math.MaxInt32 || v < math.MinInt32 {
+		return strconv.FormatInt(v, 10) + "L"
+	}
+	return strconv.FormatInt(v, 10)
+}
+
+// javaPos spells a position in a caller's byte[]: format's %d verbs are its
+// constants. A Java array indexes by int, so a position past Integer.MAX_VALUE
+// does not exist in one; where a constant is past it, the expression is
+// computed in long and Math.toIntExact refuses it by ArithmeticException
+// rather than wrapping to another position.
+func javaPos(format string, vals ...int64) string {
+	wide := false
+	for _, v := range vals {
+		if v > math.MaxInt32 || v < math.MinInt32 {
+			wide = true
+		}
+	}
+	args := make([]any, len(vals))
+	for i, v := range vals {
+		if wide {
+			args[i] = strconv.FormatInt(v, 10) + "L"
+		} else {
+			args[i] = v
+		}
+	}
+	if !wide {
+		return fmt.Sprintf(format, args...)
+	}
+	return "Math.toIntExact(" + fmt.Sprintf(strings.ReplaceAll(format, "%d", "%s"), args...) + ")"
 }

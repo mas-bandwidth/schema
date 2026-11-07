@@ -18,7 +18,7 @@ public final class MixedEntityRow {
     private MixedEntityRow() {}
 
     /** the record's own size and alignment, from the ONE layout model (§19.3). */
-    public static final int size = 64;
+    public static final long size = 64;
 
     public static final int align = 8;
 
@@ -26,7 +26,7 @@ public final class MixedEntityRow {
      * where each field starts, in declaration order — the accessors' own constants, which
      * TableBlockLayout / TableCookLayout check against the descriptors below (§19.3).
      */
-    static final int[] offsets = {0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 48, 56, 57};
+    static final long[] offsets = {0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 48, 56, 57};
 
     public static int entityId(byte[] data, int at) {
         return TableBytes.i32(data, at + 0);

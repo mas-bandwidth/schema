@@ -126,12 +126,12 @@ fn mix(a: u64, b: u64) -> u64 {
 #[derive(Clone)]
 struct Array {
     name: &'static str,
-    offset_of_offset: u32,
-    count_offset: u32,
-    stride_offset: u32,
-    stride: u32,
-    element_size: u32,
-    element_align: u32,
+    offset_of_offset: u64,
+    count_offset: u64,
+    stride_offset: u64,
+    stride: u64,
+    element_size: u64,
+    element_align: u64,
     maximum: i64,
 }
 
@@ -350,7 +350,7 @@ const WIDTHS: [usize; 4] = [1, 2, 4, 8];
 #[derive(Clone, Copy)]
 struct Slot {
     name: &'static str,
-    offset: u32,
+    offset: u64,
     maximum: i64, // -1 when the slot has none
 }
 

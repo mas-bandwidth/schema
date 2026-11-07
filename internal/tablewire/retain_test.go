@@ -3,6 +3,7 @@ package tablewire_test
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -573,10 +574,18 @@ func TestRetainWalkDepthCap(t *testing.T) {
 	}
 	for _, row := range rows {
 		t.Run(row.what, func(t *testing.T) {
+			// THE SHARED CORPUS CARRIES THESE TWO WIRES (the `retain` rows
+			// retain_walk_depth_64 and _65 in testdata/conformance/tables/
+			// MANIFEST.txt, which every leg replays), and they are this
+			// builder's bytes exactly
+			wire := deepWire(row.depth)
+			if pinned := retainVector(t, fmt.Sprintf("retain_walk_depth_%d", row.depth)); !bytes.Equal(wire, pinned) {
+				t.Fatalf("%d nested bodies: the pinned corpus wire is not deepWire(%d)", row.depth, row.depth)
+			}
 			inst := m.New(m.Lookup("Node"))
 			retain := tablewire.Retain{Capacity: 1 << 16, IdCapacity: 1024}
 			var report tabletext.Report
-			ok, err := tablewire.DecodeRetain(m, inst, deepWire(row.depth), &retain, &report)
+			ok, err := tablewire.DecodeRetain(m, inst, wire, &retain, &report)
 			if err != nil {
 				t.Fatal(err)
 			}

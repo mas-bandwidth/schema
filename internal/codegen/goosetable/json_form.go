@@ -5,10 +5,15 @@
 // reads the descriptors for every decision — keys, bounds, ranges, variant
 // names — and reaches a record's storage through the per-table ACCESSOR this
 // file emits, `_<T>JsonRead` and `_<T>JsonWrite`, a dispatch on the field
-// ordinal that is the only per-table code the form writes (docs/PORT-GOOSE.md,
-// How a walk reaches a field). Goose has no reflection, no offsetof and no
-// function values in data, so the accessor is handed to the generic walk as a
-// static function value and every instantiation is monomorphized.
+// ordinal (docs/PORT-GOOSE.md, How a walk reaches a field). Each table and
+// union also gets its own reader and writer, `_<T>JsonReadTable`,
+// `_<T>JsonWriteTable`, `_<U>JsonReadUnion` and `_<U>JsonWriteUnion`: a loop
+// that asks the runtime's container steps for the next key or slot and calls
+// the accessor in between. No runtime function calls back into generated
+// code, so a nested value is a plain call to its type's reader, and nesting
+// as deep as the form allows (json_max_depth, 128) compiles: Goose bounds a
+// chain of one generic declaration's specializations at 16 (§7.8 of its
+// spec), which a generic walk calling the accessor would meet at depth 17.
 //
 // Per table, the surface is §16.1's, in Goose's spelling:
 //
@@ -403,12 +408,13 @@ func (e *jsonEmit) zero(f *ir.Field) string {
 }
 
 // read returns the statements that read ONE value of f's element kind at pl,
-// ending in a return (or a block's tail expression when tail), at depth.
-func (e *jsonEmit) read(f *ir.Field, pl place, desc, depth string, tail bool) []string {
+// at depth, ending in a return of the read's verdict, or (when check) in a
+// return of false when the read is refused.
+func (e *jsonEmit) read(f *ir.Field, pl place, desc, depth string, check bool) []string {
 	t := f.Type
 	ret := func(x string) string {
-		if tail {
-			return x
+		if check {
+			return "if !" + x + " { return false; }"
 		}
 		return "return " + x + ";"
 	}
@@ -431,11 +437,11 @@ func (e *jsonEmit) read(f *ir.Field, pl place, desc, depth string, tail bool) []
 			typ := e.structType(r)
 			return []string{
 				fmt.Sprintf("%s = %s { .. };", pl.val, typ),
-				ret(fmt.Sprintf("schema_rt::json_read_table(jr, %s, %sDescriptor, _%sJsonShapes, %s + 1, _%sJsonRead)", pl.val, r.Name, r.Name, depth, r.Name)),
+				ret(fmt.Sprintf("_%sJsonReadTable(jr, %s, %s + 1)", r.Name, pl.val, depth)),
 			}
 		case *ir.Union:
 			e.unionType(r)
-			return []string{ret(fmt.Sprintf("schema_rt::json_read_union(jr, %s, %sDescriptor, _%sJsonShapes, %s, _%sJsonRead)", pl.val, r.Name, r.Name, depth, r.Name))}
+			return []string{ret(fmt.Sprintf("_%sJsonReadUnion(jr, %s, %s)", r.Name, pl.val, depth))}
 		}
 	}
 	return []string{ret(fmt.Sprintf("schema_rt::json_read_int(jr, %s, %s)", pl.val, desc))}
@@ -461,10 +467,10 @@ func (e *jsonEmit) write(f *ir.Field, pl place, desc, depth string) string {
 			return fmt.Sprintf("schema_rt::json_write_flags(out, %s, %s, %s)", pl.val, e.names(r.Name, r.Variants), depth)
 		case *ir.Struct:
 			e.structType(r)
-			return fmt.Sprintf("schema_rt::json_write_table(out, %s, %sDescriptor, %s, _%sJsonWrite)", pl.val, r.Name, depth, r.Name)
+			return fmt.Sprintf("_%sJsonWriteTable(out, %s, %s)", r.Name, pl.val, depth)
 		case *ir.Union:
 			e.unionType(r)
-			return fmt.Sprintf("schema_rt::json_write_union(out, %s, %sDescriptor, %s.Type, %s, _%sJsonWrite)", pl.val, r.Name, pl.val, depth, r.Name)
+			return fmt.Sprintf("_%sJsonWriteUnion(out, %s, %s)", r.Name, pl.val, depth)
 		}
 	}
 	return fmt.Sprintf("schema_rt::json_write_int(out, %s, %s)", pl.val, desc)
@@ -491,22 +497,29 @@ func (e *jsonEmit) readField(ind int, base string, f *ir.Field, desc, elem strin
 	}
 	e.p(ind+1, "j += 1;")
 	e.p(ind, "}")
-	body := e.read(el, pl.at("k"), elem, "d", true)
+	e.p(ind, "var s = schema_rt::JsonSeq { .. };")
 	if f.KeyEnum != "" {
 		names := e.names(f.KeyEnumRef.Name, f.KeyEnumRef.Variants)
-		e.p(ind, "return schema_rt::json_read_keyed(jr, %s, '%c', depth) { r, k, d =>", names, shapeOf(el))
+		e.p(ind, "while schema_rt::json_keyed_next(jr, s, %s, '%c', depth) {", names, shapeOf(el))
 	} else {
-		count := pl.val + "Count"
-		if f.Array != ir.ArrayCounted {
-			e.p(ind, "var count: i32 = 0;")
-			count = "count"
-		}
-		e.p(ind, "return schema_rt::json_read_array(jr, %s, %d, '%c', depth) { r, k, d =>", count, n, shapeOf(el))
+		e.p(ind, "while schema_rt::json_array_next(jr, s, %d, '%c', depth) {", n, shapeOf(el))
 	}
-	for _, s := range body {
-		e.p(ind+1, "%s", strings.ReplaceAll(s, "(jr, ", "(r, "))
+	e.p(ind+1, "let k = s.index;")
+	for _, st := range e.read(el, pl.at("k"), elem, "depth + 1", true) {
+		e.p(ind+1, "%s", st)
 	}
-	e.p(ind, "};")
+	e.p(ind, "}")
+	if f.KeyEnum != "" {
+		e.p(ind, "return s.ok;")
+		return
+	}
+	if f.Array != ir.ArrayCounted {
+		e.p(ind, "return s.ok;")
+		return
+	}
+	e.p(ind, "if !s.ok { return false; }")
+	e.p(ind, "%sCount = s.placed as! i32;", pl.val)
+	e.p(ind, "return true;")
 }
 
 // writeField is one field's (or arm's) write.
@@ -517,17 +530,29 @@ func (e *jsonEmit) writeField(ind int, base string, f *ir.Field, desc, elem stri
 		return
 	}
 	el := elemOf(f)
-	body := strings.ReplaceAll(e.write(el, pl.at("k"), elem, "d"), "(out, ", "(o, ")
+	body := e.write(el, pl.at("k"), elem, "depth + 1")
+	count, open, close := "", '[', ']'
 	if f.KeyEnum != "" {
-		names := e.names(f.KeyEnumRef.Name, f.KeyEnumRef.Variants)
-		e.p(ind, "return schema_rt::json_write_keyed(out, %s, depth) { o, k, d => %s };", names, body)
-		return
+		count, open, close = e.names(f.KeyEnumRef.Name, f.KeyEnumRef.Variants)+".len", '{', '}'
+	} else if f.Array == ir.ArrayCounted {
+		count = pl.val + "Count as i64"
+	} else {
+		count = fmt.Sprint(slotCount(f))
 	}
-	count := fmt.Sprint(slotCount(f))
-	if f.Array == ir.ArrayCounted {
-		count = pl.val + "Count"
+	e.p(ind, "let count: i64 = %s;", count)
+	e.p(ind, "schema_rt::json_write_open(out, count, '%c', '%c');", open, close)
+	e.p(ind, "var k: i64 = 0;")
+	e.p(ind, "while k < count {")
+	if f.KeyEnum != "" {
+		e.p(ind+1, "schema_rt::json_write_key(out, k, %s[k], depth);", e.names(f.KeyEnumRef.Name, f.KeyEnumRef.Variants))
+	} else {
+		e.p(ind+1, "schema_rt::json_write_item(out, k, depth);")
 	}
-	e.p(ind, "return schema_rt::json_write_array(out, %s, depth) { o, k, d => %s };", count, body)
+	e.p(ind+1, "if !%s { return false; }", body)
+	e.p(ind+1, "k += 1;")
+	e.p(ind, "}")
+	e.p(ind, "schema_rt::json_write_close(out, count, '%c', depth);", close)
+	e.p(ind, "return true;")
 }
 
 func (e *jsonEmit) emitStruct(st *ir.Struct) {
@@ -540,8 +565,39 @@ func (e *jsonEmit) emitStruct(st *ir.Struct) {
 	for _, f := range st.Fields {
 		e.declareNames(f)
 	}
-	e.declare("_"+n+"JsonShapes", "_"+n+"JsonRead", "_"+n+"JsonWrite")
+	e.declare("_"+n+"JsonShapes", "_"+n+"JsonRead", "_"+n+"JsonWrite", "_"+n+"JsonReadTable", "_"+n+"JsonWriteTable")
 	e.p(0, "let _%sJsonShapes: const u8[:] = %q;\n", n, string(shapes))
+
+	e.p(0, "// _%sJsonReadTable reads one object into a %s (docs/SPEC-TABLES.md §16.2).", n, n)
+	e.p(0, "fn _%sJsonReadTable(jr: schema_rt::JsonIn&, v: %s&, depth: i64) -> bool {", n, typ)
+	e.p(1, "var s = schema_rt::JsonFields { .. };")
+	e.p(1, "while schema_rt::json_table_next(jr, s, %sDescriptor, _%sJsonShapes, depth) {", n, n)
+	e.p(2, "if !_%sJsonRead(jr, v, s.index, s.op, depth) { return schema_rt::json_table_refused(jr, s); }", n)
+	e.p(2, "if s.present && !_%sJsonRead(jr, v, s.index, schema_rt::JsonOpPresent, depth) { return false; }", n)
+	e.p(1, "}")
+	e.p(1, "return s.ok;")
+	e.p(0, "}\n")
+
+	e.p(0, "// _%sJsonWriteTable writes a %s as one object, every field in declaration order,", n, n)
+	e.p(0, "// defaults included, an absent optional as no key (docs/SPEC-TABLES.md §16.1, §16.2).")
+	e.p(0, "fn _%sJsonWriteTable(out: u8[>..]&, v: const %s&, depth: i64) -> bool {", n, typ)
+	e.p(1, "if depth > schema_rt::JsonMaxDepth { return false; }")
+	e.p(1, "if %sDescriptor.json_array && %sDescriptor.fields.len == 1 {", n, n)
+	e.p(2, "return _%sJsonWrite(out, v, 0, schema_rt::JsonOpWrite, depth);", n)
+	e.p(1, "}")
+	e.p(1, "var n: i64 = 0;")
+	e.p(1, "var i: i64 = 0;")
+	e.p(1, "while i < %sDescriptor.fields.len {", n)
+	e.p(2, "if _%sJsonWrite(out, v, i, schema_rt::JsonOpAsk, depth) {", n)
+	e.p(3, "schema_rt::json_write_field(out, n, %sDescriptor.fields[i].json, depth);", n)
+	e.p(3, "n += 1;")
+	e.p(3, "if !_%sJsonWrite(out, v, i, schema_rt::JsonOpWrite, depth + 1) { return false; }", n)
+	e.p(2, "}")
+	e.p(2, "i += 1;")
+	e.p(1, "}")
+	e.p(1, "schema_rt::json_write_fields_end(out, n, depth);")
+	e.p(1, "return true;")
+	e.p(0, "}\n")
 
 	e.p(0, "// _%sJsonRead is %s's accessor for the text walk's reads (docs/SPEC-TABLES.md §16.2).", n, n)
 	e.p(0, "fn _%sJsonRead(jr: schema_rt::JsonIn&, v: %s&, o: i64, op: i64, depth: i64) -> bool {", n, typ)
@@ -601,8 +657,28 @@ func (e *jsonEmit) emitUnion(un *ir.Union) {
 		shapes[i] = fieldShape(armField(v))
 		e.declareNames(armField(v))
 	}
-	e.declare("_"+n+"JsonShapes", "_"+n+"JsonRead", "_"+n+"JsonWrite")
+	e.declare("_"+n+"JsonShapes", "_"+n+"JsonRead", "_"+n+"JsonWrite", "_"+n+"JsonReadUnion", "_"+n+"JsonWriteUnion")
 	e.p(0, "let _%sJsonShapes: const u8[:] = %q;\n", n, string(shapes))
+	e.p(0, "// _%sJsonReadUnion reads union %s: an object with ONE key, the arm's name, or", n, n)
+	e.p(0, "// `{}` for None (docs/SPEC-TABLES.md §16.2).")
+	e.p(0, "fn _%sJsonReadUnion(jr: schema_rt::JsonIn&, v: %s&, depth: i64) -> bool {", n, typ)
+	e.p(1, "var s = schema_rt::JsonArm { .. };")
+	e.p(1, "if !schema_rt::json_union_open(jr, s, %sDescriptor, _%sJsonShapes, depth) { return false; }", n, n)
+	e.p(1, "if !_%sJsonRead(jr, v, 0, schema_rt::JsonOpTag, depth) { return false; }", n)
+	e.p(1, "if s.read && !_%sJsonRead(jr, v, s.tag, schema_rt::JsonOpRead, depth + 1) { return false; }", n)
+	e.p(1, "if s.tag != 0 && !_%sJsonRead(jr, v, s.tag, schema_rt::JsonOpTag, depth) { return false; }", n)
+	e.p(1, "return schema_rt::json_union_close(jr, s);")
+	e.p(0, "}\n")
+	e.p(0, "// _%sJsonWriteUnion writes union %s as an object with ONE key, the arm's name,", n, n)
+	e.p(0, "// and `{}` for None; a tag no arm names is refused (docs/SPEC-TABLES.md §16.2, §16.3).")
+	e.p(0, "fn _%sJsonWriteUnion(out: u8[>..]&, v: const %s&, depth: i64) -> bool {", n, typ)
+	e.p(1, "let tag = v.Type as i64;")
+	e.p(1, "let arm = schema_rt::json_write_arm(out, %sDescriptor, tag, depth);", n)
+	e.p(1, "if arm <= 0 { return arm == 0; }")
+	e.p(1, "if !_%sJsonWrite(out, v, tag, depth + 1) { return false; }", n)
+	e.p(1, "schema_rt::json_write_close(out, 1, '}', depth);")
+	e.p(1, "return true;")
+	e.p(0, "}\n")
 	e.p(0, "// _%sJsonRead reads union %s's arm `tag`, or sets its tag (docs/SPEC-TABLES.md §16.2).", n, n)
 	e.p(0, "fn _%sJsonRead(jr: schema_rt::JsonIn&, v: %s&, tag: i64, op: i64, depth: i64) -> bool {", n, typ)
 	e.p(1, "if op == schema_rt::JsonOpTag {")
@@ -658,7 +734,7 @@ func (e *jsonEmit) emitRoot(st *ir.Struct) {
 	e.p(0, "// then back at its declared defaults.")
 	e.p(0, "fn %sFromJsonTolerant(v: %s&, text: const u8[:], report: schema_rt::JsonReport&) -> bool {", n, typ)
 	e.p(1, "v = %s { .. };", typ)
-	e.p(1, "if schema_rt::json_from(v, %sDescriptor, _%sJsonShapes, text, report, _%sJsonRead) { return true; }", n, n, n)
+	e.p(1, "if schema_rt::json_from(v, text, report, _%sJsonReadTable) { return true; }", n)
 	e.p(1, "v = %s { .. };", typ)
 	e.p(1, "return false;")
 	e.p(0, "}\n")
@@ -669,10 +745,10 @@ func (e *jsonEmit) emitRoot(st *ir.Struct) {
 	e.p(0, "}\n")
 	e.p(0, "// %sToJson appends v's canonical text and answers its length, or -1 (§16.1, §16.3).", n)
 	e.p(0, "fn %sToJson(v: const %s&, out: u8[>..]&) -> i64 {", n, typ)
-	e.p(1, "return schema_rt::json_to(v, %sDescriptor, out, _%sJsonWrite);", n, n)
+	e.p(1, "return schema_rt::json_to(v, out, _%sJsonWriteTable);", n)
 	e.p(0, "}\n")
 	e.p(0, "// %sToJsonMeasure is %sToJson's exact length, or -1.", n, n)
 	e.p(0, "fn %sToJsonMeasure(v: const %s&) -> i64 {", n, typ)
-	e.p(1, "return schema_rt::json_measure(v, %sDescriptor, _%sJsonWrite);", n, n)
+	e.p(1, "return schema_rt::json_measure(v, _%sJsonWriteTable);", n)
 	e.p(0, "}\n")
 }

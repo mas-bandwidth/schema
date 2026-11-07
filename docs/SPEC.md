@@ -2363,7 +2363,7 @@ does not tell the two spellings apart, and says so.
 it first.** In Go the field is the `int64` count and the `time.Time` is the
 accessor pair generated beside it, `<Field>Time()` in UTC and
 `Set<Field>Time(t)`; the setter refuses BY NAME a `t` whose nanosecond count
-is outside `Time.UnixNano`'s domain — the years 1678 through 2262 — rather
+is outside `Time.UnixNano`'s domain — 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z — rather
 than storing a wrapped number, because an undefined conversion has no wire
 value at all, and Go's zero `time.Time{}` is the zero time. Every other target
 REFUSES the construct BY NAME until its own turn, the diagnostic naming the

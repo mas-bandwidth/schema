@@ -289,7 +289,11 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VBRB_lineage_merge.schema \
 	test/tables/VNEW_lineage_merge.schema \
 	test/tables/VOLD_unknown_census.schema \
-	test/tables/VNEW_unknown_census.schema
+	test/tables/VNEW_unknown_census.schema \
+	test/tables/VOLD_limit_depth.schema \
+	test/tables/VNEW_limit_depth.schema \
+	test/tables/VOLD_limit_record.schema \
+	test/tables/VNEW_limit_record.schema
 # ---- rowan/cpp-versioning-numbers: END ----------------------------------
 
 define tables_generate
@@ -6895,8 +6899,9 @@ build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
 # §5.7 step 1, ruling #32): the dump writes it from the same values it writes
 # into the bytes, and a corpus without it is a corpus a port has to read the
 # emitter to use. Nothing under build/ is committed; the line below only refuses
-# to call the corpus finished when the manifest did not arrive.
+# to call the corpus finished when the manifest or limits.txt did not arrive.
 	@test -s build/fixedform-corpus.next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
+	@test -s build/fixedform-corpus.next/limits.txt || { echo "corpus: limits.txt missing" >&2; exit 1; }
 	@touch build/fixedform-corpus.next/.stamp
 	@rm -rf build/fixedform-corpus.prev
 	@if test -d build/fixedform-corpus; then mv build/fixedform-corpus build/fixedform-corpus.prev; fi

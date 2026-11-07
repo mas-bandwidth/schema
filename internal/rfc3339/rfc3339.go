@@ -17,8 +17,8 @@ package rfc3339
 // 00-23 and its minutes 00-59. Nothing may precede or follow the production.
 //
 // The count is the seconds since the Unix epoch times one billion plus the
-// fraction, so an instant outside int64's nanosecond range — the years 1678
-// through 2262, Time.UnixNano's domain — names no count and is refused too.
+// fraction, so an instant outside int64's nanosecond range — 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z,
+// Time.UnixNano's domain — names no count and is refused too.
 // The parser reads only its argument and allocates nothing.
 func rfc3339Parse(text []byte) (int64, bool) {
 	// the shortest production is "2006-01-02T15:04:05Z"

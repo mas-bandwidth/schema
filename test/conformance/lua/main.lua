@@ -328,11 +328,13 @@ local function connectionNamed(all, key)
 end
 
 -- one direction's VOCABULARY, read from the connection's announcement by the
--- receiving unit (§3.3)
+-- receiving unit (§3.3); nil when the read refuses the announcement as damage
 local function vocabulary(u, conn, what)
   local vocab = {}
   for i = 1, (u.T.MessageEntries or 0) do vocab[i] = {} end
-  if not u.T.AnnounceRead(vocab, mustRead(conn[5]), newReport()) then
+  local r = newReport()
+  if not u.T.AnnounceRead(vocab, mustRead(conn[5]), r) then
+    if r.malformed then return nil end
     fail(what .. ": the announcement was refused: " .. conn[5])
   end
   return vocab
@@ -355,12 +357,18 @@ local function surfaceMessage(all, outdir)
       absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
     else
       local vocab = vocabulary(u, conn, f[2])
-      local r = newReport()
-      local values = u.T.LoadMessages(f[4], vocab, mustRead(f[6]), r)
-      if values == nil or #values < 1 then fail(f[2] .. ": message load refused: " .. tostring(r.reason)) end
-      local saved = u.T.SaveMessages(f[4], vocab, values)
-      if saved == nil then fail(f[2] .. ": message save refused") end
-      writeBytes(outdir .. "/" .. f[2], saved)
+      if vocab == nil then
+        -- a malformed announcement sets no vocabulary (§3.3), and the row is
+        -- answered by name
+        absent(outdir, f[2], "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)")
+      else
+        local r = newReport()
+        local values = u.T.LoadMessages(f[4], vocab, mustRead(f[6]), r)
+        if values == nil or #values < 1 then fail(f[2] .. ": message load refused: " .. tostring(r.reason)) end
+        local saved = u.T.SaveMessages(f[4], vocab, values)
+        if saved == nil then fail(f[2] .. ": message save refused") end
+        writeBytes(outdir .. "/" .. f[2], saved)
+      end
     end
   end
 end

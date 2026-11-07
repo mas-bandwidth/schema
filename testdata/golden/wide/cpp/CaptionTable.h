@@ -112,7 +112,8 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    storage_over_cap         // a wire whose region measure passes the 2^40-byte storage cap, refused before any region is sized (§6.5, §11)
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -185,6 +186,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason storage_over_cap = TableRefuseReason::storage_over_cap;
     static constexpr TableRefuseReason no_vocabulary = ::wide::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::wide::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::wide::vocabulary_too_large;
@@ -314,7 +316,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -322,15 +324,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -360,10 +362,10 @@ struct TableFieldInfo
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -444,7 +446,7 @@ struct TableFieldInfo
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -8488,31 +8490,31 @@ inline const TableTypeInfo * LineTableType();
 inline const TableTypeInfo * CaptionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "title", "title", "wstring", 0xda31296c0c1b6029ull, 33, false, true, false, 7, (uint32_t) offsetof( Caption, title ), (uint32_t) sizeof( Caption::title ), (uint32_t) offsetof( Caption, title_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "line", "line", "Line", 0xbf4ba5ad694f5907ull, 13, false, false, false, 0, (uint32_t) offsetof( Caption, line ), (uint32_t) sizeof( Caption::line ), 0xffffffffu, 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "lines", "lines", "Line", 0x5ce3f9a9f1d5001cull, 13, true, true, false, 3, (uint32_t) offsetof( Caption, lines ), (uint32_t) sizeof( Caption::lines[0] ), (uint32_t) offsetof( Caption, lines_count ), 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Caption, body ), (uint32_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, tally ), (uint32_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (uint32_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (uint32_t) offsetof( Body, tally ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Body, type ), (uint32_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "title", "title", "wstring", 0xda31296c0c1b6029ull, 33, false, true, false, 7, (int64_t) offsetof( Caption, title ), (int64_t) sizeof( Caption::title ), (int64_t) offsetof( Caption, title_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "line", "line", "Line", 0xbf4ba5ad694f5907ull, 13, false, false, false, 0, (int64_t) offsetof( Caption, line ), (int64_t) sizeof( Caption::line ), 0xffffffffu, 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "lines", "lines", "Line", 0x5ce3f9a9f1d5001cull, 13, true, true, false, 3, (int64_t) offsetof( Caption, lines ), (int64_t) sizeof( Caption::lines[0] ), (int64_t) offsetof( Caption, lines_count ), 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (int64_t) offsetof( Caption, body ), (int64_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (int64_t) offsetof( Body, wide.value ), (int64_t) sizeof( Body::wide.value ), (int64_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (int64_t) offsetof( Body, narrow.value ), (int64_t) sizeof( Body::narrow.value ), (int64_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (int64_t) offsetof( Body, tally ), (int64_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (int64_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (int64_t) offsetof( Body, tally ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (int64_t) offsetof( Body, type ), (int64_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Caption", (uint32_t) sizeof( Caption ), 4, fields, +[]( void * p ) { CaptionReset( *(Caption *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Caption", (int64_t) sizeof( Caption ), 4, fields, +[]( void * p ) { CaptionReset( *(Caption *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * StampTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "label", "label", "wstring", 0x39f7fcec8fcb623dull, 33, false, true, false, 4, (uint32_t) offsetof( Stamp, label ), (uint32_t) sizeof( Stamp::label ), (uint32_t) offsetof( Stamp, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "seq", "seq", "uint32", 0x823b8a195ce2133cull, 8, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "label", "label", "wstring", 0x39f7fcec8fcb623dull, 33, false, true, false, 4, (int64_t) offsetof( Stamp, label ), (int64_t) sizeof( Stamp::label ), (int64_t) offsetof( Stamp, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "seq", "seq", "uint32", 0x823b8a195ce2133cull, 8, false, false, false, 0, (int64_t) offsetof( Stamp, seq ), (int64_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Stamp", (uint32_t) sizeof( Stamp ), 2, fields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Stamp", (int64_t) sizeof( Stamp ), 2, fields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * LineTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "text", "text", "wstring", 0xfa04f4ef1995407eull, 33, false, true, false, 4, (uint32_t) offsetof( Line, text ), (uint32_t) sizeof( Line::text ), (uint32_t) offsetof( Line, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "text", "text", "wstring", 0xfa04f4ef1995407eull, 33, false, true, false, 4, (int64_t) offsetof( Line, text ), (int64_t) sizeof( Line::text ), (int64_t) offsetof( Line, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Line", (uint32_t) sizeof( Line ), 1, fields, +[]( void * p ) { LineReset( *(Line *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Line", (int64_t) sizeof( Line ), 1, fields, +[]( void * p ) { LineReset( *(Line *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -8554,6 +8556,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // WIDE_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // CaptionLoadTextForm reads one Caption from the hand-editable text form
@@ -8561,6 +8578,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool CaptionLoadTextForm( const char * text, int64_t bytes, Caption & value, const char ** refusal );
+
+// CaptionLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool CaptionLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Caption & value, const char ** refusal );
 
 // CaptionLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -8587,6 +8608,10 @@ bool CaptionEditTextForm( const char * document, int64_t document_bytes, const T
 // names itself in *refusal (§16.9.4).
 bool StampLoadTextForm( const char * text, int64_t bytes, Stamp & value, const char ** refusal );
 
+// StampLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool StampLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Stamp & value, const char ** refusal );
+
 // StampLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // StampSaveTextForm with no edit is the input byte for byte.
@@ -8611,6 +8636,10 @@ bool StampEditTextForm( const char * document, int64_t document_bytes, const Tab
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool LineLoadTextForm( const char * text, int64_t bytes, Line & value, const char ** refusal );
+
+// LineLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool LineLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Line & value, const char ** refusal );
 
 // LineLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

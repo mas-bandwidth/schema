@@ -1802,6 +1802,10 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = mapdemo.TableTextReport();
         value = mapdemo.textToJson(mapdemo.textFromJson(text, r));
         break;
+      case 'mapdemo Depth':
+        r = mapdemo.TableTextReport();
+        value = mapdemo.depthToJson(mapdemo.depthFromJson(text, r));
+        break;
       case 'listdemo Army':
         r = listdemo.TableTextReport();
         value = listdemo.armyToJson(listdemo.armyFromJson(text, r));
@@ -1993,9 +1997,12 @@ typedef MessageFuzz = List<int> Function(Uint8List wire);
 // surface's batch read against a connection's announcement, and the wire
 // fuzzer's mutant read against the unit's OWN announcement.
 final class MessageCodec {
-  const MessageCodec(this.batch, this.fuzz);
+  const MessageCodec(this.batch, this.fuzz, this.announcementMalformed);
   final MessageRun batch;
   final MessageFuzz fuzz;
+  // announcementMalformed reads an announcement alone, into a fresh
+  // vocabulary, and answers whether the read refused it as damage.
+  final bool Function(Uint8List announcement) announcementMalformed;
 }
 
 // _ownAnnouncement is the unit's compiled announcement, which the fuzzer's
@@ -2103,7 +2110,10 @@ MessageCodec _messageRow<T, V, R>({
       return null;
     }
     return out;
-  }, fuzz);
+  }, fuzz, (Uint8List announcement) {
+    final rep = report();
+    return !announceRead(vocabulary(), announcement, rep) && ((rep as dynamic).malformed as bool);
+  });
 }
 
 List<E> _entries<E>(E Function() zero) => List<E>.generate(4096, (_) => zero());
@@ -2236,7 +2246,14 @@ int surfaceMessage(String outDir) {
       File('$outDir/${f[1]}.absent').writeAsStringSync('');
       continue;
     }
-    final answer = run.batch(File(conn[4]).readAsBytesSync(), File(f[5]).readAsBytesSync());
+    final announcement = File(conn[4]).readAsBytesSync();
+    final answer = run.batch(announcement, File(f[5]).readAsBytesSync());
+    if (answer == null && run.announcementMalformed(announcement)) {
+      // An announcement the read refuses as damage sets no vocabulary
+      // (docs/SPEC-TABLES.md §3.3), and the row is answered by name.
+      File('$outDir/${f[1]}.absent').writeAsStringSync('malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)');
+      continue;
+    }
     if (answer == null) {
       stderr.writeln('message ${f[1]}: the batch did not load and save');
       return 1;

@@ -163,7 +163,7 @@ func TestRustIdTableReaderContract(t *testing.T) {
 
 	for _, fnSig := range []string{
 		"fn packet_load_inner(",
-		"pub fn packet_load_measure(",
+		"fn packet_load_measure_raw(",
 	} {
 		body, err := extractRustFn(src, fnSig)
 		if err != nil {

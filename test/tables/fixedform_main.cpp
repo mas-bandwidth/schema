@@ -2410,18 +2410,32 @@ static void manifest_case( const char * corpus_dir )
         }
     }
 
+    // THE HARD-LIMIT VECTORS ARE DESCRIBED IN limits.txt AND NOT HERE (the
+    // dump's limit_files): a past-limit file refuses, and the manifest's sweeps
+    // read every row as a lawful file. A corpus file is on exactly one list.
+    const std::string limits = slurp_text( dir + "/limits.txt" );
+    int limit_lines = 0;
+    for ( size_t at = 0; at < limits.size(); )
+    {
+        const size_t nl = limits.find( '\n', at );
+        if ( nl != at ) { limit_lines++; }
+        at = nl == std::string::npos ? limits.size() : nl + 1;
+    }
+    check( limit_lines > 0, "manifest: build/fixedform-corpus/limits.txt exists and is not empty" );
+
     int files = 0;
     while ( const struct dirent * e = readdir( corpus ) )
     {
         const std::string name( e->d_name );
         if ( name.size() < 5 || name.compare( name.size() - 4, 4, ".bin" ) != 0 ) { continue; }
         files++;
-        const bool listed = manifest.find( "file=" + name + " " ) != std::string::npos;
-        if ( !listed ) { std::printf( "  no manifest line for %s\n", name.c_str() ); }
-        check( listed, "manifest: every corpus file has a manifest line" );
+        const bool in_manifest = manifest.find( "file=" + name + " " ) != std::string::npos;
+        const bool in_limits = limits.find( "file=" + name + " " ) != std::string::npos;
+        if ( in_manifest == in_limits ) { std::printf( "  %s is on %s\n", name.c_str(), in_manifest ? "both lists" : "neither list" ); }
+        check( in_manifest != in_limits, "manifest: every corpus file has a manifest line or a limits line, never both" );
     }
     closedir( corpus );
-    check( files > 0 && lines == files, "manifest: one line per corpus file, and no line without a file" );
+    check( files > 0 && lines + limit_lines == files, "manifest: one line per corpus file, and no line without a file" );
 
     std::set<std::string> generated;
     fixed_save_names( "build/tables-generated", generated, 0 );

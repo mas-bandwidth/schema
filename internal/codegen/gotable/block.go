@@ -265,18 +265,18 @@ func (r TableBlockRows[T]) At(i int32) *T {
 // describes, and everything a GENERIC ROW WALK needs after that.
 type TableBlockFieldInfo struct {
 	Name           string
-	Offset         uint32 // the field's offset in the record this descriptor describes
-	Size           uint32 // its size there
+	Offset         int64  // the field's offset in the record this descriptor describes
+	Size           int64  // its size there
 	Kind           uint8  // the table-wire kind, as TableFieldInfo carries it
 	OutOfLine      bool   // an out-of-line array: the triple's three members are live
-	OffsetOfOffset uint32 // the triple's OffsetOf member, or 0xffffffff
+	OffsetOfOffset int64  // the triple's OffsetOf member, or 0xffffffff
 	// The COUNT COMPANION, and it is one column doing one job in both
 	// spellings: the triple's Count member for an out-of-line array, the int32
 	// used length of a string or a bytes inline, 0xffffffff when the field has
 	// none.
-	CountOffset  uint32
-	StrideOffset uint32 // the triple's Stride member, or 0xffffffff
-	Stride       uint32 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+	CountOffset  int64
+	StrideOffset int64  // the triple's Stride member, or 0xffffffff
+	Stride       int64  // THIS BUILD's pitch, to assert against — never to index with (§19.2)
 
 	// ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
 	// already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked
@@ -286,8 +286,8 @@ type TableBlockFieldInfo struct {
 	Counted       bool   // CountOffset names a used-length companion
 	Optional      bool   // PresentOffset names a bool presence companion
 	ArrayBound    int32  // inline slots, or a string's declared maximum; 0 for a plain scalar
-	ElemSize      uint32 // ONE slot's size; the field's own when it holds one value
-	PresentOffset uint32 // the presence companion, or 0xffffffff
+	ElemSize      int64  // ONE slot's size; the field's own when it holds one value
+	PresentOffset int64  // the presence companion, or 0xffffffff
 
 	// Element is the ELEMENT's or the nested record's own layout, behind a
 	// function so a descriptor graph needs no initialisation order. nil when
@@ -304,7 +304,7 @@ type TableBlockFieldInfo struct {
 type TableBlockInfo struct {
 	Name         string
 	BuildVersion uint64 // the unit's (docs/SPEC-TABLES.md §20)
-	Size         uint32 // the record's own size: a projection's, or a row's
+	Size         int64  // the record's own size: a projection's, or a row's
 	Align        uint32
 	NumFields    int32
 	Fields       []TableBlockFieldInfo
@@ -517,18 +517,18 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 	if projection {
 		spelled = name + "BlockProjection"
 	}
-	g.hf("\ttableBlockLayoutSize(%q, unsafe.Sizeof(%s{}), %d)\n", spelled, spelled, ml.Size)
+	g.hf("\ttableBlockLayoutSize(%q, tableSizeof[%s](), %d)\n", spelled, spelled, ml.Size)
 	// Go caps native struct alignment at eight. Explicit padding preserves
 	// every model offset and stride; Open enforces the model's stronger
 	// alignment on the caller-owned byte region before exposing any row.
-	g.hf("\ttableBlockLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
+	g.hf("\ttableBlockLayoutSize(%q, tableAlignof[%s](), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
 	if projection {
-		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.Magic), 0)\n", spelled+".Magic", spelled)
-		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.BuildVersion), 8)\n", spelled+".BuildVersion", spelled)
-		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.ByteOrder), 16)\n", spelled+".ByteOrder", spelled)
+		g.hf("\ttableBlockLayoutOffset(%q, tableOffsetof[%s](%q), 0)\n", spelled+".Magic", spelled, "Magic")
+		g.hf("\ttableBlockLayoutOffset(%q, tableOffsetof[%s](%q), 8)\n", spelled+".BuildVersion", spelled, "BuildVersion")
+		g.hf("\ttableBlockLayoutOffset(%q, tableOffsetof[%s](%q), 16)\n", spelled+".ByteOrder", spelled, "ByteOrder")
 	}
 	for _, fl := range ml.Fields {
-		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.%s), %d)\n",
+		g.hf("\ttableBlockLayoutOffset(%q, tableOffsetof[%s](%q), %d)\n",
 			spelled+"."+goname.Member(fl.Field.Name), spelled, goname.Member(fl.Field.Name), fl.Offset)
 	}
 	if bl != nil {
@@ -537,7 +537,7 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 		// it on one side only — §19.5's named negative control — could not
 		// turn anything red here.
 		for _, a := range bl.Arrays {
-			g.hf("\ttableBlockLayoutSize(%q, unsafe.Sizeof(%sRow{}), %d)\n",
+			g.hf("\ttableBlockLayoutSize(%q, tableSizeof[%sRow](), %d)\n",
 				bl.Table.Name+"."+goname.Member(a.Field.Name)+" stride", a.ElemName, a.Stride)
 		}
 	}
@@ -638,7 +638,7 @@ func(block *%sBlock)Open(base unsafe.Pointer,bytes int64)error{
 		g.hf("\t\toffsetOf := binary.NativeEndian.Uint64(triple)\n")
 		g.hf("\t\tcount := uint64(binary.NativeEndian.Uint32(triple[8:]))\n")
 		g.hf("\t\tstride := uint64(binary.NativeEndian.Uint32(triple[12:]))\n")
-		g.hf("\t\tif stride != uint64(unsafe.Sizeof(%sRow{})) {\n\t\t\treturn TableRefuseBadLayout\n\t\t}\n", a.ElemName)
+		g.hf("\t\tif stride != uint64(tableSizeof[%sRow]()) {\n\t\t\treturn TableRefuseBadLayout\n\t\t}\n", a.ElemName)
 		g.hf("\t\t// past the DECLARED MAXIMUM: the producer side refuses this too, because\n")
 		g.hf("\t\t// a consumer that sizes anything by the maximum would overflow on a\n")
 		g.hf("\t\t// count the maximum does not bound\n")

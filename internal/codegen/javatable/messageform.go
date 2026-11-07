@@ -237,11 +237,26 @@ public final class TableVocabulary {
             return false;
         }
         long entryCount = readU64(data, data.length - 8);
-        if (entryCount < 0 || entryCount > (data.length - 9) / 8) {
+        // §3, THE DISTINCTNESS CHECK IS BOUNDED WORK: an entry count above
+        // 4096 is malformed whatever the buffer would hold
+        if (entryCount < 0 || entryCount > 4096 || entryCount > (data.length - 9) / 8) {
             report.malformed = true;
             return false;
         }
         int idsStart = data.length - 8 - (int) entryCount * 8;
+        // and a table that names one id twice is malformed: a sorted copy
+        // finds a repeat in O(n log n) for any ids
+        long[] sorted = new long[(int) entryCount];
+        for (int i = 0; i < sorted.length; i++) {
+            sorted[i] = readU64(data, idsStart + i * 8);
+        }
+        java.util.Arrays.sort(sorted);
+        for (int i = 1; i < sorted.length; i++) {
+            if (sorted[i] == sorted[i - 1]) {
+                report.malformed = true;
+                return false;
+            }
+        }
         Reader r = new Reader(data, 1);
         int versionCount = 0;
         int vocabCount = 0;

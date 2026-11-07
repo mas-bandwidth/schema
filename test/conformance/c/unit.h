@@ -67,13 +67,13 @@
     static int schema_conformance_message_##TYPE(const uint8_t * a,int64_t an,const uint8_t * b,int64_t n,uint8_t ** out,int64_t * size,ConformanceReport * report) \
     { \
      SCHEMA_CONFORMANCE_Q(table_message_entry_t) entries[SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE)];SCHEMA_CONFORMANCE_Q(table_vocabulary_t) v=SCHEMA_CONFORMANCE_Q(table_vocabulary)(entries,SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE)); \
-     SCHEMA_CONFORMANCE_Q(table_report_t) inner={0};int64_t count=1;int ok=0;SCHEMA_CONFORMANCE_Q(FN##_t) value; \
-     if(!SCHEMA_CONFORMANCE_Q(announce_read)(&v,a,an,&inner))goto done; \
+     SCHEMA_CONFORMANCE_Q(table_report_t) inner={0};int64_t count=1;int ok=0,announce=0;SCHEMA_CONFORMANCE_Q(FN##_t) value; \
+     if(!SCHEMA_CONFORMANCE_Q(announce_read)(&v,a,an,&inner)){announce=1;goto done;} \
      if(!SCHEMA_CONFORMANCE_Q(SCHEMA_CONFORMANCE_READ(FN##_load_messages))(&value,&count,&v,b,n,&inner))goto done; \
      *size=SCHEMA_CONFORMANCE_Q(FN##_measure_messages)(&value,count,&inner);if(*size<0)goto done; \
      *out=(uint8_t *)malloc((size_t)*size);if(!*out)goto done; \
      ok=SCHEMA_CONFORMANCE_Q(FN##_save_messages)(&value,count,*out,*size,&inner)==*size; \
-     done:;SCHEMA_CONFORMANCE_COPY_REPORT(inner,report);return ok; \
+     done:;SCHEMA_CONFORMANCE_COPY_REPORT(inner,report);report->announce=announce;return ok; \
     } \
     static SCHEMA_CONFORMANCE_Q(FN##_t) schema_conformance_storage_##TYPE; \
     static void * schema_conformance_make_##TYPE( void ) \

@@ -54,7 +54,7 @@ func (g *tableGen) emitUnionRow(un *ir.Union) {
 		g.tf("Payload [%d]byte", size-offset)
 	}
 	g.tf("}\n")
-	g.pf("func init(){ if unsafe.Sizeof(%sRow{})!=%d || unsafe.Offsetof(%sRow{}.Type)!=0 { panic(\"schema union row layout\") } }\n", un.Name, size, un.Name)
+	g.pf("func init(){ if tableSizeof[%sRow]()!=%d || tableOffsetof[%sRow](\"Type\")!=0 { panic(\"schema union row layout\") } }\n", un.Name, size, un.Name)
 	for _, v := range un.Variants {
 		if v.Void() {
 			continue

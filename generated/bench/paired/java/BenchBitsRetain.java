@@ -31,6 +31,13 @@ public final class BenchBitsRetain {
             return null;
         }
         BenchBitsVariable.Value v = new BenchBitsVariable.Value();
+        TableVariable.Measure measure = new TableVariable.Measure();
+        long measured = BenchBitsVariable.loadMeasure(data, measure);
+        if (measured < 0 && "storage_over_cap".equals(measure.report.reason)) {
+            report.refused = true;
+            report.reason = measure.report.reason;
+            return null;
+        }
         report.rootTypeId = BenchBitsVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
@@ -71,8 +78,7 @@ public final class BenchBitsRetain {
             retain.nodeKeys.clear();
             return null;
         }
-        TableVariable.Measure measure = new TableVariable.Measure();
-        if (BenchBitsVariable.loadMeasure(data, measure) < 0) {
+        if (measured < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;

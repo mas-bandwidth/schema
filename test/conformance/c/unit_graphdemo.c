@@ -243,7 +243,7 @@ static void walk_storage( Walk * w, const uint8_t * storage, const graphdemo_tab
         /* every COUNT COMPANION, against its declared bound, and a negative one
            refuses too — an extent is never negative, and a walker handed one
            indexes backwards out of the region (§7.4's pass two). */
-        if ( f->counted && f->count_offset != 0xffffffffu )
+        if ( f->counted && f->count_offset != UINT64_MAX )
         {
             memcpy( &used, storage + f->count_offset, sizeof( used ) );
             if ( used < 0 || used > f->array_bound )
@@ -334,13 +334,13 @@ static void walk_storage( Walk * w, const uint8_t * storage, const graphdemo_tab
             }
         }
 
-        if ( f->counted && f->count_offset != 0xffffffffu && f->kind != 12 && !is_bytes )
+        if ( f->counted && f->count_offset != UINT64_MAX && f->kind != 12 && !is_bytes )
         {
             snprintf( slot_path, sizeof( slot_path ), "%s#count", name );
             snprintf( value, sizeof( value ), "%d", (int) used );
             dump_line( w, slot_path, value );
         }
-        if ( f->optional && f->present_offset != 0xffffffffu )
+        if ( f->optional && f->present_offset != UINT64_MAX )
         {
             snprintf( slot_path, sizeof( slot_path ), "%s#present", name );
             dump_line( w, slot_path, storage[f->present_offset] != 0 ? "true" : "false" );

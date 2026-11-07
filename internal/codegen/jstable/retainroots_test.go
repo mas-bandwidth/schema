@@ -167,7 +167,7 @@ process.stdout.write(JSON.stringify({
 			}
 		})
 	}
-	if rows != 8 {
-		t.Fatalf("the manifest carries %d retain rows on tblrt1.Node, want 8", rows)
+	if rows != 10 {
+		t.Fatalf("the manifest carries %d retain rows on tblrt1.Node, want 10", rows)
 	}
 }

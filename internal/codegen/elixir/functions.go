@@ -1362,6 +1362,10 @@ func (g *gen) emitWriteElem(f *ir.Field, ev, ind string) {
 	if f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
+			if g.nestedOutOfLine(ref) {
+				g.emitWriteNested(ref, ev, ind)
+				return
+			}
 			g.withOwner(ref.Name, func() { g.emitWriteItems(ref.Items, ev, ind) })
 			return
 		case *ir.Union:
@@ -1520,6 +1524,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			}
 			g.emitWriteWide(name, wb, ind)
 		case *ir.Struct:
+			if g.nestedOutOfLine(ref) {
+				g.emitWriteNested(ref, name, ind)
+				return
+			}
 			g.withOwner(ref.Name, func() { g.emitWriteItems(ref.Items, name, ind) })
 		case *ir.Union:
 			g.emitWriteUnion(ref, name, ind)
@@ -2147,6 +2155,9 @@ func (g *gen) plainFastElement(f *ir.Field) bool {
 		case *ir.Enum, *ir.Flags:
 			return true
 		case *ir.Struct:
+			if g.nestedOutOfLine(ref) {
+				return false // a helper call, which the chained windows cannot cut
+			}
 			for _, item := range ref.Items {
 				switch item := item.(type) {
 				case *ir.ConstItem, *ir.ReservedItem:
@@ -2351,6 +2362,10 @@ func (g *gen) emitReadElem(f *ir.Field, ev, ind string, bounded bool) {
 	if f.Type.Kind == ir.TNamed {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
+			if g.nestedOutOfLine(ref) {
+				g.emitReadNested(ref, ev, ind)
+				return
+			}
 			g.withOwner(ref.Name, func() {
 				g.emitReadItems(ref.Items, ev, ind, bounded)
 				g.emitBuildStruct(ref, ev, ev, ind)
@@ -2440,6 +2455,10 @@ func (g *gen) emitReadScalar(f *ir.Field, lv, ind string, bounded bool) {
 			g.emitReadWide(wb, ind)
 			g.pf("%s%s = w\n", ind, lv)
 		case *ir.Struct:
+			if g.nestedOutOfLine(ref) {
+				g.emitReadNested(ref, lv, ind)
+				return
+			}
 			g.withOwner(ref.Name, func() {
 				g.emitReadItems(ref.Items, lv, ind, bounded)
 				g.emitBuildStruct(ref, lv, lv, ind)

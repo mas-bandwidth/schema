@@ -200,6 +200,12 @@ type Table struct {
 	// FixedEmitted reports whether the fixed form is emitted for this table
 	// (ir.TableFixedEmitted): the closure is supported and within the ceiling.
 	FixedEmitted bool
+
+	// Record and PastRecordBound are the live declaration's record size and
+	// whether it is past the fixed-form record bound, so it carries no fixed
+	// form and renders no lineage entry. Neither is written to the file.
+	Record          int64
+	PastRecordBound bool
 }
 
 // An Entry is one field of a locked record, and it is the unit the check
@@ -537,6 +543,8 @@ func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 		// [Update] carries the committed history forward onto it.
 		t.Lineage = renderLineage(r.u, st)
 		t.FixedEmitted = ir.TableFixedEmitted(r.u, st)
+		t.Record = ir.TableFixedTypeBytes(st)
+		t.PastRecordBound = pastRecordBound(st)
 	}
 	layout := ir.RecordLayout(r.u, st)
 	for _, f := range st.Fields {
@@ -1143,17 +1151,10 @@ func Parse(path string, data []byte) (*Unit, error) {
 	if u.Version == 0 {
 		return nil, fmt.Errorf("%s: empty — a %s begins with %q and its rendering version", path, FileName, magic)
 	}
-	// EVERY FIXED TABLE CARRIES ITS LINEAGE, from the rendering version that
-	// introduced it. An older lock is salvage (§11.8) and its lineage is filled
-	// from the declaration it is held against.
-	if u.Version == Version {
-		for i := range u.Tables {
-			t := &u.Tables[i]
-			if t.Decl == DeclFixedTable && len(t.Lineage) == 0 {
-				return nil, fmt.Errorf("%s: fixed table %s carries no lineage line — every fixed table's layouts are the record a reader is compiled from (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.7)", path, t.Name)
-			}
-		}
-	}
+	// A FIXED TABLE'S LINEAGE IS DEMANDED BY THE CHECK, NOT HERE: a table past
+	// the fixed-form record bound carries none (§3.4), and only the
+	// declaration the file is held against says which table that is
+	// ([diffLineage]).
 	// AND THE ROLL-UP IS SALVAGED, NEVER DEMANDED of a file that predates it: a
 	// lock written before the `lineage=` token holds every layout it shipped on
 	// the lines below, so the token is computed from them here and written down

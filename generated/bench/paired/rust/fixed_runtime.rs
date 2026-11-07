@@ -1429,7 +1429,7 @@ fn compile_entry(
             );
         }
         13 => match_children(
-            c, theirs, ti, their_at, mine, mi, my_at, counted, goff, gcount, depth + 1, census, report,
+            c, theirs, ti, their_at, mine, mi, my_at, counted, goff, gcount, depth, census, report,
         ),
         14 => {
             // an array: the count, then min( their bound, my bound ) elements

@@ -112,7 +112,8 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    storage_over_cap         // a wire whose region measure passes the 2^40-byte storage cap, refused before any region is sized (§6.5, §11)
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -185,6 +186,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason storage_over_cap = TableRefuseReason::storage_over_cap;
     static constexpr TableRefuseReason no_vocabulary = ::messagedemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::messagedemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::messagedemo::vocabulary_too_large;
@@ -314,7 +316,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -322,15 +324,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -360,10 +362,10 @@ struct TableFieldInfo
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -444,7 +446,7 @@ struct TableFieldInfo
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -28093,127 +28095,127 @@ inline const TableTypeInfo * PingTableType();
 inline const TableTypeInfo * UserTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, true, false, 16, (uint32_t) offsetof( User, name ), (uint32_t) sizeof( User::name ), (uint32_t) offsetof( User, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, true, false, 16, (int64_t) offsetof( User, name ), (int64_t) sizeof( User::name ), (int64_t) offsetof( User, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "User", (uint32_t) sizeof( User ), 1, fields, +[]( void * p ) { UserReset( *(User *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "User", (int64_t) sizeof( User ), 1, fields, +[]( void * p ) { UserReset( *(User *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * ScriptTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, true, false, 64, (uint32_t) offsetof( Script, path ), (uint32_t) sizeof( Script::path ), (uint32_t) offsetof( Script, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, false, 0, (uint32_t) offsetof( Script, line ), (uint32_t) sizeof( Script::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, true, false, 64, (int64_t) offsetof( Script, path ), (int64_t) sizeof( Script::path ), (int64_t) offsetof( Script, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, false, 0, (int64_t) offsetof( Script, line ), (int64_t) sizeof( Script::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Script", (uint32_t) sizeof( Script ), 2, fields, +[]( void * p ) { ScriptReset( *(Script *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Script", (int64_t) sizeof( Script ), 2, fields, +[]( void * p ) { ScriptReset( *(Script *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * SelectionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "start", "start", "Cursor", 0xee5d97ad45ad251full, 13, false, false, false, 0, (uint32_t) offsetof( Selection, start ), (uint32_t) sizeof( Selection::start ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "stop", "stop", "Cursor", 0xc2f00318f053500aull, 13, false, false, false, 0, (uint32_t) offsetof( Selection, stop ), (uint32_t) sizeof( Selection::stop ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "start", "start", "Cursor", 0xee5d97ad45ad251full, 13, false, false, false, 0, (int64_t) offsetof( Selection, start ), (int64_t) sizeof( Selection::start ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "stop", "stop", "Cursor", 0xc2f00318f053500aull, 13, false, false, false, 0, (int64_t) offsetof( Selection, stop ), (int64_t) sizeof( Selection::stop ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Selection", (uint32_t) sizeof( Selection ), 2, fields, +[]( void * p ) { SelectionReset( *(Selection *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Selection", (int64_t) sizeof( Selection ), 2, fields, +[]( void * p ) { SelectionReset( *(Selection *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * InsertTextTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "at", "at", "Cursor", 0x089c4e07b545a968ull, 13, false, false, false, 0, (uint32_t) offsetof( InsertText, at ), (uint32_t) sizeof( InsertText::at ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "text", "text", "string", 0xfa04f4ef1995407eull, 12, false, true, false, 32, (uint32_t) offsetof( InsertText, text ), (uint32_t) sizeof( InsertText::text ), (uint32_t) offsetof( InsertText, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, false, 0, (uint32_t) offsetof( InsertText, origin ), (uint32_t) sizeof( InsertText::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (uint32_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "origins", "origins", "Origin", 0x4437d86681113b74ull, 15, true, true, false, 2, (uint32_t) offsetof( InsertText, origins ), (uint32_t) sizeof( InsertText::origins[0] ), (uint32_t) offsetof( InsertText, origins_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (uint32_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "modes", "modes", "Mode", 0x9de526933e6e3ef3ull, 30, true, true, true, 2, (uint32_t) offsetof( InsertText, modes ), (uint32_t) sizeof( InsertText::modes[0] ), (uint32_t) offsetof( InsertText, modes_count ), (uint32_t) offsetof( InsertText, modes_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "at", "at", "Cursor", 0x089c4e07b545a968ull, 13, false, false, false, 0, (int64_t) offsetof( InsertText, at ), (int64_t) sizeof( InsertText::at ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "text", "text", "string", 0xfa04f4ef1995407eull, 12, false, true, false, 32, (int64_t) offsetof( InsertText, text ), (int64_t) sizeof( InsertText::text ), (int64_t) offsetof( InsertText, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, false, 0, (int64_t) offsetof( InsertText, origin ), (int64_t) sizeof( InsertText::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, false, 0, (int64_t) offsetof( Origin, pid ), (int64_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 24, (int64_t) offsetof( Origin, note.value ), (int64_t) sizeof( Origin::note.value ), (int64_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (int64_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (int64_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (int64_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (int64_t) offsetof( Origin, type ), (int64_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "origins", "origins", "Origin", 0x4437d86681113b74ull, 15, true, true, false, 2, (int64_t) offsetof( InsertText, origins ), (int64_t) sizeof( InsertText::origins[0] ), (int64_t) offsetof( InsertText, origins_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, false, 0, (int64_t) offsetof( Origin, pid ), (int64_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 24, (int64_t) offsetof( Origin, note.value ), (int64_t) sizeof( Origin::note.value ), (int64_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (int64_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (int64_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (int64_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (int64_t) offsetof( Origin, type ), (int64_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "modes", "modes", "Mode", 0x9de526933e6e3ef3ull, 30, true, true, true, 2, (int64_t) offsetof( InsertText, modes ), (int64_t) sizeof( InsertText::modes[0] ), (int64_t) offsetof( InsertText, modes_count ), (int64_t) offsetof( InsertText, modes_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "InsertText", (uint32_t) sizeof( InsertText ), 5, fields, +[]( void * p ) { InsertTextReset( *(InsertText *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "InsertText", (int64_t) sizeof( InsertText ), 5, fields, +[]( void * p ) { InsertTextReset( *(InsertText *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * RemoveTextTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "span", "span", "Selection", 0x8b7dc019093cd0e1ull, 13, false, false, false, 0, (uint32_t) offsetof( RemoveText, span ), (uint32_t) sizeof( RemoveText::span ), 0xffffffffu, 0xffffffffu, SelectionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "span", "span", "Selection", 0x8b7dc019093cd0e1ull, 13, false, false, false, 0, (int64_t) offsetof( RemoveText, span ), (int64_t) sizeof( RemoveText::span ), 0xffffffffu, 0xffffffffu, SelectionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "RemoveText", (uint32_t) sizeof( RemoveText ), 1, fields, +[]( void * p ) { RemoveTextReset( *(RemoveText *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "RemoveText", (int64_t) sizeof( RemoveText ), 1, fields, +[]( void * p ) { RemoveTextReset( *(RemoveText *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * EditTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "revision", "revision", "uint32", 0xd6a4dbc46c8e8658ull, 8, false, false, false, 0, (uint32_t) offsetof( Edit, revision ), (uint32_t) sizeof( Edit::revision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "body", "body", "EditBody", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Edit, body ), (uint32_t) sizeof( Edit::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( EditBody, tally ), (uint32_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (uint32_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "revision", "revision", "uint32", 0xd6a4dbc46c8e8658ull, 8, false, false, false, 0, (int64_t) offsetof( Edit, revision ), (int64_t) sizeof( Edit::revision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "body", "body", "EditBody", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (int64_t) offsetof( Edit, body ), (int64_t) sizeof( Edit::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (int64_t) offsetof( EditBody, tally ), (int64_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, true, false, 3, (int64_t) offsetof( EditBody, marks.value ), (int64_t) sizeof( EditBody::marks.value[0] ), (int64_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 4, (int64_t) offsetof( EditBody, blob.value ), (int64_t) sizeof( EditBody::blob.value[0] ), (int64_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (int64_t) offsetof( EditBody, mode ), (int64_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (int64_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (int64_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (int64_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (int64_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (int64_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (int64_t) offsetof( EditBody, type ), (int64_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Edit", (uint32_t) sizeof( Edit ), 2, fields, +[]( void * p ) { EditReset( *(Edit *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Edit", (int64_t) sizeof( Edit ), 2, fields, +[]( void * p ) { EditReset( *(Edit *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * OpenDocumentTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, true, false, 64, (uint32_t) offsetof( OpenDocument, path ), (uint32_t) sizeof( OpenDocument::path ), (uint32_t) offsetof( OpenDocument, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (uint32_t) offsetof( OpenDocument, mode ), (uint32_t) sizeof( OpenDocument::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "cursor", "cursor", "Cursor", 0xf927453fbe6252efull, 13, false, false, false, 0, (uint32_t) offsetof( OpenDocument, cursor ), (uint32_t) sizeof( OpenDocument::cursor ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, true, false, 64, (int64_t) offsetof( OpenDocument, path ), (int64_t) sizeof( OpenDocument::path ), (int64_t) offsetof( OpenDocument, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (int64_t) offsetof( OpenDocument, mode ), (int64_t) sizeof( OpenDocument::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "cursor", "cursor", "Cursor", 0xf927453fbe6252efull, 13, false, false, false, 0, (int64_t) offsetof( OpenDocument, cursor ), (int64_t) sizeof( OpenDocument::cursor ), 0xffffffffu, 0xffffffffu, CursorTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "OpenDocument", (uint32_t) sizeof( OpenDocument ), 3, fields, +[]( void * p ) { OpenDocumentReset( *(OpenDocument *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "OpenDocument", (int64_t) sizeof( OpenDocument ), 3, fields, +[]( void * p ) { OpenDocumentReset( *(OpenDocument *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * SaveDocumentTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, true, false, 64, (uint32_t) offsetof( SaveDocument, path ), (uint32_t) sizeof( SaveDocument::path ), (uint32_t) offsetof( SaveDocument, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "force", "force", "bool", 0xe75ad8afb3eeebe4ull, 1, false, false, false, 0, (uint32_t) offsetof( SaveDocument, force ), (uint32_t) sizeof( SaveDocument::force ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, true, false, 64, (int64_t) offsetof( SaveDocument, path ), (int64_t) sizeof( SaveDocument::path ), (int64_t) offsetof( SaveDocument, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "force", "force", "bool", 0xe75ad8afb3eeebe4ull, 1, false, false, false, 0, (int64_t) offsetof( SaveDocument, force ), (int64_t) sizeof( SaveDocument::force ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "SaveDocument", (uint32_t) sizeof( SaveDocument ), 2, fields, +[]( void * p ) { SaveDocumentReset( *(SaveDocument *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "SaveDocument", (int64_t) sizeof( SaveDocument ), 2, fields, +[]( void * p ) { SaveDocumentReset( *(SaveDocument *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * TransactionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "reason", "reason", "string", 0x65e8d7f3474f2639ull, 12, false, true, false, 16, (uint32_t) offsetof( Transaction, reason ), (uint32_t) sizeof( Transaction::reason ), (uint32_t) offsetof( Transaction, reason_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "edits", "edits", "Edit", 0x9478d06b697549e6ull, 13, true, true, false, 3, (uint32_t) offsetof( Transaction, edits ), (uint32_t) sizeof( Transaction::edits[0] ), (uint32_t) offsetof( Transaction, edits_count ), 0xffffffffu, EditTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "pending", "pending", "EditBody", 0x52dea0d6eeb5083cull, 15, true, false, false, 2, (uint32_t) offsetof( Transaction, pending ), (uint32_t) sizeof( Transaction::pending[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( EditBody, tally ), (uint32_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (uint32_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "checkpoints", "checkpoints", "uint32", 0x028afa1c4d757704ull, 8, true, false, true, 2, (uint32_t) offsetof( Transaction, checkpoints ), (uint32_t) sizeof( Transaction::checkpoints[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, checkpoints_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "snapshots", "snapshots", "Selection", 0x99dc6354a681403aull, 13, true, false, true, 2, (uint32_t) offsetof( Transaction, snapshots ), (uint32_t) sizeof( Transaction::snapshots[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, snapshots_present ), SelectionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "reason", "reason", "string", 0x65e8d7f3474f2639ull, 12, false, true, false, 16, (int64_t) offsetof( Transaction, reason ), (int64_t) sizeof( Transaction::reason ), (int64_t) offsetof( Transaction, reason_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "edits", "edits", "Edit", 0x9478d06b697549e6ull, 13, true, true, false, 3, (int64_t) offsetof( Transaction, edits ), (int64_t) sizeof( Transaction::edits[0] ), (int64_t) offsetof( Transaction, edits_count ), 0xffffffffu, EditTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "pending", "pending", "EditBody", 0x52dea0d6eeb5083cull, 15, true, false, false, 2, (int64_t) offsetof( Transaction, pending ), (int64_t) sizeof( Transaction::pending[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (int64_t) offsetof( EditBody, tally ), (int64_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, true, false, 3, (int64_t) offsetof( EditBody, marks.value ), (int64_t) sizeof( EditBody::marks.value[0] ), (int64_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 4, (int64_t) offsetof( EditBody, blob.value ), (int64_t) sizeof( EditBody::blob.value[0] ), (int64_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, false, 0, (int64_t) offsetof( EditBody, mode ), (int64_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( EditBody, insert ), InsertTextTableType(), NULL, 304 }, { (int64_t) offsetof( EditBody, remove ), RemoveTextTableType(), NULL, 16 }, { (int64_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (int64_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (int64_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (int64_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (int64_t) offsetof( EditBody, type ), (int64_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "checkpoints", "checkpoints", "uint32", 0x028afa1c4d757704ull, 8, true, false, true, 2, (int64_t) offsetof( Transaction, checkpoints ), (int64_t) sizeof( Transaction::checkpoints[0] ), 0xffffffffu, (int64_t) offsetof( Transaction, checkpoints_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "snapshots", "snapshots", "Selection", 0x99dc6354a681403aull, 13, true, false, true, 2, (int64_t) offsetof( Transaction, snapshots ), (int64_t) sizeof( Transaction::snapshots[0] ), 0xffffffffu, (int64_t) offsetof( Transaction, snapshots_present ), SelectionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Transaction", (uint32_t) sizeof( Transaction ), 5, fields, +[]( void * p ) { TransactionReset( *(Transaction *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Transaction", (int64_t) sizeof( Transaction ), 5, fields, +[]( void * p ) { TransactionReset( *(Transaction *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * ToolMessageTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "sequence", "sequence", "uint32", 0xaa38aca481f528a8ull, 8, false, false, false, 0, (uint32_t) offsetof( ToolMessage, sequence ), (uint32_t) sizeof( ToolMessage::sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "body", "body", "ToolBody", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( ToolMessage, body ), (uint32_t) sizeof( ToolMessage::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (uint32_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), OpenDocumentTableType(), NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), SaveDocumentTableType(), NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), TransactionTableType(), NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), PingTableType(), NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "history", "history", "ToolBody", 0x33428945bbd5f2ffull, 15, true, true, false, 2, (uint32_t) offsetof( ToolMessage, history ), (uint32_t) sizeof( ToolMessage::history[0] ), (uint32_t) offsetof( ToolMessage, history_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (uint32_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), OpenDocumentTableType(), NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), SaveDocumentTableType(), NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), TransactionTableType(), NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), PingTableType(), NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "trace", "trace", "Script", 0xdec59ea6c4eb9aeeull, 13, true, true, true, 3, (uint32_t) offsetof( ToolMessage, trace ), (uint32_t) sizeof( ToolMessage::trace[0] ), (uint32_t) offsetof( ToolMessage, trace_count ), (uint32_t) offsetof( ToolMessage, trace_present ), ScriptTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "marks", "marks", "Mode", 0x9077d4a4e1726e29ull, 30, true, false, true, 2, (uint32_t) offsetof( ToolMessage, marks ), (uint32_t) sizeof( ToolMessage::marks[0] ), 0xffffffffu, (uint32_t) offsetof( ToolMessage, marks_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "sequence", "sequence", "uint32", 0xaa38aca481f528a8ull, 8, false, false, false, 0, (int64_t) offsetof( ToolMessage, sequence ), (int64_t) sizeof( ToolMessage::sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "body", "body", "ToolBody", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (int64_t) offsetof( ToolMessage, body ), (int64_t) sizeof( ToolMessage::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, false, 0, (int64_t) offsetof( ToolBody, caps ), (int64_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, false, 2, (int64_t) offsetof( ToolBody, spans ), (int64_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, false, 0, (int64_t) offsetof( ToolBody, origin ), (int64_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, false, 0, (int64_t) offsetof( Origin, pid ), (int64_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 24, (int64_t) offsetof( Origin, note.value ), (int64_t) sizeof( Origin::note.value ), (int64_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (int64_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (int64_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (int64_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (int64_t) offsetof( Origin, type ), (int64_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( ToolBody, open ), OpenDocumentTableType(), NULL, 84 }, { (int64_t) offsetof( ToolBody, save ), SaveDocumentTableType(), NULL, 76 }, { (int64_t) offsetof( ToolBody, transact ), TransactionTableType(), NULL, 1628 }, { (int64_t) offsetof( ToolBody, ping ), PingTableType(), NULL, 4 }, { (int64_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (int64_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (int64_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (int64_t) offsetof( ToolBody, type ), (int64_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "history", "history", "ToolBody", 0x33428945bbd5f2ffull, 15, true, true, false, 2, (int64_t) offsetof( ToolMessage, history ), (int64_t) sizeof( ToolMessage::history[0] ), (int64_t) offsetof( ToolMessage, history_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, false, 0, (int64_t) offsetof( ToolBody, caps ), (int64_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, false, 2, (int64_t) offsetof( ToolBody, spans ), (int64_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, false, 0, (int64_t) offsetof( ToolBody, origin ), (int64_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, false, 0, (int64_t) offsetof( Origin, pid ), (int64_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, true, false, 24, (int64_t) offsetof( Origin, note.value ), (int64_t) sizeof( Origin::note.value ), (int64_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( Origin, user ), UserTableType(), NULL, 24 }, { (int64_t) offsetof( Origin, script ), ScriptTableType(), NULL, 76 }, { (int64_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (int64_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (int64_t) offsetof( Origin, type ), (int64_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( ToolBody, open ), OpenDocumentTableType(), NULL, 84 }, { (int64_t) offsetof( ToolBody, save ), SaveDocumentTableType(), NULL, 76 }, { (int64_t) offsetof( ToolBody, transact ), TransactionTableType(), NULL, 1628 }, { (int64_t) offsetof( ToolBody, ping ), PingTableType(), NULL, 4 }, { (int64_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (int64_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (int64_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (int64_t) offsetof( ToolBody, type ), (int64_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "trace", "trace", "Script", 0xdec59ea6c4eb9aeeull, 13, true, true, true, 3, (int64_t) offsetof( ToolMessage, trace ), (int64_t) sizeof( ToolMessage::trace[0] ), (int64_t) offsetof( ToolMessage, trace_count ), (int64_t) offsetof( ToolMessage, trace_present ), ScriptTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "marks", "marks", "Mode", 0x9077d4a4e1726e29ull, 30, true, false, true, 2, (int64_t) offsetof( ToolMessage, marks ), (int64_t) sizeof( ToolMessage::marks[0] ), 0xffffffffu, (int64_t) offsetof( ToolMessage, marks_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "ToolMessage", (uint32_t) sizeof( ToolMessage ), 5, fields, +[]( void * p ) { ToolMessageReset( *(ToolMessage *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "ToolMessage", (int64_t) sizeof( ToolMessage ), 5, fields, +[]( void * p ) { ToolMessageReset( *(ToolMessage *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * CursorTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, false, 0, (uint32_t) offsetof( Cursor, line ), (uint32_t) sizeof( Cursor::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "column", "column", "uint32", 0x5f531287628bf287ull, 8, false, false, false, 0, (uint32_t) offsetof( Cursor, column ), (uint32_t) sizeof( Cursor::column ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, false, 0, (int64_t) offsetof( Cursor, line ), (int64_t) sizeof( Cursor::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "column", "column", "uint32", 0x5f531287628bf287ull, 8, false, false, false, 0, (int64_t) offsetof( Cursor, column ), (int64_t) sizeof( Cursor::column ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Cursor", (uint32_t) sizeof( Cursor ), 2, fields, +[]( void * p ) { CursorReset( *(Cursor *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Cursor", (int64_t) sizeof( Cursor ), 2, fields, +[]( void * p ) { CursorReset( *(Cursor *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * PingTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "nonce", "nonce", "uint32", 0x73a94c71d60dc0d8ull, 8, false, false, false, 0, (uint32_t) offsetof( Ping, nonce ), (uint32_t) sizeof( Ping::nonce ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "nonce", "nonce", "uint32", 0x73a94c71d60dc0d8ull, 8, false, false, false, 0, (int64_t) offsetof( Ping, nonce ), (int64_t) sizeof( Ping::nonce ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Ping", (uint32_t) sizeof( Ping ), 1, fields, +[]( void * p ) { PingReset( *(Ping *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Ping", (int64_t) sizeof( Ping ), 1, fields, +[]( void * p ) { PingReset( *(Ping *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -28327,6 +28329,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // MESSAGEDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // UserLoadTextForm reads one User from the hand-editable text form
@@ -28334,6 +28351,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool UserLoadTextForm( const char * text, int64_t bytes, User & value, const char ** refusal );
+
+// UserLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool UserLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, User & value, const char ** refusal );
 
 // UserLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28360,6 +28381,10 @@ bool UserEditTextForm( const char * document, int64_t document_bytes, const Tabl
 // names itself in *refusal (§16.9.4).
 bool ScriptLoadTextForm( const char * text, int64_t bytes, Script & value, const char ** refusal );
 
+// ScriptLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool ScriptLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Script & value, const char ** refusal );
+
 // ScriptLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // ScriptSaveTextForm with no edit is the input byte for byte.
@@ -28384,6 +28409,10 @@ bool ScriptEditTextForm( const char * document, int64_t document_bytes, const Ta
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool SelectionLoadTextForm( const char * text, int64_t bytes, Selection & value, const char ** refusal );
+
+// SelectionLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool SelectionLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Selection & value, const char ** refusal );
 
 // SelectionLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28410,6 +28439,10 @@ bool SelectionEditTextForm( const char * document, int64_t document_bytes, const
 // names itself in *refusal (§16.9.4).
 bool InsertTextLoadTextForm( const char * text, int64_t bytes, InsertText & value, const char ** refusal );
 
+// InsertTextLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool InsertTextLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, InsertText & value, const char ** refusal );
+
 // InsertTextLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // InsertTextSaveTextForm with no edit is the input byte for byte.
@@ -28434,6 +28467,10 @@ bool InsertTextEditTextForm( const char * document, int64_t document_bytes, cons
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RemoveTextLoadTextForm( const char * text, int64_t bytes, RemoveText & value, const char ** refusal );
+
+// RemoveTextLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RemoveTextLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RemoveText & value, const char ** refusal );
 
 // RemoveTextLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28460,6 +28497,10 @@ bool RemoveTextEditTextForm( const char * document, int64_t document_bytes, cons
 // names itself in *refusal (§16.9.4).
 bool EditLoadTextForm( const char * text, int64_t bytes, Edit & value, const char ** refusal );
 
+// EditLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool EditLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Edit & value, const char ** refusal );
+
 // EditLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // EditSaveTextForm with no edit is the input byte for byte.
@@ -28484,6 +28525,10 @@ bool EditEditTextForm( const char * document, int64_t document_bytes, const Tabl
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool OpenDocumentLoadTextForm( const char * text, int64_t bytes, OpenDocument & value, const char ** refusal );
+
+// OpenDocumentLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool OpenDocumentLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, OpenDocument & value, const char ** refusal );
 
 // OpenDocumentLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28510,6 +28555,10 @@ bool OpenDocumentEditTextForm( const char * document, int64_t document_bytes, co
 // names itself in *refusal (§16.9.4).
 bool SaveDocumentLoadTextForm( const char * text, int64_t bytes, SaveDocument & value, const char ** refusal );
 
+// SaveDocumentLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool SaveDocumentLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, SaveDocument & value, const char ** refusal );
+
 // SaveDocumentLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // SaveDocumentSaveTextForm with no edit is the input byte for byte.
@@ -28534,6 +28583,10 @@ bool SaveDocumentEditTextForm( const char * document, int64_t document_bytes, co
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool TransactionLoadTextForm( const char * text, int64_t bytes, Transaction & value, const char ** refusal );
+
+// TransactionLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool TransactionLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Transaction & value, const char ** refusal );
 
 // TransactionLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28560,6 +28613,10 @@ bool TransactionEditTextForm( const char * document, int64_t document_bytes, con
 // names itself in *refusal (§16.9.4).
 bool ToolMessageLoadTextForm( const char * text, int64_t bytes, ToolMessage & value, const char ** refusal );
 
+// ToolMessageLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool ToolMessageLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, ToolMessage & value, const char ** refusal );
+
 // ToolMessageLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // ToolMessageSaveTextForm with no edit is the input byte for byte.
@@ -28585,6 +28642,10 @@ bool ToolMessageEditTextForm( const char * document, int64_t document_bytes, con
 // names itself in *refusal (§16.9.4).
 bool CursorLoadTextForm( const char * text, int64_t bytes, Cursor & value, const char ** refusal );
 
+// CursorLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool CursorLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Cursor & value, const char ** refusal );
+
 // CursorLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // CursorSaveTextForm with no edit is the input byte for byte.
@@ -28609,6 +28670,10 @@ bool CursorEditTextForm( const char * document, int64_t document_bytes, const Ta
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool PingLoadTextForm( const char * text, int64_t bytes, Ping & value, const char ** refusal );
+
+// PingLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool PingLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Ping & value, const char ** refusal );
 
 // PingLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

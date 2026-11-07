@@ -96,29 +96,29 @@ func (r TableBlockRows[T]) At(i int32) *T {
 // describes, and everything a GENERIC ROW WALK needs after that.
 type TableBlockFieldInfo struct {
 	Name           string
-	Offset         uint32 // the field's offset in the record this descriptor describes
-	Size           uint32 // its size there
-	Kind           uint8  // the table-wire kind, as TableFieldInfo carries it
-	OutOfLine      bool   // an out-of-line array: the triple's three members are live
-	OffsetOfOffset uint32 // the triple's OffsetOf member, or 0xffffffff
+	Offset         int64 // the field's offset in the record this descriptor describes
+	Size           int64 // its size there
+	Kind           uint8 // the table-wire kind, as TableFieldInfo carries it
+	OutOfLine      bool  // an out-of-line array: the triple's three members are live
+	OffsetOfOffset int64 // the triple's OffsetOf member, or 0xffffffff
 	// The COUNT COMPANION, and it is one column doing one job in both
 	// spellings: the triple's Count member for an out-of-line array, the int32
 	// used length of a string or a bytes inline, 0xffffffff when the field has
 	// none.
-	CountOffset  uint32
-	StrideOffset uint32 // the triple's Stride member, or 0xffffffff
-	Stride       uint32 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+	CountOffset  int64
+	StrideOffset int64 // the triple's Stride member, or 0xffffffff
+	Stride       int64 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
 
 	// ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
 	// already uses (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked
 	// node and a block row without learning a second one. Where the field
 	// starts is the pair above; this is everything after it.
-	IsArray       bool   // inline storage of ArrayBound slots at ElemSize (bytes included)
-	Counted       bool   // CountOffset names a used-length companion
-	Optional      bool   // PresentOffset names a bool presence companion
-	ArrayBound    int32  // inline slots, or a string's declared maximum; 0 for a plain scalar
-	ElemSize      uint32 // ONE slot's size; the field's own when it holds one value
-	PresentOffset uint32 // the presence companion, or 0xffffffff
+	IsArray       bool  // inline storage of ArrayBound slots at ElemSize (bytes included)
+	Counted       bool  // CountOffset names a used-length companion
+	Optional      bool  // PresentOffset names a bool presence companion
+	ArrayBound    int32 // inline slots, or a string's declared maximum; 0 for a plain scalar
+	ElemSize      int64 // ONE slot's size; the field's own when it holds one value
+	PresentOffset int64 // the presence companion, or 0xffffffff
 
 	// Element is the ELEMENT's or the nested record's own layout, behind a
 	// function so a descriptor graph needs no initialisation order. nil when
@@ -135,7 +135,7 @@ type TableBlockFieldInfo struct {
 type TableBlockInfo struct {
 	Name         string
 	BuildVersion uint64 // the unit's (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
-	Size         uint32 // the record's own size: a projection's, or a row's
+	Size         int64  // the record's own size: a projection's, or a row's
 	Align        uint32
 	NumFields    int32
 	Fields       []TableBlockFieldInfo
@@ -225,32 +225,32 @@ type TableStatBlockProjection struct {
 // model disagrees with the one the compiler derived stops the program where
 // it starts, rather than pointing at a row and reading the wrong bytes.
 func init() {
-	tableBlockLayoutSize("TableEntityBlockProjection", unsafe.Sizeof(TableEntityBlockProjection{}), 88)
-	tableBlockLayoutSize("TableEntityBlockProjection alignment", unsafe.Alignof(TableEntityBlockProjection{}), 8)
-	tableBlockLayoutOffset("TableEntityBlockProjection.Magic", unsafe.Offsetof(TableEntityBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("TableEntityBlockProjection.BuildVersion", unsafe.Offsetof(TableEntityBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("TableEntityBlockProjection.ByteOrder", unsafe.Offsetof(TableEntityBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("TableEntityBlockProjection.EntityID", unsafe.Offsetof(TableEntityBlockProjection{}.EntityID), 24)
-	tableBlockLayoutOffset("TableEntityBlockProjection.PosX", unsafe.Offsetof(TableEntityBlockProjection{}.PosX), 28)
-	tableBlockLayoutOffset("TableEntityBlockProjection.PosY", unsafe.Offsetof(TableEntityBlockProjection{}.PosY), 32)
-	tableBlockLayoutOffset("TableEntityBlockProjection.PosZ", unsafe.Offsetof(TableEntityBlockProjection{}.PosZ), 36)
-	tableBlockLayoutOffset("TableEntityBlockProjection.Yaw", unsafe.Offsetof(TableEntityBlockProjection{}.Yaw), 40)
-	tableBlockLayoutOffset("TableEntityBlockProjection.Pitch", unsafe.Offsetof(TableEntityBlockProjection{}.Pitch), 44)
-	tableBlockLayoutOffset("TableEntityBlockProjection.VelX", unsafe.Offsetof(TableEntityBlockProjection{}.VelX), 48)
-	tableBlockLayoutOffset("TableEntityBlockProjection.VelY", unsafe.Offsetof(TableEntityBlockProjection{}.VelY), 52)
-	tableBlockLayoutOffset("TableEntityBlockProjection.VelZ", unsafe.Offsetof(TableEntityBlockProjection{}.VelZ), 56)
-	tableBlockLayoutOffset("TableEntityBlockProjection.Health", unsafe.Offsetof(TableEntityBlockProjection{}.Health), 60)
-	tableBlockLayoutOffset("TableEntityBlockProjection.Weapon", unsafe.Offsetof(TableEntityBlockProjection{}.Weapon), 64)
-	tableBlockLayoutOffset("TableEntityBlockProjection.Damage", unsafe.Offsetof(TableEntityBlockProjection{}.Damage), 72)
-	tableBlockLayoutOffset("TableEntityBlockProjection.Moving", unsafe.Offsetof(TableEntityBlockProjection{}.Moving), 80)
-	tableBlockLayoutOffset("TableEntityBlockProjection.Firing", unsafe.Offsetof(TableEntityBlockProjection{}.Firing), 81)
-	tableBlockLayoutSize("TableStatBlockProjection", unsafe.Sizeof(TableStatBlockProjection{}), 32)
-	tableBlockLayoutSize("TableStatBlockProjection alignment", unsafe.Alignof(TableStatBlockProjection{}), 8)
-	tableBlockLayoutOffset("TableStatBlockProjection.Magic", unsafe.Offsetof(TableStatBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("TableStatBlockProjection.BuildVersion", unsafe.Offsetof(TableStatBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("TableStatBlockProjection.ByteOrder", unsafe.Offsetof(TableStatBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("TableStatBlockProjection.StatID", unsafe.Offsetof(TableStatBlockProjection{}.StatID), 24)
-	tableBlockLayoutOffset("TableStatBlockProjection.Delta", unsafe.Offsetof(TableStatBlockProjection{}.Delta), 28)
+	tableBlockLayoutSize("TableEntityBlockProjection", tableSizeof[TableEntityBlockProjection](), 88)
+	tableBlockLayoutSize("TableEntityBlockProjection alignment", tableAlignof[TableEntityBlockProjection](), 8)
+	tableBlockLayoutOffset("TableEntityBlockProjection.Magic", tableOffsetof[TableEntityBlockProjection]("Magic"), 0)
+	tableBlockLayoutOffset("TableEntityBlockProjection.BuildVersion", tableOffsetof[TableEntityBlockProjection]("BuildVersion"), 8)
+	tableBlockLayoutOffset("TableEntityBlockProjection.ByteOrder", tableOffsetof[TableEntityBlockProjection]("ByteOrder"), 16)
+	tableBlockLayoutOffset("TableEntityBlockProjection.EntityID", tableOffsetof[TableEntityBlockProjection]("EntityID"), 24)
+	tableBlockLayoutOffset("TableEntityBlockProjection.PosX", tableOffsetof[TableEntityBlockProjection]("PosX"), 28)
+	tableBlockLayoutOffset("TableEntityBlockProjection.PosY", tableOffsetof[TableEntityBlockProjection]("PosY"), 32)
+	tableBlockLayoutOffset("TableEntityBlockProjection.PosZ", tableOffsetof[TableEntityBlockProjection]("PosZ"), 36)
+	tableBlockLayoutOffset("TableEntityBlockProjection.Yaw", tableOffsetof[TableEntityBlockProjection]("Yaw"), 40)
+	tableBlockLayoutOffset("TableEntityBlockProjection.Pitch", tableOffsetof[TableEntityBlockProjection]("Pitch"), 44)
+	tableBlockLayoutOffset("TableEntityBlockProjection.VelX", tableOffsetof[TableEntityBlockProjection]("VelX"), 48)
+	tableBlockLayoutOffset("TableEntityBlockProjection.VelY", tableOffsetof[TableEntityBlockProjection]("VelY"), 52)
+	tableBlockLayoutOffset("TableEntityBlockProjection.VelZ", tableOffsetof[TableEntityBlockProjection]("VelZ"), 56)
+	tableBlockLayoutOffset("TableEntityBlockProjection.Health", tableOffsetof[TableEntityBlockProjection]("Health"), 60)
+	tableBlockLayoutOffset("TableEntityBlockProjection.Weapon", tableOffsetof[TableEntityBlockProjection]("Weapon"), 64)
+	tableBlockLayoutOffset("TableEntityBlockProjection.Damage", tableOffsetof[TableEntityBlockProjection]("Damage"), 72)
+	tableBlockLayoutOffset("TableEntityBlockProjection.Moving", tableOffsetof[TableEntityBlockProjection]("Moving"), 80)
+	tableBlockLayoutOffset("TableEntityBlockProjection.Firing", tableOffsetof[TableEntityBlockProjection]("Firing"), 81)
+	tableBlockLayoutSize("TableStatBlockProjection", tableSizeof[TableStatBlockProjection](), 32)
+	tableBlockLayoutSize("TableStatBlockProjection alignment", tableAlignof[TableStatBlockProjection](), 8)
+	tableBlockLayoutOffset("TableStatBlockProjection.Magic", tableOffsetof[TableStatBlockProjection]("Magic"), 0)
+	tableBlockLayoutOffset("TableStatBlockProjection.BuildVersion", tableOffsetof[TableStatBlockProjection]("BuildVersion"), 8)
+	tableBlockLayoutOffset("TableStatBlockProjection.ByteOrder", tableOffsetof[TableStatBlockProjection]("ByteOrder"), 16)
+	tableBlockLayoutOffset("TableStatBlockProjection.StatID", tableOffsetof[TableStatBlockProjection]("StatID"), 24)
+	tableBlockLayoutOffset("TableStatBlockProjection.Delta", tableOffsetof[TableStatBlockProjection]("Delta"), 28)
 }
 
 // tableBlockLayoutSize refuses a record this runtime lays out at a different

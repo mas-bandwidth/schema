@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
 	"math"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -27,18 +28,18 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xa9a32f918d49425e)
-const _ = uint64(0xa9a32f918d49425e - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x47dd492b76f04c4d)
+const _ = uint64(0x47dd492b76f04c4d - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
 const TableDocNone = goruntime.TableDocNone
 
-func tableJSONGetRaw(a0 unsafe.Pointer, a1 uint32) uint64 { return goruntime.TableJSONGetRaw(a0, a1) }
+func tableJSONGetRaw(a0 unsafe.Pointer, a1 int64) uint64 { return goruntime.TableJSONGetRaw(a0, a1) }
 
-func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJSONSetRaw(a0, a1, a2) }
+func tableJSONSetRaw(a0 unsafe.Pointer, a1 int64, a2 uint64) { goruntime.TableJSONSetRaw(a0, a1, a2) }
 
-func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
+func tableJSONGetSigned(a0 unsafe.Pointer, a1 int64) int64 {
 	return goruntime.TableJSONGetSigned(a0, a1)
 }
 
@@ -89,6 +90,7 @@ const TableRefuseBatchTooLarge = goruntime.TableRefuseBatchTooLarge
 const TableRefuseTextIllFormed = goruntime.TableRefuseTextIllFormed
 const TableRefuseCountOverBound = goruntime.TableRefuseCountOverBound
 const TableRefuseLengthOverBound = goruntime.TableRefuseLengthOverBound
+const TableRefuseStorageOverCap = goruntime.TableRefuseStorageOverCap
 
 type tableTruncatedMalformed = goruntime.TableTruncatedMalformed
 
@@ -637,6 +639,24 @@ type EffectRow struct {
 // announcement carries before the first body so an endpoint's build is knowable.
 const BuildVersion uint64 = 0x93ff58e3111cb4d4
 
+// THE LAYOUT FACTS of a generated type, from this build's own compiler. A
+// constant unsafe.Sizeof or unsafe.Offsetof costs the type checker time
+// exponential in the depth of a chain of structs that each end in a struct, so
+// none is spelled over a generated type: behind a type parameter each type is
+// sized once, and the type answers fold to constants when inlined.
+func tableSizeof[T any]() uintptr                  { return unsafe.Sizeof(*(*T)(nil)) }
+func tableAlignof[T any]() uintptr                 { return unsafe.Alignof(*(*T)(nil)) }
+func tableOffsetof[T any](name string) uintptr     { return tableLayoutField[T](name).Offset }
+func tableMemberSizeof[T any](name string) uintptr { return tableLayoutField[T](name).Type.Size() }
+func tableElemSizeof[T any](name string) uintptr   { return tableLayoutField[T](name).Type.Elem().Size() }
+func tableLayoutField[T any](name string) reflect.StructField {
+	f, ok := reflect.TypeFor[T]().FieldByName(name)
+	if !ok {
+		panic("schema layout: " + reflect.TypeFor[T]().Name() + " has no field " + name)
+	}
+	return f
+}
+
 // ---- reflection (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
 //
 // Static field descriptors for every type in the table closure: name, the
@@ -647,14 +667,13 @@ const BuildVersion uint64 = 0x93ff58e3111cb4d4
 //
 // The descriptors carry MEMORY facts — Offset, ElemSize, CountOffset,
 // PresentOffset and TableTypeInfo.Size — exactly as the C++ reference does,
-// because Go can state them: unsafe.Offsetof and unsafe.Sizeof are constant
-// expressions of the compiler's own layout model, so the generated numbers are
-// this build's own rather than a guess about it. They are what lets one
-// generic walk drive the text form for every table.
+// because Go can state them: the compiler's own layout model answers them, so
+// the generated numbers are this build's own rather than a guess about it.
+// They are what lets one generic walk drive the text form for every table.
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
-	CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
+	CookOffset, CookElemSize, CookCountOffset, CookPresentOffset int64
 	List, Map                                                    bool // unbounded by-value containers
 	// UnboundedContainer is the ONE TELL of a container with no declared bound
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1): true on a map, a []T and a text list
@@ -674,11 +693,11 @@ type TableFieldInfo struct {
 	Counted            bool  // a <Name>Count/<Name>Length int32 companion exists
 	Optional           bool  // a ?T field: a <Name>Present bool decides whether it rides
 
-	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
-	Offset        uint32 // unsafe.Offsetof the storage member
-	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
-	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
-	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
+	ArrayBound    int32 // array capacity / string max length; 0 for plain scalars
+	Offset        int64 // unsafe.Offsetof the storage member
+	ElemSize      int64 // unsafe.Sizeof the member (element size for arrays)
+	CountOffset   int64 // unsafe.Offsetof the count/length companion, or 0xffffffff
+	PresentOffset int64 // unsafe.Offsetof the Present companion, or 0xffffffff
 
 	FracBits         uint8 // fixed-point binary scale
 	WideRange        bool
@@ -756,16 +775,16 @@ type TableUnionArmInfo struct {
 	Field  TableFieldInfo               // arm shape; offsets are relative to union storage
 	Void   bool                         // a selected payload-free arm
 	Reset  func(storage unsafe.Pointer) // establish selected payload defaults
-	Offset uint32                       // unsafe.Offsetof the arm's payload within the union storage
+	Offset int64                        // unsafe.Offsetof the arm's payload within the union storage
 	Table  func() *TableTypeInfo        // the arm payload's descriptor
 }
 
 // TableUnionInfo is a union field's shape: the tag, and the arms indexed by
 // it. Arms run [0, EnumMax]; index 0 is the EMPTY arm and carries no payload.
 type TableUnionInfo struct {
-	CookTagSize uint32
-	TagOffset   uint32 // unsafe.Offsetof the tag within the union storage
-	TagSize     uint32 // unsafe.Sizeof the tag
+	CookTagSize int64
+	TagOffset   int64 // unsafe.Offsetof the tag within the union storage
+	TagSize     int64 // unsafe.Sizeof the tag
 	Arms        []TableUnionArmInfo
 }
 
@@ -773,9 +792,9 @@ type TableUnionInfo struct {
 type TableTypeInfo struct {
 	SaveBodyRetain      func(*TableRetainWriter, unsafe.Pointer) bool
 	LoadBodyRetain      func(TableRetainReader, unsafe.Pointer) bool
-	CookSize, CookAlign uint32
+	CookSize, CookAlign int64
 	Name                string // schema type name
-	Size                uint32 // unsafe.Sizeof the storage struct
+	Size                int64  // unsafe.Sizeof the storage struct
 	ID                  uint64
 	Variable            bool
 	CycleIndex          uint64
@@ -1909,7 +1928,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 }
 
 func init() {
-	if unsafe.Sizeof(EffectRow{}) != 8 || unsafe.Offsetof(EffectRow{}.Type) != 0 {
+	if tableSizeof[EffectRow]() != 8 || tableOffsetof[EffectRow]("Type") != 0 {
 		panic("schema union row layout")
 	}
 }
@@ -1929,6 +1948,7 @@ func (value *EffectRow) Debuff() *struct {
 }
 
 const tableRegionAlign int64 = 8
+const tableStorageCap int64 = 1099511627776
 const tableBytesTypeID uint64 = 0x2f2ec0474f1c4fe4
 const tableStringTypeID uint64 = 0x704be0d8faaffc58
 
@@ -2690,6 +2710,9 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		if n > 0 {
 			data += n
 		}
+		if data > tableStorageCap {
+			return -1, 0, TableOpenRefused, TableRefuseStorageOverCap
+		}
 	}
 	if strict && !s.whole() {
 		return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
@@ -2716,6 +2739,9 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		}
 	}
 	attribution := int64(s.records+1) * 16
+	if data+attribution > tableStorageCap {
+		return -1, 0, TableOpenRefused, TableRefuseStorageOverCap
+	}
 	return data + attribution, attribution, TableOpenOk, TableRefuseOk
 }
 
@@ -3275,6 +3301,9 @@ func tableWireArrayExtent(r TableReader, f *TableFieldInfo, keyed, arm bool, at 
 			return TableRefuseCountOverLength
 		}
 		*at = (*at + int64(f.ElemAlign) - 1) & -int64(f.ElemAlign)
+		if f.ElemSize > 0 && int64(count) > (tableStorageCap-*at)/int64(f.ElemSize) {
+			return TableRefuseStorageOverCap
+		}
 		*at += int64(count) * int64(f.ElemSize)
 	}
 	if nodes >= 0 && f.Map {

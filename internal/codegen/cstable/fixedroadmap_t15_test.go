@@ -34,6 +34,13 @@ import (
 // anything but PROBE OK. It fails, never skips.
 func t15RunCS(t *testing.T, schemaSrc, body string) {
 	t.Helper()
+	t15RunCSConfig(t, schemaSrc, body, "")
+}
+
+// t15RunCSConfig is t15RunCS with runtime configProperties, a JSON object
+// body such as a GC heap limit, or none when it is empty.
+func t15RunCSConfig(t *testing.T, schemaSrc, body, config string) {
+	t.Helper()
 	// THE PACKET FORM READS THROUGH THE SIBLING C# RUNTIME (serialize.cs), the
 	// checkout t06WideRun compiles against: missing, it is a skip by name, and a
 	// failure under SCHEMA_REQUIRE_CORPUS — never faked.
@@ -93,7 +100,10 @@ func t15RunCS(t *testing.T, schemaSrc, body string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("csc failed:\n%s", out)
 	}
-	rc := fmt.Sprintf(`{ "runtimeOptions": { "tfm": "net10.0", "framework": { "name": "Microsoft.NETCore.App", "version": %q } } }`, runtime)
+	if config != "" {
+		config = `, "configProperties": { ` + config + ` }`
+	}
+	rc := fmt.Sprintf(`{ "runtimeOptions": { "tfm": "net10.0", "framework": { "name": "Microsoft.NETCore.App", "version": %q }%s } }`, runtime, config)
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(rc), 0o600); err != nil {
 		t.Fatal(err)
 	}

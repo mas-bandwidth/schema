@@ -133,7 +133,7 @@ inline bool TableJsonFinite( double v )
     return v == v && v <= 1.7976931348623157e308 && v >= -1.7976931348623157e308;
 }
 
-inline uint64_t TableJsonGetRaw( const void * storage, uint32_t width )
+inline uint64_t TableJsonGetRaw( const void * storage, int64_t width )
 {
     switch ( width )
     {
@@ -165,7 +165,7 @@ inline uint64_t TableJsonGetRaw( const void * storage, uint32_t width )
     return 0;
 }
 
-inline void TableJsonSetRaw( void * storage, uint32_t width, uint64_t value )
+inline void TableJsonSetRaw( void * storage, int64_t width, uint64_t value )
 {
     switch ( width )
     {
@@ -196,7 +196,7 @@ inline void TableJsonSetRaw( void * storage, uint32_t width, uint64_t value )
     }
 }
 
-inline int64_t TableJsonGetSigned( const void * storage, uint32_t width )
+inline int64_t TableJsonGetSigned( const void * storage, int64_t width )
 {
     uint64_t raw = TableJsonGetRaw( storage, width );
     if ( width < 8 )
@@ -312,7 +312,7 @@ inline uint32_t TableJsonWideDiv( TableJsonWide * v, uint32_t d )
 // pair — native __int128 in the host's byte order, or the emulated struct with
 // its low lane first — so the lanes are read in the host's order; a narrower
 // storage is one lane, sign-extended for a signed kind.
-inline TableJsonWide TableJsonWideLoad( const void * storage, uint32_t width, bool is_signed )
+inline TableJsonWide TableJsonWideLoad( const void * storage, int64_t width, bool is_signed )
 {
     TableJsonWide v = { 0, 0 };
     if ( width == 16 )
@@ -330,7 +330,7 @@ inline TableJsonWide TableJsonWideLoad( const void * storage, uint32_t width, bo
     return v;
 }
 
-inline void TableJsonWideStore( void * storage, uint32_t width, TableJsonWide v )
+inline void TableJsonWideStore( void * storage, int64_t width, TableJsonWide v )
 {
     if ( width == 16 )
     {
@@ -2771,7 +2771,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
 // 00-59 (second 60 is a leap second this kind refuses). The offset is Z, z or
 // sign HH:MM with both fields in range. Nothing may precede or follow the
 // production. An instant outside int64's nanosecond range is refused too,
-// which is Time.UnixNano's domain (1678 through 2262).
+// which is Time.UnixNano's domain (1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z).
 inline int TableJsonTimestampDigit( char c )
 {
     return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
@@ -2993,6 +2993,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             return false;
         }
         in.pos++;
+        // the union's object is one level below its holder, and its arm's
+        // value one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( TableJsonPeek( in ) == '}' )
         {
@@ -3021,7 +3028,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         if ( tag == 0 )
         {
             in.report->unknown++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else
         {
@@ -3045,7 +3052,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 else if ( got != TableJsonShape( arm ) )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( arm->kind == 17 && !arm->is_array )
@@ -3069,13 +3076,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 if ( TableJsonValueShape( in ) != 'o' )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else
                 {
                     arms->arms[tag].table->reset( payload );
-                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return false; }
+                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 2 ) ) { return false; }
                 }
             }
             else
@@ -3085,7 +3092,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 if ( TableJsonValueShape( in ) != 'z' )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( !TableJsonLiteral( in, "null" ) )
@@ -3145,6 +3152,12 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             return false;
         }
         in.pos++;
+        // the flags array is one level below its holder, and its elements one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         uint64_t bits = 0;
         for ( ;; )
         {
@@ -3162,7 +3175,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             if ( c != '"' )
             {
                 in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else
             {
@@ -3379,7 +3392,7 @@ inline bool schema_table_json_read_text_element_( TableJsonIn & in, uint8_t * el
     if ( got != 's' )
     {
         in.report->kind_mismatch++;
-        return TableJsonSkipValue( in, depth + 1 );
+        return TableJsonSkipValue( in, depth + 2 );
     }
     uint8_t * val_storage = element + value->offset;
     if ( value->unbounded )
@@ -3416,6 +3429,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
         in.pos++;
+        // the text list is one level below its holder, and its elements one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         for ( int32_t i = 0; i < f->array_bound; i++ )
         {
             f->table->reset( storage + (int64_t) i * f->elem_size );
@@ -3432,7 +3451,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( total_clamped || placed >= f->array_bound )
             {
                 if ( !total_clamped ) { in.report->clamped++; }
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else
             {
@@ -3518,6 +3537,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             return false;
         }
         in.pos++;
+        // the keyed object is one level below its holder, and its elements one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         // every slot back to its declared defaults first, so a key the text
         // omits keeps them and a repeated field key cannot leave an earlier
         // occurrence's slots standing
@@ -3581,12 +3606,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( slot < 0 )
             {
                 in.report->unknown++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( TableJsonValueShape( in ) != shape )
             {
                 in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( !TableJsonReadScalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
             {
@@ -3616,6 +3641,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             return false;
         }
         in.pos++;
+        // the array is one level below its holder, and its elements one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         // LAST WINS has to be true of a repeated ARRAY key too, and it is
         // wire-visible: a fixed array writes every slot, so a second, shorter
         // occurrence overlaying a prefix would leave the first occurrence's
@@ -3656,7 +3687,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 // more elements than the reader's bound: the bounded prefix
                 // is kept and the excess counts, the wire's rule (§4)
                 in.report->clamped++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( f->kind == 17 )
             {
@@ -3671,7 +3702,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 else if ( got != 'o' )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                 }
                 else if ( !TableJsonReadPointer( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return false; }
                 placed++;
@@ -3679,7 +3710,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             else if ( TableJsonValueShape( in ) != shape )
             {
                 in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                 placed++;
             }
             else
@@ -4724,17 +4755,67 @@ inline std::string tableTextFormIndex( const std::string & path, size_t i )
     return path + "[" + std::to_string( (long long) i ) + "]";
 }
 
+// tableTextFormResolved is the caller's limits with every zero or negative
+// field taken from the contract defaults, and depth never past 128
+// (docs/SPEC-TABLES.md §16.9.4).
+inline TableTextFormLimits tableTextFormResolved( const TableTextFormLimits & limits )
+{
+    TableTextFormLimits l = limits;
+    if ( l.bytes <= 0 ) { l.bytes = 65536; }
+    if ( l.tokens <= 0 ) { l.tokens = 8192; }
+    if ( l.nodes <= 0 ) { l.nodes = 4096; }
+    if ( l.allocation <= 0 ) { l.allocation = 65536; }
+    if ( l.depth <= 0 || l.depth > 128 ) { l.depth = 128; }
+    return l;
+}
+
+inline TableTextFormLimits tableTextFormDefaultLimits()
+{
+    TableTextFormLimits l;
+    l.bytes = 0;
+    l.tokens = 0;
+    l.nodes = 0;
+    l.allocation = 0;
+    l.depth = 0;
+    return tableTextFormResolved( l );
+}
+
+// TableTextFormReader counts as it parses (§16.9.4): every atom, open and
+// close parenthesis is a token, every list is a node, and every string's
+// decoded bytes add to the allocation, each against its resolved limit.
 struct TableTextFormReader
 {
     const char * s;
     int64_t n;
     int64_t i;
     const char ** why;
+    TableTextFormLimits limits;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+
+    void begin( const char * text, int64_t bytes, const char ** refusal, const TableTextFormLimits & resolved )
+    {
+        s = text;
+        n = bytes;
+        i = 0;
+        why = refusal;
+        limits = resolved;
+        tokens = 0;
+        nodes = 0;
+        allocation = 0;
+    }
 
     bool fail( const char * name )
     {
         if ( why != NULL && *why == NULL ) { *why = name; }
         return false;
+    }
+
+    bool token()
+    {
+        tokens++;
+        return tokens <= limits.tokens || fail( "text_limit" );
     }
 
     bool gap()
@@ -4789,7 +4870,11 @@ struct TableTextFormReader
         while ( i < n )
         {
             const unsigned char c = (unsigned char) s[i++];
-            if ( c == '"' ) { return true; }
+            if ( c == '"' )
+            {
+                allocation += (int64_t) out.size();
+                return allocation <= limits.allocation || fail( "text_limit" );
+            }
             if ( c < 0x20 ) { return fail( "text_encoding" ); }
             if ( c != '\\' )
             {
@@ -4846,13 +4931,16 @@ struct TableTextFormReader
 
     bool value( TableTextFormNode & node, int depth )
     {
-        if ( depth > 128 ) { return fail( "text_limit" ); }
         gap();
         if ( i >= n ) { return fail( "text_syntax" ); }
+        if ( !token() ) { return false; }
         const int64_t begin = i;
         const char c = s[i];
         if ( c == '(' )
         {
+            if ( depth + 1 > limits.depth ) { return fail( "text_limit" ); }
+            nodes++;
+            if ( nodes > limits.nodes ) { return fail( "text_limit" ); }
             i++;
             node.kind = '(';
             node.start = begin;
@@ -4862,6 +4950,7 @@ struct TableTextFormReader
                 if ( i >= n ) { return fail( "text_unterminated" ); }
                 if ( s[i] == ')' )
                 {
+                    if ( !token() ) { return false; }
                     i++;
                     node.end = i;
                     return true;
@@ -5952,15 +6041,18 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
 
 // tableTextFormParse is the read half of the document: parse, resolve and
 // write the canonical JSON, optionally recording every value's source span
-// (docs/SPEC-TABLES.md §16.9.1, §16.9.2, §16.9.3).
-inline bool tableTextFormParse( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why, tableTextFormSpans * spans )
+// (docs/SPEC-TABLES.md §16.9.1, §16.9.2, §16.9.3). The limits are resolved;
+// a document past the byte limit is refused before any byte is parsed.
+inline bool tableTextFormParse( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why, tableTextFormSpans * spans, const TableTextFormLimits & limits )
 {
     *why = NULL;
+    if ( bytes > limits.bytes )
+    {
+        *why = "text_limit";
+        return false;
+    }
     TableTextFormReader r;
-    r.s = text;
-    r.n = bytes;
-    r.i = 0;
-    r.why = why;
+    r.begin( text, bytes, why, limits );
     r.gap();
     TableTextFormNode root;
     if ( !r.value( root, 0 ) ) { return false; }
@@ -5974,12 +6066,12 @@ inline bool tableTextFormParse( const char * text, int64_t bytes, const TableTyp
     return true;
 }
 
-// TableTextFormToJson parses one strict document and writes the canonical
-// JSON of the same value (docs/SPEC-TABLES.md §16.9.1, §16.9.2). A refusal
-// names itself in *why (§16.9.4).
-inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTypeInfo * info, std::string & out, const char ** why )
+// TableTextFormToJson parses one strict document under the caller's limits
+// and writes the canonical JSON of the same value (docs/SPEC-TABLES.md
+// §16.9.1, §16.9.2). A refusal names itself in *why (§16.9.4).
+inline bool TableTextFormToJson( const char * text, int64_t bytes, const TableTextFormLimits & limits, const TableTypeInfo * info, std::string & out, const char ** why )
 {
-    return tableTextFormParse( text, bytes, info, out, why, NULL );
+    return tableTextFormParse( text, bytes, info, out, why, NULL, tableTextFormResolved( limits ) );
 }
 
 // tableTextFormApply splices the edits by ORIGINAL byte span, so an earlier
@@ -6015,9 +6107,10 @@ inline std::string tableTextFormApply( const std::string & src, const std::vecto
 inline bool tableTextFormEditText( const std::string & document, const TableTypeInfo * info, const TableTextFormEdit * edits, int64_t count, std::string & edited, std::string & json, const char ** why )
 {
     *why = NULL;
+    const TableTextFormLimits limits = tableTextFormDefaultLimits();
     tableTextFormSpans original;
     std::string originalJson;
-    if ( !tableTextFormParse( document.data(), (int64_t) document.size(), info, originalJson, why, &original ) ) { return false; }
+    if ( !tableTextFormParse( document.data(), (int64_t) document.size(), info, originalJson, why, &original, limits ) ) { return false; }
     std::vector<tableTextFormSplice> splices;
     for ( int64_t e = 0; e < count; e++ )
     {
@@ -6033,10 +6126,7 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
             return false;
         }
         TableTextFormReader r;
-        r.s = edits[e].text;
-        r.n = (int64_t) strlen( edits[e].text );
-        r.i = 0;
-        r.why = why;
+        r.begin( edits[e].text, (int64_t) strlen( edits[e].text ), why, limits );
         r.gap();
         TableTextFormNode value;
         if ( !r.value( value, 0 ) ) { return false; }
@@ -6076,7 +6166,7 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
     // Validate the whole edit first; a refusal leaves the old pair untouched.
     std::string allJson;
     const std::string all = tableTextFormApply( document, splices );
-    if ( !tableTextFormParse( all.data(), (int64_t) all.size(), info, allJson, why, NULL ) ) { return false; }
+    if ( !tableTextFormParse( all.data(), (int64_t) all.size(), info, allJson, why, NULL, limits ) ) { return false; }
     // A semantic no-op retains the old spelling (§16.9.3, Go
     // internal/codegen/gotable/textform.go tableTextFormEdit): compare the
     // LANDED value at the edited path, so a float32 that rounds the candidate
@@ -6089,12 +6179,12 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
         const std::string candidate = tableTextFormApply( document, one );
         std::string candidateJson;
         tableTextFormSpans candidateSpans;
-        if ( !tableTextFormParse( candidate.data(), (int64_t) candidate.size(), info, candidateJson, why, &candidateSpans ) ) { return false; }
+        if ( !tableTextFormParse( candidate.data(), (int64_t) candidate.size(), info, candidateJson, why, &candidateSpans, limits ) ) { return false; }
         const tableTextFormSpan * after = candidateSpans.find( splices[i].path );
         if ( after == NULL || after->canon != splices[i].canon ) { kept.push_back( splices[i] ); }
     }
     edited = tableTextFormApply( document, kept );
-    if ( !tableTextFormParse( edited.data(), (int64_t) edited.size(), info, json, why, NULL ) ) { return false; }
+    if ( !tableTextFormParse( edited.data(), (int64_t) edited.size(), info, json, why, NULL, limits ) ) { return false; }
     return true;
 }
 
@@ -6444,8 +6534,13 @@ int64_t DebuffToJson( const Debuff & value, char * buffer, int64_t capacity )
 
 bool WeaponConfigLoadTextForm( const char * text, int64_t bytes, WeaponConfig & value, const char ** refusal )
 {
+    return WeaponConfigLoadTextForm( text, bytes, tableTextFormDefaultLimits(), value, refusal );
+}
+
+bool WeaponConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, WeaponConfig & value, const char ** refusal )
+{
     std::string json;
-    if ( !TableTextFormToJson( text, bytes, WeaponConfigTableType(), json, refusal ) ) { return false; }
+    if ( !TableTextFormToJson( text, bytes, limits, WeaponConfigTableType(), json, refusal ) ) { return false; }
     TableReport report;
     if ( !WeaponConfigFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
@@ -6489,8 +6584,13 @@ bool WeaponConfigEditTextForm( const char * document, int64_t document_bytes, co
 
 bool LoadoutConfigLoadTextForm( const char * text, int64_t bytes, LoadoutConfig & value, const char ** refusal )
 {
+    return LoadoutConfigLoadTextForm( text, bytes, tableTextFormDefaultLimits(), value, refusal );
+}
+
+bool LoadoutConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, LoadoutConfig & value, const char ** refusal )
+{
     std::string json;
-    if ( !TableTextFormToJson( text, bytes, LoadoutConfigTableType(), json, refusal ) ) { return false; }
+    if ( !TableTextFormToJson( text, bytes, limits, LoadoutConfigTableType(), json, refusal ) ) { return false; }
     TableReport report;
     if ( !LoadoutConfigFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
@@ -6534,8 +6634,13 @@ bool LoadoutConfigEditTextForm( const char * document, int64_t document_bytes, c
 
 bool ProfileConfigLoadTextForm( const char * text, int64_t bytes, ProfileConfig & value, const char ** refusal )
 {
+    return ProfileConfigLoadTextForm( text, bytes, tableTextFormDefaultLimits(), value, refusal );
+}
+
+bool ProfileConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, ProfileConfig & value, const char ** refusal )
+{
     std::string json;
-    if ( !TableTextFormToJson( text, bytes, ProfileConfigTableType(), json, refusal ) ) { return false; }
+    if ( !TableTextFormToJson( text, bytes, limits, ProfileConfigTableType(), json, refusal ) ) { return false; }
     TableReport report;
     if ( !ProfileConfigFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
@@ -6579,8 +6684,13 @@ bool ProfileConfigEditTextForm( const char * document, int64_t document_bytes, c
 
 bool RootConfigLoadTextForm( const char * text, int64_t bytes, RootConfig & value, const char ** refusal )
 {
+    return RootConfigLoadTextForm( text, bytes, tableTextFormDefaultLimits(), value, refusal );
+}
+
+bool RootConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RootConfig & value, const char ** refusal )
+{
     std::string json;
-    if ( !TableTextFormToJson( text, bytes, RootConfigTableType(), json, refusal ) ) { return false; }
+    if ( !TableTextFormToJson( text, bytes, limits, RootConfigTableType(), json, refusal ) ) { return false; }
     TableReport report;
     if ( !RootConfigFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
@@ -6624,8 +6734,13 @@ bool RootConfigEditTextForm( const char * document, int64_t document_bytes, cons
 
 bool AttachmentLoadTextForm( const char * text, int64_t bytes, Attachment & value, const char ** refusal )
 {
+    return AttachmentLoadTextForm( text, bytes, tableTextFormDefaultLimits(), value, refusal );
+}
+
+bool AttachmentLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Attachment & value, const char ** refusal )
+{
     std::string json;
-    if ( !TableTextFormToJson( text, bytes, AttachmentTableType(), json, refusal ) ) { return false; }
+    if ( !TableTextFormToJson( text, bytes, limits, AttachmentTableType(), json, refusal ) ) { return false; }
     TableReport report;
     if ( !AttachmentFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
@@ -6669,8 +6784,13 @@ bool AttachmentEditTextForm( const char * document, int64_t document_bytes, cons
 
 bool BuffLoadTextForm( const char * text, int64_t bytes, Buff & value, const char ** refusal )
 {
+    return BuffLoadTextForm( text, bytes, tableTextFormDefaultLimits(), value, refusal );
+}
+
+bool BuffLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Buff & value, const char ** refusal )
+{
     std::string json;
-    if ( !TableTextFormToJson( text, bytes, BuffTableType(), json, refusal ) ) { return false; }
+    if ( !TableTextFormToJson( text, bytes, limits, BuffTableType(), json, refusal ) ) { return false; }
     TableReport report;
     if ( !BuffFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {
@@ -6714,8 +6834,13 @@ bool BuffEditTextForm( const char * document, int64_t document_bytes, const Tabl
 
 bool DebuffLoadTextForm( const char * text, int64_t bytes, Debuff & value, const char ** refusal )
 {
+    return DebuffLoadTextForm( text, bytes, tableTextFormDefaultLimits(), value, refusal );
+}
+
+bool DebuffLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Debuff & value, const char ** refusal )
+{
     std::string json;
-    if ( !TableTextFormToJson( text, bytes, DebuffTableType(), json, refusal ) ) { return false; }
+    if ( !TableTextFormToJson( text, bytes, limits, DebuffTableType(), json, refusal ) ) { return false; }
     TableReport report;
     if ( !DebuffFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )
     {

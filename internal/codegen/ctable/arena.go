@@ -353,7 +353,7 @@ static SCHEMA_UNUSED uint32_t table_worker_alloc( TableWorker * worker, int64_t 
     }
     at=worker->next; worker->next+=(uint32_t)bytes; return at;
 }
-static SCHEMA_UNUSED uint32_t table_worker_bump( TableWorker * worker, uint32_t bytes )
+static SCHEMA_UNUSED uint32_t table_worker_bump( TableWorker * worker, int64_t bytes )
 { return table_worker_alloc(worker,bytes); }
 
 /* ---- the resolution context: which encoding a walk is reading ----

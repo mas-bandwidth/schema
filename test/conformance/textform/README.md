@@ -49,6 +49,16 @@ unpaired surrogate, timestamp, extra root, executable-looking symbol,
 unknown enum slot, illegal root label, duplicate map key and forward label.
 No refusal yields a partially populated table or rewritable document.
 
+The `limit-*` vectors hold the contract default limits (§16.9.4) at their
+boundaries. `limit-bytes` is one byte past 65536 and `limit-tokens` one token
+past 8192 (every atom and parenthesis is a token); `limit-depth` nests lists to
+129, the root list being depth 1. Each refuses as `text_limit`. Their `-at`
+twins sit exactly on the limit and carry an undeclared `:pad` key, so the read
+gets past the limit and refuses as `text_unknown_key`. The node and
+decoded-allocation defaults have no vector: every list costs two tokens, so
+4097 lists cross the token limit as well, and a string decodes to fewer bytes
+than it spells, so no document within 65536 bytes decodes past 65536.
+
 Survey evidence: repository docs/roadmap.sexp lines 1–21 has semicolon headers,
 keyword records, blank/comment lines and multiline values. nova-sprint's
 internal/workfile/decode.go and encode.go additionally have tagged/positional

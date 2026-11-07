@@ -10,6 +10,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `ci/` | workflow pin and SDK gates | `go test ./internal/ci` | `go test ./internal/ci` |
 | [codegen/](codegen/AGENTS.md) | nine language emitters | `go test ./internal/codegen/...` | `go test ./internal/codegen/...` |
 | `docgate/` | link-and-citation gate over the pages | `go test ./internal/docgate` | `make docs-check` |
+| `fixedlimit/` | fixed form's hard-limit vectors | `go test ./internal/fixedlimit` | `go test ./internal/fixedlimit` |
 | `fixedvector/` | fixed form's shared cross-version vectors | `go test ./internal/fixedvector` | `go test ./internal/fixedvector` |
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
 | `fuzz/` | seeded fuzz corpus | `go test ./internal/fuzz` | `go test ./internal/fuzz` |
@@ -19,6 +20,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `listwalk/` | unbounded-array walk | `go test ./internal/listwalk` | `go test ./internal/listwalk` |
 | `lockfile/` | schema.lock lineage | `go test ./internal/lockfile` | `go test ./internal/lockfile` |
 | `mapwalk/` | map walk | `go test ./internal/mapwalk` | `go test ./internal/mapwalk` |
+| `memceiling/` | memory ceiling for storage-cap tests | `go test ./internal/memceiling` | `go test ./internal/memceiling` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
 | `publicapi/` | external-module API gate | `go test ./internal/publicapi` | `go test ./internal/publicapi` |
 | `rfc3339/` | strict RFC 3339 timestamp parser | `go test ./internal/rfc3339` | `go test ./internal/rfc3339` |

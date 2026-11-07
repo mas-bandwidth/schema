@@ -270,7 +270,7 @@ public static class TableFixedWire
     public const int HeaderBytes = 16;
     public const int HashAt = 8;
     public const uint NoGuard = 0xFFFFFFFFu;
-    public const int MaxDepth = 32;
+    public const int MaxDepth = 64;
     public const uint RecordMaxBytes = 65536;
 
     // The opcodes for plan entries

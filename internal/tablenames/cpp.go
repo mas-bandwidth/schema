@@ -140,6 +140,7 @@ func init() {
 		{Name: "TableTextFormField", What: "resolve one field value against its descriptor (§16.9.2)"},
 		{Name: "TableTextFormScalar", What: "resolve one scalar, array element, keyed slot or arm value (§16.9.2)"},
 		{Name: "TableTextFormToJson", What: "transcode one strict document into the canonical JSON of the same value (§16.9.1, §16.9.2)"},
+		{Name: "TableTextFormLimits", What: "the caller's byte, token, node, decoded-allocation and depth limits (§16.9.4)"},
 		// C++'s float <-> IEEE-754 bit pattern helpers
 		{Name: "table_bits_to_float", What: "u32 bits -> float"},
 		{Name: "table_float_to_bits", What: "float -> u32 bits"},

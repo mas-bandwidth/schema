@@ -31,6 +31,13 @@ public final class MixedPickupEventRetain {
             return null;
         }
         MixedPickupEventVariable.Value v = new MixedPickupEventVariable.Value();
+        TableVariable.Measure measure = new TableVariable.Measure();
+        long measured = MixedPickupEventVariable.loadMeasure(data, measure);
+        if (measured < 0 && "storage_over_cap".equals(measure.report.reason)) {
+            report.refused = true;
+            report.reason = measure.report.reason;
+            return null;
+        }
         report.rootTypeId = MixedPickupEventVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
@@ -71,8 +78,7 @@ public final class MixedPickupEventRetain {
             retain.nodeKeys.clear();
             return null;
         }
-        TableVariable.Measure measure = new TableVariable.Measure();
-        if (MixedPickupEventVariable.loadMeasure(data, measure) < 0) {
+        if (measured < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
