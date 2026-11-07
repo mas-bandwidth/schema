@@ -3179,7 +3179,7 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tr.report = report;\n")
 	// this read's own refusal (docs/SPEC-TABLES.md §3.3), as the Go leg's
 	// tableOpen clears its NonFiniteFloat
-	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tr.report.refused = false;\n\tr.report.refusal = '';\n\tr.report.missingFields = '';\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
 	// verdict 3 is framing damage on the root body, not the file's: the body

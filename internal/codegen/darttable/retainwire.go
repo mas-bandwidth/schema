@@ -587,7 +587,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
-	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tr.report.refused = false;\n\tr.report.refusal = '';\n\tr.report.missingFields = '';\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.retain = retain;\n")
