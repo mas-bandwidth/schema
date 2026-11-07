@@ -89,9 +89,30 @@ are judged over the decoded nodes without re-reading the wire. `tableWireVerify`
 has no caller left in the generated code; every refusal it made is now made by
 the one walk, at the same first violation.
 
-The paired table rows above are the node-free fold's run (`82db1e045`). The
-node-table fold (`8e60ed6e`) has no fleet before/after row in this report: the
-card that carried it could reach no fleet bench (every fleet host refused the
-key), so no paired load/save sitting was made for it. This attempt made no
-hot-path change and did not fabricate a sitting; the node-table row remains
-outstanding until a fleet bench answers.
+The paired table rows above are the node-free fold's run (`82db1e045`).
+
+## The node-table fold on the fleet (`8e60ed6e`, strict-engine.w4)
+
+An earlier attempt reached no fleet bench; this attempt could. On
+`hetzner2` (fleet, `Linux/amd64`, go1.26.6), the fold's parent
+`46d0ccbae` (before) and this head `2f59c539b` (after) were measured with
+the repository's own tooling — `bench/tables/run.sh --only go` for the
+generated table, and the engine harness above (`BenchmarkEngine`,
+`-benchtime=1s -count=5`, median of the printed rows) — with the sibling
+`serialize.go` checkout the table leg names placed beside the tree:
+
+| row | before | after | ratio |
+|---|---:|---:|---:|
+| table write (msg/s) | 389436 | 389323 | 1.00x |
+| table round-trip (msg/s) | 141643 | 150063 | 1.06x |
+| engine decode (ns/op) | 1590 | 1571 | 0.99x |
+| engine encode (ns/op) | 1446 | 1440 | 1.00x |
+| engine text read (ns/op) | 1500 | 1499 | 1.00x |
+
+Both table rows carry corpus `b51387f36d9b59c4` at 2147 bytes/op, so the
+pair compares the same work: the write is at parity and the round trip
+(write plus read) is 1.06x the before rate once the second walk is gone.
+The engine rows did not move, as STEP 5 changes no engine source. The
+table leg's corpus is the fixed `TableMixed` shape, so this pair prices
+the fold on the measured table surface; no hot-path change was made by
+this card.
