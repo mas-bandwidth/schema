@@ -369,10 +369,22 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		}
 		return ans, nil
 	}
+	if tablewire.ReadRefusal(derr) {
+		// THE ONE READ REFUSED (docs/SPEC-TABLES.md §6.5): the manifest's
+		// damage column carries the verdict until layer 3 re-pins it
+		ans.report = Counts{Malformed: true}
+		if r.builder {
+			ans.encFail = true
+			return ans, nil
+		}
+		ok, derr = false, nil
+	}
 	if derr != nil {
 		return ans, fmt.Errorf("the oracle refused the root itself: %w", derr)
 	}
-	ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Widened: rep.Widened, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed || (!ok && !r.builder)}
+	if ok {
+		ans.report = Counts{Unknown: rep.Unknown, Widened: rep.Widened}
+	}
 	if r.builder && !ok {
 		ans.encFail = true
 		return ans, nil

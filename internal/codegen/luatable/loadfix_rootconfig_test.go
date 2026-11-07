@@ -135,12 +135,9 @@ func loadFixRootConfigEngine(m *tabletext.Model, def *ir.Struct, data []byte) (l
 		return loadFixRootConfigCounts{}, nil, fmt.Errorf("the engine could not read the root: %w", derr)
 	}
 	c := loadFixRootConfigCounts{
-		unknown:      rep.Unknown,
-		kindMismatch: rep.KindMismatch,
-		widened:      rep.Widened,
-		clamped:      rep.Clamped,
-		duplicate:    rep.Duplicate,
-		malformed:    rep.Malformed || !ok,
+		unknown:   rep.Unknown,
+		widened:   rep.Widened,
+		malformed: rep.Refused || !ok,
 	}
 	enc, err := tablewire.Encode(m, inst)
 	if err != nil {

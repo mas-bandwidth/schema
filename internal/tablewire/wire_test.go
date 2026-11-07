@@ -218,10 +218,10 @@ func TestKeyZeroIsMalformed(t *testing.T) {
 
 	back := m.New(m.Lookup("PackConfig"))
 	var r tabletext.Report
-	if _, err := tablewire.Decode(m, back, wire, &r); err != nil {
+	if _, err := tablewire.Decode(m, back, wire, &r); !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
-	if !r.Malformed {
+	if !r.Refused {
 		t.Fatalf("a key reference of 0 should be framing damage, got %+v", r)
 	}
 }
@@ -244,7 +244,7 @@ func TestUnknownFieldIsSkipped(t *testing.T) {
 	if ok, err := tablewire.Decode(m, back, hostile, &r); !ok || err != nil {
 		t.Fatalf("an unknown field should not stop the decode: %v %+v", err, r)
 	}
-	if r.Unknown != 1 || r.Malformed {
+	if r.Unknown != 1 || r.Refused {
 		t.Fatalf("expected one unknown, got %+v", r)
 	}
 	fv, _ := back.FieldByKey("tick_rate")
@@ -298,7 +298,7 @@ func TestRepeatedEntryIsMalformed(t *testing.T) {
 	back := m.New(m.Lookup("GlobalSettings"))
 	var r tabletext.Report
 	ok, err := tablewire.Decode(m, back, out, &r)
-	if err != nil || ok || !r.Malformed {
+	if !tablewire.ReadRefusal(err) || ok || !r.Refused {
 		t.Fatalf("one id in two entries is malformed for the whole wire: %v %v %+v", err, ok, r)
 	}
 	fv, _ := back.FieldByKey("tick_rate")
@@ -329,8 +329,8 @@ func TestUnknownFormIsARefusal(t *testing.T) {
 		if !tablewire.Refused(err) {
 			t.Fatalf("form %d: expected a named refusal, got %v", form, err)
 		}
-		if ok || !r.Silent() {
-			t.Fatalf("form %d: a refusal moves no counter and reports no damage: %+v", form, r)
+		if ok || r.Unknown != 0 || r.Widened != 0 || !r.Refused {
+			t.Fatalf("form %d: a refusal moves no counter: %+v", form, r)
 		}
 	}
 }
@@ -355,17 +355,17 @@ func TestReferenceBound(t *testing.T) {
 	if _, err := tablewire.Decode(m, back, wire, &r); err != nil {
 		t.Fatal(err)
 	}
-	if r.Malformed {
+	if r.Refused {
 		t.Fatalf("the last legal slot must resolve: %+v", r)
 	}
 	// one past it does not
 	body[0] = byte(len(ids) + 1)
 	back = m.New(m.Lookup("GlobalSettings"))
 	r = tabletext.Report{}
-	if _, err := tablewire.Decode(m, back, wire, &r); err != nil {
+	if _, err := tablewire.Decode(m, back, wire, &r); !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
-	if !r.Malformed {
+	if !r.Refused {
 		t.Fatalf("a reference past the table is framing damage: %+v", r)
 	}
 }
@@ -388,10 +388,10 @@ func TestNonCanonicalReferenceIsMalformed(t *testing.T) {
 
 	back := m.New(m.Lookup("GlobalSettings"))
 	var r tabletext.Report
-	if _, err := tablewire.Decode(m, back, out, &r); err != nil {
+	if _, err := tablewire.Decode(m, back, out, &r); !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
-	if !r.Malformed {
+	if !r.Refused {
 		t.Fatalf("a non-minimal reference is malformed: %+v", r)
 	}
 }
@@ -416,7 +416,7 @@ func TestStrayByteBeforeTheTableIsMalformed(t *testing.T) {
 	back := m.New(m.Lookup("GlobalSettings"))
 	var r tabletext.Report
 	ok, err := tablewire.Decode(m, back, out, &r)
-	if err != nil || ok || !r.Malformed {
+	if !tablewire.ReadRefusal(err) || ok || !r.Refused {
 		t.Fatalf("a stray byte is malformed for the whole wire: %v %v %+v", err, ok, r)
 	}
 }
@@ -438,11 +438,8 @@ func TestKeyedUnderArrayKindIsAMismatch(t *testing.T) {
 	body[kindAt] = ir.TableKindArray
 	back := m.New(m.Lookup("PackConfig"))
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, back, wire, &r); !ok || err != nil {
-		t.Fatalf("a kind mismatch should not stop the decode: %v %+v", err, r)
-	}
-	if r.KindMismatch != 1 {
-		t.Fatalf("expected one kind_mismatch, got %+v", r)
+	if ok, err := tablewire.Decode(m, back, wire, &r); ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("a kind mismatch refuses the read: %v %+v", err, r)
 	}
 	slots, _ := back.FieldByKey("thresholds")
 	hard := tabletext.KeyedValueSlot(slots.Def, tabletext.EnumValue(slots.Def.KeyEnumRef, "Hard"))

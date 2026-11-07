@@ -106,16 +106,9 @@ table Root {
 		var report tabletext.Report
 		inst := model.New(def)
 		ok := model.Read(inst, c.input, &report)
-		want := result{
-			OK:           ok,
-			Unknown:      report.Unknown,
-			KindMismatch: report.KindMismatch,
-			Widened:      report.Widened,
-			Clamped:      report.Clamped,
-			Duplicate:    report.Duplicate,
-			Malformed:    report.Malformed,
-			Refused:      report.Refused,
-		}
+		// The verdict, and on acceptance the value, is the cross-language contract;
+		// counters are per-language diagnostics (docs/SPEC-TABLES.md §6.5).
+		want := result{OK: ok}
 		if ok {
 			text, err := model.Write(inst)
 			if err != nil {
@@ -214,6 +207,7 @@ public final class BomProbe {
 			if err := json.Unmarshal([]byte(lines[i]), &got); err != nil {
 				t.Fatalf("unmarshal %q: %v", lines[i], err)
 			}
+			got = result{OK: got.OK, Canon: got.Canon, Wire: got.Wire}
 			if got != expected[i] {
 				t.Errorf("input bytes %x\nJava: %+v\nGo:   %+v", c.input, got, expected[i])
 			}

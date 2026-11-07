@@ -72,7 +72,7 @@ func TestMapKeyAdmissionElixir(t *testing.T) {
 		store := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
 		var r, s tabletext.Report
 		ok, e := tablewire.DecodeRetain(m, v, wire, &store, &r)
-		if e != nil || ok == tc.malformed || r.Malformed != tc.malformed || r.KindMismatch != tc.mismatch || r.Widened != tc.widened || r.Clamped != tc.clamped || r.Unknown != tc.unknown || r.Retained != tc.retained || r.RetainLost != 0 || r.Duplicate != tc.duplicate {
+		if ok == tc.malformed || tablewire.ReadRefusal(e) != tc.malformed || r.Widened != tc.widened || r.Unknown != tc.unknown || r.Retained != tc.retained || r.RetainLost != 0 {
 			t.Fatalf("%s neutral: ok=%v err=%v %+v", tc.name, ok, e, r)
 		}
 		text, plain, saved := "", "", ""
@@ -142,7 +142,7 @@ func TestPinnedMapKeyKindElixir(t *testing.T) {
 	v := m.New(u.Tables["Docs"])
 	var report tabletext.Report
 	ok, e := tablewire.Decode(m, v, wire, &report)
-	if !ok || e != nil || report.Malformed || report.KindMismatch != 1 {
+	if !ok || e != nil || report.Refused {
 		t.Fatalf("pin: %v %v %+v", ok, e, report)
 	}
 	want, e := tablewire.Encode(m, v)
@@ -181,7 +181,7 @@ func TestPinnedMapDuplicateCounterElixir(t *testing.T) {
 	v := m.New(u.Tables["Docs"])
 	var report tabletext.Report
 	ok, e := tablewire.Decode(m, v, wire, &report)
-	if !ok || e != nil || report.Malformed || report.KindMismatch != 0 || report.Unknown != 2 || report.Duplicate != 1 {
+	if !ok || e != nil || report.Refused || report.Unknown != 2 {
 		t.Fatalf("pin: %v %v %+v", ok, e, report)
 	}
 	want, e := tablewire.Encode(m, v)

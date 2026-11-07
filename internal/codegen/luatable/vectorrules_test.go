@@ -70,7 +70,7 @@ local line = "measure=" .. (inputs.whole == "1" and tostring(m) or "-") ..
   " root=" .. tostring(v ~= nil) .. " malformed=" .. tostring(r.malformed) ..
   " refused=" .. tostring((r.refused or 0) > 0)
 if not r.malformed then
-  line = line .. string.format(" unknown=%d kind=%d widened=%d", r.unknown, r.kindMismatch, r.widened)
+  line = line .. string.format(" unknown=%d widened=%d", r.unknown, r.widened)
 end
 print(line)
 `
@@ -103,17 +103,17 @@ func luaVectorOracle(t *testing.T, u *ir.Unit, root string, wire []byte) (string
 	var rep tabletext.Report
 	ok, err := tablewire.DecodeRegion(m, m.New(def), wire, &rep)
 	refusedLoad := tablewire.Refused(err)
-	if err != nil && !refusedLoad {
+	if err != nil && !refusedLoad && !tablewire.ReadRefusal(err) {
 		t.Fatalf("the Go engine refused the root itself: %v", err)
 	}
-	malformed := rep.Malformed || !ok
+	malformed := rep.Refused || !ok || tablewire.ReadRefusal(err)
 	ms := "-"
 	if whole {
 		ms = strconv.FormatInt(measured, 10)
 	}
 	line := fmt.Sprintf("measure=%s root=%t malformed=%t refused=%t", ms, !malformed && !refusedLoad, malformed, refusedLoad)
 	if !malformed {
-		line += fmt.Sprintf(" unknown=%d kind=%d widened=%d", rep.Unknown, rep.KindMismatch, rep.Widened)
+		line += fmt.Sprintf(" unknown=%d widened=%d", rep.Unknown, rep.Widened)
 	}
 	return line, whole
 }

@@ -499,10 +499,10 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 			binary.LittleEndian.Uint32(reply[31:]), binary.LittleEndian.Uint32(reply[35:]))
 		want, encoded := oracleSeed(t, units[s.unit].unit, s.root, wire, retain)
 		if counts := strings.Split(strings.Fields(want)[0], ","); counts[5] == "true" {
-			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
-			// leg owes the refusal, and no counter, retention report or
+			// THE ONE READ (docs/SPEC-TABLES.md §4, §6.5): the oracle refused,
+			// so the leg owes a refusal, and no counter, retention report or
 			// saved byte is compared
-			if reply[21] == 0 {
+			if reply[21] == 0 && reply[22] == 0 {
 				t.Errorf("%s (%s.%s, retain=%t): the oracle discards a damaged load and the leg reports %s", s.name, s.unit, s.root, retain, leg)
 			}
 			continue
@@ -559,10 +559,9 @@ func oracleSeed(t *testing.T, u *ir.Unit, root string, wire []byte, retain bool)
 	} else {
 		ok, err = tablewire.DecodeRegion(m, inst, wire, &rep)
 	}
-	if err != nil && !tablewire.Refused(err) {
-		t.Fatalf("the oracle refused the root itself: %v", err)
+	if err != nil && !tablewire.ReadRefusal(err) {
+		t.Fatalf("the oracle failed: %v", err)
 	}
-	decodeRefused := tablewire.Refused(err)
 	var encoded []byte
 	if retain {
 		var saved tabletext.Report
@@ -575,7 +574,7 @@ func oracleSeed(t *testing.T, u *ir.Unit, root string, wire []byte, retain bool)
 		encoded = nil
 	}
 	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%t retained=%d retain_lost=%d",
-		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, rep.Malformed || (!ok && !decodeRefused), decodeRefused,
+		rep.Unknown, 0, rep.Widened, 0, 0, !ok, false,
 		rep.Retained, rep.RetainLost), encoded
 }
 
@@ -608,7 +607,7 @@ func widenOnRead(t *testing.T) {
 	if ok, err := tablewire.DecodeRegion(rm, rinst, wire, &rrep); !ok || err != nil {
 		t.Fatalf("the oracle did not read the narrow wire: %v %+v", err, rrep)
 	}
-	if rrep.Widened != 4 || rrep.Clamped != 0 || rrep.KindMismatch != 0 {
+	if rrep.Widened != 4 {
 		t.Fatalf("the oracle's widening ledger moved: %+v (want widened=4)", rrep)
 	}
 	want, err := tablewire.Encode(rm, rinst)

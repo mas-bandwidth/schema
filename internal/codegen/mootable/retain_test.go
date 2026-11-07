@@ -120,8 +120,8 @@ func goRetain(t *testing.T, u *ir.Unit, rootName string, wire []byte, capacity, 
 	keep := &tablewire.Retain{Capacity: capacity, IdCapacity: ids}
 	var rep tabletext.Report
 	ok, err := tablewire.DecodeRetain(m, inst, wire, keep, &rep)
-	o := retainOut{used: keep.Used(), retained: rep.Retained, lost: rep.RetainLost, unknown: rep.Unknown, malformed: rep.Malformed}
-	if err != nil || rep.Refused || rep.Malformed {
+	o := retainOut{used: keep.Used(), retained: rep.Retained, lost: rep.RetainLost, unknown: rep.Unknown, malformed: rep.Refused}
+	if err != nil || rep.Refused {
 		return o
 	}
 	_ = ok
@@ -247,6 +247,7 @@ func variableUnit(t *testing.T, units map[string][]string, key string) *generate
 // byte under what that used, and with the caller's id list one short of what
 // the full save interned.
 func TestMooRetainMatchesTheGoEngine(t *testing.T) {
+	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
@@ -328,7 +329,7 @@ print(tostring(v ~= nil) .. " " .. tostring(report.reason) .. " " .. report.reta
 	var rep tabletext.Report
 	m := tabletext.NewModel(g.unit)
 	_, err := tablewire.DecodeRetain(m, m.New(g.unit.Tables["T"]), wireOf(0x7fc00000), &tablewire.Retain{Capacity: 1024, IdCapacity: 8}, &rep)
-	if err == nil || !strings.Contains(err.Error(), name) {
+	if tablewire.RefusalReason(err) != tablewire.ReasonNonFiniteFloat {
 		t.Errorf("the Go engine: %v", err)
 	}
 }

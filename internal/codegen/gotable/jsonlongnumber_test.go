@@ -61,20 +61,25 @@ fixed table Root {
 import("testing";"bytes";"strings")
 func TestLongNumber(t *testing.T) {
 	zeros:=strings.Repeat("0",600)
-	text:=[]byte("{\"f\":1."+zeros+",\"i\":1"+zeros+",\"w\":1."+zeros+"1,\"g\":1."+zeros+"}")
+	// a long token past an integer field's range, or one a fixed field cannot
+	// hold exactly, refuses the read
+	for _, bad := range []string{"{\"i\":1"+zeros+"}", "{\"w\":1."+zeros+"1}"} {
+		var v Root
+		var r TableReport
+		if RootFromJSON(&v,[]byte(bad),&r) || r.Err() == nil { t.Fatalf("a long token past the field read: %+v", r) }
+	}
+	text:=[]byte("{\"f\":1."+zeros+",\"g\":1."+zeros+"}")
 	var v Root
 	var r TableReport
-	if !RootFromJSONTolerant(&v,text,&r) {
+	if !RootFromJSON(&v,text,&r) || r != (TableReport{}) {
 		t.Fatalf("a valid long number token was refused: %+v",r)
 	}
 	if v.F != 1.0 { t.Fatalf("float64 landed %v, want 1.0",v.F) }
-	if v.I != 2147483647 { t.Fatalf("int32 landed %d, want its max",v.I) }
 	if v.G != 1<<16 { t.Fatalf("fixed(16,16) landed raw %d, want 1<<16",v.G) }
-	if want:=(TableReport{Clamped:2,KindMismatch:1}); r!=want { t.Fatalf("report %+v, want %+v",r,want) }
 	out:=make([]byte,4096)
 	n:=RootToJSON(&v,out)
 	if n<0 { t.Fatal("the writer refused the value it read") }
-	want:=[]byte("{\n  \"f\": 1,\n  \"i\": 2147483647,\n  \"w\": 0,\n  \"g\": 1.0\n}\n")
+	want:=[]byte("{\n  \"f\": 1,\n  \"i\": 0,\n  \"w\": 0,\n  \"g\": 1.0\n}\n")
 	if !bytes.Equal(out[:n],want) { t.Fatalf("text %q, want %q",out[:n],want) }
 }
 `)

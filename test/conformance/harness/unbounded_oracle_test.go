@@ -189,18 +189,24 @@ func TestUnboundedTextOracleLongKeysAndElements(t *testing.T) {
 			unboundedOracleSameJSON(t, m, back, input)
 		})
 	}
-	// Equal whole keys remain duplicate/last-wins; sharing 360 prefix bytes
+	// Equal whole keys are a repeat, which refuses; sharing 360 prefix bytes
 	// alone is not equality. The scanner must never compare a truncated key.
 	a, _ := json.Marshal(long + "a")
 	b, _ := json.Marshal(long + "b")
-	duplicate := []byte("{\"rows\":{" + string(a) + ":1," + string(b) + ":2," + string(a) + ":3}}")
+	distinct := []byte("{\"rows\":{" + string(a) + ":1," + string(b) + ":2}}")
 	value := m.New(m.Lookup("Root"))
 	var r tabletext.Report
-	if !m.Read(value, duplicate, &r) || r.Duplicate != 1 || r.Clamped != 0 || r.Malformed || r.KindMismatch != 0 || r.Unknown != 0 {
-		t.Fatalf("whole-key duplicate rule changed: %+v", r)
+	if !m.Read(value, distinct, &r) || !r.Silent() {
+		t.Fatalf("two keys sharing a long prefix are two keys: %+v", r)
 	}
-	want, _ := json.Marshal(map[string]any{"names": []string{}, "maybe": []any{}, "rows": map[string]int{long + "a": 3, long + "b": 2}})
+	want, _ := json.Marshal(map[string]any{"names": []string{}, "maybe": []any{}, "rows": map[string]int{long + "a": 1, long + "b": 2}})
 	unboundedOracleSameJSON(t, m, value, want)
+	repeated := []byte("{\"rows\":{" + string(a) + ":1," + string(b) + ":2," + string(a) + ":3}}")
+	value = m.New(m.Lookup("Root"))
+	r = tabletext.Report{}
+	if m.Read(value, repeated, &r) || !r.Refused {
+		t.Fatalf("a whole key repeated refuses: %+v", r)
+	}
 }
 
 func TestUnboundedTextOraclePackerEntries(t *testing.T) {
@@ -247,10 +253,10 @@ func TestUnboundedTextOracleKeepsBoundedAndDamageRules(t *testing.T) {
 				} else {
 					ok, err = tablewire.Decode(m, v, wire, &r)
 				}
-				if err != nil || !ok || r.Clamped != 1 || r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 {
-					t.Fatalf("bounded %s rule changed: %+v, %v", form, r, err)
+				if ok || !r.Refused || (form == "wire" && !tablewire.ReadRefusal(err)) {
+					t.Fatalf("a length past the bound refuses the %s read: ok=%v %+v, %v", form, ok, r, err)
 				}
-				want := "{\"names\":[\"li\"]}"
+				want := "{\"names\":[]}"
 				if kind == "map" {
 					want = "{\"names\":{}}"
 				}
@@ -267,7 +273,7 @@ func TestUnboundedTextOracleKeepsBoundedAndDamageRules(t *testing.T) {
 				v := m.New(m.Lookup("Root"))
 				var r tabletext.Report
 				ok, err := tablewire.Decode(m, v, damaged, &r)
-				if err != nil || ok || !r.Malformed {
+				if !tablewire.ReadRefusal(err) || ok || !r.Refused {
 					t.Fatalf("stored text damage accepted: ok=%v %+v %v", ok, r, err)
 				}
 				want := "{\"names\":[]}"
@@ -279,18 +285,18 @@ func TestUnboundedTextOracleKeepsBoundedAndDamageRules(t *testing.T) {
 			v := m.New(m.Lookup("Root"))
 			var r tabletext.Report
 			nul := bytes.Replace(text, []byte("live"), []byte("li\\u0000ve"), 1)
-			if m.Read(v, nul, &r) || !r.Malformed {
+			if m.Read(v, nul, &r) || !r.Refused {
 				t.Fatalf("stored JSON NUL accepted: %+v", r)
 			}
 		})
 	}
-	// Only element/key lengths lose their bound. A bounded list still clamps
-	// excess elements and preserves its prefix.
+	// Only element/key lengths lose their bound. A bounded list still refuses
+	// a count past its bound.
 	m := unboundedOracleModel(t, "package probe\ntable Root\n{\n names [..2]string\n}\n")
 	v := m.New(m.Lookup("Root"))
 	var r tabletext.Report
-	if !m.Read(v, []byte("{\"names\":[\"first\",\"second\",\"third\"]}"), &r) || r.Clamped != 1 || r.Malformed {
-		t.Fatalf("count bound changed: %+v", r)
+	if m.Read(v, []byte("{\"names\":[\"first\",\"second\",\"third\"]}"), &r) || !r.Refused {
+		t.Fatalf("a count past the bound refuses: %+v", r)
 	}
-	unboundedOracleSameJSON(t, m, v, []byte("{\"names\":[\"first\",\"second\"]}"))
+	unboundedOracleSameJSON(t, m, v, []byte("{\"names\":[]}"))
 }

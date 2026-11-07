@@ -52,28 +52,30 @@ func runCountStop(t *testing.T, load string) (got, want string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verdict := "stopped"
+	// the verdict alone is compared; counters are per-language diagnostics
+	// (docs/SPEC-TABLES.md §6.5)
+	want = "stopped"
 	if ans.loaded {
-		verdict = "loaded"
+		want = "loaded"
 	}
-	want = fmt.Sprintf("%s,%d,%d,%d,%d,%d,%t", verdict, ans.unknown, ans.kindMismatch, ans.widened, ans.clamped, ans.duplicate, ans.malformed)
 	dir := t.TempDir()
 	mod := emitUnit(t, dir, "mapdemo", u)
 	if load != "" {
 		writeFile(t, filepath.Join(dir, "mapdemo", "schema_table_load.nut"), []byte(load))
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(fmt.Sprintf(countStopPrelude, mod)))
-	return reportLine(t, sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": data})), want
+	got, _, _ = strings.Cut(reportLine(t, sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": data})), ",")
+	return got, want
 }
 
 func TestSquirrelCountRefusalStopsTheBuilder(t *testing.T) {
 	t.Parallel()
 	got, want := runCountStop(t, "")
-	if !strings.HasPrefix(want, "stopped,") {
+	if want != "stopped" {
 		t.Fatalf("the engine answers %s for the pinned mutant, want a stopped builder", want)
 	}
 	if got != want {
-		t.Fatalf("the Squirrel load answers %s, the engine %s (completion, unknown, kind_mismatch, widened, clamped, duplicate, malformed)", got, want)
+		t.Fatalf("the Squirrel load answers %s, the engine %s", got, want)
 	}
 }
 

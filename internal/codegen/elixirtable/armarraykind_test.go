@@ -74,7 +74,7 @@ func TestUnionArrayElementKindsElixir(t *testing.T) {
 				value := m.New(u.Tables["Root"])
 				var report tabletext.Report
 				ok, e := tablewire.Decode(m, value, wire, &report)
-				if e != nil || !ok || report.Malformed || int(report.KindMismatch) != p.mismatch {
+				if e != nil || !ok || report.Refused {
 					t.Fatalf("%s/%s/%x oracle: %v %v %+v", field, a.name, p.body, ok, e, report)
 				}
 				wantText, e := m.Write(value)
@@ -122,7 +122,7 @@ func TestPinnedUnionArrayElementKindElixir(t *testing.T) {
 	value := m.New(u.Tables["ToolMessage"])
 	var report tabletext.Report
 	ok, e := tablewire.Decode(m, value, wire, &report)
-	if e != nil || !ok || report.Malformed || report.KindMismatch != 1 {
+	if e != nil || !ok || report.Refused {
 		t.Fatalf("pin oracle: %v %v %+v", ok, e, report)
 	}
 	want, e := tablewire.Encode(m, value)

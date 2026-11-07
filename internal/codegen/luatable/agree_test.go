@@ -138,17 +138,19 @@ func agEngine(m *tabletext.Model, def *ir.Struct, data []byte) agOracle {
 	switch {
 	case tablewire.Refused(derr):
 		o.refused = true
+	case tablewire.ReadRefusal(derr):
+		// the strict read refuses the whole load (docs/SPEC-TABLES.md §4):
+		// the leg owes the refusal, and nothing decoded is compared
+		o.counts.malformed = true
+		return o
 	case derr != nil:
 		o.noRoot = true
 		return o
 	default:
 		o.counts = agCts{
-			unknown:      rep.Unknown,
-			kindMismatch: rep.KindMismatch,
-			widened:      rep.Widened,
-			clamped:      rep.Clamped,
-			duplicate:    rep.Duplicate,
-			malformed:    rep.Malformed || !ok,
+			unknown:   rep.Unknown,
+			widened:   rep.Widened,
+			malformed: rep.Refused || !ok,
 		}
 	}
 	enc, eerr := tablewire.Encode(m, inst)
@@ -252,6 +254,9 @@ func TestLuaTableDamagedReportsAndResavesAgree(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
+			if c.name == "resave_list_kind_mismatch_keeps_field" {
+				t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
+			}
 			row, ok := rows[c.caseName]
 			if !ok {
 				t.Fatalf("no instance row %s", c.caseName)

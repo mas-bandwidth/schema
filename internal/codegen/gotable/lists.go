@@ -29,41 +29,49 @@ func (g *tableGen) emitListSurface(st *ir.Struct, f *ir.Field) {
 	g.pf("func %sEach(holder %s,visit func(*%s)bool,arena ...*TableArena)bool {cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*(*%s)(nil))),tableOptionalArena(arena));for range holder.Count {p:=(*%s)(cursor.Next());if p==nil||!visit(p){return false}};return true}\n", name, holder, typ, typ, typ)
 }
 
+// emitListRead reads an unbounded array (docs/SPEC-TABLES.md §2.9): its header
+// inside its own L, an element kind that is the declared one or widens it,
+// every element read, and every byte of the L an element's.
 func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	expr := "value." + member(f)
 	typ := containerElementType(g.unit, f)
 	kind := ir.TableWireElemKind(f)
 	_, align := ir.ListElementLayout(g.unit, f)
-	g.pf("%ssub,ok:=r.Body();if !ok {r.Report.Malformed=true;return false};if len(sub.Buffer)>=2 {\n", ind)
+	stop := damaged + ";return false"
+	owner := g.floatOwner(f)
+	if ir.IsTextListField(f) {
+		owner = f.TextListElem().MapEntryOf
+	}
+	g.pf("%s{sub,ok:=r.Body();if !ok||len(sub.Buffer)<2 {%s}\n", ind, stop)
 	i := ind + "\t"
-	g.pf("%sheader:=sub;header.Buffer=r.Buffer[r.Offset-int64(len(sub.Buffer)):];elemKind:=header.Get8();count,ok:=header.Leb();sub.Offset=header.Offset\n", i)
-	g.pf("%sif !ok {r.Report.Malformed=true;break};if elemKind!=%d&&!tableKindWidens(elemKind,%d) {r.Report.KindMismatch++;break}\n", i, kind, kind)
+	g.pf("%selemKind:=sub.Get8();count,ok:=sub.Leb();if !ok {%s};if elemKind!=%d&&!tableKindWidens(elemKind,%d) {%s}\n", i, stop, kind, kind, refuse("TableRefuseKindMismatch", owner, "return false"))
 	g.retainDiscard("r")
 	// a widened element kind counts once the count is known to land: the
 	// builder's count-cap refusal moves no counter (docs/SPEC-TABLES.md §2.9)
-	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(unsafe.Sizeof(*(*%s)(nil))),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};if elemKind!=%d {r.Report.Widened++};r.Report.Malformed=true;break};if elemKind!=%d {r.Report.Widened++};slot.Count=0\n", i, expr, typ, align, kind, kind)
+	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(unsafe.Sizeof(*(*%s)(nil))),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};%s};if elemKind!=%d {r.Report.Widened++};slot.Count=0\n", i, expr, typ, align, stop, kind)
 	if f.TextTotal > 0 {
 		g.pf("%sspent:=int64(0)\n", i)
 	}
-	g.pf("%sfor i:=uint64(0);i<count;i++ { p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,slot,int32(i),int64(unsafe.Sizeof(*(*%s)(nil)))));if p==nil {r.Report.Malformed=true;break};landed:=false;for once:=true;once;once=false {\n", i, typ, typ)
+	g.pf("%sfor i:=uint64(0);i<count;i++ { p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,slot,int32(i),int64(unsafe.Sizeof(*(*%s)(nil)))));if p==nil {%s}\n", i, typ, typ, stop)
 	j := i + "\t"
 	switch kind {
 	case tkString:
 		g.emitReadTextElement(f, "(*p)", j)
 	case tkTable:
-		g.pf("%selem,ok:=sub.Body();if !ok {r.Report.Malformed=true;break};\n", j)
+		g.pf("%selem,ok:=sub.Body();if !ok {%s};\n", j, stop)
 		g.retainReadPath("elem", "r", "i")
-		g.pf("%sLoadBody(&elem,p);\n", f.Type.Name)
+		g.pf("if !%sLoadBody(&elem,p) {return false};\n", f.Type.Name)
 		g.emitCarveReturn("sub", "elem", j)
-		g.pf("%sif elem.Offset!=int64(len(elem.Buffer)) {r.Report.Malformed=true;%sReset(p)}\n", j, f.Type.Name)
+		g.pf("%sif elem.Offset!=int64(len(elem.Buffer)) {%s}\n", j, stop)
 	case tkUnion:
 		g.retainReadPath("sub", "r", "i")
-		g.emitReadUnion(f.Type.Ref.(*ir.Union), "(*p)", "sub", j, "break", true)
+		g.emitReadUnion(f.Type.Ref.(*ir.Union), "(*p)", "sub", j, true)
 	default:
-		g.emitReadScalar(f, "(*p)", "sub", "elemKind", j, "r.Report.Malformed=true;break")
+		g.emitReadScalar(f, "(*p)", "sub", "elemKind", j, stop)
 	}
 	g.emitTextTotalRead(f, "(*p)", j)
-	g.pf("%slanded=true };if !landed { if sub.Nodes.Carve.Worker!=nil {tableContainerErase(sub.Nodes.Carve.Worker.Arena,slot,unsafe.Pointer(p),int64(unsafe.Sizeof(*p)))};break };if sub.Nodes.Carve.Worker==nil {slot.Count++}\n%s}\n", j, i)
+	g.pf("%sif sub.Nodes.Carve.Worker==nil {slot.Count++}\n%s}\n", j, i)
+	g.pf("%sif sub.Offset!=int64(len(sub.Buffer)) {%s}\n", i, stop)
 	g.emitCarveReturn("r", "sub", i)
 	g.pf("%s}\n", ind)
 }
@@ -144,7 +152,7 @@ func tableWireNodeBytesReason(r TableReader,t *TableTypeInfo)(int64,TableRefuseR
 // walk with TableRefuseOk and the extent so far, as the tolerant load keeps the
 // decoded prefix. nodes>=0 is the strict measure's CHECK mode (card
 // schema-go-fuzz-measure-accepts-malformed): nodes is the wire's node count,
-// and every damage the load reports Malformed answers TableRefuseWireDamaged
+// and every damage the load refuses answers TableRefuseWireDamaged
 // (read.go emitReadField/emitReadArray/emitReadUnion/emitReadArm/
 // emitReadArmArray, lists.go emitListRead, maps.go emitMapRead), while a
 // value-level event the load counts without the flag (kind_mismatch, clamped,
@@ -257,6 +265,6 @@ func tableJSONWriteList(out *tableJSONOut,holder unsafe.Pointer,f *TableFieldInf
 }
 func tableJSONReadList(in *tableJSONIn,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
  if in.peek()!='['||in.graph==nil||in.graph.listAdd==nil {in.bad=true;return false};in.pos++;clear(unsafe.Slice((*byte)(holder),16));shape:=tableJSONElementShape(f)
- for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if in.valueShape()!=shape&&!(f.Pointer&&in.valueShape()=='z'){in.report.KindMismatch++;if !in.skipValue(depth+1){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
+ for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if in.valueShape()!=shape&&!(f.Pointer&&in.valueShape()=='z'){in.report.Refuse(TableRefuseKindMismatch,"");if !in.skipValue(depth+1){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
 }
 `

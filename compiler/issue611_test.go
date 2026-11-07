@@ -58,20 +58,18 @@ fixed table Ship
 import "testing"
 
 func TestIssue611(t *testing.T) {
-	text := []byte("{\"experience\":99999999999999999999999999}")
+	// a token past the field's domain refuses the JSON read (docs/SPEC-TABLES.md
+	// §4, §16.11), and the ceiling itself reads
 	var s Ship
 	ShipReset(&s)
 	var r TableReport
-	// the plain FromJson is the strict read and refuses a clamp
-	// (docs/SPEC-TABLES.md §16.11); the landed value is the tolerant read's
-	if !ShipFromJSONTolerant(&s, text, &r) {
-		t.Fatalf("FromJsonTolerant failed: %+v", r)
+	if ShipFromJSON(&s, []byte("{\"experience\":99999999999999999999999999}"), &r) || r.Err() == nil {
+		t.Fatalf("past the domain read: %+v", r)
 	}
-	if s.Experience != 4294967295 {
-		t.Fatalf("experience=%d, want 4294967295 (the ceiling, not the floor)", s.Experience)
-	}
-	if r.Clamped != 2 {
-		t.Fatalf("clamped=%d, want 2", r.Clamped)
+	ShipReset(&s)
+	r = TableReport{}
+	if !ShipFromJSON(&s, []byte("{\"experience\":4294967295}"), &r) || s.Experience != 4294967295 {
+		t.Fatalf("the ceiling: %d %+v", s.Experience, r)
 	}
 }
 `

@@ -17,11 +17,11 @@ func TestTextTotalSkippedTailIsNotDecoded(t *testing.T) {
 			for _, tail := range []string{`"toolong"`, `"\u0000"`} {
 				v := m.New(m.Lookup("Root"))
 				var r tabletext.Report
-				if !m.Read(v, []byte(`{"names":["abcde","xyz",`+tail+`]}`), &r) || r.Clamped != 1 || r.Malformed {
+				if m.Read(v, []byte(`{"names":["abcde","xyz",`+tail+`]}`), &r) || !r.Refused {
 					t.Fatalf("JSON tail %s: %+v", tail, r)
 				}
-				if v.Fields[0].Count != 1 {
-					t.Fatal("tail was retained")
+				if v.Fields[0].Count != 0 {
+					t.Fatal("a refused read left a value")
 				}
 			}
 			wire, err := tablewire.Encode(old, place(t, old, "Root", `{"names":["abcde","xyz","toolong"]}`))
@@ -39,7 +39,7 @@ func TestTextTotalSkippedTailIsNotDecoded(t *testing.T) {
 				}
 				v := m.New(m.Lookup("Root"))
 				var r tabletext.Report
-				if ok, err := tablewire.Decode(m, v, input, &r); !ok || err != nil || r.Clamped != 1 || r.Malformed || v.Fields[0].Count != 1 {
+				if ok, err := tablewire.Decode(m, v, input, &r); ok || !tablewire.ReadRefusal(err) || v.Fields[0].Count != 0 {
 					t.Fatalf("wire damaged tail=%v: %v %v %+v", damage, ok, err, r)
 				}
 			}

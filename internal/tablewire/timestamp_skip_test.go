@@ -34,7 +34,7 @@ func TestTimestampKindIsSkippedAtEightBytes(t *testing.T) {
 	if ok, err := tablewire.Decode(m, back, hostile, &r); !ok || err != nil {
 		t.Fatalf("an unknown kind-36 field should skip at eight bytes, not stop the decode: %v %+v", err, r)
 	}
-	if r.Unknown != 1 || r.Malformed {
+	if r.Unknown != 1 || r.Refused {
 		t.Fatalf("expected one unknown and no damage, got %+v", r)
 	}
 	fv, _ := back.FieldByKey("tick_rate")
@@ -48,7 +48,7 @@ func TestTimestampKindIsSkippedAtEightBytes(t *testing.T) {
 	kept := m.New(m.Lookup("GlobalSettings"))
 	retain := tablewire.Retain{Capacity: 8192, IdCapacity: 1024}
 	r = tabletext.Report{}
-	if ok, err := tablewire.DecodeRetain(m, kept, hostile, &retain, &r); !ok || err != nil || r.Malformed {
+	if ok, err := tablewire.DecodeRetain(m, kept, hostile, &retain, &r); !ok || err != nil || r.Refused {
 		t.Fatalf("a retaining read of a kind-36 field should not be damage: %v %+v", err, r)
 	}
 	if r.Retained != 1 || r.RetainLost != 0 {
@@ -64,7 +64,7 @@ func TestTimestampKindIsSkippedAtEightBytes(t *testing.T) {
 	}
 	again := m.New(m.Lookup("GlobalSettings"))
 	r = tabletext.Report{}
-	if ok, err := tablewire.Decode(m, again, out, &r); !ok || err != nil || r.Unknown != 1 || r.Malformed {
+	if ok, err := tablewire.Decode(m, again, out, &r); !ok || err != nil || r.Unknown != 1 || r.Refused {
 		t.Fatalf("the save read back should meet one unknown and no damage: %v %+v", err, r)
 	}
 
@@ -72,7 +72,7 @@ func TestTimestampKindIsSkippedAtEightBytes(t *testing.T) {
 	back = m.New(m.Lookup("GlobalSettings"))
 	r = tabletext.Report{}
 	_, _ = tablewire.Decode(m, back, damaged, &r)
-	if !r.Malformed {
+	if !r.Refused {
 		t.Fatalf("kind 35 should be framing damage, got %+v", r)
 	}
 }

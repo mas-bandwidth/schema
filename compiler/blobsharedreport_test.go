@@ -1,13 +1,7 @@
-// A shared-blob count reaches the PUBLIC report (docs/SPEC-TABLES.md §2.5, §4,
-// §17.1). The engine's tabletext.Report counts BlobShared, but the public
-// TableReport beside it and both Silent() answers used to drop it, so a wire
-// naming one blob from two slots read as a SILENT, clean read.
-//
-// Reverting any one of the three edits turns a named test red:
-//   - internal/tabletext/value.go's Report.Silent() → TestBlobSharedReachesPublicReport/tabletext
-//   - compiler/pack.go's TableReport.BlobShared/publicReport/Silent
-//     → TestBlobSharedReachesPublicReport (Cook's report) and .../publicreport
-//   - cmd/schema/main.go's printed counter → TestCookBlobSharedIsNotSilent.
+// A shared blob refuses the read (docs/SPEC-TABLES.md §2.5, §6.5): one blob
+// record named from two slots is input no writer produces, and the public
+// path that reads a wire (Cook) answers the refusal, never a cook of it. The
+// accepted twin is the corpus's blob_small, every blob named once.
 package compiler
 
 import (
@@ -15,10 +9,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-func TestBlobSharedReachesPublicReport(t *testing.T) {
+func TestBlobSharedRefusesOnThePublicPath(t *testing.T) {
 	t.Parallel()
 
 	// The unit MANIFEST.txt's `unit blobdemo` line names, reached from the
@@ -32,51 +26,25 @@ func TestBlobSharedReachesPublicReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load tables/blobs: %v", err)
 	}
-	wire, err := os.ReadFile(filepath.Join("..", "testdata", "wire", "tables", "blob_shared.bin"))
-	if err != nil {
-		t.Fatal(err)
+	read := func(name string) []byte {
+		t.Helper()
+		wire, err := os.ReadFile(filepath.Join("..", "testdata", "wire", "tables", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wire
 	}
 
-	// Cook is the public path that reads a wire and hands back a TableReport:
-	// the shared blob is packed as one node, so the read succeeds and the
-	// extra naming has to reach the caller.
-	_, _, report, err := c.Cook(u, "Catalog", wire, CookOptions{})
-	if err != nil {
-		t.Fatalf("Cook of the shared-blob wire: %v", err)
+	out, _, report, err := c.Cook(u, "Catalog", read("blob_shared.bin"), CookOptions{})
+	if err == nil || !tablewire.ReadRefusal(err) || tablewire.RefusalReason(err) != tablewire.ReasonBlobShared {
+		t.Fatalf("Cook of the shared-blob wire: %v, want a blob_shared refusal", err)
 	}
-	if report.BlobShared != 1 {
-		t.Fatalf("TableReport.BlobShared = %d, want 1 (report %+v)", report.BlobShared, report)
-	}
-	if report.Silent() {
-		t.Fatalf("a read that counted a shared blob is silent: %+v", report)
+	if len(out) != 0 || !report.Refused || report.Unknown != 0 || report.Widened != 0 {
+		t.Fatalf("a refused read cooked %d bytes with report %+v", len(out), report)
 	}
 
-	t.Run("publicreport", func(t *testing.T) {
-		t.Parallel()
-
-		// publicReport carries the engine's count to the public surface.
-		pub := publicReport(tabletext.Report{BlobShared: 1})
-		if pub.BlobShared != 1 {
-			t.Fatalf("publicReport dropped BlobShared: %+v", pub)
-		}
-		if pub.Silent() {
-			t.Fatalf("TableReport{BlobShared: 1} is silent: %+v", pub)
-		}
-
-		// Both Silent() answers see the engine's count.
-		if (tabletext.Report{BlobShared: 1}).Silent() {
-			t.Fatal("tabletext.Report{BlobShared: 1} is silent")
-		}
-		if (TableReport{BlobShared: 1}).Silent() {
-			t.Fatal("TableReport{BlobShared: 1} is silent")
-		}
-
-		// A zero value of each is still silent.
-		if !(tabletext.Report{}).Silent() {
-			t.Fatal("a zero tabletext.Report is not silent")
-		}
-		if !(TableReport{}).Silent() {
-			t.Fatal("a zero TableReport is not silent")
-		}
-	})
+	out, _, report, err = c.Cook(u, "Catalog", read("blob_small.bin"), CookOptions{})
+	if err != nil || len(out) == 0 || !report.Silent() {
+		t.Fatalf("Cook of blob_small: %d bytes, %+v, %v", len(out), report, err)
+	}
 }

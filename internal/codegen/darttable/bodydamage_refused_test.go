@@ -114,7 +114,7 @@ func TestWireLoadRefusesPastBodyDamageDart(t *testing.T) {
 			}
 			model := tabletext.NewModel(u)
 			var rep tabletext.Report
-			if _, derr := tablewire.DecodeRegion(model, model.New(def), data, &rep); derr != nil || !rep.Malformed {
+			if _, derr := tablewire.DecodeRegion(model, model.New(def), data, &rep); !tablewire.ReadRefusal(derr) || !rep.Refused {
 				t.Fatalf("oracle does not read the mutant as damaged: %v %+v", derr, rep)
 			}
 

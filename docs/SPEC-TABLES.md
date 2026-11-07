@@ -5716,7 +5716,7 @@ in full before the next begins, so the work is linear in the wire's bytes
 and termination needs no argument beyond the record lengths and the end
 of the stream. A pointer field's payload is a NUMBER: it is
 bounds-checked and stored, and the decode never follows it.
-**A CYCLIC WIRE IS DAMAGE, and the whole load is refused.** Glenn's ruling,
+**A CYCLIC WIRE IS DAMAGE, and the whole load is refused.** The maintainer's ruling,
 2026-10-31: "Why the fuck would I want to read a cycle" and "It's perhaps the
 MOST OBVIOUS attack somebody would do on this protocol!" No writer produces a
 cyclic wire: the numbering walk refuses a cycle at an open entry (below), and
@@ -8154,16 +8154,12 @@ Source: the v1.5 adoption, where adding one variable table to a unit silently
 dropped every fixed table's form-`3` surface and its fixed tables rode the
 ordinary table wire. That is the surprise the keyword exists to prevent.
 
-- **FOLLOW-ON, NAMED: A UNION IN A REGIONAL UNIT'S FIXED TABLE.** In a unit that
-  holds a variable table a union is stored as its overlay Row (a tag and one
-  payload extent, arms reached through accessors) and not as one member per
-  arm, so the Go leg's per-arm destinations do not exist there. Until the Go
-  leg lays a union's arms over the overlay, a fixed table whose closure holds a
-  union keeps form `1` in a regional unit, decided at compile time by a named
-  predicate (`fixedRowHoldsUnion`) and never at run time. The same table in a
-  unit with no variable table carries form `3` as before. **Go does not warn
-  today when this drops the form; that warning is a ruling to come, not this
-  card.**
+- **A UNION IN A REGIONAL UNIT'S FIXED TABLE.** In a unit that holds a
+  variable table a union is stored as its overlay Row (a tag and one payload
+  extent, arms reached through accessors) and not as one member per arm. The
+  Go leg lays each arm over the payload extent, at the offset the overlay
+  names, so a fixed table whose closure holds a union carries form `3` in a
+  regional unit as in a plain one, and writes the same bytes.
 
 ---
 
@@ -8730,7 +8726,8 @@ diagnostic name, which is not normative and is never compared:
   since the writer, or a hostile value): a scalar outside the reader's
   declared `[min, max]`, a `bits(N)` value past `2^N − 1`. **A fixed field
   is judged on the RAW scale**: its declared bounds are whole units (SPEC.md
-  §4.6) and the wire carries units × 2^F, so the bounds are `[A << F, B << F]`. A 128-bit integer is judged in 128 bits; a bare `uint128`
+  §4.6) and the wire carries units × 2^F, so the bounds are `[A << F,
+  B << F]`. A 128-bit integer is judged in 128 bits; a bare `uint128`
   declares no range. The reader never clamps: a value it cannot hold refuses
   the load, naming the field (`out_of_range: <Table>.<field>`). In the
   variable form the reader's declared range is the only range it has, so
@@ -13712,7 +13709,7 @@ in build version (§20.5).
   save and `Lock` all return failure with the cycle named. Nothing
   recurses away. A region loaded from a wire is not re-proved, and a save
   from it reproduces what it was given.
-- **What every read refuses, and what it accepts** (§4, §6.5; the maintainer,
+- **What every read refuses, and what it accepts** (§4, §6.5; The maintainer,
   2026-11-03: "It's best to consistently refuse."). A read accepts evolution
   and nothing else: an `unknown` field (a newer writer's field this build
   skips), a `widened` field (the value decoded exactly), and `retained` (a
@@ -13746,6 +13743,7 @@ in build version (§20.5).
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
   SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadBuilder  TableType  Builder
+  LoadRegion  LoadBuilderRead
   At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
@@ -13767,7 +13765,7 @@ in build version (§20.5).
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
-  FixedKnown  FixedFloor  FixedLineagePlans  FixedClampKnown
+  FixedKnown  FixedFloor  FixedLineagePlans  FixedBoundsKnown
   ```
 
   The Go templates also use Add, Erase, Each, Insert, Find,
@@ -13777,7 +13775,7 @@ in build version (§20.5).
   emitted from the bare table name, so none is claimed here — a declaration
   spelling one is not a collision. The fixed-form image and hole names and the
   maximum plan capacity are package-level Go data (§3.4), GenPastBound is
-  the exported bound probe helper (§4), and FixedClampKnown<i> is a Go tablesn pass holding a record read under lineage entry i to that writers ranges
+  the exported bound probe helper (§4), and FixedBoundsKnown<i> is a Go table pass holding a record read under lineage entry i to that writer's ranges
   (docs/FIXED-FORM-ALGORITHM.md §4.5).
 
   The last six of the `Fixed` rows are the READING TIER's, and they are the
@@ -14928,7 +14926,7 @@ possible, and minimize copying (§6.2):
 
 **The node table's shape** (§3.1):
 
-4. **A visited-index guard on load — SUPERSEDED (Glenn, 2026-10-31).** It
+4. **A visited-index guard on load — SUPERSEDED ((the maintainer, 2026-10-31)).** It
    was rejected as state proportional to the graph on the reading path. That
    reasoning was never Glenn's (it came from #264 and #336), and his ruling
    reverses it: "Why the fuck would I want to read a cycle" — "It's perhaps
@@ -14961,7 +14959,7 @@ possible, and minimize copying (§6.2):
    under the encoding every other field uses, and a skipper that knows kind
    `12` frames it correctly without knowing what it holds. A second encoding
    would have bought nothing and cost every reader a case.
-9. **A reader-side acyclicity check — TAKEN (Glenn, 2026-10-31).** It was
+9. **A reader-side acyclicity check — TAKEN ((the maintainer, 2026-10-31)).** It was
    priced and not taken (#264, #336) on the ground that the writer already
    guarantees the property. A reader cannot rely on what a forger's writer
    guarantees, and Glenn ruled: "It's perhaps the MOST OBVIOUS attack
@@ -16115,7 +16113,8 @@ value, and a lone or out-of-order `\uD800`..`\uDFFF` escape refuses
 and `str-lone-trail-surrogate` and the hostile-corpus rows beside them pin.
 **The grammar is judged before the bound** (§6.5): an ill-formed byte at or
 past a field's bound spells no code point, so the read refuses `malformed`
-whatever the bound would have said (conformance row `json-hostile str-illformed-at-bound`).
+whatever the bound would have said (conformance row `json-hostile
+str-illformed-at-bound`).
 
 **THE WRITER REFUSES WHAT IS NOT TEXT, AND ESCAPES WHAT IS** (2026-11-03, the
 one read: consistently refuse). A NARROW field's interior ZERO BYTE is `U+0000`,

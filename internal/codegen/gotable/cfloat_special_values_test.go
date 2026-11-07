@@ -5,11 +5,11 @@ package gotable
 // rule as packets"). The rule under test is one rule for four forms: a NaN or
 // an infinity is REFUSED, never clamped — every writer refuses one (the message
 // writer before its quantizer runs), and the fixed and variable READS, which
-// carry the float whole, refuse one on its raw bits as non_finite_float, naming
-// the field, before the bounds pass; a FINITE value past an end clamps to that
-// end and counts wherever the form clamps (the message WRITER, the fixed and
-// variable READS); -0 lands exactly as +0 does, the value 0 (in the message
-// form, the INDEX OF 0 for that range), with no sign bit and no count.
+// carry the float whole, refuse one on its raw bits as non_finite_float before
+// the bounds pass; a FINITE value past an end is refused wherever the form
+// meets it (the message WRITER, the fixed and variable READS, out_of_range on a
+// read); -0 lands exactly as +0 does, the value 0 (in the message form, the
+// INDEX OF 0 for that range), with no sign bit.
 //
 // Two ranges, because a range that starts at 0 cannot tell "the index of 0"
 // from "index 0": A is [0, 1] at 0.01 (count 100, 0 is index 0) and B is
@@ -84,13 +84,13 @@ fixed table Reading
 // input written into both fields and read back by the form's own reader.
 const cfSpecialProbe = `package probe
 
-import ("bytes"; "math"; "testing")
+import ("bytes"; "errors"; "math"; "testing")
 
 type cfCase struct {
 	name    string
 	in      uint32
 	a, b    uint32 // the bits that land in A [0, 1] and B [-1, 1]
-	counts  int32  // the clamps the form counts across A and B
+	counts  int32  // the fields past an end across A and B: the form refuses the value
 	refused bool   // a NaN or an infinity: every writer and every read refuses it
 	text    bool   // the text form writes it (a finite value past an end is not asked of it)
 }
@@ -106,12 +106,19 @@ var cfCases = []cfCase{
 	{"below_min", 0xC0000000, 0x00000000, 0xBF800000, 2, false, false},
 }
 
-// cfRefused is a read's refusal of a non-finite float: nothing clamped, and A,
-// the first field, named.
+// cfRefused is a read's refusal of a non-finite float, with no counter moved.
 func cfRefused(t *testing.T, form string, c cfCase, rep *TableReport) {
 	t.Helper()
-	if rep.NonFiniteFloat != "Reading.a" || rep.Reason != "non_finite_float: Reading.a" || rep.Clamped != 0 || rep.Err() != TableRefuseNonFiniteFloat {
-		t.Errorf("%s %s: %+v, want the non_finite_float refusal of Reading.a and no clamp", form, c.name, *rep)
+	if rep.Err() != TableRefuseNonFiniteFloat || rep.Unknown != 0 || rep.Widened != 0 {
+		t.Errorf("%s %s: %+v, want the non_finite_float refusal and no counter", form, c.name, *rep)
+	}
+}
+
+// cfOutOfRange is a read's refusal of a finite value past an end.
+func cfOutOfRange(t *testing.T, form string, c cfCase, rep *TableReport) {
+	t.Helper()
+	if !errors.Is(rep.Err(), TableRefuseOutOfRange) || rep.Unknown != 0 || rep.Widened != 0 {
+		t.Errorf("%s %s: %+v, want the out_of_range refusal and no counter", form, c.name, *rep)
 	}
 }
 
@@ -134,9 +141,8 @@ func cfLanded(t *testing.T, form string, c cfCase, got Reading) {
 }
 
 // THE MESSAGE FORM: the writer refuses a NaN or an infinity before it
-// quantizes, and quantizes and clamps a finite value, so the WRITER counts
-// (SaveMessages's report); the reader sees only an index inside [0, count]
-// and counts nothing.
+// quantizes, and refuses a finite value past an end (invalid_value); the
+// reader sees only an index inside [0, count].
 func TestMessage(t *testing.T) {
 	for _, c := range cfCases {
 		v := cfValue(c.in)
@@ -150,11 +156,14 @@ func TestMessage(t *testing.T) {
 		}
 		buf := make([]byte, ReadingMeasureMessages(values, nil))
 		var wrep TableReport
-		if ReadingSaveMessages(values, buf, &wrep) != int64(len(buf)) {
-			t.Fatalf("message %s: save", c.name)
+		if c.counts > 0 {
+			if ReadingSaveMessages(values, buf, &wrep) != -1 || wrep.Err() != TableRefuseInvalidValue {
+				t.Errorf("message %s: the writer quantized a value past an end: %+v", c.name, wrep)
+			}
+			continue
 		}
-		if wrep.Clamped != c.counts {
-			t.Errorf("message %s: the writer counted %d clamps, want %d", c.name, wrep.Clamped, c.counts)
+		if ReadingSaveMessages(values, buf, &wrep) != int64(len(buf)) || wrep.Err() != nil {
+			t.Fatalf("message %s: save %+v", c.name, wrep)
 		}
 		ann := make([]byte, AnnounceMeasure())
 		Announce(ann)
@@ -167,19 +176,17 @@ func TestMessage(t *testing.T) {
 		}
 		got := make([]Reading, 1)
 		var rrep TableReport
-		if n, ok := ReadingLoadMessagesTolerant(got, &vocab, buf, &rrep); n != 1 || !ok {
+		if n, ok := ReadingLoadMessages(got, &vocab, buf, &rrep); n != 1 || !ok {
 			t.Fatalf("message %s: load n=%d ok=%v %+v", c.name, n, ok, rrep)
-		}
-		if rrep.Clamped != 0 {
-			t.Errorf("message %s: the reader counted %d clamps, want 0", c.name, rrep.Clamped)
 		}
 		cfLanded(t, "message", c, got[0])
 	}
 }
 
 // THE MESSAGE WRITER'S INDEX, read straight off the bits it puts: -0 takes the
-// INDEX OF 0 for the range (100 on [-1, 1]), exactly as +0 does. The body
-// above cannot show it, because a field equal to its default is not written.
+// INDEX OF 0 for the range (100 on [-1, 1]), exactly as +0 does, and a value
+// past an end runs over, which the save refuses. The body above cannot show
+// it, because a field equal to its default is not written.
 func TestMessageIndex(t *testing.T) {
 	shape := TableMessageShape{Kind: 10, Packing: 2, Bits: 8, QMin: -1, QDelta: 2, QCount: 200}
 	for _, c := range []struct {
@@ -195,25 +202,25 @@ func TestMessageIndex(t *testing.T) {
 	} {
 		var buf [8]byte
 		w := TableBitWriter{Buffer: buf[:]}
-		var clamped int32
-		tableMessageWriteScalar(&w, &clamped, shape, uint64(c.in), 0)
+		var over int32
+		tableMessageWriteScalar(&w, &over, shape, uint64(c.in), 0)
 		r := TableBitReader{Buffer: buf[:]}
 		index, _ := r.Get(8)
-		if index != c.index || clamped != c.count {
-			t.Errorf("message index %s: index %d counted %d, want index %d counted %d", c.name, index, clamped, c.index, c.count)
+		if index != c.index || over != c.count {
+			t.Errorf("message index %s: index %d over %d, want index %d over %d", c.name, index, over, c.index, c.count)
 		}
 	}
 }
 
 // THE FIXED FORM: forge the hostile bits into a valid record because the Go
-// writer refuses values that its reader would clamp or refuse. The READ
-// refuses a non-finite one first, and clamps and counts a finite one.
+// writer refuses values that its reader would refuse. The READ refuses a
+// non-finite one first, and a finite one past an end out_of_range.
 func TestFixed(t *testing.T) {
 	for _, c := range cfCases {
 		v := cfValue(0)
 		buf := make([]byte, ReadingFixedMeasure(1))
 		if (c.counts > 0 || c.refused) && ReadingFixedSave([]Reading{cfValue(c.in)}, buf) >= 0 {
-			t.Fatalf("fixed %s: writer accepted a value its reader clamps", c.name)
+			t.Fatalf("fixed %s: writer accepted a value its reader refuses", c.name)
 		}
 		if ReadingFixedSave([]Reading{v}, buf) < 0 {
 			t.Fatalf("fixed %s: save", c.name)
@@ -225,17 +232,21 @@ func TestFixed(t *testing.T) {
 		var plan [64]TableFixedEntry
 		var rep TableReport
 		if c.refused {
-			if n := ReadingFixedLoadTolerant(got[:], buf, plan[:], &rep); n != -1 {
-				t.Errorf("fixed %s: the tolerant read landed %d records", c.name, n)
+			if n := ReadingFixedLoad(got[:], buf, plan[:], &rep); n != -1 {
+				t.Errorf("fixed %s: the read landed %d records", c.name, n)
 			}
 			cfRefused(t, "fixed", c, &rep)
 			continue
 		}
-		if n := ReadingFixedLoadTolerant(got[:], buf, plan[:], &rep); n != 1 {
-			t.Fatalf("fixed %s: load n=%d why=%q", c.name, n, rep.Reason)
+		if c.counts > 0 {
+			if n := ReadingFixedLoad(got[:], buf, plan[:], &rep); n != -1 {
+				t.Errorf("fixed %s: the read landed %d records", c.name, n)
+			}
+			cfOutOfRange(t, "fixed", c, &rep)
+			continue
 		}
-		if rep.Clamped != c.counts {
-			t.Errorf("fixed %s: the reader counted %d clamps, want %d", c.name, rep.Clamped, c.counts)
+		if n := ReadingFixedLoad(got[:], buf, plan[:], &rep); n != 1 {
+			t.Fatalf("fixed %s: load n=%d why=%q", c.name, n, rep.Reason)
 		}
 		cfLanded(t, "fixed", c, got[0])
 	}
@@ -250,7 +261,7 @@ func TestVariable(t *testing.T) {
 		if c.counts > 0 || c.refused {
 			invalid := cfValue(c.in)
 			if ReadingSave(&invalid, buf) >= 0 {
-				t.Fatalf("variable %s: writer accepted a value its reader clamps", c.name)
+				t.Fatalf("variable %s: writer accepted a value its reader refuses", c.name)
 			}
 		}
 		if ReadingSave(&v, buf) != int64(len(buf)) {
@@ -273,17 +284,21 @@ func TestVariable(t *testing.T) {
 		var got Reading
 		var rep TableReport
 		if c.refused {
-			if ReadingLoadTolerant(&got, buf, &rep) {
-				t.Errorf("variable %s: the tolerant read landed it", c.name)
+			if ReadingLoad(&got, buf, &rep) {
+				t.Errorf("variable %s: the read landed it", c.name)
 			}
 			cfRefused(t, "variable", c, &rep)
 			continue
 		}
-		if !ReadingLoadTolerant(&got, buf, &rep) {
-			t.Fatalf("variable %s: load %+v", c.name, rep)
+		if c.counts > 0 {
+			if ReadingLoad(&got, buf, &rep) {
+				t.Errorf("variable %s: the read landed it", c.name)
+			}
+			cfOutOfRange(t, "variable", c, &rep)
+			continue
 		}
-		if rep.Clamped != c.counts {
-			t.Errorf("variable %s: the reader counted %d clamps, want %d", c.name, rep.Clamped, c.counts)
+		if !ReadingLoad(&got, buf, &rep) {
+			t.Fatalf("variable %s: load %+v", c.name, rep)
 		}
 		cfLanded(t, "variable", c, got)
 	}
@@ -339,17 +354,14 @@ func TestText(t *testing.T) {
 		}
 		var got Reading
 		var rep TableReport
-		if !ReadingFromJSONTolerant(&got, buf, &rep) {
+		if !ReadingFromJSON(&got, buf, &rep) {
 			t.Fatalf("text %s: read %+v of %s", c.name, rep, buf)
-		}
-		if rep.Clamped != c.counts || rep.KindMismatch != 0 {
-			t.Errorf("text %s: clamped %d kind_mismatch %d, want %d and 0", c.name, rep.Clamped, rep.KindMismatch, c.counts)
 		}
 		cfLanded(t, "text", c, got)
 	}
 	var got Reading
 	var rep TableReport
-	if !ReadingFromJSONTolerant(&got, []byte("{\"a\": -0, \"b\": -0.0}\n"), &rep) {
+	if !ReadingFromJSON(&got, []byte("{\"a\": -0, \"b\": -0.0}\n"), &rep) {
 		t.Fatalf("text -0 by hand: %+v", rep)
 	}
 	cfLanded(t, "text", cfCases[1], got)
