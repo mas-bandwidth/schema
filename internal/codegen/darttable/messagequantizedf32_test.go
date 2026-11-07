@@ -123,11 +123,10 @@ func quantizedFloat32Body(announce, mutant []byte, rep tabletext.Report, wantX f
   final values = <h.Box>[value];
   final loadRep = h.TableReport();
   final count = r.boxLoadMessages(values, msg, vocab, loadRep);
-  check(count == 1 && !loadRep.refused && !loadRep.malformed,
-      'LoadMessages count=$count refused=${loadRep.refused} malformed=${loadRep.malformed}');
-  check(loadRep.unknown == %d && loadRep.kindMismatch == %d && loadRep.widened == %d &&
-      loadRep.clamped == %d && loadRep.duplicate == %d,
-      'six counters unknown=${loadRep.unknown} kindMismatch=${loadRep.kindMismatch} widened=${loadRep.widened} clamped=${loadRep.clamped} duplicate=${loadRep.duplicate}');
+  check(count == 1 && !loadRep.refused,
+      'LoadMessages count=$count refused=${loadRep.refused} reason=${loadRep.reason}');
+  check(loadRep.unknown == %d && loadRep.widened == %d,
+      'counters unknown=${loadRep.unknown} widened=${loadRep.widened}');
   check(value.x == %s, 'x=${value.x} want %s');
   final measureRep = h.TableReport();
   final measure = r.boxMeasureMessages(values, measureRep);
@@ -142,7 +141,7 @@ func quantizedFloat32Body(announce, mutant []byte, rep tabletext.Report, wantX f
   }
   check(same, 'saved bytes of body one differ from the oracle');
 `, dartBytes(announce), dartBytes(mutant),
-		rep.Unknown, 0, rep.Widened, 0, 0,
+		rep.Unknown, rep.Widened,
 		fixedFloatLit(wantX), fixedFloatLit(wantX),
 		len(saved), len(saved), dartBytes(saved))
 }

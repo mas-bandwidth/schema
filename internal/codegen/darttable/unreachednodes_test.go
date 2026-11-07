@@ -86,25 +86,31 @@ func TestWireUnreachedNodeRecordsCountDart(t *testing.T) {
 			}
 			inst := model.New(def)
 			var report tabletext.Report
-			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil {
+			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil && !report.Refused {
 				t.Fatalf("Go DecodeRegion on %s: %v", c.name, err)
 			}
-			if report.Refused {
-				t.Fatalf("the Go oracle refuses %s (%s); the case must be clean past its own events", c.name, report.Reason)
-			}
+			// STRICT VERDICT: a record no pointer reaches is damage, and a
+			// repeated field id is damage (docs/plans/strict-only.md
+			// decisions 5 and 11): where the oracle refuses, the Dart leg
+			// owes the same refusal (checked after the probe below).
 			wantSaved, err := tablewire.Encode(model, inst)
 			if err != nil {
 				t.Fatalf("Go Encode on %s: %v", c.name, err)
 			}
 
 			got := mapProbe(t, wire, c.root, c.hex)
-			if got.unknown != report.Unknown || got.kindMismatch != 0 ||
-				got.widened != report.Widened || got.clamped != 0 ||
-				got.duplicate != 0 || got.malformed != report.Refused ||
+			if report.Refused {
+				if !got.refused {
+					t.Errorf("the Dart load did not refuse %s (reason %q)", c.name, got.reason)
+				}
+				return
+			}
+			if got.unknown != report.Unknown ||
+				got.widened != report.Widened ||
 				got.refused != report.Refused {
-				t.Errorf("Dart report = %d,%d,%d,%d,%d,%v,%v; the Go oracle = %d,%d,%d,%d,%d,%v,%v on %s",
-					got.unknown, got.kindMismatch, got.widened, got.clamped, got.duplicate, got.malformed, got.refused,
-					report.Unknown, 0, report.Widened, 0, 0, report.Refused, report.Refused, c.name)
+				t.Errorf("Dart report = %d,%d,%v; the Go oracle = %d,%d,%v on %s",
+					got.unknown, got.widened, got.refused,
+					report.Unknown, report.Widened, report.Refused, c.name)
 			}
 			if got.saved != hex.EncodeToString(wantSaved) {
 				t.Errorf("Dart saved %s, the Go oracle saves %s on %s", got.saved, hex.EncodeToString(wantSaved), c.name)

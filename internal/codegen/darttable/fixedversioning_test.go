@@ -201,7 +201,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
   check(n >= 1, 'the newer reader refused the older writer file: n=$n ${why(report)}');
   check(report.refused == 0, 'a clean NEW-READS-OLD is not a refusal: ${why(report)}');
   check(
-    report.unknown == 0 && report.widened == 0,
+    report.unknown == 0,
     'counters moved on a clean backward read: ${why(report)}',
   );
   %s

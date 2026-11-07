@@ -617,6 +617,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// the retained store included.
 	g.pf("\t_collectNodeEdges(r);\n")
 	g.pf("\tif (r.cyclic()) {\n\t\tr.report.refuse('wire_damaged');\n\t\tretain.reset();\n\t\treturn %s();\n\t}\n", n)
+	g.pf("\tif (r.trailingReached()) { r.report.refuse('wire_damaged'); }\n")
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.6): nothing
 	// decoded lands and nothing is retained.
 	g.pf("\tif (r.report.refused) {\n")

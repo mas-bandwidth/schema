@@ -123,15 +123,15 @@ void main() {
   final data = File('mutant.bin').readAsBytesSync();
   final report = t.TableWireReport();
   final v = t.sceneWireLoad(data, report);
-  if (report.malformed) {
-    stderr.writeln('FAIL: Dart read malformed, oracle clean');
+  if (report.refused) {
+    stderr.writeln('FAIL: Dart read refused, oracle clean');
     exitCode = 1;
   }
   final out = t.sceneWireSave(v);
   File('saved.bin').writeAsBytesSync(out);
-  stdout.writeln('unknown=${report.unknown} kind=${report.kindMismatch} '
-      'widened=${report.widened} clamped=${report.clamped} '
-      'malformed=${report.malformed} refused=${report.refused}');
+  stdout.writeln('unknown=${report.unknown} '
+      'widened=${report.widened} '
+      'refused=${report.refused}');
 }
 `
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {

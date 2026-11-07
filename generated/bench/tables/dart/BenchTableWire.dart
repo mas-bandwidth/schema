@@ -573,6 +573,15 @@ final class TableWireReader {
   int owner = 1;
   final List<int> edges;
   final Map<Object, int> nodeIndex;
+  // reachedNodes holds every node index (record k at k + 2) some pointer or
+  // blob slot the load resolved named: a placed record no slot reaches is
+  // damage (docs/SPEC-TABLES.md §3.1, §4).
+  final Set<int> reachedNodes;
+  // trailingBodies holds records whose body loader stopped before the
+  // record's last byte; that is damage only when a pointer reaches the
+  // record (a record no slot targets is never walked, exactly as in
+  // internal/tablewire's body walk).
+  final Set<int> trailingBodies;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -585,6 +594,8 @@ final class TableWireReader {
       namedBlobs = <int>{},
       edges = <int>[],
       nodeIndex = Map<Object, int>.identity(),
+      reachedNodes = <int>{},
+      trailingBodies = <int>{},
       report = TableWireReport();
 
   // A sub-reader shares the parent's resolved id table, node records and
@@ -612,6 +623,8 @@ final class TableWireReader {
       rootType = parent.rootType,
       owner = parent.owner,
       edges = parent.edges,
+      reachedNodes = parent.reachedNodes,
+      trailingBodies = parent.trailingBodies,
       nodeIndex = parent.nodeIndex;
 
   // over reads one node-record body against the parent's numbering. The bytes
@@ -638,6 +651,8 @@ final class TableWireReader {
       rootType = parent.rootType,
       owner = parent.owner,
       edges = parent.edges,
+      reachedNodes = parent.reachedNodes,
+      trailingBodies = parent.trailingBodies,
       nodeIndex = parent.nodeIndex;
 
   bool has(int n) => n >= 0 && n <= limit - pos;
@@ -853,6 +868,7 @@ final class TableWireReader {
       report.refuse('wire_damaged');
       return null;
     }
+    reachedNodes.add(idx);
     final tid = nodeTypes[rec];
     if (!_placedNode(tid)) return null;
     if (!recognized || tid != wantTypeId) {
@@ -934,6 +950,7 @@ final class TableWireReader {
       report.refuse('wire_damaged');
       return null;
     }
+    reachedNodes.add(idx);
     // A RECORD WHOSE TYPE ID THIS READER CANNOT PLACE IS NOT A MISMATCH
     // (docs/SPEC-TABLES.md §3.1, §4): the node table scan counted the unknown
     // once at the record, and every pointer naming it reads null — the same
@@ -1160,6 +1177,12 @@ final class TableWireReader {
       if (obj == null) continue;
       final sub = TableWireReader.over(nodes[rec], this)..owner = rec + 2;
       _loadNodeBody(sub, nodeTypes[rec], obj);
+      // Bytes after the body's terminator inside its record length are
+      // damage (docs/SPEC-TABLES.md §4): the whole load refuses. Blob
+      // records carry no body and are not checked here.
+      if (nodeTypes[rec] != _kStringBlobId && nodeTypes[rec] != _kBytesBlobId && sub.pos != sub.limit) {
+        trailingBodies.add(rec + 2);
+      }
     }
   }
 
@@ -1200,6 +1223,33 @@ final class TableWireReader {
       }
     }
     return taken != count - 1;
+  }
+
+  // A RECORD NO POINTER REACHES IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4;
+  // internal/tablewire/wirecheck.go): every placed table record must be
+  // named by some pointer or blob slot the load resolved.
+  bool trailingReached() {
+    final named = <int>{...reachedNodes};
+    for (var i = 1; i < edges.length; i += 2) {
+      named.add(edges[i]);
+    }
+    for (final idx in trailingBodies) {
+      if (named.contains(idx)) return true;
+    }
+    return false;
+  }
+
+  bool unreachedNode() {
+    final named = <int>{...reachedNodes};
+    for (var i = 1; i < edges.length; i += 2) {
+      named.add(edges[i]);
+    }
+    for (var rec = 0; rec < nodes.length; rec++) {
+      if (knownTypes.contains(nodeTypes[rec]) && !named.contains(rec + 2)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -4293,6 +4343,7 @@ TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
     r.report.refuse('wire_damaged');
     return TableEntity();
   }
+  if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return TableEntity();
   return v;
 }
@@ -4454,6 +4505,7 @@ TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
     r.report.refuse('wire_damaged');
     return TableStat();
   }
+  if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return TableStat();
   return v;
 }
@@ -4603,6 +4655,7 @@ TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
     r.report.refuse('wire_damaged');
     return TableMixed();
   }
+  if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return TableMixed();
   return v;
 }

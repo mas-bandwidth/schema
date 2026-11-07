@@ -21,7 +21,6 @@ import (
 // EQUALS the previous landed key is a duplicate, the earlier entry's slot is
 // replaced, and the map's count excludes it.
 func TestWireReportCountsDuplicateKeysDart(t *testing.T) {
-	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	const src = `package probe
@@ -53,18 +52,13 @@ table Root {
 		t.Fatalf("the Go leg encodes the duplicate-key map: %v", err)
 	}
 
-	// The Go oracle.
+	// The Go oracle: STRICT VERDICT — a repeated map key is damage and
+	// refuses the whole load; no entry lands.
 	var ref tabletext.Report
 	got := m.New(m.Lookup("Root"))
-	if _, err := tablewire.Decode(m, got, wire, &ref); err != nil {
-		t.Fatalf("Go reference decode: %v", err)
-	}
-	refEntries := got.Fields[0].Entries
-	if len(refEntries) != 1 {
-		t.Fatalf("Go reference entry count = %d, want 1", len(refEntries))
-	}
-	if refEntries[0].Tab.Fields[1].Cell.U != 200 {
-		t.Fatalf("Go reference last value = %d, want 200", refEntries[0].Tab.Fields[1].Cell.U)
+	_, _ = tablewire.Decode(m, got, wire, &ref)
+	if !ref.Refused {
+		t.Fatalf("Go reference must refuse the duplicate-key wire: %+v", ref)
 	}
 
 	// Generate the Dart wire codec for the same unit and load the same wire.
@@ -98,7 +92,7 @@ void main(List<String> args) {
   final root = rootWireLoad(wire, r);
   final n = root.entries.length;
   final last = n > 0 ? root.entries[n - 1].value : 0;
-  stdout.writeln('${r.duplicate} $n $last');
+  stdout.writeln('${r.refused} ${r.reason} $n $last');
 }
 `
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
@@ -110,7 +104,7 @@ void main(List<String> args) {
 	if err != nil {
 		t.Fatalf("Dart load of the duplicate-key wire: %v\n%s", err, out)
 	}
-	want := "1 1 200\n"
+	want := "true wire_damaged 0 0\n"
 	if string(out) != want {
 		t.Fatalf("Dart reported %q, want %q", string(out), want)
 	}
