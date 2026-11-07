@@ -125,11 +125,11 @@ unsafe class Program
         }
         Console.WriteLine("OK: widened == 1 (one Widen op)");
 
-        if (r.Clamped != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Malformed)
+        if (r.Unknown != 0 || r.Damaged)
         {
             Console.Error.WriteLine(
-                "FAIL: counters moved where the law says none fire. clamped={0} unknown={1} mismatch={2} malformed={3}",
-                r.Clamped, r.Unknown, r.KindMismatch, r.Malformed);
+                "FAIL: counters moved where the law says none fire. unknown={0} damaged={1}",
+                r.Unknown, r.Damaged);
             return false;
         }
         Console.WriteLine("OK: clamped=0 unknown=0 mismatch=0 malformed=false (a band widen moves no other counter)");
@@ -156,7 +156,7 @@ unsafe class Program
 
         Vnew_uint_widen.UintWiden v = new Vnew_uint_widen.UintWiden();
         VnewReport r = new VnewReport();
-        r.Clamped = 99;
+        r.Unknown = 99;
 
         byte[] scratch = System.Array.Empty<byte>();
         int forgedOrdinal = 0;
@@ -180,14 +180,14 @@ unsafe class Program
         }
         Console.WriteLine("OK NEGATIVE: signed widen also fires widened once");
 
-        if (r.Clamped != 99)
+        if (r.Unknown != 99)
         {
             Console.Error.WriteLine(
-                "NEGATIVE: a Widen op is not the bounds pass - clamped must stay at {0}, got {1}",
-                99, r.Clamped);
+                "NEGATIVE: a Widen op is not the bounds pass - unknown must stay at {0}, got {1}",
+                99, r.Unknown);
             return false;
         }
-        Console.WriteLine("OK NEGATIVE: Widen is not the bounds pass (clamped untouched)");
+        Console.WriteLine("OK NEGATIVE: Widen is not the bounds pass (unknown untouched)");
 
         return true;
     }

@@ -87,18 +87,17 @@ internal static class Program
         if (!Tabledemo.Schema.LoadoutConfigLoad(dst, buffer, report))
         {
             Console.Error.WriteLine(
-                "FAIL: LoadoutConfigLoad refused {0} (kind_mismatch={1}, unknown={2}, clamped={3}, malformed={4}, refused={5}, reason='{6}')",
-                label, report.KindMismatch, report.Unknown, report.Clamped,
-                report.Malformed, report.Refused, report.Reason);
+                "FAIL: LoadoutConfigLoad refused {0} (unknown={1}, damaged={2}, refused={3}, reason='{4}')",
+                label, report.Unknown,
+                report.Damaged, report.Refused, report.Reason);
             return false;
         }
-        if (report.Unknown != 0 || report.KindMismatch != 0 ||
-            report.Clamped != 0 || report.Malformed || report.Refused)
+        if (report.Unknown != 0 || report.Damaged || report.Refused)
         {
             Console.Error.WriteLine(
-                "FAIL: LoadoutConfigLoad {0} reported damage: unknown={1}, kind_mismatch={2}, clamped={3}, malformed={4}, refused={5}, reason='{6}'",
-                label, report.Unknown, report.KindMismatch, report.Clamped,
-                report.Malformed, report.Refused, report.Reason);
+                "FAIL: LoadoutConfigLoad {0} reported damage: unknown={1}, damaged={2}, refused={3}, reason='{4}'",
+                label, report.Unknown,
+                report.Damaged, report.Refused, report.Reason);
             return false;
         }
 
@@ -142,9 +141,9 @@ internal static class Program
         if (!Tabledemo.Schema.LoadoutConfigLoad(dst, bytes, report))
         {
             Console.Error.WriteLine(
-                "FAIL: pinned golden refused (kind_mismatch={0}, unknown={1}, clamped={2}, malformed={3}, refused={4}, reason='{5}')",
-                report.KindMismatch, report.Unknown, report.Clamped,
-                report.Malformed, report.Refused, report.Reason);
+                "FAIL: pinned golden refused (unknown={0}, damaged={1}, refused={2}, reason='{3}')",
+                report.Unknown,
+                report.Damaged, report.Refused, report.Reason);
             return false;
         }
 
