@@ -122,7 +122,10 @@ func TestIssue710TableRecovery(t *testing.T) {
  `
 	// The grammar terminates fields by newlines rather than semicolons.
 	u := unitFromSource(t, strings.ReplaceAll(src, "; ", "\n"))
-	m := tabletext.NewModel(u)
+	// the engine reads these form-1 wires through the same declarations as
+	// variable tables, the class whose file form is form 1; a fixed root
+	// refuses form 1 as previous_form before any damage is read (§3.4)
+	m := tabletext.NewModel(unitFromSource(t, strings.ReplaceAll(strings.ReplaceAll(src, " fixed table ", " table "), "; ", "\n")))
 	fieldID := func(root string, i int) uint64 { return ir.TableFieldWireId(u.Tables[root].Fields[i]) }
 	after := []byte{2, byte(ir.TableKindI32), 42, 0, 0, 0}
 	var cases = []struct {
@@ -154,11 +157,20 @@ func TestIssue710TableRecovery(t *testing.T) {
 	cpp.WriteString("#include <cstring>\n#include \"ProbeTable.h\"\nusing namespace p;\nint main(){\n")
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			v := m.New(u.Tables[tc.root])
+			v := m.New(m.Lookup(tc.root))
 			var r tabletext.Report
 			ok, err := tablewire.Decode(m, v, tc.wire, &r)
-			if ok || err != nil || !r.Malformed {
+			if ok || tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged || !r.Refused {
 				t.Fatalf("damage must discard the whole load: ok=%v err=%v report=%+v", ok, err, r)
+			}
+			// the control: the root's own undamaged wire reads and writes back
+			clean, err := tablewire.Encode(m, m.New(m.Lookup(tc.root)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r = tabletext.Report{}
+			if ok, err := tablewire.Decode(m, v, clean, &r); !ok || err != nil || !r.Silent() {
+				t.Fatalf("control: ok=%v err=%v report=%+v", ok, err, r)
 			}
 		})
 		cpp.WriteString("{const uint8_t wire[]={")
@@ -346,7 +358,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 		var r tabletext.Report
 		ok, err := tablewire.Decode(m, v, wire, &r)
 		_, countRefused := errors.AsType[*tablewire.CountRefusal](err)
-		if ok || !countRefused || r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 || v.Fields[1].Cell.I != 0 {
+		if ok || !countRefused || !r.Refused || r.Unknown != 0 || v.Fields[1].Cell.I != 0 {
 			t.Fatalf("%s refusal: ok=%v err=%v report=%+v", tc.root, ok, err, r)
 		}
 		// Count refusal is distinct from a pre-decode form refusal: public

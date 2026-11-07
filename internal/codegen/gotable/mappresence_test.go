@@ -288,12 +288,12 @@ func TestMapPresence(t *testing.T) {
 	if got := hex.EncodeToString(saveIn(t, nb.AsConst())); got != goldenAbsent {
 		t.Fatalf("null does not write the absent wire\n got %s\nwant %s", got, goldenAbsent)
 	}
-	// a repeated key whose last value is null leaves the map absent and empty
+	// a repeated key refuses
 	var rb MBuilder
 	rb.Init()
 	defer rb.Shutdown()
 	report = TableReport{}
-	if !MFromJSON(&rb, []byte("{\"id\":1,\"tags\":{\"a\":5},\"tags\":null}"), &report) || report.Duplicate != 1 {
+	if MFromJSON(&rb, []byte("{\"id\":1,\"tags\":{\"a\":5},\"tags\":null}"), &report) || report.Err() == nil {
 		t.Fatalf("repeated null FromJSON %+v", report)
 	}
 	if d := describe(rb.GetRoot(), &rb.Arena); d != "absent" {

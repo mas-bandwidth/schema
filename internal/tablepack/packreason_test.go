@@ -142,15 +142,15 @@ table GoalList | json = "array"
 		}
 	})
 
-	// A malformed text that names no rule keeps today's generic wording.
-	t.Run("bare-brace-keeps-wording", func(t *testing.T) {
+	// A text that is not JSON refuses malformed, naming the file.
+	t.Run("bare-brace-names-malformed", func(t *testing.T) {
 		tree := write(t, "Root.json", `{`)
 		_, _, _, err := c.Pack(u, "Root", tree)
 		if err == nil {
 			t.Fatal("the root was accepted")
 		}
-		if !strings.Contains(err.Error(), "not one JSON text for table Root") {
-			t.Fatalf("generic wording changed:\n%s", err)
+		if !strings.Contains(err.Error(), "Root.json: malformed") {
+			t.Fatalf("refusal does not name malformed:\n%s", err)
 		}
 	})
 }

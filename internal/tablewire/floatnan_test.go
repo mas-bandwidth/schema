@@ -12,7 +12,7 @@ import (
 )
 
 // A FLOAT IS FINITE, AND THE ORACLE REFUSES ONE THAT IS NOT (docs/SPEC-TABLES.md
-// §3, §3.3; Glenn, 2026-10-27: "Tables go finite-only too, same rule as
+// §3, §3.3; the maintainer, 2026-10-27: "Tables go finite-only too, same rule as
 // packets. NaN/inf refused on write and read, -0 and subnormals kept").
 //
 // `internal/tablewire` is the compiler's own engine and the wire fuzzer's
@@ -54,8 +54,8 @@ func refusedAs(t *testing.T, what string, err error, report tabletext.Report, fi
 	if err.Error() != "non_finite_float: "+field {
 		t.Errorf("%s: the refusal reads %q", what, err.Error())
 	}
-	if report.NonFiniteFloat != field || report.Reason != "non_finite_float: "+field {
-		t.Errorf("%s: the report names %q, Reason %q; want %s", what, report.NonFiniteFloat, report.Reason, field)
+	if !report.Refused || report.Reason != "non_finite_float: "+field {
+		t.Errorf("%s: the report is %+v; want the refusal naming %s", what, report, field)
 	}
 }
 
@@ -120,7 +120,7 @@ func TestOracleRefusesEachNonFinitePattern(t *testing.T) {
 	// the finite wire reads back clean under both, and the float32 fields widen
 	for _, m := range []*tabletext.Model{m1, m2} {
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Floats")), wire, &report); !ok || err != nil || report.NonFiniteFloat != "" {
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Floats")), wire, &report); !ok || err != nil || report.Refused {
 			t.Fatalf("the finite wire did not read: %v %v %+v", ok, err, report)
 		}
 	}
@@ -334,9 +334,11 @@ func TestOracleRetainedFloatIsTested(t *testing.T) {
 		if ok || !errors.As(err, &refusal) {
 			t.Errorf("the retaining read answered %v %v, want the non_finite_float refusal", ok, err)
 		}
+		// SKIPPED IS NOT UNREAD (§4, §6.5): the plain read refuses a NaN or an
+		// infinity inside an unknown field as the retaining read does
 		var plain tabletext.Report
-		if ok, err := tablewire.Decode(reader, reader.New(reader.Lookup("T")), bad, &plain); !ok || err != nil || plain.Unknown != 2 {
-			t.Errorf("the plain read of the same wire answered %v %v %+v, want two unknowns stepped over", ok, err, plain)
+		if ok, err := tablewire.Decode(reader, reader.New(reader.Lookup("T")), bad, &plain); ok || !errors.As(err, &refusal) {
+			t.Errorf("the plain read of the same wire answered %v %v %+v, want the non_finite_float refusal", ok, err, plain)
 		}
 	}
 }

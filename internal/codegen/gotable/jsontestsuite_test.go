@@ -74,7 +74,7 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 	for _, text := range []string{" \xEF\xBB\xBF{}", "{}\xEF\xBB\xBF", "\xEF\xBB{}", "\xEF\xBB\xBF\xEF\xBB\xBF{}", "\xFF\xFE{}"} {
 		var v Root
 		var r TableReport
-		if RootFromJSON(&v, []byte(text), &r) || !r.Malformed {
+		if RootFromJSON(&v, []byte(text), &r) || !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 			t.Errorf("%%q: read clean, want Malformed", text)
 		}
 	}
@@ -88,7 +88,7 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 		b.Init()
 		var r TableReport
 		ok := DocFromJSON(&b, []byte(c.text), &r)
-		if ok != c.ok || (ok && (b.GetRoot().N != 7 || r != (TableReport{}))) || (!ok && !r.Malformed) {
+		if ok != c.ok || (ok && (b.GetRoot().N != 7 || r != (TableReport{}))) || (!ok && !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")) {
 			t.Errorf("variable %%q: ok %%v %%+v, want ok %%v", c.text, ok, r, c.ok)
 		}
 		b.Shutdown()

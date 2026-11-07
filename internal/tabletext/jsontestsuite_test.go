@@ -2,7 +2,6 @@ package tabletext
 
 import (
 	"maps"
-	"slices"
 	"strings"
 	"testing"
 
@@ -30,21 +29,31 @@ func engineVerdicts(s *jsontestsuite.Suite) map[string]bool {
 	return got
 }
 
-// TestJSONTestSuiteEngine holds the engine's JSON layer to JSONTestSuite
-// (docs/SPEC-TABLES.md §16.12): every vendored file, against the table the
-// standard carries, with PENDING's files allowed to disagree and logged.
-func TestJSONTestSuiteEngine(t *testing.T) {
-	t.Parallel()
+// engineSuite loads the suite for this engine. PENDING names the files a
+// generated walk has not met yet; the engine has met every one, so it is held
+// to the policy whole, and a PENDING line it agrees with is not its gap.
+func engineSuite(t *testing.T) *jsontestsuite.Suite {
+	t.Helper()
 	s, err := jsontestsuite.Load("../..")
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.Pending = map[string]string{}
+	return s
+}
+
+// TestJSONTestSuiteEngine holds the engine's JSON layer to JSONTestSuite
+// (docs/SPEC-TABLES.md §16.12): every vendored file, against the table the
+// standard carries.
+func TestJSONTestSuiteEngine(t *testing.T) {
+	t.Parallel()
+	s := engineSuite(t)
 	if n := len(s.Files); n != 318 {
 		t.Fatalf("the corpus holds %d files, want 318", n)
 	}
 	mismatches, pending := jsontestsuite.Check(s, engineVerdicts(s))
 	for _, p := range pending {
-		t.Logf("pending: %s", p)
+		t.Errorf("pending: %s", p)
 	}
 	for _, m := range mismatches {
 		t.Errorf("mismatch: %s", m)
@@ -56,10 +65,7 @@ func TestJSONTestSuiteEngine(t *testing.T) {
 // check that must catch it.
 func TestJSONTestSuitePolicyWitness(t *testing.T) {
 	t.Parallel()
-	s, err := jsontestsuite.Load("../..")
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := engineSuite(t)
 	got := engineVerdicts(s)
 	if m, _ := jsontestsuite.Check(s, got); len(m) != 0 {
 		t.Fatalf("the unedited policy is not clean, so the witness proves nothing: %v", m)
@@ -86,26 +92,23 @@ func TestJSONTestSuitePolicyWitness(t *testing.T) {
 		t.Fatalf("deleting the i_structure_500_nested_arrays row: err %v, want one naming it", err)
 	}
 
-	// drop one PENDING line: Check names that file
-	pending := map[string]string{}
-	maps.Copy(pending, s.Pending)
-	if len(pending) == 0 {
-		t.Fatal("PENDING is empty, so the PENDING half of the witness proves nothing")
-	}
-	names := make([]string, 0, len(pending))
-	for k := range pending {
-		names = append(names, k)
-	}
-	slices.Sort(names)
-	dropped := names[0]
-	delete(pending, dropped)
-	short, err := jsontestsuite.Resolve(s.Files, s.Rows, pending)
+	// a PENDING line excuses its file's disagreement, and dropping it names
+	// that file
+	rows = cloneRows(s.Rows)
+	rows["y_array_empty.json"] = jsontestsuite.Row{File: "y_array_empty.json", Accept: false, Reason: "witness"}
+	excused, err := jsontestsuite.Resolve(s.Files, rows, map[string]string{"y_array_empty.json": "witness-card"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, _ = jsontestsuite.Check(short, got)
-	if len(m) != 1 || !strings.HasPrefix(m[0], dropped+": ") {
-		t.Fatalf("dropping the PENDING line for %s: Check named %q, want exactly that file", dropped, m)
+	if m, p := jsontestsuite.Check(excused, got); len(m) != 0 || len(p) != 1 || !strings.HasPrefix(p[0], "y_array_empty.json: ") {
+		t.Fatalf("a pending disagreement: Check named %q and pending %q, want only y_array_empty.json pending", m, p)
+	}
+	short, err := jsontestsuite.Resolve(s.Files, rows, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := jsontestsuite.Check(short, got); len(m) != 1 || !strings.HasPrefix(m[0], "y_array_empty.json: ") {
+		t.Fatalf("dropping the PENDING line: Check named %q, want exactly y_array_empty.json", m)
 	}
 
 	// and a PENDING line whose file now agrees is itself named

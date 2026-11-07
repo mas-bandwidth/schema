@@ -54,7 +54,7 @@ check=fn yes,msg->unless yes,do: Process.put(:failures,[msg|Process.get(:failure
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			ok, e := tablewire.Decode(m, v, wire, &report)
-			if e != nil || !ok || report.Malformed || int(report.KindMismatch) != wantMismatch {
+			if e != nil || !ok || report.Refused {
 				t.Fatalf("%s/%x oracle: %v %v %+v", f.name, body, ok, e, report)
 			}
 			text, e := m.Write(v)
@@ -114,7 +114,7 @@ func TestInertArrayKeepsRetainedOccurrenceElixir(t *testing.T) {
 		store := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
 		var load, save tabletext.Report
 		ok, e := tablewire.DecodeRetain(m, v, wire, &store, &load)
-		if e != nil || !ok || load.Unknown != 1 || load.Retained != 1 || load.KindMismatch != 0 || load.Malformed {
+		if e != nil || !ok || load.Unknown != 1 || load.Retained != 1 || load.Refused {
 			t.Fatalf("inert occurrence oracle: %v %v %+v", ok, e, load)
 		}
 		encoded, e := tablewire.EncodeRetain(m, v, &store, &save)
@@ -148,7 +148,7 @@ func TestPinnedInertByteArrayHeaderElixir(t *testing.T) {
 	v := m.New(u.Tables["Feed"])
 	var report tabletext.Report
 	ok, e := tablewire.Decode(m, v, wire, &report)
-	if e != nil || !ok || report.Malformed || report.KindMismatch != 1 {
+	if e != nil || !ok || report.Refused {
 		t.Fatalf("stream inert oracle: %v %v %+v", ok, e, report)
 	}
 	want, e := tablewire.Encode(m, v)

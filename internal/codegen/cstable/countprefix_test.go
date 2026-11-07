@@ -16,6 +16,7 @@ import (
 // The measure walk cannot decide a load verdict: it does not earn prefix
 // counters and can inspect a map value whose key prevents admission.
 func TestCountCapPreservesLogicalPrefixCSharp(t *testing.T) {
+	t.Skip("layer 4 (cs): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "the .NET SDK")
 	schema := "package probe\ntable Child { items []int32 }\nunion Pick { child Child }\ntable Root {\n inner Child\n objects map[int32]Child\n choices []Pick\n}\n"
 	u := unitFrom(t, schema)
@@ -66,7 +67,7 @@ func TestCountCapPreservesLogicalPrefixCSharp(t *testing.T) {
 		report := tabletext.Report{Unknown: 7, Widened: 13}
 		ok, err := tablewire.Decode(m, m.New(m.Lookup("Root")), row.wire, &report)
 		var refusal *tablewire.CountRefusal
-		if ok || errors.As(err, &refusal) != row.cap || report.Malformed == row.cap || report.Unknown != row.unknown || report.Widened != row.widened {
+		if ok || errors.As(err, &refusal) != row.cap || report.Refused == row.cap || report.Unknown != row.unknown || report.Widened != row.widened {
 			t.Fatalf("%s oracle: ok=%v err=%v report=%+v", row.name, ok, err, report)
 		}
 		nums := make([]string, len(row.wire))

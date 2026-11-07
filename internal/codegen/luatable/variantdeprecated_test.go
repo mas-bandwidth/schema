@@ -207,7 +207,7 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 	if ok, err := tablewire.Decode(m, inst, fixed, &report); !ok || err != nil {
 		t.Fatalf("oracle wire: %v %+v", err, report)
 	}
-	if report.Unknown != 0 || report.Malformed || inst.Fields[0].Cell.U != scout || inst.Fields[1].Elems[0].U != 0 {
+	if report.Unknown != 0 || report.Refused || inst.Fields[0].Cell.U != scout || inst.Fields[1].Elems[0].U != 0 {
 		t.Fatalf("oracle wire: %+v %+v", report, inst.Fields)
 	}
 	inst = m.New(m.Lookup("Root"))

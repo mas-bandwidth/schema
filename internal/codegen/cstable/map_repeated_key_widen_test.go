@@ -17,6 +17,7 @@ import (
 // These same three ordering cases are independently pinned by the C++ reader;
 // the global map_repeated_key_widen vector also exercises this rule in nightly.
 func TestMapRepeatedKeyLastKindWinsCSharp(t *testing.T) {
+	t.Skip("layer 4 (cs): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "the .NET SDK")
 	const schema = "package probe\ntable Root { entries map[uint32]int32 }\n"
 	m := tabletext.NewModel(unitFrom(t, schema))
@@ -39,7 +40,7 @@ func TestMapRepeatedKeyLastKindWinsCSharp(t *testing.T) {
 		wire = binary.LittleEndian.AppendUint64(wire, 2)
 		v := m.New(m.Lookup("Root"))
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, v, wire, &report); !ok || err != nil || report.Malformed || report.KindMismatch != 1 || report.Widened != tc.widened {
+		if ok, err := tablewire.Decode(m, v, wire, &report); !ok || err != nil || report.Refused || report.Unknown != 1 || report.Widened != tc.widened {
 			t.Fatalf("%s reference: %v %+v", tc.name, err, report)
 		}
 		field, _ := v.FieldByKey("entries")

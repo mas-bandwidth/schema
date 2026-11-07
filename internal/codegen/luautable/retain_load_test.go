@@ -389,7 +389,7 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	keep := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: 1024}
 	wire := retainWire(t, newUnit, `{"child":{"n":7,"extra":"node kept"},"choice":{"note":"arm kept"},"ptr":{"m":9},"future":"root kept"}`)
 	ok, err := tablewire.DecodeRetain(oldModel, oldValue, wire, keep, &oracleReport)
-	if !ok || err != nil || oracleReport.Malformed {
+	if !ok || err != nil || oracleReport.Refused {
 		t.Fatalf("the oracle read failed: %v %v %+v", ok, err, oracleReport)
 	}
 
@@ -523,7 +523,7 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	idValue := oldModel.New(oldModel.Lookup("Root"))
 	var idReport tabletext.Report
 	ok, err = tablewire.DecodeRetain(oldModel, idValue, wire, idStore, &idReport)
-	if !ok || err != nil || idReport.Malformed {
+	if !ok || err != nil || idReport.Refused {
 		t.Fatalf("id capacity %d (one past): the oracle read failed: %v %v %+v", idShort, ok, err, idReport)
 	}
 	if idReport.Retained != oracleReport.Retained || idReport.RetainLost != oracleReport.RetainLost {
@@ -561,7 +561,7 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 			var deepReport tabletext.Report
 			deepKeep := &tablewire.Retain{Capacity: 1 << 16, IdCapacity: 1024}
 			deepOK, deepErr := tablewire.DecodeRetain(deepModel, deepValue, deepWire, deepKeep, &deepReport)
-			if !deepOK || deepErr != nil || deepReport.Malformed {
+			if !deepOK || deepErr != nil || deepReport.Refused {
 				t.Fatalf("%d nested bodies: the oracle read failed on a sound wire: %v %v %+v",
 					row.bodies, deepOK, deepErr, deepReport)
 			}

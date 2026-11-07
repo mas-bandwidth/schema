@@ -102,7 +102,7 @@ func TestFixedLineageReadsAnOlderWriterStrictly(t *testing.T) {
 	inst := now.New(now.Lookup("Cfg"))
 	var report tabletext.Report
 	ok, err := tablewire.Decode(now, inst, wire, &report)
-	if !ok || err != nil || report.Refused || report.Malformed {
+	if !ok || err != nil || report.Refused {
 		t.Fatalf("an older writer the lock holds: ok=%v err=%v report=%+v", ok, err, report)
 	}
 	text, err := now.Write(inst)
@@ -133,8 +133,8 @@ func TestFixedLineageOutOfRangeRefuses(t *testing.T) {
 	if ok || !errors.As(err, &refusal) || refusal.Reason != tablewire.FixedReasonOutOfRange {
 		t.Fatalf("a forged 5000 against max = 1000: ok=%v err=%v, want the one refusal %s", ok, err, tablewire.FixedReasonOutOfRange)
 	}
-	if report.Clamped != 0 {
-		t.Errorf("a strict read clamps nothing: %+v", report)
+	if !report.Refused || report.Widened != 0 {
+		t.Errorf("a refusal carries no counter: %+v", report)
 	}
 }
 

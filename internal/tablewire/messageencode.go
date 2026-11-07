@@ -46,6 +46,13 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 		// bodies calls again.
 		return nil, &MessageRefusal{Reason: ReasonBatchTooLarge}
 	}
+	// A WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (docs/SPEC-TABLES.md
+	// §5): the message form's narrow fields never clamp or truncate one.
+	for _, inst := range insts {
+		if err := m.CheckValue(inst); err != nil {
+			return nil, err
+		}
+	}
 	if err := messageRoot(m, insts[0].Def); err != nil {
 		return nil, err
 	}

@@ -36,8 +36,8 @@ func TestRowP3(t *testing.T) {
 	var sanityReport tblp3.TableReport
 	scratch[0] = tblp3.Chain{}
 	sanityN := tblp3.ChainFixedLoad(scratch[:], data, plan, &sanityReport)
-	if sanityN != 1 || sanityReport.Malformed || sanityReport.Verdict != tblp3.TableOpenOk {
-		t.Fatalf("valid file: n=%d malformed=%v verdict=%v", sanityN, sanityReport.Malformed, sanityReport.Verdict)
+	if sanityN != 1 || sanityReport.Refused() || sanityReport.Verdict != tblp3.TableOpenOk {
+		t.Fatalf("valid file: n=%d refused=%v verdict=%v", sanityN, sanityReport.Refused(), sanityReport.Verdict)
 	}
 	if !scratch[0].LinkPresent || scratch[0].Link.Value != 42 {
 		t.Fatalf("valid file: wrong values: LinkPresent=%v Value=%d", scratch[0].LinkPresent, scratch[0].Link.Value)
@@ -62,11 +62,11 @@ func TestRowP3(t *testing.T) {
 
 			switch {
 			case report.Verdict == tblp3.TableOpenRefused:
-			case report.Malformed:
-			case report.Verdict == tblp3.TableOpenOk && !report.Malformed:
+			case report.Refused():
+			case report.Verdict == tblp3.TableOpenOk && !report.Refused():
 			default:
-				t.Errorf("byte %d bit %d: unexpected outcome verdict=%v malformed=%v",
-					bi, bit, report.Verdict, report.Malformed)
+				t.Errorf("byte %d bit %d: unexpected outcome verdict=%v refused=%v",
+					bi, bit, report.Verdict, report.Refused())
 			}
 		}
 	}

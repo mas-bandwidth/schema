@@ -28,7 +28,7 @@ func TestJSONByteOrderMarkAtTheEntry(t *testing.T) {
 		"\xEF\xBB\xBF\xEF\xBB\xBF" + body, // twice
 		"\xFF\xFE" + body,                 // the UTF-16 mark is not UTF-8
 	} {
-		if _, _, r := read(t, "GlobalSettings", text); !r.Malformed {
+		if _, _, r := read(t, "GlobalSettings", text); !r.Refused {
 			t.Errorf("%q: read clean, want Malformed", text)
 		}
 	}
@@ -47,7 +47,7 @@ func TestJSONByteOrderMarkAtThePackerEntries(t *testing.T) {
 		ok   bool
 	}{{"90", true}, {"\xEF\xBB\xBF90", true}, {" \xEF\xBB\xBF90", false}, {"\xEF\xBB90", false}, {"\xEF\xBB\xBF\xEF\xBB\xBF90", false}} {
 		var r tabletext.Report
-		if got := m.ReadValue(fv, []byte(tc.text), &r); got != tc.ok || r.Malformed == tc.ok {
+		if got := m.ReadValue(fv, []byte(tc.text), &r); got != tc.ok || r.Refused == tc.ok {
 			t.Errorf("ReadValue %q: ok %v report %+v, want ok %v", tc.text, got, r, tc.ok)
 		}
 		if tc.ok && fv.Cell.U != 90 {
@@ -61,7 +61,7 @@ func TestJSONByteOrderMarkAtThePackerEntries(t *testing.T) {
 		ok   bool
 	}{{"2.5", true}, {"\xEF\xBB\xBF2.5", true}, {" \xEF\xBB\xBF2.5", false}, {"\xEF\xBB2.5", false}} {
 		var r tabletext.Report
-		if got := m.ReadElement(ev, 0, []byte(tc.text), &r); got != tc.ok || r.Malformed == tc.ok {
+		if got := m.ReadElement(ev, 0, []byte(tc.text), &r); got != tc.ok || r.Refused == tc.ok {
 			t.Errorf("ReadElement %q: ok %v report %+v, want ok %v", tc.text, got, r, tc.ok)
 		}
 		if tc.ok && float32(ev.Elems[0].F) != 2.5 {

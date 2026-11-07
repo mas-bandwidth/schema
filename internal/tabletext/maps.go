@@ -83,11 +83,10 @@ func MapKeyOrder(f *ir.Field, a, b MapKey) int {
 // NewMapEntry is one entry at its declared defaults, key included.
 func (m *Model) NewMapEntry(f *ir.Field) *Instance { return m.New(f.MapEntry) }
 
-// MapKeyFits is the reader's bound on a key, and KEYS NEVER CLAMP: a key past
-// the declaration's capacity drops its whole entry and counts `clamped`, one
-// per entry (docs/SPEC-TABLES.md §2.8), because a clamped key would merge two
-// entries into one identity. An unbounded key has no declaration-side length
-// limit (section 2.13.1); framing and text validity are checked by the reader.
+// MapKeyFits is the reader's bound on a string key: a key past the
+// declaration's capacity refuses the read `length_over_bound`
+// (docs/SPEC-TABLES.md §2.8, §4). An unbounded key has no declaration-side
+// length limit (§2.13.1); framing and text validity are checked by the reader.
 func MapKeyFits(f *ir.Field, key MapKey) bool {
 	if !MapKeyIsString(f) || ir.MapKeyUnbounded(f) {
 		return true
