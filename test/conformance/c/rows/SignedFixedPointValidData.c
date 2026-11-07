@@ -17,7 +17,7 @@
  *   ticks    fixed(32,0)   int32_t  Q32.0  range [0, 1000000]
  *   scale    fixed(16,16)  int32_t  Q16.16 range [-8, 8], default 1.0
  *   samples  [3]fixed(16,16) int32_t Q16.16 range [-8, 8]
- * The save/load functions are sim_state_save() and sim_state_load_tolerant()
+ * The save/load functions are sim_state_save() and sim_state_load()
  * (build/tables-generated-c/scalars/ScalarsTable.h).
  *
  * Standalone: depends on no other rows/ file, edits no shared file.
@@ -102,9 +102,9 @@ int main(void)
     /* ---- LOAD ---- */
     memset(&loaded, 0, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    check(sim_state_load_tolerant(&loaded, buffer, n, &report) == 1,
+    check(sim_state_load(&loaded, buffer, n, &report) == 1,
           "c/SignedFixedPointValidData: load succeeds with valid data");
-    check(report.malformed == 0 && report.refused == 0,
+    check(!report.refused && report.refused == 0,
           "c/SignedFixedPointValidData: no malformed or refused on valid data");
 
     /* ---- VERIFY every signed fixed-point field round-trips ---- */

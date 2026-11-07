@@ -41,7 +41,7 @@ table Varplain { v int32 }
 	}
 	text := all.String()
 	for _, want := range []string{
-		"fixedroot_load_messages(", "fixedroot_load_messages_tolerant(", "fixedroot_save_messages(", "fixedroot_measure_messages(",
+		"fixedroot_load_messages(", "fixedroot_load_messages(", "fixedroot_save_messages(", "fixedroot_measure_messages(",
 		"inner_save_message_body(", "schema_probe_held_wire_message_save_(",
 		"#define fixedroot_load_retain_messages(", "#define fixedroot_save_retain_messages(",
 	} {

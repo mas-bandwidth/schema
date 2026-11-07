@@ -41,8 +41,8 @@ const cTimestampVariableProbe = `
         if ( n <= 0 || n != measured ) { printf( "variable: save %lld measure %lld\n", (long long) n, (long long) measured ); return 1; }
 
         memset( &rr, 0, sizeof( rr ) );
-        if ( !root_load( &back, wire, n, &rr ) ) { printf( "variable: load failed at case %d malformed=%d\n", k, (int) rr.malformed ); return 1; }
-        if ( rr.malformed || rr.refused || rr.kind_mismatch != 0 || rr.widened != 0 ) { printf( "variable: counters at case %d m=%d x=%d km=%d w=%d\n", k, (int) rr.malformed, (int) rr.refused, rr.kind_mismatch, rr.widened ); return 1; }
+        if ( !root_load( &back, wire, n, &rr ) ) { printf( "variable: load failed at case %d malformed=%d\n", k, (int) rr.refused ); return 1; }
+        if ( rr.refused || rr.refused || rr.kind_mismatch != 0 || rr.widened != 0 ) { printf( "variable: counters at case %d m=%d x=%d km=%d w=%d\n", k, (int) rr.refused, (int) rr.refused, rr.kind_mismatch, rr.widened ); return 1; }
         if ( back.at != nanos[ k ] || back.tag != k + 1 ) { printf( "variable: value moved at case %d at=%lld tag=%lld\n", k, (long long) back.at, (long long) back.tag ); return 1; }
 
         if ( nanos[ k ] != 0 )
@@ -106,7 +106,7 @@ const cTimestampFixedProbe = `
         root_reset( &back );
         memset( &rr, 0, sizeof( rr ) );
         if ( root_fixed_load( &back, 1, file, wrote, plan, 64, NULL, &rr ) != 1 ) { printf( "fixed: load refused at case %d reason=%d\n", k, (int) rr.reason ); return 1; }
-        if ( rr.malformed || rr.refused || rr.kind_mismatch != 0 || rr.widened != 0 ) { printf( "fixed: counters at case %d\n", k ); return 1; }
+        if ( rr.refused || rr.refused || rr.kind_mismatch != 0 || rr.widened != 0 ) { printf( "fixed: counters at case %d\n", k ); return 1; }
         if ( back.at != nanos[ k ] || back.tag != k + 1 ) { printf( "fixed: value moved at case %d\n", k ); return 1; }
     }
 `
@@ -137,7 +137,7 @@ const cTimestampMessageProbe = `
         if ( n <= 0 ) { printf( "message: save failed at case %d reason=%d\n", k, (int) wr.reason ); return 1; }
         memset( &rr, 0, sizeof( rr ) );
         if ( !root_load_messages( back, &count, &vocabulary, wire, n, &rr ) || count != 1 ) { printf( "message: load failed at case %d count=%lld reason=%d\n", k, (long long) count, (int) rr.reason ); return 1; }
-        if ( rr.malformed || rr.refused ) { printf( "message: counters at case %d\n", k ); return 1; }
+        if ( rr.refused || rr.refused ) { printf( "message: counters at case %d\n", k ); return 1; }
         if ( back[ 0 ].at != nanos[ k ] || back[ 0 ].tag != k + 1 ) { printf( "message: value moved at case %d at=%lld\n", k, (long long) back[ 0 ].at ); return 1; }
     }
 `
@@ -284,16 +284,16 @@ func TestCTimestampTextStrictRFC3339(t *testing.T) {
         ok = root_from_json( &v, c->json, (int64_t) strlen( c->json ), &report );
         if ( ok != c->ok )
         {
-            printf( "%s: accepted=%d want %d malformed=%d\n", c->name, ok, c->ok, (int) report.malformed );
+            printf( "%s: accepted=%d want %d malformed=%d\n", c->name, ok, c->ok, (int) report.refused );
             return 1;
         }
         if ( !c->ok )
         {
-            if ( !report.malformed ) { printf( "%s: refused without malformed\n", c->name ); return 1; }
+            if ( !report.refused ) { printf( "%s: refused without malformed\n", c->name ); return 1; }
             if ( v.at != 0 ) { printf( "%s: the refused spelling landed %lld\n", c->name, (long long) v.at ); return 1; }
             continue;
         }
-        if ( report.malformed ) { printf( "%s: accepted with malformed\n", c->name ); return 1; }
+        if ( report.refused ) { printf( "%s: accepted with malformed\n", c->name ); return 1; }
         if ( v.at != c->nanos ) { printf( "%s: landed %lld, want %lld\n", c->name, (long long) v.at, (long long) c->nanos ); return 1; }
 
         need = root_to_json_measure( &v );
@@ -301,7 +301,7 @@ func TestCTimestampTextStrictRFC3339(t *testing.T) {
         n = root_to_json( &v, buffer, (int64_t) sizeof( buffer ) );
         if ( n != need ) { printf( "%s: write %lld measure %lld\n", c->name, (long long) n, (long long) need ); return 1; }
         root_reset( &back );
-        if ( !root_from_json( &back, buffer, n, &again ) || again.malformed || back.at != v.at )
+        if ( !root_from_json( &back, buffer, n, &again ) || again.refused || back.at != v.at )
         {
             printf( "%s: the written text does not read back: %s\n", c->name, buffer );
             return 1;

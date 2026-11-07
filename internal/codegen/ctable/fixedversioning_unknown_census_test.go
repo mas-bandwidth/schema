@@ -26,12 +26,12 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
     if ( r.unknown != 1 ) { printf( "unknown_census: unknown == %d, not exactly 1\n", r.unknown ); return 1; }
     if ( r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 )
         { printf( "unknown_census: a counter moved on a clean backward read: u=%d km=%d w=%d c=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "unknown_census: a clean read refused: malformed=%d refused=%d\n", r.malformed, r.refused ); return 1; }
+    if ( r.refused || r.refused ) { printf( "unknown_census: a clean read refused: malformed=%d refused=%d\n", r.refused, r.refused ); return 1; }
     if ( r.reason != 0 ) { printf( "unknown_census: reason == %d, not 0\n", r.reason ); return 1; }
     {
         int64_t n2;
         memset( &r, 0, sizeof( r ) );
-        n2 = census_fixed_load_tolerant( back, 8, data, len, plan, 4096, NULL, &r );
+        n2 = census_fixed_load( back, 8, data, len, plan, 4096, NULL, &r );
         if ( n2 != 1 ) { printf( "unknown_census: the SECOND read did not return one record: %lld\n", (long long) n2 ); return 1; }
         if ( r.unknown != 1 ) { printf( "unknown_census: the SECOND read owes unknown == 1 again, not %d\n", r.unknown ); return 1; }
     }

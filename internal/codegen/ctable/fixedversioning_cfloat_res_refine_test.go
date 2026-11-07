@@ -34,7 +34,7 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
     if ( r.clamped != 0 ) { printf( "cfloat_res_refine: clamped == %%d, not 0\n", r.clamped ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
         { printf( "cfloat_res_refine: a counter moved on a clean backward read: u=%%d km=%%d w=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "cfloat_res_refine: a clean read refused: malformed=%%d refused=%%d\n", r.malformed, r.refused ); return 1; }
+    if ( r.refused || r.refused ) { printf( "cfloat_res_refine: a clean read refused: malformed=%%d refused=%%d\n", r.refused, r.refused ); return 1; }
     if ( r.reason != 0 ) { printf( "cfloat_res_refine: reason == %%d, not 0\n", r.reason ); return 1; }
 `, aim)
 

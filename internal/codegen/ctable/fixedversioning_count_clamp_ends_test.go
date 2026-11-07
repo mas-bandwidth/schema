@@ -52,7 +52,7 @@ func TestFixedVersioningCountClampEnds(t *testing.T) {
     if ( r.clamped != 1 ) { printf( "count_clamp_ends C1: clamped == %d, not exactly 1\n", r.clamped ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
         { printf( "count_clamp_ends C1: a counter moved on a clean hostile read: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "count_clamp_ends C1: a clean read refused: malformed=%d refused=%d\n", r.malformed, r.refused ); return 1; }
+    if ( r.refused || r.refused ) { printf( "count_clamp_ends C1: a clean read refused: malformed=%d refused=%d\n", r.refused, r.refused ); return 1; }
     if ( r.reason != 0 ) { printf( "count_clamp_ends C1: reason == %d, not 0\n", r.reason ); return 1; }
 `
 
@@ -96,7 +96,7 @@ func TestFixedVersioningCountClampEnds(t *testing.T) {
     if ( r.clamped != 1 ) { printf( "count_clamp_ends C2: clamped == %d, not exactly 1\n", r.clamped ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
         { printf( "count_clamp_ends C2: a counter moved on a clean hostile read: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "count_clamp_ends C2: a clean read refused: malformed=%d refused=%d\n", r.malformed, r.refused ); return 1; }
+    if ( r.refused || r.refused ) { printf( "count_clamp_ends C2: a clean read refused: malformed=%d refused=%d\n", r.refused, r.refused ); return 1; }
     if ( r.reason != 0 ) { printf( "count_clamp_ends C2: reason == %d, not 0\n", r.reason ); return 1; }
 `
 
