@@ -25,11 +25,11 @@ let FixedRefuseLayoutNewer: i64 = 30;
 // zero, each op counts once per entry per record, and a refusal lands nothing.
 // `unknown` is once per FIELD per peer, never per record.
 struct FixedEvolveReport {
-    clamped: i64,
+    oor: i64,
     widened: i64,
     unknown: i64,
-    kind_mismatch: i64,
-    malformed: bool,
+    mismatch: i64,
+    damaged: bool,
     reason: i64,
     hash: u64,
 }
@@ -42,7 +42,7 @@ fn fixed_evolve_refusal_name(code: i64) -> const u8[:] {
         4 => "reserved_not_zero",
         6 => "truncated",
         14 => "invalid_value",
-        18 => "clamped",
+        18 => "out_of_range",
         22 => "integrity_mismatch",
         25 => "previous_form",
         26 => "newer_form",
@@ -70,12 +70,12 @@ fn fixed_evolve_refusal_name(code: i64) -> const u8[:] {
 
 // fixed_evolve_refuse records a refusal by name; nothing landed, no counter
 // moved, and the file's hash survives when the hash is what refused.
-fn fixed_evolve_refuse(report: FixedEvolveReport&, code: i64, malformed: bool) -> i64 {
+fn fixed_evolve_refuse(report: FixedEvolveReport&, code: i64, damaged: bool) -> i64 {
     let hash = report.hash;
     report = FixedEvolveReport { .. };
     report.hash = hash;
     report.reason = code;
-    report.malformed = malformed;
+    report.damaged = damaged;
     return -1;
 }
 

@@ -75,7 +75,7 @@ fn round(v: RootRow) -> RootRow {
     let n = root_fixed_load(&mut out, &buf, &mut plan, &mut remap, &mut report)
         .expect("the buffer this writer wrote reads");
     assert!(
-        n == 1 && !report.refused && !report.malformed,
+        n == 1 && !report.refused && !report.damaged,
         "clean read: {report:?}"
     );
     out[0]

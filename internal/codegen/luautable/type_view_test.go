@@ -110,8 +110,8 @@ func verifyLuauEveryTypeHasAView(t *testing.T, u *ir.Unit, files map[string][]by
 	got := map[string]bool{}
 	var structs []string
 	for _, line := range lines {
-		if strings.HasPrefix(line, "CLAUSE ") {
-			return fmt.Errorf("view clause violation: %s", strings.TrimPrefix(line, "CLAUSE "))
+		if after, ok := strings.CutPrefix(line, "CLAUSE "); ok {
+			return fmt.Errorf("view clause violation: %s", after)
 		}
 		fields := strings.Split(line, " ")
 		if len(fields) != 2 {

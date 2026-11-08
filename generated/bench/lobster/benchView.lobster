@@ -17,6 +17,8 @@ let BenchPacketDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x473ca4761ebab5a5, // FNV-1a 64 of BenchPacket (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -47,6 +49,8 @@ let BenchIntsDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xab4ad3d8621c2cdb, // FNV-1a 64 of BenchInts (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -75,6 +79,8 @@ let BenchBitsDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xa404df3668cb76f5, // FNV-1a 64 of BenchBits (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -101,6 +107,8 @@ let MixedEntityDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x9367b84cab99cdc3, // FNV-1a 64 of MixedEntity (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -133,6 +141,8 @@ let MixedStatDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xc42975bfe5e07baa, // FNV-1a 64 of MixedStat (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -153,6 +163,8 @@ let MixedHitEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xac9fe3b25a77f1d7, // FNV-1a 64 of MixedHitEvent (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -175,6 +187,8 @@ let MixedChatEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x9f2c9da926a7408a, // FNV-1a 64 of MixedChatEvent (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -195,6 +209,8 @@ let MixedPickupEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x3d827cb76b809d8c, // FNV-1a 64 of MixedPickupEvent (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -225,6 +241,8 @@ let BenchMixedDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xeb80cfd516eb3d5c, // FNV-1a 64 of BenchMixed (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,

@@ -24,10 +24,10 @@ fn duplicate_never_raised() {
     // THE COUNTERS THIS FORM RAISES, by name (§4, FIXED-FORM-ALGORITHM.md:26).
     // Silence is the clean read: every counter starts at zero.
     let _ = r.unknown;
-    let _ = r.kind_mismatch;
+    let _ = r.mismatch;
     let _ = r.widened;
-    let _ = r.clamped;
-    let _ = r.malformed;
+    let _ = r.oor;
+    let _ = r.damaged;
     let _ = r.refused;
 
     // SIZE GATE: a struct whose last field is u64 at offset 24 has sizeof 32.

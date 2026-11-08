@@ -109,7 +109,7 @@ fn vd_signed_128_positive_value_round_trips() {
     row.flux = TableI128(42);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == 42, "VD_signed_128: positive flux round-trips as 42");
-    check(report.clamped == 0, "VD_signed_128: no clamping for a value in range");
+    check(report.oor == 0, "VD_signed_128: no clamping for a value in range");
 }
 
 // ---- the law: a negative i128 round-trips ----
@@ -121,7 +121,7 @@ fn vd_signed_128_negative_value_round_trips() {
     row.flux = TableI128(-999999999);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == -999999999, "VD_signed_128: negative flux round-trips");
-    check(report.clamped == 0, "VD_signed_128: no clamping for a value in range");
+    check(report.oor == 0, "VD_signed_128: no clamping for a value in range");
 }
 
 // ---- the law: a value that exercises both halves (nonzero high 64 bits) ----
@@ -135,7 +135,7 @@ fn vd_signed_128_wide_value_round_trips() {
     row.flux = TableI128(expected);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == expected, "VD_signed_128: wide flux round-trips with both halves nonzero");
-    check(report.clamped == 0, "VD_signed_128: no clamping for a value in range");
+    check(report.oor == 0, "VD_signed_128: no clamping for a value in range");
 }
 
 // ---- the law: the byte encoding is low-half-first (little-endian) ----
@@ -170,7 +170,7 @@ fn vd_signed_128_max_value_round_trips() {
     row.flux = TableI128(FLUX_MAX);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == FLUX_MAX, "VD_signed_128: max flux round-trips");
-    check(report.clamped == 0, "VD_signed_128: max value is in range, no clamping");
+    check(report.oor == 0, "VD_signed_128: max value is in range, no clamping");
 }
 
 // ---- the law: minimum in-range value round-trips ----
@@ -182,7 +182,7 @@ fn vd_signed_128_min_value_round_trips() {
     row.flux = TableI128(FLUX_MIN);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == FLUX_MIN, "VD_signed_128: min flux round-trips");
-    check(report.clamped == 0, "VD_signed_128: min value is in range, no clamping");
+    check(report.oor == 0, "VD_signed_128: min value is in range, no clamping");
 }
 
 // ---- the law: zero round-trips (default value) ----
@@ -193,7 +193,7 @@ fn vd_signed_128_zero_round_trips() {
     let row = BenchMixedRow::default();
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == 0, "VD_signed_128: zero flux round-trips");
-    check(report.clamped == 0, "VD_signed_128: zero is in range, no clamping");
+    check(report.oor == 0, "VD_signed_128: zero is in range, no clamping");
 }
 
 // ---- the law: an out-of-range value is clamped on read ----
@@ -221,7 +221,7 @@ fn vd_signed_128_out_of_range_is_clamped() {
         .expect("the reader opens the file");
     check(n == 1, "VD_signed_128 OVER-MAX: the reader reads one record");
     check(values[0].value.flux.0 == FLUX_MAX, "VD_signed_128 OVER-MAX: over-range flux is clamped to max");
-    check(report.clamped >= 1, "VD_signed_128 OVER-MAX: the clamp counter is incremented");
+    check(report.oor >= 1, "VD_signed_128 OVER-MAX: the clamp counter is incremented");
 }
 
 #[test]
@@ -244,7 +244,7 @@ fn vd_signed_128_below_min_is_clamped() {
         .expect("the reader opens the file");
     check(n == 1, "VD_signed_128 BELOW-MIN: the reader reads one record");
     check(values[0].value.flux.0 == FLUX_MIN, "VD_signed_128 BELOW-MIN: below-min flux is clamped to min");
-    check(report.clamped >= 1, "VD_signed_128 BELOW-MIN: the clamp counter is incremented");
+    check(report.oor >= 1, "VD_signed_128 BELOW-MIN: the clamp counter is incremented");
 }
 
 // ---- the negative control: a byte flip in the flux slot ----
@@ -284,7 +284,7 @@ fn vd_signed_128_negative_control_byte_flip_is_clamped() {
         .expect("the reader opens the file");
     check(n == 1, "VD_signed_128 NEGATIVE CONTROL: the reader reads one record");
     // The byte flip pushed the value below FLUX_MIN; the clamp must fire.
-    check(report.clamped >= 1, "VD_signed_128 NEGATIVE CONTROL: byte-flipped flux is clamped");
+    check(report.oor >= 1, "VD_signed_128 NEGATIVE CONTROL: byte-flipped flux is clamped");
     // The clamped value must equal FLUX_MIN (the flip makes it very negative).
     check(values[0].value.flux.0 == FLUX_MIN, "VD_signed_128 NEGATIVE CONTROL: clamped value is FLUX_MIN");
 
@@ -299,7 +299,7 @@ fn vd_signed_128_negative_control_byte_flip_is_clamped() {
         .expect("the reader opens the restored file");
     check(n == 1, "VD_signed_128 RESTORE: the reader reads one record");
     check(values[0].value.flux.0 == FLUX_MAX - 100, "VD_signed_128 RESTORE: the restored flux round-trips");
-    check(report.clamped == 0, "VD_signed_128 RESTORE: no clamping on the restored file");
+    check(report.oor == 0, "VD_signed_128 RESTORE: no clamping on the restored file");
 }
 
 // ---- the negative control (in-binary): a crafted wire that pushes flux above range ----
@@ -334,7 +334,7 @@ fn vd_signed_128_negative_control_crafted_wire() {
     let n = fixed_table_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report)
         .expect("the reader opens the crafted file");
     check(n == 1, "VD_signed_128 CRAFTED: the reader reads one record");
-    check(report.clamped >= 1, "VD_signed_128 CRAFTED: the out-of-range flux is clamped");
+    check(report.oor >= 1, "VD_signed_128 CRAFTED: the out-of-range flux is clamped");
     check(values[0].value.flux.0 == FLUX_MAX, "VD_signed_128 CRAFTED: the clamped value is FLUX_MAX");
 }
 
@@ -361,7 +361,7 @@ fn vd_signed_128_negative_control_below_min() {
     let n = fixed_table_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report)
         .expect("the reader opens the crafted file");
     check(n == 1, "VD_signed_128 BELOW-MIN: the reader reads one record");
-    check(report.clamped >= 1, "VD_signed_128 BELOW-MIN: the below-min flux is clamped");
+    check(report.oor >= 1, "VD_signed_128 BELOW-MIN: the below-min flux is clamped");
     check(values[0].value.flux.0 == FLUX_MIN, "VD_signed_128 BELOW-MIN: the clamped value is FLUX_MIN");
 }
 
