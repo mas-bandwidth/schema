@@ -17,6 +17,7 @@ package darttable
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -62,7 +63,6 @@ fixed table Box
 // Go oracle and by the generated Dart, and the announcement verdict, the six
 // counters and body one's saved bytes must agree.
 func TestMessageAnnounceInt64MinNearFloorDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	wide := uint64(1)<<63 + 7
@@ -92,18 +92,23 @@ func checkAnnounceInt64Case(t *testing.T, c announceInt64Case) {
 	if !st.IsTable || !st.FixedDeclared {
 		t.Fatalf("§3.3 is a fixed table's; Box is a variable table")
 	}
-	m := tabletext.NewModel(u)
-	inst := m.New(m.Lookup("Box"))
+	// STRICT WRITER: the encoder refuses a value past the declared range,
+	// so a past-max body is forged with a twin whose max is wider at the
+	// same bit width; the ranged reader must refuse it whole.
+	twin := unitFrom(t, strings.Replace(c.schema, "max = 100", "max = 8191", 1))
+	tm := tabletext.NewModel(twin)
+	inst := tm.New(tm.Lookup("Box"))
 	f, found := inst.FieldByKey("x")
 	if !found {
 		t.Fatal("the probe's Box declares no x field")
 	}
 	f.Cell.I = c.i
 	f.Cell.U = c.u
-	body, err := tablewire.EncodeMessage(m, inst)
+	body, err := tablewire.EncodeMessage(tm, inst)
 	if err != nil {
 		t.Fatalf("the Go encoder refused the probe body: %v", err)
 	}
+	m := tabletext.NewModel(u)
 
 	announce := tablewire.Announce(u)
 	var announceReport tabletext.Report
@@ -113,9 +118,17 @@ func checkAnnounceInt64Case(t *testing.T, c announceInt64Case) {
 	}
 	var loadReport tabletext.Report
 	value := m.New(m.Lookup("Box"))
-	count, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, body, vocabulary, &loadReport)
-	if err != nil {
-		t.Fatalf("the Go oracle erred on the probe body: %v", err)
+	count, ok, _ := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, body, vocabulary, &loadReport)
+	pastMax := c.i > 100
+	if pastMax {
+		if ok || !loadReport.Refused {
+			t.Fatalf("the Go oracle must refuse a past-max body: count=%d ok=%v report %+v", count, ok, loadReport)
+		}
+		out, err := runBatchProbe(t, u, "Box", announceInt64RefusalBody(announce, body))
+		if err != nil {
+			t.Fatalf("the past-max message read did not run green: %v\n%s", err, out)
+		}
+		return
 	}
 	if !ok || count != 1 {
 		t.Fatalf("the Go oracle decoded %d bodies, ok=%v; the probe is one body", count, ok)
@@ -129,6 +142,24 @@ func checkAnnounceInt64Case(t *testing.T, c announceInt64Case) {
 	if err != nil {
 		t.Fatalf("the message read did not run green: %v\n%s", err, out)
 	}
+}
+
+// announceInt64RefusalBody loads a past-max body and asserts the strict
+// whole-load refusal (out_of_range): no body is delivered.
+func announceInt64RefusalBody(announce, body []byte) string {
+	return fmt.Sprintf(`
+  final ann = Uint8List.fromList(%s);
+  final msg = Uint8List.fromList(%s);
+  final vocab = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
+  final annRep = h.TableReport();
+  check(h.announceRead(vocab, ann, annRep), 'the connection announcement is refused: ' + annRep.reason);
+  final values = <h.Box>[h.Box()];
+  final loadRep = h.TableReport();
+  final count = r.boxLoadMessages(values, msg, vocab, loadRep);
+  check(count == 0 && loadRep.refused &&
+      (loadRep.reason == 'out_of_range' || loadRep.reason == 'wire_damaged'),
+      'LoadMessages count=$count refused=${loadRep.refused} reason=${loadRep.reason}');
+`, dartBytes(announce), dartBytes(body))
 }
 
 // announceInt64Body drives the generated Dart announcement read and the batch
@@ -147,11 +178,10 @@ func announceInt64Body(announce, body []byte, rep tabletext.Report, saved []byte
   final values = <h.Box>[value];
   final loadRep = h.TableReport();
   final count = r.boxLoadMessages(values, msg, vocab, loadRep);
-  check(count == 1 && !loadRep.refused && !loadRep.malformed,
-      'LoadMessages count=$count refused=${loadRep.refused} malformed=${loadRep.malformed}');
-  check(loadRep.unknown == %d && loadRep.kindMismatch == %d && loadRep.widened == %d &&
-      loadRep.clamped == %d && loadRep.duplicate == %d && loadRep.malformed == false,
-      'six counters unknown=${loadRep.unknown} kindMismatch=${loadRep.kindMismatch} widened=${loadRep.widened} clamped=${loadRep.clamped} duplicate=${loadRep.duplicate} malformed=${loadRep.malformed}');
+  check(count == 1 && !loadRep.refused,
+      'LoadMessages count=$count refused=${loadRep.refused} reason=${loadRep.reason}');
+  check(loadRep.unknown == %d && loadRep.widened == %d,
+      'counters unknown=${loadRep.unknown} widened=${loadRep.widened}');
   final measureRep = h.TableReport();
   final measure = r.boxMeasureMessages(values, measureRep);
   final buf = Uint8List(measure);
@@ -165,6 +195,6 @@ func announceInt64Body(announce, body []byte, rep tabletext.Report, saved []byte
   }
   check(same, 'saved bytes of body one differ from the oracle');
 `, dartBytes(announce), dartBytes(body),
-		rep.Unknown, 0, rep.Widened, 0, 0,
+		rep.Unknown, rep.Widened,
 		len(saved), len(saved), dartBytes(saved))
 }

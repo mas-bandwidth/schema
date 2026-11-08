@@ -405,7 +405,10 @@ type versionRow struct {
 	row      string
 	sameHash bool
 	widened  int // -1: at least one
-	unknown  int
+	// unlawful: the pair is DELIBERATELY UNLAWFUL (its schema says so), so the
+	// newer reader lays no plan for the older entry and refuses its file
+	// layout_malformed (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #30)
+	unlawful bool
 	noNewer  bool // the corpus carries no new_ file: the newer writer's file is framed from its unit
 }
 
@@ -437,7 +440,7 @@ var mooVersionRows = []versionRow{
 	{row: "uint_widen", widened: -1},
 	{row: "union_append"},
 	{row: "union_arm_payload_widen"},
-	{row: "unknown_census", unknown: 1, noNewer: true},
+	{row: "unknown_census", unlawful: true, noNewer: true},
 	{row: "wstring_grow"},
 }
 
@@ -485,9 +488,10 @@ func lineageOf(t *testing.T, older []*ir.Unit, retire int) map[string][]mootable
 // TestMooFixedVersioningNewReadsOld is every versioning row's NEW-READS-OLD
 // column (docs/FIXED-FORM-ALGORITHM.md §5.7): the newer reader, handed the
 // older unit's locked entry as its lineage, reads the reference's old_ file —
-// every manifest value it names lands, no refusal, the counters §5.4 owes
+// every manifest value it names lands, no refusal, the one counter §5.4 owes
 // (an append is not an event; a widening row moves widened, array_elem_widen
-// exactly four per record; a dropped field is one `unknown` per peer).
+// exactly four per record). A deliberately UNLAWFUL pair (a dropped field) is
+// refused layout_malformed, never counted (§5.9 #30).
 func TestMooFixedVersioningNewReadsOld(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -503,7 +507,13 @@ func TestMooFixedVersioningNewReadsOld(t *testing.T) {
 			file := "old_" + r.row + ".bin"
 			ml := manifest[file]
 			got := runFixedLoad(t, g, "VNEW_"+r.row+"Table", rootName, corpusFile(t, corpus, file))
-			if !strings.HasPrefix(got.head, fmt.Sprintf("ok %d u%d k0 c0 w", ml.records, r.unknown)) {
+			if r.unlawful {
+				if got.head != "refused layout_malformed nil false -" {
+					t.Fatalf("NEW-READS-OLD %s, an unlawful entry: %s", r.row, got.head)
+				}
+				return
+			}
+			if !strings.HasPrefix(got.head, fmt.Sprintf("ok %d u0 k0 c0 w", ml.records)) {
 				t.Fatalf("NEW-READS-OLD %s: %s", r.row, got.head)
 			}
 			w, _ := strconv.Atoi(got.head[strings.LastIndex(got.head, "w")+1:])

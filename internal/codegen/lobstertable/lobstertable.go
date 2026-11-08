@@ -142,7 +142,7 @@ func runtimeForUnit(u *ir.Unit) map[string][]byte {
 			return
 		}
 		out[name] = data
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			if dep, ok := strings.CutPrefix(strings.TrimSpace(line), "import ."); ok {
 				include(dep + ".lobster")
 			}

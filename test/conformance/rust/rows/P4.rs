@@ -77,7 +77,7 @@ fn wrong_plan_goes_red() {
     // so no op could fail.  The wrong answer is silent, which is exactly why
     // the plan path must be tested: a silent wrong is worse than a loud refusal.
     assert!(
-        !report.malformed && !report.refused,
+        !report.damaged && !report.refused,
         "the wrong plan must NOT be loud — it silently produces wrong values"
     );
 }
@@ -107,7 +107,7 @@ fn right_plan_goes_green() {
     assert_eq!(row.renamed_to, 321, "right plan: renamed_to lands correctly");
     assert_eq!(row.added, 11, "right plan: added lands correctly");
     assert!(
-        !report.malformed && !report.refused,
+        !report.damaged && !report.refused,
         "right plan: clean read"
     );
 }

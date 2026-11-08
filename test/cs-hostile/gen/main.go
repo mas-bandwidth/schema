@@ -256,7 +256,7 @@ func (u *unit) has(want string) bool {
 }
 
 type surface struct {
-	managed, fromJSON, toJSON, measure          bool
+	managed, fromJSON, toJSON, measure, fixed   bool
 	region, loadMeasure, builder, regionSave    bool
 	retain, retainSave                          bool
 	messages, announce, packetRead, packetWrite bool
@@ -265,6 +265,7 @@ type surface struct {
 func surfaceOf(u *unit, t string) surface {
 	return surface{
 		managed:     u.has("public static bool " + t + "Load(" + t + " value, ReadOnlySpan<byte> bytes, TableReport report)"),
+		fixed:       u.has("public static long " + t + "FixedLoad(" + t + " value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)"),
 		fromJSON:    u.has("public static bool " + t + "FromJson(" + t + " value, ReadOnlySpan<byte> text, TableReport report)"),
 		toJSON:      u.has("public static long "+t+"ToJsonMeasure("+t+" value)") && u.has("public static long "+t+"ToJson("+t+" value, Span<byte> buffer)"),
 		measure:     u.has("public static long "+t+"Measure("+t+" value)") && u.has("public static long "+t+"Save("+t+" value, Span<byte> buffer)"),
@@ -308,7 +309,11 @@ func dispatch(u *unit, r row, bodies *bytes.Buffer, emitted map[string]bool) str
 		if !s.managed || !accept() {
 			return skip(t + " has no managed load, Measure/Save and ToJson in the C# port")
 		}
-		emit(f+"_wire", wireBody)
+		if s.fixed {
+			emit(f+"_wire", fixedWireBody)
+		} else {
+			emit(f+"_wire", wireBody)
+		}
 		if s.region && s.loadMeasure && s.builder {
 			emit(f+"_region", regionBody(s.regionSave))
 			return "H.Both(\"managed load\", " + f + "_wire(d), \"native region load\", " + f + "_region(d))"
@@ -378,7 +383,27 @@ const wireBody = `
         var v = new {N}.{T}();
         var r = new {N}.TableReport();
         bool ok = {N}.Schema.{T}Load(v, d, r);
-        return H.Read(ok, r.Refused, r.Reason, r.Malformed) ?? {F}_accept(v);
+        return H.Read(ok, r.Refused, r.Reason) ?? {F}_accept(v);
+    }
+`
+
+// A FIXED root's file is form 3 (docs/SPEC-TABLES.md, the fixed-root file
+// form): its first byte names the form, and the reader takes it through
+// FixedLoad, as cpp-hostile does; any other first byte goes to the variable
+// read, which refuses it by its form.
+const fixedWireBody = `
+    static string {F}_wire(byte[] d)
+    {
+        var v = new {N}.{T}();
+        var r = new {N}.TableReport();
+        if (d.Length > 0 && d[0] == {N}.Schema.TableFixedWire.Form)
+        {
+            var plan = new {N}.TableFixedEntry[1024];
+            long n = {N}.Schema.{T}FixedLoad(v, d, plan, r);
+            return H.Read(n == 1, r.Refused, r.Reason) ?? {F}_accept(v);
+        }
+        bool ok = {N}.Schema.{T}Load(v, d, r);
+        return H.Read(ok, r.Refused, r.Reason) ?? {F}_accept(v);
     }
 `
 
@@ -388,7 +413,7 @@ const textBody = `
         var v = new {N}.{T}();
         var r = new {N}.TableReport();
         bool ok = {N}.Schema.{T}FromJson(v, d, r);
-        return H.Read(ok, r.Refused, r.Reason, r.Malformed) ?? {F}_accept(v);
+        return H.Read(ok, r.Refused, r.Reason) ?? {F}_accept(v);
     }
 `
 
@@ -419,7 +444,7 @@ func regionBody(save bool) string {
         {
             var r = new {N}.TableReport();
             IntPtr root = (IntPtr){N}.Schema.{T}Load((IntPtr)region, capacity, d, r);
-            string refused = H.Read(root != IntPtr.Zero, r.Refused, r.Reason, r.Malformed);
+            string refused = H.Read(root != IntPtr.Zero, r.Refused, r.Reason);
             if (refused != null) { return refused; }` + regionSaveText(save) + `
             return {F}_accept({N}.Schema.{T}LoadBuilder((IntPtr)region));
         }
@@ -457,7 +482,7 @@ func retainBody(save bool) string {
             var store = new {N}.TableRetain { Bytes = bytes, Capacity = storeCapacity, Ids = ids, IdCapacity = idCapacity };
             var r = new {N}.TableReport();
             IntPtr root = (IntPtr){N}.Schema.{T}LoadRetain((IntPtr)region, capacity, d, ref store, r);
-            string refused = H.Read(root != IntPtr.Zero, r.Refused, r.Reason, r.Malformed);
+            string refused = H.Read(root != IntPtr.Zero, r.Refused, r.Reason);
             if (refused != null) { return refused; }` + saveText + `
             return {F}_accept({N}.Schema.{T}LoadBuilder((IntPtr)region));
         }
@@ -481,7 +506,7 @@ const messageBody = `
         var values = new {N}.{T}[] { new {N}.{T}() };
         var r = new {N}.TableReport();
         var verdict = {N}.Schema.{T}LoadMessages(values, d, vocabulary, r, out int count);
-        string refused = H.Read(verdict == {N}.Schema.TableWire.Verdict.Ok, r.Refused, r.Reason, r.Malformed);
+        string refused = H.Read(verdict == {N}.Schema.TableWire.Verdict.Ok, r.Refused, r.Reason);
         if (refused != null) { return refused; }
         if (count != 1) { return "error: an accepted batch delivered " + count + " bodies into a capacity of 1"; }
         return {F}_accept(values[0]);
@@ -500,7 +525,7 @@ const announceBody = `
         }
         var r = new {N}.TableReport();
         var verdict = {N}.Schema.AnnounceRead(vocabulary, d, r);
-        return H.Read(verdict == {N}.Schema.TableWire.Verdict.Ok, r.Refused, r.Reason, r.Malformed) ?? H.Accept("-");
+        return H.Read(verdict == {N}.Schema.TableWire.Verdict.Ok, r.Refused, r.Reason) ?? H.Accept("-");
     }
 `
 

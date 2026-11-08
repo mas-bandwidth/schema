@@ -72,12 +72,12 @@ func TestDartTimestampNative(t *testing.T) {
 			t.Fatal(err)
 		}
 		fmt.Fprintf(&b, `{final r=w.TableTextReport();final v=w.rootFromJson(%q,r);
-check(r.kindMismatch==%d&&r.clamped==0,'JSON report%d');
+check(!r.refused,'JSON report%d');
 check(hex(w.rootWireSave(v))==%q,'JSON wire%d');
 check(w.rootToJson(v)==%q,'canonical RFC3339 %d');
 final wire=w.rootWireSave(v);final wr=w.TableWireReport();final back=w.rootWireLoad(wire,wr);
-check(!wr.malformed&&!wr.refused&&back.at==v.at,'wire roundtrip%d');
-`, tc.Input, 0, i, hex.EncodeToString(wire), i, string(text)+"\n", i, i)
+check(!wr.refused&&back.at==v.at,'wire roundtrip%d');
+`, tc.Input, i, hex.EncodeToString(wire), i, string(text)+"\n", i, i)
 		if i == 3 || i == 13 || i == 14 {
 			key := "negative"
 			if i == 13 {
@@ -110,12 +110,12 @@ check(!wr.malformed&&!wr.refused&&back.at==v.at,'wire roundtrip%d');
 			fmt.Fprintf(&b, `{
 final value=f.Root();f.initRoot(value);value.at=v.at;
 final fixed=Uint8List(f.rootFixedMeasure(1));check(f.rootFixedSave([value],1,fixed)==fixed.length,'fixed save');check(hex(fixed)==%q,'C++ fixed pin');
-final dest=f.Root();final fr=f.TableFixedReport();check(f.rootFixedLoad([dest],1,fixed,fixed.length,f.rootFixedNewPlan(),fr)==1&&!fr.malformed&&fr.refused==0&&dest.at==v.at,'fixed roundtrip');
-final vocab=f.TableVocabulary(entries:List.generate(4096,(i)=>f.TableMessageEntry(0,0)));final ar=f.TableReport();check(f.announceRead(vocab,f.tableAnnouncement,ar)&&!ar.malformed&&!ar.refused,'timestamp announcement');
+final dest=f.Root();final fr=f.TableFixedReport();check(f.rootFixedLoad([dest],1,fixed,fixed.length,f.rootFixedNewPlan(),fr)==1&&fr.refused==0&&dest.at==v.at,'fixed roundtrip');
+final vocab=f.TableVocabulary(entries:List.generate(4096,(i)=>f.TableMessageEntry(0,0)));final ar=f.TableReport();check(f.announceRead(vocab,f.tableAnnouncement,ar)&&!ar.refused,'timestamp announcement');
 final message=Uint8List(f.rootMeasureMessages([value],f.TableReport()));check(f.rootSaveMessages([value],message,f.TableReport())==message.length,'message save');check(hex(message)==%q,'message pin');
-final mr=f.TableReport();final result=f.Root();check(f.rootLoadMessages([result],message,vocab,mr)==1&&!mr.malformed&&!mr.refused&&result.at==v.at,'message read');
+final mr=f.TableReport();final result=f.Root();check(f.rootLoadMessages([result],message,vocab,mr)==1&&!mr.refused&&result.at==v.at,'message read');
 final mismatch=Uint8List.fromList(wire);mismatch[2]=5;final mismatchReport=w.TableWireReport();final skipped=w.rootWireLoad(mismatch,mismatchReport);
-check(skipped.at==0&&mismatchReport.kindMismatch==1&&mismatchReport.widened==0&&!mismatchReport.malformed,'timestamp integer kind must not widen');
+check(skipped.at==0&&mismatchReport.refused&&mismatchReport.reason=='kind_mismatch'&&mismatchReport.widened==0,'timestamp integer kind must not widen: ${mismatchReport.reason}');
 }
 `, pins[key+"fixed"], hex.EncodeToString(msg))
 		}

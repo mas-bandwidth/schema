@@ -115,7 +115,7 @@ void main() {
     final r = w.TableTextReport();
     final v = w.rootFromJson(text, r);
     final hex = w.rootWireSave(v).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    print('${r.clamped} ${r.kindMismatch} $hex');
+    print('${r.refused ? 1 : 0} ${r.reason == 'kind_mismatch' ? 1 : 0} $hex');
   }
 }
 `
@@ -205,12 +205,12 @@ func TestDartTextNegativeZeroNegativeControl(t *testing.T) {
 const textInt64DoubleCompare = `int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
   int clamp(int v) {
     if (unsigned) {
-      if (v < 0 && hi != null && hi >= 0) { v = lo ?? 0; r.clamped++; }
-      if (lo != null && _u64Below(v, lo)) { v = lo; r.clamped++; }
-      if (hi != null && _u64Above(v, hi)) { v = hi; r.clamped++; }
+      if (v < 0 && hi != null && hi >= 0) { v = lo ?? 0; }
+      if (lo != null && _u64Below(v, lo)) { v = lo; }
+      if (hi != null && _u64Above(v, hi)) { v = hi; }
     } else {
-      if (lo != null && v < lo) { v = lo; r.clamped++; }
-      if (hi != null && v > hi) { v = hi; r.clamped++; }
+      if (lo != null && v < lo) { v = lo; }
+      if (hi != null && v > hi) { v = hi; }
     }
     return v;
   }
@@ -224,16 +224,15 @@ const textInt64DoubleCompare = `int _jsonIntField(dynamic val, TableTextReport r
     }
   }
   if (val is _JNum && val.d.isFinite && val.d == val.d.truncateToDouble()) {
-    if (val.d > 9223372036854775807.0) { r.clamped++; return clamp(9223372036854775807); }
-    if (val.d < -9223372036854775808.0) { r.clamped++; return clamp(-9223372036854775808); }
+    if (val.d > 9223372036854775807.0) { return clamp(9223372036854775807); }
+    if (val.d < -9223372036854775808.0) { return clamp(-9223372036854775808); }
     return clamp(val.d.toInt());
   }
   if (val is num && val.isFinite && val.toDouble() == val.toDouble().truncateToDouble()) {
-    if (val.toDouble() > 9223372036854775807.0) { r.clamped++; return clamp(9223372036854775807); }
-    if (val.toDouble() < -9223372036854775808.0) { r.clamped++; return clamp(-9223372036854775808); }
+    if (val.toDouble() > 9223372036854775807.0) { return clamp(9223372036854775807); }
+    if (val.toDouble() < -9223372036854775808.0) { return clamp(-9223372036854775808); }
     return clamp(val.toInt());
   }
-  r.kindMismatch++;
   return def;
 }
 

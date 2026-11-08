@@ -13,12 +13,12 @@ import (
 // malformed: message_arms, message_arm_edits, wide_sites, wide_narrow_arm).
 // TestLuauTableLoadMatchesTheReports checked only that an instance row was not
 // refused. A clean instance row, written by its own unit, reads with every count
-// zero and malformed false.
+// with the strict read answering read.
 func TestLuauTableLoadReadsEveryCleanInstanceClean(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
 	cache := map[string]*generatedUnit{}
-	const clean = "0,0,0,0,0,false,read"
+	const clean = "read"
 	var dirty []string
 	instances := 0
 	for _, row := range manifestRows(t) {
@@ -35,6 +35,9 @@ func TestLuauTableLoadReadsEveryCleanInstanceClean(t *testing.T) {
 		}
 		if g.err != nil {
 			continue
+		}
+		if row.blobShared {
+			continue // wire-refused by design (TestLuauTableLoadMatchesTheReports holds it)
 		}
 		instances++
 		if out := runCase(t, g, row, nil); out != clean {

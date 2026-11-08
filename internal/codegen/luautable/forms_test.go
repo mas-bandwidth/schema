@@ -92,8 +92,8 @@ func verifyLuauFormsMixedUnit(t *testing.T, files map[string][]byte) error {
 	}
 	out := string(luaurun.Run(t, dir, "main.luau", nil))
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		if strings.HasPrefix(line, "CLAUSE ") {
-			return fmt.Errorf("forms clause violation: %s", strings.TrimPrefix(line, "CLAUSE "))
+		if after, ok := strings.CutPrefix(line, "CLAUSE "); ok {
+			return fmt.Errorf("forms clause violation: %s", after)
 		}
 	}
 	if !strings.Contains(out, "forms refusal by Pong and FoxWire across json, textform, block and cook") {

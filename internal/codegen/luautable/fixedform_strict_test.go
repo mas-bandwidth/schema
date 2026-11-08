@@ -13,7 +13,7 @@ import (
 // TestLuauFixedPlainReadIsStrict holds the fixed form to docs/SPEC-TABLES.md
 // §6.5, THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED: F.read
 // (and F.load, which raises) hands back nothing for a read whose report the
-// strict read refuses, naming it, while F.loadTolerant keeps every recovered
+// strict read refuses, naming it, while F.loadWalk keeps every recovered
 // record with the counter moved. The kind_mismatch is a lineage entry handed
 // in at run time whose `b` changed kind off every ladder (int32 to float32):
 // §5.2's EMIT counts it once and lands nothing for it. A widening alone and an
@@ -45,7 +45,7 @@ local p = T.NewPt()
 p.A, p.B = 7, 9
 local file = F.save(T.PtDescriptor, { hash = known.hash, recordBytes = T.PtFixedRecordBytes, layout = forged }, { p })
 local tolerant: any = {}
-local kept = F.loadTolerant(T.PtDescriptor, fixed, file, tolerant)
+local kept = F.loadWalk(T.PtDescriptor, fixed, file, tolerant)
 check(kept ~= nil and #kept == 1, "the tolerant read keeps the record: " .. tostring(tolerant.reason))
 if kept ~= nil then
 	check(kept[1].A == 7, "the matched field landed")

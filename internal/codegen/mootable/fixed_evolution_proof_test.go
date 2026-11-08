@@ -172,6 +172,26 @@ func plant(t *testing.T, g *generatedUnit, anchor, with string) {
 	}
 }
 
+// plantEach replaces each anchor, every one of which must sit in the emitted
+// table_fixed.moo exactly once, by its pair, in one rewrite of the unit's copy.
+func plantEach(t *testing.T, g *generatedUnit, pairs ...string) {
+	t.Helper()
+	src := string(g.files["table_fixed.moo"])
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if strings.Count(src, pairs[i]) != 1 {
+			t.Fatalf("the anchor %q is not in table_fixed.moo exactly once", pairs[i])
+		}
+		src = strings.Replace(src, pairs[i], pairs[i+1], 1)
+	}
+	if err := os.WriteFile(filepath.Join(g.dir, "table_fixed.moo"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// dropRangeChecks is the range negative controls' break: neither the writer's
+// range nor the reader's is held.
+var dropRangeChecks = []string{"\tif n.wlo ~= nil and (", "\tif false and (", "\tif f.lo ~= nil and (", "\tif false and ("}
+
 func clone(b []byte) []byte { return append([]byte(nil), b...) }
 
 // evoHash is the "#<hex>" spelling the probe prints a hash in.
@@ -183,6 +203,13 @@ func fileHash(b []byte) uint64 { return binary.LittleEndian.Uint64(b[8:16]) }
 // refusedTotal is the head of a refusal that moved nothing.
 func refusedTotal(reason string, malformed bool, hash string) string {
 	return fmt.Sprintf("refused %s %v nil %s u0 k0 c0 w0 d0", reason, malformed, hash)
+}
+
+// refusedField is the head of a refusal that names the field it refused
+// (out_of_range, wire_damaged): moo's own diagnostic, never compared across
+// languages (SPEC-TABLES §6.5).
+func refusedField(reason string, damaged bool, field string) string {
+	return fmt.Sprintf("refused %s %v %s - u0 k0 c0 w0 d0", reason, damaged, field)
 }
 
 // evoUnitRefusal loads src and answers the compiler's refusal, or "".
@@ -855,19 +882,22 @@ func TestMooFixedEvolutionFieldEvolution(t *testing.T) {
 	}
 }
 
-// TestMooFixedEvolutionReports is reports (E9, R16, R18): duplicate is never
-// raised on the fixed form; unknown lands once per peer at compile — three
-// records count one, and a second load through the same report counts one
-// again, never accumulating; widened and clamped count once per entry per
-// record; a clamp that cannot fire — an unranged field, a range on its
-// width's own limits — moves nothing over every byte value.
+// TestMooFixedEvolutionReports is reports (E9, R16, R18) under the one read
+// (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #6 and #30): the fixed form never
+// raises duplicate; a check that cannot fire (an unranged field, a range on
+// its width's own limits) refuses nothing over every byte value and moves no
+// counter; and there is NO COMPILE CENSUS — VNEW_unknown_census, a
+// deliberately UNLAWFUL lineage entry (Item.drop removed), refuses
+// layout_malformed over its three records, twice through one report, with
+// every counter reset and nothing landed. The negative control drops the
+// unlawful-entry refusal and requires the three records to land.
 func TestMooFixedEvolutionReports(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	g := fixedUnit(t, unitFromSource(t, "package probe\nfixed table R\n{\n    a int8 = 0 | min = -128, max = 127\n    b uint8\n}\n"), nil)
-	if src := string(g.files["table_fixed.moo"]); strings.Contains(src, "duplicate +=") {
-		t.Errorf("E9: the fixed runtime raises duplicate")
+	if src := string(g.files["table_fixed.moo"]); strings.Contains(src, "duplicate +=") || strings.Contains(src, "outOfRange +=") || strings.Contains(src, "kindChanged +=") {
+		t.Errorf("E9: the fixed runtime moves a counter the one read retires")
 	}
 	var bodies [][]byte
 	for x := range 256 {
@@ -875,19 +905,27 @@ func TestMooFixedEvolutionReports(t *testing.T) {
 	}
 	e := evoEntry(t, g.unit, "R")
 	if got := evoLoad(t, g, "ProbeTable", "R", evoFile(e.Wire, e.Layout, bodies...), -1).head; got != "ok 256 u0 k0 c0 w0 d0 -" {
-		t.Errorf("R18: a clamp that cannot fire moved: %s", got)
+		t.Errorf("R18: a check that cannot fire refused or moved: %s", got)
 	}
 	older, newer := readTestSchema(t, "VOLD_unknown_census"), readTestSchema(t, "VNEW_unknown_census")
-	gc := fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
-	main := "--!strict\nlocal inputs = require(\"./inputs\")\nlocal F = require(\"./table_fixed\")\n" + gc.requireAll() + fmt.Sprintf(`local T = require("./VNEW_unknown_censusTable")
-local rep: any = {}
+	file := corpusFile(t, corpus, "many_unknown_census.bin")
+	main := func(gc *generatedUnit) string {
+		return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal F = require(\"./table_fixed\")\n" + gc.requireAll() + fmt.Sprintf(`local T = require("./VNEW_unknown_censusTable")
+local rep: any = { unknown = 9, widened = 9 }
 for _ = 1, 2 do
 	local v = F.load(T.%[1]sDescriptor, T.%[1]sFixed, inputs.file, rep)
-	print(#(v :: { any }), rep.unknown, rep.outOfRange, rep.widened, rep.repeatedKey)
+	print(if v == nil then "nil" else tostring(#v), tostring(rep.reason), rep.unknown, rep.outOfRange, rep.widened, rep.repeatedKey)
 end
 `, rootOf(t, older))
-	if got := strings.Join(strings.Fields(gc.run(t, main, map[string][]byte{"file": corpusFile(t, corpus, "many_unknown_census.bin")})), " "); got != "3 1 0 0 0 3 1 0 0 0" {
-		t.Errorf("R16: the census over three records, loaded twice: %q", got)
+	}
+	gc := fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
+	if got := strings.Join(strings.Fields(gc.run(t, main(gc), map[string][]byte{"file": file})), " "); got != "nil layout_malformed 0 0 0 0 nil layout_malformed 0 0 0 0" {
+		t.Errorf("R16: the unlawful entry over three records, loaded twice: %q", got)
+	}
+	gn := fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
+	plant(t, gn, "\tif census.unlawful > 0 then\n", "\tif false then\n")
+	if got := strings.Join(strings.Fields(gn.run(t, main(gn), map[string][]byte{"file": file})), " "); strings.Contains(got, "layout_malformed") {
+		t.Errorf("the negative control: without the unlawful-entry refusal the entry still refuses: %q", got)
 	}
 }
 
@@ -969,13 +1007,16 @@ func TestMooFixedEvolutionText(t *testing.T) {
 	}
 }
 
-// TestMooFixedEvolutionScalarBounds is scalar-bounds (C7, R30): a ranged
-// int32, uint16 and int128 read below and above their ranges clamp to the
-// READER's declared ends and count each clamp once, in range nothing moves; a
-// compressed float rides as the float32 itself — saved unquantized, its range
-// clamped on read with a count, -0.0 landing as written — and its resolution
-// is in the digest under 'Q', so a finer or a dropped triple reads the old
-// writer's bits unchanged. The negative control drops the integer clamp.
+// TestMooFixedEvolutionScalarBounds is scalar-bounds (C7, R30) under the one
+// read (docs/FIXED-FORM-ALGORITHM.md §4.6): a ranged int32, int128 and uint16
+// read below or above its range REFUSES THE WHOLE LOAD out_of_range, each
+// field on its own, nothing landed and no counter moved; at its ends and in
+// range it lands. A compressed float rides as the float32 itself — saved
+// unquantized, a value past its range refused out_of_range on read, -0.0
+// landing as written — and its resolution is in the digest under 'Q', so a
+// finer or a dropped triple reads the old writer's bits unchanged. The
+// negative control drops the reader's range check and requires the forged
+// value to land.
 func TestMooFixedEvolutionScalarBounds(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -1002,8 +1043,14 @@ func TestMooFixedEvolutionScalarBounds(t *testing.T) {
 		x, s, v string
 	}{
 		{"in range", body(3, -42, 500), "ok 1 u0 k0 c0 w0 d0 -", "3", "-42", "500"},
-		{"below", body(-100, -600, 5), "ok 1 u0 k0 c3 w0 d0 -", "-5", "-500", "10"},
-		{"above", body(100, 600, 2000), "ok 1 u0 k0 c3 w0 d0 -", "5", "500", "1000"},
+		{"at the low ends", body(-5, -500, 10), "ok 1 u0 k0 c0 w0 d0 -", "-5", "-500", "10"},
+		{"at the high ends", body(5, 500, 1000), "ok 1 u0 k0 c0 w0 d0 -", "5", "500", "1000"},
+		{"x below", body(-6, 0, 10), refusedField("out_of_range", false, "T.x"), "", "", ""},
+		{"x above", body(6, 0, 10), refusedField("out_of_range", false, "T.x"), "", "", ""},
+		{"int128 below", body(0, -501, 10), refusedField("out_of_range", false, "T.s"), "", "", ""},
+		{"int128 above", body(0, 501, 10), refusedField("out_of_range", false, "T.s"), "", "", ""},
+		{"uint16 below", body(0, 0, 9), refusedField("out_of_range", false, "T.u"), "", "", ""},
+		{"uint16 above", body(0, 0, 1001), refusedField("out_of_range", false, "T.u"), "", "", ""},
 	} {
 		got := evoLoad(t, g, "ProbeTable", "T", evoFile(e.Wire, e.Layout, c.b), -1)
 		if got.head != c.head || got.dump["r0.x"] != c.x || got.dump["r0.s"] != c.s || got.dump["r0.u"] != c.v {
@@ -1011,9 +1058,9 @@ func TestMooFixedEvolutionScalarBounds(t *testing.T) {
 		}
 	}
 	gc := fixedUnit(t, u, nil)
-	plant(t, gc, "if f.lo ~= nil then", "if false then")
-	if got := evoLoad(t, gc, "ProbeTable", "T", evoFile(e.Wire, e.Layout, body(-100, -600, 5)), -1).head; got == "ok 1 u0 k0 c3 w0 d0 -" {
-		t.Errorf("the negative control: the dropped clamp still counts")
+	plantEach(t, gc, dropRangeChecks...)
+	if got := evoLoad(t, gc, "ProbeTable", "T", evoFile(e.Wire, e.Layout, body(-6, 0, 10)), -1); !strings.HasPrefix(got.head, "ok 1 ") || got.dump["r0.x"] != "-6" {
+		t.Errorf("the negative control: without the range check the forged x still refuses: %s %v", got.head, got.dump)
 	}
 
 	const cf = "package probe\nfixed table Reading\n{\n    lead uint32 = 1\n    aim float32 = 0.0%s\n    trail uint32 = 2\n}\n"
@@ -1031,8 +1078,10 @@ func TestMooFixedEvolutionScalarBounds(t *testing.T) {
 		bits      uint32
 		head, aim string
 	}{
-		{0xc0000000, "ok 1 u0 k0 c1 w0 d0 -", "0xBF800000"},
-		{0x40800000, "ok 1 u0 k0 c1 w0 d0 -", "0x40000000"},
+		{0xc0000000, refusedField("out_of_range", false, "Reading.aim"), ""},
+		{0x40800000, refusedField("out_of_range", false, "Reading.aim"), ""},
+		{0xbf800000, "ok 1 u0 k0 c0 w0 d0 -", "0xBF800000"},
+		{0x40000000, "ok 1 u0 k0 c0 w0 d0 -", "0x40000000"},
 		{0x80000000, "ok 1 u0 k0 c0 w0 d0 -", "0x80000000"},
 	} {
 		f := clone(saved)
@@ -1052,49 +1101,88 @@ func TestMooFixedEvolutionScalarBounds(t *testing.T) {
 
 const ordinalOld = "package probe\nenum Tier { Bronze, Silver }\nunion Pick\n{\n    a int32\n    b int32\n}\nfixed table Lineage\n{\n    tier Tier\n    pick Pick\n    seq int32\n}\n"
 
-// TestMooFixedEvolutionOrdinals is ordinals (C9, C10, R31): an enum ordinal
-// past the writer's variants and a union tag past its arms land None, each
-// counted clamped once, on the identity plan and on a compiled plan whose
-// reader declares MORE variants and arms (the writer's count governs). The
-// negative control drops the union tag's count.
+// TestMooFixedEvolutionOrdinals is ordinals (C9, C10, R31) under the one read
+// (docs/FIXED-FORM-ALGORITHM.md §4.6, fixes 9 and 14): an enum ordinal past the
+// writer's variants, and a union tag past its arms, each REFUSE THE WHOLE LOAD
+// out_of_range on the identity plan and on a compiled plan whose reader
+// declares MORE variants and arms (the writer's count governs: 3 names a
+// variant and an arm the new reader has, and still refuses). The last
+// writer variant and arm land. The negative controls drop the tag refusal and
+// the ordinal refusal in turn and require the forged file to land.
 func TestMooFixedEvolutionOrdinals(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	uOld := unitFromSource(t, ordinalOld)
 	uNew := unitFromSource(t, strings.Replace(strings.Replace(ordinalOld, "Silver }", "Silver, Gold }", 1), "    b int32\n", "    b int32\n    c int32\n", 1))
 	eo := evoEntry(t, uOld, "Lineage")
-	file := evoFile(eo.Wire, eo.Layout, []byte{3, 3, 1, 0, 0, 0, 42, 0, 0, 0})
+	tier := evoFile(eo.Wire, eo.Layout, []byte{3, 2, 9, 0, 0, 0, 42, 0, 0, 0})
+	tag := evoFile(eo.Wire, eo.Layout, []byte{2, 3, 1, 0, 0, 0, 42, 0, 0, 0})
 	clean := evoFile(eo.Wire, eo.Layout, []byte{2, 2, 9, 0, 0, 0, 42, 0, 0, 0})
 	lin := map[string][]mootable.FixedLineageEntry{"Lineage": {eo}}
 	for name, g := range map[string]*generatedUnit{"identity": fixedUnit(t, uOld, nil), "compiled": fixedUnit(t, uNew, lin)} {
-		got := evoLoad(t, g, "ProbeTable", "Lineage", file, -1)
-		if got.head != "ok 1 u0 k0 c2 w0 d0 -" || got.dump["r0.tier"] != "0" || got.dump["r0.pick.type"] != "0" || got.dump["r0.seq"] != "42" {
-			t.Errorf("%s: %s %v", name, got.head, got.dump)
+		if got := evoLoad(t, g, "ProbeTable", "Lineage", tier, -1).head; got != refusedField("out_of_range", false, "Lineage.tier") {
+			t.Errorf("%s, C9 the ordinal: %s", name, got)
 		}
-		if c := evoLoad(t, g, "ProbeTable", "Lineage", clean, -1); c.head != "ok 1 u0 k0 c0 w0 d0 -" || c.dump["r0.tier"] != "2" || c.dump["r0.pick.b"] != "9" {
+		if got := evoLoad(t, g, "ProbeTable", "Lineage", tag, -1).head; got != refusedField("out_of_range", false, "Lineage.pick") {
+			t.Errorf("%s, C10 the tag: %s", name, got)
+		}
+		if c := evoLoad(t, g, "ProbeTable", "Lineage", clean, -1); c.head != "ok 1 u0 k0 c0 w0 d0 -" || c.dump["r0.tier"] != "2" || c.dump["r0.pick.b"] != "9" || c.dump["r0.seq"] != "42" {
 			t.Errorf("%s, the control: %s %v", name, c.head, c.dump)
 		}
 	}
 	g := fixedUnit(t, uNew, lin)
-	plant(t, g, "if tag > #n.children then", "if false then")
-	if got := evoLoad(t, g, "ProbeTable", "Lineage", file, -1).head; got == "ok 1 u0 k0 c2 w0 d0 -" {
-		t.Errorf("the negative control: an uncounted tag still counts two")
+	plant(t, g, "\t\t\trefuse(\"out_of_range\", false, fieldName(named))\n\t\t\treturn u, nil, nil\n", "\t\t\treturn u, nil, nil\n")
+	if got := evoLoad(t, g, "ProbeTable", "Lineage", tag, -1); !strings.HasPrefix(got.head, "ok 1 ") {
+		t.Errorf("the negative control, the tag: without the refusal it still refuses: %s", got.head)
+	}
+	ge := fixedUnit(t, uNew, lin)
+	plant(t, ge, "\t\t\trefuse(\"out_of_range\", false, fieldName(named))\n\t\t\treturn 0, nil, nil\n", "\t\t\treturn 0, nil, nil\n")
+	if got := evoLoad(t, ge, "ProbeTable", "Lineage", tier, -1); !strings.HasPrefix(got.head, "ok 1 ") {
+		t.Errorf("the negative control, the ordinal: without the refusal it still refuses: %s", got.head)
 	}
 }
 
-// TestMooFixedEvolutionNormalization is normalization (C12, C13, R17), beside
-// TestMooFixedHostileBoolBytes and its negative control: a bool byte 0x7f and
-// a present byte 0x5a normalise to true, count nothing, and the payload behind
-// the present byte lands.
+// TestMooFixedEvolutionNormalization is normalization (C12, C13, R17) under
+// the one read (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2), beside
+// TestMooFixedHostileBoolBytes: NOTHING NORMALIZES. A bool byte 0x7f, and a
+// present byte 0x5a, each refuse the whole load wire_damaged, nothing landed
+// and no counter moved; bytes of 0 and 1 land false, true, absent and present.
+// The negative control drops the bool check and requires 0x7f to land.
 func TestMooFixedEvolutionNormalization(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	g := fixedUnit(t, unitFromSource(t, "package probe\nfixed table T\n{\n    flag bool\n    opt ?int32\n}\n"), nil)
 	file := evoSave(t, g, "ProbeTable", "T", "local v = T.NewT()\nv.Opt = 99\nvalues = { v }\n")
 	body := len(file) - 6
-	file[body], file[body+1], file[body+2] = 0x7f, 0x5a, 42
-	if got := evoLoad(t, g, "ProbeTable", "T", file, -1); got.head != "ok 1 u0 k0 c0 w0 d0 -" || got.dump["r0.flag"] != "1" || got.dump["r0.opt_present"] != "1" || got.dump["r0.opt"] != "42" {
-		t.Errorf("%s %v", got.head, got.dump)
+	with := func(flag, present byte) []byte {
+		b := clone(file)
+		b[body], b[body+1], b[body+2] = flag, present, 42
+		return b
+	}
+	for _, c := range []struct {
+		name          string
+		file          []byte
+		head          string
+		flag, present string
+	}{
+		{"C12 a bool byte 0x7f", with(0x7f, 1), refusedField("wire_damaged", true, "T.flag"), "", ""},
+		{"C12 a bool byte 0x02", with(2, 1), refusedField("wire_damaged", true, "T.flag"), "", ""},
+		{"C13 a present byte 0x5a", with(1, 0x5a), refusedField("wire_damaged", true, "T.opt"), "", ""},
+		{"0 and 0", with(0, 0), "ok 1 u0 k0 c0 w0 d0 -", "0", "0"},
+		{"1 and 1", with(1, 1), "ok 1 u0 k0 c0 w0 d0 -", "1", "1"},
+	} {
+		got := evoLoad(t, g, "ProbeTable", "T", c.file, -1)
+		if got.head != c.head || got.dump["r0.flag"] != c.flag || got.dump["r0.opt_present"] != c.present {
+			t.Errorf("%s: %s %v", c.name, got.head, got.dump)
+		}
+	}
+	if got := evoLoad(t, g, "ProbeTable", "T", with(1, 1), -1); got.dump["r0.opt"] != "42" {
+		t.Errorf("R17: the payload behind a present byte of 1: %v", got.dump)
+	}
+	gc := fixedUnit(t, g.unit, nil)
+	plant(t, gc, "\t\tif b > 1 then\n\t\t\trefuse(\"wire_damaged\", true, fieldName(named))\n", "\t\tif false then\n\t\t\trefuse(\"wire_damaged\", true, fieldName(named))\n")
+	if got := evoLoad(t, gc, "ProbeTable", "T", with(0x7f, 1), -1); !strings.HasPrefix(got.head, "ok 1 ") {
+		t.Errorf("the negative control: without the bool check 0x7f still refuses: %s", got.head)
 	}
 }
 
@@ -1349,9 +1437,9 @@ func TestMooFixedEvolutionHostileInput(t *testing.T) {
 		t.Errorf("P3: the last record's hash: %s", got)
 	}
 	gc := fixedUnit(t, u, nil)
-	plant(t, gc, "if f.lo ~= nil then", "if false then")
+	plantEach(t, gc, dropRangeChecks...)
 	if got := gc.run(t, "--!strict\n"+gc.requireAll()+hostSweep, nil); strings.HasPrefix(got, "0\t") {
-		t.Errorf("the negative control: the sweep without the clamp finds nothing: %s", got)
+		t.Errorf("the negative control: the sweep without the range check finds nothing: %s", got)
 	}
 
 	ab := unitFromSource(t, "package probe\nfixed table A\n{\n    lead uint32 = 0\n    x int32 = 0\n    y int32 = 0\n    trail uint32 = 0\n}\nfixed table B\n{\n    p int8 = 0\n    q int8 = 0\n}\n")
@@ -1370,9 +1458,10 @@ func TestMooFixedEvolutionHostileInput(t *testing.T) {
 	}
 }
 
-// cppRangeWidenProbe is the C++ reference's tolerant load of one
-// range_widen file (the headers make tables-fixedform-corpus generates, whose
-// static data carries each lineage entry's writer ranges): "<n> <v> <clamped>".
+// cppRangeWidenProbe is the C++ reference's strict load of one range_widen
+// file (the headers make tables-fixedform-corpus generates, whose static data
+// carries each lineage entry's writer ranges): "<n> <v> <out_of_range>", n -1
+// and v 0 when the read refused.
 const cppRangeWidenProbe = `#include "VNEW_range_widenTable.h"
 #include <cstdio>
 #include <vector>
@@ -1385,20 +1474,21 @@ int main( int argc, char ** argv )
     vnew_range_widen::RangeWiden back;
     vnew_range_widen::TableReport r;
     std::vector<vnew_range_widen::TableFixedEntry> plan( 1024 );
-    const int64_t got = vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, data.data(), (int64_t) n, plan.data(), 1024, NULL, &r );
-    std::printf( "%lld %d %d\n", (long long) got, (int) back.v, (int) r.clamped );
+    const int64_t got = vnew_range_widen::RangeWidenFixedLoad( &back, 1, data.data(), (int64_t) n, plan.data(), 1024, NULL, &r );
+    std::printf( "%lld %d %d\n", (long long) got, got == 1 ? (int) back.v : 0, r.refuse_reason == vnew_range_widen::out_of_range ? 1 : 0 );
     return 0;
 }
 `
 
 // TestMooFixedEvolutionWriterRange: the bounds pass holds the WRITER's range
-// for the lineage entry being read (docs/FIXED-FORM-ALGORITHM.md §4.5). The
-// old writer declared v in [0, 100], the new reader [0, 200]; the reference's
-// old_range_widen.bin forged to 150 — inside the reader's range, outside the
-// writer's, so damage — lands the writer's 100 and counts clamped once, and
-// -5 and 250 land 0 and 100. Each forged file is also loaded by the C++
-// reference, built here from its generated headers, and the two answers are
-// the same. The negative control clamps to the reader's range alone.
+// for the lineage entry being read (docs/FIXED-FORM-ALGORITHM.md §4.6), and it
+// REFUSES. The old writer declared v in [0, 100], the new reader [0, 200]; the
+// reference's old_range_widen.bin forged to 150 — inside the reader's range,
+// outside the writer's, so damage — refuses the whole load out_of_range, as
+// do -5 and 250; 0, 42 and the writer's own max 100 land. Each forged file is
+// also loaded by the C++ reference's strict read, built here from its
+// generated headers, and the two verdicts are the same. The negative control
+// holds the reader's range alone and requires 150 to land.
 func TestMooFixedEvolutionWriterRange(t *testing.T) {
 	slowtest.Gate(t, "moo and g++ (they run the emitted fixed-form readers)")
 	t.Parallel()
@@ -1418,20 +1508,25 @@ func TestMooFixedEvolutionWriterRange(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	if out, err := exec.Command("g++", "-std=c++17", "-ffp-contract=off", "-I"+headers, "-I"+filepath.Join(root, "..", "serialize"), filepath.Join(dir, "probe.cpp"), "-o", bin).CombinedOutput(); err != nil {
+	if out, err := exec.Command("g++", "-std=c++17", "-ffp-contract=off", "-I"+headers, "-I"+resolveSerializeInclude(dir), filepath.Join(dir, "probe.cpp"), "-o", bin).CombinedOutput(); err != nil {
 		t.Fatalf("the C++ reference probe does not build: %v\n%s", err, out)
 	}
 	lineage := lineageOf(t, []*ir.Unit{older}, 0)
 	g := fixedUnit(t, newer, lineage)
 	for _, c := range []struct {
 		forged int32
-		v      string
-		c      int
-	}{{150, "100", 1}, {-5, "0", 1}, {250, "100", 1}, {42, "42", 0}} {
+		v      string // "" refuses
+	}{{150, ""}, {-5, ""}, {250, ""}, {101, ""}, {42, "42"}, {0, "0"}, {100, "100"}} {
 		file := forge(c.forged)
 		got := evoLoad(t, g, "VNEW_range_widenTable", "RangeWiden", file, -1)
-		if got.head != fmt.Sprintf("ok 1 u0 k0 c%d w0 d0 -", c.c) || got.dump["r0.v"] != c.v {
-			t.Errorf("v forged %d: %s v=%s, want clamped %d v=%s", c.forged, got.head, got.dump["r0.v"], c.c, c.v)
+		cpp := "1 " + c.v + " 0"
+		if c.v == "" {
+			if got.head != refusedField("out_of_range", false, "RangeWiden.v") {
+				t.Errorf("v forged %d: %s, want the whole load refused out_of_range", c.forged, got.head)
+			}
+			cpp = "-1 0 1"
+		} else if got.head != "ok 1 u0 k0 c0 w0 d0 -" || got.dump["r0.v"] != c.v {
+			t.Errorf("v forged %d: %s v=%s, want v=%s", c.forged, got.head, got.dump["r0.v"], c.v)
 		}
 		p := filepath.Join(dir, "in.bin")
 		if err := os.WriteFile(p, file, 0o644); err != nil {
@@ -1441,13 +1536,13 @@ func TestMooFixedEvolutionWriterRange(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := fmt.Sprintf("1 %s %d", c.v, c.c); strings.TrimSpace(string(ref)) != want {
-			t.Errorf("v forged %d: the C++ reference loads %q, moo %s", c.forged, strings.TrimSpace(string(ref)), want)
+		if strings.TrimSpace(string(ref)) != cpp {
+			t.Errorf("v forged %d: the C++ reference loads %q, moo's verdict is %s", c.forged, strings.TrimSpace(string(ref)), cpp)
 		}
 	}
 	gc := fixedUnit(t, newer, lineage)
-	plant(t, gc, "\tif n.wlo ~= nil then\n", "\tif false then\n")
-	if got := evoLoad(t, gc, "VNEW_range_widenTable", "RangeWiden", forge(150), -1); got.dump["r0.v"] == "100" {
-		t.Errorf("the negative control: the reader's range alone still lands the writer's bound")
+	plant(t, gc, "\tif n.wlo ~= nil and (", "\tif false and (")
+	if got := evoLoad(t, gc, "VNEW_range_widenTable", "RangeWiden", forge(150), -1); got.dump["r0.v"] != "150" {
+		t.Errorf("the negative control: the reader's range alone still refuses the writer's overrun: %s", got.head)
 	}
 }

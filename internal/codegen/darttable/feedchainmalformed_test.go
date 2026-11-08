@@ -37,7 +37,6 @@ const (
 )
 
 func TestWireFeedChainMalformedDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	mutant, err := hex.DecodeString(streamChainPass41Hex)
@@ -68,24 +67,20 @@ func TestWireFeedChainMalformedDart(t *testing.T) {
 	measured, whole, refused := tablewire.FileRegionMeasure(u, def, mutant)
 	inst := model.New(def)
 	var report tabletext.Report
-	if _, err := tablewire.DecodeRegion(model, inst, mutant, &report); err != nil {
-		t.Fatalf("the oracle refused the replay mutant: %v", err)
-	}
+	// STRICT VERDICT: the oracle refuses this mutant whole (wire_damaged);
+	// the Dart read must answer the same refusal.
+	_, _ = tablewire.DecodeRegion(model, inst, mutant, &report)
 	encoded, err := tablewire.Encode(model, inst)
 	if err != nil {
 		t.Fatalf("the oracle could not save its read: %v", err)
 	}
-	if refused || !whole {
-		t.Fatalf("the oracle's measure is not exact: refused=%v whole=%v", refused, whole)
-	}
+	_ = whole
+	_ = refused
 	if measured != streamChainPass41Measure {
 		t.Fatalf("the oracle's measure moved: %d, want %d", measured, streamChainPass41Measure)
 	}
-	if len(encoded) != streamChainPass41SavedBytes {
-		t.Fatalf("the oracle's saved length moved: %d, want %d", len(encoded), streamChainPass41SavedBytes)
-	}
-	if report.Refused {
-		t.Fatalf("the oracle refused the replay mutant: %s", report.Reason)
+	if !report.Refused {
+		t.Fatalf("the oracle does not refuse the replay mutant: %s", report.Reason)
 	}
 	if report.Unknown != 0 || report.Widened != 0 {
 		t.Fatalf("the oracle's counters moved: %+v", report)
@@ -110,8 +105,7 @@ void main(List<String> args) {
   final measure = feedWireMeasure(data);
   final v = feedWireLoad(data, report);
   final saved = feedWireSave(v);
-  stdout.writeln('${report.unknown},${report.kindMismatch},'
-      '${report.widened},${report.clamped},${report.malformed},'
+  stdout.writeln('${report.unknown},${report.widened},'
       '${report.refused},$measure,${saved.length},${hex(saved)}');
 }
 `
@@ -125,8 +119,8 @@ void main(List<String> args) {
 		t.Fatalf("the generated Dart read of the replay mutant: %v\n%s", err, out)
 	}
 	fields := strings.Split(strings.TrimSpace(string(out)), ",")
-	if len(fields) != 9 {
-		t.Fatalf("the probe did not answer nine fields: %q", out)
+	if len(fields) != 6 {
+		t.Fatalf("the probe did not answer six fields: %q", out)
 	}
 	num := func(i int) int {
 		n, err := strconv.Atoi(fields[i])
@@ -136,37 +130,25 @@ void main(List<String> args) {
 		return n
 	}
 	leg := struct {
-		unknown, kindMismatch, widened, clamped int
-		malformed, refused                      bool
-		measure, savedLen                       int
-		saved                                   string
+		unknown, widened  int
+		refused           bool
+		measure, savedLen int
+		saved             string
 	}{
-		unknown:      num(0),
-		kindMismatch: num(1),
-		widened:      num(2),
-		clamped:      num(3),
-		malformed:    fields[4] == "true",
-		refused:      fields[5] == "true",
-		measure:      num(6),
-		savedLen:     num(7),
-		saved:        fields[8],
+		unknown:  num(0),
+		widened:  num(1),
+		refused:  fields[2] == "true",
+		measure:  num(3),
+		savedLen: num(4),
+		saved:    fields[5],
 	}
 
 	// FIELD BY FIELD against the oracle, not against a remembered answer.
 	if leg.unknown != report.Unknown {
 		t.Fatalf("unknown: dart %d, oracle %d", leg.unknown, report.Unknown)
 	}
-	if leg.kindMismatch != 0 {
-		t.Fatalf("kindMismatch: dart %d, oracle %d", leg.kindMismatch, 0)
-	}
 	if leg.widened != report.Widened {
 		t.Fatalf("widened: dart %d, oracle %d", leg.widened, report.Widened)
-	}
-	if leg.clamped != 0 {
-		t.Fatalf("clamped: dart %d, oracle %d", leg.clamped, 0)
-	}
-	if leg.malformed != report.Refused {
-		t.Fatalf("malformed: dart %v, oracle %v", leg.malformed, report.Refused)
 	}
 	if leg.refused != report.Refused {
 		t.Fatalf("refused: dart %v, oracle %v", leg.refused, report.Refused)
@@ -181,8 +163,8 @@ void main(List<String> args) {
 		t.Fatalf("saved bytes differ:\n dart   %s\n oracle %s", leg.saved, hex.EncodeToString(encoded))
 	}
 
-	// AND THE ORACLE'S ANSWER THE CARD PINS.
-	if leg.malformed || leg.refused || leg.measure != streamChainPass41Measure || leg.savedLen != streamChainPass41SavedBytes {
-		t.Fatalf("the replay mutant's oracle answer is no longer the card's: %+v", leg)
+	// AND THE VERDICT THE CARD PINS: a whole-load refusal.
+	if !leg.refused {
+		t.Fatalf("the replay mutant's verdict is no longer the card's: %+v", leg)
 	}
 }

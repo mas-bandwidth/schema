@@ -549,56 +549,56 @@ func (g *wireGen) emitRuntime() {
 	g.pf("%s", integrityRuntime(g.unit))
 	g.pf("%s", requiredWireRuntime)
 	g.pf("%s", textListWireRuntime)
-	g.pf("%s", `// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
-// widened, clamped, duplicate) and the refusal verdict (§3). malformed and
-// refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
-// with Go's last-wins whole semantics.
+	g.pf("%s", `// The report the one strict read fills (docs/plans/strict-only.md): the
+// evolution counters unknown, widened, retained and retainLost, and the
+// refusal verdict (§3). There is no partial value beside a counter: damage,
+// a kind mismatch, a repeated key or slot, a shared blob record and a value,
+// count or length out of its bound each refuse the whole load through
+// refuse(), and the load answers the type's defaults.
 final class TableWireReport {
   int unknown = 0;
-  int kindMismatch = 0;
   int widened = 0;
-  int clamped = 0;
-  String clampedField = '';
-  int duplicate = 0;
-  int blobShared = 0;
-  bool malformed = false;
   bool integrityMismatch = false;
   bool refused = false;
+  String refusal = '';
   bool _countRefused = false;
-  int missingRequired = 0;
   String missingFields = '';
   int retained = 0;
   int retainLost = 0;
 
   // nonFiniteFloat is the STORED refusal of a float whose raw bits are a NaN
   // or an infinity (docs/SPEC-TABLES.md §3.3): the <Table>.<field> the read
-  // met first, '' when it met none. Every read refuses one, the tolerant one
-  // too: refused rises with it and the load lands nothing, answering the
-  // type's defaults.
+  // met first, '' when it met none. Every read refuses one: refused rises
+  // with it and the load lands nothing, answering the type's defaults.
   String nonFiniteFloat = '';
+
+  // refuse records the read's whole-load refusal by name (a per-language
+  // diagnostic, never compared across legs): the first refusal stands.
+  void refuse(String r) {
+    if (refusal.isEmpty) refusal = r;
+    refused = true;
+  }
 
   void refuseNonFiniteFloat(String field) {
     if (nonFiniteFloat.isEmpty) nonFiniteFloat = field;
-    refused = true;
+    refuse('non_finite_float');
   }
 
   // reason is the read's refusal BY NAME, in the reference leg's vocabulary
   // (internal/codegen/gotable/refusal.go, the TableRefuse* Error() strings;
   // docs/SPEC-TABLES.md §3, §4): a non-finite float is non_finite_float naming
   // the field, and it outranks every later verdict; a form byte this reader
-  // does not carry is unknown_form, framing the reader cannot follow is
-  // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
-  // leg's measure gives its two verdicts. It is DERIVED from the flags and the
-  // stored field; _countRefused records a builder storage refusal without
-  // adding a malformed event. Earlier report events remain available.
-  // A widened, clamped or unknown field is not a refusal: the read answers ok.
+  // does not carry is unknown_form, and a read that kept its verdict is ok.
+  // It is DERIVED from the stored refusal; _countRefused records a builder
+  // storage refusal. A widened or unknown field is not a refusal: the read
+  // answers ok.
   String get reason {
     if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
     if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
+    if (refusal.isNotEmpty) return refusal;
     if (refused) return 'unknown_form';
-    if (malformed) return 'wire_damaged';
     return 'ok';
   }
 }
@@ -1085,6 +1085,15 @@ final class TableWireReader {
   int owner = 1;
   final List<int> edges;
   final Map<Object, int> nodeIndex;
+  // reachedNodes holds every node index (record k at k + 2) some pointer or
+  // blob slot the load resolved named: a placed record no slot reaches is
+  // damage (docs/SPEC-TABLES.md §3.1, §4).
+  final Set<int> reachedNodes;
+  // trailingBodies holds records whose body loader stopped before the
+  // record's last byte; that is damage only when a pointer reaches the
+  // record (a record no slot targets is never walked, exactly as in
+  // internal/tablewire's body walk).
+  final Set<int> trailingBodies;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -1097,6 +1106,8 @@ final class TableWireReader {
       namedBlobs = <int>{},
       edges = <int>[],
       nodeIndex = Map<Object, int>.identity(),
+      reachedNodes = <int>{},
+      trailingBodies = <int>{},
       report = TableWireReport();
 
   // A sub-reader shares the parent's resolved id table, node records and
@@ -1124,6 +1135,8 @@ final class TableWireReader {
       rootType = parent.rootType,
       owner = parent.owner,
       edges = parent.edges,
+      reachedNodes = parent.reachedNodes,
+      trailingBodies = parent.trailingBodies,
       nodeIndex = parent.nodeIndex;
 
   // over reads one node-record body against the parent's numbering. The bytes
@@ -1150,6 +1163,8 @@ final class TableWireReader {
       rootType = parent.rootType,
       owner = parent.owner,
       edges = parent.edges,
+      reachedNodes = parent.reachedNodes,
+      trailingBodies = parent.trailingBodies,
       nodeIndex = parent.nodeIndex;
 
   bool has(int n) => n >= 0 && n <= limit - pos;
@@ -1186,11 +1201,11 @@ final class TableWireReader {
   }
 
   // readBool reads a bool payload: any nonzero byte reads true, and a byte
-  // above 1 is malformed (docs/SPEC-TABLES.md §3, internal/tablewire scalarAt).
+  // above 1 is damage (docs/SPEC-TABLES.md §3, internal/tablewire scalarAt).
   bool readBool() {
     final v = data[pos];
     pos++;
-    if (v > 1) report.malformed = true;
+    if (v > 1) report.refuse('wire_damaged');
     return v != 0;
   }
 
@@ -1293,7 +1308,7 @@ final class TableWireReader {
   // body decodes, it walks the body's field headers on its own cursor,
   // decoding nothing and counting nothing. The low two bits answer 0 when the
   // body frames whole to its terminator, 1 when it does not (the MAP is
-  // malformed), and 2 when the LAST occurrence of the key rides a kind the
+  // damaged), and 2 when the LAST occurrence of the key rides a kind the
   // declaration neither is nor widens from (the MAP is a kind mismatch, which
   // outranks damage after it). A string key that is not well-formed text is
   // damage (§2.8). Bit 4 is set when the scan met an occurrence of the key
@@ -1303,7 +1318,8 @@ final class TableWireReader {
   // (docs/SPEC-TABLES.md §2.8, §4; internal/tablewire mapKey and mapField).
   // Bit 8 is set when the LAST occurrence the scan keeps of the key is a
   // string(N) whose wire length is over the declaration's bound N: KEYS
-  // NEVER CLAMP, the entry is dropped whole and counted one clamped
+  // past its bound refuses the whole load (length_over_bound): keys are
+  // never truncated to fit
   // (docs/SPEC-TABLES.md §2.8; internal/tabletext MapKeyFits). keySize is
   // the string bound, or -1 for a key that is not a bounded string.
   int mapKeyAt = -1;
@@ -1313,11 +1329,11 @@ final class TableWireReader {
     final s = TableWireReader.sub(this, pos, limit);
     var kindBad = false;
     var widened = 0;
-    var clamped = 0;
+    var overLen = 0;
     while (true) {
       final ref = s.readLeb();
       if (ref == null) return (kindBad ? 2 : 1) | widened;
-      if (ref == 0) return (kindBad ? 2 : (s.pos == s.limit ? 0 : 1)) | widened | clamped;
+      if (ref == 0) return (kindBad ? 2 : (s.pos == s.limit ? 0 : 1)) | widened | overLen;
       final id = s.refToId[ref];
       if (id == null || !s.has(1)) return (kindBad ? 2 : 1) | widened;
       final kind = s.readByte();
@@ -1333,7 +1349,7 @@ final class TableWireReader {
         if (!kindBad && kind == 12) {
           final n = s.readLeb();
           if (n == null || !s.has(n) || !_lebValid(s.data, s.pos, n)) return 1 | widened;
-          clamped = (keySize >= 0 && n > keySize) ? 8 : 0;
+          overLen = (keySize >= 0 && n > keySize) ? 8 : 0;
           s.pos += n;
           continue;
         }
@@ -1345,7 +1361,7 @@ final class TableWireReader {
   // resolveBlob turns a kind-17 node index into the blob bytes it names
   // (§3.1): 0 is null; 1 is the ROOT, which a blob can never be, so it is a
   // kind mismatch; records 2.. are the node table's blob records. An index
-  // above node_count + 1 is malformed, and a record whose type id this reader
+  // above node_count + 1 is damage, and a record whose type id this reader
   // cannot name reads null — the unknown was counted once at the node table,
   // not once per pointer (§3.1). recognized is the flag that gates whether
   // this root reaches that blob kind at all. A PLACED record of another kind
@@ -1356,18 +1372,19 @@ final class TableWireReader {
     if (!nodeTableGood) return null;
     if (idx == 0) return null;
     if (idx == 1) {
-      report.kindMismatch++;
+      report.refuse('kind_mismatch');
       return null;
     }
     final rec = idx - 2;
     if (rec < 0 || rec >= nodes.length) {
-      report.malformed = true;
+      report.refuse('wire_damaged');
       return null;
     }
+    reachedNodes.add(idx);
     final tid = nodeTypes[rec];
     if (!_placedNode(tid)) return null;
     if (!recognized || tid != wantTypeId) {
-      report.kindMismatch++;
+      report.refuse('kind_mismatch');
       return null;
     }
     return Uint8List.fromList(nodes[rec]);
@@ -1392,7 +1409,7 @@ final class TableWireReader {
       WireState._stringBlobOrigins[owner]?.remove(field);
       return null;
     }
-    if (!namedBlobs.add(idx)) report.blobShared++;
+    if (!namedBlobs.add(idx)) report.refuse('blob_shared');
     final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
     slots[field] = (value: value, token: stringBlobTokens.putIfAbsent(rec, Object.new));
     return value;
@@ -1403,14 +1420,14 @@ final class TableWireReader {
     if (rec >= 0 && rec < decoded.length) {
       final have = decoded[rec];
       if (have is Uint8List) {
-        if (!namedBlobs.add(idx)) report.blobShared++;
+        if (!namedBlobs.add(idx)) report.refuse('blob_shared');
         return have;
       }
     }
     final b = resolveBlob(idx, _kBytesBlobId, bytesBlob);
     if (b != null) {
       decoded[rec] = b;
-      if (!namedBlobs.add(idx)) report.blobShared++;
+      if (!namedBlobs.add(idx)) report.refuse('blob_shared');
     }
     return b;
   }
@@ -1435,16 +1452,17 @@ final class TableWireReader {
     if (idx == 0) return null;
     if (idx == 1) {
       if (wantType != rootType) {
-        report.kindMismatch++;
+        report.refuse('kind_mismatch');
         return null;
       }
       return rootObj;
     }
     final rec = idx - 2;
     if (rec < 0 || rec >= nodes.length) {
-      report.malformed = true;
+      report.refuse('wire_damaged');
       return null;
     }
+    reachedNodes.add(idx);
     // A RECORD WHOSE TYPE ID THIS READER CANNOT PLACE IS NOT A MISMATCH
     // (docs/SPEC-TABLES.md §3.1, §4): the node table scan counted the unknown
     // once at the record, and every pointer naming it reads null — the same
@@ -1454,16 +1472,16 @@ final class TableWireReader {
     // edge of that kind carries no table id, yet the scan counted no unknown
     // for it, and resolveCell counts one kind_mismatch for a *T slot naming a
     // node whose Blob is set. Only an unplaced record — an unknown, or a text
-    // blob the scan refused as malformed (type 0), which Go leaves empty —
+    // blob the scan refused as damage (type 0), which Go leaves empty —
     // reads null silently.
     if (!_placedNode(nodeTypes[rec])) return null;
     if (nodeTypes[rec] != wantType) {
-      report.kindMismatch++;
+      report.refuse('kind_mismatch');
       return null;
     }
     final have = decoded[rec];
     if (have != null) return have;
-    report.kindMismatch++;
+    report.refuse('kind_mismatch');
     return null;
   }
 
@@ -1499,7 +1517,7 @@ final class TableWireReader {
     final count = readU64(data, data.length - 8);
     if (count < 0 || count > (data.length - 9) ~/ 8) return 2;
     // THE ENTRY COUNT HAS A MAXIMUM (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
-    // CHECK): a table above 4096 entries is malformed on the whole-wire rule,
+    // CHECK): a table above 4096 entries is damage on the whole-wire rule,
     // whatever the buffer would hold.
     if (count > 4096) return 2;
     final start = data.length - 8 - count * 8;
@@ -1532,17 +1550,17 @@ final class TableWireReader {
   // §3.1, §3.3): the reserved id's LAST well-framed kind-12 occurrence is the
   // table, and it REPLACES the payload an earlier occurrence supplied. A
   // node-table field under any other kind, or with a length past the body, is
-  // malformed before a later occurrence is read, and the whole table reads
-  // nothing — every pointer in the save is null, one malformed counts (§3.1).
+  // damaged before a later occurrence is read, and the whole table reads
+  // nothing — every pointer in the save is null, one damage count (§3.1).
   // Framing damage to the root body elsewhere — an id this reader cannot name,
   // a field it cannot skip — stops the gather and keeps the table found so far,
   // as nodeTableBytes does. Only the gathered payload is scanned, on its own
   // length: a count the scan does not match, a type reference of 0 or above the
-  // entry count, or a record length past the payload is malformed and reads
+  // entry count, or a record length past the payload is damage and reads
   // nothing (§3.1). A record whose type id is the *string blob stores its
   // bytes; any other type id keeps its index, counts one unknown at the
   // record, and every pointer naming it reads null (§3.1). A string blob that
-  // is not well-formed UTF-8 without NUL is malformed and reads null too.
+  // is not well-formed UTF-8 without NUL is damage and reads null too.
   void scanNodeTable() {
     pos = 1;
     var present = false;
@@ -1559,13 +1577,13 @@ final class TableWireReader {
       if (id == _kNodeTableId) {
         present = true;
         if (kind != 12) {
-          report.malformed = true;
+          report.refuse('wire_damaged');
           nodeTableGood = false;
           return;
         }
         final len = readLeb();
         if (len == null || !has(len)) {
-          report.malformed = true;
+          report.refuse('wire_damaged');
           nodeTableGood = false;
           return;
         }
@@ -1586,7 +1604,7 @@ final class TableWireReader {
     final count = readLeb();
     if (count == null) {
       limit = bodyLimit;
-      report.malformed = true;
+      report.refuse('wire_damaged');
       nodeTableGood = false;
       return;
     }
@@ -1614,7 +1632,7 @@ final class TableWireReader {
       read++;
     }
     if (!framed || pos != tableEnd || read != count) {
-      report.malformed = true;
+      report.refuse('wire_damaged');
       nodeTableGood = false;
     } else {
       for (var i = 0; i < scanTypes.length; i++) {
@@ -1624,7 +1642,7 @@ final class TableWireReader {
           if (_lebValid(bytes, 0, bytes.length)) {
             nodeTypes.add(typeId);
           } else {
-            report.malformed = true;
+            report.refuse('wire_damaged');
             nodeTypes.add(0);
           }
         } else if (typeId == _kBytesBlobId && bytesBlob) {
@@ -1671,6 +1689,12 @@ final class TableWireReader {
       if (obj == null) continue;
       final sub = TableWireReader.over(nodes[rec], this)..owner = rec + 2;
       _loadNodeBody(sub, nodeTypes[rec], obj);
+      // Bytes after the body's terminator inside its record length are
+      // damage (docs/SPEC-TABLES.md §4): the whole load refuses. Blob
+      // records carry no body and are not checked here.
+      if (nodeTypes[rec] != _kStringBlobId && nodeTypes[rec] != _kBytesBlobId && sub.pos != sub.limit) {
+        trailingBodies.add(rec + 2);
+      }
     }
   }
 
@@ -1711,6 +1735,33 @@ final class TableWireReader {
       }
     }
     return taken != count - 1;
+  }
+
+  // A RECORD NO POINTER REACHES IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4;
+  // internal/tablewire/wirecheck.go): every placed table record must be
+  // named by some pointer or blob slot the load resolved.
+  bool trailingReached() {
+    final named = <int>{...reachedNodes};
+    for (var i = 1; i < edges.length; i += 2) {
+      named.add(edges[i]);
+    }
+    for (final idx in trailingBodies) {
+      if (named.contains(idx)) return true;
+    }
+    return false;
+  }
+
+  bool unreachedNode() {
+    final named = <int>{...reachedNodes};
+    for (var i = 1; i < edges.length; i += 2) {
+      named.add(edges[i]);
+    }
+    for (var rec = 0; rec < nodes.length; rec++) {
+      if (knownTypes.contains(nodeTypes[rec]) && !named.contains(rec + 2)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -2255,9 +2306,10 @@ func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s}\n", ind)
 }
 
-// emitLoadBody emits <name>WireLoadBody: the tolerant read of one table body
-// (§4) — unknown ids skipped and counted, absent fields at their defaults,
-// kind mismatch counted, out-of-range values clamped, a widened kind counted.
+// emitLoadBody emits <name>WireLoadBody: the one strict read of one table
+// body (§4) — unknown ids skipped and counted, absent fields at their
+// defaults, a widened kind counted; a kind mismatch and a value, count or
+// length out of its bound refuse the whole load.
 func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireLoadBody"
@@ -2285,9 +2337,13 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 			g.pf("\tvar %s = false;\n", seenName(f))
 		}
 	}
+	// A REPEATED FIELD ID IN ONE BODY IS DAMAGE (docs/plans/strict-only.md
+	// decision 5; internal/tablewire wirecheck, the Go leg's seen bitmap in
+	// internal/codegen/gotable/read.go): the read refuses the whole load.
+	g.pf("\tfinal seenRefs = <int>{};\n")
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
-	g.pf("\t\tif (ref == null) { r.report.malformed = true; return; }\n")
+	g.pf("\t\tif (ref == null) { r.report.refuse('wire_damaged'); return; }\n")
 	if hasRequired(st) {
 		g.pf("\t\tif (ref == 0) {\n")
 		g.emitRequiredCheck(st, true, "\t\t\t")
@@ -2295,11 +2351,12 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	} else {
 		g.pf("\t\tif (ref == 0) return;\n")
 	}
+	g.pf("\t\tif (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }\n")
 	g.pf("\t\tfinal id = r.refToId[ref];\n")
-	g.pf("\t\tif (id == null) { r.report.malformed = true; return; }\n")
-	g.pf("\t\tif (!r.has(1)) { r.report.malformed = true; return; }\n")
+	g.pf("\t\tif (id == null) { r.report.refuse('wire_damaged'); return; }\n")
+	g.pf("\t\tif (!r.has(1)) { r.report.refuse('wire_damaged'); return; }\n")
 	g.pf("\t\tfinal kind = r.readByte();\n")
-	g.pf("\t\tif (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }\n")
+	g.pf("\t\tif (id == _kBuildVersionId || id == _kVocabularyId) { r.report.refuse('wire_damaged'); return; }\n")
 	// The reserved node-table id is a VARIABLE-class root's own (§3.1): it
 	// steps over it and never counts it unknown. A reader that cannot name it
 	// (a fixed-class body) counts it unknown like any other id it does not
@@ -2307,12 +2364,12 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	// nested body it is malformed in either class.
 	if ir.VariableTables(g.unit)[n] {
 		g.pf("\t\tif (id == _kNodeTableId) {\n")
-		g.pf("\t\t\tif (nested) { r.report.malformed = true; return; }\n")
-		g.pf("\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
+		g.pf("\t\t\tif (nested) { r.report.refuse('wire_damaged'); return; }\n")
+		g.pf("\t\t\tif (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }\n")
 		g.pf("\t\t\tcontinue;\n")
 		g.pf("\t\t}\n")
 	} else {
-		g.pf("\t\tif (id == _kNodeTableId && nested) { r.report.malformed = true; return; }\n")
+		g.pf("\t\tif (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }\n")
 	}
 	g.pf("\t\tswitch (id) {\n")
 	for i, f := range st.Fields {
@@ -2322,7 +2379,7 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\t\t\tr.report.unknown++;\n")
 	g.pf("\t\t\t\tif (r.retain != null) {\n")
 	g.pf("\t\t\t\t\tfinal start = r.pos;\n")
-	g.pf("\t\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
+	g.pf("\t\t\t\t\tif (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }\n")
 	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
 	// §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's or 11's raw bits, and a
 	// NaN or an infinity refuses the read as non_finite_float, named
@@ -2349,7 +2406,7 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\t\t\t\t\t}\n")
 	g.pf("\t\t\t\t\t}\n")
 	g.pf("\t\t\t\t} else {\n")
-	g.pf("\t\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
+	g.pf("\t\t\t\t\tif (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }\n")
 	g.pf("\t\t\t\t}\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n}\n\n")
@@ -2383,10 +2440,10 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			// Only outer/element-kind mismatch suppresses map presence (§2.8).
 			// An incompatible entry key is an in-body event; the map rode.
 			for _, suffix := range []string{" if (!r.skipKind(kind))", " r.pos = end;"} {
-				caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;"+suffix, "r.report.kindMismatch++; v."+has+" = "+had+";"+suffix)
+				caseText = strings.ReplaceAll(caseText, "r.report.refuse('kind_mismatch');"+suffix, "r.report.refuse('kind_mismatch'); v."+has+" = "+had+";"+suffix)
 			}
 		} else {
-			caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;", "r.report.kindMismatch++; v."+has+" = "+had+";")
+			caseText = strings.ReplaceAll(caseText, "r.report.refuse('kind_mismatch');", "r.report.refuse('kind_mismatch'); v."+has+" = "+had+";")
 		}
 		rest := g.body.String()[:start]
 		g.body.Reset()
@@ -2409,14 +2466,14 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	case isKeyed(f) || isFixedArray(f): // kind 16 / kind 14 (§3, §3.2)
 		g.emitLoadArray(g.cur, f, ind)
 	case isUnionField(f): // kind 15, the arm header in place (§2.6, §3)
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindUnion)
-		g.pf("%s\tif (!%s(r, v.%s)) { r.report.malformed = true; return; }\n", ind, unionFn(unionRef(f), "LoadArm"), name)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindUnion)
+		g.pf("%s\tif (!%s(r, v.%s)) { r.report.refuse('wire_damaged'); return; }\n", ind, unionFn(unionRef(f), "LoadArm"), name)
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindPtr)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindPtr)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal idx = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (idx == null) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (idx == null) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		if f.Type.Kind == ir.TString {
 			g.pf("%s\t\tr.resolveString(idx, v, %q);\n", ind, name)
 		} else {
@@ -2426,35 +2483,32 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tbreak;\n", ind)
 	case isPointerTable(f):
 		ref := tableRef(f)
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindPtr)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindPtr)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal idx = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (idx == null) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (idx == null) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\t\tv.%s = r.resolveTable(idx, %s) as %s?;\n", ind, name, typeConst(ref), ref.Name)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case isByValueTable(f):
 		ref := tableRef(f)
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindTable)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindTable)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\t\tfinal sub = TableWireReader.sub(r, r.pos, r.pos + len);\n", ind)
 		g.pf("%s\t\tif (%s) { r.retain?.forget(v.%s); v.%s = %s(); }\n", ind, seenName(f), name, name, ref.Name)
 		g.pf("%s\t\t%s = true;\n", ind, seenName(f))
 		g.pf("%s\t\t%s(sub, v.%s, true);\n", ind, dartName(ref.Name)+"WireLoadBody", name)
-		g.pf("%s\t\tif (sub.pos != sub.limit) { r.report.malformed = true; v.%s = %s(); }\n", ind, name, ref.Name)
+		g.pf("%s\t\tif (sub.pos != sub.limit) { r.report.refuse('wire_damaged'); v.%s = %s(); }\n", ind, name, ref.Name)
 		g.pf("%s\t\tr.pos += len;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case f.CountedOnWire(): // []T and [..N]T ride as kind 14 (§2.9, §3)
-		if f.IsTextList() {
-			g.pf("%s\tfinal beforeTextClamp%d=r.report.clamped;\n", ind, ordinal)
-		}
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		et := g.listElemType(f)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
@@ -2464,15 +2518,15 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		// a missing one (internal/tablewire arrayBody, subTo; \u00a73, \u00a74).
 		g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
 		g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+		g.pf("%s\t\tif (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }\n", ind)
 		declKind := listElementKind(f)
 		switch declKind {
 		case wireKindTable, wireKindPtr, wireKindString, wireKindEnum, wireKindBool, wireKindUnion:
-			g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, declKind)
+			g.pf("%s\t\tif (elemKind != %d) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\n", ind, declKind)
 		default:
 			// A smaller kind on the same ladder widens the whole array once (§4).
 			g.pf("%s\t\tif (elemKind != %d) {\n", ind, declKind)
-			g.pf("%s\t\t\tif (!_kindWidens(elemKind, %d)) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, declKind)
+			g.pf("%s\t\t\tif (!_kindWidens(elemKind, %d)) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\n", ind, declKind)
 			g.pf("%s\t\t\tr.report.widened++;\n", ind)
 			g.pf("%s\t\t}\n", ind)
 		}
@@ -2494,7 +2548,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		loop := "count"
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s\t\tvar keep = count;\n", ind)
-			g.pf("%s\t\tif (keep < 0 || keep > %d) { keep = %d; r.report.clamped++; }\n", ind, f.ArrayBound, f.ArrayBound)
+			g.pf("%s\t\tif (keep < 0 || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, f.ArrayBound)
 			loop = "keep"
 		} else {
 			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
@@ -2511,16 +2565,16 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			// one element of an array of unions: the arm header in place, a
 			// None element the single zero byte (§3)
 			g.pf("%s\t\t\tfinal e = %s();\n", ind, f.Type.Name)
-			g.pf("%s\t\t\tif (!%s(arr, e)) { r.report.malformed = true; break; }\n", ind, unionFn(unionRef(f), "LoadArm"))
+			g.pf("%s\t\t\tif (!%s(arr, e)) { r.report.refuse('wire_damaged'); break; }\n", ind, unionFn(unionRef(f), "LoadArm"))
 			g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
 		case wireKindTable:
 			g.pf("%s\t\t\tfinal elen = arr.readLeb();\n", ind)
-			g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }\n", ind)
+			g.pf("%s\t\t\tif (elen == null || !arr.has(elen)) { r.report.refuse('wire_damaged'); break; }\n", ind)
 			g.pf("%s\t\t\tvar e = %s();\n", ind, f.Type.Name)
 			g.pf("%s\t\t\tfinal sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);\n", ind)
 			g.pf("%s\t\t\tsub.path = [...r.path, %d, i];\n", ind, ordinal)
 			g.pf("%s\t\t\t%s(sub, e, true);\n", ind, dartName(f.Type.Name)+"WireLoadBody")
-			g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.malformed = true; e = %s(); }\n", ind, f.Type.Name)
+			g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.refuse('wire_damaged'); e = %s(); }\n", ind, f.Type.Name)
 			g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
 			if f.IsTextList() {
 				length := "tableTextByteLength(e.value)"
@@ -2533,7 +2587,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		case wireKindPtr:
 			ref := tableRef(f)
 			g.pf("%s\t\t\tfinal idx = arr.readLeb();\n", ind)
-			g.pf("%s\t\t\tif (idx == null) { r.report.malformed = true; break; }\n", ind)
+			g.pf("%s\t\t\tif (idx == null) { r.report.refuse('wire_damaged'); break; }\n", ind)
 			g.pf("%s\t\t\tv.%s.add(r.resolveTable(idx, %s) as %s?);\n", ind, name, typeConst(ref), ref.Name)
 		default:
 			g.emitLoadScalarListElem(f, "v."+name, "arr", ind)
@@ -2541,40 +2595,32 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
-		if f.IsTextList() {
-			g.pf("%s\tif(r.report.clamped!=beforeTextClamp%d&&r.report.clampedField.isEmpty)r.report.clampedField=%q;\n", ind, ordinal, f.TextListElem().MapEntryOf)
-		}
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TWString:
 		// kind 33 (§3): an odd L is framing damage, ill-formed UTF-16 (a lone
 		// surrogate) is malformed and reads the default, and a value past the
 		// bound clamps at a code-point boundary, never through a pair
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindWString)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindWString)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\tif (len.isOdd) { r.report.malformed = true; v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
+		g.pf("%s\t\tif (len.isOdd) { r.report.refuse('wire_damaged'); v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
 		g.pf("%s\t\tfinal units = <int>[];\n", ind)
 		g.pf("%s\t\tfor (var i = 0; i < len; i += 2) { units.add(r.data[r.pos + i] | (r.data[r.pos + i + 1] << 8)); }\n", ind)
 		g.pf("%s\t\tr.pos += len;\n", ind)
-		g.pf("%s\t\tif (!_wideValid(units)) { r.report.malformed = true; v.%s = %s; break; }\n", ind, name, g.stringDefault(f))
-		g.pf("%s\t\tvar keep = units.length;\n", ind)
-		g.pf("%s\t\tif (keep > %d) {\n", ind, f.Type.Size)
-		g.pf("%s\t\t\tkeep = %d;\n", ind, f.Type.Size)
-		g.pf("%s\t\t\tif (keep > 0 && units[keep - 1] >= 0xD800 && units[keep - 1] <= 0xDBFF) keep--;\n", ind)
-		g.pf("%s\t\t\tr.report.clamped++;\n", ind)
-		g.pf("%s\t\t}\n", ind)
-		g.pf("%s\t\tv.%s = String.fromCharCodes(units.sublist(0, keep));\n", ind, name)
+		g.pf("%s\t\tif (!_wideValid(units)) { r.report.refuse('wire_damaged'); v.%s = %s; break; }\n", ind, name, g.stringDefault(f))
+		g.pf("%s\t\tif (units.length > %d) { r.report.refuse('length_over_bound'); return; }\n", ind, f.Type.Size)
+		g.pf("%s\t\tv.%s = String.fromCharCodes(units);\n", ind, name)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TString:
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindString)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindString)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\tif (!_lebValid(r.data, r.pos, len)) { r.report.malformed = true; v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
+		g.pf("%s\t\tif (!_lebValid(r.data, r.pos, len)) { r.report.refuse('wire_damaged'); v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
 		g.pf("%s\t\tfinal keep = _textBoundary(r.data, r.pos, len, %d);\n", ind, textBound(f))
-		g.pf("%s\t\tif (keep != len) r.report.clamped++;\n", ind)
+		g.pf("%s\t\tif (keep != len) { r.report.refuse('length_over_bound'); return; }\n", ind)
 		g.pf("%s\t\tv.%s = utf8.decode(r.data.sublist(r.pos, r.pos + keep));\n", ind, name)
 		g.pf("%s\t\tr.pos += len;\n", ind)
 		g.pf("%s\t}\n", ind)
@@ -2582,8 +2628,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	case isWide(f): // kinds 18-29 (§3, §4, §15)
 		g.emitLoadWide(f, ind)
 	case f.Type.Kind == ir.TBool:
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindBool)
-		g.pf("%s\tif (!r.has(1)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindBool)
+		g.pf("%s\tif (!r.has(1)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\tv.%s = r.readBool();\n", ind, name)
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || isFlags(f):
@@ -2603,7 +2649,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tswitch (kind) {\n", ind)
 		for _, wk := range widenKinds(declKind, signed) {
 			g.pf("%s\t\t\tcase %d:\n", ind, wk.k)
-			g.pf("%s\t\t\t\tif (!r.has(%d)) { r.report.malformed = true; return; }\n", ind, wk.w)
+			g.pf("%s\t\t\t\tif (!r.has(%d)) { r.report.refuse('wire_damaged'); return; }\n", ind, wk.w)
 			g.pf("%s\t\t\t\tvar raw = 0;\n", ind)
 			for b := 0; b < wk.w; b++ {
 				g.pf("%s\t\t\t\traw |= r.readByte() << %d;\n", ind, 8*b)
@@ -2621,14 +2667,14 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
 		switch declWidth {
 		case 1:
-			g.pf("%s\t\t\t\tif (!r.has(1)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\tif (!r.has(1)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 			if signed {
 				g.pf("%s\t\t\t\tvalue = _signExtend(r.readByte(), 1);\n", ind)
 			} else {
 				g.pf("%s\t\t\t\tvalue = r.readByte();\n", ind)
 			}
 		case 2:
-			g.pf("%s\t\t\t\tif (!r.has(2)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\tif (!r.has(2)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 			g.pf("%s\t\t\t\tvar raw = 0;\n", ind)
 			for b := range 2 {
 				g.pf("%s\t\t\t\traw |= r.readByte() << %d;\n", ind, 8*b)
@@ -2639,35 +2685,33 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 				g.pf("%s\t\t\t\tvalue = raw;\n", ind)
 			}
 		case 4:
-			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 			if signed {
 				g.pf("%s\t\t\t\tvalue = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;\n", ind)
 			} else {
 				g.pf("%s\t\t\t\tvalue = readU32(r.data, r.pos); r.pos += 4;\n", ind)
 			}
 		default:
-			g.pf("%s\t\t\t\tif (!r.has(8)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\tif (!r.has(8)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 			g.pf("%s\t\t\t\tvalue = readU64(r.data, r.pos); r.pos += 8;\n", ind)
 		}
 		g.pf("%s\t\t\t\tbreak;\n", ind)
 		g.pf("%s\t\t\tdefault:\n", ind)
-		g.pf("%s\t\t\t\tr.report.kindMismatch++;\n", ind)
-		g.pf("%s\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\t\t\tbreak;\n", ind)
+		g.pf("%s\t\t\t\tr.report.refuse('kind_mismatch'); return;\n", ind)
 		g.pf("%s\t\t}\n", ind)
 		if f.HasIntRange {
 			lo, hi := dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
 			if signed {
-				g.pf("%s\t\tif (value < %s) { value = %s; r.report.clamped++; }\n", ind, lo, lo)
-				g.pf("%s\t\tif (value > %s) { value = %s; r.report.clamped++; }\n", ind, hi, hi)
+				g.pf("%s\t\tif (value < %s) { r.report.refuse('out_of_range'); return; }\n", ind, lo)
+				g.pf("%s\t\tif (value > %s) { r.report.refuse('out_of_range'); return; }\n", ind, hi)
 			} else {
-				g.pf("%s\t\tif (_u64Below(value, %s)) { value = %s; r.report.clamped++; }\n", ind, lo, lo)
-				g.pf("%s\t\tif (_u64Above(value, %s)) { value = %s; r.report.clamped++; }\n", ind, hi, hi)
+				g.pf("%s\t\tif (_u64Below(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, lo)
+				g.pf("%s\t\tif (_u64Above(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, hi)
 			}
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 			lit := dartU64Literal(uint64(1)<<f.Type.Width - 1)
-			g.pf("%s\t\tif (_u64Above(value, %s)) { value = %s; r.report.clamped++; }\n", ind, lit, lit)
+			g.pf("%s\t\tif (_u64Above(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, lit)
 		}
 		g.pf("%s\t\tv.%s = value;\n", ind, name)
 		g.pf("%s\t}\n", ind)
@@ -2689,41 +2733,39 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tswitch (kind) {\n", ind)
 		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
 		if f.Type.Kind == ir.TFloat64 {
-			g.pf("%s\t\t\t\tif (!r.has(8)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\tif (!r.has(8)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 			g.pf("%s\t\t\t\td = r.readF64(r.pos, '%s'); r.pos += 8;\n", ind, owner)
 		} else {
-			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 			g.pf("%s\t\t\t\td = r.readF32(r.pos, '%s'); r.pos += 4;\n", ind, owner)
 		}
 		g.pf("%s\t\t\t\tbreak;\n", ind)
 		if f.Type.Kind == ir.TFloat64 {
 			g.pf("%s\t\t\tcase %d:\n", ind, wireKindF32)
-			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
+			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 			g.pf("%s\t\t\t\td = r.readF32(r.pos, '%s'); r.pos += 4;\n", ind, owner)
 			g.pf("%s\t\t\t\tr.report.widened++;\n", ind)
 			g.pf("%s\t\t\t\tbreak;\n", ind)
 		}
 		g.pf("%s\t\t\tdefault:\n", ind)
-		g.pf("%s\t\t\t\tr.report.kindMismatch++;\n", ind)
-		g.pf("%s\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\t\t\tbreak;\n", ind)
+		g.pf("%s\t\t\t\tr.report.refuse('kind_mismatch'); return;\n", ind)
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tif (r.report.nonFiniteFloat.isNotEmpty) return;\n", ind)
 		if f.HasFloatRange {
 			// one past an end clamps and counts, and a -0 lands as +0,
 			// uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
-			g.pf("%s\t\tif (d < %s) { d = %s; r.report.clamped++; }\n", ind, fmtFloat(f.FMin), fmtFloat(f.FMin))
-			g.pf("%s\t\tif (d > %s) { d = %s; r.report.clamped++; }\n", ind, fmtFloat(f.FMax), fmtFloat(f.FMax))
+			g.pf("%s\t\tif (d < %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMin))
+			g.pf("%s\t\tif (d > %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMax))
 			g.pf("%s\t\tif (d == 0) d = 0.0;\n", ind)
 		}
 		g.pf("%s\t\tv.%s = d;\n", ind, name)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TBytes: // bytes(N) rides as kind 14 over element kind 6 (§3)
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		// bytes(N) takes \u00a73's list header under the same rule as every other
@@ -2732,27 +2774,27 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		// is consulted, and only the prefix the body covers is kept (\u00a74).
 		g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
 		g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
-		g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindU8)
+		g.pf("%s\t\tif (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }\n", ind)
+		g.pf("%s\t\tif (elemKind != %d) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\n", ind, wireKindU8)
 		g.pf("%s\t\tvar keep = count;\n", ind)
-		g.pf("%s\t\tif (keep > %d || keep < 0) { keep = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s\t\tif (keep > %d || keep < 0) { r.report.refuse('count_over_bound'); return; }\n", ind, f.Type.Size)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
 		g.pf("%s\t\tvar take = keep;\n", ind)
 		g.pf("%s\t\tif (take > arr.limit - arr.pos) take = arr.limit - arr.pos;\n", ind)
-		g.pf("%s\t\tif (take < keep) r.report.malformed = true;\n", ind)
+		g.pf("%s\t\tif (take < keep) r.report.refuse('wire_damaged');\n", ind)
 		g.pf("%s\t\tv.%s = latin1.decode(arr.data.sublist(arr.pos, arr.pos + take));\n", ind, name)
 		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindEnum)
+		g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, wireKindEnum)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal ref2 = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (ref2 == null) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (ref2 == null) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\t\tif (ref2 == 0) { v.%s = %s; break; }\n", ind, name, g.enumConst(e, 0))
 		g.pf("%s\t\tfinal vid = r.refToId[ref2];\n", ind)
-		g.pf("%s\t\tif (vid == null) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\t\tif (vid == null) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\t\tswitch (vid) {\n", ind)
 		for i := range e.Variants {
 			vid := ir.TableWireId(e.VariantWireName(i))
@@ -2763,7 +2805,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	default:
-		g.pf("%s\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n", ind)
+		g.pf("%s\tif (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	}
 }
@@ -2777,11 +2819,11 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 	switch elemKind {
 	case wireKindString:
 		g.pf("%s\t\t\tfinal elen = %s.readLeb();\n", ind, arr)
-		g.pf("%s\t\t\tif (elen == null || !%s.has(elen)) { r.report.malformed = true; break; }\n", ind, arr)
-		g.pf("%s\t\t\tif (!_lebValid(%s.data, %s.pos, elen)) { r.report.malformed = true; %s.pos += elen; break; }\n", ind, arr, arr, arr)
+		g.pf("%s\t\t\tif (elen == null || !%s.has(elen)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
+		g.pf("%s\t\t\tif (!_lebValid(%s.data, %s.pos, elen)) { r.report.refuse('wire_damaged'); %s.pos += elen; break; }\n", ind, arr, arr, arr)
 		if f.IsTextList() {
 			g.pf("%s\t\t\tfinal kept=_textBoundary(%s.data,%s.pos,elen,%d);\n", ind, arr, arr, textBound(ir.TextListValue(f)))
-			g.pf("%s\t\t\tif(kept!=elen){r.report.clamped++;if(r.report.clampedField.isEmpty)r.report.clampedField=%q;}\n", ind, f.TextListElem().MapEntryOf)
+			g.pf("%s\t\t\tif(kept!=elen){r.report.refuse('length_over_bound'); return;}\n", ind)
 			g.pf("%s\t\t\tfinal e=%s()..value=utf8.decode(%s.data.sublist(%s.pos,%s.pos+kept));\n", ind, f.Type.Name, arr, arr, arr)
 			g.emitTextTotalKeep(f, "kept", ind+"\t\t\t")
 			g.pf("%s\t\t\t%s.add(e);\n", ind, dest)
@@ -2792,12 +2834,12 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 	case wireKindEnum:
 		e := enumRef(f)
 		g.pf("%s\t\t\tfinal vref = %s.readLeb();\n", ind, arr)
-		g.pf("%s\t\t\tif (vref == null) { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\tif (vref == null) { r.report.refuse('wire_damaged'); break; }\n", ind)
 		g.pf("%s\t\t\tif (vref == 0) {\n", ind)
 		g.pf("%s\t\t\t\t%s.add(%s);\n", ind, dest, g.enumConst(e, 0))
 		g.pf("%s\t\t\t} else {\n", ind)
 		g.pf("%s\t\t\tfinal vid = %s.refToId[vref];\n", ind, arr)
-		g.pf("%s\t\t\tif (vid == null) { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\tif (vid == null) { r.report.refuse('wire_damaged'); break; }\n", ind)
 		g.pf("%s\t\t\tswitch (vid) {\n", ind)
 		for i := range e.Variants {
 			vid := ir.TableWireId(e.VariantWireName(i))
@@ -2807,27 +2849,27 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\t}\n", ind)
 		g.pf("%s\t\t\t}\n", ind)
 	case wireKindBool:
-		g.pf("%s\t\t\tif (!%s.has(1)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\tif (!%s.has(1)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
 		g.pf("%s\t\t\t%s.add(%s.readBool());\n", ind, dest, arr)
 	case wireKindF32:
-		g.pf("%s\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\tif (!%s.has(4)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
 		g.pf("%s\t\t\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
 	case wireKindF64:
 		// f64 widens an f32 element kind (§4). The array already counted widened.
 		g.pf("%s\t\t\tif (elemKind == %d) {\n", ind, wireKindF32)
-		g.pf("%s\t\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\t\tif (!%s.has(4)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
 		g.pf("%s\t\t\t\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
 		g.pf("%s\t\t\t} else if (elemKind == %d) {\n", ind, wireKindF64)
-		g.pf("%s\t\t\t\tif (!%s.has(8)) { r.report.malformed = true; break; }\n", ind, arr)
+		g.pf("%s\t\t\t\tif (!%s.has(8)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
 		g.pf("%s\t\t\t\t%s.add(%s.readF64(%s.pos, '%s')); %s.pos += 8;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
-		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\t} else { r.report.refuse('wire_damaged'); break; }\n", ind)
 	default:
 		if ir.TableKindWide(elemKind) {
 			w := ir.TableKindWidth(elemKind)
 			// a 128-bit element may arrive WIDENED from a narrower kind of its
 			// ladder (§4): it reads at the wire kind's width
 			g.pf("%s\t\t\tfinal kw = elemKind == %d ? %d : _kindWidth(elemKind);\n", ind, elemKind, w)
-			g.pf("%s\t\t\tif (!%s.has(kw)) { r.report.malformed = true; break; }\n", ind, arr)
+			g.pf("%s\t\t\tif (!%s.has(kw)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
 			g.pf("%s\t\t\t{\n", ind)
 			g.pf("%s\t\t\t\tvar x = _getWide(%s, kw, %v);\n", ind, arr, ir.TableKindSigned(elemKind))
 			g.emitWideClamp(f, "x", "r", ind+"\t\t\t\t")
@@ -2849,7 +2891,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 			}
 			w := ir.TableKindWidth(k)
 			g.pf("%s\t\t\t%s (elemKind == %d) {\n", ind, kw, k)
-			g.pf("%s\t\t\t\tif (!%s.has(%d)) { r.report.malformed = true; break; }\n", ind, arr, w)
+			g.pf("%s\t\t\t\tif (!%s.has(%d)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr, w)
 			switch w {
 			case 1:
 				g.emitElemInt(f, fmt.Sprintf("_signExtend(%s.readByte(), 1)", arr), signed, dest, "r", ind+"\t\t\t\t", fmt.Sprintf("%s.readByte()", arr))
@@ -2867,7 +2909,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 				g.emitElemInt(f, "raw", signed, dest, "r", ind+"\t\t\t\t", "raw")
 			}
 		}
-		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
+		g.pf("%s\t\t\t} else { r.report.refuse('wire_damaged'); break; }\n", ind)
 	}
 }
 
@@ -3176,7 +3218,7 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	fn := dartName(n) + "WireLoad"
 	g.pf("%s %s(Uint8List data, [TableWireReport? report]) {\n", n, fn)
 	g.pf("\tfinal v = %s();\n", n)
-	g.pf("\treport ??= TableWireReport();\n\tif (report.integrityMismatch) report.malformed = false;\n\treport.integrityMismatch = false;\n")
+	g.pf("\treport ??= TableWireReport();\n\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")
 	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
@@ -3187,13 +3229,13 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tr.report = report;\n")
 	// this read's own refusal (docs/SPEC-TABLES.md §3.3), as the Go leg's
 	// tableOpen clears its NonFiniteFloat
-	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tr.report.refused = false;\n\tr.report.refusal = '';\n\tr.report.missingFields = '';\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
 	// verdict 3 is framing damage on the root body, not the file's: the body
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
-	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
+	g.pf("\tif (verdict == 2) { r.report.refuse('wire_damaged'); return %s(); }\n", n)
 	g.pf("\ttry {\n")
 	if ir.VariableTables(g.unit)[n] {
 		g.pf("\t\tr.scanNodeTable();\n")
@@ -3211,11 +3253,12 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load
 	// is refused, and the caller holds the type's defaults.
 	g.pf("\t_collectNodeEdges(r);\n")
-	g.pf("\tif (r.cyclic()) {\n\t\tr.report.malformed = true;\n\t\treturn %s();\n\t}\n", n)
+	g.pf("\tif (r.cyclic()) {\n\t\tr.report.refuse('wire_damaged');\n\t\treturn %s();\n\t}\n", n)
+	g.pf("\tif (r.trailingReached()) { r.report.refuse('wire_damaged'); }\n")
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that
 	// met damage anywhere hands back nothing it decoded, only the type's
 	// defaults, with the report saying malformed.
-	g.pf("\tif (r.report.malformed) return %s();\n", n)
+	g.pf("\tif (r.report.refused) return %s();\n", n)
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 }

@@ -82,10 +82,10 @@ func TestDartArrayRootSharedClosure(t *testing.T) {
 			t.Fatal(err)
 		}
 		fmt.Fprintf(&b, `{final r=w.TableTextReport();final v=w.%sFromJson(%q,r);
-check(r.kindMismatch==%d&&r.clamped==%d,'explicit closure report %d');
+check(!r.refused,'explicit closure report %d');
 check(hex(w.%sWireSave(v))==%q,'independent closure wire %d: '+hex(w.%sWireSave(v))+' JSON '+w.%sToJson(v));
 check(w.%sToJson(v)==%q,'independent closure JSON %d');}
-`, fn, tc.Text, tc.Mismatch, tc.Clamped, i, fn, hex.EncodeToString(wire), i, fn, fn, fn, string(txt)+"\n", i)
+`, fn, tc.Text, i, fn, hex.EncodeToString(wire), i, fn, fn, fn, string(txt)+"\n", i)
 	}
 	b.WriteString("}\n")
 	runFormsProbe(t, files, b.String())
@@ -124,7 +124,7 @@ func TestDartRequiredNestedGuardsSharedClosure(t *testing.T) {
 				t.Fatalf("independent missing row%d: %+v", i, r)
 			}
 			fmt.Fprintf(&b, `{final r=w.TableTextReport();var refused=false;try{w.%sFromJson(%q,r);}on FormatException{refused=true;}
-check(refused&&r.missingRequired==1&&r.missingFields==%q,'nested guard missing %d');}
+check(refused&&r.missingFields==%q,'nested guard missing %d');}
 `, fn, tc.Input, tc.Missing, i)
 			continue
 		}
@@ -140,10 +140,10 @@ check(refused&&r.missingRequired==1&&r.missingFields==%q,'nested guard missing %
 			t.Fatal(err)
 		}
 		fmt.Fprintf(&b, `{final r=w.TableTextReport();final v=w.%sFromJson(%q,r);
-check(r.missingRequired==0&&hex(w.%sWireSave(v))==%q,'nested guard writer %d');
+check(!r.refused&&hex(w.%sWireSave(v))==%q,'nested guard writer %d');
 check(w.%sToJson(v)==%q,'nested guard JSON %d');
 final wr=w.TableWireReport();final back=w.%sWireLoad(bytes(%q),wr);
-check(!wr.refused&&!wr.malformed&&wr.missingRequired==0&&hex(w.%sWireSave(back))==%q,'nested guard wire read %d');}
+check(!wr.refused&&hex(w.%sWireSave(back))==%q,'nested guard wire read %d');}
 `, fn, tc.Input, fn, hex.EncodeToString(wire), i, fn, string(txt)+"\n", i, fn, hex.EncodeToString(wire), fn, hex.EncodeToString(wire), i)
 	}
 	b.WriteString("}\n")
@@ -180,7 +180,7 @@ table Root { rows [..2]Item
 	maps.Copy(files, packetFiles(t, u))
 	source := dartClosurePrelude + fmt.Sprintf(`final r=w.TableTextReport();final v=w.rootFromJson(%q,r);
 check(v.rows.length==2&&v.rows[1].n==7&&v.flags.length==3&&!v.flags[1]&&!v.flags[2],'wrong-shape positions/defaults');
-check(r.kindMismatch==2&&r.clamped==2,'wrong-shape counts');
+check(r.refused,'wrong-shape refused');
 check(hex(w.rootWireSave(v))==%q&&w.rootToJson(v)==%q,'independent wrong-shape bytes/text');
 }
 `, input, hex.EncodeToString(wire), string(txt)+"\n")
@@ -229,7 +229,7 @@ func TestDartPopulatedFeatureWitnesses(t *testing.T) {
 check(hex(w.%sWireSave(v))==hex(expected),'active feature writer');
 check(w.%sToJson(v)==%q,'active feature JSON');
 final store=w.TableRetain(65536,List.filled(65536,0));final r=w.TableWireReport();final back=w.%sWireLoadRetain(expected,store,r);
-check(!r.malformed&&!r.refused&&hex(w.%sWireSaveRetain(back,store,w.TableWireReport()))==hex(expected),'active feature retained');
+check(!r.refused&&hex(w.%sWireSaveRetain(back,store,w.TableWireReport()))==hex(expected),'active feature retained');
 check(w.%sWireMeasure(expected)==%d,'active feature extent');
 `, fn, string(input), hex.EncodeToString(pin), fn, fn, string(input), fn, fn, fn, measure)
 		for _, big := range []bool{false, true} {

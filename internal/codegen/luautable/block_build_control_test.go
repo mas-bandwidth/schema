@@ -170,7 +170,7 @@ func cookOpenGate(t *testing.T, mutate func(*testing.T, map[string][]byte)) map[
 	}
 	out := luaurun.Run(t, dir, "main.luau", nil)
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		name, verdict, _ := strings.Cut(line, " ")
 		got[name] = verdict
 	}

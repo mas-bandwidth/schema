@@ -55,7 +55,7 @@ table Fixed { values [3]Mode
 			fmt.Fprintf(&b, `for(final retaining in [false,true]){
  final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();
  final v=retaining?w.%sWireLoadRetain(data,store,r):w.%sWireLoad(data,r);
- check(!r.malformed&&!r.refused&&r.unknown==%d&&r.retained==0&&r.retainLost==(retaining?%d:0),'enum list report %s');
+ check(!r.refused&&r.unknown==%d&&r.retained==0&&r.retainLost==(retaining?%d:0),'enum list report %s');
  final saved=retaining?w.%sWireSaveRetain(v,store,w.TableWireReport()):w.%sWireSave(v);
  check(hex(saved)==%q,'enum list values %s');
  }

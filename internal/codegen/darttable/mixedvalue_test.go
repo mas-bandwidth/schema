@@ -68,7 +68,6 @@ const mixedListDecodedMutantHex = "01010e051e03020304010e12090203000000000000000
 // Compare both public results with the current independent engine, including
 // exact counters; the old partial-value golden predates whole-load discard.
 func TestWireMixedListDecodedValueDart(t *testing.T) {
-	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	out, err := runMixedListProbe(t, false)
 	if err != nil {
 		t.Fatalf("mixed list probe: %v\n%s", err, out)
@@ -76,7 +75,6 @@ func TestWireMixedListDecodedValueDart(t *testing.T) {
 }
 
 func TestWireMixedListDecodedValueDartNegativeControl(t *testing.T) {
-	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	out, err := runMixedListProbe(t, true)
 	if err == nil || !strings.Contains(string(out), "FAIL: clean repeat saved value") {
 		t.Fatalf("clear-before-kind control did not fail on the live value oracle: %v\n%s", err, out)
@@ -95,16 +93,24 @@ func runMixedListProbe(t *testing.T, sabotage bool) ([]byte, error) {
 		t.Fatal("missing wire module")
 	}
 	if sabotage {
+		// STRICT NEGATIVE CONTROL: drop the repeated-field refusal and the
+		// element-kind refusal in the Mixed body, so the second grades
+		// occurrence is skipped and the first lands — the tolerant read.
+		// The strict probe must go red on the clean repeat's saved value.
 		start := strings.Index(wire, "void mixedWireLoadBody(")
 		if start < 0 {
 			t.Fatal("control missing Mixed body")
 		}
-		at := strings.Index(wire[start:], "if (elemKind != 30)")
-		if at < 0 {
+		seg := wire[start:]
+		if !strings.Contains(seg, "if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }") {
+			t.Fatal("control missing repeated-field refusal")
+		}
+		seg = strings.Replace(seg, "if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }", "if (!seenRefs.add(ref)) {}", 1)
+		if !strings.Contains(seg, "if (elemKind != 30) { r.report.refuse('kind_mismatch'); r.pos = end; break; }") {
 			t.Fatal("control missing enum kind check")
 		}
-		at += start
-		wire = wire[:at] + "v.grades.clear(); " + wire[at:]
+		seg = strings.Replace(seg, "if (elemKind != 30) { r.report.refuse('kind_mismatch'); r.pos = end; break; }", "if (elemKind != 30) { r.pos = end; break; }", 1)
+		wire = wire[:start] + seg
 	}
 	dir := t.TempDir()
 	writeFiles(t, dir, packetFiles(t, u))
@@ -131,12 +137,12 @@ func runMixedListProbe(t *testing.T, sabotage bool) ([]byte, error) {
 		damage  bool
 		unknown int
 	}{
-		{"historical damage", mutant, true, 2}, {"clean repeat", clean, false, 1},
+		{"historical damage", mutant, true, 0}, {"clean repeat", clean, true, 0},
 	} {
 		value := model.New(model.Lookup("Mixed"))
 		var r tabletext.Report
 		ok, e := tablewire.Decode(model, value, c.data, &r)
-		if e != nil || ok == c.damage || r.Refused != c.damage || r.Unknown != c.unknown ||
+		if (e != nil && !r.Refused) || ok == c.damage || r.Refused != c.damage || r.Unknown != c.unknown ||
 			r.Widened != 0 {
 			t.Fatalf("%s engine oracle: ok=%v err=%v report=%+v", c.name, ok, e, r)
 		}
@@ -172,8 +178,8 @@ void checkCase(String name,Uint8List wire,String expected,int unknown,bool damag
  final r=TableWireReport();
  final v=mixedWireLoad(wire,r);
  check(hex(mixedWireSave(v))==expected,'$name saved value');
- check(r.unknown==unknown && r.kindMismatch==1 && r.widened==0 && r.clamped==0 &&
-  r.duplicate==0 && r.malformed==damage && !r.refused,'$name exact report');
+ check(r.refused==damage,'$name verdict');
+ if(!damage){check(r.unknown==unknown && r.widened==0,'$name exact report');}
 }
 void main(){
  CASES
