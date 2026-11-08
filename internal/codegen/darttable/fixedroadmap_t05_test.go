@@ -315,11 +315,13 @@ func t05R16(t *testing.T) {
 		"R16 a count past its bound refuses")
 	t05Has(t, t05OpCase(t, runtime, "text"), "return TableFixedRefusal.lengthOverBound;",
 		"R16 a text length past its bound refuses")
-	// THE BOUNDS PASS COUNTS A FORGED ORDINAL REMAPPED TO None, ON BOTH PLANS:
-	// the compiled plan's ordinal op counts it, and the identity plan's decode
-	// counts it after landing None. §4.6, §5.4's "counts twice" note.
-	t05Has(t, t05OpCase(t, runtime, "ordinal"), "report.unknown++;",
-		"R16 the compiled plan's ordinal op counts a forged ordinal unknown")
+	// THE BOUNDS PASS REFUSES A FORGED ORDINAL, ON BOTH PLANS: the compiled
+	// plan's ordinal op refuses it, and the identity plan's decode refuses it
+	// (§4.6, docs/plans/strict-only.md). Neither counts it unknown.
+	t05Has(t, t05OpCase(t, runtime, "ordinal"), "return TableFixedRefusal.outOfRange;",
+		"R16 the compiled plan's ordinal op refuses a forged ordinal")
+	t05No(t, t05OpCase(t, runtime, "ordinal"), "report.unknown++;",
+		"R16 a forged ordinal is never counted unknown on the compiled plan")
 	identity := t05Emitted(t, `package probe
 
 enum Tier
@@ -334,9 +336,8 @@ fixed table T
     tier Tier
 }
 `)
-	t05Has(t, identity, "report.unknown++;",
-		"R16 the identity plan's ordinal bounds pass counts a forged ordinal unknown")
-	t05Has(t, identity, "= Tier.none;\n    report.unknown++;", "R16 a forged ordinal lands None and counts unknown")
+	t05Has(t, identity, "= Tier.none;\n    report.refused = TableFixedRefusal.outOfRange;",
+		"R16 the identity plan's ordinal bounds pass refuses a forged ordinal out_of_range")
 	// A FOLDED ELEMENT RUN IS ONE and a widened run is never folded, so the
 	// coalescer merges COPY entries and nothing else (§5.4's "per ENTRY",
 	// §5.9 #33).
