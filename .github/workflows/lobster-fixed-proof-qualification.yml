@@ -6,8 +6,11 @@ permissions:
   contents: read
 jobs:
   native:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -16,8 +19,10 @@ jobs:
           cache: false
       - name: Install pinned Lobster runtime
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
           make dist-lobster
       - name: Check action pins
         run: go test ./internal/ci -run "^TestEveryActionIsPinnedToACommit$" -count=1 -timeout 600s
@@ -31,8 +36,11 @@ jobs:
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
           go test ./internal/codegen/lobstertable -run '^(TestLobsterFixedProofSuiteValues|TestLobsterFixedProofSuiteNegativeControl|TestLobsterFixedProofEvolution|TestLobsterFixedNestedUnionGuardNames)$' -count=1 -timeout 600s -v
   baseline:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -41,8 +49,10 @@ jobs:
           cache: false
       - name: Install pinned Lobster runtime
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
           make dist-lobster
       - name: Check workflow, source goldens and table emitter
         run: go test ./internal/ci ./internal/goldens ./internal/codegen/lobstertable -count=1 -timeout 600s

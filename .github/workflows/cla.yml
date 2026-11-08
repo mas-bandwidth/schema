@@ -99,7 +99,11 @@ permissions:
 
 jobs:
   caa:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       # Pull requests only. `github.event.issue.pull_request` is present only
       # when an issue_comment was posted on a PR; on a plain issue it is null
@@ -201,6 +205,9 @@ jobs:
           REPO_ID: ${{ github.event.repository.id }}
           THREAD_NO: ${{ github.event.issue.number }}
           IS_PR: ${{ github.event.issue.pull_request != null }}
+        # This job checks nothing out (pull_request_target: no fork code runs
+        # here), so tools/pgroup is not on disk; the step names its own shell.
+        shell: bash
         run: |
           set -euo pipefail
           if [ "$IS_PR" = "true" ]; then

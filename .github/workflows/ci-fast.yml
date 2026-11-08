@@ -52,14 +52,14 @@ name: CI fast
 # clone on top, and the Dart and Elixir legs pay their own SDK setup. Two
 # minutes is reachable; twenty seconds is not, without a self-hosted warm pool.
 #
-# THE MERGE GATE RUNS ON GITHUB'S HOSTED LINUX, so a merge never waits on the
-# home benches. `plan`, `lint-fast`, `block-gate` and `go-test-touched` are the
-# checks a pull request must pass, and every one of them is
-# `runs-on: ubuntu-latest` on every event. With the gate on the fleet, an offline
-# fleet is a red main and no merges: the checks sit in a queue for runners that
-# are not there. A hosted runner pays the floor named above (the setup-*
-# steps and a cold-ish build cache), and that is the trade: the gate answers
-# whatever the benches are doing.
+# THE MERGE GATE RUNS ON THE FLEET, like every Linux job in .github/workflows:
+# we run our own GitHub runners on the fleet. `plan`, `lint-fast`,
+# `block-gate` and `go-test-touched` are the checks a pull request must pass,
+# and each is `runs-on: [self-hosted, Linux, X64, fleet, schema]` behind the
+# fork guard below. The hosted queue was the failure mode that moved them: jobs
+# waiting on `ubuntu-latest` while fleet runners sat idle stalled every
+# landing. The setup-* and cache steps keep their hosted fallback, so the same
+# file still runs on a hosted runner if one is ever named again.
 #
 # THE HOSTED SETUP IS THE FLEET'S, PINNED. Go comes from actions/setup-go at the
 # version go.mod names; the interpreters the touched packages need come from the
@@ -157,8 +157,11 @@ jobs:
   # start immediately does.
   plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     outputs:
       packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
@@ -307,10 +310,13 @@ jobs:
   # this lane does not have, and they run in ci-full.yml.
   lint-fast:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 60-142 s with a warm cache; hosted adds setup-go, the cache restore
     # and modernize's first compile
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # the gate runs hosted, so setup-go always runs here; the guard keeps the
@@ -386,9 +392,12 @@ jobs:
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
     timeout-minutes: 10
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # hosted, as above
@@ -416,10 +425,13 @@ jobs:
   go-test-touched:
     needs: plan
     if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 81 s median, 587 s at worst; a broad diff runs `go test -short ./...`
     # on a four-core hosted runner from a restored cache
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
