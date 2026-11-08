@@ -202,7 +202,7 @@ public final class Driver {
         ` + pkg + `.TableVariable.Report report = new ` + pkg + `.TableVariable.Report();
         ` + pkg + `.` + root + `Variable.Value v = ` + pkg + `.` + root + `Variable.load(wire, report);
         if (v == null) { fail("load returned null"); }
-        if (report.malformed || report.refused) { fail("load reported malformed/refused"); }
+        if (report.damaged || report.refused) { fail("load reported damaged/refused"); }
 
         byte[] saved = ` + pkg + `.` + root + `Variable.save(v);
         if (!java.util.Arrays.equals(wire, saved)) {
@@ -220,7 +220,7 @@ public final class Driver {
 
         ` + pkg + `.TableVariable.Report read = new ` + pkg + `.TableVariable.Report();
         ` + pkg + `.` + root + `Variable.Value from = ` + pkg + `.` + root + `Variable.fromJson(golden, read);
-        if (read.malformed || read.unknown != 0 || read.kindMismatch != 0 || read.clamped != 0) {
+        if (from == null || read.damaged || read.refused || read.unknown != 0 || read.widened != 0) {
             fail("fromJson reports loss");
         }
         byte[] round = ` + pkg + `.` + root + `Variable.save(from);

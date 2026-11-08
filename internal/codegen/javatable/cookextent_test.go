@@ -84,7 +84,8 @@ func TestJavaCookExtentNegativeControl(t *testing.T) {
 							class = "CookReversed" + root
 						}
 						out, err := exec.Command(javaBin, "-ea", "-cp", dir, class,
-							filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1])).CombinedOutput()
+							filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]),
+							filepath.Join(repo, "testdata", "conformance", "tables", "json", row+".json")).CombinedOutput()
 						if err != nil && strings.Contains(string(out), "cook bytes order") {
 							red++
 						} else if err != nil {
@@ -130,7 +131,8 @@ func TestJavaCookMapWriterHoldsTheSort(t *testing.T) {
 			for _, row := range rows {
 				inst, cook := m.instance[row], m.cook[row]
 				out, err := exec.Command(javaBin, "-ea", "-cp", dir, "CookReversed"+root,
-					filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1])).CombinedOutput()
+					filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]),
+					filepath.Join(repo, "testdata", "conformance", "tables", "json", row+".json")).CombinedOutput()
 				if err != nil {
 					t.Errorf("%s with every map reversed: %v\n%s", row, err, out)
 				}
@@ -141,11 +143,15 @@ func TestJavaCookMapWriterHoldsTheSort(t *testing.T) {
 
 func cookReversedDriverSource(class, pkg, root string) string {
 	src := cookDriverSource(class, pkg, root)
-	// reverse every map's entries, at every depth, right after the load
-	src = strings.Replace(src,
-		"        if (value == null || report.refused || report.malformed) throw new AssertionError(\"wire load\");\n",
-		"        if (value == null || report.refused || report.malformed) throw new AssertionError(\"wire load\");\n"+
-			"        reverseMaps(value, PKG.ROOTRow.cookInfo(), new java.util.IdentityHashMap<>());\n", 1)
+	// reverse every map's entries, at every depth, right after the value is
+	// in hand (from the wire, or from the text for a
+	// fixed root's form 3 file), before the cook measures it
+	anchor := "        long n = " + pkg + "." + root + "Cook.cookMeasure(value);\n"
+	if strings.Count(src, anchor) != 1 {
+		panic("cookReversedDriverSource: the cook driver's measure line is not where the reversal goes")
+	}
+	src = strings.Replace(src, anchor,
+		"        reverseMaps(value, PKG.ROOTRow.cookInfo(), new java.util.IdentityHashMap<>());\n"+anchor, 1)
 	src = strings.Replace(src, "PKG.ROOTRow", pkg+"."+root+"Row", 1)
 	helper := `
     static void reverseMaps(Object v, PKG.TableCookInfo info, java.util.IdentityHashMap<Object, Boolean> seen) throws Exception {

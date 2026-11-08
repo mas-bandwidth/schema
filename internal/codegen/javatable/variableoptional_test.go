@@ -120,7 +120,7 @@ public final class Driver {
   }
   w.put8(0);w.trailer();TableVariable.Report report=new TableVariable.Report();
   RootVariable.Value v=RootVariable.load(java.util.Arrays.copyOf(w.buf,w.off),report);
-  check(v!=null&&!report.malformed&&!report.refused&&report.kindMismatch==0&&report.widened==2,"each keyed field widens once");
+  check(v!=null&&!report.damaged&&!report.refused&&report.widened==2,"each keyed field widens once");
   check(v.ints.get(0)==-17L&&v.ints.get(1)==23L&&v.floats.get(0)==1.5,"writer-width slots");
   check(Double.doubleToRawLongBits(v.floats.get(1))==0xb80fffffc0000000L,"a negative float32 subnormal widens exactly, sign kept");
   System.out.println("keyed int32/int64 and float32/float64 writer-width widening passes");
@@ -147,14 +147,14 @@ public final class Driver {
  public static void main(String[] args){
   for(int mode=0;mode<3;mode++){
    TableRetain retain=new TableRetain(4096,128);TableVariable.Report report=new TableVariable.Report();RootVariable.Value v=RootRetain.loadRetain(frame(mode),retain,report);
-   check(v!=null&&!report.malformed&&!report.refused&&report.unknown==2&&v.tail==17,"retaining load mode "+mode);
+   check(v!=null&&!report.damaged&&!report.refused&&report.unknown==2&&v.tail==17,"retaining load mode "+mode);
    check(report.retainLost==(mode==1?2:0)&&report.retained==(mode==1?0:2),"retained/excluded counters mode "+mode);
    check((retain.used>0)==(mode==0),"replacement tail disposal mode "+mode);
    byte[] saved=RootRetain.saveRetain(v,retain,report);TableVariable.Report again=new TableVariable.Report();RootVariable.Value loaded=RootVariable.load(saved,again);
-   check(loaded!=null&&!again.malformed&&again.unknown==(mode==0?2:0)&&loaded.tail==17,"retaining resave mode "+mode);
+   check(loaded!=null&&!again.damaged&&again.unknown==(mode==0?2:0)&&loaded.tail==17,"retaining resave mode "+mode);
    if(mode!=1)check(loaded.slots.get(0).value==0&&loaded.choice.tag==1&&loaded.choice.item.value==0,"known child values");
   }
-  TableVariable.Writer damaged=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));damaged.put8(1);damaged.putLeb(damaged.ref(RootVariable.F_choice));damaged.put8(15);damaged.putLeb(damaged.ref(CHOICE_WORD));damaged.put8(12);damaged.putLeb(1);damaged.put8(0);damaged.putLeb(damaged.ref(RootVariable.F_tail));damaged.put8(4);damaged.put32(17);damaged.put8(0);damaged.trailer();TableVariable.Report bad=new TableVariable.Report();RootVariable.Value empty=RootVariable.load(java.util.Arrays.copyOf(damaged.buf,damaged.off),bad);check(empty==null&&bad.malformed&&!bad.refused,"malformed direct text arm discards the whole load");
+  TableVariable.Writer damaged=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));damaged.put8(1);damaged.putLeb(damaged.ref(RootVariable.F_choice));damaged.put8(15);damaged.putLeb(damaged.ref(CHOICE_WORD));damaged.put8(12);damaged.putLeb(1);damaged.put8(0);damaged.putLeb(damaged.ref(RootVariable.F_tail));damaged.put8(4);damaged.put32(17);damaged.put8(0);damaged.trailer();TableVariable.Report bad=new TableVariable.Report();RootVariable.Value empty=RootVariable.load(java.util.Arrays.copyOf(damaged.buf,damaged.off),bad);check(empty==null&&bad.damaged&&!bad.refused,"damaged direct text arm discards the whole load");
   System.out.println("keyed/union child tails retained, unknown slots/arms excluded, replacements discard old tails");
  }
 }`

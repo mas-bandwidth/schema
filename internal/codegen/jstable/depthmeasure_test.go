@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -17,7 +18,9 @@ import (
 // FileRegionMeasure on mapdemo.Depth under the wire-fuzz cause (b) mutant: an
 // arm's kind byte is rewritten so the reader sees it as unknown, while the
 // oracle still counts the selected arm's payload by id. The measure must match
-// byte for byte, and the JS load must then answer as the oracle.
+// byte for byte, and the JS load must then answer as the engine's one strict
+// read does (tablewire.Decode): the mutant's arm is a changed kind, which
+// refuses the whole load (docs/plans/strict-only.md).
 func TestDepthLoadMeasureCoversFramingJavaScript(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
@@ -46,6 +49,21 @@ func TestDepthLoadMeasureCoversFramingJavaScript(t *testing.T) {
 		t.Fatalf("oracle did not read the whole wire for Depth")
 	}
 
+	m := tabletext.NewModel(u)
+	def := m.Lookup("Depth")
+	if def == nil {
+		t.Fatal("no table Depth in tables/maps")
+	}
+	var rep tabletext.Report
+	read, decErr := tablewire.Decode(m, m.New(def), wireData, &rep)
+	if decErr != nil && !tablewire.ReadRefusal(decErr) {
+		t.Fatalf("oracle Decode: %v", decErr)
+	}
+	wantLoad := "null"
+	if read && decErr == nil {
+		wantLoad = "ok"
+	}
+
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatalf("generateVariableFiles: %v", err)
@@ -62,10 +80,10 @@ func TestDepthLoadMeasureCoversFramingJavaScript(t *testing.T) {
 	script := filepath.Join(dir, "probe.mjs")
 	probe := `
 import { writeFileSync } from "node:fs";
-import { DepthLoadMeasure, DepthLoad } from "./%[1]sVariable.js";
+import { DepthLoadMeasure, DepthLoad, TableVariableReport } from "./%[1]sVariable.js";
 const wire = new Uint8Array(%[2]s);
 const m = DepthLoadMeasure(wire).toString();
-const report = { unknown:0, kindMismatch:0, widened:0, clamped:0, duplicate:0, malformed:false, reason:"" };
+const report = new TableVariableReport();
 const v = DepthLoad(wire, report);
 writeFileSync(process.argv[2], m + "\n" + (v === null ? "null" : "ok") + "\n");
 `
@@ -95,8 +113,8 @@ writeFileSync(process.argv[2], m + "\n" + (v === null ? "null" : "ok") + "\n");
 	if got != want {
 		t.Fatalf("Depth LoadMeasure: JS=%d, oracle FileRegionMeasure=%d", got, want)
 	}
-	if strings.TrimSpace(lines[1]) != "ok" {
-		t.Fatalf("Depth Load did not answer as the oracle: %q", lines[1])
+	if strings.TrimSpace(lines[1]) != wantLoad {
+		t.Fatalf("Depth Load answered %q, the engine's strict read %q (%v)", lines[1], wantLoad, decErr)
 	}
 }
 

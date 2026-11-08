@@ -30,14 +30,18 @@ permissions:
 
 jobs:
   tag:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # the tags already on the commit decide skip-or-tag, so fetch them
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false

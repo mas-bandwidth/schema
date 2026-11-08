@@ -331,10 +331,9 @@ public final class RangedIntegersValidData {
                 TableFixed.plan(4096), new short[4096], RangedSignedFixed.image(), r);
         check(got == write.length, "signed: load reads all three records (got " + got + ")");
         check(!r.refused, "signed: the read is not refused");
-        check(!r.malformed, "signed: the read is not malformed");
-        check(r.unknown == 0 && r.kindMismatch == 0 && r.widened == 0,
+        check(!r.damaged, "signed: the read is not malformed");
+        check(r.unknown == 0 && r.widened == 0,
                 "signed: no census counter moved on valid data");
-        check(r.clamped == 0, "signed: valid data clamps nothing and counts nothing (clamped=" + r.clamped + ")");
         for (int k = 0; k < write.length; k++) {
             final String d = diff(write[k], read[k]);
             check(d == null, "signed: record " + k + " (" + SHAPES[k]
@@ -366,10 +365,9 @@ public final class RangedIntegersValidData {
                 TableFixed.plan(4096), new short[4096], RangedUnsignedFixed.image(), r);
         check(got == write.length, "unsigned: load reads all three records (got " + got + ")");
         check(!r.refused, "unsigned: the read is not refused");
-        check(!r.malformed, "unsigned: the read is not malformed");
-        check(r.unknown == 0 && r.kindMismatch == 0 && r.widened == 0,
+        check(!r.damaged, "unsigned: the read is not malformed");
+        check(r.unknown == 0 && r.widened == 0,
                 "unsigned: no census counter moved on valid data");
-        check(r.clamped == 0, "unsigned: valid data clamps nothing and counts nothing (clamped=" + r.clamped + ")");
         for (int k = 0; k < write.length; k++) {
             final String d = diff(write[k], read[k]);
             check(d == null, "unsigned: record " + k + " (" + SHAPES[k]

@@ -42,9 +42,9 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
 	// The full file must read cleanly FIRST, so a broken fixture cannot pass
 	// this row by accident.
 	full := runProbe(t, classes, "Probe_reads", oldFile)
-	if full.n < 1 || full.refused || full.malformed {
+	if full.n < 1 || full.refused || full.damaged {
 		t.Fatalf("the full file does not read cleanly: n=%d refused=%v reason=%s malformed=%v",
-			full.n, full.refused, full.reason, full.malformed)
+			full.n, full.refused, full.reason, full.damaged)
 	}
 
 	for k := range fileHeaderBytes + 4 {
@@ -53,8 +53,8 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := runProbe(t, classes, "Probe_reads", shortFile)
-		if !r.malformed {
-			t.Errorf("k=%d: malformed=%v, want true — a %d-byte file is under the header", k, r.malformed, k)
+		if !r.damaged {
+			t.Errorf("k=%d: malformed=%v, want true — a %d-byte file is under the header", k, r.damaged, k)
 		}
 		if r.refused {
 			t.Errorf("k=%d: refused=%v, want false — a short file is the residue, not a refusal by name", k, r.refused)
@@ -65,9 +65,9 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
 		if r.n != -1 {
 			t.Errorf("k=%d: n=%d, want -1", k, r.n)
 		}
-		if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 || r.clamped != 0 {
-			t.Errorf("k=%d: counters moved: unknown=%d kindMismatch=%d widened=%d clamped=%d, want all 0",
-				k, r.unknown, r.kindMismatch, r.widened, r.clamped)
+		if r.unknown != 0 || r.widened != 0 {
+			t.Errorf("k=%d: counters moved: unknown=%d widened=%d, want all 0",
+				k, r.unknown, r.widened)
 		}
 		if r.layoutHash != "0x0" {
 			t.Errorf("k=%d: layoutHash=%s, want 0x0 — only the two layout refusals report a hash", k, r.layoutHash)
@@ -78,8 +78,8 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
 		// reads probe is poisoned (0x5A through its non-final fields), so a
 		// value==fresh comparison cannot serve there; the refuses probe is not.
 		ref := runProbe(t, classes, "Probe_refuses", shortFile)
-		if !ref.malformed || ref.n != -1 {
-			t.Fatalf("k=%d: the refuses probe did not report malformed: n=%d malformed=%v", k, ref.n, ref.malformed)
+		if !ref.damaged || ref.n != -1 {
+			t.Fatalf("k=%d: the refuses probe did not report malformed: n=%d malformed=%v", k, ref.n, ref.damaged)
 		}
 		assertFresh(t, ref)
 	}

@@ -10,7 +10,7 @@ package javatable
 //   2. every fixed-form construct against the Go codec (internal/tablewire),
 //      including `tables/messages` (`unit messagedemo`);
 //   3. an older card read and upgraded by a newer reader, reporting the
-//      oracle's exact unknown, kindMismatch, widened and clamped counts;
+//      oracle's exact unknown and widened counts;
 //   4. the batch's refusals (`no_vocabulary`, `batch_too_large` on measure,
 //      save and read — closing `java/F9` — and `newer_form`) and its damage
 //      rules (damage in body two delivers no body, bytes after pad, short
@@ -193,12 +193,9 @@ func TestMessageFormBatchJava(t *testing.T) {
 	// announcement by a NEWER reader (§3.3: "a reader decodes a body against
 	// the table THAT endpoint announced").
 	t.Run("versioning_upgrade", func(t *testing.T) {
-		t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 		t.Parallel()
 		older := unitFrom(t, messageBatchOlderSrc)
-		newer := unitFrom(t, messageBatchNewerSrc)
 		mo := tabletext.NewModel(older)
-		mn := tabletext.NewModel(newer)
 		var olds []*tabletext.Instance
 		for i, text := range messageBatchOlderTexts {
 			inst := mo.New(mo.Lookup("Card"))
@@ -213,28 +210,43 @@ func TestMessageFormBatchJava(t *testing.T) {
 			t.Fatalf("the oracle did not encode the older batch: %v", err)
 		}
 		announce := ir.TableAnnouncement(older)
-		v := &tablewire.Vocabulary{}
-		var arep tabletext.Report
-		if err := v.AnnounceRead(announce, &arep); err != nil {
-			t.Fatalf("the oracle refused the older announcement: %v", err)
+		decode := func(t *testing.T, newer *ir.Unit) ([]*tabletext.Instance, tabletext.Report, bool) {
+			mn := tabletext.NewModel(newer)
+			v := &tablewire.Vocabulary{}
+			var arep tabletext.Report
+			if err := v.AnnounceRead(announce, &arep); err != nil {
+				t.Fatalf("the oracle refused the older announcement: %v", err)
+			}
+			news := make([]*tabletext.Instance, len(olds))
+			for i := range news {
+				news[i] = mn.New(mn.Lookup("Card"))
+			}
+			var rep tabletext.Report
+			count, ok, err := tablewire.DecodeMessages(mn, news, wire, v, &rep)
+			if err != nil && !tablewire.ReadRefusal(err) {
+				t.Fatalf("the oracle failed on the older batch: %v", err)
+			}
+			return news, rep, err == nil && ok && !rep.Refused && count == len(olds)
 		}
-		news := make([]*tabletext.Instance, len(olds))
-		for i := range news {
-			news[i] = mn.New(mn.Lookup("Card"))
-		}
-		var rep tabletext.Report
-		count, ok, err := tablewire.DecodeMessages(mn, news, wire, v, &rep)
-		if err != nil || !ok || count != len(olds) {
-			t.Fatalf("the oracle did not decode the older batch: count=%d ok=%v err=%v", count, ok, err)
-		}
-		if rep.Unknown == 0 || rep.Widened == 0 {
-			t.Fatalf("the versioning case no longer exercises every counter: %+v", rep)
-		}
-		upgraded, err := tablewire.EncodeMessages(mn, news)
-		if err != nil {
-			t.Fatalf("the oracle did not encode the upgraded batch: %v", err)
-		}
-		main := fmt.Sprintf(`
+
+		// 3a. EVOLUTION ONLY (§4): a removed field, a removed arm, a removed
+		// variant and a new field are skipped or defaulted and counted
+		// unknown, int16 -> int32 counts widened, and the whole batch lands.
+		t.Run("evolution", func(t *testing.T) {
+			t.Parallel()
+			newer := unitFrom(t, messageBatchNewerSrc)
+			news, rep, ok := decode(t, newer)
+			if !ok {
+				t.Fatalf("the oracle did not decode the older batch: %+v", rep)
+			}
+			if rep.Unknown == 0 || rep.Widened == 0 {
+				t.Fatalf("the versioning case no longer exercises every counter: %+v", rep)
+			}
+			upgraded, err := tablewire.EncodeMessages(tabletext.NewModel(newer), news)
+			if err != nil {
+				t.Fatalf("the oracle did not encode the upgraded batch: %v", err)
+			}
+			main := fmt.Sprintf(`
         {
             final byte[] ann = fromHex(%q);
             final byte[] old = fromHex(%q);
@@ -247,8 +259,8 @@ func TestMessageFormBatchJava(t *testing.T) {
             for (int i = 0; i < values.length; i++) { values[i] = new CardFixed.Value(); }
             final TableVocabulary.Report lrep = new TableVocabulary.Report();
             final int count = CardMessage.loadMessages(values, values.length, vocab, old, lrep);
-            final boolean ok = !lrep.malformed && !lrep.refused;
-            final boolean countersOk = lrep.unknown == %d && lrep.kindMismatch == %d && lrep.widened == %d && lrep.clamped == %d;
+            final boolean ok = !lrep.damaged && !lrep.refused;
+            final boolean countersOk = lrep.unknown == %d && lrep.widened == %d;
             final TableVocabulary.Report srep = new TableVocabulary.Report();
             final byte[] buf = new byte[want.length];
             java.util.Arrays.fill(buf, (byte) 0xa5);
@@ -258,14 +270,53 @@ func TestMessageFormBatchJava(t *testing.T) {
             final boolean same = java.util.Arrays.equals(buf, want);
             say("upgrade", announced && ok && count == %d && countersOk && wrote == want.length && measured == want.length && same,
                 "announced=" + announced + " ok=" + ok + " count=" + count
-                + " counters=" + lrep.unknown + "," + lrep.kindMismatch + "," + lrep.widened + "," + lrep.clamped
+                + " counters=" + lrep.unknown + "," + lrep.widened
                 + " wrote=" + wrote + " measured=" + measured + " same=" + same);
         }
 `, hexOf(announce), hexOf(wire), hexOf(upgraded),
-			len(olds), rep.Unknown, rep.Unknown, rep.Widened, rep.Unknown, len(olds))
-		out := runMessageBatchProbe(t, newer, main)
-		if line := messageBatchLine(out, "upgrade"); line != "BATCH upgrade ok" {
-			t.Fatalf("the newer Java reader does not upgrade the older batch as the oracle does: %s", line)
+				len(olds), rep.Unknown, rep.Widened, len(olds))
+			out := runMessageBatchProbe(t, newer, main)
+			if line := messageBatchLine(out, "upgrade"); line != "BATCH upgrade ok" {
+				t.Fatalf("the newer Java reader does not upgrade the older batch as the oracle does: %s", line)
+			}
+		})
+
+		// 3b. A NARROWED reader (§4): a bound that shrank under a value, a
+		// kind that changed, a count past the new bound each refuse, and a
+		// batch with one such body delivers no body at all.
+		for _, c := range []struct{ name, src string }{
+			{"narrowed_text", messageBatchNarrowedTextSrc},
+			{"narrowed_range", messageBatchNarrowedRangeSrc},
+			{"changed_kind", messageBatchChangedKindSrc},
+			{"narrowed_count", messageBatchNarrowedCountSrc},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
+				newer := unitFrom(t, c.src)
+				if _, rep, ok := decode(t, newer); ok {
+					t.Fatalf("test setup: the oracle accepts the older batch under %s: %+v", c.name, rep)
+				}
+				main := fmt.Sprintf(`
+        {
+            final byte[] ann = fromHex(%q);
+            final byte[] old = fromHex(%q);
+            final TableVocabulary vocab = new TableVocabulary();
+            vocab.reset(4096);
+            final TableVocabulary.Report arep = new TableVocabulary.Report();
+            final boolean announced = TableVocabulary.announceRead(vocab, ann, arep);
+            final CardFixed.Value[] values = new CardFixed.Value[%d];
+            for (int i = 0; i < values.length; i++) { values[i] = new CardFixed.Value(); }
+            final TableVocabulary.Report lrep = new TableVocabulary.Report();
+            final int count = CardMessage.loadMessages(values, values.length, vocab, old, lrep);
+            say("narrowed", announced && count <= 0 && (lrep.refused || lrep.damaged),
+                "announced=" + announced + " count=" + count + " refused=" + lrep.refused + " damaged=" + lrep.damaged);
+        }
+`, hexOf(announce), hexOf(wire), len(olds))
+				out := runMessageBatchProbe(t, newer, main)
+				if line := messageBatchLine(out, "narrowed"); line != "BATCH narrowed ok" {
+					t.Fatalf("the Java reader keeps a body the strict read refuses: %s", line)
+				}
+			})
 		}
 	})
 
@@ -501,9 +552,9 @@ func messageBatchRoundTrip(name, root string, announce, message []byte) string {
             for (int i = 0; i < values.length; i++) { values[i] = new %sFixed.Value(); }
             final TableVocabulary.Report lrep = new TableVocabulary.Report();
             final int count = %sMessage.loadMessages(values, values.length, vocab, msg, lrep);
-            final boolean ok = !lrep.malformed && !lrep.refused;
-            final boolean clean = !lrep.malformed && !lrep.refused
-                && lrep.unknown == 0 && lrep.kindMismatch == 0 && lrep.widened == 0 && lrep.clamped == 0;
+            final boolean ok = !lrep.damaged && !lrep.refused;
+            final boolean clean = !lrep.damaged && !lrep.refused
+                && lrep.unknown == 0 && lrep.widened == 0;
             final TableVocabulary.Report mrep = new TableVocabulary.Report();
             final int measured = %sMessage.measureMessages(values, count, mrep);
             final byte[] buf = new byte[msg.length];
@@ -645,16 +696,25 @@ union Body
 fixed table Card
 {
     id    uint32
-    title string(8)
+    title string(16)
     score int32
-    level uint8 | min = 0, max = 5
-    rank  string(4)
+    level uint8 | min = 0, max = 10
+    rank  uint16
     mood  Mood
-    tags  [..2]uint16
+    tags  [..4]uint16
     body  Body
     added uint32 = 7
 }
 `
+
+// The narrowed readers: each changes ONE thing under the older batch's values
+// so the strict read refuses (docs/SPEC-TABLES.md §4).
+var (
+	messageBatchNarrowedTextSrc  = strings.Replace(messageBatchNewerSrc, "title string(16)", "title string(8)", 1)
+	messageBatchNarrowedRangeSrc = strings.Replace(messageBatchNewerSrc, "level uint8 | min = 0, max = 10", "level uint8 | min = 0, max = 5", 1)
+	messageBatchChangedKindSrc   = strings.Replace(messageBatchNewerSrc, "rank  uint16", "rank  string(4)", 1)
+	messageBatchNarrowedCountSrc = strings.Replace(messageBatchNewerSrc, "tags  [..4]uint16", "tags  [..2]uint16", 1)
+)
 
 var messageBatchOlderTexts = []string{
 	`{"id": 1, "title": "a card title", "score": -300, "gone": 9, "level": 9, "rank": 4, "mood": "Bored", "tags": [1, 2, 3], "body": {"legacy": 42}}`,
@@ -697,7 +757,7 @@ const messageBatchRefusalsMain = `
             final TableVocabulary.Report rep = new TableVocabulary.Report();
             final RootFixed.Value[] values = new RootFixed.Value[] { new RootFixed.Value() };
             final int count = RootMessage.loadMessages(values, values.length, fresh, wire, rep);
-            say("no_vocabulary", count == 0 && rep.refused && "no_vocabulary".equals(rep.reason) && !rep.malformed && rep.unknown == 0 && values[0].a == 0,
+            say("no_vocabulary", count == 0 && rep.refused && "no_vocabulary".equals(rep.reason) && !rep.damaged && rep.unknown == 0 && values[0].a == 0,
                 "count=" + count + " refused=" + rep.refused + " reason=" + rep.reason);
         }
         {
@@ -709,14 +769,14 @@ const messageBatchRefusalsMain = `
             final TableVocabulary.Report repZero = new TableVocabulary.Report();
             final int gotZero = RootMessage.measureMessages(huge, 0, repZero);
             say("batch_too_large_measure",
-                gotM == -1 && repM.refused && "batch_too_large".equals(repM.reason) && !repM.malformed
+                gotM == -1 && repM.refused && "batch_too_large".equals(repM.reason) && !repM.damaged
                 && gotZero == -1 && repZero.refused && "batch_too_large".equals(repZero.reason),
                 "gotM=" + gotM + " reason=" + repM.reason + " gotZero=" + gotZero);
             final TableVocabulary.Report repS = new TableVocabulary.Report();
             final byte[] buf = new byte[4096];
             final int gotS = RootMessage.saveMessages(huge, huge.length, buf, repS);
             say("batch_too_large_save",
-                gotS == -1 && repS.refused && "batch_too_large".equals(repS.reason) && !repS.malformed && buf[0] == 0,
+                gotS == -1 && repS.refused && "batch_too_large".equals(repS.reason) && !repS.damaged && buf[0] == 0,
                 "gotS=" + gotS + " reason=" + repS.reason);
         }
         {
@@ -730,8 +790,8 @@ const messageBatchRefusalsMain = `
             final TableVocabulary.Report rep = new TableVocabulary.Report();
             final int count = RootMessage.loadMessages(values, values.length, vocab, buf3, rep);
             say("batch_too_large_read",
-                count == 3 && rep.refused && "batch_too_large".equals(rep.reason) && !rep.malformed
-                && rep.unknown == 0 && rep.kindMismatch == 0 && rep.widened == 0 && rep.clamped == 0
+                count == 3 && rep.refused && "batch_too_large".equals(rep.reason) && !rep.damaged
+                && rep.unknown == 0 && rep.widened == 0
                 && values[0].a == 0 && values[1].a == 0,
                 "count=" + count + " refused=" + rep.refused + " reason=" + rep.reason);
         }
@@ -743,7 +803,7 @@ const messageBatchRefusalsMain = `
                 final RootFixed.Value[] values = new RootFixed.Value[] { new RootFixed.Value() };
                 final TableVocabulary.Report rep = new TableVocabulary.Report();
                 final int count = RootMessage.loadMessages(values, values.length, vocab, new byte[] { form }, rep);
-                all = all && count == 0 && rep.refused && "newer_form".equals(rep.reason) && !rep.malformed;
+                all = all && count == 0 && rep.refused && "newer_form".equals(rep.reason) && !rep.damaged;
             }
             say("newer_form", all, "a foreign form byte was not refused as newer_form");
         }
@@ -760,8 +820,8 @@ const messageBatchRefusalsMain = `
             final RootFixed.Value[] values = new RootFixed.Value[] { new RootFixed.Value(), new RootFixed.Value(), new RootFixed.Value() };
             final TableVocabulary.Report rep = new TableVocabulary.Report();
             final int count = RootMessage.loadMessages(values, values.length, vocab, forged, rep);
-            say("damage_in_body_two", count == 0 && rep.malformed && !rep.refused,
-                "count=" + count + " malformed=" + rep.malformed + " refused=" + rep.refused);
+            say("damage_in_body_two", count == 0 && rep.damaged && !rep.refused,
+                "count=" + count + " damaged=" + rep.damaged + " refused=" + rep.refused);
         }
         {
             // "BYTES AFTER THE PAD ARE MALFORMED"
@@ -769,8 +829,8 @@ const messageBatchRefusalsMain = `
             final RootFixed.Value[] values = new RootFixed.Value[] { new RootFixed.Value() };
             final TableVocabulary.Report rep = new TableVocabulary.Report();
             final int count = RootMessage.loadMessages(values, values.length, vocab, padded, rep);
-            say("bytes_after_pad", count == 0 && rep.malformed && !rep.refused,
-                "count=" + count + " malformed=" + rep.malformed + " refused=" + rep.refused);
+            say("bytes_after_pad", count == 0 && rep.damaged && !rep.refused,
+                "count=" + count + " damaged=" + rep.damaged + " refused=" + rep.refused);
         }
         {
             // A buffer too short for the batch is a -1 and never a partial write.
@@ -804,8 +864,8 @@ const messageBatchRefusalsMain = `
             wBuf[1] = 0;
             final byte[] slice = java.util.Arrays.copyOf(wBuf, 2 + used);
             final int count = RootMessage.loadMessages(values, values.length, v2, slice, rep);
-            okAll = okAll && !rep.malformed && !rep.refused && count == 1 && rep.unknown == 1 && values[0].a == 0;
-            say("unknown_field_skipped", okAll, "count=" + count + " unknown=" + rep.unknown + " malformed=" + rep.malformed);
+            okAll = okAll && !rep.damaged && !rep.refused && count == 1 && rep.unknown == 1 && values[0].a == 0;
+            say("unknown_field_skipped", okAll, "count=" + count + " unknown=" + rep.unknown + " damaged=" + rep.damaged);
         }
         {
             // "AN INDEX ABOVE count IS BATCH DAMAGE" (§3.3): d's 0.01 steps over
@@ -835,8 +895,8 @@ const messageBatchRefusalsMain = `
             final TableVocabulary.Report repAt = new TableVocabulary.Report();
             final int countAt = RootMessage.loadMessages(vAt, 1, vocab, wireAtCount, repAt);
             say("quantized_index_at_count",
-                shaped && !repAt.malformed && !repAt.refused && countAt == 1 && vAt[0].d == 1.0f,
-                "countAt=" + countAt + " d=" + vAt[0].d + " malformed=" + repAt.malformed);
+                shaped && !repAt.damaged && !repAt.refused && countAt == 1 && vAt[0].d == 1.0f,
+                "countAt=" + countAt + " d=" + vAt[0].d + " damaged=" + repAt.damaged);
 
             final byte[] aboveBuf = new byte[16];
             final TableMessage.Writer w2 = new TableMessage.Writer(aboveBuf, 2, false);
@@ -851,7 +911,7 @@ const messageBatchRefusalsMain = `
             final TableVocabulary.Report repAbove = new TableVocabulary.Report();
             final int countAbove = RootMessage.loadMessages(vAbove, 1, vocab, wireAbove, repAbove);
             say("quantized_index_above_count",
-                shaped && repAbove.malformed && !repAbove.refused && countAbove == 0 && vAbove[0].d == 0.0f,
-                "countAbove=" + countAbove + " d=" + vAbove[0].d + " malformed=" + repAbove.malformed);
+                shaped && repAbove.damaged && !repAbove.refused && countAbove == 0 && vAbove[0].d == 0.0f,
+                "countAbove=" + countAbove + " d=" + vAbove[0].d + " damaged=" + repAbove.damaged);
         }
 `

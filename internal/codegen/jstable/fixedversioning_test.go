@@ -217,8 +217,8 @@ plan.image.fill(0x5A);
 const n = TLoad(back, back.length, data, data.length, plan, report);
 const r = report;
 if (n < 1) { fail("the newer reader refused the older writer's file: n=" + n + " " + reason(r)); }
-if (r.refused !== 0 || r.malformed) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
-if (r.unknown !== 0 || r.kindMismatch !== 0 || r.clamped !== 0 || r.duplicate !== 0) {
+if (r.refused !== 0 || r.damaged) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
+if (r.unknown !== 0 || r.mismatch !== 0 || r.oor !== 0 || r.repeated !== 0) {
   fail("counters moved on a clean backward read: " + reason(r));
 }
 %s
@@ -252,7 +252,7 @@ func TestJSFixedVersioningOldRefusesNew(t *testing.T) {
 				// both directions (§5.7).
 				body = `
 if (n < 1) { fail("a row that moved no layout byte must READ in both directions: n=" + n + " " + reason(r)); }
-if (r.refused !== 0 || r.malformed) { fail("an equal hash is not a version: " + reason(r)); }`
+if (r.refused !== 0 || r.damaged) { fail("an equal hash is not a version: " + reason(r)); }`
 			} else {
 				body = `
 if (n !== -1) { fail("the older reader did not refuse the newer writer's file: n=" + n + " " + reason(r)); }
@@ -262,8 +262,8 @@ if (r.refused !== TableFixedRefusal.LayoutNewer) {
 if (r.layoutHash !== want) {
   fail("layout_newer reports THE FILE'S hash: " + want.toString(16) + ", not " + r.layoutHash.toString(16));
 }
-if (r.malformed) { fail("a refusal by name never sets malformed too (§5.3, the joint answer)"); }
-if (r.widened !== 0 || r.unknown !== 0 || r.kindMismatch !== 0 || r.clamped !== 0 || r.duplicate !== 0) {
+if (r.damaged) { fail("a refusal by name never sets malformed too (§5.3, the joint answer)"); }
+if (r.widened !== 0 || r.unknown !== 0 || r.mismatch !== 0 || r.oor !== 0 || r.repeated !== 0) {
   fail("REFUSE is total: no counter moves: " + reason(r));
 }
 // THE DESTINATION IS STILL EVERY FIELD OF A FRESH VALUE — VALUES, never a
@@ -329,7 +329,7 @@ const r = report;
 		// Nothing retired: the OLDEST file is at the floor and it reads.
 		probe(t, 0, `
 const n = TLoad(back, back.length, oldFile, oldFile.length, plan, report);
-if (n < 1 || r.refused !== 0 || r.malformed) { fail("a file AT the floor must read: n=" + n + " " + reason(r)); }`)
+if (n < 1 || r.refused !== 0 || r.damaged) { fail("a file AT the floor must read: n=" + n + " " + reason(r)); }`)
 	})
 	t.Run("floor_below", func(t *testing.T) {
 		t.Parallel()
@@ -344,7 +344,7 @@ const viewOld = new DataView(oldFile.buffer, oldFile.byteOffset, oldFile.length)
 if (r.layoutHash !== viewOld.getBigUint64(8, true)) {
   fail("layout_unsupported reports the file's hash too (§5.9 #7): " + r.layoutHash.toString(16));
 }
-if (r.malformed || r.widened !== 0 || r.unknown !== 0 || r.clamped !== 0) { fail("REFUSE is total: " + reason(r)); }
+if (r.damaged || r.widened !== 0 || r.unknown !== 0 || r.oor !== 0) { fail("REFUSE is total: " + reason(r)); }
 TableFixedResetReport(report);
 const m = TLoad(back, back.length, midFile, midFile.length, plan, report);
 if (m < 1) { fail("the file AT the raised floor must still read: " + m + " " + reason(r)); }`)
@@ -383,7 +383,7 @@ view.setBigUint64(8, 0xDEADBEEFCAFEF00Dn, true);
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
-if (n !== -1 || r.refused !== TableFixedRefusal.LayoutNewer || r.layoutHash !== 0xDEADBEEFCAFEF00Dn || r.malformed) {
+if (n !== -1 || r.refused !== TableFixedRefusal.LayoutNewer || r.layoutHash !== 0xDEADBEEFCAFEF00Dn || r.damaged) {
   fail("hash_unknown: n=" + n + " " + reason(r) + " hash=" + r.layoutHash.toString(16));
 }`, old)},
 		// hash_known_bytes_differ: a KNOWN hash whose layout bytes differ from
@@ -396,7 +396,7 @@ data[20] ^= 0xFF;
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
-if (n !== -1 || r.refused !== TableFixedRefusal.LayoutMalformed || r.malformed) {
+if (n !== -1 || r.refused !== TableFixedRefusal.LayoutMalformed || r.damaged) {
   fail("hash_known_bytes_differ: n=" + n + " " + reason(r));
 }`, old)},
 		// hash_identity: the reader's own hash selects the identity plan.
@@ -405,7 +405,7 @@ const data = readFileSync(%q);
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
-if (n < 1 || r.refused !== 0 || r.malformed) { fail("hash_identity: n=" + n + " " + reason(r)); }
+if (n < 1 || r.refused !== 0 || r.damaged) { fail("hash_identity: n=" + n + " " + reason(r)); }
 if (back[0].w !== 777) { fail("the identity plan lost a value: " + show(back[0])); }
 if (r.layoutHash !== 0n) { fail("layout_hash is zero on every path but the two layout refusals (§5.9 #15)"); }`, fresh)},
 	}
@@ -439,7 +439,7 @@ for (const name of [%q, %q]) {
   const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
   const report = new TableFixedReport(); const r = report;
   const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
-  if (n < 1 || r.refused !== 0 || r.malformed) {
+  if (n < 1 || r.refused !== 0 || r.damaged) {
     fail(name + ": both pre-merge files read on the merged build: n=" + n + " " + reason(r));
   }
 }`, filepath.Join(corpus, "a_lineage_merge.bin"), filepath.Join(corpus, "b_lineage_merge.bin"))
@@ -510,7 +510,7 @@ const plan = TNewPlan(4096, 4096);
 // alike over zeros, and this record has a string's slack behind a used length.
 plan.image.fill(0x5A);
 const n = TLoad(back, back.length, data, data.length, plan, report);
-if (!(n === 1 && !r.malformed)) {
+if (!(n === 1 && !r.damaged)) {
   fail("union-arm text: UT2 read UT1's record through a compiled plan: n=" + n + " " + reason(r));
 }
 const got = back[0];
@@ -997,8 +997,8 @@ function fail(why) { console.error("FAIL: " + why); failures++; }
 // JSON.stringify refuses one, so the replacer spells it.
 function show(v) { return JSON.stringify(v, (k, x) => typeof x === "bigint" ? x.toString() : x); }
 function reason(r) {
-  return "refused=" + TableFixedRefusalName(r.refused) + " malformed=" + r.malformed +
-    " unknown=" + r.unknown + " kindMismatch=" + r.kindMismatch + " clamped=" + r.clamped +
+  return "refused=" + TableFixedRefusalName(r.refused) + " malformed=" + r.damaged +
+    " unknown=" + r.unknown + " kindMismatch=" + r.mismatch + " clamped=" + r.oor +
     " widened=" + r.widened + " layoutHash=0x" + r.layoutHash.toString(16);
 }
 %[3]s

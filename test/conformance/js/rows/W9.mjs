@@ -113,7 +113,7 @@ check(idHoles === 0, `identity list: the unwritten-range census of the identity 
   const value = new TeamConfig();
   TeamConfigFixedDecode(value, idPlan.view, 0, report);
   check(value.spawnCount === 9 && value.bannerLength === 3 && value.banner[0] === 0x68 &&
-    report.clamped === 0 && idPlan.image[0] === 9,
+    report.oor === 0 && idPlan.image[0] === 9,
     "identity pays no prefill: spawn 9 — not the default 4 — lands through the empty hole list (image[0]=" + idPlan.image[0] + ")");
 }
 
@@ -132,7 +132,7 @@ const THEIRS_LO = 0xfeedface, THEIRS_HI = 0x0badc0de;
 const known = [new TableFixedKnownLayout(THEIRS_LO, THEIRS_HI, theirs, theirs.length, 8 + 20)];
 const lane = TableFixedLineagePlans(known, keyed.TeamConfigFixedHashLo, keyed.TeamConfigFixedHashHi,
   own, Int32Array.from(dstRows), body)[0];
-check(lane !== null && lane.ready === true && lane.why === 0 && lane.unknown === 0 && lane.kindMismatch === 0,
+check(lane !== null && lane.ready === true && lane.why === 0 && lane.unknown === 0 && lane.mismatch === 0,
   `absent field: the pre-spawn writer's layout compiles to a plan of ${lane && lane.count} entries, nothing unknown`);
 
 // ---- 3: the unwritten ranges are EXACTLY the absent field's bytes ----
@@ -167,9 +167,9 @@ check(prefill[0] === 0x04 && prefill[1] === 0 && prefill[2] === 0 && prefill[3] 
   check(value.bannerLength === 3 && value.banner[0] === 0x68 && value.banner[1] === 0x65 &&
     value.banner[2] === 0x79 && plan.image[4] === 3,
     "only those: the ranges an entry covers keep the WRITER'S bytes — \"hey\", not the default 4 and not the stain");
-  check(!report.malformed && report.refused === 0 && report.clamped === 0 &&
-    report.unknown === 0 && report.kindMismatch === 0,
-    `the prefill moves nothing else: verdict clean, counters 0 (clamped=${report.clamped})`);
+  check(!report.damaged && report.refused === 0 && report.oor === 0 &&
+    report.unknown === 0 && report.mismatch === 0,
+    `the prefill moves nothing else: verdict clean, counters 0 (clamped=${report.oor})`);
 }
 
 if (failures > 0) {

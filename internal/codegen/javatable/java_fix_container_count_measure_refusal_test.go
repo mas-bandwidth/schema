@@ -51,9 +51,8 @@ func TestJavaFixContainerCountMeasureRefusal(t *testing.T) {
 }
 
 // javaCountMeasureVerdict generates and compiles the unit's Java, then answers
-// the root's loadMeasure, the load report (unknown, kindMismatch, widened,
-// clamped, duplicate, malformed, refused), the report's reason and whether
-// load returned a value.
+// the root's loadMeasure, the load report (unknown, widened, damaged,
+// refused), the report's reason and whether load returned a value.
 func javaCountMeasureVerdict(t *testing.T, u *ir.Unit, root string, wire []byte) (measure, report, reason string, loaded bool) {
 	t.Helper()
 	files, err := Generate(u)
@@ -99,7 +98,7 @@ public final class Driver {
         System.out.println("M " + %[1]s.%[2]sVariable.loadMeasure(wire));
         %[1]s.TableVariable.Report report = new %[1]s.TableVariable.Report();
         %[1]s.%[2]sVariable.Value v = %[1]s.%[2]sVariable.load(wire, report);
-        System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
+        System.out.println("R " + report.unknown + "," + report.widened + "," + report.damaged + "," + report.refused);
         System.out.println("N " + report.reason);
         System.out.println(v == null ? "V null" : "V loaded");
     }
@@ -154,8 +153,8 @@ type javaPin struct {
 }
 
 // javaPinVerdict is what the Java leg answers for one wire: loadMeasure, the
-// load report (unknown, kindMismatch, widened, clamped, duplicate, malformed,
-// refused), the report's reason and whether load returned a value.
+// load report (unknown, widened, damaged, refused), the report's reason and
+// whether load returned a value.
 type javaPinVerdict struct {
 	measure, report, reason string
 	loaded                  bool
@@ -213,7 +212,7 @@ public final class Driver {
             %[1]s.TableVariable.Report report = new %[1]s.TableVariable.Report();
             %[1]s.RootVariable.Value v = %[1]s.RootVariable.load(wire, report);
             System.out.println("P " + %[1]s.RootVariable.loadMeasure(wire)
-                + "|" + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused
+                + "|" + report.unknown + "," + report.widened + "," + report.damaged + "," + report.refused
                 + "|" + report.reason + "|" + (v == null ? "null" : "loaded"));
         }
     }
@@ -251,11 +250,11 @@ public final class Driver {
 }
 
 // javaPinFault answers how the Java leg's answer differs from one pin row, or
-// "" when it agrees. The leg has no strict read and no measure reason, so the
-// strict column is held through the load (docs/SPEC-TABLES.md §6.5): a row the
-// strict read keeps or refuses only for an evolution counter loads with that
-// counter moved, damage discards the value with malformed set, and a refusal
-// discards it with its name. The measure column is held as its verdict, a size
+// "" when it agrees. The leg has no measure reason, so the strict column is
+// held through the load (docs/SPEC-TABLES.md §4, §6.5): a row the strict read
+// keeps loads a value, a kind mismatch or an out-of-range value refuses the
+// whole load (no value, refused, not damaged), damage discards the value with
+// damaged set, and a refusal discards it with its name. The measure column is held as its verdict, a size
 // or -1, and the form column as the report's reason. A count its body cannot
 // cover is the one row class where the load answers the measure rather than
 // the strict read: the load refuses wherever loadMeasure answers -1.
@@ -268,28 +267,28 @@ func javaPinFault(p javaPin, v javaPinVerdict) string {
 		// THE LOAD REFUSES WHERE loadMeasure ANSWERS -1 (TestJavaFixContainer
 		// CountMeasureRefusal): a count its body cannot cover is the measure's
 		// refusal, and no value lands
-		if v.loaded || v.measure != "-1" || r[5] != "false" || r[6] != "true" {
-			return bad("no value, refused as loadMeasure refuses, not malformed")
+		if v.loaded || v.measure != "-1" || r[2] != "false" || r[3] != "true" {
+			return bad("no value, refused as loadMeasure refuses, not damaged")
 		}
 		return ""
 	}
 	switch p.strict {
 	case "ok":
-		if !v.loaded || r[5] != "false" || r[6] != "false" {
+		if !v.loaded || r[2] != "false" || r[3] != "false" {
 			return bad("a value")
 		}
-	case "kind_mismatch", "clamped":
-		at := map[string]int{"kind_mismatch": 1, "clamped": 3}[p.strict]
-		if !v.loaded || r[at] == "0" || r[5] != "false" {
-			return bad("a value with " + p.strict + " counted")
+	case "kind_mismatch", "out_of_range":
+		// the strict read refuses the whole load: no value, no counter (§4)
+		if v.loaded || r[2] != "false" || r[3] != "true" {
+			return bad("no value, refused for " + p.strict + ", not damaged")
 		}
 	case "malformed", "wire_damaged":
-		if v.loaded || r[5] != "true" {
-			return bad("no value, malformed")
+		if v.loaded || r[2] != "true" {
+			return bad("no value, damaged")
 		}
 	case "unknown_form":
-		if v.loaded || r[6] != "true" || r[5] != "false" {
-			return bad("no value, refused, not malformed")
+		if v.loaded || r[3] != "true" || r[2] != "false" {
+			return bad("no value, refused, not damaged")
 		}
 	case "non_finite_float":
 		if v.loaded || !strings.HasPrefix(v.reason, "non_finite_float") {
@@ -297,8 +296,8 @@ func javaPinFault(p javaPin, v javaPinVerdict) string {
 		}
 	case "count_over_extent_cap":
 		// the refusal moves no counter and is not damage (§2.9)
-		if v.loaded || v.report != "0,0,0,0,0,false,true" || v.reason != p.strict {
-			return bad("no value, 0,0,0,0,0,false,true, count_over_extent_cap")
+		if v.loaded || v.report != "0,0,false,true" || v.reason != p.strict {
+			return bad("no value, 0,0,false,true, count_over_extent_cap")
 		}
 	default:
 		return "a strict answer this test does not hold: " + p.strict
@@ -317,7 +316,7 @@ func javaPinFault(p javaPin, v javaPinVerdict) string {
 // Goose and MOO are held to (docs/SPEC-TABLES.md §2.9, §6.5): each row's
 // strict answer through the load, its form refusal, and its measure verdict.
 // A `[]` or map count above the int32 storage cap answers no value, refused by
-// the name count_over_extent_cap, malformed not set and no counter moved, a
+// the name count_over_extent_cap, damaged not set and no counter moved, a
 // widening element kind included; of two refusals in one read, the first in
 // read order names it.
 func TestJavaLoadRefusalPins(t *testing.T) {

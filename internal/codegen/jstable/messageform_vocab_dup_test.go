@@ -142,7 +142,7 @@ function makeAnnounce(entriesBytes) {
   const v = new TableVocabulary();
   v.Init(new Array(16));
   const rep = {};
-  if (AnnounceRead(v, makeAnnounce(words), rep) || !rep.Malformed) {
+  if (AnnounceRead(v, makeAnnounce(words), rep) || !rep.Damaged) {
     throw new Error("expected byte-identical duplicate entries to be refused as Malformed");
   }
 }

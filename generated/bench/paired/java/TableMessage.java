@@ -513,10 +513,10 @@ public final class TableMessage {
         if (hasRange) {
             if (v < min) {
                 v = min;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             } else if (v > max) {
                 v = max;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             }
         }
         return v;
@@ -537,17 +537,17 @@ public final class TableMessage {
         if (hasRange) {
             if (Long.compareUnsigned(v, min) < 0) {
                 v = min;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             } else if (Long.compareUnsigned(v, max) > 0) {
                 v = max;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             }
         }
         if (bitsWidth > 0 && bitsWidth < 64) {
             long maxBits = (1L << bitsWidth) - 1L;
             if (Long.compareUnsigned(v, maxBits) > 0) {
                 v = maxBits;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             }
             v &= maxBits;
         }
@@ -639,10 +639,10 @@ public final class TableMessage {
         if (hasRange) {
             if (v < min) {
                 v = min;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             } else if (v > max) {
                 v = max;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             }
         }
         return v;
@@ -689,10 +689,10 @@ public final class TableMessage {
         if (hasRange) {
             if (v < min) {
                 v = min;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             } else if (v > max) {
                 v = max;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             }
         }
         return v;
