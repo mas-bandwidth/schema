@@ -41,7 +41,12 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 
 	before := discover(t, tree)
 	for what, out := range before {
-		if strings.Contains(out, "zz") {
+		needle := "zz"
+		if what == "matrix" {
+			// A target such as forgery-fuzz is not a language named zz.
+			needle = `"lang":"zz"`
+		}
+		if strings.Contains(out, needle) {
 			t.Fatalf("%s names zz before it is planted:\n%s", what, out)
 		}
 	}

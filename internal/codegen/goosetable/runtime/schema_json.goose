@@ -486,43 +486,43 @@ let JsonReasonReservedKey: i64 = 3;
 
 // JsonReport is a text read's report (docs/SPEC-TABLES.md §4, §16.2):
 // widened stays zero in this form, and reason names a refusal. The
-// clamped-field slot holds the first clamp that names its field (§6.5),
-// `<Table>.<field>` in clamped_name's first clamped_len bytes, which
-// json_clamped_reason spells `clamped: <Table>.<field>`; 0 for none.
+// oor-field slot holds the first clamp that names its field (§6.5),
+// `<Table>.<field>` in oor_name's first oor_len bytes, which
+// json_oor_reason spells `out_of_range: <Table>.<field>`; 0 for none.
 struct JsonReport {
     unknown: i64,
-    kind_mismatch: i64,
+    mismatch: i64,
     widened: i64,
-    clamped: i64,
-    duplicate: i64,
-    malformed: bool,
+    oor: i64,
+    repeated: i64,
+    damaged: bool,
     reason: i64,
-    clamped_name: u8[256],
-    clamped_len: i64,
+    oor_name: u8[256],
+    oor_len: i64,
 }
 
 fn json_report() -> JsonReport {
-    return JsonReport { unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, reason: 0, clamped_name: [0; 256], clamped_len: 0 };
+    return JsonReport { unknown: 0, mismatch: 0, widened: 0, oor: 0, repeated: 0, damaged: false, reason: 0, oor_name: [0; 256], oor_len: 0 };
 }
 
-// json_clamped names the field a clamp clamped, `<table>.<field>`, in the
-// report's clamped-field slot: the first clamp named wins (§6.5), and a name
+// json_oor names the field a clamp oor, `<table>.<field>`, in the
+// report's oor-field slot: the first clamp named wins (§6.5), and a name
 // past the slot keeps its first 256 bytes.
-fn json_clamped(rep: JsonReport&, table: const u8[:], field: const u8[:]) {
-    if rep.clamped_len != 0 { return; }
+fn json_oor(rep: JsonReport&, table: const u8[:], field: const u8[:]) {
+    if rep.oor_len != 0 { return; }
     var n: i64 = 0;
-    for b in table { if n < 256 { rep.clamped_name[n] = b; n += 1; } }
-    if n < 256 { rep.clamped_name[n] = '.'; n += 1; }
-    for b in field { if n < 256 { rep.clamped_name[n] = b; n += 1; } }
-    rep.clamped_len = n;
+    for b in table { if n < 256 { rep.oor_name[n] = b; n += 1; } }
+    if n < 256 { rep.oor_name[n] = '.'; n += 1; }
+    for b in field { if n < 256 { rep.oor_name[n] = b; n += 1; } }
+    rep.oor_len = n;
 }
 
-// json_clamped_reason appends the strict read's clamped refusal naming the
-// field, `clamped: <Table>.<field>`, and answers whether the report names one.
-fn json_clamped_reason(rep: const JsonReport&, out: u8[>..]&) -> bool {
-    if rep.clamped_len == 0 { return false; }
-    out.append("clamped: ");
-    for k in rep.clamped_len { out.push(rep.clamped_name[k]); }
+// json_oor_reason appends the strict read's oor refusal naming the
+// field, `out_of_range: <Table>.<field>`, and answers whether the report names one.
+fn json_oor_reason(rep: const JsonReport&, out: u8[>..]&) -> bool {
+    if rep.oor_len == 0 { return false; }
+    out.append("out_of_range: ");
+    for k in rep.oor_len { out.push(rep.oor_name[k]); }
     return true;
 }
 
@@ -777,13 +777,13 @@ fn json_scan<F>(jr: JsonIn&, store: bool) -> bool {
     }
 }
 
-// json_scan_into scans a string into dst, clamped at a code point boundary
+// json_scan_into scans a string into dst, oor at a code point boundary
 // and counted when it does not fit; it answers the bytes placed.
 fn json_scan_into(jr: JsonIn&, dst: u8[:], store: bool) -> i64, bool {
     var placed: i64 = 0;
-    var clamped = false;
+    var was_oor = false;
     let ok = json_scan(jr, store) { unit, n =>
-        if !clamped && placed + n <= dst.len {
+        if !was_oor && placed + n <= dst.len {
             var k: i64 = 0;
             while k < n {
                 dst[placed + k] = unit[k];
@@ -791,11 +791,11 @@ fn json_scan_into(jr: JsonIn&, dst: u8[:], store: bool) -> i64, bool {
             }
             placed += n;
         } else {
-            clamped = true;
+            was_oor = true;
         }
     };
     if !ok { return 0, false; }
-    if clamped { jr.rep.clamped += 1; }
+    if was_oor { jr.rep.oor += 1; }
     return placed, true;
 }
 
@@ -967,7 +967,7 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
         } else {
             let d, fin = json_token_f64(tok);
             if !fin {
-                jr.rep.kind_mismatch += 1;
+                jr.rep.mismatch += 1;
                 return true;
             }
             if d >= 9223372036854775808.0 {
@@ -977,22 +977,22 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
                 v = -9223372036854775807 - 1;
                 sat = true;
             } else if d != ((d as! i64) as f64) {
-                jr.rep.kind_mismatch += 1;
+                jr.rep.mismatch += 1;
                 return true;
             } else {
                 v = d as! i64;
             }
         }
-        if sat { jr.rep.clamped += 1; }
+        if sat { jr.rep.oor += 1; }
         if f.ranged {
             let lo = f.lo.lo as! i64;
             let hi = f.hi.lo as! i64;
             if v < lo {
                 v = lo;
-                jr.rep.clamped += 1;
+                jr.rep.oor += 1;
             } else if v > hi {
                 v = hi;
-                jr.rep.clamped += 1;
+                jr.rep.oor += 1;
             }
         }
         if f.kw < 8 {
@@ -1000,10 +1000,10 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
             let low = -high - 1;
             if v > high {
                 v = high;
-                jr.rep.clamped += 1;
+                jr.rep.oor += 1;
             } else if v < low {
                 v = low;
-                jr.rep.clamped += 1;
+                jr.rep.oor += 1;
             }
         }
         slot = v as! T;
@@ -1024,12 +1024,12 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     } else {
         let d, fin = json_token_f64(tok);
         if !fin {
-            jr.rep.kind_mismatch += 1;
+            jr.rep.mismatch += 1;
             return true;
         }
         if d < 0.0 {
             if d != ((d as! i64) as f64) {
-                jr.rep.kind_mismatch += 1;
+                jr.rep.mismatch += 1;
                 return true;
             }
             u = 0;
@@ -1038,13 +1038,13 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
             u = 0xFFFFFFFFFFFFFFFF;
             sat = true;
         } else if d != ((d as! u64) as f64) {
-            jr.rep.kind_mismatch += 1;
+            jr.rep.mismatch += 1;
             return true;
         } else {
             u = d as! u64;
         }
     }
-    if sat { jr.rep.clamped += 1; }
+    if sat { jr.rep.oor += 1; }
     var ranged = f.ranged;
     var lo: u64 = f.lo.lo;
     var hi: u64 = f.hi.lo;
@@ -1056,17 +1056,17 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     if ranged {
         if u < lo {
             u = lo;
-            jr.rep.clamped += 1;
+            jr.rep.oor += 1;
         } else if u > hi {
             u = hi;
-            jr.rep.clamped += 1;
+            jr.rep.oor += 1;
         }
     }
     if f.kw < 8 {
         let high: u64 = ((1 as u64) << ((f.kw * 8) as! u64)) - 1;
         if u > high {
             u = high;
-            jr.rep.clamped += 1;
+            jr.rep.oor += 1;
         }
     }
     slot = u as! T;
@@ -1081,16 +1081,16 @@ fn json_read_float(jr: JsonIn&, slot: f64&, f: const FieldDesc&) -> bool {
     if !ok { return false; }
     var v, fin = json_token_f64(jr.text[start..end]);
     if !fin {
-        jr.rep.kind_mismatch += 1;
+        jr.rep.mismatch += 1;
         return true;
     }
     if f.frange {
         if v < f.flo {
             v = f.flo;
-            jr.rep.clamped += 1;
+            jr.rep.oor += 1;
         } else if v > f.fhi {
             v = f.fhi;
-            jr.rep.clamped += 1;
+            jr.rep.oor += 1;
         } else if v == 0.0 {
             v = 0.0;
         }
@@ -1104,24 +1104,24 @@ fn json_read_float(jr: JsonIn&, slot: f32&, f: const FieldDesc&) -> bool {
     if !ok { return false; }
     let x, fin = json_token_f32(jr.text[start..end]);
     if !fin {
-        jr.rep.kind_mismatch += 1;
+        jr.rep.mismatch += 1;
         return true;
     }
     var v = x as f64;
     if f.frange {
         if v < f.flo {
             v = f.flo;
-            jr.rep.clamped += 1;
+            jr.rep.oor += 1;
         } else if v > f.fhi {
             v = f.fhi;
-            jr.rep.clamped += 1;
+            jr.rep.oor += 1;
         } else if v == 0.0 {
             v = 0.0;
         }
     }
     let narrow = v as f32;
     if narrow - narrow != 0.0 {
-        jr.rep.kind_mismatch += 1;
+        jr.rep.mismatch += 1;
         return true;
     }
     slot = narrow;
@@ -1139,7 +1139,7 @@ fn json_read_bool(jr: JsonIn&, slot: bool&) -> bool {
     return true;
 }
 
-// json_read_str places a string(N): clamped at a code point boundary and
+// json_read_str places a string(N): oor at a code point boundary and
 // counted past N; a zero refuses (§16.2, §16.3).
 fn json_read_str(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
     var i: i64 = 0;
@@ -1196,7 +1196,7 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
         }
     }
     if bad {
-        jr.rep.kind_mismatch += 1;
+        jr.rep.mismatch += 1;
         return true;
     }
     let end = jr.pos;
@@ -1209,7 +1209,7 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
     var placed: i64 = 0;
     var acc: u64 = 0;
     var held: u64 = 0;
-    var clamped = false;
+    var was_oor = false;
     var done = false;
     let again = json_scan(jr, false) { unit, n =>
         var k: i64 = 0;
@@ -1225,7 +1225,7 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
                         buf[placed] = ((acc >> held) & 0xFF) as! u8;
                         placed += 1;
                     } else {
-                        clamped = true;
+                        was_oor = true;
                     }
                 }
             }
@@ -1234,7 +1234,7 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
     };
     if !again { return false; }
     jr.pos = end;
-    if clamped { jr.rep.clamped += 1; }
+    if was_oor { jr.rep.oor += 1; }
     length = placed as! i32;
     return true;
 }
@@ -1276,7 +1276,7 @@ fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], dept
         }
         if c == 0 { return json_fail(jr); }
         if c != '"' {
-            jr.rep.kind_mismatch += 1;
+            jr.rep.mismatch += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else {
             var key: u8[256] = [0; 256];
@@ -1319,10 +1319,10 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
         }
         if c == 0 { return json_fail(jr); }
         if placed >= bound {
-            jr.rep.clamped += 1;
+            jr.rep.oor += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else if json_shape(jr) != shape {
-            jr.rep.kind_mismatch += 1;
+            jr.rep.mismatch += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
             placed += 1;
         } else {
@@ -1345,6 +1345,9 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i6
 fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
+    var seen_unk: u64[64] = [0; 64];
+    var seen_unk_n: i64 = 0;
+    var dup_unk = false;
     loop {
         let c = json_peek(jr);
         if c == '}' {
@@ -1367,14 +1370,29 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
         }
         if slot >= 0 && slot < 512 {
             let bit = (1 as u64) << ((slot & 63) as! u64);
-            if (seen[slot >> 6] & bit) != 0 { jr.rep.duplicate += 1; }
+            if (seen[slot >> 6] & bit) != 0 { jr.rep.repeated += 1; }
             seen[slot >> 6] |= bit;
         }
         if slot < 0 {
+            var kh: u64 = 0xcbf29ce484222325;
+            var ki: i64 = 0;
+            while ki < n {
+                let kb: u64 = key[ki]; kh = (kh ^ kb) * 0x100000001b3;
+                ki += 1;
+            }
+            var ui: i64 = 0;
+            while ui < seen_unk_n {
+                if seen_unk[ui] == kh { dup_unk = true; }
+                ui += 1;
+            }
+            if seen_unk_n < 64 {
+                seen_unk[seen_unk_n] = kh;
+                seen_unk_n += 1;
+            }
             jr.rep.unknown += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else if json_shape(jr) != shape {
-            jr.rep.kind_mismatch += 1;
+            jr.rep.mismatch += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else if !F(jr, slot, depth + 1) {
             return false;
@@ -1384,6 +1402,7 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
             break;
         }
     }
+    if dup_unk && jr.rep.repeated == 0 { return json_fail(jr); }
     return true;
 }
 
@@ -1415,7 +1434,7 @@ fn json_read_union<U, F>(jr: JsonIn&, u: U&, d: const UnionDesc&, shapes: const 
         jr.rep.unknown += 1;
         if !json_skip_value(jr, depth + 1) { return false; }
     } else if json_shape(jr) != shapes[a] {
-        jr.rep.kind_mismatch += 1;
+        jr.rep.mismatch += 1;
         if !json_skip_value(jr, depth + 1) { return false; }
     } else {
         if shapes[a] == 'z' {
@@ -1487,7 +1506,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
         } else {
             if index < 512 {
                 let bit = (1 as u64) << ((index & 63) as! u64);
-                if (seen[index >> 6] & bit) != 0 { jr.rep.duplicate += 1; }
+                if (seen[index >> 6] & bit) != 0 { jr.rep.repeated += 1; }
                 seen[index >> 6] |= bit;
             }
             let got = json_shape(jr);
@@ -1499,7 +1518,7 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
                 // the wrong JSON type for the kind: skipped and counted, and
                 // the KEY is still presence (§16.2), so an optional field is
                 // present at the value it already held
-                jr.rep.kind_mismatch += 1;
+                jr.rep.mismatch += 1;
                 if !json_skip_value(jr, depth + 1) { return false; }
                 if optional && !F(jr, rec, index, JsonOpPresent, depth) { return false; }
             } else {
@@ -1526,14 +1545,14 @@ fn json_finish(jr: JsonIn&, ok: bool, report: JsonReport&) -> bool {
         if jr.bad || jr.pos != jr.text.len { good = false; }
     }
     report = jr.rep;
-    report.malformed = !good;
+    report.damaged = !good;
     return good;
 }
 
-// json_clean is the strict read's verdict over a tolerant read's report: a
+// json_clean is the strict read's verdict over a strict read's report: a
 // text that matched the schema exactly (§6.5, §16.2).
 fn json_clean(report: const JsonReport&) -> bool {
-    return !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && report.duplicate == 0;
+    return !report.damaged && report.unknown == 0 && report.mismatch == 0 && report.oor == 0 && report.repeated == 0;
 }
 
 // ---- writing ----
@@ -1807,8 +1826,8 @@ fn json_write_table<T, F>(out: u8[>..]&, rec: const T&, d: const TableDesc&, dep
     return true;
 }
 
-// json_from reads one root from one text, tolerantly (docs/SPEC-TABLES.md
-// §16.1): false (and report.malformed) when the text is not JSON or a value
+// json_from reads one root from one text, strictly (docs/SPEC-TABLES.md
+// §16.1): false (and report.damaged) when the text is not JSON or a value
 // is refused by name; the caller then puts the record back at its defaults.
 fn json_from<T, F>(rec: T&, d: const TableDesc&, shapes: const u8[:], text: const u8[:], report: JsonReport&) -> bool {
     var jr = json_in(text);
