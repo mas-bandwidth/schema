@@ -761,8 +761,10 @@ jobs:
             # legs' gate runs both runners over their corpus, no clock
             lobster) make test-lobster tables-lobster-clean bench-lobster-gate ;;
             # the Squirrel card leg under the pinned interpreter
-            # (make/squirrel-cards.mk): the facade's unit tests
+            # (make/squirrel-cards.mk): the facade's unit tests, the card
+            # corpus on all nine surfaces, and the three negative controls
             squirrel) make dist-squirrel
-                      make cards-squirrel-test ;;
+                      make cards-squirrel-test cards-squirrel-conformance
+                      make cards-squirrel-conformance-negative-control cards-squirrel-conformance-upgrade-negative-control cards-squirrel-conformance-hash-negative-control ;;
             *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
           esac
