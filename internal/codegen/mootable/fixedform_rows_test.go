@@ -289,10 +289,36 @@ func TestMooFixedCfgPresentByteMutant(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := fixedUnit(t, readTestSchema(t, "V1"), nil)
-	if got := runFixedLoad(t, g, "V1Table", "Cfg", mutant); !strings.HasPrefix(got.head, "refused wire_damaged Cfg.") {
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", mutant); got.head != "refused wire_damaged Cfg.tier true -" {
 		t.Errorf("the forged present byte: %s", got.head)
 	}
 	if got := runFixedLoad(t, g, "V1Table", "Cfg", clean); !strings.HasPrefix(got.head, "ok 1 ") {
 		t.Errorf("the control, v1_cfg as written: %s", got.head)
+	}
+}
+
+// TestMooFixedCfgPresentByteMutantNegativeControl takes the present byte's
+// 0-or-1 check out of the emitted runtime and requires the same mutant to
+// LAND: the vector bites on exactly that check, the one the moo fixed read
+// skipped before the strict cut (a present byte was read as `~= 0`).
+func TestMooFixedCfgPresentByteMutantNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
+	t.Parallel()
+	mutant, err := os.ReadFile(filepath.Join("testdata", "fixed_cfg_present_mutant.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := fixedUnit(t, readTestSchema(t, "V1"), nil)
+	src := string(g.files["table_fixed.moo"])
+	const anchor = "\t\t\t\tif b > 1 then\n\t\t\t\t\trefuse(\"wire_damaged\", true, fieldName(f))\n"
+	if strings.Count(src, anchor) != 1 {
+		t.Fatal("the present byte's anchor is not in table_fixed.moo exactly once")
+	}
+	src = strings.Replace(src, anchor, strings.Replace(anchor, "if b > 1 then", "if false then", 1), 1)
+	if err := os.WriteFile(filepath.Join(g.dir, "table_fixed.moo"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", mutant); !strings.HasPrefix(got.head, "ok 1 ") {
+		t.Fatalf("without the present byte's 0-or-1 check the mutant still refuses: %s", got.head)
 	}
 }
