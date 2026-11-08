@@ -21,6 +21,7 @@ int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64
  counters[3]=save.retain_lost;*output_bytes=size;
  /* the known value the retaining read returned, as the §16 text */
  *text_bytes=tblrt1_node_to_json_measure(root);if(*text_bytes<0)goto done;*text=(char *)malloc((size_t)*text_bytes+1);if(!*text)goto done;
- if(tblrt1_node_to_json(root,*text,*text_bytes)!=*text_bytes)goto done;ok=1;
+ if(tblrt1_node_to_json(root,*text,*text_bytes)!=*text_bytes)goto done;
+ ok=1;
  done:free(retain.bytes);free(retain.ids);free(region);if(!ok){free(*output);*output=NULL;free(*text);*text=NULL;}return ok;
 }
