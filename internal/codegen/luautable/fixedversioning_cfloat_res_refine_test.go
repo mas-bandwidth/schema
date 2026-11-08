@@ -17,8 +17,8 @@ local values = LOAD("file", report)
 check(values ~= nil and #values == 1, "the file carries one record: " .. why(report))
 if values == nil then return end
 local v = values[1]
-check(report.reason == nil and not report.malformed, "not a refusal: " .. why(report))
-check(report.clamped == 0 and report.unknown == 0 and report.kindMismatch == 0 and report.widened == 0 and report.duplicate == 0,
+check(report.reason == nil, "not a refusal: " .. why(report))
+check(report.unknown == 0 and report.kindMismatch == 0 and report.widened == 0,
 	"a refined resolution moves no counter: " .. why(report))
 ` + luauManifestChecks(t, corpus, "old_cfloat_res_refine.bin", root)
 	luauVersionProbe(t, "VNEW_cfloat_res_refine", []string{"VOLD_cfloat_res_refine"}, 0,

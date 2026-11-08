@@ -33,8 +33,7 @@ func TestLuauFixedVersioningCountClampEnds(t *testing.T) {
 			luauVersionProbe(t, "VNEW_array_bounded_grow", []string{"VOLD_array_bounded_grow"}, 0, map[string][]byte{"file": forged}, `local report: any = {}
 local values = LOAD("file", report)
 check(values == nil and report.reason == "count_over_bound", "a count past the writer's bound owes count_over_bound: " .. why(report))
-check(not report.malformed, "a refusal by name never sets malformed too")
-check(report.clamped == 0 and report.unknown == 0 and report.kindMismatch == 0 and report.widened == 0 and report.duplicate == 0,
+check(report.unknown == 0 and report.kindMismatch == 0 and report.widened == 0,
 	"REFUSE is total: no counter moves: " .. why(report))
 `)
 		})

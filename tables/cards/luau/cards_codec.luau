@@ -77,10 +77,10 @@ end
 function M.NewCard(): any return fromStorage(T.NewCard()) end
 function M.Load(wire: string, report: any): any
   if type(wire) ~= "string" then return nil end
-  return fromStorage(L.loadTolerant("Card", buffer.fromstring(wire), report))
+  return fromStorage(L.load("Card", buffer.fromstring(wire), report))
 end
 function M.FromJSON(text: string, report: any): any
-  return fromStorage(J.FromJsonTolerant("Card", buffer.fromstring(text), report))
+  return fromStorage(J.FromJson("Card", buffer.fromstring(text), report))
 end
 function M.Save(root: any): string?
   local ok, bytes = pcall(function() return W.save(T.CardDescriptor, toStorage(root)) end)
@@ -92,7 +92,7 @@ function M.ToJSON(root: any): string?
 end
 function M.LoadRetain(wire: string, report: any, capacity: number, ids: number): (any, any)
   if type(wire) ~= "string" then return nil, nil end
-  local value, retained = R.LoadRetainTolerant("Card", buffer.fromstring(wire), report, capacity, ids)
+  local value, retained = R.LoadRetain("Card", buffer.fromstring(wire), report, capacity, ids)
   return fromStorage(value), retained
 end
 function M.SaveRetain(root: any, retained: any, report: any): string?

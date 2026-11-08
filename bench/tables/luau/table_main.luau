@@ -4,8 +4,8 @@
 --
 -- Measures ONE thing: the representative fixed table written and read on the
 -- TOLERANT WIRE (docs/SPEC-TABLES.md §3) through the port's form-1 codec — the
--- one runtime walk over the generated descriptors (schema_load's loadTolerant,
--- schema_save's save) — over the committed 64-record variant corpus. It is a
+-- one runtime walk over the generated descriptors (schema_load's load, the
+-- strict read, and schema_save's save) — over the committed 64-record variant corpus. It is a
 -- port of bench/tables/cpp/table_main.cpp's bench_table driver and keeps its
 -- contract: the golden gate runs before the clock, 1 warmup + 7 measured runs
 -- (one under --round K), median beside min/max/spread, rows `write` and
@@ -75,16 +75,12 @@ local function runTable()
 	local descriptor = Tables.lookup(root)
 	local report: any = {}
 
-	-- loadOne is the codec's tolerant load of variant k (1-based), accepted
-	-- when it answered a value and reported no malformation (the C++ leg's
-	-- LoadTolerant && !malformed)
+	-- loadOne is the codec's one read of variant k (1-based), the strict read
+	-- (docs/plans/strict-only.md): accepted when it answered a value, refused
+	-- (nil) otherwise, as the C++ leg's Load && !damaged
 	local function loadOne(k: number): any
 		resetReport(report)
-		local value = Load.loadTolerant(root, v.bufs[k], report)
-		if value == nil or report.malformed or report.refused ~= 0 then
-			return nil
-		end
-		return value
+		return Load.load(root, v.bufs[k], report)
 	end
 
 	-- saveOne is the codec's save: the buffer it wrote, or nil on a refusal

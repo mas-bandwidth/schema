@@ -26,8 +26,7 @@ func TestLuauFixedVersioningRefuseWritesNothing(t *testing.T) {
 	luauVersionProbe(t, "VNEW_nested_append", []string{"VOLD_nested_append"}, 0, map[string][]byte{"file": forged}, `local report: any = {}
 local values = LOAD("file", report)
 check(values == nil and report.reason == "no_layout", "a record hash naming no layout owes no_layout: " .. why(report))
-check(not report.malformed, "a refusal by name never sets malformed too (the joint answer)")
-check(report.clamped == 0 and report.unknown == 0 and report.kindMismatch == 0 and report.widened == 0 and report.duplicate == 0,
+check(report.unknown == 0 and report.kindMismatch == 0 and report.widened == 0,
 	"REFUSE is total: no counter moves: " .. why(report))
 `)
 }
