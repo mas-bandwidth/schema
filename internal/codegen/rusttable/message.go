@@ -240,7 +240,7 @@ fn announce_read_once(
     report: &mut TableReport,
 ) -> bool {
     if data.is_empty() {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // "the FORM BYTE is a whole byte and is read FIRST" (§3.3): a form this
@@ -253,13 +253,13 @@ fn announce_read_once(
         });
     }
     if data.len() < 9 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // the trailer: a run of u64 ids and a u64 count at the very end (§3.3)
     let trailer_count = read_u64(data, data.len() - 8);
     if trailer_count > ((data.len() - 9) / 8) as u64 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     let end = data.len() - 8 - (trailer_count as usize) * 8;
@@ -267,7 +267,7 @@ fn announce_read_once(
     for i in 0..trailer_count {
         for j in 0..i {
             if read_u64(data, end + (i as usize) * 8) == read_u64(data, end + (j as usize) * 8) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
         }
@@ -285,7 +285,7 @@ fn announce_read_once(
     while at < body.len() {
         let (reference, ok) = read_leb(body, &mut at);
         if !ok {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         if reference == 0 {
@@ -295,13 +295,13 @@ fn announce_read_once(
             // of the file have met" (§3). The terminator ends the body, so the
             // cursor must be at the body's end.
             if at != body.len() {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             break;
         }
         if reference > trailer_count || at >= body.len() {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         let id = read_u64(data, end + ((reference - 1) as usize) * 8);
@@ -309,7 +309,7 @@ fn announce_read_once(
         at += 1;
         if id == TABLE_BUILD_VERSION_FIELD_ID {
             if kind != 9 || at + 8 > body.len() {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             // "THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not"
@@ -320,25 +320,25 @@ fn announce_read_once(
             versions += 1;
         } else if id == TABLE_MESSAGE_VOCABULARY_FIELD_ID {
             if kind != 14 {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             let (framed, ok) = read_leb(body, &mut at);
             if !ok || at + (framed as usize) > body.len() {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             let begin = at;
             let end_at = at + framed as usize;
             at = end_at;
             if begin >= end_at || body[begin] != 6 {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             let mut vat = begin + 1;
             let (length, ok) = read_leb(body, &mut vat);
             if !ok || vat + (length as usize) != end_at {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             // "A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
@@ -355,17 +355,17 @@ fn announce_read_once(
             vocabulary_bytes = &body[vat..vat + length as usize];
             vocabularies += 1;
         } else {
-            // "Every other field of its body is ordinary and tolerant, so an
+            // "Every other field of its body is ordinary and strict, so an
             // unknown one is skipped and counted" (§3.3).
             report.unknown += 1;
             if !skip_field(body, &mut at, kind) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
         }
     }
     if !terminated || versions != 1 || vocabularies != 1 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3).
@@ -387,24 +387,24 @@ fn announce_read_once(
         let began = at;
         let (entry, ok) = read_entry(vocabulary_bytes, &mut at);
         if !ok {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         // THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE
         // VOCABULARY (§3.3), and the node-table id takes exactly one slot.
         if entry.id == TABLE_BUILD_VERSION_FIELD_ID || entry.id == TABLE_MESSAGE_VOCABULARY_FIELD_ID {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         if entry.id == TABLE_NODE_TABLE_ID {
             if node_seen {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             node_seen = true;
         }
         // "A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE" (§3.3): byte equality
-        // is declared-fact equality, and a duplicate is malformed.
+        // is declared-fact equality, and a repeated is malformed.
         {
             let (filled, rest) = vocabulary.entries.split_at_mut(count);
             for other in filled.iter() {
@@ -413,7 +413,7 @@ fn announce_read_once(
                     && vocabulary_bytes[other.shape.min as usize..other.shape.max as usize]
                         == vocabulary_bytes[began..at]
                 {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             }
@@ -430,7 +430,7 @@ fn announce_read_once(
     for slot in 0..count {
         let (entry, ok) = read_entry(vocabulary_bytes, &mut at);
         if !ok {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         vocabulary.entries[slot] = entry;
@@ -683,7 +683,7 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
     (s, true)
 }
 
-/// A tolerant skip of an UNKNOWN field by its kind (§3.3): the ordinary
+/// A strict skip of an UNKNOWN field by its kind (§3.3): the ordinary
 /// form-1 framed-field skip rules, the C++ reference's (cpptable) and the Go
 /// leg's, one function over the closed kind set. This reader knows only the
 /// announcement's own two fields, so a field of any other id is stepped over
@@ -793,13 +793,15 @@ pub enum TableReason {
     AllocationFailed,
     WireDamaged,
     /// A FLOAT WHOSE BITS ARE A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3,
-    /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the tolerant read included, and every writer
+    /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the strict read included, and every writer
     /// refuses to emit one. The report names the field in non_finite_float.
     NonFiniteFloat,
     JsonRootNotArray,
     TimestampNotRfc3339,
     IntegrityMismatch,
     MissingRequired,
+    OutOfRange,
+    KindMismatch,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -839,45 +841,42 @@ impl TableReason {
             TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
             TableReason::IntegrityMismatch => "integrity_mismatch",
             TableReason::MissingRequired => "missing_required",
+            TableReason::OutOfRange => "out_of_range",
+            TableReason::KindMismatch => "kind_mismatch",
         }
     }
 }
 
 /// THE ONE READ REPORT (docs/SPEC-TABLES.md §4, §5, §3.3): the variable form's
-/// tolerant read and the message form's batch fill the same type, so a crate
+/// strict read and the message form's batch fill the same type, so a crate
 /// carrying both forms exports one TableReport and never two.
 ///
-/// A field this build cannot name is skipped and counted, a field it can name
-/// but that arrives at another kind is a kind mismatch, and an absent field
-/// reads its default. widened counts a kind that GREW since the writer (§4),
-/// clamped a value clamped into a narrower declaration, duplicate a repeated
-/// id (zero on the card's wire: no maps), and refused is a verdict, not one of
-/// §4's events: the form byte this reader does not carry (§3), or one of the
-/// message form's refusals BY NAME, whose reason the message form records
-/// (nothing is decoded, no counter moves, and malformed does not fire, §3.3).
+/// STRICT-ONLY (docs/plans/strict-only.md): a read returns the whole value or
+/// refuses the whole load. A field this build cannot name is skipped and
+/// counted unknown, a kind that GREW since the writer decodes exactly and
+/// counts widened (§4), and an absent field reads its default. A kind
+/// mismatch, a value out of range, a count or length past its bound, a
+/// repeated key or id and a shared blob each refuse the load as damaged.
+/// refused is a verdict by name: the form byte this reader does not carry
+/// (§3), or one of the message form's refusals, whose reason it records.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
     pub unknown: u64,
-    pub kind_mismatch: u64,
     pub widened: u64,
-    pub clamped: u64,
-    pub clamped_field: &'static str,
-    pub duplicate: u64,
-    pub malformed: bool,
+    /// The first field a read met out of its declared range or bound, a
+    /// diagnostic beside the refusal, never compared (§6.5).
+    pub oor_field: &'static str,
+    pub damaged: bool,
     pub refused: bool,
     /// The read met a pointer naming an OPEN node, a cycle no writer produces
     /// (§3.1): the load refuses whole, and a builder save refuses it as data_cycle.
     pub cycle_on_save: bool,
-    /// A BLOB NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5): the tolerant
-    /// read keeps the one node and counts each extra naming here; every writer
-    /// refuses that graph by name, blob_shared.
-    pub blob_shared: u64,
     /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
     /// counts the unknown fields whose bytes were kept, retain_lost counts
     /// every unknown this load or save could not keep (capacity, an excluded
     /// class, or a damaged resolving walk). Both are zero in every read that
     /// did not opt in, and both ride the one report type for the reason
-    /// duplicate does (§4).
+    /// repeated does (§4).
     pub retained: u64,
     pub retain_lost: u64,
     /// The message form's refusal by name and the two build versions its
@@ -887,7 +886,7 @@ pub struct TableReport {
     pub build_version_own: u64,
     /// THE FIRST NON-FINITE FLOAT A READ MET (docs/SPEC-TABLES.md §3.3): its
     /// <Table>.<field>, and "" when there was none. A read that names one
-    /// refuses as non_finite_float and lands nothing, the tolerant read
+    /// refuses as non_finite_float and lands nothing, the strict read
     /// included. For a RETAINED UNKNOWN float (§6.6) it is the body's table
     /// and non_finite_float_id is the id the reader cannot name.
     pub non_finite_float: &'static str,
@@ -906,8 +905,34 @@ impl TableReport {
         else { Some(format!("missing_required: {}", self.missing_required_fields)) }
     }
 
+    pub fn err(&self) -> Option<TableRefuseReason> {
+        match self.reason {
+            TableReason::NewerForm | TableReason::MessageFormAsFile | TableReason::UnknownForm => {
+                return Some(TableReason::UnknownForm);
+            }
+            TableReason::IntegrityMismatch => return Some(TableReason::IntegrityMismatch),
+            _ => {}
+        }
+        if !self.non_finite_float.is_empty() {
+            return Some(TableReason::NonFiniteFloat);
+        }
+        if self.damaged || self.cycle_on_save {
+            return Some(TableReason::WireDamaged);
+        }
+        if self.missing_required > 0 {
+            return Some(TableReason::MissingRequired);
+        }
+        if self.refused {
+            return Some(match self.reason {
+                TableReason::None | TableReason::Ok => TableReason::UnknownForm,
+                named => named,
+            });
+        }
+        None
+    }
+
     pub fn refuse(&mut self, reason: TableReason) -> bool {
-        self.malformed = false;
+        self.damaged = false;
         self.refused = true;
         self.reason = reason;
         false

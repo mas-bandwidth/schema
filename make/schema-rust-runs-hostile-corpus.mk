@@ -92,14 +92,14 @@ schema-rust-runs-hostile-corpus: schema-rust-runs-hostile-corpus-build
 # make/rust.mk itself is untouched.
 test-rust: schema-rust-runs-hostile-corpus
 
-# The plant: wire-valid's committed digest replaced in a scratch copy of the
+# The plant: conformance-arm-pointer-null's committed digest (a variable-form accept; wire-valid is a carried FIX-CARD) replaced in a scratch copy of the
 # manifest (the inputs are the committed ones), so a runner that compares
 # nothing, or compares the wrong thing, stays green and fails this control.
 .PHONY: schema-rust-runs-hostile-corpus-negative-control
 schema-rust-runs-hostile-corpus-negative-control: schema-rust-runs-hostile-corpus-build
 	@rm -rf $(RUST_HOSTILE_BUILD)/plant && mkdir -p $(RUST_HOSTILE_BUILD)/plant/corpus
 	@ln -s "$(abspath $(RUST_HOSTILE_CORPUS))/inputs" $(RUST_HOSTILE_BUILD)/plant/corpus/inputs
-	@awk -F'\t' 'BEGIN { OFS = "\t" } $$1 == "wire-valid" { $$9 = "0000000000000000000000000000000000000000000000000000000000000000" } { print }' \
+	@awk -F'\t' 'BEGIN { OFS = "\t" } $$1 == "conformance-arm-pointer-null" { $$9 = "0000000000000000000000000000000000000000000000000000000000000000" } { print }' \
 		$(RUST_HOSTILE_CORPUS)/manifest.tsv > $(RUST_HOSTILE_BUILD)/plant/corpus/manifest.tsv
 	@if cmp -s $(RUST_HOSTILE_CORPUS)/manifest.tsv $(RUST_HOSTILE_BUILD)/plant/corpus/manifest.tsv; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted verdict did not apply'; exit 1; fi
@@ -108,7 +108,7 @@ schema-rust-runs-hostile-corpus-negative-control: schema-rust-runs-hostile-corpu
 				> $(RUST_HOSTILE_BUILD)/plant/log-$$profile 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED ($$profile): a changed committed verdict left the corpus green"; \
 			cat $(RUST_HOSTILE_BUILD)/plant/log-$$profile; exit 1; fi; \
-		grep -q '^FAIL wire-valid ' $(RUST_HOSTILE_BUILD)/plant/log-$$profile || \
+		grep -q '^FAIL conformance-arm-pointer-null ' $(RUST_HOSTILE_BUILD)/plant/log-$$profile || \
 			{ echo "NEGATIVE CONTROL FAILED ($$profile): the runner went red without naming the planted case"; \
 			  cat $(RUST_HOSTILE_BUILD)/plant/log-$$profile; exit 1; }; \
 	done

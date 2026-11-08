@@ -56,9 +56,9 @@ pub fn fixed_table_fixed_scatter(b: &[u8], value: &mut FixedTableRow, report: &m
 /// FixedTable's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn fixed_table_fixed_clamp_body(value: &mut FixedTableRow, clamped: &mut i32, damaged: &mut i32) {
-    let _ = (&clamped, &damaged);
-    bench_mixed_fixed_clamp_body(&mut value.value, clamped, damaged);
+pub fn fixed_table_fixed_clamp_body(value: &mut FixedTableRow, oor: &mut i32, damaged: &mut i32) {
+    let _ = (&oor, &damaged);
+    bench_mixed_fixed_clamp_body(&mut value.value, oor, damaged);
 }
 
 /// FixedTable's finite rule (docs/SPEC-TABLES.md §3.3): the first float holding a
@@ -358,11 +358,11 @@ pub fn fixed_table_fixed_load(
     remap: &mut [u16],
     report: &mut TableFixedReport,
 ) -> Option<usize> {
-    let malformed_before = report.malformed;
-    report.malformed = false;
+    let damaged_before = report.damaged;
+    report.damaged = false;
     let read = fixed_table_fixed_load_records(values, data, plan, remap, report);
-    let damaged = report.malformed;
-    report.malformed |= malformed_before;
+    let damaged = report.damaged;
+    report.damaged |= damaged_before;
     if damaged {
         for value in values.iter_mut() {
             fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
@@ -380,7 +380,7 @@ fn fixed_table_fixed_load_records(
     report: &mut TableFixedReport,
 ) -> Option<usize> {
     if data.is_empty() {
-        report.malformed = true;
+        report.damaged = true;
         return None;
     }
     // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
@@ -397,12 +397,12 @@ fn fixed_table_fixed_load_records(
         });
     }
     if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {
-        report.malformed = true;
+        report.damaged = true;
         return None;
     }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
     if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {
-        report.malformed = true;
+        report.damaged = true;
         return None;
     }
     let block_bytes = u32::from_le_bytes(
@@ -462,7 +462,7 @@ fn fixed_table_fixed_load_records(
     // the caller's slice stays in the signature as the capacity it always was.
     let _ = remap;
     if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
-        report.malformed = true;
+        report.damaged = true;
         return None;
     }
     let n = rest.len() / record_bytes;
@@ -478,14 +478,13 @@ fn fixed_table_fixed_load_records(
     let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);
     let holes = &hole_buf[..hole_n];
     let mut image = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
-    let (clamped_before, widened_before) = (report.clamped, report.widened);
+    let widened_before = report.widened;
     for k in 0..n {
         let record = &rest[k * record_bytes..(k + 1) * record_bytes];
         if u64::from_le_bytes(record[..8].try_into().expect("eight bytes")) != hash {
             for value in values.iter_mut().take(k) {
                 fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
             }
-            report.clamped = clamped_before;
             report.widened = widened_before;
             return report.refuse(TableFixedReason::NoBlock);
         }
@@ -506,7 +505,6 @@ fn fixed_table_fixed_load_records(
             for value in values.iter_mut().take(k + 1) {
                 fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
             }
-            report.clamped = clamped_before;
             report.widened = widened_before;
             return report.refuse_non_finite(why);
         }
@@ -514,9 +512,9 @@ fn fixed_table_fixed_load_records(
         // storage the scatter just wrote: the same pass for either plan,
         // and only over what a read can have written (§3.4).
         {
-            let mut clamped = 0i32;
+            let mut oor = 0i32;
             let mut damaged = 0i32;
-            fixed_table_fixed_clamp_body(&mut values[k], &mut clamped, &mut damaged);
+            fixed_table_fixed_clamp_body(&mut values[k], &mut oor, &mut damaged);
             // ILL-FORMED TEXT IN THE USED UNITS IS A REFUSAL BY NAME (§4.5,
             // fix 11; §5.8 row 8): it is the packet reader's verdict, this form
             // having no `L` to continue past. REFUSE is total, so the refusal
@@ -525,11 +523,17 @@ fn fixed_table_fixed_load_records(
                 for value in values.iter_mut().take(k + 1) {
                     fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
                 }
-                report.clamped = clamped_before;
                 report.widened = widened_before;
                 return report.refuse(TableFixedReason::TextIllFormed);
             }
-            report.clamped += clamped as u32;
+            report.held += oor as u32;
+        }
+        if report.held != 0 {
+            for value in values.iter_mut().take(k + 1) {
+                fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
+            }
+            report.widened = widened_before;
+            return report.refuse(TableFixedReason::OutOfRange);
         }
     }
     // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read
@@ -538,7 +542,7 @@ fn fixed_table_fixed_load_records(
     // (§5.4) — and a refusal that came after would have moved a counter, where
     // REFUSE IS TOTAL.
     report.unknown += census.0;
-    report.kind_mismatch += census.1;
+    let _ = census.1; // the compile census's kind changes stay on the plan, never a read counter
     Some(n)
 }
 
