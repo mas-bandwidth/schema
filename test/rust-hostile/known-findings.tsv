@@ -1,3 +1,4 @@
 # carried findings: name	slug	input	one line
 # every line is a FIX-CARD the rust port owes; the runner fails if one goes green (test/rust-hostile/src/main.rs)
 # a name of the form <case>@release or <case>@debug is owed in that build profile only
+wire-valid	rust-fixed-root-text-digest	inputs/wire-valid.bin	the Rust fixed row (ShipEntryRow) has no text form and no bridge to the variable value, so an accepted form-3 file is checked by write-back only and its canonical text digest is owed

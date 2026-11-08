@@ -55,7 +55,7 @@ func (m *msgGen) tmp(prefix string) string {
 	return fmt.Sprintf("%s%d", prefix, m.n)
 }
 
-const msgBad = "{ report.malformed = true; return false; }"
+const msgBad = "{ report.damaged = true; return false; }"
 
 // messageModule is <base>_message.rs: the body walkers of every type this
 // file declares that a fixed root reaches, and the three batch verbs of every
@@ -367,7 +367,7 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 	default:
 		lo, hi := expr+" as u64", "0"
 		if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
-			// A NaN OR AN INFINITY IS REFUSED, never quantized or clamped
+			// A NaN OR AN INFINITY IS REFUSED, never quantized or held
 			// (docs/SPEC-TABLES.md §3.3, both special-values rules): the writer
 			// answers false before the quantizer runs, so measure and save both
 			// return -1.
@@ -442,7 +442,7 @@ func (m *msgGen) compat(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset,
 	if reset != "" {
 		m.pf("%s%s;\n", inner, reset)
 	}
-	m.pf("%sreport.kind_mismatch += 1;\n%sif !table_message_skip(r, v, &%s, 0) %s\n%sbreak %s;\n", inner, inner, entry, msgBad, inner, label)
+	m.pf("%sreport.damaged = true;\n%sif !table_message_skip(r, v, &%s, 0) %s\n%sbreak %s;\n", inner, inner, entry, msgBad, inner, label)
 	if compat != "" {
 		m.pf("%s    }\n", ind)
 	}
@@ -474,7 +474,7 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s    let text = &buf[start..start + n as usize];\n", ind)
 		m.pf("%s    if !table_message_utf8(text) %s\n", ind, msgBad)
 		m.pf("%s    let kept = table_message_utf8_clamp(text, core::cmp::min(n as usize, %d));\n", ind, f.Type.Size)
-		m.pf("%s    if kept < n as usize { report.clamped += 1; }\n", ind)
+		m.pf("%s    if kept < n as usize { report.damaged = true; }\n", ind)
 		m.pf("%s    %s.fill(0);\n%s    %s[..kept].copy_from_slice(&text[..kept]);\n%s    %s_length = kept as i32;\n%s}\n", ind, expr, ind, expr, ind, expr, ind)
 	case f.Type.Kind == ir.TBytes:
 		m.pf("%s{\n", ind)
@@ -483,14 +483,14 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s    let buf = r.buffer;\n%s    let start = (r.offset / 8) as usize;\n", ind, ind)
 		m.pf("%s    if !r.skip(n * 8) %s\n", ind, msgBad)
 		m.pf("%s    let kept = core::cmp::min(n as usize, %d);\n", ind, f.Type.Size)
-		m.pf("%s    if kept < n as usize { report.clamped += 1; }\n", ind)
+		m.pf("%s    if kept < n as usize { report.damaged = true; }\n", ind)
 		m.pf("%s    %s.fill(0);\n%s    %s[..kept].copy_from_slice(&buf[start..start + kept]);\n%s    %s_length = kept as i32;\n%s}\n", ind, expr, ind, expr, ind, expr, ind)
 	case f.Type.Kind == ir.TWString:
 		m.pf("%s{\n", ind)
 		m.pf("%s    let Some(n) = table_message_count(r, &%s.shape) else %s;\n", ind, entry, msgBad)
 		m.pf("%s    if n * 16 > (r.buffer.len() as u64) * 8 - r.offset %s\n", ind, msgBad)
 		m.pf("%s    let mut kept = core::cmp::min(n as usize, %d);\n", ind, f.Type.Size)
-		m.pf("%s    if kept < n as usize { report.clamped += 1; }\n", ind)
+		m.pf("%s    if kept < n as usize { report.damaged = true; }\n", ind)
 		m.pf("%s    %s.fill(0);\n%s    let mut high = false;\n", ind, expr, ind)
 		m.pf("%s    for i in 0..(n as usize) {\n", ind)
 		m.pf("%s        let unit = r.get(16).unwrap_or(0);\n", ind)
@@ -585,7 +585,7 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 				lo = fmt.Sprintf("f64::from_bits(0x%x)", math.Float64bits(f.FMin))
 				hi = fmt.Sprintf("f64::from_bits(0x%x)", math.Float64bits(f.FMax))
 			}
-			m.pf("%sif x < %s { x = %s; report.clamped += 1; } else if x > %s { x = %s; report.clamped += 1; }\n", ind, lo, lo, hi, hi)
+			m.pf("%sif x < %s { x = %s; report.damaged = true; } else if x > %s { x = %s; report.damaged = true; }\n", ind, lo, lo, hi, hi)
 		}
 		m.pf("%s%s = x;\n", ind, expr)
 		return
@@ -598,11 +598,11 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 	}
 	if rlo, rhi, ok := ir.TableRawRange(f); ok && f.HasIntRange {
 		l, h := rustBig(rlo, signed), rustBig(rhi, signed)
-		m.pf("%sif x < %s { x = %s; report.clamped += 1; } else if x > %s { x = %s; report.clamped += 1; }\n", ind, l, l, h, h)
+		m.pf("%sif x < %s { x = %s; report.damaged = true; } else if x > %s { x = %s; report.damaged = true; }\n", ind, l, l, h, h)
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		max := uint64(1)<<f.Type.Width - 1
-		m.pf("%sif x > %d { x = %d; report.clamped += 1; }\n", ind, max, max)
+		m.pf("%sif x > %d { x = %d; report.damaged = true; }\n", ind, max, max)
 	}
 	typ := cookElemType(f)
 	switch typ {
@@ -642,7 +642,7 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s    }\n", ind)
 	} else {
 		m.pf("%s    let keep = core::cmp::min(n, %d);\n", ind, f.ArrayBound)
-		m.pf("%s    if keep < n { report.clamped += 1; }\n", ind)
+		m.pf("%s    if keep < n { report.damaged = true; }\n", ind)
 		m.pf("%s    let width = table_message_value_bits(%s.kind, &%s.shape);\n", ind, el, el)
 		m.pf("%s    let walk = if width >= 0 { keep } else { n };\n", ind)
 		m.pf("%s    for i in 0..walk {\n", ind)
@@ -668,7 +668,7 @@ func (m *msgGen) emitBatch(st *ir.Struct) {
 		measureExtra = "4 + "
 		savePrefix = fmt.Sprintf("    let need = %s_measure_messages(values, report);\n    if need < 0 || buffer.len() < need as usize { return -1; }\n", snake)
 		saveEnd = "let end = 2 + (w.bits / 8) as usize;\n    let sum = table_integrity_checksum(&buffer[..end]);\n    buffer[end..end + 4].copy_from_slice(&sum.to_le_bytes());\n    (end + 4) as i64"
-		loadPrefix = fmt.Sprintf("    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.malformed = true; report.reason = TableReason::IntegrityMismatch;\n            for value in values.iter_mut() { *value = %s_message_default(); }\n            return (0, false);\n        };\n        body\n    } else { data };\n", snake)
+		loadPrefix = fmt.Sprintf("    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.damaged = true; report.reason = TableReason::IntegrityMismatch;\n            for value in values.iter_mut() { *value = %s_message_default(); }\n            return (0, false);\n        };\n        body\n    } else { data };\n", snake)
 	}
 	m.pf(`/// MeasureMessages (§3.3): the byte count SaveMessages writes for this batch,
 /// or -1. "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME".
@@ -731,6 +731,7 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
+    report.damaged = false;
 %[6]s    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };
@@ -739,7 +740,7 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
     }
     let mut r = TableBitReader::new(&data[2..]);
     for i in 0..count {
-        if !%[1]s_load_message_body(&mut r, vocabulary, report, &mut values[i]) || !report.non_finite_float.is_empty() {
+        if !%[1]s_load_message_body(&mut r, vocabulary, report, &mut values[i]) || report.damaged || !report.non_finite_float.is_empty() {
             if !report.non_finite_float.is_empty() {
                 for value in values.iter_mut().take(i + 1) {
                     *value = %[1]s_message_default();
@@ -986,7 +987,7 @@ pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMess
     if s.packing == 2 && kind == 10 {
         // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
         // SPEC.md §4.3), checked on the whole wire value before any narrowing
-        // and never reconstructed and clamped: the width spells such an index
+        // and never reconstructed and held: the width spells such an index
         // whenever count is not one less than a power of two (eight bits
         // spelling 255 over a count of 200). internal/tablewire's
         // bitDecoder.float32 is the oracle.
@@ -1030,7 +1031,7 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     }
 }
 
-/// A tolerant skip of one value by the ENDPOINT's shape (§3.3): what a reader does
+/// A strict skip of one value by the ENDPOINT's shape (§3.3): what a reader does
 /// with a field it cannot name, or one whose kind is not the declaration's.
 pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
     if depth > 128 {
@@ -1132,7 +1133,7 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
 /// a body from an endpoint that never announced is refused by name, then M - 1.
 pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut TableReport) -> Option<usize> {
     if data.is_empty() {
-        report.malformed = true;
+        report.damaged = true;
         return None;
     }
     if data[0] != TABLE_WIRE_MESSAGE_FORM {
@@ -1144,7 +1145,7 @@ pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut T
         return None;
     }
     if data.len() < 2 {
-        report.malformed = true;
+        report.damaged = true;
         return None;
     }
     Some(data[1] as usize + 1)
@@ -1154,7 +1155,7 @@ pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut T
 /// MALFORMED".
 pub fn table_message_batch_close(r: &mut TableBitReader, report: &mut TableReport) -> bool {
     if !r.align() || r.offset != (r.buffer.len() as u64) * 8 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     true
