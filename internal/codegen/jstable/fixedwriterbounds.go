@@ -131,11 +131,11 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, entries []FixedLineageEntr
 			g.pf("    const n = view.%s(%d%s);\n", get, b.at, endian)
 			kw := "if"
 			if b.low {
-				g.pf("    if (n < %s) { view.%s(%d, %s%s); report.oor++; }\n", lo, set, b.at, lo, endian)
+				g.pf("    if (n < %s) { view.%s(%d, %s%s); TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n", lo, set, b.at, lo, endian)
 				kw = "else if"
 			}
 			if b.high {
-				g.pf("    %s (n > %s) { view.%s(%d, %s%s); report.oor++; }\n", kw, hi, set, b.at, hi, endian)
+				g.pf("    %s (n > %s) { view.%s(%d, %s%s); TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n", kw, hi, set, b.at, hi, endian)
 			}
 			g.pf("  }\n")
 		}

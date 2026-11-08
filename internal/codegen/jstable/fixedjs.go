@@ -218,7 +218,9 @@ func (g *fixedGen) load(ind, lhs, view, at string, t ir.FieldType) {
 		return
 	}
 	if t.Kind == ir.TBool {
-		g.pf("%s%s = %s.getUint8(%s) !== 0;\n", ind, lhs, view, at)
+		// a bool byte of 0 or 1 lands; any other refuses wire_damaged
+		// (docs/FIXED-FORM-ALGORITHM.md §4.5): no writer emits one
+		g.pf("%s{ const byte = %s.getUint8(%s); if (byte > 1) { TableFixedRefuseOnce(report, TableFixedRefusal.WireDamaged); return; } %s = byte === 1; }\n", ind, view, at, lhs)
 		return
 	}
 	if le {
@@ -728,7 +730,8 @@ func (g *fixedGen) emitCheckElement(f *ir.Field, base string, at int64, ind stri
 func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind string) {
 	if f.Type.Optional {
 		name := js.MemberName(f.Name)
-		g.pf("%s%s.%sPresent = view.getUint8(%s) !== 0;\n", ind, val, name, off(base, at))
+		// a present byte of 0 or 1 lands; any other refuses wire_damaged (§4.5)
+		g.pf("%s{ const byte = view.getUint8(%s); if (byte > 1) { TableFixedRefuseOnce(report, TableFixedRefusal.WireDamaged); return; } %s.%sPresent = byte === 1; }\n", ind, off(base, at), val, name)
 		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
 		g.emitDecodePayload(f, base, at+fixedPresentBytes, val, ind+"  ")
 		g.pf("%s} else {\n", ind)
@@ -747,7 +750,7 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 	case f.Array == ir.ArrayFixed:
 		g.emitDecodeLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), val+"."+name, ind)
 	case f.Array == ir.ArrayCounted:
-		g.emitDecodeCount(ind, val+"."+name+"Count", off(base, at), f.ArrayBound)
+		g.emitDecodeCount(ind, val+"."+name+"Count", off(base, at), f.ArrayBound, "CountOverBound")
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity copies the whole
 		// array into the image; this loop is the pass both paths share.
@@ -755,19 +758,19 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 	case f.Type.Kind == ir.TString:
 		// Content validity over the used units was checked before any write to
 		// value in emitCheckStruct (§4.5 fix 11, §5.3).
-		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "LengthOverBound")
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TBytes:
-		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "LengthOverBound")
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TWString:
 		// Content validity over the used units was checked before any write to
 		// value in emitCheckStruct (§4.5 fix 11, §5.3).
-		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "LengthOverBound")
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint16(%s + %s * 2, true); }\n",
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
@@ -777,23 +780,24 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 }
 
 // emitDecodeCount is §3.4's `count` op, inline: a count or a length is read out
-// of the image and CLAMPED to THIS reader's own bound, counting one `oor`
-// if it fired.
+// of the image and held to THIS reader's own bound, and one past it REFUSES
+// count_over_bound or length_over_bound (docs/FIXED-FORM-ALGORITHM.md §4.5):
+// nothing is clamped.
 //
 // THE COMPILED PLAN'S OWN count op has already done this — OP_COUNT and
-// OP_TEXT clamp on the way into the image — so on that path this is a
-// no-op and no counter moves twice. It is here for the IDENTITY path, which
+// OP_TEXT refuse on the way into the image — so on that path this never
+// fires. It is here for the IDENTITY path, which
 // is ONE OP_COPY of the whole body: a record under this build's own hash
 // still arrives from a writer this reader cannot vouch for, and a count or a
 // length it carries is a number the consumer would otherwise index the
 // reader's own storage by. The bound is the reader's, never the record's.
 // This is the twin of javatable/fixedform.go's emitScatterCount and of
 // rusttable/fixedform.go's emitFixedScatterCount.
-func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64) {
+func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64, why string) {
 	g.pf("%s{\n", ind)
-	g.pf("%s  let n = view.getInt32(%s, true);\n", ind, at)
-	g.pf("%s  if (n < 0) { n = 0; report.oor++; } else if (n > %d) { n = %d; report.oor++; }\n",
-		ind, bound, bound)
+	g.pf("%s  const n = view.getInt32(%s, true);\n", ind, at)
+	g.pf("%s  if (n < 0 || n > %d) { TableFixedRefuseOnce(report, TableFixedRefusal.%s); return; }\n",
+		ind, bound, why)
 	g.pf("%s  %s = n;\n", ind, dst)
 	g.pf("%s}\n", ind)
 }
@@ -868,7 +872,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// over the writer's arm ordinals beside the guarded consts, which is
 			// a plan-shape change and not a projection one; it is named here
 			// rather than left silent (§5.8's habit, §5.4's rule).
-			g.pf("%sif (%s.type > %d) { %s.type = 0; report.oor++; }\n",
+			g.pf("%sif (%s.type > %d) { %s.type = 0; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n",
 				ind, expr, len(r.Variants), expr)
 			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			for i, v := range r.Variants {
@@ -892,7 +896,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// both paths share. A value inside an `| max = K` headroom is in
 			// the set and stands (r.Max, not the named-variant count).
 			if max, ok := fixedEnumClampMax(r); ok {
-				g.pf("%sif (%s > %d) { %s = 0; report.oor++; }\n",
+				g.pf("%sif (%s > %d) { %s = 0; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n",
 					ind, expr, max, expr)
 			}
 			return
@@ -984,7 +988,7 @@ func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
 	g.pf("%s  const n = %s;\n", ind, nExpr)
 	first := true
 	if low {
-		g.pf("%s  if (%s) { %s = %s; report.oor++; }\n", ind, loCond, expr, jsIntLit(rlo, true))
+		g.pf("%s  if (%s) { %s = %s; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n", ind, loCond, expr, jsIntLit(rlo, true))
 		first = false
 	}
 	if high {
@@ -992,7 +996,7 @@ func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
 		if !first {
 			kw = "else if"
 		}
-		g.pf("%s  %s (%s) { %s = %s; report.oor++; }\n", ind, kw, hiCond, expr, jsIntLit(rhi, true))
+		g.pf("%s  %s (%s) { %s = %s; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n", ind, kw, hiCond, expr, jsIntLit(rhi, true))
 	}
 	g.pf("%s  else {\n", ind)
 	g.load(ind+"    ", expr, "view", at, f.Type)
@@ -1018,7 +1022,7 @@ func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 	// it on its raw bits first (docs/SPEC-TABLES.md §3.3). `<` and `>` are IEEE
 	// comparisons on purpose, so a negative zero is not below a min of +0.
 	if lo, hi, ok := fixedFloatClampEnds(f); ok {
-		g.pf("%sif (%s < %s) { %s = %s; report.oor++; } else if (%s > %s) { %s = %s; report.oor++; }\n",
+		g.pf("%sif (%s < %s) { %s = %s; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); } else if (%s > %s) { %s = %s; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n",
 			ind, expr, lo, expr, lo, expr, hi, expr, hi)
 		return
 	}
@@ -1028,19 +1032,19 @@ func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 		low, high := fixedClampEnds(f)
 		switch {
 		case low && high:
-			g.pf("%sif (%s < %s) { %s = %s; report.oor++; } else if (%s > %s) { %s = %s; report.oor++; }\n",
+			g.pf("%sif (%s < %s) { %s = %s; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); } else if (%s > %s) { %s = %s; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n",
 				ind, expr, lo, expr, lo, expr, hi, expr, hi)
 		case low:
-			g.pf("%sif (%s < %s) { %s = %s; report.oor++; }\n", ind, expr, lo, expr, lo)
+			g.pf("%sif (%s < %s) { %s = %s; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n", ind, expr, lo, expr, lo)
 		case high:
-			g.pf("%sif (%s > %s) { %s = %s; report.oor++; }\n", ind, expr, hi, expr, hi)
+			g.pf("%sif (%s > %s) { %s = %s; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n", ind, expr, hi, expr, hi)
 		}
 	}
 	w := fixedStorageBytes(f.Type)
 	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
 		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		lit := jsIntLit(maxv, fixedIsBig(f.Type))
-		g.pf("%sif (%s > %s) { %s = %s; report.oor++; }\n", ind, expr, lit, expr, lit)
+		g.pf("%sif (%s > %s) { %s = %s; TableFixedRefuseOnce(report, TableFixedRefusal.OutOfRange); }\n", ind, expr, lit, expr, lit)
 	}
 }
 
