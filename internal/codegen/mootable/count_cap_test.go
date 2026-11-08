@@ -17,15 +17,15 @@ import (
 // report.malformed, the sum of the report's counters, and the store's use
 // for the retaining load with a store.
 const countCapProbe = `local function line(name: string, path: string, v: any, rep: any, used: number)
-	local moved = rep.unknown + rep.kindMismatch + rep.clamped + rep.widened + rep.duplicate
+	local moved = rep.unknown + rep.kindChanged + rep.outOfRange + rep.widened + rep.repeatedKey
 		+ rep.missingRequired + rep.nonFinite + rep.blobShared + rep.retained + rep.retainLost
 	print(string.format("%s\t%s\t%s\t%s\t%d\t%s\t%d\t%d", name, path, tostring(v ~= nil),
-		tostring(rep.reason), rep.refused, tostring(rep.malformed), moved, used))
+		tostring(rep.reason), rep.refused, tostring(rep.damaged), moved, used))
 end
 local function probe(name: string)
 	local wire = inputs[name]
 	local rep = L.newReport()
-	line(name, "tolerant", L.loadTolerant("Root", wire, rep), rep, 0)
+	line(name, "tolerant", L.load("Root", wire, rep), rep, 0)
 	rep = L.newReport()
 	line(name, "plain", L.load("Root", wire, rep), rep, 0)
 	rep = L.newReport()
@@ -217,7 +217,7 @@ func TestMooCountCapRefusal(t *testing.T) {
 func TestMooCountCapRefusalNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
-	const from = "\tif v == nil and report.reason == \"count_over_extent_cap\" then\n\t\treset_store(store)\n"
+	const from = "\tif v == nil then\n\t\treset_store(store)\n"
 	bad := countCapRed(t, "table_retain.moo", func(src string) string {
 		if strings.Count(src, from) != 1 {
 			t.Fatalf("table_retain.moo carries the anchor %d times, want 1: the control would be vacuous", strings.Count(src, from))

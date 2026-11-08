@@ -30,10 +30,9 @@ local function hex(s)
 end
 local r1 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local built = J.FromJson(T, "` + root + `", inputs.text, r1)
-print(hex(save.Save(T, "` + root + `", built)))
-local r2 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local loaded = load.LoadTolerant(T, "` + root + `", inputs.wire, r2)
-print(hex(save.Save(T, "` + root + `", loaded)))
+print(hex(T.FixedSave("` + root + `", { built })))
+local loaded = T.ReadFixedTolerant("` + root + `", inputs.wire)
+print(hex(T.FixedSave("` + root + `", { loaded })))
 print(hex(J.ToJson(T, "` + root + `", loaded)))
 `
 }

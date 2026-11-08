@@ -1,7 +1,7 @@
 --!strict
 -- table_retain.moo — RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) in moo: the
 -- opt-in that keeps what this build cannot name through a region round trip.
--- LoadRetain is the tolerant load into a REGION with the caller's store on,
+-- LoadRetain is the strict read into a REGION with the caller's store on,
 -- MeasureRetain and SaveRetain write the retained fields back at the END OF
 -- THEIR OWN BODY, and the report accumulates across the pair. The walks are
 -- the Go reference engine's (internal/tablewire retain.go); the hooks they
@@ -748,7 +748,7 @@ local function make_hook(st: any): any
 		walk_payload(rs, c, kind, 0)
 		if rs.bad or c.at ~= to then
 			-- the walk can meet damage the read never looked at: the record is
-			-- dropped, one retain_lost counts, and `malformed` DOES NOT MOVE
+			-- dropped, one retain_lost counts, and the read's damage DOES NOT MOVE
 			report.retainLost += 1
 			return
 		end
@@ -756,7 +756,7 @@ local function make_hook(st: any): any
 	end
 
 	-- a body the wire is about to write AGAIN (nested table, array element,
-	-- keyed slot, a map's duplicate key)
+	-- keyed slot, a map's repeated key)
 	function h.forgetBody(d: any, inst: any)
 		forget_body(st, d, inst)
 	end
@@ -864,10 +864,10 @@ end
 -- NAME, on §11's rule for a surface a class does not carry
 R.FixedClassRefusal = "fixed_class_root: LoadRetain, MeasureRetain and SaveRetain are the variable class's; a fixed-class root is a value and has no region to retain through (docs/SPEC-TABLES.md §6.6)"
 
--- LoadRetain is the tolerant load into a REGION with the caller's store on. It
--- answers the root as LoadTolerant does, nil when the read is refused. The
+-- LoadRetain is the strict read into a REGION with the caller's store on. It
+-- answers the root as ReadStrict does, nil when the read is refused. The
 -- store is reset, and reset again when the load is refused for a count above
--- the int32 storage cap; a nil store is the plain tolerant read. THE REPORT
+-- the int32 storage cap; a nil store is the plain strict read. THE REPORT
 -- ACCUMULATES ACROSS THE PAIR: zero it once, read it after SaveRetain.
 function R.LoadRetain(root: string, bytes: buffer, report: any, store: any): any
 	local d = S.lookup(root)
@@ -881,29 +881,17 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, store: any): any
 	if report.retainLost == nil then
 		report.retainLost = 0
 	end
-	local b = bytes
-	if d.integrity ~= nil and d.integrity ~= "" then
-		local body = L.integrityOpen(b)
-		if body == nil then
-			report.malformed = true
-			report.reason = "integrity_mismatch"
-			return nil
-		end
-		b = body
-	end
 	if store == nil then
-		return L.loadOpened(root, b, report)
+		return L.ReadStrict(root, bytes, report)
 	end
 	reset_store(store)
 	L.setRetain(make_hook(store))
-	local ok, v = pcall(L.loadOpened, root, b, report)
+	local ok, v = pcall(L.ReadStrict, root, bytes, report)
 	L.setRetain(nil)
 	if not ok then
 		error(v, 0)
 	end
-	-- A COUNT ABOVE THE int32 STORAGE CAP (§2.9) discards the partial load,
-	-- and the records captured before the refusal go with it
-	if v == nil and report.reason == "count_over_extent_cap" then
+	if v == nil then
 		reset_store(store)
 	end
 	return v

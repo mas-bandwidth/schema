@@ -38,6 +38,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -182,7 +183,7 @@ func saveBounds(t *testing.T, override map[string][]byte) (string, string, bool)
 	m := tabletext.NewModel(u)
 	v := m.New(u.Tables["Root"])
 	var r tabletext.Report
-	if !m.Read(v, []byte(`{"choice":{"leaf":{"s":"arm"}},"note":"n"}`), &r) || r.Malformed {
+	if !m.Read(v, []byte(`{"choice":{"leaf":{"s":"arm"}},"note":"n"}`), &r) || r.Refused {
 		t.Fatalf("union text: %+v", r)
 	}
 	unionWire, err := tablewire.Encode(m, v)
@@ -193,7 +194,7 @@ func saveBounds(t *testing.T, override map[string][]byte) (string, string, bool)
 	wm := tabletext.NewModel(wu)
 	wv := wm.New(wu.Tables["Root"])
 	text := fmt.Sprintf(`{"note":"n","extra":{"s":%q}}`, strings.Repeat("q", 32))
-	if !wm.Read(wv, []byte(text), &r) || r.Malformed {
+	if !wm.Read(wv, []byte(text), &r) || r.Refused {
 		t.Fatalf("retain text: %+v", r)
 	}
 	retainWire, err := tablewire.Encode(wm, wv)
@@ -242,6 +243,7 @@ var saveBoundsRefusals = map[string]string{
 }
 
 func TestGooseSaveSignedBounds(t *testing.T) {
+	slowtest.Gate(t, "goose")
 	t.Parallel()
 	out, stderr, ok := saveBounds(t, nil)
 	if !ok {
@@ -276,6 +278,7 @@ func TestGooseSaveSignedBounds(t *testing.T) {
 //   - em_copy without the copied length's bound: the cursor steps back past
 //     the record and the next read indexes the store below zero.
 func TestGooseSaveSignedBoundsNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "goose")
 	t.Parallel()
 	const bound = "    if c.vals[s].bits.hi != 0 || wire > (c.nodes.len + 1) as! u64 { refuse(c, SaveRefuseInvalidValue); return 0; }\n"
 	for _, ctl := range []struct {

@@ -8,8 +8,9 @@
 # The plant: in every unit's table_load.moo, a string field whose frame length
 # runs past its body stops the body WITHOUT counting it malformed
 # (docs/SPEC-TABLES.md §3). The anchor must match exactly once per copy, or
-# the control refuses. The harness must stop on a report divergence whose only
-# moved counter is malformed: the leg says false, the Go oracle says true.
+# the control refuses. The harness compares verdicts (docs/rulings.json
+# refusal-verdict-only), so it must stop on a read the leg accepts and the Go
+# oracle refuses.
 #
 # The committed driver runs unchanged over the planted units through
 # SCHEMA_MOO_GENERATED; nothing outside build/moo-wire-fuzz-nc is written.
@@ -31,7 +32,7 @@ rm -rf "$out"
 mkdir -p "$out"
 cp -R build/conformance-moo "$out/conformance-moo"
 
-anchor='\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then\n\t\t\t_report\.malformed = true\n\t\t\treturn false'
+anchor='\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then\n\t\t\t_report\.bodyDamaged = true\n\t\t\treturn false'
 planted=0
 for f in "$out"/conformance-moo/*/table_load.moo; do
 	n=$(perl -0ne "my \$c = () = /$anchor/g; print \$c" "$f")
@@ -39,7 +40,7 @@ for f in "$out"/conformance-moo/*/table_load.moo; do
 		echo "NEGATIVE CONTROL FAILED: the sabotage anchor appears $n times in $f, want 1" >&2
 		exit 1
 	fi
-	perl -0pi -e 's/(\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then\n)\t\t\t_report\.malformed = true\n/$1/' "$f"
+	perl -0pi -e 's/(\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then\n)\t\t\t_report\.bodyDamaged = true\n/$1/' "$f"
 	planted=$((planted + 1))
 done
 if [ "$planted" -lt 1 ]; then
@@ -63,26 +64,28 @@ fi
 # field is false.
 line=$(grep '^harness: FAILED after [0-9]* mutants: ' "$out/log" || true)
 case "$line" in
-*"the oracle discards a damaged load (malformed); the leg says "*)
-	leg=$(printf '%s\n' "$line" | sed -n 's/.*the leg says \([^ ]*\)$/\1/p')
-	ok=$([ -n "$leg" ] && [ "$(printf '%s' "$leg" | cut -d, -f6)" = false ] && echo yes || echo no)
-	;;
-*"the report differs: "*)
-	leg=$(printf '%s\n' "$line" | sed -n 's/.*the leg says \([^ ]*\), the oracle says .*/\1/p')
-	oracle=$(printf '%s\n' "$line" | sed -n 's/.*the oracle says \([^ ]*\)$/\1/p')
-	ok=no
-	if [ -n "$leg" ] && [ -n "$oracle" ] \
-		&& [ "$(printf '%s' "$leg" | cut -d, -f6)" = false ] \
-		&& [ "$(printf '%s' "$oracle" | cut -d, -f6)" = true ] \
-		&& [ "$(printf '%s' "$leg" | cut -d, -f1-5,7-)" = "$(printf '%s' "$oracle" | cut -d, -f1-5,7-)" ]; then
-		ok=yes
-	fi
-	;;
+*"read acceptance differs: the leg says true, the oracle says false"*) ok=yes ;;
 *) ok=no ;;
 esac
+# THE PLANT, NOT SOMETHING ELSE: the mutant it stopped on must agree with the
+# oracle on the unplanted tree, or the control proves nothing about the plant
+if [ "$ok" = yes ]; then
+	unit=$(sed -n 's/.*replay: .* --unit \([^ ]*\) --root \([^ ]*\).*/\1/p' "$out/log" | head -1)
+	root=$(sed -n 's/.*replay: .* --unit \([^ ]*\) --root \([^ ]*\).*/\2/p' "$out/log" | head -1)
+	mode=""
+	grep -q 'replay: .* --retain' "$out/log" && mode=--retain
+	grep -q 'replay: .* --message' "$out/log" && mode=--message
+	if ! build/conformance-harness wire-fuzz --driver test/conformance/moo/wirefuzz-driver \
+		--replay "$out/failed.bin" --unit "$unit" --root "$root" $mode \
+		--failed "$out/failed-unplanted.bin" > "$out/log-unplanted" 2>&1; then
+		cat "$out/log-unplanted"
+		echo "NEGATIVE CONTROL FAILED: the mutant it stopped on ($unit.$root) diverges without the plant too" >&2
+		exit 1
+	fi
+fi
 if [ "$ok" != yes ]; then
 	cat "$out/log"
-	echo "NEGATIVE CONTROL FAILED: the wire fuzz went red, but not on the malformed count the plant removed" >&2
+	echo "NEGATIVE CONTROL FAILED: the wire fuzz went red, but not on the damaged read the plant accepts" >&2
 	exit 1
 fi
-echo "moo wire-fuzz negative control: planted in $planted table_load.moo copies; the harness stops on the malformed count the plant removed"
+echo "moo wire-fuzz negative control: planted in $planted table_load.moo copies; the harness stops on the damaged read the plant accepts"

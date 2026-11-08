@@ -223,13 +223,13 @@ template <typename T>
 static void copy_report( const T & from, Report * to )
 {
     to->unknown = from.unknown;
-    to->kind_mismatch = from.kind_mismatch;
+    to->kind_mismatch = 0; // retired as a counter: a kind mismatch is a refusal (refuse_reason)
     to->widened = from.widened;
-    to->clamped = from.clamped;
-    to->duplicate = from.duplicate;
-    to->malformed = from.malformed;
+    to->clamped = 0; // retired as a counter: an out-of-range value is a refusal (refuse_reason)
+    to->duplicate = 0; // retired: a repeated key or field is damage and refuses the whole load
+    to->malformed = from.damaged;
     to->refused = from.refused;
-    to->blob_shared = from.blob_shared;
+    to->blob_shared = ( (int) from.refuse_reason == 24 ) ? 1 : 0; // blob_shared is refusal reason 24 in the one vocabulary
 }
 
 template <typename T>
@@ -246,13 +246,13 @@ struct Erase
 
 // The surfaces ask what the TOLERANT read reports, so the codecs call the
 // named tolerant reads; the plain names are strict (docs/SPEC-TABLES.md
-// §16.11), as the Go driver's rows call ...Tolerant too.
+// §16.11), as the Go driver rows call the plain strict entries too.
 #define CODEC( unit_key, ns, type )                                                            \
     {                                                                                          \
         unit_key, #type,                                                                       \
         []( void * v, const uint8_t * b, int64_t n, Report * r ) {                             \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##LoadTolerant( *(ns::type *) v, b, n, &inner );                 \
+            bool ok = ns::type##Load( *(ns::type *) v, b, n, &inner );                 \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -262,7 +262,7 @@ struct Erase
         },                                                                                     \
         []( void * v, const char * t, int64_t n, Report * r ) {                                \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##FromJsonTolerant( *(ns::type *) v, t, n, &inner );             \
+            bool ok = ns::type##FromJson( *(ns::type *) v, t, n, &inner );             \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -355,7 +355,7 @@ struct VarCodec
             int64_t need = ns::type##LoadMeasure( b, n );                                       \
             region.assign( (size_t) need, 0 );                                                  \
             ns::TableReport inner;                                                              \
-            const ns::type * root = ns::type##LoadTolerant( region.data(), need, b, n, &inner ); \
+            const ns::type * root = ns::type##Load( region.data(), need, b, n, &inner ); \
             copy_report( inner, r );                                                            \
             return (const void *) root;                                                         \
         },                                                                                     \
@@ -372,7 +372,7 @@ struct VarCodec
         []( const char * t, int64_t n, Report * r, std::vector<uint8_t> & bytes ) {             \
             ns::type##Builder builder;                                                          \
             ns::TableReport inner;                                                              \
-            bool ok = ns::type##FromJsonTolerant( builder, t, n, &inner );                      \
+            bool ok = ns::type##FromJson( builder, t, n, &inner );                      \
             copy_report( inner, r );                                                            \
             if ( !ok ) return false;                                                            \
             int64_t size = ns::type##Measure( builder );                                        \
@@ -1500,7 +1500,7 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::allocation_failed: return "allocation_failed";
         case blockdemo::wire_damaged: return "wire_damaged";
         case blockdemo::malformed: return "malformed";
-        case blockdemo::clamped: return "clamped";
+        case blockdemo::out_of_range: return "out_of_range";
         case blockdemo::kind_mismatch: return "kind_mismatch";
         case blockdemo::base64_damaged: return "base64_damaged";
         case blockdemo::base64_not_canonical: return "base64_not_canonical";

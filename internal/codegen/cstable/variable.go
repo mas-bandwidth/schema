@@ -36,16 +36,16 @@ const tableVariableWireSource = `
             if (index == 1)
             {
                 if (f.PointerTypeId == RootType.Id && f.BlobKind == 0) { return Root; }
-                report.KindMismatch++; return null;
+                Refuse(report, "kind_mismatch"); return null;
             }
             if (index - 2 >= (ulong)Nodes.Count) { Damage(report); return null; }
             Node node = Nodes[(int)(index - 2)];
             if (node.Value == null) { return null; }
-            if (node.TypeId != f.PointerTypeId) { report.KindMismatch++; return null; }
+            if (node.TypeId != f.PointerTypeId) { Fail(report, "kind_mismatch"); return null; }
             if (f.BlobKind != 0)
             {
                 blobsNamed ??= new System.Collections.Generic.HashSet<ulong>();
-                if (!blobsNamed.Add(index)) { report.BlobShared++; }
+                if (!blobsNamed.Add(index)) { Fail(report, "blob_shared"); }
             }
             return node.Value;
         }

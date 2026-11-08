@@ -7,6 +7,7 @@
 import .schema_runtime
 import .schema_tables
 import .descriptors
+import .descriptors_load
 import .BenchTable
 import .block_form
 import .cook
@@ -147,6 +148,7 @@ def NewTableMixed() -> TableMixed:
 // (docs/SPEC-TABLES.md §3, §8.1)
 let TableEntityDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     name: "TableEntity",
+    doc: "", tags: []::string,
     id: 0x3161723596c6cba8, // FNV-1a 64 of TableEntity (§3.1)
     table: true,
     fixed: true,
@@ -157,20 +159,20 @@ let TableEntityDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     rsize: 64,
     ralign: 8,
     fields: [
-        schema_rt.FieldDescriptor { id: 0x23fcfd6678e36712, name: "entity_id", slot: "EntityId", json: "entity_id", o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 12, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xcb4b37357667310e, name: "pos_x", slot: "PosX", json: "pos_x", o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xffffffffffffc001, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x0000000000003fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xcb4b3835766732c1, name: "pos_y", slot: "PosY", json: "pos_y", o: 2, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xffffffffffffc001, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x0000000000003fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xcb4b353576672da8, name: "pos_z", slot: "PosZ", json: "pos_z", o: 3, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xffffffffffffc001, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x0000000000003fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xb54d8e19798e16e8, name: "yaw", slot: "Yaw", json: "yaw", o: 4, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 9, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x53a9f665a90cc1b1, name: "pitch", slot: "Pitch", json: "pitch", o: 5, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 9, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x6cede6b6eb60ee67, name: "vel_x", slot: "VelX", json: "vel_x", o: 6, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffff800, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000007ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x6cede5b6eb60ecb4, name: "vel_y", slot: "VelY", json: "vel_y", o: 7, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffff800, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000007ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x6cede8b6eb60f1cd, name: "vel_z", slot: "VelZ", json: "vel_z", o: 8, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffff800, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000007ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x7f69d4b5288ba9cf, name: "health", slot: "Health", json: "health", o: 9, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x00000000000003e8, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xa0b610205f2c6e01, name: "weapon", slot: "Weapon", json: "weapon", o: 10, k: 30, s: "enum", t: "TableWeapon", vs: [schema_rt.EnumVariant { name: "Fists", id: 0xa790eee12766cf0c }, schema_rt.EnumVariant { name: "Pistol", id: 0x9fbfefa835da8476 }, schema_rt.EnumVariant { name: "Shotgun", id: 0x188bbb1783928a95 }, schema_rt.EnumVariant { name: "Rifle", id: 0x2c3667b9c2f272f1 }, schema_rt.EnumVariant { name: "Sniper", id: 0x0ca8b41b00d755f6 }, schema_rt.EnumVariant { name: "Smg", id: 0x985fc819fab21a4e }, schema_rt.EnumVariant { name: "Rocket", id: 0x229d0447c3086a55 }, schema_rt.EnumVariant { name: "Grenade", id: 0x011c7b49a7228f9d }, schema_rt.EnumVariant { name: "Plasma", id: 0x89f7566e1123e15f }, schema_rt.EnumVariant { name: "Railgun", id: 0x8d7f25318b3b4469 }, schema_rt.EnumVariant { name: "Flamer", id: 0xd9cd0dcc285b7816 }, schema_rt.EnumVariant { name: "Mine", id: 0x04dc16aea8ff5276 }, schema_rt.EnumVariant { name: "Turret", id: 0x35e53bc341129217 }, schema_rt.EnumVariant { name: "Drone", id: 0x2cc8282fb0de8831 }, schema_rt.EnumVariant { name: "Repair", id: 0x20bada21bc8cb334 }]::schema_rt.EnumVariant, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x7f6308be8ab37fc0, name: "damage", slot: "Damage", json: "damage", o: 11, k: 9, s: "int", kw: 8, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x11a44fc1d1243da7, name: "moving", slot: "Moving", json: "moving", o: 12, k: 1, s: "bool", has_def: true, def_bool: false },
-        schema_rt.FieldDescriptor { id: 0x7674cfd19b9031ca, name: "firing", slot: "Firing", json: "firing", o: 13, k: 1, s: "bool", has_def: true, def_bool: false }
+        schema_rt.FieldDescriptor { id: 0x23fcfd6678e36712, name: "entity_id", slot: "EntityId", json: "entity_id", type_name: "bits\x2812\x29", type_ref: "", doc: "", tags: []::string, o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 12, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xcb4b37357667310e, name: "pos_x", slot: "PosX", json: "pos_x", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xffffffffffffc001, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x0000000000003fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xcb4b3835766732c1, name: "pos_y", slot: "PosY", json: "pos_y", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 2, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xffffffffffffc001, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x0000000000003fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xcb4b353576672da8, name: "pos_z", slot: "PosZ", json: "pos_z", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 3, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xffffffffffffc001, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x0000000000003fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xb54d8e19798e16e8, name: "yaw", slot: "Yaw", json: "yaw", type_name: "bits\x289\x29", type_ref: "", doc: "", tags: []::string, o: 4, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 9, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x53a9f665a90cc1b1, name: "pitch", slot: "Pitch", json: "pitch", type_name: "bits\x289\x29", type_ref: "", doc: "", tags: []::string, o: 5, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 9, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x6cede6b6eb60ee67, name: "vel_x", slot: "VelX", json: "vel_x", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 6, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffff800, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000007ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x6cede5b6eb60ecb4, name: "vel_y", slot: "VelY", json: "vel_y", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 7, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffff800, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000007ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x6cede8b6eb60f1cd, name: "vel_z", slot: "VelZ", json: "vel_z", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 8, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffff800, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000007ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x7f69d4b5288ba9cf, name: "health", slot: "Health", json: "health", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 9, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x00000000000003e8, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xa0b610205f2c6e01, name: "weapon", slot: "Weapon", json: "weapon", type_name: "TableWeapon", type_ref: "TableWeapon", doc: "", tags: []::string, o: 10, k: 30, s: "enum", t: "TableWeapon", vs: [schema_rt.EnumVariant { name: "Fists", id: 0xa790eee12766cf0c }, schema_rt.EnumVariant { name: "Pistol", id: 0x9fbfefa835da8476 }, schema_rt.EnumVariant { name: "Shotgun", id: 0x188bbb1783928a95 }, schema_rt.EnumVariant { name: "Rifle", id: 0x2c3667b9c2f272f1 }, schema_rt.EnumVariant { name: "Sniper", id: 0x0ca8b41b00d755f6 }, schema_rt.EnumVariant { name: "Smg", id: 0x985fc819fab21a4e }, schema_rt.EnumVariant { name: "Rocket", id: 0x229d0447c3086a55 }, schema_rt.EnumVariant { name: "Grenade", id: 0x011c7b49a7228f9d }, schema_rt.EnumVariant { name: "Plasma", id: 0x89f7566e1123e15f }, schema_rt.EnumVariant { name: "Railgun", id: 0x8d7f25318b3b4469 }, schema_rt.EnumVariant { name: "Flamer", id: 0xd9cd0dcc285b7816 }, schema_rt.EnumVariant { name: "Mine", id: 0x04dc16aea8ff5276 }, schema_rt.EnumVariant { name: "Turret", id: 0x35e53bc341129217 }, schema_rt.EnumVariant { name: "Drone", id: 0x2cc8282fb0de8831 }, schema_rt.EnumVariant { name: "Repair", id: 0x20bada21bc8cb334 }]::schema_rt.EnumVariant, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x7f6308be8ab37fc0, name: "damage", slot: "Damage", json: "damage", type_name: "TableDamage", type_ref: "TableDamage", doc: "", tags: []::string, o: 11, k: 9, s: "int", kw: 8, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x11a44fc1d1243da7, name: "moving", slot: "Moving", json: "moving", type_name: "bool", type_ref: "", doc: "", tags: []::string, o: 12, k: 1, s: "bool", has_def: true, def_bool: false },
+        schema_rt.FieldDescriptor { id: 0x7674cfd19b9031ca, name: "firing", slot: "Firing", json: "firing", type_name: "bool", type_ref: "", doc: "", tags: []::string, o: 13, k: 1, s: "bool", has_def: true, def_bool: false }
     ]::schema_rt.FieldDescriptor
 })
 
@@ -178,6 +180,7 @@ let TableEntityDescriptor = schema_rt.table(schema_rt.TableDescriptor {
 // (docs/SPEC-TABLES.md §3, §8.1)
 let TableStatDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     name: "TableStat",
+    doc: "", tags: []::string,
     id: 0x296aa8e669b99c95, // FNV-1a 64 of TableStat (§3.1)
     table: true,
     fixed: true,
@@ -188,8 +191,8 @@ let TableStatDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     rsize: 8,
     ralign: 8,
     fields: [
-        schema_rt.FieldDescriptor { id: 0x80ab75f0866dbf65, name: "stat_id", slot: "StatId", json: "stat_id", o: 0, k: 6, s: "int", kw: 1, signed: false, dom: "int", bits: 8, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x52076675ec13a0c1, name: "delta", slot: "Delta", json: "delta", o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffffe00, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000001ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
+        schema_rt.FieldDescriptor { id: 0x80ab75f0866dbf65, name: "stat_id", slot: "StatId", json: "stat_id", type_name: "bits\x288\x29", type_ref: "", doc: "", tags: []::string, o: 0, k: 6, s: "int", kw: 1, signed: false, dom: "int", bits: 8, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x52076675ec13a0c1, name: "delta", slot: "Delta", json: "delta", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffffe00, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000001ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
     ]::schema_rt.FieldDescriptor
 })
 
@@ -197,6 +200,7 @@ let TableStatDescriptor = schema_rt.table(schema_rt.TableDescriptor {
 // (docs/SPEC-TABLES.md §3, §8.1)
 let TableMixedDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     name: "TableMixed",
+    doc: "", tags: []::string,
     id: 0x439ae459d6f88a8e, // FNV-1a 64 of TableMixed (§3.1)
     table: true,
     fixed: true,
@@ -207,34 +211,34 @@ let TableMixedDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     rsize: 1352,
     ralign: 8,
     fields: [
-        schema_rt.FieldDescriptor { id: 0x6a5a70d91aa115fd, name: "protocol_magic", slot: "ProtocolMagic", json: "protocol_magic", o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xaa38aca481f528a8, name: "sequence", slot: "Sequence", json: "sequence", o: 1, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 16, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x0dbe005c56697c3e, name: "ack_sequence", slot: "AckSequence", json: "ack_sequence", o: 2, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x000000000000ffff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x9bae0da8b829ee03, name: "ack_bits", slot: "AckBits", json: "ack_bits", o: 3, k: 8, s: "int", kw: 4, signed: false, dom: "int", bits: 32, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xb7d7b5650a590b05, name: "session_id", slot: "SessionId", json: "session_id", o: 4, k: 9, s: "int", kw: 8, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x6d7b98e2d095967e, name: "client_id", slot: "ClientId", json: "client_id", o: 5, k: 8, s: "int", kw: 4, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x73a94c71d60dc0d8, name: "nonce", slot: "Nonce", json: "nonce", o: 6, k: 9, s: "int", kw: 8, signed: false, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000001, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x7fffffffffffffff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000001, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x3eee6b51be54fc85, name: "world_time", slot: "WorldTime", json: "world_time", o: 7, k: 5, s: "int", kw: 8, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xffffff172b5af000, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x000000e8d4a51000, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x7bbc035f7b6d0112, name: "frame_tick", slot: "FrameTick", json: "frame_tick", o: 8, k: 9, s: "int", kw: 8, signed: false, dom: "int", bits: 48, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x3c460475f9be69c6, name: "server_time", slot: "ServerTime", json: "server_time", o: 9, k: 10, s: "float", f32: true, franged: true, flo: 0.0, fhi: 65535.0, res: 0.01, has_def: true, def_float: 0.0 },
-        schema_rt.FieldDescriptor { id: 0x935d0fb07bb3822a, name: "entities", slot: "Entities", json: "entities", o: 10, k: 14, s: "arr", array: "counted", bound: 8, min: 1, ek: 13, e: schema_rt.FieldDescriptor { s: "tab", t: "TableEntity" } },
-        schema_rt.FieldDescriptor { id: 0xee639cad45b1994c, name: "stats", slot: "Stats", json: "stats", o: 11, k: 14, s: "arr", array: "counted", bound: 80, min: 0, ek: 13, e: schema_rt.FieldDescriptor { s: "tab", t: "TableStat" } },
-        schema_rt.FieldDescriptor { id: 0x2e35dc5321aa5790, name: "game_event", slot: "GameEvent", json: "game_event", o: 12, k: 15, s: "union", t: "TableEvent" },
-        schema_rt.FieldDescriptor { id: 0x5759ce7586bbb5a3, name: "loadout", slot: "Loadout", json: "loadout", o: 13, k: 14, s: "arr", array: "fixed", bound: 4, min: 0, ek: 6, e: schema_rt.FieldDescriptor { s: "int", kw: 1, signed: false, dom: "int" } },
-        schema_rt.FieldDescriptor { id: 0x13a62f542cf8e86e, name: "player_name", slot: "PlayerName", json: "player_name", o: 14, k: 12, s: "str", bound: 15, wide: false, has_def: true, def_str: "" },
-        schema_rt.FieldDescriptor { id: 0xcfb8a9d063b5e9e5, name: "payload", slot: "Payload", json: "payload", o: 15, k: 14, s: "bytes", bound: 16, ek: 6, has_def: true, def_str: "" },
-        schema_rt.FieldDescriptor { id: 0xdbaf7be5e24296c9, name: "aim_x", slot: "AimX", json: "aim_x", o: 16, k: 10, s: "float", f32: true, franged: true, flo: -1.0, fhi: 1.0, res: 0.01, has_def: true, def_float: 0.0 },
-        schema_rt.FieldDescriptor { id: 0xdbaf7ae5e2429516, name: "aim_y", slot: "AimY", json: "aim_y", o: 17, k: 10, s: "float", f32: true, franged: true, flo: -1.0, fhi: 1.0, res: 0.01, has_def: true, def_float: 0.0 },
-        schema_rt.FieldDescriptor { id: 0xdbaf79e5e2429363, name: "aim_z", slot: "AimZ", json: "aim_z", o: 18, k: 10, s: "float", f32: true, franged: true, flo: -1.0, fhi: 1.0, res: 0.01, has_def: true, def_float: 0.0 },
-        schema_rt.FieldDescriptor { id: 0x9cef31fff7e2e457, name: "recoil", slot: "Recoil", json: "recoil", o: 19, k: 10, s: "float", f32: true, has_def: true, def_float: 0.0 },
-        schema_rt.FieldDescriptor { id: 0x5ab3f9c9341f6c04, name: "drift", slot: "Drift", json: "drift", o: 20, k: 11, s: "float", f32: false, has_def: true, def_float: 0.0 },
-        schema_rt.FieldDescriptor { id: 0xa3348580461faf16, name: "wide_key", slot: "WideKey", json: "wide_key", o: 21, k: 9, s: "int", kw: 8, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xd61bdd7908af2642, name: "flux", slot: "Flux", json: "flux", o: 22, k: 5, s: "int", kw: 8, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xf21f494c589c0000, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x0de0b6b3a7640000, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xbf30e00dc53307a9, name: "ping", slot: "Ping", json: "ping", o: 23, k: 10, s: "float", f32: true, franged: true, flo: 0.0, fhi: 250.0, res: 0.01, has_def: true, def_float: 0.0 },
-        schema_rt.FieldDescriptor { id: 0x560d6527ccd8515f, name: "crc_hint", slot: "CrcHint", json: "crc_hint", o: 24, k: 8, s: "int", kw: 4, signed: false, dom: "int", bits: 24, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xc08292176cfd8672, name: "has_extra", slot: "HasExtra", json: "has_extra", o: 25, k: 1, s: "bool", has_def: true, def_bool: false },
-        schema_rt.FieldDescriptor { id: 0xfd29ee12a979cb69, name: "extra", slot: "Extra", json: "extra", o: 26, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x00000000000000ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x78101ac0aa8cbcfe, name: "idle_ticks", slot: "IdleTicks", json: "idle_ticks", o: 27, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x000000000000000f, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
+        schema_rt.FieldDescriptor { id: 0x6a5a70d91aa115fd, name: "protocol_magic", slot: "ProtocolMagic", json: "protocol_magic", type_name: "uint16", type_ref: "", doc: "", tags: []::string, o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xaa38aca481f528a8, name: "sequence", slot: "Sequence", json: "sequence", type_name: "bits\x2816\x29", type_ref: "", doc: "", tags: []::string, o: 1, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 16, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x0dbe005c56697c3e, name: "ack_sequence", slot: "AckSequence", json: "ack_sequence", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 2, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x000000000000ffff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x9bae0da8b829ee03, name: "ack_bits", slot: "AckBits", json: "ack_bits", type_name: "bits\x2832\x29", type_ref: "", doc: "", tags: []::string, o: 3, k: 8, s: "int", kw: 4, signed: false, dom: "int", bits: 32, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xb7d7b5650a590b05, name: "session_id", slot: "SessionId", json: "session_id", type_name: "uint64", type_ref: "", doc: "", tags: []::string, o: 4, k: 9, s: "int", kw: 8, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x6d7b98e2d095967e, name: "client_id", slot: "ClientId", json: "client_id", type_name: "uint32", type_ref: "", doc: "", tags: []::string, o: 5, k: 8, s: "int", kw: 4, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x73a94c71d60dc0d8, name: "nonce", slot: "Nonce", json: "nonce", type_name: "uint64", type_ref: "", doc: "", tags: []::string, o: 6, k: 9, s: "int", kw: 8, signed: false, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000001, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x7fffffffffffffff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000001, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x3eee6b51be54fc85, name: "world_time", slot: "WorldTime", json: "world_time", type_name: "int64", type_ref: "", doc: "", tags: []::string, o: 7, k: 5, s: "int", kw: 8, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xffffff172b5af000, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x000000e8d4a51000, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x7bbc035f7b6d0112, name: "frame_tick", slot: "FrameTick", json: "frame_tick", type_name: "bits\x2848\x29", type_ref: "", doc: "", tags: []::string, o: 8, k: 9, s: "int", kw: 8, signed: false, dom: "int", bits: 48, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x3c460475f9be69c6, name: "server_time", slot: "ServerTime", json: "server_time", type_name: "float32", type_ref: "", doc: "", tags: []::string, o: 9, k: 10, s: "float", f32: true, franged: true, flo: 0.0, fhi: 65535.0, res: 0.01, has_def: true, def_float: 0.0 },
+        schema_rt.FieldDescriptor { id: 0x935d0fb07bb3822a, name: "entities", slot: "Entities", json: "entities", type_name: "TableEntity", type_ref: "TableEntity", doc: "", tags: []::string, o: 10, k: 14, s: "arr", array: "counted", bound: 8, min: 1, ek: 13, e: schema_rt.FieldDescriptor { s: "tab", t: "TableEntity" } },
+        schema_rt.FieldDescriptor { id: 0xee639cad45b1994c, name: "stats", slot: "Stats", json: "stats", type_name: "TableStat", type_ref: "TableStat", doc: "", tags: []::string, o: 11, k: 14, s: "arr", array: "counted", bound: 80, min: 0, ek: 13, e: schema_rt.FieldDescriptor { s: "tab", t: "TableStat" } },
+        schema_rt.FieldDescriptor { id: 0x2e35dc5321aa5790, name: "game_event", slot: "GameEvent", json: "game_event", type_name: "TableEvent", type_ref: "TableEvent", doc: "", tags: []::string, o: 12, k: 15, s: "union", t: "TableEvent" },
+        schema_rt.FieldDescriptor { id: 0x5759ce7586bbb5a3, name: "loadout", slot: "Loadout", json: "loadout", type_name: "uint8", type_ref: "", doc: "", tags: []::string, o: 13, k: 14, s: "arr", array: "fixed", bound: 4, min: 0, ek: 6, e: schema_rt.FieldDescriptor { s: "int", kw: 1, signed: false, dom: "int" } },
+        schema_rt.FieldDescriptor { id: 0x13a62f542cf8e86e, name: "player_name", slot: "PlayerName", json: "player_name", type_name: "string", type_ref: "", doc: "", tags: []::string, o: 14, k: 12, s: "str", bound: 15, wide: false, has_def: true, def_str: "" },
+        schema_rt.FieldDescriptor { id: 0xcfb8a9d063b5e9e5, name: "payload", slot: "Payload", json: "payload", type_name: "bytes", type_ref: "", doc: "", tags: []::string, o: 15, k: 14, s: "bytes", bound: 16, ek: 6, has_def: true, def_str: "" },
+        schema_rt.FieldDescriptor { id: 0xdbaf7be5e24296c9, name: "aim_x", slot: "AimX", json: "aim_x", type_name: "float32", type_ref: "", doc: "", tags: []::string, o: 16, k: 10, s: "float", f32: true, franged: true, flo: -1.0, fhi: 1.0, res: 0.01, has_def: true, def_float: 0.0 },
+        schema_rt.FieldDescriptor { id: 0xdbaf7ae5e2429516, name: "aim_y", slot: "AimY", json: "aim_y", type_name: "float32", type_ref: "", doc: "", tags: []::string, o: 17, k: 10, s: "float", f32: true, franged: true, flo: -1.0, fhi: 1.0, res: 0.01, has_def: true, def_float: 0.0 },
+        schema_rt.FieldDescriptor { id: 0xdbaf79e5e2429363, name: "aim_z", slot: "AimZ", json: "aim_z", type_name: "float32", type_ref: "", doc: "", tags: []::string, o: 18, k: 10, s: "float", f32: true, franged: true, flo: -1.0, fhi: 1.0, res: 0.01, has_def: true, def_float: 0.0 },
+        schema_rt.FieldDescriptor { id: 0x9cef31fff7e2e457, name: "recoil", slot: "Recoil", json: "recoil", type_name: "float32", type_ref: "", doc: "", tags: []::string, o: 19, k: 10, s: "float", f32: true, has_def: true, def_float: 0.0 },
+        schema_rt.FieldDescriptor { id: 0x5ab3f9c9341f6c04, name: "drift", slot: "Drift", json: "drift", type_name: "float64", type_ref: "", doc: "", tags: []::string, o: 20, k: 11, s: "float", f32: false, has_def: true, def_float: 0.0 },
+        schema_rt.FieldDescriptor { id: 0xa3348580461faf16, name: "wide_key", slot: "WideKey", json: "wide_key", type_name: "uint64", type_ref: "", doc: "", tags: []::string, o: 21, k: 9, s: "int", kw: 8, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xd61bdd7908af2642, name: "flux", slot: "Flux", json: "flux", type_name: "int64", type_ref: "", doc: "", tags: []::string, o: 22, k: 5, s: "int", kw: 8, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xf21f494c589c0000, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x0de0b6b3a7640000, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xbf30e00dc53307a9, name: "ping", slot: "Ping", json: "ping", type_name: "float32", type_ref: "", doc: "", tags: []::string, o: 23, k: 10, s: "float", f32: true, franged: true, flo: 0.0, fhi: 250.0, res: 0.01, has_def: true, def_float: 0.0 },
+        schema_rt.FieldDescriptor { id: 0x560d6527ccd8515f, name: "crc_hint", slot: "CrcHint", json: "crc_hint", type_name: "bits\x2824\x29", type_ref: "", doc: "", tags: []::string, o: 24, k: 8, s: "int", kw: 4, signed: false, dom: "int", bits: 24, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xc08292176cfd8672, name: "has_extra", slot: "HasExtra", json: "has_extra", type_name: "bool", type_ref: "", doc: "", tags: []::string, o: 25, k: 1, s: "bool", has_def: true, def_bool: false },
+        schema_rt.FieldDescriptor { id: 0xfd29ee12a979cb69, name: "extra", slot: "Extra", json: "extra", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 26, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x00000000000000ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x78101ac0aa8cbcfe, name: "idle_ticks", slot: "IdleTicks", json: "idle_ticks", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 27, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x000000000000000f, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
     ]::schema_rt.FieldDescriptor
 })
 
@@ -242,6 +246,7 @@ let TableMixedDescriptor = schema_rt.table(schema_rt.TableDescriptor {
 // (docs/SPEC-TABLES.md §3, §8.1)
 let TableHitEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     name: "TableHitEvent",
+    doc: "", tags: []::string,
     id: 0x746c6429cbf8aba8, // FNV-1a 64 of TableHitEvent (§3.1)
     table: false,
     fixed: false,
@@ -252,10 +257,10 @@ let TableHitEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     rsize: 16,
     ralign: 8,
     fields: [
-        schema_rt.FieldDescriptor { id: 0xb7bc9ac015a25050, name: "target_id", slot: "TargetId", json: "target_id", o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 12, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x7f6308be8ab37fc0, name: "damage", slot: "Damage", json: "damage", o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x0000000000000fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x01fbc365b059b925, name: "hit_kind", slot: "HitKind", json: "hit_kind", o: 2, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x0000000000000007, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x126167908c9aa52d, name: "crit", slot: "Crit", json: "crit", o: 3, k: 1, s: "bool", has_def: true, def_bool: false }
+        schema_rt.FieldDescriptor { id: 0xb7bc9ac015a25050, name: "target_id", slot: "TargetId", json: "target_id", type_name: "bits\x2812\x29", type_ref: "", doc: "", tags: []::string, o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 12, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x7f6308be8ab37fc0, name: "damage", slot: "Damage", json: "damage", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x0000000000000fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x01fbc365b059b925, name: "hit_kind", slot: "HitKind", json: "hit_kind", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 2, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x0000000000000007, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x126167908c9aa52d, name: "crit", slot: "Crit", json: "crit", type_name: "bool", type_ref: "", doc: "", tags: []::string, o: 3, k: 1, s: "bool", has_def: true, def_bool: false }
     ]::schema_rt.FieldDescriptor
 })
 
@@ -263,6 +268,7 @@ let TableHitEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
 // (docs/SPEC-TABLES.md §3, §8.1)
 let TableChatEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     name: "TableChatEvent",
+    doc: "", tags: []::string,
     id: 0x969901d577faad3b, // FNV-1a 64 of TableChatEvent (§3.1)
     table: false,
     fixed: false,
@@ -273,8 +279,8 @@ let TableChatEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     rsize: 8,
     ralign: 8,
     fields: [
-        schema_rt.FieldDescriptor { id: 0xa5013e9ad5caeda4, name: "channel", slot: "Channel", json: "channel", o: 0, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x0000000000000003, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0xfbf1ac4d96ebd022, name: "speaker", slot: "Speaker", json: "speaker", o: 1, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 12, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
+        schema_rt.FieldDescriptor { id: 0xa5013e9ad5caeda4, name: "channel", slot: "Channel", json: "channel", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 0, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x0000000000000003, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0xfbf1ac4d96ebd022, name: "speaker", slot: "Speaker", json: "speaker", type_name: "bits\x2812\x29", type_ref: "", doc: "", tags: []::string, o: 1, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 12, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
     ]::schema_rt.FieldDescriptor
 })
 
@@ -282,6 +288,7 @@ let TableChatEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
 // (docs/SPEC-TABLES.md §3, §8.1)
 let TablePickupEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     name: "TablePickupEvent",
+    doc: "", tags: []::string,
     id: 0x78a8188d74947ded, // FNV-1a 64 of TablePickupEvent (§3.1)
     table: false,
     fixed: false,
@@ -292,8 +299,8 @@ let TablePickupEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     rsize: 8,
     ralign: 8,
     fields: [
-        schema_rt.FieldDescriptor { id: 0x9e7fd06d864fbd56, name: "item_id", slot: "ItemId", json: "item_id", o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 10, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
-        schema_rt.FieldDescriptor { id: 0x8113fe7ea2b16969, name: "amount", slot: "Amount", json: "amount", o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x00000000000000ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
+        schema_rt.FieldDescriptor { id: 0x9e7fd06d864fbd56, name: "item_id", slot: "ItemId", json: "item_id", type_name: "bits\x2810\x29", type_ref: "", doc: "", tags: []::string, o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 10, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
+        schema_rt.FieldDescriptor { id: 0x8113fe7ea2b16969, name: "amount", slot: "Amount", json: "amount", type_name: "int32", type_ref: "", doc: "", tags: []::string, o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x00000000000000ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
     ]::schema_rt.FieldDescriptor
 })
 
@@ -301,9 +308,9 @@ let TablePickupEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
 let TableEventDescriptor = schema_rt.union_of(schema_rt.UnionDescriptor {
     name: "TableEvent",
     arms: [
-        schema_rt.FieldDescriptor { id: 0x33732819300680aa, name: "hit", slot: "Hit", json: "hit", o: 0, k: 13, tag: 1, s: "tab", t: "TableHitEvent" },
-        schema_rt.FieldDescriptor { id: 0xf2a38d910b5b348b, name: "chat", slot: "Chat", json: "chat", o: 1, k: 13, tag: 2, s: "tab", t: "TableChatEvent" },
-        schema_rt.FieldDescriptor { id: 0x9fa3a41c86ecb765, name: "pickup", slot: "Pickup", json: "pickup", o: 2, k: 13, tag: 3, s: "tab", t: "TablePickupEvent" }
+        schema_rt.FieldDescriptor { id: 0x33732819300680aa, name: "hit", slot: "Hit", json: "hit", type_name: "TableHitEvent", type_ref: "TableHitEvent", doc: "", tags: []::string, o: 0, k: 13, tag: 1, s: "tab", t: "TableHitEvent", arm_offset: 4 },
+        schema_rt.FieldDescriptor { id: 0xf2a38d910b5b348b, name: "chat", slot: "Chat", json: "chat", type_name: "TableChatEvent", type_ref: "TableChatEvent", doc: "", tags: []::string, o: 1, k: 13, tag: 2, s: "tab", t: "TableChatEvent", arm_offset: 4 },
+        schema_rt.FieldDescriptor { id: 0x9fa3a41c86ecb765, name: "pickup", slot: "Pickup", json: "pickup", type_name: "TablePickupEvent", type_ref: "TablePickupEvent", doc: "", tags: []::string, o: 2, k: 13, tag: 3, s: "tab", t: "TablePickupEvent", arm_offset: 4 }
     ]::schema_rt.FieldDescriptor
 })
 
@@ -367,6 +374,7 @@ let TableEntityCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 64,
     align: 8,
     record: 64,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -424,6 +432,7 @@ let TableStatCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 8,
     align: 4,
     record: 8,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -469,6 +478,7 @@ let TableMixedCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 1352,
     align: 8,
     record: 1352,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -540,6 +550,7 @@ let TableHitEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 16,
     align: 4,
     record: 16,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -587,6 +598,7 @@ let TableChatEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 8,
     align: 4,
     record: 8,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -632,6 +644,7 @@ let TablePickupEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 8,
     align: 4,
     record: 8,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -689,15 +702,18 @@ let TableEventCookUnion = schema_rt.cook_union_of(schema_rt.CookUnion {
 let BuildVersion = 0xd15cf2df295a7569
 
 schema_rt.set_unit("benchtable", 0x0926221bcb6f475f)
-schema_rt.view_table(TableEntityDescriptor, "BenchTable", "", []::string)
-schema_rt.view_table(TableStatDescriptor, "BenchTable", "", []::string)
-schema_rt.view_table(TableMixedDescriptor, "BenchTable", "", []::string)
-schema_rt.view_vocabulary("TableWeapon", "BenchTable", "", []::string, [schema_rt.ViewVariant { name: "Fists", id: 0xa790eee12766cf0c, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Pistol", id: 0x9fbfefa835da8476, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Shotgun", id: 0x188bbb1783928a95, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Rifle", id: 0x2c3667b9c2f272f1, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Sniper", id: 0x0ca8b41b00d755f6, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Smg", id: 0x985fc819fab21a4e, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Rocket", id: 0x229d0447c3086a55, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Grenade", id: 0x011c7b49a7228f9d, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Plasma", id: 0x89f7566e1123e15f, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Railgun", id: 0x8d7f25318b3b4469, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Flamer", id: 0xd9cd0dcc285b7816, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Mine", id: 0x04dc16aea8ff5276, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Turret", id: 0x35e53bc341129217, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Drone", id: 0x2cc8282fb0de8831, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Repair", id: 0x20bada21bc8cb334, deprecated: false, doc: "", tags: []::string }]::schema_rt.ViewVariant, "enum")
-schema_rt.view_vocabulary("TableDamage", "BenchTable", "", []::string, [schema_rt.ViewVariant { name: "Bleeding", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Burning", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Stunned", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Slowed", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Poisoned", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Shielded", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Airborne", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "Downed", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }]::schema_rt.ViewVariant, "flags")
-schema_rt.view_type(TableHitEventDescriptor, "BenchTable", "", []::string)
-schema_rt.view_type(TableChatEventDescriptor, "BenchTable", "", []::string)
-schema_rt.view_type(TablePickupEventDescriptor, "BenchTable", "", []::string)
-schema_rt.view_vocabulary("TableEvent", "BenchTable", "", []::string, [schema_rt.ViewVariant { name: "hit", id: 0x33732819300680aa, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "chat", id: 0xf2a38d910b5b348b, doc: "", tags: []::string }, schema_rt.ViewVariant { name: "pickup", id: 0x9fa3a41c86ecb765, doc: "", tags: []::string }]::schema_rt.ViewVariant, "union")
+schema_rt.view_table(TableEntityDescriptor, "BenchTable.schema", "", []::string)
+schema_rt.view_table(TableStatDescriptor, "BenchTable.schema", "", []::string)
+schema_rt.view_table(TableMixedDescriptor, "BenchTable.schema", "", []::string)
+schema_rt.view_vocabulary("TableWeapon", "BenchTable.schema", "", []::string, [schema_rt.ViewVariant { name: "None", id: 0 }, schema_rt.ViewVariant { value: 1, name: "Fists", id: 0xa790eee12766cf0c, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 2, name: "Pistol", id: 0x9fbfefa835da8476, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 3, name: "Shotgun", id: 0x188bbb1783928a95, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 4, name: "Rifle", id: 0x2c3667b9c2f272f1, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 5, name: "Sniper", id: 0x0ca8b41b00d755f6, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 6, name: "Smg", id: 0x985fc819fab21a4e, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 7, name: "Rocket", id: 0x229d0447c3086a55, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 8, name: "Grenade", id: 0x011c7b49a7228f9d, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 9, name: "Plasma", id: 0x89f7566e1123e15f, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 10, name: "Railgun", id: 0x8d7f25318b3b4469, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 11, name: "Flamer", id: 0xd9cd0dcc285b7816, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 12, name: "Mine", id: 0x04dc16aea8ff5276, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 13, name: "Turret", id: 0x35e53bc341129217, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 14, name: "Drone", id: 0x2cc8282fb0de8831, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 15, name: "Repair", id: 0x20bada21bc8cb334, deprecated: false, doc: "", tags: []::string }]::schema_rt.ViewVariant, "enum", 15, 8, 0)
+schema_rt.view_vocabulary("TableDamage", "BenchTable.schema", "", []::string, [schema_rt.ViewVariant { value: 0, name: "Bleeding", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 1, name: "Burning", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 2, name: "Stunned", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 3, name: "Slowed", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 4, name: "Poisoned", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 5, name: "Shielded", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 6, name: "Airborne", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 7, name: "Downed", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }]::schema_rt.ViewVariant, "flags", 7, 8, 0)
+schema_rt.view_type(TableHitEventDescriptor, "BenchTable.schema", "", []::string)
+schema_rt.view_type(TableChatEventDescriptor, "BenchTable.schema", "", []::string)
+schema_rt.view_type(TablePickupEventDescriptor, "BenchTable.schema", "", []::string)
+schema_rt.view_vocabulary("TableEvent", "BenchTable.schema", "", []::string, [schema_rt.ViewVariant { name: "None", id: 0 }, schema_rt.ViewVariant { value: 1, name: "hit", id: 0x33732819300680aa, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 2, name: "chat", id: 0xf2a38d910b5b348b, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 3, name: "pickup", id: 0x9fa3a41c86ecb765, deprecated: false, doc: "", tags: []::string }]::schema_rt.ViewVariant, "union", 3, 8, 4)
+schema_rt.view_union_arm("TableEvent", 1, "TableHitEvent", schema_rt.lookup_table("TableHitEvent"), false)
+schema_rt.view_union_arm("TableEvent", 2, "TableChatEvent", schema_rt.lookup_table("TableChatEvent"), false)
+schema_rt.view_union_arm("TableEvent", 3, "TablePickupEvent", schema_rt.lookup_table("TablePickupEvent"), false)
 // TableEntityFixedLayoutBytes is the writer's layout, exactly as it rides (TableEntity,
 // docs/FIXED-FORM-ALGORITHM.md §1): a u32 entry count then 17-byte entries.
 def TableEntityFixedLayoutBytes() -> string:
@@ -2023,7 +2039,7 @@ def TableEntityFixedLoadTolerant(values:[TableEntity], data_in:string, plan:[sch
         holes = TableEntityFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
@@ -2203,7 +2219,7 @@ def TableStatFixedLoadTolerant(values:[TableStat], data_in:string, plan:[schema_
         holes = TableStatFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
@@ -2399,7 +2415,7 @@ def TableHitEventFixedLoadTolerant(values:[TableHitEvent], data_in:string, plan:
         holes = TableHitEventFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
@@ -2579,7 +2595,7 @@ def TableChatEventFixedLoadTolerant(values:[TableChatEvent], data_in:string, pla
         holes = TableChatEventFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
@@ -2759,7 +2775,7 @@ def TablePickupEventFixedLoadTolerant(values:[TablePickupEvent], data_in:string,
         holes = TablePickupEventFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
-    if entry_count > length(plan):
+    if entry_count > length(plan) or read_uint32_le(known.layout, 0) > length(plan):
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start

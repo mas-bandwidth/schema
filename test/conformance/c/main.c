@@ -308,7 +308,7 @@ static int surface_report( const char * out )
         memset( &report, 0, sizeof( report ) );
         ok = codec->load( value, wire, (int64_t) bytes, &report );
         free( wire );
-        malformed = report.malformed || ( !ok && !report.refused );
+        malformed = report.refused || ( !ok && !report.refused );
         n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%d,%s,%s\n",
                       report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
                       malformed ? "true" : "false", report.refused ? "refused" : "read" );
@@ -353,7 +353,7 @@ static int surface_framing( const char * out )
         memset( &report, 0, sizeof( report ) );
         ok = codec->load( value, wire, (int64_t) bytes, &report );
         free( wire );
-        malformed = report.malformed || ( !ok && !report.refused );
+        malformed = report.refused || ( !ok && !report.refused );
         n = snprintf( head, sizeof( head ), "%d,%d,%d,%d,%d,%s,%s\n",
                       report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
                       malformed ? "true" : "false", report.refused ? "refused" : "read" );
@@ -438,6 +438,60 @@ static int surface_json_write( const char * out )
         free( text );
         if ( !ok ) { return 1; }
     }
+    /* THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14 W0): the wire,
+       then the line's damage put into storage in code, then the measure; a
+       refusal there must be the write's answer too, and the case is `refused` */
+    for ( i = 0; i < num_lines; i++ )
+    {
+        const Line * f = &lines[i];
+        const ConformanceCodec * codec;
+        const char * damage;
+        uint8_t * wire;
+        size_t bytes = 0;
+        void * value;
+        ConformanceReport report;
+        int64_t size;
+        char * text;
+        char name[512];
+        int ok, wide;
+        if ( strcmp( f->field[0], "json-write-refusal" ) != 0 ) { continue; }
+        if ( f->count < 6 ) { fprintf( stderr, "driver: a json-write-refusal line is <case> <unit> <root> <wire> <damage>\n" ); return 1; }
+        codec = find_codec( f->field[2], f->field[3] );
+        snprintf( name, sizeof( name ), "%s.json", f->field[1] );
+        if ( codec == NULL || codec->to_json == NULL ) { if ( !spill_absent( out, name ) ) { return 1; } continue; }
+        damage = f->field[5];
+        wide = strncmp( damage, "wide:", 5 ) == 0;
+        if ( strcmp( damage, "none" ) != 0 && !wide && strncmp( damage, "narrow:", 7 ) != 0 ) { fprintf( stderr, "driver: %s: unknown damage %s\n", f->field[1], damage ); return 1; }
+        wire = slurp( f->field[4], &bytes );
+        if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
+        value = codec->storage();
+        memset( &report, 0, sizeof( report ) );
+        if ( !codec->load( value, wire, (int64_t) bytes, &report ) ) { free( wire ); fprintf( stderr, "driver: %s: load refused %s\n", f->field[1], f->field[4] ); return 1; }
+        free( wire );
+        if ( strcmp( damage, "none" ) != 0 && ( codec->damage == NULL || !codec->damage( value, strchr( damage, ':' ) + 1, wide ) ) )
+        {
+            fprintf( stderr, "driver: %s: damage %s names no text field of %s\n", f->field[1], damage, f->field[3] );
+            return 1;
+        }
+        size = codec->to_json( value, NULL, 0 );
+        if ( size >= 0 )
+        {
+            text = (char *) malloc( (size_t) size + 1 );
+            if ( text == NULL ) { return 1; }
+            if ( codec->to_json( value, text, size ) != size ) { free( text ); fprintf( stderr, "driver: %s: the write did not match the measure\n", f->field[1] ); return 1; }
+        }
+        else
+        {
+            text = (char *) malloc( (size_t) 1 << 16 );
+            if ( text == NULL ) { return 1; }
+            if ( codec->to_json( value, text, (int64_t) 1 << 16 ) != -1 ) { free( text ); fprintf( stderr, "driver: %s: the measure refused and the write wrote\n", f->field[1] ); return 1; }
+            size = 8;
+            memcpy( text, "refused\n", 8 );
+        }
+        ok = spill( out, name, text, (size_t) size );
+        free( text );
+        if ( !ok ) { return 1; }
+    }
     return 0;
 }
 
@@ -469,7 +523,7 @@ static int surface_json_hostile( const char * out )
         memset( &report, 0, sizeof( report ) );
         ok = codec->from_json( value, (const char *) text, (int64_t) bytes, &report );
         free( text );
-        if ( !ok || report.malformed )
+        if ( !ok || report.refused )
         {
             n = snprintf( verdict, sizeof( verdict ), "refused\n" );
             if ( !spill( out, f->field[1], verdict, (size_t) n ) ) { return 1; }
@@ -711,7 +765,7 @@ static int surface_message(const char * out)
   ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);
   if(ok)ok=spill(out,f->field[1],answer,(size_t)size);
   free(answer);free(message);free(announcement);
-  if(!ok){fprintf(stderr,"message %s failed: malformed=%d refused=%d unknown=%d mismatch=%d\n",f->field[1],report.malformed,report.refused,report.unknown,report.kind_mismatch);return 1;}
+  if(!ok){fprintf(stderr,"message %s failed: malformed=%d refused=%d unknown=%d mismatch=%d\n",f->field[1],report.refused,report.refused,report.unknown,report.kind_mismatch);return 1;}
  }
  return 0;
 }

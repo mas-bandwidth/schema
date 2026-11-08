@@ -39,13 +39,13 @@ table Root {
 		{"none", `{}`, "missing_required: b, c", 0},
 		{"one", `{"a":9,"c":0}`, "missing_required: b", 0},
 		{"all", `{"b":0,"c":0}`, "", 0},
-		{"wrong_shape_is_named", `{"b":"bad","c":0}`, "", 1},
+		{"wrong_shape_is_named", `{"b":"bad","c":0}`, "kind_mismatch: b", 1},
 	} {
 		t.Run("json/"+tc.name, func(t *testing.T) {
 			v := m.New(m.Lookup("Root"))
 			var r tabletext.Report
 			ok := m.Read(v, []byte(tc.text), &r)
-			if ok != (tc.reason == "") || r.Reason != tc.reason || r.Malformed || r.KindMismatch != tc.mismatch {
+			if ok != (tc.reason == "") || r.Reason != tc.reason || r.Refused != !ok {
 				t.Fatalf("ok=%v report=%+v", ok, r)
 			}
 			if !ok {
@@ -68,7 +68,7 @@ table Root {
 			v := m.New(m.Lookup("Root"))
 			var r tabletext.Report
 			ok, err := tablewire.Decode(m, v, tc.data, &r)
-			if ok != (tc.reason == "") || r.Reason != tc.reason || r.Malformed || (err != nil) != (tc.reason != "") {
+			if ok != (tc.reason == "") || r.Reason != tc.reason || r.Refused != !ok || (err != nil) != (tc.reason != "") {
 				t.Fatalf("ok=%v err=%v report=%+v", ok, err, r)
 			}
 		})
@@ -94,7 +94,7 @@ table Root {
 			v := m.New(m.Lookup("Root"))
 			var r tabletext.Report
 			ok := m.Read(v, []byte(tc.input), &r)
-			if ok != (tc.reason == "") || r.Reason != tc.reason || r.Malformed {
+			if ok != (tc.reason == "") || r.Reason != tc.reason || r.Refused != !ok {
 				t.Fatalf("ok=%v report=%+v", ok, r)
 			}
 		})
@@ -136,7 +136,7 @@ table ReqBlob { value *bytes | required }
 				bad := append([]byte(nil), wire...)
 				bad[4] = 1 // a bool element is incompatible with every shape here
 				rep = tabletext.Report{}
-				if ok, err := tablewire.Decode(m, back, bad, &rep); ok || err == nil || rep.KindMismatch != 1 || rep.MissingRequired != 1 || rep.Malformed {
+				if ok, err := tablewire.Decode(m, back, bad, &rep); ok || !tablewire.ReadRefusal(err) || !rep.Refused {
 					t.Fatalf("incompatible element satisfied required: %v %v %+v", ok, err, rep)
 				}
 			}
@@ -166,23 +166,24 @@ table Root { value int64 | required, min = 9007199254740993 }
 	if m.Read(v, []byte(`{}`), &rep) {
 		t.Fatal("missing accepted")
 	}
-	before := rep.MissingRequired
-	if before != 1 {
-		t.Fatalf("missing bodies=%d", before)
+	if !rep.Refused || rep.Reason != "missing_required: value" {
+		t.Fatalf("missing: %+v", rep)
 	}
-	if !m.Read(v, []byte(`{"value":9007199254740993}`), &rep) || rep.MissingRequired != before {
+	rep = tabletext.Report{}
+	if !m.Read(v, []byte(`{"value":9007199254740993}`), &rep) || rep.Refused {
 		t.Fatalf("old refusal poisoned valid JSON: %+v", rep)
 	}
 	wire, err := tablewire.Encode(m, v)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := tablewire.Decode(m, v, wire, &rep); !ok || err != nil || rep.MissingRequired != before {
+	if ok, err := tablewire.Decode(m, v, wire, &rep); !ok || err != nil || rep.Refused {
 		t.Fatalf("old refusal poisoned valid file: %v %v %+v", ok, err, rep)
 	}
 	var sum tabletext.Report
+	sum.Add(tabletext.Report{Refused: true, Reason: "missing_required: value"})
 	sum.Add(rep)
-	if sum.MissingRequired != 1 || sum.Silent() {
+	if !sum.Refused || sum.Silent() {
 		t.Fatalf("required refusal lost in fold: %+v", sum)
 	}
 }
@@ -212,7 +213,7 @@ table Root {
 		t.Run(input, func(t *testing.T) {
 			v := m.New(m.Lookup("Root"))
 			var rep tabletext.Report
-			if m.Read(v, []byte(input), &rep) || rep.MissingRequired != 1 || rep.Reason != "missing_required: x" || rep.Malformed {
+			if m.Read(v, []byte(input), &rep) || !rep.Refused || rep.Reason != "missing_required: x" {
 				t.Fatalf("JSON refusal: %+v", rep)
 			}
 			before := place(t, old, "Root", input)
@@ -230,7 +231,7 @@ table Root {
 				} else {
 					ok, err = tablewire.Decode(m, v, wire, &rep)
 				}
-				if ok || err == nil || rep.MissingRequired != 1 || rep.Reason != "missing_required: x" || rep.Malformed {
+				if ok || err == nil || !rep.Refused || rep.Reason != "missing_required: x" {
 					t.Fatalf("wire retain=%v: %v %v %+v", retain, ok, err, rep)
 				}
 				marker, _ := v.FieldByKey("marker")
@@ -255,11 +256,11 @@ table Root { child Kid
 	children, _ := v.FieldByKey("children")
 	amount, _ := v.FieldByKey("amount")
 	var r tabletext.Report
-	if m.ReadValue(child, []byte(`{}`), &r) || r.Reason != "missing_required: x" || r.Malformed {
+	if m.ReadValue(child, []byte(`{}`), &r) || r.Reason != "missing_required: x" || !r.Refused {
 		t.Fatalf("field refusal: %+v", r)
 	}
 	r = tabletext.Report{}
-	if m.ReadElement(children, 0, []byte(`{}`), &r) || r.Reason != "missing_required: x" || r.Malformed {
+	if m.ReadElement(children, 0, []byte(`{}`), &r) || r.Reason != "missing_required: x" || !r.Refused {
 		t.Fatalf("element refusal: %+v", r)
 	}
 	if _, err := m.WriteValue(amount); err == nil {

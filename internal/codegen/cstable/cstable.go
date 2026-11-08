@@ -672,38 +672,32 @@ func tableRuntime(anyKeyed bool) string {
 	if anyKeyed {
 		keyedStorage = tableKeyedStorage
 	}
-	return keyedStorage + `// The table-wire read report — the permissive contract's ledger. Silence
-// (all zero) means the data matched this reader's schema exactly.
+	return keyedStorage + `// The table-wire read report — the one read's ledger. Silence
+// (all zero) means the data matched this reader's schema exactly. A read
+// returns the whole value or refuses the whole load (docs/SPEC-TABLES.md
+// §4, §6.5): damage, a changed kind, an out-of-range value, a count or a
+// length past its bound, a repeated id or key and broken framing each
+// refuse, and no counter records them. The counters that remain are the
+// evolution diagnostics — per-language, never compared across legs.
 public sealed class TableReport
 {
     public int Unknown;        // unknown field ids skipped (newer data)
-    public int KindMismatch;   // known id, changed type — skipped, never misdecoded
-    public int Clamped;        // out-of-range values clamped to declared bounds
-    // duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
-    // (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
-    // whose last occurrence wins, silently. It rides on this struct because a
-    // caller has one report type, not two — so a wire read always leaves it
-    // zero, and <Name>FromJson is what raises it.
-    public int Duplicate;
-    public int Widened;
-    public int MissingRequired;
-    // blob_shared counts each extra slot that names a blob record another slot
-    // already names (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
-    // node, and every writer refuses the value by that name.
-    public int BlobShared;
+    public int Widened;        // a compatible wider kind decoded exactly
     public int Retained, RetainLost;
     public bool Refused;
     public string Reason;
-    public string ClampedField;
     // NonFiniteFloat names the float a read found to be a NaN or an infinity
     // on its raw bits, as <Table>.<field> (docs/SPEC-TABLES.md §3.3): the
-    // field is not written, and the load, the tolerant one too, refuses as
+    // field is not written, and the load refuses as
     // non_finite_float and lands nothing. The first name wins; null on every
     // other read.
     public string NonFiniteFloat;
     internal string NonFiniteReason;
     public Schema.TableWire.Verdict Verdict;
-    public bool Malformed;     // framing damage; decode stopped, partial result kept
+    internal bool Damaged;     // framing damage; the whole load is discarded
+    internal int KindChanged;  // the fixed form's compile census only: a writer
+    // field whose kind changed, counted once per endpoint while a lineage
+    // plan is compiled — never a read counter on a returned load
     // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
     // a member at the end rather than a field inserted among the counters,
     // because the report is a type callers already hold. layout_newer reports
@@ -791,13 +785,13 @@ public sealed class TableFieldInfo
     public Func<object, bool> WireGuard;
     public int[] NativeGuardOffsets;
     public bool[] NativeGuardValues;
-    public Func<ulong, TableReport, ulong> ClampRaw;
-    public Func<ulong, TableReport, ulong> ClampJsonInteger;
+    public Func<ulong, TableReport, ulong> RangeRaw;
+    public Func<ulong, TableReport, ulong> RangeJsonInteger;
     public Func<ulong, bool> RequiredValidRaw;
     public UInt128 DefaultWide;
     public int FracBits;
     public bool WideSigned;
-    public Func<UInt128, TableReport, UInt128> ClampWide;
+    public Func<UInt128, TableReport, UInt128> RangeWide;
     public Func<UInt128, bool> RequiredValidWide;
     public Func<object, int, UInt128> GetWide;
     public Action<object, int, UInt128> SetWide;

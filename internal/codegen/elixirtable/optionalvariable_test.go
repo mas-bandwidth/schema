@@ -229,7 +229,7 @@ func TestCountPastTheBoundClampsBeforeReadingElixir(t *testing.T) {
 	if _, err := tablewire.Decode(m, m.New(m.Lookup("Holder")), mutant, &orep); err != nil {
 		t.Fatal(err)
 	}
-	if orep.Clamped != 1 || orep.Malformed {
+	if orep.Refused {
 		t.Fatalf("the oracle does not answer the probe as one clamp on clean input: %+v", orep)
 	}
 	probe := fmt.Sprintf(`

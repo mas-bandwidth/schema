@@ -256,6 +256,7 @@ func TestSquirrelTableSaveNegativeControl(t *testing.T) {
 		t.Fatal("the manifest declares no tabledemo unit")
 	}
 	unit := loadUnit(t, root, paths)
+	unit.Tables["RootConfig"].FixedDeclared = false
 	files, err := squirrel.Generate(unit)
 	if err != nil {
 		t.Fatalf("the type surface refused: %v", err)
@@ -284,11 +285,8 @@ func TestSquirrelTableSaveNegativeControl(t *testing.T) {
 	// root_default is the all-default instance: its scalar fields ride only
 	// when the patch defeats elision.
 	const instance = "root_default"
-	const wire = "testdata/wire/tables/root_default.bin"
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(wire)))
-	if err != nil {
-		t.Fatal(err)
-	}
+	const wire = "form-1 root_default"
+	data := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	mod := squirreltable.ModuleName(unit)
 	var p strings.Builder
 	p.WriteString(savePrelude)

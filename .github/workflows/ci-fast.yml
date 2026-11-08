@@ -52,21 +52,43 @@ name: CI fast
 # clone on top, and the Dart and Elixir legs pay their own SDK setup. Two
 # minutes is reachable; twenty seconds is not, without a self-hosted warm pool.
 #
-# SO WE BUILT THE WARM POOL, and this lane runs on OUR OWN HARDWARE. Every job
-# here is `runs-on: [self-hosted, Linux, X64, fleet, schema]`: the runners the
-# fleet registers on THIS repository (rowan-tools fleet/runners.tsv, the `schema`
-# set: `make -C fleet runners-repo REPO=schema`; hetzner2 and the three amd
-# mini-PCs, one each), which is both the queue fix and the floor fix. The queue
-# is ours — concurrent jobs with nobody else's branches in front of them, so the
-# nine-row leg matrix is parallel and not serial — and the floor drops because
-# the toolchains are already on the host: the nova-tools `toolchains` role keeps
-# jdk 21, elixir 1.20.4 on OTP 29, dart, node, dotnet 10.0.401 and rust under
-# ~/sdk, go is the fleet's pinned one, and gcc, g++, make and cmake are the
-# bench's OS packages. The runner puts all of them on PATH through its own `.path`
-# and `.env`, and its converge REFUSES the host by name (TOOLCHAIN-MISSING) when
-# one is absent, so the `setup-*` actions below — 8-12 s each, with the Dart and
-# BEAM SDK downloads on top — are SKIPPED on a self-hosted runner and run only on
-# the hosted fallback. The `uses:` lines stay, pinned, for exactly that reason.
+# THE MERGE GATE RUNS ON GITHUB'S HOSTED LINUX, so a merge never waits on the
+# home benches. `plan`, `lint-fast`, `block-gate` and `go-test-touched` are the
+# checks a pull request must pass, and every one of them is
+# `runs-on: ubuntu-latest` on every event. With the gate on the fleet, an offline
+# fleet is a red main and no merges: the checks sit in a queue for runners that
+# are not there. A hosted runner pays the floor named above (the setup-*
+# steps and a cold-ish build cache), and that is the trade: the gate answers
+# whatever the benches are doing.
+#
+# THE HOSTED SETUP IS THE FLEET'S, PINNED. Go comes from actions/setup-go at the
+# version go.mod names; the interpreters the touched packages need come from the
+# repository's own pinned targets (make dist-lua, dist-luau, dist-goose,
+# dist-lobster), which download or build each one at the sha256 the make file
+# names, exactly as on a fleet host; the sibling runtimes are cloned at the
+# SERIALIZE*_TAG pins below.
+#
+# THE LEG MATRIX STAYS ON OUR OWN HARDWARE. `leg-gate` is the nine-way fan-out:
+# every row pays its own SDK and a sibling clone, and the warm pool is what
+# makes it a two-minute lane at all. Its runners are the fleet's repository
+# runners (rowan-tools fleet/runners.tsv, the `schema` set:
+# `make -C fleet runners-repo REPO=schema`), where the toolchains are already
+# on the host: the nova-tools `toolchains` role keeps jdk 21, elixir 1.20.4 on
+# OTP 29, dart, node, dotnet 10.0.401 and rust under ~/sdk, go is the fleet's
+# pinned one, and gcc, g++, make and cmake are the bench's OS packages. The
+# runner puts all of them on PATH through its own `.path` and `.env`, and its
+# converge REFUSES the host by name (TOOLCHAIN-MISSING) when one is absent, so
+# the `setup-*` steps carry `if: runner.environment == 'github-hosted'` and run
+# only on a hosted runner.
+#
+# EVERY FLEET JOB IS BOUNDED AND RUNS ITS STEPS IN A PROCESS GROUP. A job with
+# no `timeout-minutes` holds its runner for as long as it hangs, and a step
+# whose test left a child running (the squirrel nightly's `sq`, outliving a
+# `go test -timeout`) holds it after the test is gone. So every self-hosted job
+# in .github/workflows carries `timeout-minutes`, sized from its measured
+# durations, and `defaults.run.shell: go run ./tools/pgroup -- bash -e {0}`,
+# which runs each step as its own process group and kills the whole group when
+# the step ends. internal/ci holds both rules for every workflow file.
 #
 # THESE ARE REPOSITORY RUNNERS, NOT THE ORG POOL, because schema is PUBLIC and the
 # organization's Default runner group refuses public repositories. A public
@@ -77,60 +99,24 @@ name: CI fast
 # way: a stale file in the workspace making a gate pass. So actions/checkout
 # keeps its default clean on every run and nothing here sets `clean: false`.
 # What stays warm is OUTSIDE the workspace and cannot forge a green: the Go
-# build cache in the host's ~/Library/Caches/go-build — content-addressed by the
-# compiler's own inputs, so a stale entry is not reachable — and the read-only
-# dist toolchains. The `actions/cache` restores are skipped on self-hosted for
-# the same reason: what they were restoring is already there.
-#
-# ci-full.yml IS UNCHANGED and still runs on GitHub's hosted Linux runners. The
-# full lane is the one that proves the bytes on an x86-64 box we do not own, and
-# the merge gate is not where we trade breadth for speed.
+# build cache — content-addressed by the compiler's own inputs, so a stale entry
+# is not reachable — and the read-only dist toolchains. The `actions/cache`
+# restores run only on a hosted runner for the same reason: on a fleet host
+# what they would restore is already there.
 #
 # ONLY THE TABLE PUSHES TO THIS REPOSITORY. A self-hosted runner executes a pull
 # request's own code on our hardware, so a pull request from a FORK MUST NEVER
 # reach these machines: every job below carries
 #   if: github.event.pull_request.head.repo.full_name == github.repository
-# and a fork's pull request is covered by ci-full.yml on hosted runners.
+# and a fork's pull request is covered by ci-full.yml.
 #
-# THE STUDIO IS FOR PULL REQUESTS INTO main, per the owner's ruling of
-# 2026-09-11: "Only run tests when merging into main, local runners elsewhere."
-# fixed-table-form is a branch BELOW main and carries dozens of open pull
-# requests at a time; every one took all six runners for a lane whose verdict
-# nobody gates a landing on, against the owner's own window and the merge
-# queue's darwin leg. Load reached 111 on 2026-09-19 at 00:34Z.
-#
-# THE GATES ARE NOT DROPPED BELOW main -- THEY MOVE. Every job's `runs-on` is
-#   ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main')
-#        && '["self-hosted","Linux","X64","fleet","schema"]' || '["ubuntu-latest"]') }}
-# so a pull request into main, and every workflow_dispatch, runs on the fleet's
-# schema runners, while a pull request into any branch below main runs the
-# SAME jobs on GitHub's hosted Linux. Nothing skips. block-gate is the reason:
-# it is what caught the C goldens on #1126 and #1127, and a branch with no
-# protection and no merge queue is exactly where that gate must not go quiet.
-#
-# THE LEG MATRIX IS THE ONE EXCEPTION, and it is evidence and not taste. It
-# keeps `runs-on: [self-hosted, Linux, X64, fleet, schema]` and SKIPS below main, for two reasons.
-# It is the nine-way fan-out that saturates all six runners -- the four jobs
-# above are one runner each -- and its rows ARE NOT GREEN ON HOSTED LINUX YET:
-# measured on this branch, run 35411903961, `fixed form + versioning (cpp)` and
-# `(c)` failed on ubuntu-latest while the other seven legs passed and while all
-# nine pass on a self-hosted runner (run 35411629173, on the Studio at the time). Those are the reds #981 is open on
-# -- C++ fixed there, C and Java still being named. Running this row on hosted
-# Linux today would redden all 41 below-main pull requests for a reason that is
-# in none of their diffs, which is worse than not running it. WHEN #981 LANDS
-# and the legs are green on Linux, give this job the same conditional `runs-on`
-# as the four above and delete this paragraph.
-#
-# THIS COSTS HOSTED MINUTES BELOW main and pays the floor documented above --
-# the setup-* steps a self-hosted runner skips all run on the fallback. That is the
-# trade: our runners back, at hosted latency, for branches whose verdict is
-# advisory.
-#
-# THE FALLBACK IS NOT NEW: every toolchain step
-# already carries `if: runner.environment == 'github-hosted'` precisely so these
-# jobs run on a hosted runner, and the equivalent gates run on ubuntu-latest in
-# ci-full.yml today. The `if:` conditions are untouched -- the fork guard still
-# keeps a fork's pull request off our hardware.
+# THE LEG MATRIX RUNS ONLY FOR PULL REQUESTS INTO main, per the owner's ruling
+# of 2026-09-11: "Only run tests when merging into main, local runners
+# elsewhere." Below main it skips; the four gate jobs run on every pull request
+# into main, dev and fixed-table-form alike. block-gate is the reason those
+# never skip: it is what caught the C goldens on #1126 and #1127, and a branch
+# with no protection and no merge queue is exactly where that gate must not go
+# quiet.
 #
 # SPACE IS NOT IN THE POOL: it is the game server only (owner, 2026-10-15), and
 # its old `space-x64` registration is gone with it. No job here names it.
@@ -171,7 +157,7 @@ jobs:
   # start immediately does.
   plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","Linux","X64","fleet","schema"]' || '["ubuntu-latest"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       packages: ${{ steps.pick.outputs.packages }}
@@ -321,11 +307,14 @@ jobs:
   # this lane does not have, and they run in ci-full.yml.
   lint-fast:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","Linux","X64","fleet","schema"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    # fleet: 60-142 s with a warm cache; hosted adds setup-go, the cache restore
+    # and modernize's first compile
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      # the gate runs hosted, so setup-go always runs here; the guard keeps the
+      # step correct on a fleet runner too
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
         with:
@@ -397,11 +386,12 @@ jobs:
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","Linux","X64","fleet","schema"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      # hosted, as above
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
         with:
@@ -426,8 +416,10 @@ jobs:
   go-test-touched:
     needs: plan
     if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.base_ref == 'main') && '["self-hosted","Linux","X64","fleet","schema"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    # fleet: 81 s median, 587 s at worst; a broad diff runs `go test -short ./...`
+    # on a four-core hosted runner from a restored cache
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -456,13 +448,14 @@ jobs:
           # previous run's clones are still sitting here. They are removed and
           # re-cloned at the pinned tag every time, never reused: the sibling
           # pins are part of what a green means.
-          rm -rf serialize serialize.c serialize.cs serialize.go
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
 
-      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      # hosted, as above
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
         with:
@@ -566,16 +559,20 @@ jobs:
         run: |
           set -euo pipefail
           echo "packages: $PACKAGES"
+          # go test stops any one package at 10 minutes by default; on the
+          # four-core hosted runner goosetable, gotable and javatable each run
+          # past that when a broad diff runs them side by side, so the package
+          # limit is 25 minutes, inside the job's 30
           if [ "$BROAD" = yes ]; then
             # a broad diff's own gate is the full suite in ci-full.yml; here it
             # is bounded so the lane keeps its budget, and the short run still
             # catches the ordinary mistake in minutes rather than at merge
             echo "::notice::broad diff — the whole suite runs in ci-full.yml; this lane runs it with -short"
             # shellcheck disable=SC2086
-            go test -short $PACKAGES
+            go test -short -timeout 25m $PACKAGES
           else
             # shellcheck disable=SC2086
-            go test $PACKAGES
+            go test -timeout 25m $PACKAGES
           fi
           # schema#1376: TestFixedForm* skip without SCHEMA_SLOW, and the go
           # leg-gate is skipped on PRs below main. tables-go-fixedform is the
@@ -606,7 +603,12 @@ jobs:
     if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
-    timeout-minutes: 10
+    # measured over 40 green runs: lobster 547 s and goose 387 s at worst, against a
+    # 10-minute cap that left a green row at 91%
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix:
@@ -704,13 +706,20 @@ jobs:
       # THE C AND C++ FORMAT GATES' formatter, pinned: clang-format from PyPI at
       # the version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
       # runner's temp so a self-hosted runner keeps nothing between runs.
+      # A host without the python3-venv package (ensurepip absent) gets the
+      # same venv with the system pip installing into it.
       - name: the pinned clang-format (C and C++ legs)
         if: matrix.leg == 'c' || matrix.leg == 'cpp'
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
-          python3 -m venv "$RUNNER_TEMP/clang-format"
-          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
+            "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          else
+            rm -rf "$RUNNER_TEMP/clang-format"
+            python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
+            python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
+          fi
           echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/clang-format/bin/clang-format" --version
 

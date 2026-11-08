@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -65,8 +66,8 @@ func readManifest(path string) ([]line, error) {
 // shape of its own and each row copies into it.
 
 type report struct {
-	unknown, kindMismatch, widened, clamped, duplicate int32
-	malformed, refused                                 bool
+	unknown, widened int32
+	refused          bool
 }
 
 type codec struct {
@@ -248,17 +249,16 @@ func surfaceReport(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		ok := c.load(value, wire, &rep)
-		malformed := "false"
-		if rep.malformed || !ok && !rep.refused {
-			malformed = "true"
-		}
 		verdict := "read"
-		if rep.refused {
+		if rep.refused || !ok {
 			verdict = "refused"
 		}
-		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
-		if !rep.refused && malformed == "false" {
+		text := []byte(fmt.Sprintf("%d,0,%d,0,0,false,%s\n", rep.unknown, rep.widened, verdict))
+		if verdict == "read" {
 			if text, err = appendValue(c, value, text, f[1]); err != nil {
+				return err
+			}
+			if err := spillSave(c, value, out, f[1]); err != nil {
 				return err
 			}
 		}
@@ -267,6 +267,21 @@ func surfaceReport(lines []line, out string) error {
 		}
 	}
 	return nil
+}
+
+// spillSave writes the canonical write-back wire of an accepted read beside
+// the answer: the whole value is the JSON text AND the wire, and a port that
+// decodes the right value but saves different bytes has not returned it.
+func spillSave(c *codec, value any, out, name string) error {
+	size := c.measure(value)
+	if size < 0 {
+		return fmt.Errorf("%s: measure refused the value", name)
+	}
+	buffer := make([]byte, size)
+	if c.save(value, buffer) != size {
+		return fmt.Errorf("%s: save did not write measure's answer", name)
+	}
+	return spill(out, name+".wire", buffer)
 }
 
 // appendValue is the value half of a `report`, `framing` and `json-hostile`
@@ -311,17 +326,18 @@ func surfaceFraming(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		ok := c.load(value, wire, &rep)
-		malformed := "false"
-		if rep.malformed || !ok && !rep.refused {
-			malformed = "true"
-		}
 		verdict := "read"
-		if rep.refused {
+		if rep.refused || !ok {
 			verdict = "refused"
 		}
-		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
+		text := []byte(fmt.Sprintf("%d,0,%d,0,0,false,%s\n", rep.unknown, rep.widened, verdict))
 		noValue := len(f) > 5 && f[5] == "no-value"
-		if !rep.refused && !noValue {
+		if verdict == "read" {
+			if err := spillSave(c, value, out, f[1]); err != nil {
+				return err
+			}
+		}
+		if verdict == "read" && !noValue {
 			if c.toJson == nil {
 				if err := spillAbsent(out, f[1]); err != nil {
 					return err
@@ -416,6 +432,73 @@ func surfaceJsonWrite(lines []line, out string) error {
 			return err
 		}
 	}
+	// THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
+	// wire, then the line's damage put into storage in code, then ToJson, which
+	// must return -1 from measure and write alike
+	for _, f := range lines {
+		if f[0] != "json-write-refusal" {
+			continue
+		}
+		c := findCodec(f[2], f[3])
+		if c == nil || c.toJson == nil {
+			if err := spillAbsent(out, f[1]+".json"); err != nil {
+				return err
+			}
+			continue
+		}
+		wire, err := os.ReadFile(f[4])
+		if err != nil {
+			return err
+		}
+		value := c.fresh()
+		var rep report
+		if !c.load(value, wire, &rep) {
+			return fmt.Errorf("%s: load refused %s", f[1], f[4])
+		}
+		if err := damageText(value, f[5]); err != nil {
+			return fmt.Errorf("%s: %v", f[1], err)
+		}
+		answer := []byte("refused\n")
+		if size := c.toJsonMeasure(value); size >= 0 {
+			answer = make([]byte, size)
+			if c.toJson(value, answer) != size {
+				return fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", f[1])
+			}
+		} else if c.toJson(value, make([]byte, 1<<16)) != -1 {
+			return fmt.Errorf("%s: ToJSONMeasure refused and ToJSON wrote", f[1])
+		}
+		if err := spill(out, f[1]+".json", answer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// damageText puts into a fixed root's top-level text field what no read
+// delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the
+// bytes 61 FF 62 in a narrow field, the units 0061 D800 0062 in a wide one.
+// The field is reached by reflection on its generated name and its Length.
+func damageText(value any, damage string) error {
+	if damage == "none" {
+		return nil
+	}
+	kind, name, _ := strings.Cut(damage, ":")
+	v := reflect.ValueOf(value).Elem()
+	exported := strings.ToUpper(name[:1]) + name[1:]
+	field, length := v.FieldByName(exported), v.FieldByName(exported+"Length")
+	if !field.IsValid() || !length.IsValid() {
+		return fmt.Errorf("damage %q names no text field of %s", damage, v.Type())
+	}
+	var units []uint64
+	if kind == "narrow" {
+		units = []uint64{0x61, 0xff, 0x62}
+	} else {
+		units = []uint64{0x61, 0xd800, 0x62}
+	}
+	for i, u := range units {
+		field.Index(i).SetUint(u)
+	}
+	length.SetInt(int64(len(units)))
 	return nil
 }
 
@@ -537,9 +620,12 @@ func surfaceJsonHostile(lines []line, out string) error {
 		var rep report
 		ok := c.fromJson(value, text, &rep)
 		answer := []byte("refused\n")
-		if ok && !rep.malformed {
-			answer = []byte(fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate))
+		if ok && !rep.refused {
+			answer = []byte(fmt.Sprintf("%d,0,%d,0,0,false,read\n", rep.unknown, rep.widened))
 			if answer, err = appendValue(c, value, answer, f[1]); err != nil {
+				return err
+			}
+			if err := spillSave(c, value, out, f[1]); err != nil {
 				return err
 			}
 		}

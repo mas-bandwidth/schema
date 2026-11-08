@@ -78,10 +78,10 @@ func buildVersionConstant(pkg string, buildVersion uint64) string {
 `
 }
 
-// Keep the existing C int out-parameter ABI while naming the refusal domain.
-const tableRefuseRuntime = `
-#ifndef SCHEMA_TABLE_REFUSE_RUNTIME
-#define SCHEMA_TABLE_REFUSE_RUNTIME
+// tableRefuseEnum names the refusal domain. It rides in the header's
+// primitives, ahead of the report, because the strict walk lands its
+// reason there at the first condition it meets.
+const tableRefuseEnum = `
 typedef int TableRefuseReason;
 enum {
     SCHEMA_TABLE_REFUSE_OK=0,
@@ -102,7 +102,7 @@ enum {
     SCHEMA_TABLE_REFUSE_ALLOCATION_FAILED=15,
     SCHEMA_TABLE_REFUSE_WIRE_DAMAGED=16,
     SCHEMA_TABLE_REFUSE_MALFORMED=17,
-    SCHEMA_TABLE_REFUSE_CLAMPED=18,
+    SCHEMA_TABLE_REFUSE_OUT_OF_RANGE=18,
     SCHEMA_TABLE_REFUSE_KIND_MISMATCH=19,
     SCHEMA_TABLE_REFUSE_BASE64_DAMAGED=20,
     SCHEMA_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
@@ -111,30 +111,35 @@ enum {
     SCHEMA_TABLE_REFUSE_BLOB_SHARED=24,
     SCHEMA_TABLE_REFUSE_MISSING_REQUIRED=25
 };
+
+`
+
+// Keep the existing C int out-parameter ABI while naming the refusal domain.
+const tableRefuseRuntime = `
+#ifndef SCHEMA_TABLE_REFUSE_RUNTIME
+#define SCHEMA_TABLE_REFUSE_RUNTIME
 static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
-/* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
-   what the strict read refuses -- an unknown form, wire damage, a blob named
-   from two slots, a clamp or a kind mismatch -- and unknown, widened and
-   retained alone never refuse. decoded is the tolerant read's own answer.
-   It sets the report's ONE TYPED REASON, a non-finite float first (it
-   outranks any damage, §3.3), then damage before blob_shared before
-   clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
-   them, and answers 1 when the plain name must refuse. */
-static SCHEMA_UNUSED int table_report_strict_refuses( TableReport * report, int decoded )
+/* THE STRICT READ'S END (docs/SPEC-TABLES.md §6.5): the walk itself has
+   already refused at the first condition it met, landing the reason in
+   refuse_reason; this only names a refusal the walk answered without one
+   (a short or damaged wire, a missing required field, a shared blob) and
+   answers 1 when the read must hand back nothing. unknown, widened and
+   retained alone never refuse. */
+static SCHEMA_UNUSED int table_report_finish( TableReport * report, int decoded )
 {
-    TableRefuseReason reason = SCHEMA_TABLE_REFUSE_OK;
-    if ( report->refused && report->reason == SCHEMA_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT; }
-    else if ( report->refused && report->reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
-    else if ( report->refused ) { reason = SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; }
-    else if ( report->damage_reason == SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; }
-    else if ( report->missing_required > 0 && !report->malformed ) { reason = SCHEMA_TABLE_REFUSE_MISSING_REQUIRED; }
-    else if ( !decoded || report->malformed ) { reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
-    else if ( report->blob_shared > 0 ) { reason = SCHEMA_TABLE_REFUSE_BLOB_SHARED; }
-    else if ( report->clamped > 0 ) { reason = SCHEMA_TABLE_REFUSE_CLAMPED; }
-    else if ( report->kind_mismatch > 0 ) { reason = SCHEMA_TABLE_REFUSE_KIND_MISMATCH; }
-    report->refuse_reason = reason;
-    return reason != SCHEMA_TABLE_REFUSE_OK;
+    if ( report->refuse_reason == SCHEMA_TABLE_REFUSE_OK )
+    {
+        TableRefuseReason reason = SCHEMA_TABLE_REFUSE_OK;
+        if ( report->refused && report->reason == SCHEMA_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT; }
+        else if ( report->refused && report->reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
+        else if ( report->damage_reason == SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; }
+        else if ( report->missing_required > 0 ) { reason = SCHEMA_TABLE_REFUSE_MISSING_REQUIRED; }
+        else if ( report->blob_shared > 0 ) { reason = SCHEMA_TABLE_REFUSE_BLOB_SHARED; }
+        else if ( !decoded || report->refused ) { reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
+        report->refuse_reason = reason;
+    }
+    return report->refuse_reason != SCHEMA_TABLE_REFUSE_OK;
 }
 #endif
 `
@@ -346,7 +351,7 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 		g.pf("   what this returns. There is no graph below it and nothing to resolve.\n")
 	}
 	g.pf("\n")
-	g.pf("   There is ONE entry point and no tolerant twin: a build either wrote this\n")
+	g.pf("   There is ONE entry point and no strict twin: a build either wrote this\n")
 	g.pf("   file or it did not, and the build version is what says which. Validating a\n")
 	g.pf("   file whose provenance a person doubts is schema cook-check, offline, over\n")
 	g.pf("   the ATTRIBUTION part beside the data — a person's decision, never a\n")

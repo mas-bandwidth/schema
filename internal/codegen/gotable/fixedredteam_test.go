@@ -134,7 +134,7 @@ func TestFixedRedTeamComposedWidenings(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := LineageFixedLoad(back, data, plan, &r)
-	if n != 1 || r.Reason != "" || r.Malformed {
+	if n != 1 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("three lawful widenings at once and the new reader refused: n=%%d %%+v", n, r)
 	}
 	if back[0].T != Tiersilver {
@@ -152,7 +152,7 @@ func TestFixedRedTeamComposedWidenings(t *testing.T) {
 	if back[0].W != 77 {
 		t.Fatalf("the appended field is not its declared default: %%+v", back[0])
 	}
-	if r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 {
+	if r.Widened != 0 || r.Unknown != 0 {
 		t.Fatalf("three appends are not events: %%+v", r)
 	}`, file))
 }
@@ -224,7 +224,7 @@ func TestFixedRedTeamWidenedTableInTwoPlaces(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := LineageFixedLoad(back, data, plan, &r)
-	if n != 1 || r.Reason != "" || r.Malformed {
+	if n != 1 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("the widened element's reader refused a lawful old file: n=%%d %%+v", n, r)
 	}
 	g := back[0]
@@ -243,7 +243,7 @@ func TestFixedRedTeamWidenedTableInTwoPlaces(t *testing.T) {
 	if g.Seq != 7 {
 		t.Fatalf("a field after the grown array moved: %%+v", g)
 	}
-	if r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 {
+	if r.Widened != 0 || r.Unknown != 0 {
 		t.Fatalf("an append is not an event: %%+v", r)
 	}`, file))
 }
@@ -326,7 +326,7 @@ func TestFixedRedTeamUnionArmWidensTheSlot(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := LineageFixedLoad(back, data, plan, &r)
-	if n != 2 || r.Reason != "" || r.Malformed {
+	if n != 2 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("the grown union slot refused a lawful old file: n=%%d %%+v", n, r)
 	}
 	if back[0].Pick.Type != PickTypeB {
@@ -342,7 +342,7 @@ func TestFixedRedTeamUnionArmWidensTheSlot(t *testing.T) {
 	if back[1].Pick.Type != PickTypeNone || back[1].Seq != 12 {
 		t.Fatalf("the None tag did not land under the moved tag offset: %%+v", back[1])
 	}
-	if r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 {
+	if r.Widened != 0 || r.Unknown != 0 {
 		t.Fatalf("an arm append is not an event: %%+v", r)
 	}`, file))
 }
@@ -396,7 +396,7 @@ func TestFixedRedTeamRenameComposedWithAppend(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := LineageFixedLoad(back, data, plan, &r)
-	if n != 1 || r.Reason != "" || r.Malformed {
+	if n != 1 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("rename plus append refused a lawful old file: n=%%d %%+v", n, r)
 	}
 	if back[0].B != 31 {
@@ -529,7 +529,7 @@ func TestFloorRaised(t *testing.T) {
 	if r.LayoutHash == 0 {
 		t.Fatal("layout_unsupported reports THE FILE'S hash")
 	}
-	if r.Malformed || r.Widened != 0 || r.Unknown != 0 || r.Clamped != 0 {
+	if (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Widened != 0 || r.Unknown != 0 {
 		t.Fatalf("REFUSE is total: %%+v", r)
 	}
 	r = TableReport{}
@@ -708,7 +708,7 @@ func TestFixedRedTeamKeyedKeyGrowsAndElementWidens(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := LineageFixedLoad(back, data, plan, &r)
-	if n != 1 || r.Reason != "" || r.Malformed {
+	if n != 1 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("the grown keyed array refused a lawful old file: n=%%d %%+v", n, r)
 	}
 	g := back[0]
@@ -724,7 +724,7 @@ func TestFixedRedTeamKeyedKeyGrowsAndElementWidens(t *testing.T) {
 	if r.Widened != 3 {
 		t.Fatalf("three widened elements, not %%d: %%+v", r.Widened, r)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 {
+	if r.Unknown != 0 {
 		t.Fatalf("%%+v", r)
 	}`, file))
 }
@@ -788,7 +788,7 @@ func TestFixedRedTeamOptionalAddedAndPayloadAppended(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := LineageFixedLoad(back, data, plan, &r)
-	if n != 1 || r.Reason != "" || r.Malformed {
+	if n != 1 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("T into ?T with an appended payload field refused: n=%%d %%+v", n, r)
 	}
 	if !back[0].VPresent {
@@ -856,7 +856,7 @@ func TestFixedRedTeamStringGrowsWithAFollowingField(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := LineageFixedLoad(back, data, plan, &r)
-	if n != 1 || r.Reason != "" || r.Malformed {
+	if n != 1 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("a grown string with a field behind it refused: n=%%d %%+v", n, r)
 	}
 	if back[0].SLength != 4 || string(back[0].S[:4]) != "abcd" {
@@ -873,7 +873,7 @@ func TestFixedRedTeamStringGrowsWithAFollowingField(t *testing.T) {
 	if back[0].W != 77 {
 		t.Fatalf("the appended field is not its default: %%+v", back[0])
 	}
-	if r.Clamped != 0 {
+	if r.Refused() {
 		t.Fatalf("a grown capacity clamps nothing: %%+v", r)
 	}`, file))
 }
@@ -919,7 +919,7 @@ func TestFixedRedTeamOnlyFieldWidens(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	var r TableReport
 	n := LineageFixedLoad(back, data, plan, &r)
-	if n != 3 || r.Reason != "" || r.Malformed {
+	if n != 3 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("a table whose only field widened refused: n=%%d %%+v", n, r)
 	}
 	want := []int32{-1, -32768, 32767}

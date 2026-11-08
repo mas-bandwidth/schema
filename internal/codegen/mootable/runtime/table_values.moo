@@ -246,28 +246,6 @@ function V.wide(b: buffer, at: number, n: number): boolean
 	return true
 end
 
--- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12 / 33)
-function V.clampUtf8(b: buffer, at: number, keep: number): number
-	while keep > 0 do
-		local x = buffer.readu8(b, at + keep)
-		if x < 0x80 or x > 0xBF then
-			break
-		end
-		keep -= 1
-	end
-	return keep
-end
-
-function V.clampWide(b: buffer, at: number, units: number): number
-	if units > 0 then
-		local last = buffer.readu16(b, at + (units - 1) * 2)
-		if last >= 0xD800 and last <= 0xDBFF then
-			units -= 1
-		end
-	end
-	return units
-end
-
 -- ---------------------------------------------------------------------------
 -- Floats, as bit patterns (docs/PORT-MOO.md: moo holds no float).
 
@@ -400,7 +378,7 @@ function V.bitsCap(bits: number, kw: number): any
 	return Uint64.sub(Uint64.lsh(Uint64.fromNumber(1), bits), Uint64.fromNumber(1))
 end
 
--- toStorage(fd, x): a clamped raw value as the field's storage (cls)
+-- toStorage(fd, x): a bounded raw value as the field's storage (cls)
 function V.toStorage(fd: any, x: any): any
 	local cls = fd.cls
 	if cls == "fx" then

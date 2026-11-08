@@ -331,8 +331,8 @@ return function(ctx: any): { [string]: Surface }
 				end
 				ctx.tables(i[3])
 				local report = L.newReport()
-				local value = L.loadTolerant(i[4], ctx.inputs(i[5]), report)
-				if value == nil or report.refused > 0 or report.malformed then
+				local value = L.load(i[4], ctx.inputs(i[5]), report)
+				if value == nil or report.refused > 0 or report.damaged then
 					fail(f[2] .. ": cook input did not load")
 				end
 				for _, big in { false, true } do

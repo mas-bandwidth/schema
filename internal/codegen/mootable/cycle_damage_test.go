@@ -35,10 +35,10 @@ func cycleProbe(g *generatedUnit, root string) string {
 		"local mods: { any } = {\n" + mods.String() + "}\n" +
 		fmt.Sprintf(`local root = %q
 local function line(path: string, v: any, rep: any)
-	print(string.format("%%s %%d %%s", path, if v ~= nil then 1 else 0, tostring(rep.malformed)))
+	print(string.format("%%s %%d %%s", path, if v ~= nil then 1 else 0, tostring(rep.damaged)))
 end
 local rep = L.newReport()
-line("tolerant", L.loadTolerant(root, inputs.wire, rep), rep)
+line("tolerant", L.load(root, inputs.wire, rep), rep)
 rep = L.newReport()
 line("strict", L.ReadStrict(root, inputs.wire, rep), rep)
 rep = L.newReport()
@@ -109,13 +109,13 @@ func TestMooCyclicWireIsDamage(t *testing.T) {
 func TestMooCyclicWireNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
-	const anchor = "if _numberingGood and not report.malformed and cyclic() then"
+	const anchor = "if _numberingGood and not report.bodyDamaged and cyclic() then"
 	got := runCycleVectors(t, func(t *testing.T, g *generatedUnit) {
 		src := string(g.files["table_load.moo"])
 		if strings.Count(src, anchor) != 1 {
 			t.Fatal("cycle control anchor must occur exactly once")
 		}
-		changed := strings.Replace(src, anchor, "if _numberingGood and not report.malformed and false then", 1)
+		changed := strings.Replace(src, anchor, "if _numberingGood and not report.bodyDamaged and false then", 1)
 		if err := os.WriteFile(filepath.Join(g.dir, "table_load.moo"), []byte(changed), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -128,58 +128,69 @@ func TestMooCyclicWireNegativeControl(t *testing.T) {
 	}
 }
 
-// mapKeyWidenProbe loads inputs.wire at root through the tolerant and the
-// retaining load and prints each one's u,k,w,c,d,m report line.
+// mapKeyWidenProbe reads inputs.wire at root through the one read and the
+// retaining load and prints each one's verdict.
 func mapKeyWidenProbe(g *generatedUnit, root string) string {
 	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal L = require(\"./table_load\")\nlocal R = require(\"./table_retain\")\n" + g.requireAll() +
-		fmt.Sprintf(`local function line(path: string, rep: any)
-	print(string.format("%%s %%d,%%d,%%d,%%d,%%d,%%s", path, rep.unknown, rep.kindMismatch, rep.widened,
-		rep.clamped, rep.duplicate, tostring(rep.malformed)))
-end
-local rep = L.newReport()
-L.loadTolerant(%q, inputs.wire, rep)
-line("tolerant", rep)
+		fmt.Sprintf(`local rep = L.newReport()
+print("strict " .. (if L.ReadStrict(%q, inputs.wire, rep) ~= nil then "read" else "refused"))
 rep = L.newReport()
-R.LoadRetain(%q, inputs.wire, rep, R.newStore(%d, nil))
-line("retain", rep)
+print("retain " .. (if R.LoadRetain(%q, inputs.wire, rep, R.newStore(%d, nil)) ~= nil then "read" else "refused"))
 `, root, root, retainFull)
 }
 
-const mapKeyWidenAnchor = "\t\t\t\tkindBad = false -- this occurrence replaces the earlier key kind\n"
+// the map entry's repeated-id check: removing it brings back the retired
+// last-occurrence-wins rule
+const mapKeyWidenAnchor = "id == NodeTableId or met[id] then"
 
-func runMapKeyWiden(t *testing.T, control bool) string {
+// the kind-mismatch refusal, which also refuses the vector (its first key
+// occurrence is a foreign kind)
+const mapKindRefusalAnchor = `"blobShared", "outOfRange", "kindChanged" }`
+
+func runMapKeyWiden(t *testing.T, dropKind, dropRepeat bool) string {
 	t.Helper()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "mapdemo")
 	if g.err != nil {
 		t.Fatal(g.err)
 	}
-	if control {
-		removeMooDiscard(t, g, "table_load.moo", mapKeyWidenAnchor)
+	var pairs []string
+	if dropKind {
+		pairs = append(pairs, mapKindRefusalAnchor, `"blobShared", "outOfRange" }`)
+	}
+	if dropRepeat {
+		pairs = append(pairs, mapKeyWidenAnchor, "id == NodeTableId then")
+	}
+	if len(pairs) > 0 {
+		removeMooDiscard(t, g, "table_load.moo", pairs...)
 	}
 	wire := readRoot(t, "testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin")
 	return g.run(t, mapKeyWidenProbe(g, "Pairs"), map[string][]byte{"wire": wire})
 }
 
-// A WIDENED REPEATED MAP KEY REPLACES AN EARLIER KEY OF A FOREIGN KIND (§2.8;
-// internal/tablewire mapKey): the last occurrence wins, its kind included, so
-// the entry lands and its body's unknown field counts.
+// A MAP ENTRY THAT NAMES ITS KEY TWICE IS DAMAGE (§2.8, §3;
+// docs/plans/strict-only.md decision 5), even where the second occurrence
+// widens: the Go engine refuses map_repeated_key_widen ("the same field id
+// twice in one body"), and so do moo's one read and its retaining load.
 func TestMooMapKeyWidenReplacesAForeignKind(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
-	const want = "tolerant 2,1,1,0,0,false\nretain 2,1,1,0,0,false"
-	if got := runMapKeyWiden(t, false); got != want {
+	const want = "strict refused\nretain refused"
+	if got := runMapKeyWiden(t, false, false); got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}
 }
 
-// The control removes the replacement: the earlier foreign kind then drops the
-// map and its entry's unknown field goes uncounted.
+// The control: with the kind-mismatch refusal removed the repeated-id check
+// alone still refuses the vector, and with the repeated-id check removed too
+// the retired last-occurrence-wins rule reads it.
 func TestMooMapKeyWidenNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
-	const want = "tolerant 1,1,1,0,0,false\nretain 1,1,1,0,0,false"
-	if got := runMapKeyWiden(t, true); got != want {
-		t.Errorf("removing the replacement did not bring the stale kind back:\n%s", got)
+	if got := runMapKeyWiden(t, true, false); got != "strict refused\nretain refused" {
+		t.Errorf("the repeated-id check alone does not refuse the vector:\n%s", got)
+	}
+	if got := runMapKeyWiden(t, true, true); got != "strict read\nretain read" {
+		t.Errorf("removing the repeated-id check did not let the vector read:\n%s", got)
 	}
 }

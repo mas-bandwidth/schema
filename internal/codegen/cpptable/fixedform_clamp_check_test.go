@@ -14,7 +14,7 @@ import (
 // out-of-range value through uncounted. This pins, over every committed C++
 // table golden, that each check (1) stores nothing — no assignment but its own
 // `bad` — (2) carries exactly one `bad |=` per count site of its body (a
-// `clamped +=`, a `clamped++` or a `damaged++`), and that (3) every root calls
+// `oor_count +=`, a `oor_count++` or a `damaged++`), and that (3) every root calls
 // its body only behind its check.
 func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 	t.Parallel()
@@ -24,7 +24,7 @@ func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 	}
 	check := regexp.MustCompile(`(?s)TABLE_FIXED_INLINE bool (\w+)FixedInRange\( const \w+ & value \)\n\{\n(.*?)\n\}\n`)
 	body := regexp.MustCompile(`(?s)\ninline void (\w+)FixedClampBody\( \w+ & value, [^)]*\)\n\{\n(.*?)\n\}\n`)
-	root := regexp.MustCompile(`(?m)^    (.*?)(\w+)FixedClampBody\( value, clamped, damaged \);`)
+	root := regexp.MustCompile(`(?m)^    (.*?)(\w+)FixedClampBody\( value, oor_count, damaged \);`)
 	store := regexp.MustCompile(`[^=!<>|&+\-*/]=[^=]`)
 	types := 0
 	for _, f := range files {
@@ -45,7 +45,7 @@ func TestFixedClampCheckMirrorsTheBody(t *testing.T) {
 				continue
 			}
 			types++
-			counts := strings.Count(b, "clamped +=") + strings.Count(b, "clamped++") + strings.Count(b, "damaged++") +
+			counts := strings.Count(b, "oor_count +=") + strings.Count(b, "oor_count++") + strings.Count(b, "damaged++") +
 				strings.Count(b, "FixedClampBody(")
 			ors := strings.Count(c, "bad |=")
 			if counts != ors {

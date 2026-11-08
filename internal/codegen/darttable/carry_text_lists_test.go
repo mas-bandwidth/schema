@@ -65,7 +65,7 @@ final wr=w.TableWireReport();final back=w.rootWireLoad(wire,wr);check(!wr.malfor
 final store=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport();final retained=w.rootWireLoadRetain(wire,store,rr);
 check(!rr.malformed&&hex(w.rootWireSaveRetain(retained,store,w.TableWireReport()))==hex(wire),'retained text list');
 check(w.rootWireMeasure(wire)>0,'text list region measure');
-`, input, r.Clamped, r.KindMismatch, i, string(text)+"\n", i, hex.EncodeToString(wire), i)
+`, input, 0, 0, i, string(text)+"\n", i, hex.EncodeToString(wire), i)
 		for _, big := range []bool{false, true} {
 			pin, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if err != nil {
@@ -101,9 +101,8 @@ for(final bad in ['123456789','a\u0000b',String.fromCharCode(0xd800)]){
  var wireRefused=false;
  try{w.rootWireSave(v);}on StateError{wireRefused=true;}
  check(wireRefused,'invalid authored wire text refused');
- final output=w.rootToJson(v);
- if(bad.contains('\u0000'))check(output.contains(r'\u0000'),'authored NUL JSON escaped');
- if(bad==String.fromCharCode(0xd800))check(output.contains('\uFFFD')&&!output.contains(String.fromCharCode(0xd800)),'authored surrogate JSON replacement');
+ if(bad==String.fromCharCode(0xd800)){var textRefused=false;try{w.rootToJson(v);}on StateError{textRefused=true;}check(textRefused,'authored surrogate JSON refused');}
+ else{final output=w.rootToJson(v);if(bad.contains('\u0000'))check(output.contains(r'\u0000'),'authored NUL JSON escaped');}
  final out=Uint8List(4096)..fillRange(0,4096,0xa5);final cr=c.TableCookWriteReport();
  check(!c.RootCook.cook(v,out,Endian.little,report:cr)&&out.every((x)=>x==0xa5),'invalid authored cook untouched');
 }

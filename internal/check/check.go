@@ -4553,6 +4553,9 @@ var tableGeneratedVerbs = []string{
 	// a caller write one message a call and never learn where the bandwidth is
 	"MeasureMessages", "SaveMessages", "LoadMessages", "LoadMessagesMeasure", "SaveMessageBody", "LoadMessageBody",
 	"Reset", "LoadMeasure", "LoadMeasureReason", "MeasureReason", "CookMeasureReason", "LoadBuilder", "TableType", "Builder",
+	// the read's two entries over a caller's region and a builder, which the
+	// plain Load and LoadBuilder and the integrity form call (docs/SPEC-TABLES.md §6.5)
+	"LoadRegion", "LoadBuilderRead",
 	"At", "Emplace", "Pack", "PackMeasure",
 	// the FLAT NODE TABLE's own spellings (docs/SPEC-TABLES.md §3.1): the
 	// numbering walk, the two wire entries it feeds, and the four answers a
@@ -4592,14 +4595,6 @@ var tableGeneratedVerbs = []string{
 	// each is a package-level function Go emits beside the JSON functions, so
 	// each is claimed on this list's own rule.
 	"LoadTextForm", "SaveTextForm", "EditTextForm",
-	// the TOLERANT twins of the plain reads (docs/SPEC-TABLES.md §6.5): the
-	// plain Load, LoadBuilder, FromJson, FixedLoad and LoadMessages are the
-	// strict read, and the read that keeps a recovered value with its report
-	// exists only under these explicit names, which Go emits beside each plain
-	// read, so each is claimed on this list's own rule.
-	"LoadTolerant", "LoadBuilderTolerant", "FromJsonTolerant", "FixedLoadTolerant", "LoadMessagesTolerant",
-	// and the tolerant twin of §16.2's FromJsonWith, which is strict as FromJson is
-	"FromJsonTolerantWith",
 	// and the STRICT read itself (docs/SPEC-TABLES.md §6.5): one call, its own
 	// builder, one typed reason, emitted beside the plain reads.
 	"ReadStrict",
@@ -4617,7 +4612,7 @@ var tableGeneratedVerbs = []string{
 	// member and not only the ones that declare a bound today — a field gains
 	// a `min` or a `max`, or a union or an enum, as an ordinary edit, and the
 	// name has to already be taken when it does.
-	"FixedClamp", "FixedClampBody",
+	"FixedBounds", "FixedBoundsBody",
 	// the FIXED FORM's WRITE-SIDE CHECK (docs/SPEC-TABLES.md §3.4): the fast
 	// per-value pass and its exact twin, each a package-level function Go emits
 	// for every fixed table, claimed on this list's own rule.
@@ -4815,7 +4810,7 @@ func (c *checker) checkSizes() {
 	if len(c.errs) > 0 {
 		return
 	}
-	for _, e := range ir.CheckSizes(c.unit) {
+	for _, e := range append(ir.CheckSizes(c.unit), ir.CheckBinaryDepth(c.unit)...) {
 		pos := ast.Pos{}
 		if d, ok := c.astDecls[e.Owner]; ok {
 			pos = d.DeclPos()

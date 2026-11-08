@@ -3,7 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package bench — protocol id 0xc93127c82f083edf (packets only: tables version by field id, not by protocol id)
-// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): includable from
+// The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): includable from
 // any TU — the one thing taken from serialize.h is the 128-bit storage type.
 
 #pragma once
@@ -83,9 +83,9 @@ enum TableRefuseReason : int32_t
     invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
     allocation_failed,     // an allocation the codec asked for was refused (§7.6)
     wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
-    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
-    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
-    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    malformed,             // a read that met a malformed body: a refusal reason, never a counted verdict (§4)
+    out_of_range,          // a value outside its declared bound: a refusal reason, the retired spelling's ordinal (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration: a refusal reason (§4)
     base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
     base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
     integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
@@ -159,7 +159,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason allocation_failed = TableRefuseReason::allocation_failed;
     static constexpr TableRefuseReason wire_damaged = TableRefuseReason::wire_damaged;
     static constexpr TableRefuseReason malformed = TableRefuseReason::malformed;
-    static constexpr TableRefuseReason clamped = TableRefuseReason::clamped;
+    static constexpr TableRefuseReason out_of_range = TableRefuseReason::out_of_range;
     static constexpr TableRefuseReason kind_mismatch = TableRefuseReason::kind_mismatch;
     static constexpr TableRefuseReason base64_damaged = TableRefuseReason::base64_damaged;
     static constexpr TableRefuseReason base64_not_canonical = TableRefuseReason::base64_not_canonical;
@@ -201,23 +201,17 @@ struct TableMessageReason
 #define SCHEMA_HAS_FLOOR 1
 #endif
 
-// The table-wire read report — the permissive contract's ledger. Silence
+// The table-wire read report — the strict read's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
 {
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
-    int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     // a kind that GREW since the writer (docs/SPEC-TABLES.md §4): an integer
     // kind read into a wider one of the same signedness, or f32 into f64,
     // decoded EXACTLY. One count per field or per map. It is the one counter
     // that names no loss: the bytes were not the shape this reader declares,
     // and the number survived.
     int32_t widened = 0;
-    int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
-    int32_t duplicate = 0;
     // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
     // field became required lacks it. Counted once per body that ends without
     // one of its required fields (or after a body below it did), and the
@@ -225,12 +219,7 @@ struct TableReport
     // The strict reads refuse it with the missing_required reason.
     int32_t missing_required = 0;
     char missing_required_fields[256] = {};
-    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
-    // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
-    // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
-    // the ONE node, never a copy per slot, and the strict read refuses
-    // blob_shared. The Go oracle is internal/codegen/gotable/gotable.go.
-    int32_t blob_shared = 0;
+    bool damaged = false;    // damage: the whole load is refused, nothing of it is used
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
     // zero counters and a false flag are what a clean read prints too, so the
@@ -242,10 +231,10 @@ struct TableReport
     TableMessageReason reason = newer_form;
     // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
     // integrity_mismatch is §2.14's checked-trailer damage. Read this member
-    // when malformed is true; the reason above remains the message refusal name.
+    // when damaged is true; the reason above remains the message refusal name.
     TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
-    // the reason duplicate is: a caller has one report type and not two. Both
+    // the reason repeated is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
     // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
@@ -257,7 +246,7 @@ struct TableReport
     // unknown, widened and retained alone leave it ok.
     TableRefuseReason refuse_reason = ok;
     // THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
-    // an infinity is refused on its raw bits by every read, the tolerant one
+    // an infinity is refused on its raw bits by every read, the strict one
     // included, so a read that moves this refuses as non_finite_float and
     // lands nothing. It is a count only so a read can tell its own refusal
     // from a caller's report that already held one.
@@ -2868,7 +2857,7 @@ inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary &
 // Over its body there are EXACTLY TWO STRICT CHECKS: the BUILD VERSION
 // present, exactly once, under kind 9, eight bytes wide, and the VOCABULARY
 // present, exactly once, under kind 14 over element kind 6. Everything else is
-// ordinary and tolerant, so an unknown field is skipped and counted and the
+// ordinary and strict, so an unknown field is skipped and counted and the
 // announcement can GAIN a field in a later minor without a lockstep redeploy.
 //
 // The FIRST announcement sets the vocabulary and it is the only one that can.
@@ -2898,7 +2887,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
 {
     if ( bytes < 1 )
     {
-        to->malformed = true;
+        to->damaged = true;
         return false;
     }
     if ( buffer[0] != kTableWireForm )
@@ -2909,7 +2898,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     }
     if ( bytes < 9 )
     {
-        to->malformed = true;
+        to->damaged = true;
         return false;
     }
     TableIdTable table;
@@ -2917,7 +2906,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; }
+        if ( verdict == TableOpenDamaged ) { to->damaged = true; }
         else
         {
             to->refused = true;
@@ -2927,7 +2916,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     }
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
-        to->malformed = true;
+        to->damaged = true;
         return false;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
@@ -2940,13 +2929,13 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         uint64_t ref = 0;
         if ( !r.getleb( ref ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
         if ( ref == 0 ) { break; }
         if ( ref > (uint64_t) table.count || !r.has( 1 ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
         const uint64_t id = table.at( ref );
@@ -2955,7 +2944,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         {
             if ( kind != 9 || !r.has( 8 ) )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
             version = r.get64();
@@ -2973,21 +2962,21 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             uint64_t framed = 0;
             if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
             const int64_t begin = r.offset, end = r.offset + (int64_t) framed;
             r.offset = end;
             if ( begin >= end || r.buffer[begin] != 6 )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
             int64_t at = begin + 1;
             uint64_t length = 0;
             if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
             if ( (int64_t) length > vocabulary.max_bytes )
@@ -3004,13 +2993,13 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         to->unknown++;
         if ( !r.skip( kind ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
     }
     if ( seen_version != 1 || seen_vocabulary != 1 )
     {
-        to->malformed = true;
+        to->damaged = true;
         return false;
     }
 
@@ -3031,7 +3020,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         const int64_t began = at;
         if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
         // THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
@@ -3040,14 +3029,14 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         // id is malformed whole and sets nothing
         if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
         if ( parsed.id == kTableNodeTableFieldId )
         {
             if ( node_table_slots++ > 0 )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
         }
@@ -3074,7 +3063,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             const TableMessageEntry & other = vocabulary.entries[seen];
             if ( other.max - other.min == length && memcmp( words + other.min, words + began, (size_t) length ) == 0 )
             {
-                to->malformed = true;
+                to->damaged = true;
                 return false;
             }
         }
@@ -3088,7 +3077,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     {
         if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[slot] ) )
         {
-            to->malformed = true;
+            to->damaged = true;
             return false;
         }
     }
@@ -3390,7 +3379,7 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
     br.vocabulary = &vocabulary;
     if ( bytes < 1 )
     {
-        br.report->malformed = true;
+        br.report->damaged = true;
         return -1;
     }
     if ( buffer[0] != kTableWireMessageForm )
@@ -3409,7 +3398,7 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
     uint64_t count = 0;
     if ( !br.r.get( count, 8 ) )
     {
-        br.report->malformed = true;
+        br.report->damaged = true;
         return -1;
     }
     br.remaining = (int64_t) count + 1;
@@ -3433,7 +3422,7 @@ inline bool TableMessageBatchClose( TableMessageBatchReader & br )
 {
     if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits )
     {
-        br.report->malformed = true;
+        br.report->damaged = true;
         return false;
     }
     return true;
@@ -3817,7 +3806,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & clamped, int32_t & widened )
+    int32_t & oor_count, int32_t & widened )
 {
     switch ( p.op )
     {
@@ -3842,12 +3831,12 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             if ( v < 0 )
             {
                 v = 0;
-                clamped++;
+                oor_count++;
             }
             else if ( v > (int32_t) p.size )
             {
                 v = (int32_t) p.size;
-                clamped++;
+                oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
             break;
@@ -3860,12 +3849,12 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             if ( v < 0 )
             {
                 v = 0;
-                clamped++;
+                oor_count++;
             }
             else if ( (uint32_t) v > cap )
             {
                 v = (int32_t) cap;
-                clamped++;
+                oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
@@ -3894,11 +3883,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS CLAMPED
             // (§5.4, §5.8 row 12): the compiled plan counts it exactly as the
             // identity plan's bounds pass does, so the SAME forged bytes land
-            // the SAME clamped == 1 on either plan. The test is the WRITER's
+            // the SAME out_of_range == 1 on either plan. The test is the WRITER's
             // top ordinal, table[0], and the pass that runs after this loop
             // tests THIS reader's own top value — which a remapped 0 never
             // trips, so the two never count the one event twice.
-            else if ( raw != 0 ) { clamped++; }
+            else if ( raw != 0 ) { oor_count++; }
             memcpy( dst + p.dst, &v, p.dstsize );
             break;
         }
@@ -3940,7 +3929,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             {
                 uint64_t raw = 0;
                 memcpy( &raw, src + p.src, p.size );
-                if ( raw > (uint64_t) p.dstsize ) { clamped++; }
+                if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
         }
@@ -3963,11 +3952,11 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
     // and every store to a field would then reload it.
-    int32_t clamped = 0;
+    int32_t oor_count = 0;
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, clamped, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -3995,9 +3984,9 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
             if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
     }
-    report->clamped += clamped;
+    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
     report->widened += widened;
 }
 
@@ -4888,7 +4877,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->kind_mismatch++; }
+        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch;; }
         return;
     }
     switch ( me.kind )
@@ -5148,7 +5137,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->kind_mismatch++;
+                c.report->refused = true; c.report->refuse_reason = kind_mismatch;;
             }
             break;
         }
@@ -5259,41 +5248,50 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
     uint8_t * dst, TableReport * report )
 {
     if ( ranges == NULL || n <= 0 || dst == NULL ) { return; }
-    int32_t clamped = 0;
+    int32_t oor_count = 0;
     for ( int32_t i = 0; i < n; ++i )
     {
         const TableFixedKnownRange & b = ranges[i];
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
         memcpy( &raw, dst + b.dst, b.width );
-        int64_t v = 0;
+        // THE COMPARISON IS IN THE FIELD'S OWN TYPE: signed for a signed kind,
+        // UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the
+        // max and never below the min. An unsigned kind's bounds are never
+        // negative, so they read as uint64 unchanged.
+        bool below = false;
+        bool above = false;
         if ( b.sgn != 0 )
         {
             const unsigned bits = (unsigned) b.width * 8u;
             const uint64_t top = 1ull << ( bits - 1 );
             if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            v = (int64_t) raw;
+            below = (int64_t) raw < b.lo;
+            above = (int64_t) raw > b.hi;
         }
         else
         {
-            v = (int64_t) raw;
+            below = raw < (uint64_t) b.lo;
+            above = raw > (uint64_t) b.hi;
         }
-        int64_t landed = v;
-        if ( landed < b.lo )
+        uint64_t landed = 0;
+        if ( below )
         {
-            landed = b.lo;
-            clamped++;
+            landed = (uint64_t) b.lo;
+            oor_count++;
         }
-        else if ( landed > b.hi )
+        else if ( above )
         {
-            landed = b.hi;
-            clamped++;
+            landed = (uint64_t) b.hi;
+            oor_count++;
         }
-        if ( landed == v ) { continue; }
-        uint64_t out = (uint64_t) landed;
-        memcpy( dst + b.dst, &out, b.width );
+        else
+        {
+            continue;
+        }
+        memcpy( dst + b.dst, &landed, b.width );
     }
-    if ( report != NULL ) { report->clamped += clamped; }
+    if ( report != NULL ) { if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; } }
 }
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;
@@ -5415,7 +5413,7 @@ inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const 
     br.vocabulary = &vocabulary;
     if ( buffer == NULL || bytes < 1 )
     {
-        br.report->malformed = true;
+        br.report->damaged = true;
         return -1;
     }
     if ( buffer[0] != kTableWireMessageForm )
@@ -5426,7 +5424,7 @@ inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const 
     }
     if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
     {
-        br.report->malformed = true;
+        br.report->damaged = true;
         br.report->damage_reason = integrity_mismatch;
         br.report->reason = integrity_mismatch;
         br.report->refuse_reason = integrity_mismatch;
@@ -5690,7 +5688,7 @@ inline void table_cook_put128( uint8_t * at, uint64_t lo, uint64_t hi, TableByte
 // used prefix and leaves the rest, which is what makes a string's unused tail a
 // consequence of one memset rather than a rule per buffer. A used length past
 // the buffer, or below zero, is a value no reader could have produced and it is
-// clamped rather than trusted: this writes inside the caller's buffer on every
+// out_of_range rather than trusted: this writes inside the caller's buffer on every
 // input.
 inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, int64_t capacity )
 {
@@ -6111,7 +6109,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         if ( field_ref == 0 )
@@ -6120,13 +6118,13 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
         }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         uint8_t kind = r.get8();
@@ -6138,7 +6136,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
             // is damage, and damage discards the whole load (§4).
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         switch ( field_id )
@@ -6154,32 +6152,32 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->clamped++; } // bits(12) width clamp
+                        if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(12) width clamp
                         value.entity_id = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 2 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->clamped++; } // bits(12) width clamp
+                if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(12) width clamp
                 value.entity_id = decoded_v;
                 break;
             }
@@ -6194,34 +6192,34 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->clamped++; }
-                        else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->clamped++; }
+                        if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.pos_x = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->clamped++; }
-                else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->clamped++; }
+                if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.pos_x = decoded_v;
                 break;
             }
@@ -6236,34 +6234,34 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->clamped++; }
-                        else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->clamped++; }
+                        if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.pos_y = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->clamped++; }
-                else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->clamped++; }
+                if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.pos_y = decoded_v;
                 break;
             }
@@ -6278,34 +6276,34 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->clamped++; }
-                        else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->clamped++; }
+                        if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.pos_z = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->clamped++; }
-                else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->clamped++; }
+                if ( decoded_v < -16383 ) { decoded_v = -16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 16383 ) { decoded_v = 16383; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.pos_z = decoded_v;
                 break;
             }
@@ -6320,32 +6318,32 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v > 511ull ) { decoded_v = 511ull; r.report->clamped++; } // bits(9) width clamp
+                        if ( decoded_v > 511ull ) { decoded_v = 511ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(9) width clamp
                         value.yaw = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 2 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v > 511ull ) { decoded_v = 511ull; r.report->clamped++; } // bits(9) width clamp
+                if ( decoded_v > 511ull ) { decoded_v = 511ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(9) width clamp
                 value.yaw = decoded_v;
                 break;
             }
@@ -6360,32 +6358,32 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v > 511ull ) { decoded_v = 511ull; r.report->clamped++; } // bits(9) width clamp
+                        if ( decoded_v > 511ull ) { decoded_v = 511ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(9) width clamp
                         value.pitch = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 2 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v > 511ull ) { decoded_v = 511ull; r.report->clamped++; } // bits(9) width clamp
+                if ( decoded_v > 511ull ) { decoded_v = 511ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(9) width clamp
                 value.pitch = decoded_v;
                 break;
             }
@@ -6400,34 +6398,34 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->clamped++; }
-                        else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->clamped++; }
+                        if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.vel_x = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->clamped++; }
-                else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->clamped++; }
+                if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.vel_x = decoded_v;
                 break;
             }
@@ -6442,34 +6440,34 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->clamped++; }
-                        else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->clamped++; }
+                        if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.vel_y = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->clamped++; }
-                else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->clamped++; }
+                if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.vel_y = decoded_v;
                 break;
             }
@@ -6484,34 +6482,34 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->clamped++; }
-                        else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->clamped++; }
+                        if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.vel_z = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->clamped++; }
-                else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->clamped++; }
+                if ( decoded_v < -2048 ) { decoded_v = -2048; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 2047 ) { decoded_v = 2047; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.vel_z = decoded_v;
                 break;
             }
@@ -6526,34 +6524,34 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                        else if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.health = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                else if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.health = decoded_v;
                 break;
             }
@@ -6563,19 +6561,19 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
                     return false; }
                 if ( variant_ref == 0 ) { value.weapon = MixedWeapon::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
                     return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.weapon ) )
                 {
@@ -6595,7 +6593,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
@@ -6605,17 +6603,17 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 8 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
@@ -6628,20 +6626,20 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 1 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.moving = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.moving = bool_byte != 0; }
                 break;
             }
             case 0x7674cfd19b9031caull: // firing
@@ -6650,20 +6648,20 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 1 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.firing = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.firing = bool_byte != 0; }
                 break;
             }
             default:
@@ -6671,7 +6669,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                 r.report->unknown++;
                 if ( !r.skip( kind ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 break;
@@ -6694,7 +6692,7 @@ inline TableOpenVerdict MixedEntityLoadVerdict( MixedEntity & value, const uint8
     if ( verdict != TableOpenOk )
     {
         MixedEntityReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -6713,35 +6711,25 @@ inline TableOpenVerdict MixedEntityLoadVerdict( MixedEntity & value, const uint8
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         MixedEntityReset( value );
-        to->malformed = true;
+        to->damaged = true;
         to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
-    const bool malformed_before = to->malformed;
-    to->malformed = false;
+    const bool damaged_before = to->damaged;
+    to->damaged = false;
     const bool whole = MixedEntityLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedEntityReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->malformed ) { MixedEntityReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
-    to->malformed = malformed_before;
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; MixedEntityReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged ) { MixedEntityReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->damaged = damaged_before;
     if ( !whole ) { MixedEntityReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
-// MixedEntityLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the value and its report, counting clamped and kind_mismatch, and answers
-// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
-// any damage answers false, malformed is set for damage, and the value is
-// reset to its declared defaults.
-inline bool MixedEntityLoadTolerant( MixedEntity & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    return MixedEntityLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
-}
-
 // The PLAIN MixedEntityLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
-// refuses whatever the strict read refuses — malformed, clamped,
+// refuses whatever the strict read refuses — malformed, out_of_range,
 // kind-mismatched, an unknown form or wire damage — with false as its
 // refusal value, the supplied report overwritten with this read's report
 // and its reason set, the value reset to its declared defaults. unknown and
@@ -6752,17 +6740,17 @@ inline bool MixedEntityLoad( MixedEntity & value, const uint8_t * buffer, int64_
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = MixedEntityLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // the same value ReadStrict returns, with out_of_range before kind_mismatch
         // as Go's TableReport.Err() orders them, and damage before both.
         if ( out->refuse_reason == ok )
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
-            else if ( out->clamped ) { out->refuse_reason = clamped; }
-            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = out_of_range; }
+            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -6951,15 +6939,15 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
         switch ( entry.id )
         {
             case 0x23fcfd6678e36712ull: // entity_id
@@ -6974,29 +6962,29 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                            if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->clamped++; } // bits(12) width clamp
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(12) width clamp
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.entity_id = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                    if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->clamped++; } // bits(12) width clamp
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(12) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.entity_id = decoded_v;
                 }
@@ -7014,7 +7002,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -7022,22 +7010,22 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->clamped++; }
-                            if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->clamped++; }
+                            if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.pos_x = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -7045,8 +7033,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->clamped++; }
-                    if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->clamped++; }
+                    if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.pos_x = decoded_v;
                 }
@@ -7064,7 +7052,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -7072,22 +7060,22 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->clamped++; }
-                            if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->clamped++; }
+                            if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.pos_y = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -7095,8 +7083,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->clamped++; }
-                    if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->clamped++; }
+                    if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.pos_y = decoded_v;
                 }
@@ -7114,7 +7102,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -7122,22 +7110,22 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->clamped++; }
-                            if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->clamped++; }
+                            if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.pos_z = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -7145,8 +7133,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->clamped++; }
-                    if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->clamped++; }
+                    if ( decoded_wide < -16383ll ) { decoded_wide = -16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 16383ll ) { decoded_wide = 16383ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.pos_z = decoded_v;
                 }
@@ -7164,29 +7152,29 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                            if ( (uint64_t) decoded_wide > 511ull ) { decoded_wide = (int64_t) 511ull; report->clamped++; } // bits(9) width clamp
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 511ull ) { decoded_wide = (int64_t) 511ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(9) width clamp
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.yaw = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                    if ( (uint64_t) decoded_wide > 511ull ) { decoded_wide = (int64_t) 511ull; report->clamped++; } // bits(9) width clamp
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 511ull ) { decoded_wide = (int64_t) 511ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(9) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.yaw = decoded_v;
                 }
@@ -7204,29 +7192,29 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                            if ( (uint64_t) decoded_wide > 511ull ) { decoded_wide = (int64_t) 511ull; report->clamped++; } // bits(9) width clamp
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 511ull ) { decoded_wide = (int64_t) 511ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(9) width clamp
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.pitch = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                    if ( (uint64_t) decoded_wide > 511ull ) { decoded_wide = (int64_t) 511ull; report->clamped++; } // bits(9) width clamp
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 511ull ) { decoded_wide = (int64_t) 511ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(9) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.pitch = decoded_v;
                 }
@@ -7244,7 +7232,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -7252,22 +7240,22 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->clamped++; }
-                            if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->clamped++; }
+                            if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.vel_x = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -7275,8 +7263,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->clamped++; }
-                    if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->clamped++; }
+                    if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.vel_x = decoded_v;
                 }
@@ -7294,7 +7282,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -7302,22 +7290,22 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->clamped++; }
-                            if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->clamped++; }
+                            if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.vel_y = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -7325,8 +7313,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->clamped++; }
-                    if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->clamped++; }
+                    if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.vel_y = decoded_v;
                 }
@@ -7344,7 +7332,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -7352,22 +7340,22 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->clamped++; }
-                            if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->clamped++; }
+                            if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.vel_z = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -7375,8 +7363,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->clamped++; }
-                    if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->clamped++; }
+                    if ( decoded_wide < -2048ll ) { decoded_wide = -2048ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 2047ll ) { decoded_wide = 2047ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.vel_z = decoded_v;
                 }
@@ -7394,7 +7382,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -7402,22 +7390,22 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                            if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; report->clamped++; }
+                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.health = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -7425,8 +7413,8 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; report->clamped++; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 1000ll ) { decoded_wide = 1000ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.health = decoded_v;
                 }
@@ -7439,16 +7427,16 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 30 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     uint64_t variant_ref = 0;
-                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    if ( !r.get( variant_ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
                     TableMessageEntry variant_entry;
                     if ( variant_ref == 0 ) { value.weapon = MixedWeapon::None; } // the zero reference is the enum's None
-                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->malformed = true; return false; }
+                    else if ( !TableMessageNameEntry( vocabulary, variant_ref, variant_entry ) ) { report->damaged = true; return false; }
                     else if ( !TableEnumValue( variant_entry.id, value.weapon ) ) { value.weapon = MixedWeapon::None; report->unknown++; }
                 }
                 break;
@@ -7465,7 +7453,7 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
@@ -7474,14 +7462,14 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
@@ -7496,11 +7484,11 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 1 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->malformed = true; return false; } value.moving = raw != 0; }
+                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->damaged = true; return false; } value.moving = raw != 0; }
                 break;
             }
             case 0x7674cfd19b9031caull: // firing
@@ -7510,16 +7498,16 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 1 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->malformed = true; return false; } value.firing = raw != 0; }
+                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->damaged = true; return false; } value.firing = raw != 0; }
                 break;
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                 break;
         }
     }
@@ -7582,7 +7570,7 @@ inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
@@ -7650,7 +7638,7 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         if ( field_ref == 0 )
@@ -7659,13 +7647,13 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
         }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         uint8_t kind = r.get8();
@@ -7677,7 +7665,7 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
             // is damage, and damage discards the whole load (§4).
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         switch ( field_id )
@@ -7688,17 +7676,17 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 1 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
@@ -7716,34 +7704,34 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < -512 ) { decoded_v = -512; r.report->clamped++; }
-                        else if ( decoded_v > 511 ) { decoded_v = 511; r.report->clamped++; }
+                        if ( decoded_v < -512 ) { decoded_v = -512; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 511 ) { decoded_v = 511; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.delta = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < -512 ) { decoded_v = -512; r.report->clamped++; }
-                else if ( decoded_v > 511 ) { decoded_v = 511; r.report->clamped++; }
+                if ( decoded_v < -512 ) { decoded_v = -512; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 511 ) { decoded_v = 511; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.delta = decoded_v;
                 break;
             }
@@ -7752,7 +7740,7 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
                 r.report->unknown++;
                 if ( !r.skip( kind ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 break;
@@ -7775,7 +7763,7 @@ inline TableOpenVerdict MixedStatLoadVerdict( MixedStat & value, const uint8_t *
     if ( verdict != TableOpenOk )
     {
         MixedStatReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -7794,35 +7782,25 @@ inline TableOpenVerdict MixedStatLoadVerdict( MixedStat & value, const uint8_t *
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         MixedStatReset( value );
-        to->malformed = true;
+        to->damaged = true;
         to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
-    const bool malformed_before = to->malformed;
-    to->malformed = false;
+    const bool damaged_before = to->damaged;
+    to->damaged = false;
     const bool whole = MixedStatLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedStatReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->malformed ) { MixedStatReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
-    to->malformed = malformed_before;
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; MixedStatReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged ) { MixedStatReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->damaged = damaged_before;
     if ( !whole ) { MixedStatReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
-// MixedStatLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the value and its report, counting clamped and kind_mismatch, and answers
-// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
-// any damage answers false, malformed is set for damage, and the value is
-// reset to its declared defaults.
-inline bool MixedStatLoadTolerant( MixedStat & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    return MixedStatLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
-}
-
 // The PLAIN MixedStatLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
-// refuses whatever the strict read refuses — malformed, clamped,
+// refuses whatever the strict read refuses — malformed, out_of_range,
 // kind-mismatched, an unknown form or wire damage — with false as its
 // refusal value, the supplied report overwritten with this read's report
 // and its reason set, the value reset to its declared defaults. unknown and
@@ -7833,17 +7811,17 @@ inline bool MixedStatLoad( MixedStat & value, const uint8_t * buffer, int64_t by
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = MixedStatLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // the same value ReadStrict returns, with out_of_range before kind_mismatch
         // as Go's TableReport.Err() orders them, and damage before both.
         if ( out->refuse_reason == ok )
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
-            else if ( out->clamped ) { out->refuse_reason = clamped; }
-            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = out_of_range; }
+            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -7906,15 +7884,15 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
         switch ( entry.id )
         {
             case 0x80ab75f0866dbf65ull: // stat_id
@@ -7924,17 +7902,17 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->clamped++; }
+                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range;; }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.stat_id = decoded_v;
                 }
@@ -7952,7 +7930,7 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -7960,22 +7938,22 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -512ll ) { decoded_wide = -512ll; report->clamped++; }
-                            if ( decoded_wide > 511ll ) { decoded_wide = 511ll; report->clamped++; }
+                            if ( decoded_wide < -512ll ) { decoded_wide = -512ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 511ll ) { decoded_wide = 511ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.delta = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -7983,8 +7961,8 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -512ll ) { decoded_wide = -512ll; report->clamped++; }
-                    if ( decoded_wide > 511ll ) { decoded_wide = 511ll; report->clamped++; }
+                    if ( decoded_wide < -512ll ) { decoded_wide = -512ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 511ll ) { decoded_wide = 511ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.delta = decoded_v;
                 }
@@ -7992,7 +7970,7 @@ inline bool MixedStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                 break;
         }
     }
@@ -8055,7 +8033,7 @@ inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
@@ -8135,7 +8113,7 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         if ( field_ref == 0 )
@@ -8144,13 +8122,13 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
         }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         uint8_t kind = r.get8();
@@ -8162,7 +8140,7 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
             // is damage, and damage discards the whole load (§4).
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         switch ( field_id )
@@ -8178,32 +8156,32 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->clamped++; } // bits(12) width clamp
+                        if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(12) width clamp
                         value.target_id = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 2 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->clamped++; } // bits(12) width clamp
+                if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(12) width clamp
                 value.target_id = decoded_v;
                 break;
             }
@@ -8218,34 +8196,34 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                        else if ( decoded_v > 4095 ) { decoded_v = 4095; r.report->clamped++; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 4095 ) { decoded_v = 4095; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.damage = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                else if ( decoded_v > 4095 ) { decoded_v = 4095; r.report->clamped++; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 4095 ) { decoded_v = 4095; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.damage = decoded_v;
                 break;
             }
@@ -8260,34 +8238,34 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                        else if ( decoded_v > 7 ) { decoded_v = 7; r.report->clamped++; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 7 ) { decoded_v = 7; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.hit_kind = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                else if ( decoded_v > 7 ) { decoded_v = 7; r.report->clamped++; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 7 ) { decoded_v = 7; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.hit_kind = decoded_v;
                 break;
             }
@@ -8297,20 +8275,20 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 1 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.crit = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.crit = bool_byte != 0; }
                 break;
             }
             default:
@@ -8318,7 +8296,7 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                 r.report->unknown++;
                 if ( !r.skip( kind ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 break;
@@ -8341,7 +8319,7 @@ inline TableOpenVerdict MixedHitEventLoadVerdict( MixedHitEvent & value, const u
     if ( verdict != TableOpenOk )
     {
         MixedHitEventReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -8360,35 +8338,25 @@ inline TableOpenVerdict MixedHitEventLoadVerdict( MixedHitEvent & value, const u
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         MixedHitEventReset( value );
-        to->malformed = true;
+        to->damaged = true;
         to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
-    const bool malformed_before = to->malformed;
-    to->malformed = false;
+    const bool damaged_before = to->damaged;
+    to->damaged = false;
     const bool whole = MixedHitEventLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedHitEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->malformed ) { MixedHitEventReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
-    to->malformed = malformed_before;
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; MixedHitEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged ) { MixedHitEventReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->damaged = damaged_before;
     if ( !whole ) { MixedHitEventReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
-// MixedHitEventLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the value and its report, counting clamped and kind_mismatch, and answers
-// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
-// any damage answers false, malformed is set for damage, and the value is
-// reset to its declared defaults.
-inline bool MixedHitEventLoadTolerant( MixedHitEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    return MixedHitEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
-}
-
 // The PLAIN MixedHitEventLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
-// refuses whatever the strict read refuses — malformed, clamped,
+// refuses whatever the strict read refuses — malformed, out_of_range,
 // kind-mismatched, an unknown form or wire damage — with false as its
 // refusal value, the supplied report overwritten with this read's report
 // and its reason set, the value reset to its declared defaults. unknown and
@@ -8399,17 +8367,17 @@ inline bool MixedHitEventLoad( MixedHitEvent & value, const uint8_t * buffer, in
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = MixedHitEventLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // the same value ReadStrict returns, with out_of_range before kind_mismatch
         // as Go's TableReport.Err() orders them, and damage before both.
         if ( out->refuse_reason == ok )
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
-            else if ( out->clamped ) { out->refuse_reason = clamped; }
-            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = out_of_range; }
+            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -8492,15 +8460,15 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
         switch ( entry.id )
         {
             case 0xb7bc9ac015a25050ull: // target_id
@@ -8515,29 +8483,29 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                            if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->clamped++; } // bits(12) width clamp
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(12) width clamp
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.target_id = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                    if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->clamped++; } // bits(12) width clamp
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(12) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.target_id = decoded_v;
                 }
@@ -8555,7 +8523,7 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -8563,22 +8531,22 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                            if ( decoded_wide > 4095ll ) { decoded_wide = 4095ll; report->clamped++; }
+                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 4095ll ) { decoded_wide = 4095ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.damage = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -8586,8 +8554,8 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 4095ll ) { decoded_wide = 4095ll; report->clamped++; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 4095ll ) { decoded_wide = 4095ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.damage = decoded_v;
                 }
@@ -8605,7 +8573,7 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -8613,22 +8581,22 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                            if ( decoded_wide > 7ll ) { decoded_wide = 7ll; report->clamped++; }
+                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 7ll ) { decoded_wide = 7ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.hit_kind = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -8636,8 +8604,8 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 7ll ) { decoded_wide = 7ll; report->clamped++; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 7ll ) { decoded_wide = 7ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.hit_kind = decoded_v;
                 }
@@ -8650,16 +8618,16 @@ inline bool MixedHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 1 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->malformed = true; return false; } value.crit = raw != 0; }
+                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->damaged = true; return false; } value.crit = raw != 0; }
                 break;
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                 break;
         }
     }
@@ -8722,7 +8690,7 @@ inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
@@ -8790,7 +8758,7 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         if ( field_ref == 0 )
@@ -8799,13 +8767,13 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
         }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         uint8_t kind = r.get8();
@@ -8817,7 +8785,7 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
             // is damage, and damage discards the whole load (§4).
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         switch ( field_id )
@@ -8833,34 +8801,34 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                        else if ( decoded_v > 3 ) { decoded_v = 3; r.report->clamped++; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 3 ) { decoded_v = 3; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.channel = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                else if ( decoded_v > 3 ) { decoded_v = 3; r.report->clamped++; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 3 ) { decoded_v = 3; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.channel = decoded_v;
                 break;
             }
@@ -8875,32 +8843,32 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->clamped++; } // bits(12) width clamp
+                        if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(12) width clamp
                         value.speaker = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 2 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->clamped++; } // bits(12) width clamp
+                if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(12) width clamp
                 value.speaker = decoded_v;
                 break;
             }
@@ -8909,7 +8877,7 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
                 r.report->unknown++;
                 if ( !r.skip( kind ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 break;
@@ -8932,7 +8900,7 @@ inline TableOpenVerdict MixedChatEventLoadVerdict( MixedChatEvent & value, const
     if ( verdict != TableOpenOk )
     {
         MixedChatEventReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -8951,35 +8919,25 @@ inline TableOpenVerdict MixedChatEventLoadVerdict( MixedChatEvent & value, const
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         MixedChatEventReset( value );
-        to->malformed = true;
+        to->damaged = true;
         to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
-    const bool malformed_before = to->malformed;
-    to->malformed = false;
+    const bool damaged_before = to->damaged;
+    to->damaged = false;
     const bool whole = MixedChatEventLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedChatEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->malformed ) { MixedChatEventReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
-    to->malformed = malformed_before;
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; MixedChatEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged ) { MixedChatEventReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->damaged = damaged_before;
     if ( !whole ) { MixedChatEventReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
-// MixedChatEventLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the value and its report, counting clamped and kind_mismatch, and answers
-// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
-// any damage answers false, malformed is set for damage, and the value is
-// reset to its declared defaults.
-inline bool MixedChatEventLoadTolerant( MixedChatEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    return MixedChatEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
-}
-
 // The PLAIN MixedChatEventLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
-// refuses whatever the strict read refuses — malformed, clamped,
+// refuses whatever the strict read refuses — malformed, out_of_range,
 // kind-mismatched, an unknown form or wire damage — with false as its
 // refusal value, the supplied report overwritten with this read's report
 // and its reason set, the value reset to its declared defaults. unknown and
@@ -8990,17 +8948,17 @@ inline bool MixedChatEventLoad( MixedChatEvent & value, const uint8_t * buffer, 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = MixedChatEventLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // the same value ReadStrict returns, with out_of_range before kind_mismatch
         // as Go's TableReport.Err() orders them, and damage before both.
         if ( out->refuse_reason == ok )
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
-            else if ( out->clamped ) { out->refuse_reason = clamped; }
-            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = out_of_range; }
+            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -9063,15 +9021,15 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
         switch ( entry.id )
         {
             case 0xa5013e9ad5caeda4ull: // channel
@@ -9086,7 +9044,7 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -9094,22 +9052,22 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                            if ( decoded_wide > 3ll ) { decoded_wide = 3ll; report->clamped++; }
+                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 3ll ) { decoded_wide = 3ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.channel = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -9117,8 +9075,8 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 3ll ) { decoded_wide = 3ll; report->clamped++; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 3ll ) { decoded_wide = 3ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.channel = decoded_v;
                 }
@@ -9136,29 +9094,29 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                            if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->clamped++; } // bits(12) width clamp
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(12) width clamp
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.speaker = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                    if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->clamped++; } // bits(12) width clamp
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(12) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.speaker = decoded_v;
                 }
@@ -9166,7 +9124,7 @@ inline bool MixedChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                 break;
         }
     }
@@ -9229,7 +9187,7 @@ inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
@@ -9297,7 +9255,7 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         if ( field_ref == 0 )
@@ -9306,13 +9264,13 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
         }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         uint8_t kind = r.get8();
@@ -9324,7 +9282,7 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
             // is damage, and damage discards the whole load (§4).
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         switch ( field_id )
@@ -9340,32 +9298,32 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
-                        if ( decoded_v > 1023ull ) { decoded_v = 1023ull; r.report->clamped++; } // bits(10) width clamp
+                        if ( decoded_v > 1023ull ) { decoded_v = 1023ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(10) width clamp
                         value.item_id = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 2 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v > 1023ull ) { decoded_v = 1023ull; r.report->clamped++; } // bits(10) width clamp
+                if ( decoded_v > 1023ull ) { decoded_v = 1023ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(10) width clamp
                 value.item_id = decoded_v;
                 break;
             }
@@ -9380,34 +9338,34 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                        else if ( decoded_v > 255 ) { decoded_v = 255; r.report->clamped++; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 255 ) { decoded_v = 255; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.amount = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                else if ( decoded_v > 255 ) { decoded_v = 255; r.report->clamped++; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 255 ) { decoded_v = 255; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.amount = decoded_v;
                 break;
             }
@@ -9416,7 +9374,7 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
                 r.report->unknown++;
                 if ( !r.skip( kind ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 break;
@@ -9439,7 +9397,7 @@ inline TableOpenVerdict MixedPickupEventLoadVerdict( MixedPickupEvent & value, c
     if ( verdict != TableOpenOk )
     {
         MixedPickupEventReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -9458,35 +9416,25 @@ inline TableOpenVerdict MixedPickupEventLoadVerdict( MixedPickupEvent & value, c
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         MixedPickupEventReset( value );
-        to->malformed = true;
+        to->damaged = true;
         to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
-    const bool malformed_before = to->malformed;
-    to->malformed = false;
+    const bool damaged_before = to->damaged;
+    to->damaged = false;
     const bool whole = MixedPickupEventLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedPickupEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->malformed ) { MixedPickupEventReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
-    to->malformed = malformed_before;
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; MixedPickupEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged ) { MixedPickupEventReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->damaged = damaged_before;
     if ( !whole ) { MixedPickupEventReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
-// MixedPickupEventLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the value and its report, counting clamped and kind_mismatch, and answers
-// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
-// any damage answers false, malformed is set for damage, and the value is
-// reset to its declared defaults.
-inline bool MixedPickupEventLoadTolerant( MixedPickupEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    return MixedPickupEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
-}
-
 // The PLAIN MixedPickupEventLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
-// refuses whatever the strict read refuses — malformed, clamped,
+// refuses whatever the strict read refuses — malformed, out_of_range,
 // kind-mismatched, an unknown form or wire damage — with false as its
 // refusal value, the supplied report overwritten with this read's report
 // and its reason set, the value reset to its declared defaults. unknown and
@@ -9497,17 +9445,17 @@ inline bool MixedPickupEventLoad( MixedPickupEvent & value, const uint8_t * buff
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = MixedPickupEventLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // the same value ReadStrict returns, with out_of_range before kind_mismatch
         // as Go's TableReport.Err() orders them, and damage before both.
         if ( out->refuse_reason == ok )
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
-            else if ( out->clamped ) { out->refuse_reason = clamped; }
-            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = out_of_range; }
+            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -9570,15 +9518,15 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
         switch ( entry.id )
         {
             case 0x9e7fd06d864fbd56ull: // item_id
@@ -9593,29 +9541,29 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                            if ( (uint64_t) decoded_wide > 1023ull ) { decoded_wide = (int64_t) 1023ull; report->clamped++; } // bits(10) width clamp
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 1023ull ) { decoded_wide = (int64_t) 1023ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(10) width clamp
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.item_id = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                    if ( (uint64_t) decoded_wide > 1023ull ) { decoded_wide = (int64_t) 1023ull; report->clamped++; } // bits(10) width clamp
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 1023ull ) { decoded_wide = (int64_t) 1023ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(10) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.item_id = decoded_v;
                 }
@@ -9633,7 +9581,7 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -9641,22 +9589,22 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                            if ( decoded_wide > 255ll ) { decoded_wide = 255ll; report->clamped++; }
+                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 255ll ) { decoded_wide = 255ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.amount = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -9664,8 +9612,8 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 255ll ) { decoded_wide = 255ll; report->clamped++; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 255ll ) { decoded_wide = 255ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.amount = decoded_v;
                 }
@@ -9673,7 +9621,7 @@ inline bool MixedPickupEventLoadMessageBody( TableBitReader & r, const TableVoca
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                 break;
         }
     }
@@ -9736,7 +9684,7 @@ inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * c
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
@@ -10171,7 +10119,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         if ( field_ref == 0 )
@@ -10180,13 +10128,13 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
         }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         uint8_t kind = r.get8();
@@ -10198,7 +10146,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
             // is damage, and damage discards the whole load (§4).
-            r.report->malformed = true;
+            r.report->damaged = true;
             return false;
         }
         switch ( field_id )
@@ -10214,7 +10162,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint16_t decoded_v = (uint16_t) widened_v;
@@ -10224,17 +10172,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 2 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
@@ -10252,34 +10200,34 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                        else if ( decoded_v > 65535 ) { decoded_v = 65535; r.report->clamped++; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 65535 ) { decoded_v = 65535; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.ack_sequence = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                else if ( decoded_v > 65535 ) { decoded_v = 65535; r.report->clamped++; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 65535 ) { decoded_v = 65535; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.ack_sequence = decoded_v;
                 break;
             }
@@ -10294,7 +10242,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
@@ -10304,17 +10252,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
@@ -10332,7 +10280,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
@@ -10342,17 +10290,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 8 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
@@ -10370,7 +10318,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
@@ -10380,17 +10328,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
@@ -10408,7 +10356,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
@@ -10418,17 +10366,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 8 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
@@ -10446,34 +10394,34 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int64_t decoded_v = (int64_t) widened_v;
-                        if ( decoded_v < -1000000000000ll ) { decoded_v = -1000000000000ll; r.report->clamped++; }
-                        else if ( decoded_v > 1000000000000ll ) { decoded_v = 1000000000000ll; r.report->clamped++; }
+                        if ( decoded_v < -1000000000000ll ) { decoded_v = -1000000000000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 1000000000000ll ) { decoded_v = 1000000000000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.world_time = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 8 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v < -1000000000000ll ) { decoded_v = -1000000000000ll; r.report->clamped++; }
-                else if ( decoded_v > 1000000000000ll ) { decoded_v = 1000000000000ll; r.report->clamped++; }
+                if ( decoded_v < -1000000000000ll ) { decoded_v = -1000000000000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 1000000000000ll ) { decoded_v = 1000000000000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.world_time = decoded_v;
                 break;
             }
@@ -10488,32 +10436,32 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
-                        if ( decoded_v > 281474976710655ull ) { decoded_v = 281474976710655ull; r.report->clamped++; } // bits(48) width clamp
+                        if ( decoded_v > 281474976710655ull ) { decoded_v = 281474976710655ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(48) width clamp
                         value.frame_tick = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 8 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v > 281474976710655ull ) { decoded_v = 281474976710655ull; r.report->clamped++; } // bits(48) width clamp
+                if ( decoded_v > 281474976710655ull ) { decoded_v = 281474976710655ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(48) width clamp
                 value.frame_tick = decoded_v;
                 break;
             }
@@ -10523,22 +10471,22 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                else if ( decoded_v > 16776960 ) { decoded_v = 16776960; r.report->clamped++; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 16776960 ) { decoded_v = 16776960; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.server_time = decoded_v;
                 break;
             }
@@ -10548,10 +10496,10 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
@@ -10559,7 +10507,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -10575,12 +10523,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     // A DAMAGED COUNT stops the elements and nothing else: the field
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !counted_ok ) { r.report->damaged = true; }
+                    else if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
-                    if ( keep > 8 ) { keep = 8; r.report->clamped++; }
+                    if ( keep > 8 ) { keep = 8; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover is damage, which discards the whole load (§4), and
                     // the following fields' bytes are never fabricated into
@@ -10590,11 +10538,11 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     for ( uint64_t i = 0; i < keep; i++ )
                     {
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             MixedEntityLoadBody( elem, value.entities[(int32_t) i] );
-                            if ( elem.offset != elem.size ) { r.report->malformed = true; MixedEntityReset( value.entities[(int32_t) i] ); }
+                            if ( elem.offset != elem.size ) { r.report->damaged = true; MixedEntityReset( value.entities[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -10614,10 +10562,10 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
@@ -10625,7 +10573,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -10641,12 +10589,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     // A DAMAGED COUNT stops the elements and nothing else: the field
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !counted_ok ) { r.report->damaged = true; }
+                    else if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
-                    if ( keep > 80 ) { keep = 80; r.report->clamped++; }
+                    if ( keep > 80 ) { keep = 80; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover is damage, which discards the whole load (§4), and
                     // the following fields' bytes are never fabricated into
@@ -10656,11 +10604,11 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     for ( uint64_t i = 0; i < keep; i++ )
                     {
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             MixedStatLoadBody( elem, value.stats[(int32_t) i] );
-                            if ( elem.offset != elem.size ) { r.report->malformed = true; MixedStatReset( value.stats[(int32_t) i] ); }
+                            if ( elem.offset != elem.size ) { r.report->damaged = true; MixedStatReset( value.stats[(int32_t) i] ); }
                         }
                         sub.offset += (int64_t) elem_len;
                         decoded = i + 1;
@@ -10680,25 +10628,25 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 uint64_t arm_ref = 0;
-                if ( !r.getleb( arm_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( arm_ref ) ) { r.report->damaged = true; return false; }
                 if ( arm_ref == 0 ) { value.game_event.type = MixedEventType::None; break; } // empty: the reference is the whole payload
-                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; return false; }
                 const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+                if ( !r.has( 1 ) ) { r.report->damaged = true; return false; }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 {
@@ -10712,12 +10660,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.game_event.type = MixedEventType::None;
-                                r.report->kind_mismatch++;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                                 break;
                             }
                             value.game_event.type = MixedEventType::Hit;
                             MixedHitEventLoadBody( sub, value.game_event.hit );
-                            if ( sub.offset != sub.size ) { value.game_event.type = MixedEventType::None; r.report->malformed = true; break; }
+                            if ( sub.offset != sub.size ) { value.game_event.type = MixedEventType::None; r.report->damaged = true; break; }
                             break;
                         }
                         case 0xf2a38d910b5b348bull: // chat
@@ -10727,12 +10675,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.game_event.type = MixedEventType::None;
-                                r.report->kind_mismatch++;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                                 break;
                             }
                             value.game_event.type = MixedEventType::Chat;
                             MixedChatEventLoadBody( sub, value.game_event.chat );
-                            if ( sub.offset != sub.size ) { value.game_event.type = MixedEventType::None; r.report->malformed = true; break; }
+                            if ( sub.offset != sub.size ) { value.game_event.type = MixedEventType::None; r.report->damaged = true; break; }
                             break;
                         }
                         case 0x9fa3a41c86ecb765ull: // pickup
@@ -10742,12 +10690,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.game_event.type = MixedEventType::None;
-                                r.report->kind_mismatch++;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                                 break;
                             }
                             value.game_event.type = MixedEventType::Pickup;
                             MixedPickupEventLoadBody( sub, value.game_event.pickup );
-                            if ( sub.offset != sub.size ) { value.game_event.type = MixedEventType::None; r.report->malformed = true; break; }
+                            if ( sub.offset != sub.size ) { value.game_event.type = MixedEventType::None; r.report->damaged = true; break; }
                             break;
                         }
                         default:
@@ -10770,10 +10718,10 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
@@ -10781,7 +10729,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -10796,12 +10744,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     // A DAMAGED COUNT stops the elements and nothing else: the field
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 6 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !counted_ok ) { r.report->damaged = true; }
+                    else if ( elem_kind != 6 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
-                    if ( keep > 4 ) { keep = 4; r.report->clamped++; }
+                    if ( keep > 4 ) { keep = 4; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover is damage, which discards the whole load (§4), and
                     // the following fields' bytes are never fabricated into
@@ -10811,7 +10759,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     {
                         if ( !sub.has( 1 ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             break;
                         }
                         uint8_t decoded_v = uint8_t( sub.get8() );
@@ -10828,27 +10776,27 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     memset( value.player_name, 0, sizeof( value.player_name ) );
                     value.player_name_length = 0;
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
-                if ( keep > 15 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 15 ); r.report->clamped++; } // at a code point boundary (§3)
+                if ( keep > 15 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 15 ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // at a code point boundary (§3)
                 memcpy( value.player_name, r.buffer + r.offset, (size_t) keep );
                 value.player_name[keep] = 0;
                 value.player_name_length = (int32_t) keep;
@@ -10861,10 +10809,10 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
@@ -10872,7 +10820,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int64_t body_end = r.offset + (int64_t) body_len;
@@ -10887,12 +10835,12 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     // A DAMAGED COUNT stops the elements and nothing else: the field
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 6 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !counted_ok ) { r.report->damaged = true; }
+                    else if ( elem_kind != 6 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
-                    if ( keep > 16 ) { keep = 16; r.report->clamped++; }
+                    if ( keep > 16 ) { keep = 16; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover is damage, which discards the whole load (§4), and
                     // the following fields' bytes are never fabricated into
@@ -10903,7 +10851,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     {
                         if ( !sub.has( 1 ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             break;
                         }
                         uint8_t decoded_v = uint8_t( sub.get8() );
@@ -10922,17 +10870,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 {
@@ -10941,8 +10889,8 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     else
                     {
                         float decoded_f = table_bits_to_float( decoded_bits );
-                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->clamped++; }
-                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->clamped++; }
+                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.aim_x = decoded_f;
                     }
                 }
@@ -10954,17 +10902,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 {
@@ -10973,8 +10921,8 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     else
                     {
                         float decoded_f = table_bits_to_float( decoded_bits );
-                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->clamped++; }
-                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->clamped++; }
+                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.aim_y = decoded_f;
                     }
                 }
@@ -10986,17 +10934,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 {
@@ -11005,8 +10953,8 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     else
                     {
                         float decoded_f = table_bits_to_float( decoded_bits );
-                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->clamped++; }
-                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->clamped++; }
+                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.aim_z = decoded_f;
                     }
                 }
@@ -11018,17 +10966,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 {
@@ -11051,7 +10999,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         // exactly at its own width, the value lands, one widened counts
                         if ( !r.has( 4 ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         {
@@ -11064,17 +11012,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 8 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 {
@@ -11095,7 +11043,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         serialize::uint128_t decoded_v = serialize::uint128_t( widened_v );
@@ -11105,17 +11053,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 16 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint64_t lo_v = 0, hi_v = 0;
@@ -11135,36 +11083,36 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( widened_v < 0 ? ~0ull : 0ull ) << 64 ) | serialize::uint128_t( (uint64_t) widened_v ) );
-                        if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->clamped++; }
-                        else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->clamped++; }
+                        if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.flux = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 16 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->clamped++; }
-                else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->clamped++; }
+                if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.flux = decoded_v;
                 break;
             }
@@ -11174,21 +11122,21 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 2 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint16_t decoded_v = uint16_t( r.get16() );
-                if ( decoded_v > 64000 ) { decoded_v = 64000; r.report->clamped++; }
+                if ( decoded_v > 64000 ) { decoded_v = 64000; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.ping = decoded_v;
                 break;
             }
@@ -11203,32 +11151,32 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         uint64_t widened_v = 0;
                         if ( !TableReadUnsignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
-                        if ( decoded_v > 16777215ull ) { decoded_v = 16777215ull; r.report->clamped++; } // bits(24) width clamp
+                        if ( decoded_v > 16777215ull ) { decoded_v = 16777215ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(24) width clamp
                         value.crc_hint = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v > 16777215ull ) { decoded_v = 16777215ull; r.report->clamped++; } // bits(24) width clamp
+                if ( decoded_v > 16777215ull ) { decoded_v = 16777215ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(24) width clamp
                 value.crc_hint = decoded_v;
                 break;
             }
@@ -11238,20 +11186,20 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 1 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } value.has_extra = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.has_extra = bool_byte != 0; }
                 break;
             }
             case 0xfd29ee12a979cb69ull: // extra
@@ -11265,34 +11213,34 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                        else if ( decoded_v > 255 ) { decoded_v = 255; r.report->clamped++; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 255 ) { decoded_v = 255; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.extra = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                else if ( decoded_v > 255 ) { decoded_v = 255; r.report->clamped++; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 255 ) { decoded_v = 255; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.extra = decoded_v;
                 break;
             }
@@ -11307,34 +11255,34 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         int64_t widened_v = 0;
                         if ( !TableReadSignedAt( r, kind, widened_v ) )
                         {
-                            r.report->malformed = true;
+                            r.report->damaged = true;
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                        else if ( decoded_v > 15 ) { decoded_v = 15; r.report->clamped++; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        else if ( decoded_v > 15 ) { decoded_v = 15; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                         value.idle_ticks = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
                     if ( !r.skip( kind ) )
                     {
-                        r.report->malformed = true;
+                        r.report->damaged = true;
                         return false;
                     }
                     break;
                 }
                 if ( !r.has( 4 ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
-                else if ( decoded_v > 15 ) { decoded_v = 15; r.report->clamped++; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                else if ( decoded_v > 15 ) { decoded_v = 15; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
                 value.idle_ticks = decoded_v;
                 break;
             }
@@ -11343,7 +11291,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 r.report->unknown++;
                 if ( !r.skip( kind ) )
                 {
-                    r.report->malformed = true;
+                    r.report->damaged = true;
                     return false;
                 }
                 break;
@@ -11366,7 +11314,7 @@ inline TableOpenVerdict BenchMixedLoadVerdict( BenchMixed & value, const uint8_t
     if ( verdict != TableOpenOk )
     {
         BenchMixedReset( value );
-        if ( verdict == TableOpenDamaged ) { to->malformed = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -11385,35 +11333,25 @@ inline TableOpenVerdict BenchMixedLoadVerdict( BenchMixed & value, const uint8_t
     if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
     {
         BenchMixedReset( value );
-        to->malformed = true;
+        to->damaged = true;
         to->refuse_reason = wire_damaged;
         return TableOpenDamaged;
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
-    const bool malformed_before = to->malformed;
-    to->malformed = false;
+    const bool damaged_before = to->damaged;
+    to->damaged = false;
     const bool whole = BenchMixedLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; BenchMixedReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->malformed ) { BenchMixedReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
-    to->malformed = malformed_before;
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; BenchMixedReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged ) { BenchMixedReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->damaged = damaged_before;
     if ( !whole ) { BenchMixedReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
-// BenchMixedLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the value and its report, counting clamped and kind_mismatch, and answers
-// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
-// any damage answers false, malformed is set for damage, and the value is
-// reset to its declared defaults.
-inline bool BenchMixedLoadTolerant( BenchMixed & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    return BenchMixedLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
-}
-
 // The PLAIN BenchMixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it
-// refuses whatever the strict read refuses — malformed, clamped,
+// refuses whatever the strict read refuses — malformed, out_of_range,
 // kind-mismatched, an unknown form or wire damage — with false as its
 // refusal value, the supplied report overwritten with this read's report
 // and its reason set, the value reset to its declared defaults. unknown and
@@ -11424,17 +11362,17 @@ inline bool BenchMixedLoad( BenchMixed & value, const uint8_t * buffer, int64_t 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = BenchMixedLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with clamped before kind_mismatch
+        // the same value ReadStrict returns, with out_of_range before kind_mismatch
         // as Go's TableReport.Err() orders them, and damage before both.
         if ( out->refuse_reason == ok )
         {
             if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }
-            else if ( out->clamped ) { out->refuse_reason = clamped; }
-            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
+            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = out_of_range; }
+            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -11860,15 +11798,15 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
         if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
+        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
         switch ( entry.id )
         {
             case 0xaa38aca481f528a8ull: // sequence
@@ -11883,27 +11821,27 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.sequence = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.sequence = decoded_v;
                 }
@@ -11921,7 +11859,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -11929,22 +11867,22 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                            if ( decoded_wide > 65535ll ) { decoded_wide = 65535ll; report->clamped++; }
+                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 65535ll ) { decoded_wide = 65535ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.ack_sequence = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -11952,8 +11890,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 65535ll ) { decoded_wide = 65535ll; report->clamped++; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 65535ll ) { decoded_wide = 65535ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.ack_sequence = decoded_v;
                 }
@@ -11971,27 +11909,27 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.ack_bits = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.ack_bits = decoded_v;
                 }
@@ -12009,7 +11947,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
@@ -12018,14 +11956,14 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
@@ -12045,27 +11983,27 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.client_id = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.client_id = decoded_v;
                 }
@@ -12083,7 +12021,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
@@ -12092,14 +12030,14 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
@@ -12119,7 +12057,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -12127,22 +12065,22 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -1000000000000ll ) { decoded_wide = -1000000000000ll; report->clamped++; }
-                            if ( decoded_wide > 1000000000000ll ) { decoded_wide = 1000000000000ll; report->clamped++; }
+                            if ( decoded_wide < -1000000000000ll ) { decoded_wide = -1000000000000ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 1000000000000ll ) { decoded_wide = 1000000000000ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int64_t decoded_v = (int64_t) decoded_wide;
                             value.world_time = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -12150,8 +12088,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -1000000000000ll ) { decoded_wide = -1000000000000ll; report->clamped++; }
-                    if ( decoded_wide > 1000000000000ll ) { decoded_wide = 1000000000000ll; report->clamped++; }
+                    if ( decoded_wide < -1000000000000ll ) { decoded_wide = -1000000000000ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 1000000000000ll ) { decoded_wide = 1000000000000ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int64_t decoded_v = (int64_t) decoded_wide;
                     value.world_time = decoded_v;
                 }
@@ -12169,27 +12107,27 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 281474976710655ull ) { decoded_wide = (int64_t) 281474976710655ull; report->clamped++; } // bits(48) width clamp
+                            if ( (uint64_t) decoded_wide > 281474976710655ull ) { decoded_wide = (int64_t) 281474976710655ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(48) width clamp
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.frame_tick = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 281474976710655ull ) { decoded_wide = (int64_t) 281474976710655ull; report->clamped++; } // bits(48) width clamp
+                    if ( (uint64_t) decoded_wide > 281474976710655ull ) { decoded_wide = (int64_t) 281474976710655ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(48) width clamp
                     uint64_t decoded_v = (uint64_t) decoded_wide;
                     value.frame_tick = decoded_v;
                 }
@@ -12202,14 +12140,14 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 22 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -12217,8 +12155,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 16776960ll ) { decoded_wide = 16776960ll; report->clamped++; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 16776960ll ) { decoded_wide = 16776960ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.server_time = decoded_v;
                 }
@@ -12231,8 +12169,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 13 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
@@ -12241,12 +12179,12 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 8 ) { kept = 8; report->clamped++; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 8 ) { kept = 8; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
                     {
@@ -12266,8 +12204,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 13 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
@@ -12276,12 +12214,12 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 80 ) { kept = 80; report->clamped++; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 80 ) { kept = 80; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
                     {
@@ -12301,16 +12239,16 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 15 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     uint64_t arm_ref = 0;
-                    if ( !r.get( arm_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
+                    if ( !r.get( arm_ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
                     TableMessageEntry arm;
                     if ( arm_ref == 0 ) { value.game_event.type = MixedEventType::None; }
-                    else if ( !TableMessageArmEntry( vocabulary, arm_ref, arm ) ) { report->malformed = true; return false; }
+                    else if ( !TableMessageArmEntry( vocabulary, arm_ref, arm ) ) { report->damaged = true; return false; }
                     else
                     {
                         switch ( arm.id )
@@ -12319,8 +12257,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             {
                                 if ( arm.kind != 13 || arm.elem_kind != 0 )
                                 {
-                                    value.game_event.type = MixedEventType::None; report->kind_mismatch++;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
+                                    value.game_event.type = MixedEventType::None; report->refused = true; report->refuse_reason = kind_mismatch;;
+                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->damaged = true; return false; }
                                     break;
                                 }
                                 value.game_event.type = MixedEventType::Hit;
@@ -12331,8 +12269,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             {
                                 if ( arm.kind != 13 || arm.elem_kind != 0 )
                                 {
-                                    value.game_event.type = MixedEventType::None; report->kind_mismatch++;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
+                                    value.game_event.type = MixedEventType::None; report->refused = true; report->refuse_reason = kind_mismatch;;
+                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->damaged = true; return false; }
                                     break;
                                 }
                                 value.game_event.type = MixedEventType::Chat;
@@ -12343,8 +12281,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             {
                                 if ( arm.kind != 13 || arm.elem_kind != 0 )
                                 {
-                                    value.game_event.type = MixedEventType::None; report->kind_mismatch++;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
+                                    value.game_event.type = MixedEventType::None; report->refused = true; report->refuse_reason = kind_mismatch;;
+                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->damaged = true; return false; }
                                     break;
                                 }
                                 value.game_event.type = MixedEventType::Pickup;
@@ -12353,7 +12291,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             }
                             default:
                                 value.game_event.type = MixedEventType::None; report->unknown++;
-                                if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
+                                if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->damaged = true; return false; }
                                 break;
                         }
                     }
@@ -12367,8 +12305,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 6 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
@@ -12377,12 +12315,12 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
+                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
+                    if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 4 ) { kept = 4; report->clamped++; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
                     if ( surplus_bits >= 0 && walk > (uint64_t) 4 ) { walk = (uint64_t) 4; } // the surplus is arithmetic
@@ -12393,16 +12331,16 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width_2 = entry.elem_value_bits;
                             uint64_t raw_2 = 0;
-                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
+                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide_2 = (int64_t) raw_2;
                             if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                            if ( (uint64_t) decoded_wide_2 > 255ull ) { decoded_wide_2 = (int64_t) 255ull; report->clamped++; }
+                            if ( (uint64_t) decoded_wide_2 > 255ull ) { decoded_wide_2 = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range;; }
                             uint8_t decoded_v_2 = (uint8_t) decoded_wide_2;
                             scratch = decoded_v_2;
                         }
                         if ( in_bounds ) { value.loadout[i] = scratch; }
                     }
-                    if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) ) { report->malformed = true; return false; }
+                    if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) ) { report->damaged = true; return false; }
                 }
                 break;
             }
@@ -12413,17 +12351,17 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 12 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->damaged = true; return false; }
                     const uint8_t * text = r.buffer + ( r.offset >> 3 );
-                    if ( !TableUtf8Valid( text, n ) ) { report->malformed = true; return false; }
+                    if ( !TableUtf8Valid( text, n ) ) { report->damaged = true; return false; }
                     const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 15 );
-                    if ( (uint64_t) kept < n ) { report->clamped++; }
+                    if ( (uint64_t) kept < n ) { report->refused = true; report->refuse_reason = out_of_range;; }
                     memcpy( value.player_name, text, (size_t) kept );
                     value.player_name[kept] = 0;
                     r.offset += (int64_t) n * 8;
@@ -12438,19 +12376,19 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 6 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->malformed = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->damaged = true; return false; }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 16 ) { kept = 16; report->clamped++; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 16 ) { kept = 16; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->malformed = true; return false; }
+                        if ( !r.get( by, 8 ) ) { report->damaged = true; return false; }
                         if ( (int32_t) i < kept ) { value.payload[i] = (uint8_t) by; }
                     }
                     value.payload_length = kept;
@@ -12464,8 +12402,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
@@ -12473,19 +12411,19 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->malformed = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->malformed = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
+                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
                         if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
-                    if ( decoded_f < -1.0f ) { decoded_f = -1.0f; report->clamped++; }
-                    else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; report->clamped++; }
+                    if ( decoded_f < -1.0f ) { decoded_f = -1.0f; report->refused = true; report->refuse_reason = out_of_range;; }
+                    else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; report->refused = true; report->refuse_reason = out_of_range;; }
                     value.aim_x = decoded_f;
                 }
                 break;
@@ -12497,8 +12435,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
@@ -12506,19 +12444,19 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->malformed = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->malformed = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
+                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
                         if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
-                    if ( decoded_f < -1.0f ) { decoded_f = -1.0f; report->clamped++; }
-                    else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; report->clamped++; }
+                    if ( decoded_f < -1.0f ) { decoded_f = -1.0f; report->refused = true; report->refuse_reason = out_of_range;; }
+                    else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; report->refused = true; report->refuse_reason = out_of_range;; }
                     value.aim_y = decoded_f;
                 }
                 break;
@@ -12530,8 +12468,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
@@ -12539,19 +12477,19 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->malformed = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->malformed = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
+                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
                         if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
-                    if ( decoded_f < -1.0f ) { decoded_f = -1.0f; report->clamped++; }
-                    else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; report->clamped++; }
+                    if ( decoded_f < -1.0f ) { decoded_f = -1.0f; report->refused = true; report->refuse_reason = out_of_range;; }
+                    else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; report->refused = true; report->refuse_reason = out_of_range;; }
                     value.aim_z = decoded_f;
                 }
                 break;
@@ -12563,8 +12501,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
@@ -12572,14 +12510,14 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->malformed = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->malformed = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
+                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
                         if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
@@ -12600,14 +12538,14 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             if ( entry.packing == 2 )
                             {
                                 uint64_t index = 0;
-                                if ( !r.get( index, entry.value_bits ) ) { report->malformed = true; return false; }
-                                if ( index > (uint64_t) entry.qcount ) { report->malformed = true; return false; } // above the step count
+                                if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
+                                if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count
                                 value.drift = (double) TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount );
                             }
                             else
                             {
                                 uint64_t raw = 0;
-                                if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                                if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
                                 if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
                                 value.drift = (double) table_bits_to_float( (uint32_t) raw );
                             }
@@ -12615,11 +12553,11 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } if ( !TableBitsFinite64( raw ) ) { TableNonFiniteFloat( report ); return false; } value.drift = table_bits_to_double( raw ); }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) ) { TableNonFiniteFloat( report ); return false; } value.drift = table_bits_to_double( raw ); }
                 break;
             }
             case 0xa3348580461faf16ull: // wide_key
@@ -12634,7 +12572,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || width > 64 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || width > 64 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             serialize::uint128_t raw_v = serialize::uint128_t( raw );
                             if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
                             serialize::uint128_t decoded_v = serialize::uint128_t( raw_v );
@@ -12643,14 +12581,14 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t lo_v = 0, hi_v = 0;
-                    if ( width < 0 || !r.get( lo_v, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi_v, width - 64 ) ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( lo_v, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi_v, width - 64 ) ) ) { report->damaged = true; return false; }
                     serialize::uint128_t raw_v = ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v );
                     if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
                     serialize::uint128_t decoded_v = serialize::uint128_t( raw_v );
@@ -12670,7 +12608,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || width > 64 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || width > 64 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             if ( entry.packing != 1 && width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -12679,26 +12617,26 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw );
                             if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
                             serialize::int128_t decoded_v = serialize::int128_t( raw_v );
-                            if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->clamped++; }
-                            else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->clamped++; }
+                            if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->refused = true; report->refuse_reason = out_of_range;; }
+                            else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->refused = true; report->refuse_reason = out_of_range;; }
                             value.flux = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t lo_v = 0, hi_v = 0;
-                    if ( width < 0 || !r.get( lo_v, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi_v, width - 64 ) ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( lo_v, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi_v, width - 64 ) ) ) { report->damaged = true; return false; }
                     serialize::uint128_t raw_v = ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v );
                     if ( entry.packing == 1 ) { raw_v = raw_v + ( ( serialize::uint128_t( (uint64_t) entry.base_hi ) << 64 ) | serialize::uint128_t( (uint64_t) entry.base_lo ) ); }
                     serialize::int128_t decoded_v = serialize::int128_t( raw_v );
-                    if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->clamped++; }
-                    else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->clamped++; }
+                    if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->refused = true; report->refuse_reason = out_of_range;; }
+                    else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); report->refused = true; report->refuse_reason = out_of_range;; }
                     value.flux = decoded_v;
                 }
                 break;
@@ -12710,17 +12648,17 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 26 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 64000ull ) { decoded_wide = (int64_t) 64000ull; report->clamped++; }
+                    if ( (uint64_t) decoded_wide > 64000ull ) { decoded_wide = (int64_t) 64000ull; report->refused = true; report->refuse_reason = out_of_range;; }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.ping = decoded_v;
                 }
@@ -12738,29 +12676,29 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
-                            if ( (uint64_t) decoded_wide > 16777215ull ) { decoded_wide = (int64_t) 16777215ull; report->clamped++; } // bits(24) width clamp
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 16777215ull ) { decoded_wide = (int64_t) 16777215ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(24) width clamp
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.crc_hint = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->clamped++; }
-                    if ( (uint64_t) decoded_wide > 16777215ull ) { decoded_wide = (int64_t) 16777215ull; report->clamped++; } // bits(24) width clamp
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 16777215ull ) { decoded_wide = (int64_t) 16777215ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(24) width clamp
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.crc_hint = decoded_v;
                 }
@@ -12773,11 +12711,11 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 1 || entry.elem_kind != 0 )
                 {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->malformed = true; return false; } value.has_extra = raw != 0; }
+                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->damaged = true; return false; } value.has_extra = raw != 0; }
                 break;
             }
             case 0xfd29ee12a979cb69ull: // extra
@@ -12792,7 +12730,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -12800,22 +12738,22 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                            if ( decoded_wide > 255ll ) { decoded_wide = 255ll; report->clamped++; }
+                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 255ll ) { decoded_wide = 255ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.extra = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -12823,8 +12761,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 255ll ) { decoded_wide = 255ll; report->clamped++; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 255ll ) { decoded_wide = 255ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.extra = decoded_v;
                 }
@@ -12842,7 +12780,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -12850,22 +12788,22 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                            if ( decoded_wide > 15ll ) { decoded_wide = 15ll; report->clamped++; }
+                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 15ll ) { decoded_wide = 15ll; report->refused = true; report->refuse_reason = out_of_range;; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.idle_ticks = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -12873,8 +12811,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 15ll ) { decoded_wide = 15ll; report->clamped++; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 15ll ) { decoded_wide = 15ll; report->refused = true; report->refuse_reason = out_of_range;; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.idle_ticks = decoded_v;
                 }
@@ -12882,7 +12820,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                 break;
         }
     }
@@ -12945,7 +12883,7 @@ inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
+    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
@@ -13194,33 +13132,33 @@ TABLE_FIXED_INLINE bool MixedEntityFixedInRange( const MixedEntity & value )
 }
 
 // MixedEntity's read-side bounds.
-inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
+inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
+    (void) value; (void) oor_count; (void) damaged;
     // bits(12) width clamp
-    clamped += ( value.entity_id > 4095ull );
+    oor_count += ( value.entity_id > 4095ull );
     value.entity_id = ( value.entity_id > 4095ull ) ? 4095ull : value.entity_id;
-    clamped += (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
+    oor_count += (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
     value.pos_x = ( value.pos_x < -16383 ) ? -16383 : ( ( value.pos_x > 16383 ) ? 16383 : value.pos_x );
-    clamped += (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
+    oor_count += (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
     value.pos_y = ( value.pos_y < -16383 ) ? -16383 : ( ( value.pos_y > 16383 ) ? 16383 : value.pos_y );
-    clamped += (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
+    oor_count += (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
     value.pos_z = ( value.pos_z < -16383 ) ? -16383 : ( ( value.pos_z > 16383 ) ? 16383 : value.pos_z );
     // bits(9) width clamp
-    clamped += ( value.yaw > 511ull );
+    oor_count += ( value.yaw > 511ull );
     value.yaw = ( value.yaw > 511ull ) ? 511ull : value.yaw;
     // bits(9) width clamp
-    clamped += ( value.pitch > 511ull );
+    oor_count += ( value.pitch > 511ull );
     value.pitch = ( value.pitch > 511ull ) ? 511ull : value.pitch;
-    clamped += (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
+    oor_count += (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
     value.vel_x = ( value.vel_x < -2048 ) ? -2048 : ( ( value.vel_x > 2047 ) ? 2047 : value.vel_x );
-    clamped += (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
+    oor_count += (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
     value.vel_y = ( value.vel_y < -2048 ) ? -2048 : ( ( value.vel_y > 2047 ) ? 2047 : value.vel_y );
-    clamped += (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
+    oor_count += (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
     value.vel_z = ( value.vel_z < -2048 ) ? -2048 : ( ( value.vel_z > 2047 ) ? 2047 : value.vel_z );
-    clamped += (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
+    oor_count += (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
     value.health = ( value.health < 0 ) ? 0 : ( ( value.health > 1000 ) ? 1000 : value.health );
-    if ( (uint64_t) value.weapon > 15u ) { value.weapon = MixedWeapon::None; clamped++; }
+    if ( (uint64_t) value.weapon > 15u ) { value.weapon = MixedWeapon::None; oor_count++; }
 }
 
 // MixedStat's read-side bounds, CHECKED: true when every clamp below would
@@ -13236,13 +13174,13 @@ TABLE_FIXED_INLINE bool MixedStatFixedInRange( const MixedStat & value )
 }
 
 // MixedStat's read-side bounds.
-inline void MixedStatFixedClampBody( MixedStat & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
+inline void MixedStatFixedClampBody( MixedStat & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
+    (void) value; (void) oor_count; (void) damaged;
     // bits(8) width clamp
-    clamped += ( value.stat_id > 255ull );
+    oor_count += ( value.stat_id > 255ull );
     value.stat_id = ( value.stat_id > 255ull ) ? 255ull : value.stat_id;
-    clamped += (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
+    oor_count += (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
     value.delta = ( value.delta < -512 ) ? -512 : ( ( value.delta > 511 ) ? 511 : value.delta );
 }
 
@@ -13260,15 +13198,15 @@ TABLE_FIXED_INLINE bool MixedHitEventFixedInRange( const MixedHitEvent & value )
 }
 
 // MixedHitEvent's read-side bounds.
-inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
+inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
+    (void) value; (void) oor_count; (void) damaged;
     // bits(12) width clamp
-    clamped += ( value.target_id > 4095ull );
+    oor_count += ( value.target_id > 4095ull );
     value.target_id = ( value.target_id > 4095ull ) ? 4095ull : value.target_id;
-    clamped += (int) ( value.damage < 0 ) | (int) ( value.damage > 4095 );
+    oor_count += (int) ( value.damage < 0 ) | (int) ( value.damage > 4095 );
     value.damage = ( value.damage < 0 ) ? 0 : ( ( value.damage > 4095 ) ? 4095 : value.damage );
-    clamped += (int) ( value.hit_kind < 0 ) | (int) ( value.hit_kind > 7 );
+    oor_count += (int) ( value.hit_kind < 0 ) | (int) ( value.hit_kind > 7 );
     value.hit_kind = ( value.hit_kind < 0 ) ? 0 : ( ( value.hit_kind > 7 ) ? 7 : value.hit_kind );
 }
 
@@ -13285,13 +13223,13 @@ TABLE_FIXED_INLINE bool MixedChatEventFixedInRange( const MixedChatEvent & value
 }
 
 // MixedChatEvent's read-side bounds.
-inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
+inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
-    clamped += (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
+    (void) value; (void) oor_count; (void) damaged;
+    oor_count += (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
     value.channel = ( value.channel < 0 ) ? 0 : ( ( value.channel > 3 ) ? 3 : value.channel );
     // bits(12) width clamp
-    clamped += ( value.speaker > 4095ull );
+    oor_count += ( value.speaker > 4095ull );
     value.speaker = ( value.speaker > 4095ull ) ? 4095ull : value.speaker;
 }
 
@@ -13308,13 +13246,13 @@ TABLE_FIXED_INLINE bool MixedPickupEventFixedInRange( const MixedPickupEvent & v
 }
 
 // MixedPickupEvent's read-side bounds.
-inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
+inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
+    (void) value; (void) oor_count; (void) damaged;
     // bits(10) width clamp
-    clamped += ( value.item_id > 1023ull );
+    oor_count += ( value.item_id > 1023ull );
     value.item_id = ( value.item_id > 1023ull ) ? 1023ull : value.item_id;
-    clamped += (int) ( value.amount < 0 ) | (int) ( value.amount > 255 );
+    oor_count += (int) ( value.amount < 0 ) | (int) ( value.amount > 255 );
     value.amount = ( value.amount < 0 ) ? 0 : ( ( value.amount > 255 ) ? 255 : value.amount );
 }
 
@@ -13373,45 +13311,45 @@ TABLE_FIXED_INLINE bool BenchMixedFixedInRange( const BenchMixed & value )
 }
 
 // BenchMixed's read-side bounds.
-inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & TABLE_CLAMP_RESTRICT clamped, int32_t & TABLE_CLAMP_RESTRICT damaged )
+inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) clamped; (void) damaged;
+    (void) value; (void) oor_count; (void) damaged;
     // bits(16) width clamp
-    clamped += ( value.sequence > 65535ull );
+    oor_count += ( value.sequence > 65535ull );
     value.sequence = ( value.sequence > 65535ull ) ? 65535ull : value.sequence;
-    clamped += (int) ( value.ack_sequence < 0 ) | (int) ( value.ack_sequence > 65535 );
+    oor_count += (int) ( value.ack_sequence < 0 ) | (int) ( value.ack_sequence > 65535 );
     value.ack_sequence = ( value.ack_sequence < 0 ) ? 0 : ( ( value.ack_sequence > 65535 ) ? 65535 : value.ack_sequence );
-    clamped += (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
+    oor_count += (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
     value.world_time = ( value.world_time < -1000000000000ll ) ? -1000000000000ll : ( ( value.world_time > 1000000000000ll ) ? 1000000000000ll : value.world_time );
     // bits(48) width clamp
-    clamped += ( value.frame_tick > 281474976710655ull );
+    oor_count += ( value.frame_tick > 281474976710655ull );
     value.frame_tick = ( value.frame_tick > 281474976710655ull ) ? 281474976710655ull : value.frame_tick;
-    clamped += (int) ( value.server_time < 0 ) | (int) ( value.server_time > 16776960 );
+    oor_count += (int) ( value.server_time < 0 ) | (int) ( value.server_time > 16776960 );
     value.server_time = ( value.server_time < 0 ) ? 0 : ( ( value.server_time > 16776960 ) ? 16776960 : value.server_time );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
-        MixedEntityFixedClampBody( value.entities[i], clamped, damaged );
+        MixedEntityFixedClampBody( value.entities[i], oor_count, damaged );
     }
     for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
     {
-        MixedStatFixedClampBody( value.stats[i], clamped, damaged );
+        MixedStatFixedClampBody( value.stats[i], oor_count, damaged );
     }
-    if ( (uint64_t) value.game_event.type > 3u ) { value.game_event.type = MixedEventType::None; clamped++; }
+    if ( (uint64_t) value.game_event.type > 3u ) { value.game_event.type = MixedEventType::None; oor_count++; }
     switch ( value.game_event.type )
     {
         case MixedEventType::Hit:
         {
-            MixedHitEventFixedClampBody( value.game_event.hit, clamped, damaged );
+            MixedHitEventFixedClampBody( value.game_event.hit, oor_count, damaged );
             break;
         }
         case MixedEventType::Chat:
         {
-            MixedChatEventFixedClampBody( value.game_event.chat, clamped, damaged );
+            MixedChatEventFixedClampBody( value.game_event.chat, oor_count, damaged );
             break;
         }
         case MixedEventType::Pickup:
         {
-            MixedPickupEventFixedClampBody( value.game_event.pickup, clamped, damaged );
+            MixedPickupEventFixedClampBody( value.game_event.pickup, oor_count, damaged );
             break;
         }
         default: break;
@@ -13420,22 +13358,22 @@ inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & TABLE_CLAMP_
     {
         damaged++;
     }
-    clamped += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
+    oor_count += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
     value.aim_x = ( value.aim_x < -1.0f ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
-    clamped += (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
+    oor_count += (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
     value.aim_y = ( value.aim_y < -1.0f ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
-    clamped += (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
+    oor_count += (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
     value.aim_z = ( value.aim_z < -1.0f ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
-    clamped += (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    oor_count += (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
     value.flux = ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : ( ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : value.flux );
-    clamped += ( value.ping > 64000 );
+    oor_count += ( value.ping > 64000 );
     value.ping = ( value.ping > 64000 ) ? 64000 : value.ping;
     // bits(24) width clamp
-    clamped += ( value.crc_hint > 16777215ull );
+    oor_count += ( value.crc_hint > 16777215ull );
     value.crc_hint = ( value.crc_hint > 16777215ull ) ? 16777215ull : value.crc_hint;
-    clamped += (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
+    oor_count += (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
     value.extra = ( value.extra < 0 ) ? 0 : ( ( value.extra > 255 ) ? 255 : value.extra );
-    clamped += (int) ( value.idle_ticks < 0 ) | (int) ( value.idle_ticks > 15 );
+    oor_count += (int) ( value.idle_ticks < 0 ) | (int) ( value.idle_ticks > 15 );
     value.idle_ticks = ( value.idle_ticks < 0 ) ? 0 : ( ( value.idle_ticks > 15 ) ? 15 : value.idle_ticks );
 }
 
@@ -14020,7 +13958,6 @@ inline const TableTypeInfo * BenchMixedTableType()
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedEntityFromJson( MixedEntity & value, const char * text, int64_t bytes, TableReport * report );
-bool MixedEntityFromJsonTolerant( MixedEntity & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedEntityToJsonMeasure( const MixedEntity & value );
 int64_t MixedEntityToJson( const MixedEntity & value, char * buffer, int64_t capacity );
 
@@ -14028,7 +13965,6 @@ int64_t MixedEntityToJson( const MixedEntity & value, char * buffer, int64_t cap
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedStatFromJson( MixedStat & value, const char * text, int64_t bytes, TableReport * report );
-bool MixedStatFromJsonTolerant( MixedStat & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedStatToJsonMeasure( const MixedStat & value );
 int64_t MixedStatToJson( const MixedStat & value, char * buffer, int64_t capacity );
 
@@ -14036,7 +13972,6 @@ int64_t MixedStatToJson( const MixedStat & value, char * buffer, int64_t capacit
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedHitEventFromJson( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report );
-bool MixedHitEventFromJsonTolerant( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedHitEventToJsonMeasure( const MixedHitEvent & value );
 int64_t MixedHitEventToJson( const MixedHitEvent & value, char * buffer, int64_t capacity );
 
@@ -14044,7 +13979,6 @@ int64_t MixedHitEventToJson( const MixedHitEvent & value, char * buffer, int64_t
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedChatEventFromJson( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report );
-bool MixedChatEventFromJsonTolerant( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedChatEventToJsonMeasure( const MixedChatEvent & value );
 int64_t MixedChatEventToJson( const MixedChatEvent & value, char * buffer, int64_t capacity );
 
@@ -14052,7 +13986,6 @@ int64_t MixedChatEventToJson( const MixedChatEvent & value, char * buffer, int64
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool MixedPickupEventFromJson( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report );
-bool MixedPickupEventFromJsonTolerant( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MixedPickupEventToJsonMeasure( const MixedPickupEvent & value );
 int64_t MixedPickupEventToJson( const MixedPickupEvent & value, char * buffer, int64_t capacity );
 
@@ -14060,7 +13993,6 @@ int64_t MixedPickupEventToJson( const MixedPickupEvent & value, char * buffer, i
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // BenchTable.cpp; link it to use them.
 bool BenchMixedFromJson( BenchMixed & value, const char * text, int64_t bytes, TableReport * report );
-bool BenchMixedFromJsonTolerant( BenchMixed & value, const char * text, int64_t bytes, TableReport * report );
 int64_t BenchMixedToJsonMeasure( const BenchMixed & value );
 int64_t BenchMixedToJson( const BenchMixed & value, char * buffer, int64_t capacity );
 

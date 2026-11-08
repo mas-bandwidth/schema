@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 import .schema_runtime
+import .schema_tables
 import .fixed
 
 namespace schema_rt
@@ -31,6 +32,7 @@ let tableFixedConst = 8
 let tableFixedTextUtf8 = 1
 let tableFixedTextWide = 2
 let tableFixedTextBytes = 3
+let tableFixedPresent = 4
 
 let TableOpenExact = 0
 let TableOpenCompatible = 1
@@ -64,6 +66,7 @@ let TableRefuseTruncated = "truncated"
 let TableRefuseReservedNotZero = "reserved_not_zero"
 let TableRefuseIntegrityMismatch = "integrity_mismatch"
 let TableRefuseInvalidValue = "invalid_value"
+let TableRefuseOutOfRange = "out_of_range"
 let TableRefuseClamped = "clamped"
 let TableRefuseKindMismatch = "kind_mismatch"
 let TableRefuseNonFiniteFloat = "non_finite_float"
@@ -393,6 +396,7 @@ def fixed_build_plan(scratch:[TableFixedEntry]) -> TableFixedPlan:
             if prev.op == cur.op and fixed_runs(cur.op) and
                prev.grd == cur.grd and prev.arg == cur.arg and
                prev.arg_w == cur.arg_w and prev.meta == cur.meta and
+               prev.meta != tableFixedPresent and
                prev.grd2 == cur.grd2 and prev.arg2 == cur.arg2 and
                prev.arg_w2 == cur.arg_w2 and
                prev.chain_id == cur.chain_id and length(prev.chain) == length(cur.chain) and
@@ -637,7 +641,7 @@ def fixed_src_end(e:TableFixedEntry) -> int:
         case tableFixedConst:
             end = 0
             if e.aux == 0 and e.dst_size != 0:
-                end = e.src + e.size
+                end = e.src + e.meta
         case tableFixedCount:
             end = e.src + 4
         case tableFixedText:
@@ -735,6 +739,8 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                 src: their_at,
                 dst: aux_at,
                 size: 1,
+                aux: te.size - 1,
+                meta: tableFixedPresent,
                 grd: grd,
                 op: tableFixedBool,
                 arg: arg
@@ -755,6 +761,7 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                     src: their_at,
                     dst: aux_at,
                     size: n,
+                    aux: tel.size,
                     grd: grd,
                     op: tableFixedCount,
                     arg: arg
@@ -777,7 +784,7 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
         case 15:
             let their_tag = fixed_tag_bytes(theirs, ti)
             let my_tag = fixed_tag_bytes(mine, mi)
-            let none_dst_size = if te.children > 0 and te.children <= 255: te.children else: 0
+            let none_dst_size = te.children
             fixed_push(c, TableFixedEntry {
                 src: their_at,
                 dst: aux_at,
@@ -785,7 +792,8 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                 grd: grd,
                 op: tableFixedConst,
                 arg: arg,
-                dst_size: none_dst_size
+                dst_size: none_dst_size,
+                meta: their_tag
             })
             let saved_w = c.arg_w
             c.arg_w = if their_tag >= 1 and their_tag <= 8: their_tag else: 1
@@ -821,17 +829,6 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                 my_arm += fixed_subtree(mine, my_arm)
             c.arg_w = saved_w
         case 30:
-            if te.size < me.size:
-                fixed_push(c, TableFixedEntry {
-                    src: their_at,
-                    dst: at,
-                    size: te.size,
-                    grd: grd,
-                    op: tableFixedWiden,
-                    arg: arg,
-                    dst_size: me.size
-                })
-                return
             let n = te.children
             if n > tableFixedRemapMax:
                 c.overflow = true
@@ -954,6 +951,7 @@ def fixed_compile(theirs:TableFixedLayoutView, my_layout:string, dst:[TableFixed
             if prev.op == cur.op and fixed_runs(cur.op) and
                prev.grd == cur.grd and prev.arg == cur.arg and
                prev.arg_w == cur.arg_w and prev.meta == cur.meta and
+               prev.meta != tableFixedPresent and
                prev.grd2 == cur.grd2 and prev.arg2 == cur.arg2 and
                prev.arg_w2 == cur.arg_w2 and
                prev.chain_id == cur.chain_id and length(prev.chain) == length(cur.chain) and
@@ -1152,21 +1150,50 @@ def fixed_text_ill_formed(meta:int, used:int, p:string, base:int) -> bool:
         return fixed_wide_ill_formed(p, base, used)
     return false
 
-def fixed_text_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:int) -> string:
+// Dead payload bytes are storage slack: do not validate absent optionals or
+// elements past a counted array's live extent (SPEC-TABLES §6.5).
+def fixed_dead_at(dead:[TableFixedHole], at:int) -> bool:
+    for(dead) h:
+        if at >= h.off and at < h.off + h.size:
+            return true
+    return false
+
+def fixed_value_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:int) -> string:
+    let dead:[TableFixedHole] = []
     for(count) i:
         let p = plan[i]
-        var active = true
-        if p.grd != tableFixedNoGuard and fixed_tag_at(src, src_base + p.grd, p.arg_w) != p.arg:
+        var active = p.op == tableFixedBool or not fixed_dead_at(dead, p.src)
+        if active and p.grd != tableFixedNoGuard and fixed_tag_at(src, src_base + p.grd, p.arg_w) != p.arg:
             active = false
         if active and p.arg_w2 != 0 and fixed_tag_at(src, src_base + p.grd2, p.arg_w2) != p.arg2:
             active = false
         if active and length(p.chain) > 2 and not fixed_chain_holds(p, src, src_base):
             active = false
         if active:
-            if p.op == tableFixedCount:
+            if p.op == tableFixedBool:
+                for(p.size) k:
+                    if not fixed_dead_at(dead, p.src + k):
+                        let v = read_uint8_le(src, src_base + p.src + k)
+                        if v > 1:
+                            return TableRefuseInvalidValue
+                        if p.meta == tableFixedPresent and v == 0:
+                            push(dead, TableFixedHole { off: p.src + 1, size: p.aux })
+            elif p.op == tableFixedTag:
+                if ult(p.aux, fixed_tag_at(src, src_base + p.src, p.size)):
+                    return TableRefuseOutOfRange
+            elif p.op == tableFixedOrdinal:
+                if ult(length(p.remap), fixed_tag_at(src, src_base + p.src, p.size)):
+                    return TableRefuseOutOfRange
+            elif p.op == tableFixedConst:
+                if p.aux == 0 and p.dst_size != 0:
+                    if ult(p.dst_size, fixed_tag_at(src, src_base + p.src, p.meta)):
+                        return TableRefuseOutOfRange
+            elif p.op == tableFixedCount:
                 let v = read_int32_le(src, src_base + p.src)
                 if v < 0 or v > p.size:
                     return TableRefuseCountOverBound
+                if p.aux > 0 and v < p.size:
+                    push(dead, TableFixedHole { off: p.src + 4 + v * p.aux, size: (p.size - v) * p.aux })
             elif p.op == tableFixedText:
                 let unit = if p.meta == tableFixedTextWide: 2 else: 1
                 let capn = p.size / unit
@@ -1189,7 +1216,7 @@ def fixed_copy_run(dst:string, dst_off:int, src:string, src_off:int, n:int) -> s
     return b
 
 def fixed_run(plan:[TableFixedEntry], count:int, src:string, src_base:int, dst_in:string, report:TableReport) -> string, string:
-    let why = fixed_text_refusal(plan, count, src, src_base)
+    let why = fixed_value_refusal(plan, count, src, src_base)
     if why != "":
         return dst_in, why
     var dst = dst_in
@@ -1229,6 +1256,8 @@ def fixed_run(plan:[TableFixedEntry], count:int, src:string, src_base:int, dst_i
                     dst = write_int32_le(dst, p.dst, v)
                     dst = fixed_copy_run(dst, p.aux, src, src_base + p.src + 4, p.size)
                 case tableFixedOrdinal:
+                    if p.dst_size > p.size:
+                        report.widened += 1
                     let raw = fixed_tag_at(src, src_base + p.src, p.size)
                     let n_remap = length(p.remap)
                     var v = 0
@@ -1282,27 +1311,6 @@ def fixed_run(plan:[TableFixedEntry], count:int, src:string, src_base:int, dst_i
                     pass()
     return dst, ""
 
-def fixed_forged_bounds(plan:[TableFixedEntry], count:int, src:string, src_base:int, report:TableReport):
-    for(count) i:
-        let p = plan[i]
-        var active = true
-        if p.grd != tableFixedNoGuard and fixed_tag_at(src, src_base + p.grd, p.arg_w) != p.arg:
-            active = false
-        if active and p.arg_w2 != 0 and fixed_tag_at(src, src_base + p.grd2, p.arg_w2) != p.arg2:
-            active = false
-        if active and length(p.chain) > 2 and not fixed_chain_holds(p, src, src_base):
-            active = false
-        if active:
-            if p.op == tableFixedOrdinal:
-                let raw = fixed_tag_at(src, src_base + p.src, p.size)
-                if raw != 0 and ult(length(p.remap), raw):
-                    report.clamped += 1
-            elif p.op == tableFixedConst:
-                if p.aux == 0 and p.dst_size != 0 and p.grd == tableFixedNoGuard:
-                    let raw = fixed_tag_at(src, src_base + p.src, p.size)
-                    if ult(p.dst_size, raw):
-                        report.clamped += 1
-
 def fixed_prefill_holes(img:string, def_bytes:string, holes:[TableFixedHole]) -> string:
     var out = img
     for(holes) h:
@@ -1336,15 +1344,7 @@ def fixed_report_err(r:TableReport) -> string:
     return ""
 
 def fixed_crc32c(data:string, len_bytes:int) -> int:
-    var crc = 0xffffffff
-    for(len_bytes) i:
-        crc = (crc ^ read_uint8_le(data, i)) & 0xffffffff
-        for(8):
-            if (crc & 1) != 0:
-                crc = (shr(crc, 1) ^ 0x82f63b78) & 0xffffffff
-            else:
-                crc = shr(crc, 1) & 0xffffffff
-    return (crc ^ 0xffffffff) & 0xffffffff
+    return wire_crc32c(data, len_bytes)
 
 def fixed_integrity_holds(wire:string) -> bool:
     let n = length(wire) - 4

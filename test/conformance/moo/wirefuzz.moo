@@ -18,7 +18,7 @@
 --   <generated tree> the repo-relative tree make/moo-conformance.mk writes
 --
 -- THE ROSTER. A FORM-1 entry is driven through the unit's table_load.moo
--- (loadTolerant) and table_save.moo; with RETAIN set, through table_retain.moo
+-- (load) and table_save.moo; with RETAIN set, through table_retain.moo
 -- (LoadRetain, SaveRetain) over one store at the harness's two capacities. A
 -- FORM-2 entry is a MESSAGE batch, driven through table_message.moo
 -- (LoadMessages, SaveMessages) against the vocabulary the unit's own
@@ -31,8 +31,15 @@
 -- The reply is the harness's 47-byte header
 --   u8 loaded; i32 unknown, kind_mismatch, widened, clamped, duplicate;
 --   u8 malformed; u8 refused; i64 measure; i32 retained, retain_lost;
---   i64 saved, then that many bytes
--- with the runtime's counters and saved bytes.
+--   i64 saved, then that many bytes.
+-- THE VERDICT IS THE CONTRACT (docs/rulings.json refusal-verdict-only,
+-- conformance-is-read-then-write): a read either ACCEPTS, and the reply carries
+-- loaded 1 and the value written back, or REFUSES, and the reply carries
+-- loaded 0, malformed and refused 1 and no saved bytes. The harness compares
+-- the verdict and an accepted value's write-back, never a counter or a reason.
+-- A file entry of a FIXED root reads form 3 through table_refusal.moo's
+-- ReadStrict and writes back through table_fixed.moo; a VARIABLE root reads
+-- form 1 through table_load.moo's ReadStrict (or LoadRetain).
 
 local args = { ... }
 local tablesModule: string = args[1] or ""
@@ -398,7 +405,20 @@ local function scanRecords(c: Ctx, payload: any): { any }?
 	return out
 end
 
-type Unit = { S: any, V: any, C: any, L: any, W: any, R: any, M: any, align: number, announcement: buffer? }
+type Unit = {
+	S: any,
+	V: any,
+	C: any,
+	L: any,
+	W: any,
+	R: any,
+	M: any,
+	F: any,
+	X: any,
+	fixedModule: { [string]: any },
+	align: number,
+	announcement: buffer?,
+}
 
 -- regionMeasure answers the canonical region bytes for a whole form-1 wire,
 -- -1 for a framing that cannot be read (FileRegionMeasure's refusal and its
@@ -510,63 +530,64 @@ local function answer(e: Entry, wire: buffer): buffer
 	local desc = u.S.lookup(root)
 	local report = u.L.newReport()
 	local measure = -1
-	local measureRefused = false
 	local v: any = nil
 	local saved: buffer? = nil
 	if e.message then
-		-- A FIXED-CLASS root's batch (§3.3): body one is the answer, and the
-		-- value as far as it decoded stands when the batch is damaged inside it
+		-- A FIXED-CLASS root's batch (§3.3), read whole or refused whole; an
+		-- accepted batch writes back every body, as the harness's oracle does
 		local vocabulary = u.M.NewVocabulary()
 		if not u.M.AnnounceRead(vocabulary, u.announcement, {}) then
 			error("wirefuzz: the unit's own announcement was refused", 0)
 		end
 		local n, values = u.M.LoadMessages(vocabulary, root, wire, BATCH, report)
-		if n >= 1 then
+		if n >= 1 and #values == n and not report.damaged and not report.refused and report.reason == nil then
 			v = values[1]
-		else
-			v = values[1] or desc.new()
+			saved = u.M.SaveMessages(root, values, {})
 		end
-		saved = u.M.SaveMessages(root, { v }, {})
-	else
-		-- LoadMeasure (§6.5) COMES FIRST for a VARIABLE root: a wire it cannot
-		-- read is a LoadMeasure refusal, there is no region to load into, so
-		-- the leg returns NO ROOT and never saves
-		if desc.variable then
-			measure = regionMeasure(u, desc, wire)
-			measureRefused = measure < 0
-		end
-		local kept: any = nil
-		if not measureRefused then
-			if e.retain then
-				kept = u.R.newStore(RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
-				v = u.R.LoadRetain(root, wire, report, kept)
+	elseif not desc.variable then
+		-- A FIXED root reads its file form 3 and nothing else (§3.4, §6.5)
+		local T = u.fixedModule[root]
+		if T ~= nil then
+			v = u.F.ReadStrict(T, root, wire, report)
+			if v ~= nil and report.reason == nil then
+				saved = u.X.save(desc, T[root .. "Fixed"], { v })
 			else
-				v = u.L.loadTolerant(root, wire, report)
+				v = nil
 			end
 		end
-		-- A FIXED root always loads: a refused or damaged wire answers the
-		-- root at its defaults
-		if v == nil and not desc.variable then
-			v = desc.new()
-		end
-		if v ~= nil then
+	else
+		-- LoadMeasure (§6.5) COMES FIRST for a VARIABLE root: a wire it cannot
+		-- read is a LoadMeasure refusal, there is no region to load into
+		measure = regionMeasure(u, desc, wire)
+		if measure >= 0 then
 			if e.retain then
-				saved = u.R.SaveRetain(root, v, kept, report)
+				local kept = u.R.newStore(RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
+				v = u.R.LoadRetain(root, wire, report, kept)
+				if v ~= nil and report.reason == nil then
+					saved = u.R.SaveRetain(root, v, kept, report)
+				else
+					v = nil
+				end
 			else
-				saved = u.W.save(desc, v)
+				v = u.L.ReadStrict(root, wire, report)
+				if v ~= nil and report.reason == nil then
+					saved = u.W.save(desc, v)
+				else
+					v = nil
+				end
 			end
 		end
 	end
-	local refused = report.refused == true or count(report.refused) > 0 or count(report.nonFinite) > 0
+	local refused = v == nil
 	local n = 47 + (if saved ~= nil then buffer.len(saved) else 0)
 	local b = buffer.create(n)
 	buffer.writeu8(b, 0, if v ~= nil then 1 else 0)
 	buffer.writei32(b, 1, count(report.unknown))
-	buffer.writei32(b, 5, count(report.kindMismatch))
+	buffer.writei32(b, 5, count(0))
 	buffer.writei32(b, 9, count(report.widened))
-	buffer.writei32(b, 13, count(report.clamped))
-	buffer.writei32(b, 17, count(report.duplicate))
-	buffer.writeu8(b, 21, if report.malformed then 1 else 0)
+	buffer.writei32(b, 13, count(0))
+	buffer.writei32(b, 17, count(0))
+	buffer.writeu8(b, 21, if refused then 1 else 0)
 	buffer.writeu8(b, 22, if refused then 1 else 0)
 	-- an i64 as two little-endian halves (a moo number is Q48.16)
 	if measure < 0 then
@@ -603,9 +624,14 @@ local function unit(key: string): Unit?
 			local C = load(base .. "table_cookread")
 			local align = 8
 			local announcement: buffer? = nil
+			-- the <Base>Table module that declares each fixed root's form-3 data
+			local fixedModule: { [string]: any } = {}
 			for _, name in tableModules[key] or {} do
 				local mod = load(base .. name)
 				for k, d in mod do
+					if type(k) == "string" and #k > 5 and string.sub(k, -5) == "Fixed" and type(d) == "table" and d.lineage ~= nil then
+						fixedModule[string.sub(k, 1, -6)] = mod
+					end
 					if type(k) == "string" and string.sub(k, -10) == "Descriptor" and type(d) == "table" and d.fields ~= nil then
 						-- the region's alignment is ir.TableRegionAlign: the greatest
 						-- node alignment, a record's own or its extent's
@@ -631,6 +657,9 @@ local function unit(key: string): Unit?
 				W = load(base .. "table_save"),
 				R = load(base .. "table_retain"),
 				M = M,
+				F = load(base .. "table_refusal"),
+				X = load(base .. "table_fixed"),
+				fixedModule = fixedModule,
 				align = align,
 				announcement = announcement,
 			}

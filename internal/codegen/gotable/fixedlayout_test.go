@@ -118,7 +118,7 @@ func refuses(t *testing.T, broken []byte, want, what string) {
 	}
 	// NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read a
 	// record would be the damage the refusal exists to prevent.
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Malformed {
+	if r.Unknown != 0 || r.Widened != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("%s: a layout refusal sets nothing and counts nothing: %+v", what, r)
 	}
 }
@@ -267,7 +267,7 @@ func TestLayoutMalformedResidue(t *testing.T) {
 	// Digest is not on the wire (bill §13): the header hash is not
 	// hash_of(layout), so a lying header is caught when the records still
 	// carry the real hash — no_layout — rather than as layout_malformed.
-	if n >= 0 || r.Verdict != tblfx1.TableOpenRefused || r.Reason != "no_layout" || r.Malformed {
+	if n >= 0 || r.Verdict != tblfx1.TableOpenRefused || r.Reason != "no_layout" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("a header hash that is not the hash the records carry: n=%d %+v", n, r)
 	}
 }

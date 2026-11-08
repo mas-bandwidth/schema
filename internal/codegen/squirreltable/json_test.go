@@ -448,7 +448,7 @@ func TestSquirrelJsonNegativeControl(t *testing.T) {
 		writeFile(t, filepath.Join(out, name), data)
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(fmt.Sprintf(controlPrelude, squirreltable.ModuleName(unit))))
-	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "keyed_config.bin"))
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "wire", "keyed_config.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}

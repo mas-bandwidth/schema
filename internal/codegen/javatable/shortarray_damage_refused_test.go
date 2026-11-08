@@ -38,10 +38,10 @@ func TestJavaFixShortArrayDamageRefused(t *testing.T) {
 	}
 	oracle := model.New(def)
 	var report tabletext.Report
-	if _, err := tablewire.Decode(model, oracle, mutant, &report); err != nil {
+	if _, err := tablewire.Decode(model, oracle, mutant, &report); err != nil && !tablewire.ReadRefusal(err) {
 		t.Fatalf("oracle refused the mutant's form: %v", err)
 	}
-	if !report.Malformed {
+	if !report.Refused {
 		t.Fatalf("oracle report %+v: the short body is not malformed", report)
 	}
 

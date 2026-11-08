@@ -204,7 +204,6 @@ func largestBlob(t *testing.T, g *loadUnit, rootName string, wire []byte) int {
 func TestLobsterCollections(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
-	expect := reportLines(t)
 	byUnit := map[string][]loadRow{}
 	for _, row := range loadRows(t) {
 		if _, ok := units[row.unit]; !ok {
@@ -219,7 +218,7 @@ func TestLobsterCollections(t *testing.T) {
 	sort.Strings(order)
 	var total collectionCounts
 	selected, reports, instances, values, saved := 0, 0, 0, 0, 0
-	skipped, myBlob, m17 := 0, 0, false
+	myBlob, m17 := 0, false
 	for _, key := range order {
 		paths, err := compiler.GatherPaths(prefix(units[key]))
 		if err != nil {
@@ -251,13 +250,12 @@ func TestLobsterCollections(t *testing.T) {
 		for i, row := range rows {
 			line, dump := lob[2*i], lob[2*i+1]
 			if row.kind == "report" {
-				if want, ok := expect[row.name]; ok && line != want {
-					t.Errorf("report %s (%s):\nlobster: %s\nwant:    %s", row.name, key, line, want)
-				}
 				reports++
 			} else {
-				instRows = append(instRows, row)
 				instances++
+				if goLine[i] == "read" {
+					instRows = append(instRows, row)
+				}
 			}
 			if line != goLine[i] {
 				t.Errorf("%s %s: the report is not the reference's:\nlobster: %s\ngo:      %s", row.kind, row.name, line, goLine[i])
@@ -285,9 +283,7 @@ func TestLobsterCollections(t *testing.T) {
 			}
 			out, goErr := goSave(g, row.root, wire)
 			if goErr != nil {
-				t.Logf("instance %s is refused by the Go writer and not compared: %v", row.name, goErr)
-				skipped++
-				continue
+				t.Fatalf("%s: accepted value cannot save: %v", row.name, goErr)
 			}
 			kept = append(kept, row)
 			want = append(want, out)
@@ -327,8 +323,8 @@ func TestLobsterCollections(t *testing.T) {
 	if !m17 {
 		t.Fatalf("M17 was not exercised: no blob_large instance was compared")
 	}
-	t.Logf("maps=%d blobs=%d unbounded-arrays=%d over %d units; %d report rows and %d instance rows loaded, %d values equal the reference's; %d instances saved byte for byte and re-loaded; %d skipped by name",
-		total.maps, total.blobs, total.lists, selected, reports, instances, values, saved, skipped)
+	t.Logf("maps=%d blobs=%d unbounded-arrays=%d over %d units; %d report rows and %d instance rows loaded, %d values equal the reference's; %d instances saved byte for byte and re-loaded",
+		total.maps, total.blobs, total.lists, selected, reports, instances, values, saved)
 }
 
 // TestLobsterCollectionsNegativeControl breaks one construct — the map
@@ -366,11 +362,11 @@ func TestLobsterCollectionsNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "            if ek != 13:\n                rep.kind_mismatch++\n"
+	const anchor = "        if ek != 13:\n            return read_refuse(rep, \"kind_mismatch\")\n"
 	if n := strings.Count(string(src), anchor); n != 1 {
 		t.Fatalf("the map header-kind anchor is in the emitted runtime %d times, want 1", n)
 	}
-	patched := strings.Replace(string(src), anchor, "            if ek != 12:\n                rep.kind_mismatch++\n", 1)
+	patched := strings.Replace(string(src), anchor, "        if ek != 12:\n            return read_refuse(rep, \"kind_mismatch\")\n", 1)
 	if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}

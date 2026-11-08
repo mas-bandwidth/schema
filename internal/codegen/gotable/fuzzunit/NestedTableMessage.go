@@ -33,7 +33,10 @@ func ArchiveConfigSaveMessageBody(w *TableMessageWriter, value *ArchiveConfig) b
 	{
 		if value.Count != 1 {
 			w.Put(2, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0))
+			if value.Count < 0 || value.Count > 100 {
+				w.Over++
+			}
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0))
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -80,17 +83,22 @@ func ArchiveConfigSaveMessages(values []*ArchiveConfig, buffer []byte, report *T
 	if w.Overflow {
 		return -1
 	}
-	if report != nil {
-		report.Clamped += w.Clamped
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
 	}
 	return 2 + w.Bits/8
 }
 func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) bool {
 	ArchiveConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -98,9 +106,16 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
 		if !ok || entry.ID >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{
@@ -109,12 +124,8 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				if !RootConfigLoadMessageBody(r, &value.Root) {
@@ -131,35 +142,27 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					payload1 := TableReader{Buffer: raw[:], Report: &r.Report}
 					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := payload1.Signed(entry.Shape.Kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
-						} else if v > 100 {
-							v = 100
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
+						if v < 0 || v > 100 {
+							r.Report.Refuse(TableRefuseOutOfRange, "ArchiveConfig.count")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Count = int32(v)
 					}
@@ -171,19 +174,16 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 		default:
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// ArchiveConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
-// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
-// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
-// ArchiveConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
-// ArchiveConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
-// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
+// ArchiveConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
+// count of 0 and every value it had written reset. A supplied report receives this read's report;
+// report.Err() is the reason.
 func ArchiveConfigLoadMessages(values []ArchiveConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
@@ -191,35 +191,22 @@ func ArchiveConfigLoadMessages(values []ArchiveConfig, vocabulary *TableVocabula
 	} else {
 		*read = TableReport{}
 	}
-	count, ok := ArchiveConfigLoadMessagesTolerant(values, vocabulary, data, read)
-	if !ok {
-		return count, false
-	}
-	if read.Err() != nil {
-		for i := range count {
-			ArchiveConfigReset(&values[i])
+	r, count := tableMessageBatchOpen(vocabulary, data, read)
+	defer func() {
+		*read = r.Report
+		if read.Refused() {
+			tableRefused(read)
 		}
-		return 0, false
-	}
-	return count, true
-}
-func ArchiveConfigLoadMessagesTolerant(values []ArchiveConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	pre := r.Report.Malformed
-	r.Report.Malformed = false
-	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
+	}()
 	if count < 0 {
 		return 0, false
 	}
 	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
+		tableMessageRefuse(&r.Report, "batch_too_large")
+		return 0, false
 	}
 	for i := range count {
-		if !ArchiveConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+		if !ArchiveConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
 			for j := range i + 1 {
 				ArchiveConfigReset(&values[j])
 			}

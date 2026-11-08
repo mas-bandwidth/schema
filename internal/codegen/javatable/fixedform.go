@@ -218,7 +218,9 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 						size: 0, children: 0, note: v.Name}, fixedDst{})
 					continue
 				}
-				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
+				// an arm is a field line (§2.6): a string, bytes or array arm
+				// keeps the field's own size and shape in the layout
+				fixedWalkPayload(w, v.F, ir.TableWireId(v.WireName()), fixedFieldBytes(v.F), tag)
 			}
 			return
 		case *ir.Enum:
@@ -2124,15 +2126,15 @@ type fixedWriterBound struct {
 	lo, hi int64
 }
 
-// fixedWriterBounds resolves every entry's ranged leaves against this reader's
-// own fields BY NAME — the match the reference's collectKnownRanges makes — so
+// fixedWriterBounds resolves every entry's ranged leaves onto this reader's
+// own fields through ir.TableFixedWriterField — the match every leg makes — so
 // the compiled lane's bounds pass can hold an endpoint to what IT declared and
-// never to this reader's wider own (ALGORITHM §4.6, bill §12.5). The
+// never to this reader's wider own (docs/FIXED-FORM-ALGORITHM.md §4.5). The
 // identity entry needs none: its writer IS this reader, and the scatter's own
-// pass holds it. A field this reader cannot name bounds nothing, and a FIXED
-// array's bound covers every slot at its stride; a counted array's live count
-// is a run-time fact a static entry does not carry, so only the fixed shape
-// rides. The answer is nil when no entry bounds anything, so a table without
+// pass holds it. A field the helper does not match bounds nothing, and a FIXED
+// array's bound covers every slot at its stride, each slot held the same as a
+// scalar; a counted array's live count is a run-time fact a static entry does
+// not carry, so only the fixed shape rides. The answer is nil when no entry bounds anything, so a table without
 // ranged writers emits no clamp at all.
 func (g *fixedGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry, hash uint64) [][]fixedWriterBound {
 	var all [][]fixedWriterBound
@@ -2143,8 +2145,8 @@ func (g *fixedGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 			for _, spec := range e.Ranges {
 				at := int64(0)
 				for _, f := range st.Fields {
-					if f.Name == spec.Name {
-						rows = append(rows, fixedWriterBoundsOfField(f, at, spec.Lo, spec.Hi)...)
+					if _, ok := ir.TableFixedWriterField(f, spec); ok {
+						rows = append(rows, fixedWriterBoundsOfField(f, at, ir.TableKindSigned(spec.Kind), spec.Lo, spec.Hi)...)
 						break
 					}
 					at += fixedFieldBytes(f)
@@ -2164,19 +2166,19 @@ func (g *fixedGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 
 // fixedWriterBoundsOfField spells one writer-bound spec at this reader's
 // offsets: a scalar is one row, a fixed array one per slot at its stride.
-func fixedWriterBoundsOfField(f *ir.Field, at, lo, hi int64) []fixedWriterBound {
+func fixedWriterBoundsOfField(f *ir.Field, at int64, signed bool, lo, hi int64) []fixedWriterBound {
 	if f.Array == ir.ArrayFixed {
 		stride := fixedElementBytes(f)
 		out := make([]fixedWriterBound, 0, f.ArrayBound)
 		for i := int64(0); i < f.ArrayBound; i++ {
-			out = append(out, fixedWriterBound{dst: at + i*stride, width: stride, signed: f.Type.Signed, lo: lo, hi: hi})
+			out = append(out, fixedWriterBound{dst: at + i*stride, width: stride, signed: signed, lo: lo, hi: hi})
 		}
 		return out
 	}
 	if f.Array != ir.ArrayNone {
 		return nil // a counted array walks its live count, which a static row cannot name
 	}
-	return []fixedWriterBound{{dst: at, width: fixedFieldBytes(f), signed: f.Type.Signed, lo: lo, hi: hi}}
+	return []fixedWriterBound{{dst: at, width: fixedFieldBytes(f), signed: signed, lo: lo, hi: hi}}
 }
 
 // fixedLiteralCap is where a readable byte-array literal stops being one. A

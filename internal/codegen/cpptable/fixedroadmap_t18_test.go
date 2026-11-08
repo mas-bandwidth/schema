@@ -298,13 +298,13 @@ func TestFixedCppT18OldFiles(t *testing.T) {
 
 // t18CleanRead is the shared clean-read body: neither refused nor malformed
 // (the reason is read only on a refusal, docs/SPEC-TABLES.md §3.3), and all SEVEN
-// TableReport counters — unknown, kind_mismatch, widened, clamped, duplicate,
+// TableReport counters — unknown, kind_mismatch, widened, out_of_range, repeated,
 // retained, retain_lost — are exactly 0 (docs/FIXED-FORM-ALGORITHM.md §5.4).
 const t18CleanRead = `
     if ( n != 1 ) { printf( "the newer reader refused the older writer's file: n=%lld reason=%d\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%d malformed=%d\n", (int) r.reason, (int) r.malformed ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 || r.retained != 0 || r.retain_lost != 0 )
-        { printf( "counters moved on a clean backward read: u=%d km=%d w=%d c=%d d=%d ret=%d lost=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate, r.retained, r.retain_lost ); return 1; }
+    if ( r.damaged || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%d malformed=%d\n", (int) r.reason, (int) r.damaged ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 || r.retained != 0 || r.retain_lost != 0 )
+        { printf( "counters moved on a clean backward read: u=%d km=%d w=%d c=%d d=%d ret=%d lost=%d\n", r.unknown, r.refused, r.widened, r.refused, r.refused, r.retained, r.retain_lost ); return 1; }
 `
 
 // TestFixedRoadmapCppT18FieldEvolution is the two functional subtests. cpp/E8
@@ -556,7 +556,7 @@ int main( void )
     memset( back, 0, sizeof( back ) );
     for ( int k = 0; k < 8; ++k ) { %sReset( back[k] ); }
     memset( &r, 0, sizeof( r ) );
-    n = %sFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &r );
+    n = %sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
 %s
     return 0;
 }
@@ -729,7 +729,7 @@ const t18Read = `
         %[2]s::%[1]s back[%[3]d];
         static %[2]s::TableFixedEntry plan[4096];
         %[2]s::TableReport r; memset( &r, 0, sizeof( r ) );
-        const int64_t n = %[2]s::%[1]sFixedLoadTolerant( back, %[3]d, buffer, written, plan, 4096, NULL, &r );
+        const int64_t n = %[2]s::%[1]sFixedLoad( back, %[3]d, buffer, written, plan, 4096, NULL, &r );
 `
 
 // TestFixedRoadmapCppT18ExactCounters is cpp/R16: the §5.4 counters, exactly.
@@ -751,7 +751,7 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 `+t18Read+`
         if ( n != 4 ) { printf( "widen: n=%%lld\n", (long long) n ); return 1; }
         if ( r.widened != 4 ) { printf( "widen: widened=%%d want 4\n", r.widened ); return 1; }
-        if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 ) { printf( "widen: a counter moved\n" ); return 1; }
+        if ( r.unknown != 0 ) { printf( "widen: a counter moved\n" ); return 1; }
     }
 `, pair.root, pair.newPkg, 4))
 
@@ -769,7 +769,7 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 `+t18Read+`
         if ( n != 1 ) { printf( "elem-widen: n=%%lld\n", (long long) n ); return 1; }
         if ( r.widened != 4 ) { printf( "elem-widen: widened=%%d want 4\n", r.widened ); return 1; }
-        if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 ) { printf( "elem-widen: a counter moved\n" ); return 1; }
+        if ( r.unknown != 0 ) { printf( "elem-widen: a counter moved\n" ); return 1; }
     }
 `, pair.root, pair.newPkg, 1))
 
@@ -797,12 +797,12 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
         }
 `+t18Read+`
         if ( n != -1 || !r.refused || r.reason != %[2]s::count_over_bound ) { printf( "count: n=%%lld refused=%%d reason=%%d\n", (long long) n, (int) r.refused, (int) r.reason ); return 1; }
-        if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 ) { printf( "count: a counter moved\n" ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 ) { printf( "count: a counter moved\n" ); return 1; }
     }
 `, pair.root, pair.newPkg, 3))
 
 		// forged ordinal past the writer's variant count: tier=Gold(3) forged to 4,
-		// one past the writer's three variants. clamped == 1 on the COMPILED plan
+		// one past the writer's three variants. out_of_range == 1 on the COMPILED plan
 		// (NEW reader) exactly as on the IDENTITY plan (OLD reader), never 2.
 		pair = cppT18Generate(t, "enum_append")
 		cppT18Run(t, pair, fmt.Sprintf(`
@@ -822,15 +822,15 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 `+t18Read+`
         if ( n != 1 ) { printf( "ordinal compiled: n=%%lld\n", (long long) n ); return 1; }
         if ( back[0].tier != %[2]s::Tier::None ) { printf( "ordinal compiled: lands %%d, not None\n", (int) back[0].tier ); return 1; }
-        if ( r.clamped != 1 ) { printf( "ordinal compiled: clamped=%%d want 1\n", r.clamped ); return 1; }
+        if ( r.refused != 1 ) { printf( "ordinal compiled: out_of_range=%%d want 1\n", r.refused ); return 1; }
         {
             %[1]s back0;
             static TableFixedEntry plan[4096];
             TableReport rr; memset( &rr, 0, sizeof( rr ) );
-            const int64_t m = %[1]sFixedLoadTolerant( &back0, 1, buffer, written, plan, 4096, NULL, &rr );
+            const int64_t m = %[1]sFixedLoad( &back0, 1, buffer, written, plan, 4096, NULL, &rr );
             if ( m != 1 ) { printf( "ordinal identity: n=%%lld\n", (long long) m ); return 1; }
             if ( back0.tier != Tier::None ) { printf( "ordinal identity: lands %%d, not None\n", (int) back0.tier ); return 1; }
-            if ( rr.clamped != 1 ) { printf( "ordinal identity: clamped=%%d want 1\n", rr.clamped ); return 1; }
+            if ( rr.refused != 1 ) { printf( "ordinal identity: out_of_range=%%d want 1\n", rr.refused ); return 1; }
         }
     }
 `, pair.root, pair.newPkg, 1))
@@ -847,7 +847,7 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 `+t18Read+`
         if ( n != 1 ) { printf( "append: n=%%lld\n", (long long) n ); return 1; }
         if ( back[0].x != 11 || back[0].y != 22 || back[0].z != 33 || back[0].w != 77 ) { printf( "append: values did not land\n" ); return 1; }
-        if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 ) { printf( "append: a counter moved\n" ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 ) { printf( "append: a counter moved\n" ); return 1; }
     }
 `, pair.root, pair.newPkg, 1))
 
@@ -865,7 +865,7 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 `+t18Read+`
         if ( n != 1 ) { printf( "unknown: n=%%lld\n", (long long) n ); return 1; }
         if ( r.unknown != 1 ) { printf( "unknown: unknown=%%d want 1\n", r.unknown ); return 1; }
-        if ( r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 ) { printf( "unknown: a counter moved\n" ); return 1; }
+        if ( r.widened != 0 ) { printf( "unknown: a counter moved\n" ); return 1; }
     }
 `, pair.root, pair.newPkg, 1))
 	})

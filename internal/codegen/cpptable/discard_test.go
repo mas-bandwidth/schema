@@ -67,7 +67,11 @@ table Graph
 // assumption.
 func discardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	t.Helper()
-	m := tabletext.NewModel(u)
+	// A fixed root's writer writes form 3 (docs/SPEC-TABLES.md §3.4), so the
+	// form-1 wire this gate damages is encoded through the same declaration
+	// without the fixed keyword; the reader's own model still judges it.
+	writer := loadUnitFromSource(t, strings.ReplaceAll(discardUnit, "fixed table", "table"))
+	m := tabletext.NewModel(writer)
 	inst := m.New(m.Lookup(root))
 	var r tabletext.Report
 	if !m.Read(inst, []byte(text), &r) {
@@ -82,8 +86,9 @@ func discardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 		t.Fatalf("%s: Inner's body is not where this test expects it", root)
 	}
 	wire[at] = 37
+	reader := tabletext.NewModel(u)
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(reader, reader.New(reader.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
 	}
 	return wire
@@ -99,7 +104,7 @@ func cppBytes(b []byte) string {
 
 // TestDamageDiscardsTheWholeLoadCPP is the C++ reference's gate for DAMAGE
 // DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): damage inside a nested
-// body, with a whole field before it and after it, makes LoadTolerant answer
+// body, with a whole field before it and after it, makes Load answer
 // false with the value at its declared defaults, the strict Load refuse, the
 // region Load and the retaining Load hand back no root (the retention store
 // empty), and the builder load answer false. Red if any read hands back what
@@ -113,12 +118,12 @@ func TestDamageDiscardsTheWholeLoadCPP(t *testing.T) {
     const uint8_t fixed[] = { %s };
     Root v; RootReset( v );
     TableReport r; memset( &r, 0, sizeof( r ) );
-    if ( RootLoadTolerant( v, fixed, (int64_t) sizeof( fixed ), &r ) ) { printf( "fixed: LoadTolerant answered true on damage\n" ); return 1; }
-    if ( !r.malformed ) { printf( "fixed: the report does not say malformed\n" ); return 1; }
+    if ( RootLoad( v, fixed, (int64_t) sizeof( fixed ), &r ) ) { printf( "fixed: Load answered true on damage\n" ); return 1; }
+    if ( !r.damaged ) { printf( "fixed: the report does not say malformed\n" ); return 1; }
     if ( v.a != 0 || v.b != 0 || v.inner.n != 0 ) { printf( "fixed: a damaged load handed back a=%%d b=%%d n=%%d\n", (int) v.a, (int) v.b, (int) v.inner.n ); return 1; }
     Root strict; RootReset( strict );
     TableReport s; memset( &s, 0, sizeof( s ) );
-    if ( RootLoad( strict, fixed, (int64_t) sizeof( fixed ), &s ) || !s.malformed ) { printf( "fixed: the strict Load did not refuse\n" ); return 1; }
+    if ( RootLoad( strict, fixed, (int64_t) sizeof( fixed ), &s ) || !s.damaged ) { printf( "fixed: the strict Load did not refuse\n" ); return 1; }
 
     const uint8_t variable[] = { %s };
     const int64_t need = GraphLoadMeasure( variable, (int64_t) sizeof( variable ) );
@@ -126,9 +131,9 @@ func TestDamageDiscardsTheWholeLoadCPP(t *testing.T) {
     uint8_t * aligned = region.data();
     while ( ( (uintptr_t) aligned & 63 ) != 0 ) { aligned++; }
     TableReport g; memset( &g, 0, sizeof( g ) );
-    const Graph * root = GraphLoadTolerant( aligned, need > 0 ? need : 4096, variable, (int64_t) sizeof( variable ), &g );
-    if ( root != NULL ) { printf( "variable: LoadTolerant handed back a root on damage: a=%%d b=%%d\n", (int) root->a, (int) root->b ); return 1; }
-    if ( need >= 0 && !g.malformed ) { printf( "variable: the report does not say malformed\n" ); return 1; }
+    const Graph * root = GraphLoad( aligned, need > 0 ? need : 4096, variable, (int64_t) sizeof( variable ), &g );
+    if ( root != NULL ) { printf( "variable: Load handed back a root on damage: a=%%d b=%%d\n", (int) root->a, (int) root->b ); return 1; }
+    if ( need >= 0 && !g.damaged ) { printf( "variable: the report does not say malformed\n" ); return 1; }
 
     alignas( 64 ) static uint8_t retain_region[ 1 << 16 ];
     uint8_t store[ 1 << 12 ];
@@ -139,12 +144,12 @@ func TestDamageDiscardsTheWholeLoadCPP(t *testing.T) {
     TableReport rr; memset( &rr, 0, sizeof( rr ) );
     if ( GraphLoadRetain( retain_region, (int64_t) sizeof( retain_region ), variable, (int64_t) sizeof( variable ), &retain, &rr ) != NULL )
         { printf( "retain: LoadRetain handed back a root on damage\n" ); return 1; }
-    if ( !rr.malformed || retain.used != 0 || retain.count != 0 ) { printf( "retain: malformed=%%d used=%%lld count=%%lld\n", (int) rr.malformed, (long long) retain.used, (long long) retain.count ); return 1; }
+    if ( !rr.damaged || retain.used != 0 || retain.count != 0 ) { printf( "retain: malformed=%%d used=%%lld count=%%lld\n", (int) rr.damaged, (long long) retain.used, (long long) retain.count ); return 1; }
 
     GraphBuilder builder;
     TableReport br; memset( &br, 0, sizeof( br ) );
-    if ( GraphLoadBuilderTolerant( builder, variable, (int64_t) sizeof( variable ), &br ) ) { printf( "builder: LoadBuilderTolerant answered true on damage\n" ); return 1; }
-    if ( !br.malformed ) { printf( "builder: the report does not say malformed\n" ); return 1; }
+    if ( GraphLoadBuilder( builder, variable, (int64_t) sizeof( variable ), &br ) ) { printf( "builder: LoadBuilder answered true on damage\n" ); return 1; }
+    if ( !br.damaged ) { printf( "builder: the report does not say malformed\n" ); return 1; }
     const Graph * groot = builder.GetRoot();
     if ( groot == NULL || groot->a != 0 || groot->b != 0 || groot->inner.n != 0 ) { printf( "builder: a damaged load left a usable root\n" ); return 1; }
     GraphBuilder strict_builder;
@@ -194,7 +199,7 @@ func TestRefusedLoadsHandBackNothingCPP(t *testing.T) {
     const uint8_t nan_wire[] = { %s };
     GraphBuilder builder;
     TableReport br; memset( &br, 0, sizeof( br ) );
-    if ( GraphLoadBuilderTolerant( builder, nan_wire, (int64_t) sizeof( nan_wire ), &br ) ) { printf( "nan: the builder load accepted a NaN\n" ); return 1; }
+    if ( GraphLoadBuilder( builder, nan_wire, (int64_t) sizeof( nan_wire ), &br ) ) { printf( "nan: the builder load accepted a NaN\n" ); return 1; }
     const Graph * groot = builder.GetRoot();
     if ( groot == NULL || groot->a != 0 || groot->b != 0 || groot->inner.n != 0 ) { printf( "nan: the builder load left a usable root\n" ); return 1; }
 
@@ -217,8 +222,8 @@ func TestRefusedLoadsHandBackNothingCPP(t *testing.T) {
 // TestFixedRefusalHandsBackNothingCPP holds the fixed form's tolerant read to
 // the same rule (docs/SPEC-TABLES.md §4, §6.5): a batch refused at record 1,
 // by a layout hash it cannot name or by ill-formed text, leaves record 0 at
-// its declared defaults and the report's clamped and widened where they were
-// before the call, though record 0 decoded and clamped first.
+// its declared defaults and the report's out_of_range and widened where they were
+// before the call, though record 0 decoded and out_of_range first.
 func TestFixedRefusalHandsBackNothingCPP(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -253,10 +258,10 @@ fixed table Rec
     {
         Rec got[2];
         TableReport r; memset( &r, 0, sizeof( r ) );
-        const int64_t k = RecFixedLoadTolerant( got, 2, work, n, plan, 4096, NULL, &r );
+        const int64_t k = RecFixedLoad( got, 2, work, n, plan, 4096, NULL, &r );
         if ( k != -1 || !r.refused || r.reason != TableMessageReason::no_layout ) { printf( "fixed: a hash mismatch at record 1 was not refused: %lld\n", (long long) k ); return 1; }
         if ( got[0].lead != fresh.lead || got[0].rng != fresh.rng || got[0].label_length != fresh.label_length ) { printf( "fixed: no_layout left record 0 usable: lead=%u rng=%d\n", got[0].lead, got[0].rng ); return 1; }
-        if ( r.clamped != 0 || r.widened != 0 ) { printf( "fixed: no_layout left clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 ) { printf( "fixed: no_layout left unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
 
     // record 1's label is ill-formed UTF-8: text_ill_formed
@@ -270,10 +275,10 @@ fixed table Rec
     {
         Rec got[2];
         TableReport r; memset( &r, 0, sizeof( r ) );
-        const int64_t k = RecFixedLoadTolerant( got, 2, work, n, plan, 4096, NULL, &r );
+        const int64_t k = RecFixedLoad( got, 2, work, n, plan, 4096, NULL, &r );
         if ( k != -1 || !r.refused || r.reason != TableMessageReason::text_ill_formed ) { printf( "fixed: ill-formed text at record 1 was not refused: %lld\n", (long long) k ); return 1; }
         if ( got[0].lead != fresh.lead || got[0].rng != fresh.rng || got[0].label_length != fresh.label_length ) { printf( "fixed: text_ill_formed left record 0 usable: lead=%u rng=%d\n", got[0].lead, got[0].rng ); return 1; }
-        if ( r.clamped != 0 || r.widened != 0 ) { printf( "fixed: text_ill_formed left clamped=%d widened=%d\n", r.clamped, r.widened ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 ) { printf( "fixed: text_ill_formed left unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
 `
 	out, err := cppRunCapability(t, path, "fxdiscard", body)
@@ -307,18 +312,18 @@ func TestPointerNamingAnOpenNodeIsRefusedCPP(t *testing.T) {
 	}
 	wire[at+1] = 2
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("the engine does not refuse the cycle: ok=%v err=%v %+v", ok, err, report)
 	}
 	body := fmt.Sprintf(`
     const uint8_t cyclic[] = { %s };
     alignas( 64 ) static uint8_t region[ 1 << 16 ];
     TableReport g; memset( &g, 0, sizeof( g ) );
-    if ( GraphLoadTolerant( region, (int64_t) sizeof( region ), cyclic, (int64_t) sizeof( cyclic ), &g ) != NULL ) { printf( "cycle: the region load handed back a cyclic graph\n" ); return 1; }
-    if ( !g.malformed ) { printf( "cycle: the region load did not say malformed\n" ); return 1; }
+    if ( GraphLoad( region, (int64_t) sizeof( region ), cyclic, (int64_t) sizeof( cyclic ), &g ) != NULL ) { printf( "cycle: the region load handed back a cyclic graph\n" ); return 1; }
+    if ( !g.damaged ) { printf( "cycle: the region load did not say malformed\n" ); return 1; }
     GraphBuilder builder;
     TableReport br; memset( &br, 0, sizeof( br ) );
-    if ( GraphLoadBuilderTolerant( builder, cyclic, (int64_t) sizeof( cyclic ), &br ) || !br.malformed ) { printf( "cycle: the builder load did not refuse\n" ); return 1; }
+    if ( GraphLoadBuilder( builder, cyclic, (int64_t) sizeof( cyclic ), &br ) || !br.damaged ) { printf( "cycle: the builder load did not refuse\n" ); return 1; }
 `, cppBytes(wire))
 	out, err := cppHeldRun(t, u, body)
 	if err != nil {
@@ -401,7 +406,7 @@ func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
 		try[i+2] = 0
 		root := m.New(m.Lookup("Node"))
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil || report.Malformed {
+		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil {
 			continue
 		}
 		left, _ := root.FieldByKey("left")
@@ -435,8 +440,8 @@ func cycleProbe(name string, wire []byte, load bool, onFail string, after ...str
         uint8_t * aligned = region.data();
         while ( ( (uintptr_t) aligned & 63 ) != 0 ) { aligned++; }
         TableReport g; memset( &g, 0, sizeof( g ) );
-        const Node * root = NodeLoadTolerant( aligned, need > 0 ? need : 4096, wire, (int64_t) sizeof( wire ), &g );
-        if ( ( root != NULL ) != want || g.malformed == want ) { printf( "%s: the region load: root=%%d malformed=%%d\n", root != NULL ? 1 : 0, (int) g.malformed ); return 1; }
+        const Node * root = NodeLoad( aligned, need > 0 ? need : 4096, wire, (int64_t) sizeof( wire ), &g );
+        if ( ( root != NULL ) != want || g.damaged == want ) { printf( "%s: the region load: root=%%d malformed=%%d\n", root != NULL ? 1 : 0, (int) g.damaged ); return 1; }
         alignas( 64 ) static uint8_t retain_region[ 1 << 16 ];
         uint8_t store[ 1 << 12 ];
         TableRetain retain;
@@ -445,11 +450,11 @@ func cycleProbe(name string, wire []byte, load bool, onFail string, after ...str
         retain.ids = ids; retain.id_capacity = 16;
         TableReport rr; memset( &rr, 0, sizeof( rr ) );
         const Node * kept = NodeLoadRetain( retain_region, (int64_t) sizeof( retain_region ), wire, (int64_t) sizeof( wire ), &retain, &rr );
-        if ( ( kept != NULL ) != want || rr.malformed == want ) { printf( "%s: the retaining load: root=%%d malformed=%%d\n", kept != NULL ? 1 : 0, (int) rr.malformed ); return 1; }
+        if ( ( kept != NULL ) != want || rr.damaged == want ) { printf( "%s: the retaining load: root=%%d malformed=%%d\n", kept != NULL ? 1 : 0, (int) rr.damaged ); return 1; }
         NodeBuilder builder;
         TableReport br; memset( &br, 0, sizeof( br ) );
-        const bool built = NodeLoadBuilderTolerant( builder, wire, (int64_t) sizeof( wire ), &br );
-        if ( built != want || br.malformed == want ) { printf( "%s: the builder load: ok=%%d malformed=%%d\n", (int) built, (int) br.malformed ); return 1; }
+        const bool built = NodeLoadBuilder( builder, wire, (int64_t) sizeof( wire ), &br );
+        if ( built != want || br.damaged == want ) { printf( "%s: the builder load: ok=%%d malformed=%%d\n", (int) built, (int) br.damaged ); return 1; }
 %s
     }
 `, cppBytes(wire), want, onFail, onFail, onFail, strings.Join(after, "\n"))
@@ -559,7 +564,7 @@ table Node
 	} {
 		inst := m.New(m.Lookup("Node"))
 		var report tabletext.Report
-		if !m.Read(inst, []byte(tc.text), &report) || report.Malformed {
+		if !m.Read(inst, []byte(tc.text), &report) || report.Refused {
 			t.Fatalf("%s: valid container text refused: %+v", tc.name, report)
 		}
 		wire, err := tablewire.Encode(m, inst)
@@ -569,7 +574,7 @@ table Node
 		body.WriteString(cycleProbe(tc.name+" twin", wire, true, "container: valid "+tc.name+" refused", roundTrip))
 		cyclePatch(t, wire, 3, 1) // root -> container child -> root
 		var damaged tabletext.Report
-		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), wire, &damaged); ok || err != nil || !damaged.Malformed {
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), wire, &damaged); ok || !tablewire.ReadRefusal(err) {
 			t.Fatalf("%s: engine did not refuse the cycle: ok=%v err=%v %+v", tc.name, ok, err, damaged)
 		}
 		body.WriteString(cycleProbe(tc.name+" cycle", wire, false, "container: cyclic "+tc.name+" loaded"))

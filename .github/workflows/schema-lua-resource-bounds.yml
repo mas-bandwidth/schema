@@ -40,6 +40,11 @@ concurrency:
 jobs:
   fast:
     runs-on: [self-hosted, linux, x64, fleet]
+    # measured: 10-44 s
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,6 +54,11 @@ jobs:
         run: make schema-lua-resource-bounds-negative-control
   nightly:
     runs-on: [self-hosted, linux, x64, fleet]
+    # measured: 12-27 s
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

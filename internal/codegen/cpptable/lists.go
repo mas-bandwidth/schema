@@ -6,7 +6,7 @@
 // counted array whose count the data decides, its elements by-value records
 // inside the holder's node extent. So nothing here is a new wire construct,
 // and most of what a map needed is not needed: no entry table, no order, no
-// key compare, no ascending check and no duplicate rule. What the runtime
+// key compare, no ascending check and no repeated rule. What the runtime
 // adds is the reference-and-count slot, a builder that appends into segments
 // that never move, and a cursor the four writing walks read in INDEX order
 // without allocating.
@@ -792,7 +792,7 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	ind := "                "
 	elemKind := listElementWireKind(f)
 	g.pf("%suint64_t body_len = 0;\n", ind)
-	g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
+	g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 	g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
 	g.pf("%s// A BODY TOO SHORT FOR ITS OWN HEADER is INERT (§4): the field keeps\n", ind)
 	g.pf("%s// the value it has, no counter is raised, and the walk continues past L.\n", ind)
@@ -800,7 +800,7 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 	g.pf("%s    uint64_t count = 0;\n", ind)
 	g.pf("%s    const bool counted_ok = r.getleb( count );\n", ind)
-	g.pf("%s    if ( !counted_ok ) { r.report->malformed = true; }\n", ind)
+	g.pf("%s    if ( !counted_ok ) { r.report->damaged = true; }\n", ind)
 	g.pf("%s    // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's\n", ind)
 	g.pf("%s    // element-kind rule: the field reads EMPTY and one kind_mismatch counts\n", ind)
 	if widenableElement(f) {
@@ -808,11 +808,11 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 		// mismatch branch with a fill of its own: ONE count for the field,
 		// every element decoded at the wire kind's width
 		g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
-		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->kind_mismatch++;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
+		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->refused = true; r.report->refuse_reason = kind_mismatch;;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
 		g.emitListFill(f, elemKind, ind, true)
 		g.pf("%s    }\n", ind)
 	} else {
-		g.pf("%s    else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, elemKind)
+		g.pf("%s    else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }\n", ind, elemKind)
 	}
 	g.pf("%s    else\n%s    {\n", ind, ind)
 	g.emitListFill(f, elemKind, ind, false)
@@ -826,7 +826,7 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 // whose element never landed given back. With `widened` each element decodes
 // at the kind the header carried, which the declared kind widens (§4).
 func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened bool) {
-	g.pf("%s        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped\n", ind)
+	g.pf("%s        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range\n", ind)
 	g.pf("%s        // cannot fire on it. A count above the int32 storage cap is the\n", ind)
 	g.pf("%s        // fill's refusal, and it moves no counter, the widening included.\n", ind)
 	g.emitRetainReplaced(f, ind+"        ")
@@ -837,7 +837,7 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 		// refusal above moves no counter (§2.9)
 		g.pf("%s        r.report->widened++;\n", ind)
 	}
-	g.pf("%[1]s        if ( !fill.ok )\n%[1]s        {\n%[1]s            r.report->malformed = true;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind)
+	g.pf("%[1]s        if ( !fill.ok )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        // elements are BOUNDED by the field body: a count the length cannot\n", ind)
 	g.pf("%s        // cover is damage, flags malformed, and the load is discarded\n", ind)
 	g.pf("%s        // whole (§4)\n", ind)
@@ -847,11 +847,11 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	}
 	g.pf("%s        for ( uint64_t i = 0; i < count; i++ )\n%s        {\n", ind, ind)
 	g.pf("%s            %s * slot = TableListFillNext( fill );\n", ind, g.listElementType(f))
-	g.pf("%[1]s            if ( slot == NULL )\n%[1]s            {\n%[1]s                if ( fill.worker != NULL ) { nodes.refused = true; return false; }\n%[1]s                r.report->malformed = true;\n%[1]s                break;\n%[1]s            } // the arena could not carve\n", ind)
+	g.pf("%[1]s            if ( slot == NULL )\n%[1]s            {\n%[1]s                if ( fill.worker != NULL ) { nodes.refused = true; return false; }\n%[1]s                r.report->damaged = true;\n%[1]s                break;\n%[1]s            } // the arena could not carve\n", ind)
 	g.pf("%s            bool landed = false;\n", ind)
 	g.pf("%s            do\n%s            {\n", ind, ind)
 	if widened {
-		g.emitWidenedScalar(f, elemKind, "elem_kind", "( *slot )", ind+"                ", "sub", "r.report->malformed = true;", "break;")
+		g.emitWidenedScalar(f, elemKind, "elem_kind", "( *slot )", ind+"                ", "sub", "r.report->damaged = true;", "break;")
 	} else {
 		g.inStep("i", func() {
 			g.emitTableReadElementInto(f, elemKind, "( *slot )", ind+"                ", "sub", "_"+f.Name)
@@ -874,7 +874,7 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 				g.pf("%s            if ( slot->value_length > 0 ) { spent += (int64_t) slot->value_length; }\n", ind)
 			}
 		}
-		g.pf("%s            if ( spent > %d ) { r.report->clamped++; TableListFillDrop( fill ); break; } // | total = %d (§2.13)\n", ind, f.TextTotal, f.TextTotal)
+		g.pf("%s            if ( spent > %d ) { r.report->refused = true; r.report->refuse_reason = out_of_range;; TableListFillDrop( fill ); break; } // | total = %d (§2.13)\n", ind, f.TextTotal, f.TextTotal)
 	}
 	g.pf("%s        }\n", ind)
 	g.pf("%s        TableListFillEnd( fill );\n", ind)

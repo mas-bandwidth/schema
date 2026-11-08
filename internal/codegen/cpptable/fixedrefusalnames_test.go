@@ -123,9 +123,9 @@ static int expect( const char * what, const uint8_t * data, int64_t bytes, int32
     const int64_t n = PointFixedLoad( dst, capacity, data, bytes, p, plan_capacity, NULL, &r );
     if ( n != -1 ) { printf( "%%s: n=%%lld, want -1\n", what, (long long) n ); return 1; }
     if ( (int) r.refused != want_refused )
-        { printf( "%%s: refused=%%d want %%d (reason=%%d malformed=%%d)\n", what, (int) r.refused, want_refused, (int) r.reason, (int) r.malformed ); return 1; }
-    if ( (int) r.malformed != want_malformed )
-        { printf( "%%s: malformed=%%d want %%d (reason=%%d refused=%%d)\n", what, (int) r.malformed, want_malformed, (int) r.reason, (int) r.refused ); return 1; }
+        { printf( "%%s: refused=%%d want %%d (reason=%%d malformed=%%d)\n", what, (int) r.refused, want_refused, (int) r.reason, (int) r.damaged ); return 1; }
+    if ( (int) r.damaged != want_malformed )
+        { printf( "%%s: malformed=%%d want %%d (reason=%%d refused=%%d)\n", what, (int) r.damaged, want_malformed, (int) r.reason, (int) r.refused ); return 1; }
     if ( r.reason != want_reason )
         { printf( "%%s: reason=%%d want %%d\n", what, (int) r.reason, (int) want_reason ); return 1; }
     if ( want_hash )
@@ -135,8 +135,8 @@ static int expect( const char * what, const uint8_t * data, int64_t bytes, int32
     }
     else if ( r.layout_hash != 0 )
         { printf( "%%s: layout_hash=%%016llx on a path that reports no hash\n", what, (unsigned long long) r.layout_hash ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "%%s: a refusal moved a counter (u=%%d km=%%d c=%%d w=%%d d=%%d)\n", what, r.unknown, r.kind_mismatch, r.clamped, r.widened, r.duplicate ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "%%s: a refusal moved a counter (u=%%d w=%%d)\n", what, r.unknown, r.widened ); return 1; }
     return 0;
 }
 
