@@ -9,6 +9,8 @@ out=build/js-text-boundary/$mode
 source=test/conformance/js/main.mjs
 rm -rf "$out"
 mkdir -p "$out"
+# a driver copy imports the fixed-root bridge from beside it
+cp test/conformance/js/fixed.mjs "$out/fixed.mjs"
 main="$root/$source"
 if [ "$mode" = replacement ]; then
     anchor='const jsonUTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });'
@@ -36,6 +38,7 @@ if [ "$mode" = positive ]; then
     # The reader accepts exactly one leading BOM. Preserve the byte boundary:
     # stripping one here would let the reader incorrectly accept a double BOM.
     mkdir -p "$out/bom/single" "$out/bom/double" "$out/bom/strict" "$out/bom/buffer" "$out/bom/stripped"
+    cp test/conformance/js/fixed.mjs "$out/bom/fixed.mjs"
     printf '\357\273\277{}\n' > "$out/bom/single/RootConfig.json"
     printf '\357\273\277\357\273\277{}\n' > "$out/bom/double/RootConfig.json"
     printf 'json-hostile bom-single tabledemo RootConfig %s/bom/single 0,0,0,0,0,false,read\njson-hostile bom-double tabledemo RootConfig %s/bom/double refused\n' "$out" "$out" > "$out/bom/manifest"
