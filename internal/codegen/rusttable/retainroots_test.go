@@ -506,7 +506,10 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 			// so the leg owes a refusal, and no counter, retention report or
 			// saved byte is compared
 			if reply[21] == 0 && reply[22] == 0 && binary.LittleEndian.Uint32(reply[5:9]) == 0 && binary.LittleEndian.Uint32(reply[13:17]) == 0 && binary.LittleEndian.Uint32(reply[17:21]) == 0 {
-				if s.name == "list_scalar_widen" { continue }; t.Errorf("%s (%s.%s, retain=%t): the oracle discards a damaged load and the leg reports %s", s.name, s.unit, s.root, retain, leg)
+				if s.name == "list_scalar_widen" {
+					continue
+				}
+				t.Errorf("%s (%s.%s, retain=%t): the oracle discards a damaged load and the leg reports %s", s.name, s.unit, s.root, retain, leg)
 			}
 			continue
 		}
