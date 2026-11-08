@@ -59,6 +59,9 @@ public final class TableVariable {
         NodeRecord[] nodeRecs;
         boolean nodesGood;
         long rootTypeId;
+        // wireNonFinite is open's word that the wire carries a NaN or an
+        // infinity (WireCheck); settleNonFinite refuses where no decode named it
+        boolean wireNonFinite;
 
         // reset puts every counter back to its start, so one Report can serve
         // call after call (a reused Measure) without a fresh object per call.
@@ -74,6 +77,7 @@ public final class TableVariable {
             nodeRecs = null;
             nodesGood = false;
             rootTypeId = 0;
+            wireNonFinite = false;
         }
 
         public void refuse(String why) {
@@ -715,11 +719,680 @@ public final class TableVariable {
         for (int i = 0; i < count; i++) {
             ids[i] = u64(data, base + i * 8);
         }
+        // SKIPPED IS NOT UNREAD (docs/SPEC-TABLES.md §4, §6.5): every
+        // condition the wire alone decides is judged over every byte before a
+        // value is decoded, in fields and records this reader names and in
+        // those it does not.
+        report.wireNonFinite = false;
+        WireCheck wc = new WireCheck(data, ids);
+        switch (wc.file(base)) {
+            case WireCheck.DAMAGED:
+                report.damaged = true;
+                return null;
+            case WireCheck.BLOB_SHARED:
+                report.refuse("blob_shared");
+                return null;
+            case WireCheck.COUNT_CAP:
+                // of two refusals in one read, the first in read order names
+                // it (§6.5): a float met before the count is that one
+                if (wc.nonFinite) {
+                    nonFiniteFloat(report, "a float the wire carries");
+                } else {
+                    report.refuse("count_over_extent_cap");
+                }
+                return null;
+            case WireCheck.NON_FINITE:
+                // the decode names the field where this reader declares it;
+                // settleNonFinite refuses for one it does not
+                report.wireNonFinite = true;
+                break;
+            default:
+                break;
+        }
         Reader r = new Reader(data, ids, report);
         r.off = 1;
         r.limit = base;
         r.rootBody = true;
         return r;
+    }
+
+    // settleNonFinite refuses a load whose wire carries a NaN or an infinity
+    // that the decode did not name: one inside a field or record this reader
+    // cannot name (docs/SPEC-TABLES.md §3.3, §4).
+    public static void settleNonFinite(Report report) {
+        if (report.wireNonFinite && !report.refused) {
+            nonFiniteFloat(report, "a float the wire carries");
+        }
+    }
+
+    // THE CONDITIONS DECIDABLE FROM THE WIRE ALONE (docs/SPEC-TABLES.md §6.5,
+    // "TWO KINDS OF CONDITION"), the oracle's own walk
+    // (internal/tablewire/wirecheck.go) over a form-1 file. It takes no
+    // declaration. It checks the framing (lengths, counts, terminators, an
+    // array's, keyed array's or map's header inside its own L and no byte
+    // left inside that L after its elements, the id table's references,
+    // canonical LEB128, a kind no reader can skip, kind 32 with a nonzero L),
+    // a bool byte other than 0 or 1, ill-formed text, a repeated field id or
+    // keyed slot in one body, bytes left inside an arm after its payload, the
+    // node table's framing, a reserved id out of place and the binary nesting
+    // bound. It collects every kind 17 payload, and then judges the pointer
+    // graph: an index past the node table, a cycle, a record no pointer
+    // reaches, and one blob record named from two slots. tla/ReadOrder.tla
+    // models the split (WireDamage, Unreachable, Cycle, BlobShared); the walk
+    // covers every slot, known or not.
+    static final class WireCheck {
+        static final int OK = 0;
+        static final int DAMAGED = 1;
+        static final int NON_FINITE = 2;
+        static final int BLOB_SHARED = 3;
+        static final int COUNT_CAP = 4;
+        static final int MAX_DEPTH = 128;
+
+        final byte[] buf;
+        final long[] ids;
+        // stamp holds, per id-table reference, the generation of the last body
+        // or keyed array that named it: a body's headers are stamped in a pass
+        // of their own before any payload is walked, so a nested body's stamps
+        // never hide the parent's
+        final int[] stamp;
+        int gen;
+        int depth;
+        int fail;
+        boolean nonFinite;
+        // edges are the kind 17 payloads met, in wire order; edgeStart[k] is
+        // where node k's begin (node 0 the root, node k record k - 1)
+        long[] edges = new long[0];
+        int edgeCount;
+        // the cursor a walk answers through: the offset after what it read
+        int at;
+
+        WireCheck(byte[] buf, long[] ids) {
+            this.buf = buf;
+            this.ids = ids;
+            this.stamp = new int[ids.length + 1];
+        }
+
+        boolean damage() {
+            if (fail == OK) {
+                fail = DAMAGED;
+            }
+            return false;
+        }
+
+        // leb reads one canonical LEB128 at off below end into at, answering
+        // the value, or -1 with at set to -1 when it is truncated, not
+        // canonical or past 64 bits. A value with the top bit set is answered
+        // as Long.MAX_VALUE: every caller bounds it far below that.
+        long leb(int off, int end) {
+            long v = 0;
+            int shift = 0;
+            for (int i = 0; ; i++) {
+                if (off >= end || i >= 10) {
+                    at = -1;
+                    return -1;
+                }
+                int b = buf[off++] & 0xff;
+                if (i == 9 && b > 1) {
+                    at = -1;
+                    return -1;
+                }
+                v |= (long) (b & 0x7f) << shift;
+                if ((b & 0x80) == 0) {
+                    if (i > 0 && b == 0) {
+                        at = -1;
+                        return -1;
+                    }
+                    at = off;
+                    return v < 0 ? Long.MAX_VALUE : v;
+                }
+                shift += 7;
+            }
+        }
+
+        static int width(int kind) {
+            switch (kind) {
+                case 1:
+                case 2:
+                case 6:
+                case 20:
+                case 25:
+                    return 1;
+                case 3:
+                case 7:
+                case 21:
+                case 26:
+                    return 2;
+                case 4:
+                case 8:
+                case 10:
+                case 22:
+                case 27:
+                    return 4;
+                case 5:
+                case 9:
+                case 11:
+                case 23:
+                case 28:
+                case 36:
+                    return 8;
+                case 18:
+                case 19:
+                case 24:
+                case 29:
+                    return 16;
+                default:
+                    return 0;
+            }
+        }
+
+        // file walks the root body, the node table and every record in it,
+        // then the pointer graph, and answers the verdict.
+        int file(int base) {
+            int[] table = new int[] {-1, -1};
+            if (!body(1, base, true, table)) {
+                return fail;
+            }
+            int rootEdges = edgeCount;
+            if (table[0] < 0) {
+                return graph(new int[] {0, rootEdges}, null) ? (nonFinite ? NON_FINITE : OK) : fail;
+            }
+            int off = table[0];
+            int end = table[1];
+            long declared = leb(off, end);
+            if (at < 0) {
+                return DAMAGED;
+            }
+            off = at;
+            // a record is three bytes at the least, so the walk is bounded by
+            // the node table's own length whatever count it declares
+            int n = 0;
+            int[] recStart = new int[4];
+            int[] recEnd = new int[4];
+            boolean[] recBlob = new boolean[4];
+            while (off < end) {
+                long ref = leb(off, end);
+                if (at < 0 || ref == 0 || ref > ids.length) {
+                    return DAMAGED;
+                }
+                long length = leb(at, end);
+                if (at < 0 || length > end - at) {
+                    return DAMAGED;
+                }
+                if (n == recStart.length) {
+                    recStart = java.util.Arrays.copyOf(recStart, n * 2);
+                    recEnd = java.util.Arrays.copyOf(recEnd, n * 2);
+                    recBlob = java.util.Arrays.copyOf(recBlob, n * 2);
+                }
+                long typeId = ids[(int) ref - 1];
+                recStart[n] = at;
+                recEnd[n] = at + (int) length;
+                recBlob[n] = typeId == BYTES_ID || typeId == STRING_ID;
+                if (typeId == STRING_ID && !textValid(buf, at, (int) length)) {
+                    return DAMAGED;
+                }
+                off = at + (int) length;
+                n++;
+            }
+            if (off != end || declared != n) {
+                return DAMAGED;
+            }
+            int[] edgeStart = new int[n + 2];
+            edgeStart[1] = rootEdges;
+            for (int k = 0; k < n; k++) {
+                if (!recBlob[k] && !body(recStart[k], recEnd[k], false, null)) {
+                    return fail;
+                }
+                edgeStart[k + 2] = edgeCount;
+            }
+            return graph(edgeStart, recBlob) ? (nonFinite ? NON_FINITE : OK) : fail;
+        }
+
+        // graph judges the pointer graph: node 0 is the root, node k record k
+        // (node index k + 1 on the wire). Every pointer names null, the root
+        // or a record; a walk from the root that meets a node whose descent is
+        // still open is a cycle; a record the walk never enters is
+        // unreachable; and a blob record named from two slots is blob_shared.
+        boolean graph(int[] edgeStart, boolean[] blob) {
+            int n = edgeStart.length - 1;
+            int[] names = new int[n];
+            for (int i = 0; i < edgeCount; i++) {
+                long index = edges[i];
+                if (index == 0) {
+                    continue;
+                }
+                if (index - 1 >= n || index < 0) {
+                    return damage();
+                }
+                names[(int) index - 1]++;
+            }
+            for (int k = 1; k < n; k++) {
+                if (blob[k - 1] && names[k] > 1) {
+                    fail = BLOB_SHARED;
+                    return false;
+                }
+            }
+            byte[] mark = new byte[n]; // 0 unvisited, 1 open, 2 closed
+            int[] stack = new int[n];
+            int[] next = new int[n];
+            int depthNow = 0;
+            stack[depthNow++] = 0;
+            mark[0] = 1;
+            next[0] = edgeStart[0];
+            while (depthNow > 0) {
+                int node = stack[depthNow - 1];
+                if (next[node] == edgeStart[node + 1]) {
+                    mark[node] = 2;
+                    depthNow--;
+                    continue;
+                }
+                long index = edges[next[node]++];
+                if (index == 0) {
+                    continue;
+                }
+                int t = (int) index - 1;
+                if (mark[t] == 1) {
+                    return damage();
+                }
+                if (mark[t] == 2) {
+                    continue;
+                }
+                mark[t] = 1;
+                next[t] = edgeStart[t];
+                stack[depthNow++] = t;
+            }
+            for (int k = 1; k < n; k++) {
+                if (mark[k] == 0) {
+                    return damage();
+                }
+            }
+            return true;
+        }
+
+        // body walks one table body from off that must end with its terminator
+        // as the byte before end. The root admits the node table's reserved id,
+        // whose kind 12 payload is handed back in table and never read as text.
+        boolean body(int off, int end, boolean root, int[] table) {
+            int g = ++gen;
+            // the headers first: no id twice in one body
+            int p = off;
+            while (true) {
+                long ref = leb(p, end);
+                if (at < 0) {
+                    return damage();
+                }
+                p = at;
+                if (ref == 0) {
+                    if (p != end) {
+                        return damage();
+                    }
+                    break;
+                }
+                if (ref > ids.length || p >= end) {
+                    return damage();
+                }
+                if (stamp[(int) ref] == g) {
+                    return damage();
+                }
+                stamp[(int) ref] = g;
+                p = frame(p + 1, end, buf[p] & 0xff);
+                if (p < 0) {
+                    return damage();
+                }
+            }
+            // then each payload
+            p = off;
+            while (true) {
+                long ref = leb(p, end);
+                p = at;
+                if (ref == 0) {
+                    return true;
+                }
+                long id = ids[(int) ref - 1];
+                int kind = buf[p++] & 0xff;
+                if (id == BUILD_ID || id == VOCAB_ID) {
+                    return damage();
+                }
+                if (id == NODE_ID) {
+                    if (!root || kind != 12) {
+                        return damage();
+                    }
+                    long n = leb(p, end);
+                    table[0] = at;
+                    table[1] = at + (int) n;
+                    p = table[1];
+                    continue;
+                }
+                p = payload(p, end, kind);
+                if (p < 0) {
+                    return false;
+                }
+            }
+        }
+
+        // frame steps one payload of kind at off by its framing alone, the
+        // header pass's step: -1 where it cannot be framed.
+        int frame(int off, int end, int kind) {
+            int w = width(kind);
+            if (w > 0) {
+                return w <= end - off ? off + w : -1;
+            }
+            switch (kind) {
+                case 17:
+                case 30:
+                    leb(off, end);
+                    return at;
+                case 12:
+                case 13:
+                case 14:
+                case 16:
+                case 31:
+                case 32:
+                case 33:
+                    {
+                        long n = leb(off, end);
+                        return at < 0 || n > end - at ? -1 : at + (int) n;
+                    }
+                case 15:
+                    {
+                        long arm = leb(off, end);
+                        if (at < 0 || arm == 0) {
+                            return at;
+                        }
+                        if (at >= end) {
+                            return -1;
+                        }
+                        long n = leb(at + 1, end);
+                        return at < 0 || n > end - at ? -1 : at + (int) n;
+                    }
+                default:
+                    return -1;
+            }
+        }
+
+        // payload walks one SELF-FRAMED payload of kind at off: what follows a
+        // field's kind byte, and an array element. It answers the offset after
+        // it, or -1.
+        int payload(int off, int end, int kind) {
+            int w = width(kind);
+            if (w > 0) {
+                if (w > end - off) {
+                    damage();
+                    return -1;
+                }
+                return scalar(off, kind) ? off + w : -1;
+            }
+            switch (kind) {
+                case 17:
+                    {
+                        long index = leb(off, end);
+                        if (at < 0) {
+                            damage();
+                            return -1;
+                        }
+                        if (edgeCount == edges.length) {
+                            edges = java.util.Arrays.copyOf(edges, Math.max(8, edgeCount * 2));
+                        }
+                        edges[edgeCount++] = index;
+                        return at;
+                    }
+                case 30:
+                    {
+                        long ref = leb(off, end);
+                        if (at < 0 || ref > ids.length) {
+                            damage();
+                            return -1;
+                        }
+                        return at;
+                    }
+                case 15:
+                    return union(off, end);
+                case 12:
+                case 13:
+                case 14:
+                case 16:
+                case 31:
+                case 32:
+                case 33:
+                    {
+                        long n = leb(off, end);
+                        if (at < 0 || n > end - at) {
+                            damage();
+                            return -1;
+                        }
+                        int from = at;
+                        int to = from + (int) n;
+                        return content(from, to, kind) ? to : -1;
+                    }
+                default:
+                    damage();
+                    return -1;
+            }
+        }
+
+        // content walks a payload already framed by a length, which must be
+        // consumed exactly: a field's L, an arm's L, a keyed slot's L.
+        boolean content(int off, int end, int kind) {
+            int w = width(kind);
+            if (w > 0) {
+                if (end - off != w) {
+                    return damage();
+                }
+                return scalar(off, kind);
+            }
+            switch (kind) {
+                case 12:
+                    return textValid(buf, off, end - off) || damage();
+                case 33:
+                    return wideBytesValid(off, end) || damage();
+                case 31:
+                    return true; // opaque: the one kind whose meaning a reader may not know (§3)
+                case 32:
+                    return end == off || damage();
+                case 13:
+                case 14:
+                case 16:
+                    {
+                        // THE BINARY NESTING BOUND (§4): a framed body is one
+                        // level deeper than the payload holding it
+                        if (depth >= MAX_DEPTH) {
+                            return damage();
+                        }
+                        depth++;
+                        boolean good =
+                                kind == 13
+                                        ? body(off, end, false, null)
+                                        : kind == 14 ? array(off, end) : keyed(off, end);
+                        depth--;
+                        return good;
+                    }
+                case 15:
+                case 17:
+                case 30:
+                    {
+                        int to = payload(off, end, kind);
+                        if (to < 0) {
+                            return false;
+                        }
+                        return to == end || damage();
+                    }
+                default:
+                    return damage();
+            }
+        }
+
+        // scalar checks a fixed-width value's bytes: a bool is 0 or 1, and a
+        // float that is not finite is met (§3.3).
+        boolean scalar(int off, int kind) {
+            switch (kind) {
+                case 1:
+                    return (buf[off] & 0xff) <= 1 || damage();
+                case 10:
+                    if ((get32(off) & 0x7f800000) == 0x7f800000) {
+                        nonFinite = true;
+                    }
+                    return true;
+                case 11:
+                    if ((u64(buf, off) & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                        nonFinite = true;
+                    }
+                    return true;
+                default:
+                    return true;
+            }
+        }
+
+        int get32(int off) {
+            return (buf[off] & 0xff)
+                    | (buf[off + 1] & 0xff) << 8
+                    | (buf[off + 2] & 0xff) << 16
+                    | (buf[off + 3] & 0xff) << 24;
+        }
+
+        boolean wideBytesValid(int off, int end) {
+            if (((end - off) & 1) != 0) {
+                return false;
+            }
+            for (int i = off; i < end; i += 2) {
+                int u = (buf[i] & 0xff) | (buf[i + 1] & 0xff) << 8;
+                if (u == 0 || u >= 0xdc00 && u <= 0xdfff) {
+                    return false;
+                }
+                if (u >= 0xd800 && u <= 0xdbff) {
+                    i += 2;
+                    if (i >= end) {
+                        return false;
+                    }
+                    int v = (buf[i] & 0xff) | (buf[i + 1] & 0xff) << 8;
+                    if (v < 0xdc00 || v > 0xdfff) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        // header reads an array, keyed or map header: THE HEADER LIES INSIDE
+        // ITS OWN L (§4), so content shorter than the two bytes a header needs,
+        // or a count that crosses it, is damage. It answers the count and
+        // leaves at after it.
+        long header(int off, int end) {
+            if (end - off < 2) {
+                damage();
+                return -1;
+            }
+            long count = leb(off + 1, end);
+            if (at < 0) {
+                damage();
+                return -1;
+            }
+            if (count > 0x7fffffffL) {
+                if (fail == OK) {
+                    fail = COUNT_CAP;
+                }
+                return -1;
+            }
+            // every element is a byte at the least
+            if (count > end - at) {
+                damage();
+                return -1;
+            }
+            return count;
+        }
+
+        boolean array(int off, int end) {
+            long count = header(off, end);
+            if (count < 0) {
+                return false;
+            }
+            int kind = buf[off] & 0xff;
+            int p = at;
+            for (long i = 0; i < count; i++) {
+                p = payload(p, end, kind);
+                if (p < 0) {
+                    return false;
+                }
+            }
+            return p == end || damage();
+        }
+
+        boolean keyed(int off, int end) {
+            long count = header(off, end);
+            if (count < 0) {
+                return false;
+            }
+            int kind = buf[off] & 0xff;
+            int first = at;
+            int g = ++gen;
+            int p = first;
+            for (long i = 0; i < count; i++) {
+                long key = leb(p, end);
+                if (at < 0 || key == 0 || key > ids.length) {
+                    return damage();
+                }
+                if (stamp[(int) key] == g) {
+                    return damage();
+                }
+                stamp[(int) key] = g;
+                long n = leb(at, end);
+                if (at < 0 || n > end - at) {
+                    return damage();
+                }
+                p = at + (int) n;
+            }
+            if (p != end) {
+                return damage();
+            }
+            p = first;
+            for (long i = 0; i < count; i++) {
+                leb(p, end);
+                long n = leb(at, end);
+                int from = at;
+                p = from + (int) n;
+                if (!content(from, p, kind)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // union walks a union payload in place: the arm reference, and for a
+        // set arm the arm's kind byte, its L and the content L frames. A union
+        // is a level when its arm is structural (§4).
+        int union(int off, int end) {
+            long ref = leb(off, end);
+            if (at < 0 || ref > ids.length) {
+                damage();
+                return -1;
+            }
+            if (ref == 0) {
+                return at;
+            }
+            if (at >= end) {
+                damage();
+                return -1;
+            }
+            int kind = buf[at] & 0xff;
+            long n = leb(at + 1, end);
+            if (at < 0 || n > end - at) {
+                damage();
+                return -1;
+            }
+            int from = at;
+            int to = from + (int) n;
+            boolean structural = kind == 13 || kind == 14 || kind == 15 || kind == 16;
+            if (structural) {
+                if (depth >= MAX_DEPTH) {
+                    damage();
+                    return -1;
+                }
+                depth++;
+            }
+            boolean good = content(from, to, kind);
+            if (structural) {
+                depth--;
+            }
+            return good ? to : -1;
+        }
     }
 
     // trailerBase is open's every check, made IN PLACE on the caller's bytes:
@@ -1625,81 +2298,11 @@ public final class TableVariable {
         // no counter (§3.1). It is false when the field is absent — an empty
         // but valid numbering — or was read whole.
         public boolean bad;
-        // THE POINTER EDGES the resolve met, as (from, to) node index pairs:
-        // from is the node whose fields are resolving (1 the root, k >= 2 the
-        // record), to the node a pointer named. cyclic() walks them (§3.1).
-        public long from = 1;
-        long[] edges = new long[16];
-        int edgeCount;
-
-        void edge(long to) {
-            if (edgeCount + 2 > edges.length) {
-                edges = java.util.Arrays.copyOf(edges, edges.length * 2);
-            }
-            edges[edgeCount++] = from;
-            edges[edgeCount++] = to;
-        }
     }
 
-    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer
-    // produces one, so the load walks the resolved graph, the root first and
-    // then every record the root did not reach, and a pointer that reaches a
-    // node whose descent is still OPEN (a back edge) refuses the whole load; a
-    // pointer to a CLOSED node is a share and legal and is never re-entered.
-    // Three marks per node (unvisited, open, closed), each node entered once:
-    // linear, iterative, nothing recursed.
-    public static boolean cyclic(NodeTable nt) {
-        int pairs = nt.edgeCount / 2;
-        if (pairs == 0) {
-            return false;
-        }
-        int n = (nt.recs == null ? 0 : nt.recs.length) + 2;
-        int[] start = new int[n + 1];
-        for (int i = 0; i < pairs; i++) {
-            start[(int) nt.edges[2 * i] + 1]++;
-        }
-        for (int i = 0; i < n; i++) {
-            start[i + 1] += start[i];
-        }
-        int[] to = new int[pairs];
-        int[] fill = java.util.Arrays.copyOf(start, n);
-        for (int i = 0; i < pairs; i++) {
-            to[fill[(int) nt.edges[2 * i]]++] = (int) nt.edges[2 * i + 1];
-        }
-        byte[] state = new byte[n]; // 0 unvisited, 1 open, 2 closed
-        int[] stack = new int[n];
-        int[] next = new int[n];
-        for (int root = 1; root < n; root++) {
-            if (state[root] != 0) {
-                continue;
-            }
-            int depth = 0;
-            stack[depth++] = root;
-            state[root] = 1;
-            next[root] = start[root];
-            while (depth > 0) {
-                int at = stack[depth - 1];
-                if (next[at] == start[at + 1]) {
-                    state[at] = 2;
-                    depth--;
-                    continue;
-                }
-                int t = to[next[at]++];
-                if (state[t] == 1) {
-                    return true;
-                }
-                if (state[t] == 0) {
-                    state[t] = 1;
-                    next[t] = start[t];
-                    stack[depth++] = t;
-                }
-            }
-        }
-        return false;
-    }
-
-    // resolveTable against the load's NodeTable: the record's table, and the
-    // edge recorded for cyclic().
+    // resolveTable against the load's NodeTable: the record's table. The
+    // pointer graph (a cycle, an unreached record) was judged before any
+    // value was decoded (WireCheck, in open).
     public static <T> T resolveTable(
             NodeTable nt,
             long index,
@@ -1707,11 +2310,7 @@ public final class TableVariable {
             Object root,
             long rootTypeId,
             Report report) {
-        T t = resolveTable(nt.recs, index, targetTypeId, root, rootTypeId, report);
-        if (t != null) {
-            nt.edge(index);
-        }
-        return t;
+        return resolveTable(nt.recs, index, targetTypeId, root, rootTypeId, report);
     }
 
     @SuppressWarnings("unchecked")
