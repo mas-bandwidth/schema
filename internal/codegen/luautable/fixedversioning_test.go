@@ -155,8 +155,8 @@ check(report.field ~= nil and string.sub(report.field, -%d) == %q, "the refusal 
 local values = LOAD("file", report)
 check(values ~= nil, "the newer reader refused the older writer's file: " .. why(report))
 if values == nil then return end
-check(report.reason == nil and report.malformed == false, "a clean NEW-READS-OLD is not a refusal: " .. why(report))
-check(report.unknown == 0 and report.kindMismatch == 0 and report.clamped == 0 and report.duplicate == 0,
+check(report.reason == nil, "a clean NEW-READS-OLD is not a refusal: " .. why(report))
+check(report.unknown == 0 and report.kindMismatch == 0,
 	"counters moved on a clean backward read: " .. why(report))
 %s
 local v = values[1]
@@ -184,7 +184,7 @@ func TestLuauFixedVersioningOldRefusesNew(t *testing.T) {
 				body = `local report: any = {}
 local values = LOAD("file", report)
 check(values ~= nil and #values >= 1, "a row that moved no layout byte must READ both ways: " .. why(report))
-check(report.reason == nil and report.malformed == false, "an equal hash is not a version: " .. why(report))
+check(report.reason == nil, "an equal hash is not a version: " .. why(report))
 `
 			} else {
 				body = fmt.Sprintf(`local report: any = {}
@@ -192,8 +192,7 @@ local values = LOAD("file", report)
 check(values == nil, "the older reader did not refuse the newer writer's file")
 check(report.reason == "layout_unknown", "a hash in no lineage entry owes layout_unknown, not " .. tostring(report.reason))
 check(report.layoutHash == %s, "layout_unknown reports THE FILE's hash: " .. tostring(report.layoutHash))
-check(report.malformed == false, "a refusal by name never sets malformed too (the joint answer)")
-check(report.widened == 0 and report.unknown == 0 and report.kindMismatch == 0 and report.clamped == 0 and report.duplicate == 0,
+check(report.widened == 0 and report.unknown == 0 and report.kindMismatch == 0,
 	"REFUSE is total: no counter moves: " .. why(report))
 `, luau.IntegerLit(new(bigInt).SetUint64(binary.LittleEndian.Uint64(data[8:16]))))
 			}
@@ -220,7 +219,7 @@ func TestLuauFixedVersioningFloor(t *testing.T) {
 		t.Parallel()
 		luauVersionProbe(t, "VNEW_floor", older, 0, inputs, `local report: any = {}
 local values = LOAD("old", report)
-check(values ~= nil and report.reason == nil and not report.malformed, "a file AT the floor must read: " .. why(report))
+check(values ~= nil and report.reason == nil, "a file AT the floor must read: " .. why(report))
 if values ~= nil then check(num(values[1].A) == 11, "the oldest file's a did not land") end
 `)
 	})
@@ -231,7 +230,7 @@ if values ~= nil then check(num(values[1].A) == 11, "the oldest file's a did not
 local values = LOAD("old", report)
 check(values == nil and report.reason == "layout_unsupported", "a file below the floor owes layout_unsupported: " .. why(report))
 check(report.layoutHash == %s, "layout_unsupported reports the file's hash too")
-check(not report.malformed and report.widened == 0 and report.unknown == 0 and report.clamped == 0, "REFUSE is total: " .. why(report))
+check(report.widened == 0 and report.unknown == 0, "REFUSE is total: " .. why(report))
 local mid: any = {}
 check(LOAD("mid", mid) ~= nil, "the file AT the raised floor must still read: " .. why(mid))
 `, hash))
@@ -265,7 +264,6 @@ func TestLuauFixedVersioningHash(t *testing.T) {
 		luauVersionProbe(t, "VNEW_field_append", older, 0, inputs, `local report: any = {}
 check(LOAD("unknown", report) == nil and report.reason == "layout_unknown", "hash_unknown: " .. why(report))
 check(report.layoutHash == 0x0EADBEEFCAFEF00Di, "hash_unknown reports the file's hash")
-check(not report.malformed, "hash_unknown is a refusal by name, not malformed")
 `)
 	})
 	// hash_known_bytes_differ: a KNOWN hash over layout bytes that differ from
@@ -274,7 +272,6 @@ check(not report.malformed, "hash_unknown is a refusal by name, not malformed")
 		t.Parallel()
 		luauVersionProbe(t, "VNEW_field_append", older, 0, inputs, `local report: any = {}
 check(LOAD("differ", report) == nil and report.reason == "layout_malformed", "hash_known_bytes_differ: " .. why(report))
-check(not report.malformed, "a refusal by name never sets malformed too")
 `)
 	})
 	// hash_identity: the reader's own hash selects the identity plan
@@ -282,7 +279,7 @@ check(not report.malformed, "a refusal by name never sets malformed too")
 		t.Parallel()
 		luauVersionProbe(t, "VNEW_field_append", older, 0, inputs, `local report: any = {}
 local values = LOAD("fresh", report)
-check(values ~= nil and report.reason == nil and not report.malformed, "hash_identity: " .. why(report))
+check(values ~= nil and report.reason == nil, "hash_identity: " .. why(report))
 if values ~= nil then check(num(values[1].W) == 777, "the identity plan lost a value: " .. tostring(values[1].W)) end
 `)
 	})
@@ -306,7 +303,7 @@ func TestLuauFixedVersioningLineageMerge(t *testing.T) {
 		fmt.Fprintf(&body, `do
 	local report: any = {}
 	local values = LOAD(%q, report)
-	check(values ~= nil and report.reason == nil and not report.malformed, %q .. ": every pre-merge file reads on the merged build: " .. why(report))
+	check(values ~= nil and report.reason == nil, %q .. ": every pre-merge file reads on the merged build: " .. why(report))
 	if values ~= nil then
 		local v = values[1]
 %s
@@ -322,8 +319,8 @@ end
 // The corpus's own old_union_append.bin (one record, tag 1, the alpha arm
 // live) with a SECOND record appended that is the first with its tag forged to
 // 9, past the writer's two arms. The newer reader holds three arms, so this is
-// the COMPILED plan: record 1 keeps the writer's arm, record 2 lands None and
-// counts once — never the previous record's tag.
+// the COMPILED plan: the tag names no arm the writer had, so the whole batch
+// refuses out_of_range and nothing lands (docs/FIXED-FORM-ALGORITHM.md §4.6).
 
 func TestLuauFixedCompiledPlanTagPastArmSet(t *testing.T) {
 	t.Parallel()
@@ -333,16 +330,14 @@ func TestLuauFixedCompiledPlanTagPastArmSet(t *testing.T) {
 	record := data[at0:]
 	forged := append(append([]byte(nil), data...), record...)
 	forged[len(data)+8] = 9
-	luauVersionProbe(t, "VNEW_union_append", []string{"VOLD_union_append"}, 0, map[string][]byte{"file": forged}, `local report: any = {}
+	luauVersionProbe(t, "VNEW_union_append", []string{"VOLD_union_append"}, 0, map[string][]byte{"file": forged, "clean": data}, `local report: any = {}
 local values = LOADT("file", report)
-check(values ~= nil and #values == 2, "the two-record file did not read: " .. why(report))
-if values == nil then return end
-check(report.reason == nil and not report.malformed, "a forged TAG is not a refusal and not malformed: " .. why(report))
-check(values[1].Pick.Type == 1 and num(values[1].Pick.Alpha.M) == 7, "record 1 lost the arm the writer named")
-check(values[2].Pick.Type == 0, "a tag past the arm set reported an arm: " .. tostring(values[2].Pick.Type))
-check(report.clamped == 1, "a tag past the writer's arm set is counted exactly once: " .. why(report))
+check(values == nil and report.reason == "out_of_range", "a tag past the writer's arm set refuses the batch: " .. why(report))
+check(report.widened == 0 and report.unknown == 0, "a refusal moved a counter: " .. why(report))
 local strict: any = {}
-check(LOAD("file", strict) == nil and strict.reason == "clamped", "the plain read is STRICT and refuses the clamp by name (§6.5): " .. why(strict))
+check(LOAD("file", strict) == nil and strict.reason == "out_of_range", "the plain read refuses it too: " .. why(strict))
+local back: any = {}
+check(LOAD("clean", back) ~= nil, "the unforged file reads: " .. why(back))
 `)
 }
 
@@ -422,9 +417,9 @@ local function check(ok: boolean, what: string)
 	end
 end
 local function why(r: any): string
-	return string.format("reason=%%s malformed=%%s unknown=%%s kind=%%s clamped=%%s widened=%%s duplicate=%%s layoutHash=%%s",
-		tostring(r.reason), tostring(r.malformed), tostring(r.unknown), tostring(r.kindMismatch),
-		tostring(r.clamped), tostring(r.widened), tostring(r.duplicate), tostring(r.layoutHash))
+	return string.format("reason=%%s field=%%s unknown=%%s kind=%%s widened=%%s layoutHash=%%s",
+		tostring(r.reason), tostring(r.field), tostring(r.unknown), tostring(r.kindMismatch),
+		tostring(r.widened), tostring(r.layoutHash))
 end
 -- a value as a plain number: an integer, a number, or a bool as 0 / 1
 local function num(x: any): number
