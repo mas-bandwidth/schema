@@ -617,10 +617,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			// AN ORDINAL PAST THE WRITER'S VARIANTS — the plan's count, never
 			// this reader's longer one — is FORGED and refuses out_of_range
 			// (docs/FIXED-FORM-ALGORITHM.md §4.6, §5.4; §5.8 row 12)
-			top := len(node.children)
-			if len(r.Variants) < top {
-				top = len(r.Variants)
-			}
+			top := min(len(node.children), len(r.Variants))
 			m.Printf("%s  if (ev < 0 || ev > %d) return \"out_of_range\";\n", ind, top)
 			m.Printf("%s  local val = null;\n", ind)
 			for i, v := range r.Variants {
