@@ -12,10 +12,10 @@ import (
 // VNEW_array_bounded_grow, vals [..8]int32. It is handed two endpoints with
 // DIFFERENT bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE the file,
 // and VMID_array_bounded_grow ([..6]int32), the distractor, which did not. The
-// count word is forged to 7 exactly as the landed single-endpoint test forges it.
-// The number that makes this test worth having is 6: a reader that clamps to
-// its own bound lands 8, a reader that clamps to whichever endpoint it saw last
-// lands 6, and only a plan that carries the WRITING endpoint's bound lands 4.
+// count word is forged to 5: past the writer's 4 and inside the distractor's 6.
+// Under strict-only a count past its bound refuses as out_of_range, so a reader
+// that bounds by its own 8 or by whichever endpoint it saw last (6) reads the
+// file, and only a plan that carries the WRITING endpoint's bound refuses it.
 
 func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	corpus := versionCorpus(t)
@@ -26,8 +26,8 @@ func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 /// VOLD_array_bounded_grow ([..4]int32) WROTE the file; VMID_array_bounded_grow
 /// ([..6]int32) is the distractor sitting LAST in the lineage. The plan is a
 /// COMPILED one and the count's bound is the WRITER's, carried by the plan —
-/// never the distractor's 6, never the reader's 8, never the forged 7. The forge
-/// writes 7 as a little-endian u32 over the count word the lead's needle locates.
+/// never the distractor's 6, never the reader's 8: the forged 5 refuses. The forge
+/// writes 5 as a little-endian u32 over the count word the lead's needle locates.
 #[test]
 fn v_writer_bound_count_two_remotes() {
     let mut data = std::fs::read(%q).expect("the reference's old_array_bounded_grow.bin");
@@ -42,43 +42,21 @@ fn v_writer_bound_count_two_remotes() {
         }
     }
     let found = found.unwrap_or_else(|| panic!("the lead+count needle occurs zero times; it is not a locator"));
-    data[found + 4..found + 8].copy_from_slice(&7u32.to_le_bytes()); // the forge
+    data[found + 4..found + 8].copy_from_slice(&5u32.to_le_bytes()); // the forge: past the writer's 4, inside the distractor's 6
     let mut values = vec![ROWTYPE::default(); 8];
     let mut plan = vec![TableFixedEntry::default(); 4096];
     let mut remap = vec![0u16; 4096];
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    let n = n.unwrap_or_else(|| panic!(
-        "a forged count inside the reader's bound is not a refusal: {} {:?}", report.reason.name(), report
-    ));
-    assert_eq!(n, 1, "the forged file reads exactly one record, not {n}");
+    // STRICT-ONLY (docs/plans/strict-only.md): a value past its bound refuses
+    // the whole batch as out_of_range; nothing lands and no counter moves.
+    assert!(n.is_none(), "the forged file was read, not refused: {:?}", report);
     assert!(
-        !report.refused && report.reason == TableFixedReason::None,
-        "a forged count inside the writer's bound is not a refusal: {:?}", report
+        report.refused && report.reason == TableFixedReason::OutOfRange,
+        "a forged value past its bound is an out_of_range refusal: {:?}", report
     );
-    assert!(!report.malformed, "a count inside the writer's bound is not damage: {:?}", report);
-    assert_eq!(
-        values[0].vals_count, 4,
-        "vals_count is the WRITER's bound carried by the plan, never the distractor's 6, never the reader's 8, nor the forged 7"
-    );
-    for k in 0..4usize {
-        assert_eq!(values[0].vals[k], 1000 + k as i32, "vals[{k}] did not land");
-    }
-    for k in 4..8usize {
-        assert_eq!(values[0].vals[k], 0, "vals[{k}] past the writer's bound is not the reader's declared default");
-    }
-    assert!(
-        values[0].lead == 0xAAAA_AAAA && values[0].trail == 0xBBBB_BBBB,
-        "the row moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
-    );
-    assert_eq!(
-        report.clamped, 1,
-        "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: {:?}", report
-    );
-    assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
-        "counters moved on a clean clamped read: {:?}", report
-    );
+    assert!(!report.damaged, "a forged value is not damage: {:?}", report);
+    assert!(report.unknown == 0 && report.widened == 0, "a refusal moved a counter: {:?}", report);
 }
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"))
 

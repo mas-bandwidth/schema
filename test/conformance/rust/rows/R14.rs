@@ -143,7 +143,7 @@ fn r14_positive_control_same_layout_compiles() {
     assert_eq!(report.reason, TableFixedReason::None, "no refusal: {report:?}");
     assert!(!report.refused, "nothing refused: {report:?}");
     assert_eq!(report.unknown, 0, "unknown stays zero: {report:?}");
-    assert_eq!(report.kind_mismatch, 0, "kind_mismatch stays zero: {report:?}");
+    assert_eq!(report.mismatch, 0, "kind_mismatch stays zero: {report:?}");
 }
 
 // THE BOUNDARY: an entry reaching EXACTLY to the writer's record still
@@ -198,10 +198,10 @@ fn r14_entry_past_the_writer_record_refuses_by_name() {
         TableFixedReason::LayoutMalformed,
         "§5.8 row 13: the compile's failure path is NOT layout_malformed"
     );
-    assert!(!report.malformed, "a refusal by name is not damage: {report:?}");
-    assert_eq!(report.clamped, 0, "nothing clamped: {report:?}");
+    assert!(!report.damaged, "a refusal by name is not damage: {report:?}");
+    assert_eq!(report.oor, 0, "nothing clamped: {report:?}");
     assert_eq!(report.unknown, 0, "refuse is total: {report:?}");
-    assert_eq!(report.kind_mismatch, 0, "refuse is total: {report:?}");
+    assert_eq!(report.mismatch, 0, "refuse is total: {report:?}");
     assert_eq!(report.layout_hash, 0, "the name carries no hash: {report:?}");
 }
 
