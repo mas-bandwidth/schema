@@ -691,7 +691,7 @@ func (e *fixedEmit) landElem(ind int, f *ir.Field, pl place, off string) {
 // array's live elements, an optional's payload under its flag, a union's
 // taken arm. A ranged scalar clamps to its declared min and max (a fixed
 // field's in raw units), a bits(N) to 2^N-1; an enum ordinal or a union tag
-// past its set lands None; each counts clamped once.
+// past its set lands None; each counts oor once.
 // ---------------------------------------------------------------------------
 
 func (e *fixedEmit) clampField(ind int, base string, f *ir.Field) {
@@ -1085,13 +1085,13 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 
 // emitRoot writes a fixed root's batch API (docs/FIXED-FORM-ALGORITHM.md §2,
 // §3.1, §5.3; docs/SPEC-TABLES.md §3.4, §6.5): the measure, the save (the
-// whole batch held to the contract before the first byte), the tolerant load
+// whole batch held to the contract before the first byte), the load
 // (the framing, the scan of every record, then the run and the bounds pass)
 // and the strict load.
 func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	n := st.Name
 	typ := e.structType(st)
-	e.declare(n+"FixedMeasure", n+"FixedSave", n+"FixedLoadTolerant", n+"FixedLoad")
+	e.declare(n+"FixedMeasure", n+"FixedSave", n+"FixedLoad")
 	e.p(0, "// %sFixedMeasure is a file of count records: the header, the layout, the records (§2).", n)
 	e.p(0, "fn %sFixedMeasure(count: i64) -> i64 {", n)
 	if st.Integrity == "crc32c" {
@@ -1124,10 +1124,10 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "return out.len - start;")
 	e.p(0, "}\n")
 
-	e.p(0, "// %sFixedLoadTolerant reads a fixed-form file into values, whose length is the caller's", n)
+	e.p(0, "// %sFixedLoad reads a fixed-form file into values, whose length is the caller's", n)
 	e.p(0, "// capacity, and returns the record count, or -1 with report.reason naming the refusal;")
-	e.p(0, "// a refusal lands nothing (§5.3, TOTAL OVER THE BATCH). Clamps are counted onto report.")
-	e.p(0, "fn %sFixedLoadTolerant(values: %s[:], data: const u8[:], report: schema_rt::FixedReport&) -> i64 {", n, typ)
+	e.p(0, "// a refusal lands nothing (§5.3, TOTAL OVER THE BATCH).")
+	e.p(0, "fn %sFixedLoad(values: %s[:], data: const u8[:], report: schema_rt::FixedReport&) -> i64 {", n, typ)
 	e.p(1, "report = schema_rt::FixedReport { .. };")
 	if st.Integrity == "crc32c" {
 		e.p(1, "if schema_rt::fixed_open_integrity(data, report) < 0 { return -1; }")
@@ -1147,25 +1147,8 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "k = 0;")
 	e.p(1, "while k < n {")
 	e.p(2, "_%sFixedRead(data, first + k * %sFixedRecordBytes, values[k]);", n, n)
-	e.p(2, "report.clamped += _%sFixedClamp(values[k]);", n)
+	e.p(2, "report.oor += _%sFixedClamp(values[k]);", n)
 	e.p(2, "k += 1;")
-	e.p(1, "}")
-	e.p(1, "return n;")
-	e.p(0, "}\n")
-
-	e.p(0, "// %sFixedLoad is the STRICT read (docs/SPEC-TABLES.md §6.5): every refusal of", n)
-	e.p(0, "// %sFixedLoadTolerant, and a read that clamped, is -1 with every value it wrote reset.", n)
-	e.p(0, "fn %sFixedLoad(values: %s[:], data: const u8[:], report: schema_rt::FixedReport&) -> i64 {", n, typ)
-	e.p(1, "let n = %sFixedLoadTolerant(values, data, report);", n)
-	e.p(1, "if n < 0 { return -1; }")
-	e.p(1, "if report.clamped > 0 {")
-	e.p(2, "var k: i64 = 0;")
-	e.p(2, "while k < n {")
-	e.p(3, "values[k] = %s { .. };", typ)
-	e.p(3, "k += 1;")
-	e.p(2, "}")
-	e.p(2, "report.reason = schema_rt::FixedRefuseClamped;")
-	e.p(2, "return -1;")
 	e.p(1, "}")
 	e.p(1, "return n;")
 	e.p(0, "}\n")

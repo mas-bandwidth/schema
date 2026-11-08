@@ -43,7 +43,7 @@ fixed table OnlyBlock | forms = "wire,block" {
 		t.Fatal(err)
 	}
 	tab := string(files["FormsTable.goose"])
-	for _, want := range []string{"fn OnlyWireFromJson(", "fn OnlyWireToJson(", "fn OnlyBlockFixedSave(", "fn OnlyBlockFixedLoadTolerant("} {
+	for _, want := range []string{"fn OnlyWireFromJson(", "fn OnlyWireToJson(", "fn OnlyBlockFixedSave(", "fn OnlyBlockFixedLoad("} {
 		if !strings.Contains(tab, want) {
 			t.Errorf("FormsTable.goose missing declared form symbol %q", want)
 		}
@@ -106,8 +106,8 @@ fn main() {
     // An object at the root of an array-root table is malformed.
     var bad = arraydemo::NewGoalList();
     var brep = schema_rt::JsonReport { .. };
-    assert(!arraydemo::GoalListFromJsonTolerant(bad, "{}", brep));
-    assert(brep.malformed);
+    assert(!arraydemo::GoalListFromJson(bad, "{}", brep));
+    assert(brep.damaged);
 
     // Nested inside Holder, GoalList also rides as a JSON array.
     var h = arraydemo::NewHolder();
@@ -117,8 +117,8 @@ fn main() {
 
     var hbad = arraydemo::NewHolder();
     var hbrep = schema_rt::JsonReport { .. };
-    assert(arraydemo::HolderFromJsonTolerant(hbad, "{\"list\":{\"goals\":[]}}", hbrep));
-    assert(hbrep.kind_mismatch == 1);
+    assert(arraydemo::HolderFromJson(hbad, "{\"list\":{\"goals\":[]}}", hbrep));
+    assert(hbrep.mismatch == 1);
 }
 `)
 	gooserun.Run(t, t.TempDir(), "main.goose", files)
@@ -164,24 +164,24 @@ fn main() {
     assert(fn_len == fneed);
     var floaded: integritydemo::Sealed[1] = [integritydemo::NewSealed()];
     var frep = schema_rt::FixedReport { .. };
-    assert(integritydemo::SealedFixedLoadTolerant(floaded, fbuf, frep) == 1);
-    assert(!frep.malformed && floaded[0].X == 42 && floaded[0].Y == -7);
+    assert(integritydemo::SealedFixedLoad(floaded, fbuf, frep) == 1);
+    assert(!frep.damaged && floaded[0].X == 42 && floaded[0].Y == -7);
 
     var fevolved: integritydemo::Sealed[1] = [integritydemo::NewSealed()];
     var ferep = schema_rt::FixedEvolveReport { .. };
     assert(integritydemo::SealedFixedEvolveLoad(fevolved, fbuf, ferep) == 1);
-    assert(!ferep.malformed && fevolved[0].X == 42 && fevolved[0].Y == -7);
+    assert(!ferep.damaged && fevolved[0].X == 42 && fevolved[0].Y == -7);
 
     fbuf[fn_len - 1] = fbuf[fn_len - 1] ^ 0x01;
     var fbad: integritydemo::Sealed[1] = [integritydemo::NewSealed()];
     var fbrep = schema_rt::FixedReport { .. };
-    assert(integritydemo::SealedFixedLoadTolerant(fbad, fbuf, fbrep) == -1);
-    assert(fbrep.malformed && fbrep.reason == schema_rt::FixedRefuseIntegrityMismatch);
+    assert(integritydemo::SealedFixedLoad(fbad, fbuf, fbrep) == -1);
+    assert(fbrep.damaged && fbrep.reason == schema_rt::FixedRefuseIntegrityMismatch);
 
     var febad: integritydemo::Sealed[1] = [integritydemo::NewSealed()];
     var febrep = schema_rt::FixedEvolveReport { .. };
     assert(integritydemo::SealedFixedEvolveLoad(febad, fbuf, febrep) == -1);
-    assert(febrep.malformed && febrep.reason == schema_rt::FixedRefuseIntegrityMismatch);
+    assert(febrep.damaged && febrep.reason == schema_rt::FixedRefuseIntegrityMismatch);
 
     // Form 2: message batch save + load + integrity_mismatch on flip.
     var mrep = schema_rt::MsgReport { .. };
@@ -194,13 +194,13 @@ fn main() {
     assert(schema_rt::announce_read(voc, integritydemo::SealedAnnounce, mrep));
     var mout: integritydemo::Sealed[1] = [integritydemo::NewSealed()];
     assert(integritydemo::SealedLoadMessages(mout, voc, mbuf, mrep) == 1);
-    assert(!mrep.malformed && mout[0].X == 42 && mout[0].Y == -7);
+    assert(!mrep.damaged && mout[0].X == 42 && mout[0].Y == -7);
 
     mbuf[mlen - 1] = mbuf[mlen - 1] ^ 0x80;
     var mbad: integritydemo::Sealed[1] = [integritydemo::NewSealed()];
     var mbrep = schema_rt::MsgReport { .. };
     assert(integritydemo::SealedLoadMessages(mbad, voc, mbuf, mbrep) == -1);
-    assert(mbrep.malformed && mbrep.reason == schema_rt::MsgRefuseIntegrityMismatch);
+    assert(mbrep.damaged && mbrep.reason == schema_rt::MsgRefuseIntegrityMismatch);
 
     // Form 1: table wire save + load + integrity_mismatch on flip.
     var empty: u8[0] = [];
@@ -220,7 +220,7 @@ fn main() {
     var lnodes: schema_rt::LoadNode[>..] = [];
     var lrep = schema_rt::LoadReport { .. };
     let lroot = schema_rt::load_table(integritydemo::TableUnit, "Sealed", wbytes, lvals, lnodes, lrep);
-    assert(lroot >= 0 && !lrep.malformed);
+    assert(lroot >= 0 && !lrep.body_damaged);
 
     var wcorrupt: u8[>..] = [];
     for b in wout { wcorrupt.push(b); }
@@ -230,7 +230,7 @@ fn main() {
     var bnodes: schema_rt::LoadNode[>..] = [];
     var brep = schema_rt::LoadReport { .. };
     let broot = schema_rt::load_table(integritydemo::TableUnit, "Sealed", wcorrupt, bvals, bnodes, brep);
-    assert(broot == -1 && brep.malformed && brep.reason == schema_rt::LoadRefuseIntegrityMismatch);
+    assert(broot == -1 && brep.body_damaged && brep.reason == schema_rt::LoadRefuseIntegrityMismatch);
 }
 `)
 	gooserun.Run(t, t.TempDir(), "main.goose", files)
