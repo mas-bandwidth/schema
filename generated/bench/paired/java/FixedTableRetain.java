@@ -39,7 +39,7 @@ public final class FixedTableRetain {
             return null;
         }
         // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
-        if (report.malformed) {
+        if (report.damaged || report.refused) {
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
@@ -198,7 +198,7 @@ public final class FixedTableRetain {
                 return;
             }
             if (!r.has(1)) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             }
             int kind = r.get8();
@@ -213,23 +213,23 @@ public final class FixedTableRetain {
                         BenchMixedRetain.readFieldsRetain(
                                 br, v.value, nt, retain, report, path, depth + 1);
                         if (br.off != br.limit) {
-                            report.malformed = true;
+                            report.damaged = true;
                             v.value = new BenchMixedVariable.Value();
                         } // §4: reset a nested body that did not fill its length.
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (r.rootBody) {
                     captureUnknown(r, id, kind, retain, report, path, depth);
                 } else {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
             } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             } else {
                 captureUnknown(r, id, kind, retain, report, path, depth);

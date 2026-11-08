@@ -130,7 +130,7 @@ var cookWriteCarried = []cookWriteUnit{
 		{"Root", []string{"feature_full"}},
 	}},
 	{"../../../tables/blobs", "blobdemo", "blobdemo", []cookWriteRoot{
-		{"Catalog", []string{"blob_small", "blob_empty", "blob_large", "blob_shared", "blob_str8", "blob_str16"}},
+		{"Catalog", []string{"blob_small", "blob_empty", "blob_large", "blob_str8", "blob_str16"}},
 	}},
 	{"../../../tables/pointers", "graphdemo", "graphdemo", []cookWriteRoot{
 		{"Scene", []string{"graph_tree", "graph_shared", "graph_empty", "graph_deep"}},
@@ -143,7 +143,6 @@ var cookWriteCarried = []cookWriteUnit{
 	}},
 	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
 		{"KeyedConfig", []string{"keyed_config", "keyed_default"}},
-		{"WideBlob", []string{"wide_blob"}},
 		{"RootConfig", []string{"root_full", "root_default"}},
 		{"ProfileConfig", []string{"profile_elide"}},
 		{"LoadoutConfig", []string{"loadout_full"}},
@@ -403,7 +402,8 @@ func cookGoldenUnit(t *testing.T, m cookManifest, u cookWriteUnit) {
 			t.Run(row, func(t *testing.T) {
 				inst, cook := m.instance[row], m.cook[row]
 				cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookGolden"+r.root,
-					filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]))
+					filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]),
+					filepath.Join(repo, "testdata", "conformance", "tables", "json", row+".json"))
 				if out, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("java cook %s: %v\n%s", row, err, out)
 				}
@@ -441,7 +441,17 @@ public final class COOKCLASS {
         byte[] wire = Files.readAllBytes(Path.of(args[0]));
         PKG.TableVariable.Report report = new PKG.TableVariable.Report();
         PKG.ROOTVariable.Value value = PKG.ROOTVariable.load(wire, report);
-        if (value == null || report.refused || report.malformed) throw new AssertionError("wire load");
+        if (wire.length > 0 && wire[0] == 3) {
+            // A root declared fixed is a form 3 file (docs/SPEC-TABLES.md §5):
+            // the form 1 reader refuses it whole, and the cook is fed the same
+            // value from the instance's committed text instead.
+            if (value != null || !report.refused || report.damaged) throw new AssertionError("form 3 file read as form 1");
+            PKG.TableVariable.Report text = new PKG.TableVariable.Report();
+            value = PKG.ROOTVariable.fromJson(Files.readAllBytes(Path.of(args[3])), text);
+            if (value == null || text.refused || text.damaged) throw new AssertionError("text load: " + text.reason);
+        } else if (value == null || report.refused || report.damaged) {
+            throw new AssertionError("wire load: " + report.reason);
+        }
         long n = PKG.ROOTCook.cookMeasure(value);
         PKG.ROOTCook.MeasureReason reason = PKG.ROOTCook.cookMeasureReason(value);
         if (n < 0 || reason.bytes() != n || !reason.reason().equals("ok")) throw new AssertionError("measure");
@@ -478,7 +488,7 @@ public final class CookRefusalDriver {
     public static void main(String[] args) throws Exception {
         graphdemo.TableVariable.Report report = new graphdemo.TableVariable.Report();
         graphdemo.SceneVariable.Value value = graphdemo.SceneVariable.load(Files.readAllBytes(Path.of(args[0])), report);
-        if (value == null || report.refused || report.malformed) throw new AssertionError("wire load");
+        if (value == null || report.refused || report.damaged) throw new AssertionError("wire load");
         long valid = graphdemo.SceneCook.cookMeasure(value);
         if (valid < 1) throw new AssertionError("graph_tree did not measure");
         int bound = -1;

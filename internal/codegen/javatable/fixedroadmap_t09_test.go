@@ -123,11 +123,9 @@ public final class %[1]s {
         out.append("REPORT n=").append(n)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" malformed=").append(report.malformed)
+           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
-           .append(" kindMismatch=").append(report.kindMismatch)
            .append(" widened=").append(report.widened)
-           .append(" clamped=").append(report.clamped)
            .append('\n');
         for (int i = 0; i < back.length; i++) { walk("VALUE", "v" + i, back[i]); }
         System.out.print(out);
@@ -210,10 +208,10 @@ func t09Run(t *testing.T, classes, class string) string {
 // records with every counter at zero.
 func t09RequireClean(t *testing.T, what string, r probeRun, want int) {
 	t.Helper()
-	if r.n != want || r.refused || r.malformed {
-		t.Fatalf("%s: n=%d refused=%v reason=%s malformed=%v, want %d clean records", what, r.n, r.refused, r.reason, r.malformed, want)
+	if r.n != want || r.refused || r.damaged {
+		t.Fatalf("%s: n=%d refused=%v reason=%s malformed=%v, want %d clean records", what, r.n, r.refused, r.reason, r.damaged, want)
 	}
-	if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 || r.clamped != 0 {
+	if r.unknown != 0 || r.widened != 0 {
 		t.Errorf("%s: a clean round trip moved a counter: %+v", what, r)
 	}
 }

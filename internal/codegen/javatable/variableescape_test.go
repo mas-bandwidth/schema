@@ -68,7 +68,7 @@ table Card { id string(64) }
 // reader cannot name) under kind 31 with an L-framed payload, then the known
 // id field, the terminator and the trailer — and reads it back through the
 // generated codec: the escape is skipped by its L and counted unknown (§3),
-// the known field lands, and no malformed or refusal moves.
+// the known field lands, and no damage or refusal moves.
 const escapeKind31Driver = `import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
@@ -105,17 +105,17 @@ public final class Driver {
         probe.TableVariable.Report r = new probe.TableVariable.Report();
         probe.CardVariable.Value v = probe.CardVariable.load(wire, r);
         if (v == null) { fail("load returned null"); }
-        if (r.refused || r.malformed) { fail("load refused/malformed"); }
+        if (r.refused || r.damaged) { fail("load refused/damaged"); }
         if (!"hi".equals(v.id)) { fail("id=" + v.id); }
         if (r.unknown != 1) { fail("unknown=" + r.unknown + ", want 1 for the escape"); }
-        if (r.kindMismatch != 0) { fail("kindMismatch=" + r.kindMismatch); }
+        if (r.widened != 0) { fail("widened=" + r.widened); }
 
         // Re-save lands the known field alone: the escape is a field this
         // reader cannot name, so it never re-emits.
         byte[] saved = probe.CardVariable.save(v);
         probe.TableVariable.Report r2 = new probe.TableVariable.Report();
         probe.CardVariable.Value back = probe.CardVariable.load(saved, r2);
-        if (back == null || r2.refused || r2.malformed) { fail("re-save does not re-load"); }
+        if (back == null || r2.refused || r2.damaged) { fail("re-save does not re-load"); }
         if (!"hi".equals(back.id)) { fail("re-save id=" + back.id); }
         if (r2.unknown != 0) { fail("re-save unknown=" + r2.unknown); }
 

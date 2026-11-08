@@ -4,9 +4,9 @@ package javatable
 // `VOLD_/VNEW_enum_append` as they stand — `Tier { Bronze, Silver, Gold }` → `+ Platinum` —
 // plus a forged `old_enum_append.bin` with `r0.tier` set to 4, an ordinal PAST the
 // writer's three variants but a name the reader has. The SAME bytes are read TWICE:
-// the NEW build (compiled plan) and the OLD build (identity plan). Each must land
-// `tier` None (0) and never Platinum; the counter asserted EXACTLY is `clamped == 1`
-// on BOTH, never `>= 1` — a leg that also counts the ordinal op lands 2 and passes.
+// the NEW build (compiled plan) and the OLD build (identity plan). Neither may land
+// Platinum, nor any value: under the strict read (docs/plans/strict-only.md) BOTH
+// refuse the whole load as outOfRange, n = -1, with no counter moved.
 import (
 	"bytes"
 	"os"
@@ -55,31 +55,22 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 		{"the NEW build (compiled plan)", compiled},
 		{"the OLD build (identity plan)", identity},
 	} {
-		if probe.r.n != 1 {
-			t.Errorf("%s: n=%d, want 1", probe.which, probe.r.n)
+		if probe.r.n != -1 {
+			t.Errorf("%s: n=%d, want -1: an ordinal past the writer's variants refuses the whole load", probe.which, probe.r.n)
 		}
-		if probe.r.refused {
-			t.Errorf("%s: refused=%v reason=%s, want no refusal", probe.which, probe.r.refused, probe.r.reason)
+		if !probe.r.refused || probe.r.reason != "outOfRange" {
+			t.Errorf("%s: refused=%v reason=%s, want a refusal named outOfRange", probe.which, probe.r.refused, probe.r.reason)
 		}
-		if probe.r.malformed {
-			t.Errorf("%s: malformed=%v, want false", probe.which, probe.r.malformed)
+		if probe.r.damaged {
+			t.Errorf("%s: damaged=%v, want false: a forged value is a refusal, never framing damage", probe.which, probe.r.damaged)
 		}
-		if got := probe.r.value["tier"]; got != "0" {
-			t.Errorf("%s: tier=%s, want None (0) and never Platinum", probe.which, got)
-		}
-		if got := probe.r.value["seq"]; got != "9" {
-			t.Errorf("%s: seq=%s, want 9", probe.which, got)
-		}
-		if probe.r.clamped != 1 {
-			t.Errorf("%s: clamped=%d, want 1 exactly", probe.which, probe.r.clamped)
-		}
-		if probe.r.unknown != 0 || probe.r.kindMismatch != 0 || probe.r.widened != 0 {
-			t.Errorf("%s: counters moved: unknown=%d kindMismatch=%d widened=%d, want all 0",
-				probe.which, probe.r.unknown, probe.r.kindMismatch, probe.r.widened)
+		if probe.r.unknown != 0 || probe.r.widened != 0 {
+			t.Errorf("%s: counters moved: unknown=%d widened=%d, want all 0",
+				probe.which, probe.r.unknown, probe.r.widened)
 		}
 	}
-	if compiled.clamped != identity.clamped {
-		t.Errorf("the two plans disagree: compiled clamped=%d, identity clamped=%d, want the same number on both",
-			compiled.clamped, identity.clamped)
+	if compiled.refused != identity.refused || compiled.reason != identity.reason {
+		t.Errorf("the two plans disagree: compiled refused=%v reason=%s, identity refused=%v reason=%s, want the same verdict on both",
+			compiled.refused, compiled.reason, identity.refused, identity.reason)
 	}
 }

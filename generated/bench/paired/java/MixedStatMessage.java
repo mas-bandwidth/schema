@@ -40,7 +40,7 @@ public final class MixedStatMessage {
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return false;
             }
             if (entry == null) {
@@ -55,9 +55,9 @@ public final class MixedStatMessage {
                     if (TableMessage.entryWidens(entry, 6, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -66,7 +66,7 @@ public final class MixedStatMessage {
                 {
                     long v1 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 8);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.statId = (int) (v1);
@@ -81,9 +81,9 @@ public final class MixedStatMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -92,7 +92,7 @@ public final class MixedStatMessage {
                 {
                     long v2 = TableMessage.readSigned(r, entry.shape, -512L, 511L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.delta = (int) (v2);
@@ -103,7 +103,7 @@ public final class MixedStatMessage {
             } else {
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
-                    r.report.malformed = true;
+                    r.report.damaged = true;
                     return false;
                 }
             }

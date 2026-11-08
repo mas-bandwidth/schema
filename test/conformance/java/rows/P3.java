@@ -94,10 +94,9 @@ public final class P3 {
             final TableFixed.Report r = new TableFixed.Report();
             final int n = GlobalSettingsFixed.load(back, 1, file,
                     GlobalSettingsFixed.identityPlan(), new short[1024], GlobalSettingsFixed.image(), r);
-            check(n == 1 && !r.malformed && !r.refused && r.clamped == 0,
+            check(n == 1 && !r.damaged && !r.refused,
                     "P3 hostile bytes: the lawful record reads clean (n=" + n
-                            + ", refused=" + r.refused + ", malformed=" + r.malformed
-                            + ", clamped=" + r.clamped + ")");
+                            + ", refused=" + r.refused + ", damaged=" + r.damaged + ")");
             check(issue(back[0]) == null,
                     "P3 hostile bytes: the lawful record lands every field in bound");
         }
@@ -109,7 +108,7 @@ public final class P3 {
         //   lands values     n > 0, every landed field in bound, not refused
         // A throw escaping the load, a negative read that is neither refusal
         // nor malformed, or a landed field out of bound is the FOURTH.
-        long refused = 0, malformed = 0, landed = 0, corrected = 0, divergences = 0;
+        long refused = 0, malformed = 0, landed = 0, bounded = 0, divergences = 0;
         for (int at = 0; at < file.length; at++) {
             for (int bit = 0; bit < 8; bit++) {
                 final byte[] hit = file.clone();
@@ -127,20 +126,24 @@ public final class P3 {
                     continue;
                 }
                 if (n < 0) {
-                    if (r.refused && !r.malformed) {
+                    if (r.refused && !r.damaged) {
                         refused++;
-                    } else if (r.malformed && !r.refused) {
+                        if (r.reason == TableFixed.Reason.outOfRange
+                                || r.reason == TableFixed.Reason.countOverBound
+                                || r.reason == TableFixed.Reason.lengthOverBound) {
+                            bounded++;
+                        }
+                    } else if (r.damaged && !r.refused) {
                         malformed++;
                     } else {
                         divergences++;
                         check(false, "P3 hostile bytes: byte " + at + " bit " + bit
                                 + " answered a FOURTH way: n=" + n + ", refused=" + r.refused
-                                + ", malformed=" + r.malformed);
+                                + ", malformed=" + r.damaged);
                     }
                     continue;
                 }
                 landed++;
-                if (r.clamped > 0) { corrected++; }
                 if (r.refused) {
                     divergences++;
                     check(false, "P3 hostile bytes: byte " + at + " bit " + bit
@@ -162,12 +165,12 @@ public final class P3 {
         check(refused > 0, "P3 hostile bytes: the sweep saw a named refusal (" + refused + ")");
         check(malformed > 0, "P3 hostile bytes: the sweep saw a malformed read (" + malformed + ")");
         check(landed > 0, "P3 hostile bytes: the sweep saw reads that landed values (" + landed + ")");
-        check(corrected > 0, "P3 hostile bytes: the sweep exercised a correction that moved a counter (" + corrected + ")");
+        check(bounded > 0, "P3 hostile bytes: the sweep exercised a value past its bound, refused (" + bounded + ")");
         check(divergences == 0, "P3 hostile bytes: " + divergences + " divergences, never a fourth");
 
         System.out.println("P3 hostile bytes: " + file.length + " bytes x 8 bits — " + refused
                 + " refused by name, " + malformed + " malformed, " + landed
-                + " records read (" + corrected + " with a correction), " + divergences + " divergences");
+                + " records read, " + bounded + " refused past a bound, " + divergences + " divergences");
         if (failures == 0) {
             System.out.println("P3: " + assertions + " assertions, all green");
             System.exit(0);

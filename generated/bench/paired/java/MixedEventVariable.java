@@ -211,7 +211,7 @@ public final class MixedEventVariable {
         long id = input.resolve(ref);
         if (input.fail) return null;
         if (!input.has(1)) {
-            report.malformed = true;
+            report.damaged = true;
             input.fail = true;
             return null;
         }
@@ -220,7 +220,7 @@ public final class MixedEventVariable {
         if (body == null) return null;
         if (id == 0x33732819300680aaL) {
             if (!(kind == 13)) {
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
                 return v;
             }
             TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
@@ -230,16 +230,16 @@ public final class MixedEventVariable {
                     v.hit = new MixedHitEventVariable.Value();
                     MixedHitEventVariable.readFields(br, v.hit, nt, report);
                     if (br.off != br.limit) {
-                        report.malformed = true;
+                        report.damaged = true;
                         return new Value();
                     }
                 }
             } else {
                 r.skip(kind);
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
             }
             if (r.fail || r.off != r.limit) {
-                report.malformed = true;
+                report.damaged = true;
                 return new Value();
             }
             v.tag = 1;
@@ -247,7 +247,7 @@ public final class MixedEventVariable {
         }
         if (id == 0xf2a38d910b5b348bL) {
             if (!(kind == 13)) {
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
                 return v;
             }
             TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
@@ -257,16 +257,16 @@ public final class MixedEventVariable {
                     v.chat = new MixedChatEventVariable.Value();
                     MixedChatEventVariable.readFields(br, v.chat, nt, report);
                     if (br.off != br.limit) {
-                        report.malformed = true;
+                        report.damaged = true;
                         return new Value();
                     }
                 }
             } else {
                 r.skip(kind);
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
             }
             if (r.fail || r.off != r.limit) {
-                report.malformed = true;
+                report.damaged = true;
                 return new Value();
             }
             v.tag = 2;
@@ -274,7 +274,7 @@ public final class MixedEventVariable {
         }
         if (id == 0x9fa3a41c86ecb765L) {
             if (!(kind == 13)) {
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
                 return v;
             }
             TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
@@ -284,16 +284,16 @@ public final class MixedEventVariable {
                     v.pickup = new MixedPickupEventVariable.Value();
                     MixedPickupEventVariable.readFields(br, v.pickup, nt, report);
                     if (br.off != br.limit) {
-                        report.malformed = true;
+                        report.damaged = true;
                         return new Value();
                     }
                 }
             } else {
                 r.skip(kind);
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
             }
             if (r.fail || r.off != r.limit) {
-                report.malformed = true;
+                report.damaged = true;
                 return new Value();
             }
             v.tag = 3;
@@ -317,7 +317,7 @@ public final class MixedEventVariable {
         long id = input.resolve(ref);
         if (input.fail) return null;
         if (!input.has(1)) {
-            report.malformed = true;
+            report.damaged = true;
             input.fail = true;
             return null;
         }
@@ -326,7 +326,7 @@ public final class MixedEventVariable {
         if (body == null) return null;
         if (id == 0x33732819300680aaL) {
             if (!(kind == 13)) {
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
                 return v;
             }
             TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
@@ -340,16 +340,16 @@ public final class MixedEventVariable {
                     MixedHitEventRetain.readFieldsRetain(
                             br, v.hit, nt, retain, report, path, depth + 1);
                     if (br.off != br.limit) {
-                        report.malformed = true;
+                        report.damaged = true;
                         return new Value();
                     }
                 }
             } else {
                 r.skip(kind);
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
             }
             if (r.fail || r.off != r.limit) {
-                report.malformed = true;
+                report.damaged = true;
                 return new Value();
             }
             v.tag = 1;
@@ -357,7 +357,7 @@ public final class MixedEventVariable {
         }
         if (id == 0xf2a38d910b5b348bL) {
             if (!(kind == 13)) {
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
                 return v;
             }
             TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
@@ -371,16 +371,16 @@ public final class MixedEventVariable {
                     MixedChatEventRetain.readFieldsRetain(
                             br, v.chat, nt, retain, report, path, depth + 1);
                     if (br.off != br.limit) {
-                        report.malformed = true;
+                        report.damaged = true;
                         return new Value();
                     }
                 }
             } else {
                 r.skip(kind);
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
             }
             if (r.fail || r.off != r.limit) {
-                report.malformed = true;
+                report.damaged = true;
                 return new Value();
             }
             v.tag = 2;
@@ -388,7 +388,7 @@ public final class MixedEventVariable {
         }
         if (id == 0x9fa3a41c86ecb765L) {
             if (!(kind == 13)) {
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
                 return v;
             }
             TableVariable.Reader r = TableVariable.fieldPayload(body, kind);
@@ -402,16 +402,16 @@ public final class MixedEventVariable {
                     MixedPickupEventRetain.readFieldsRetain(
                             br, v.pickup, nt, retain, report, path, depth + 1);
                     if (br.off != br.limit) {
-                        report.malformed = true;
+                        report.damaged = true;
                         return new Value();
                     }
                 }
             } else {
                 r.skip(kind);
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
             }
             if (r.fail || r.off != r.limit) {
-                report.malformed = true;
+                report.damaged = true;
                 return new Value();
             }
             v.tag = 3;
@@ -492,12 +492,12 @@ public final class MixedEventVariable {
                     MixedHitEventVariable.jsonReadFields(in, v.hit);
                 } else {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 }
                 if (!in.bad) v.tag = 1;
             } else {
                 in.skipValue();
-                in.rep.kindMismatch++;
+                in.rep.refuse("kind_mismatch");
             }
         } else if ("chat".equals(armName)) {
             if (in.peek() == '{') {
@@ -505,12 +505,12 @@ public final class MixedEventVariable {
                     MixedChatEventVariable.jsonReadFields(in, v.chat);
                 } else {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 }
                 if (!in.bad) v.tag = 2;
             } else {
                 in.skipValue();
-                in.rep.kindMismatch++;
+                in.rep.refuse("kind_mismatch");
             }
         } else if ("pickup".equals(armName)) {
             if (in.peek() == '{') {
@@ -518,12 +518,12 @@ public final class MixedEventVariable {
                     MixedPickupEventVariable.jsonReadFields(in, v.pickup);
                 } else {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 }
                 if (!in.bad) v.tag = 3;
             } else {
                 in.skipValue();
-                in.rep.kindMismatch++;
+                in.rep.refuse("kind_mismatch");
             }
         } else {
             in.rep.unknown++;

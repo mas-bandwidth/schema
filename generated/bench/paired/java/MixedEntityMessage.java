@@ -175,7 +175,7 @@ public final class MixedEntityMessage {
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return false;
             }
             if (entry == null) {
@@ -190,9 +190,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 7, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -201,7 +201,7 @@ public final class MixedEntityMessage {
                 {
                     long v1 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 12);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.entityId = (int) (v1);
@@ -216,9 +216,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -227,7 +227,7 @@ public final class MixedEntityMessage {
                 {
                     long v2 = TableMessage.readSigned(r, entry.shape, -16383L, 16383L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.posX = (int) (v2);
@@ -242,9 +242,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -253,7 +253,7 @@ public final class MixedEntityMessage {
                 {
                     long v3 = TableMessage.readSigned(r, entry.shape, -16383L, 16383L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.posY = (int) (v3);
@@ -268,9 +268,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -279,7 +279,7 @@ public final class MixedEntityMessage {
                 {
                     long v4 = TableMessage.readSigned(r, entry.shape, -16383L, 16383L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.posZ = (int) (v4);
@@ -294,9 +294,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 7, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -305,7 +305,7 @@ public final class MixedEntityMessage {
                 {
                     long v5 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 9);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.yaw = (int) (v5);
@@ -320,9 +320,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 7, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -331,7 +331,7 @@ public final class MixedEntityMessage {
                 {
                     long v6 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 9);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.pitch = (int) (v6);
@@ -346,9 +346,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -357,7 +357,7 @@ public final class MixedEntityMessage {
                 {
                     long v7 = TableMessage.readSigned(r, entry.shape, -2048L, 2047L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.velX = (int) (v7);
@@ -372,9 +372,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -383,7 +383,7 @@ public final class MixedEntityMessage {
                 {
                     long v8 = TableMessage.readSigned(r, entry.shape, -2048L, 2047L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.velY = (int) (v8);
@@ -398,9 +398,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -409,7 +409,7 @@ public final class MixedEntityMessage {
                 {
                     long v9 = TableMessage.readSigned(r, entry.shape, -2048L, 2047L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.velZ = (int) (v9);
@@ -424,9 +424,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -435,7 +435,7 @@ public final class MixedEntityMessage {
                 {
                     long v10 = TableMessage.readSigned(r, entry.shape, 0L, 1000L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.health = (int) (v10);
@@ -450,9 +450,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 30, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -461,19 +461,19 @@ public final class MixedEntityMessage {
                 {
                     long ref11 = r.get(r.vocab.refBits);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     if (ref11 == 0L) {
                         v.weapon = (byte) (0);
                     } else {
                         if (ref11 < 0L || ref11 > (long) r.vocab.count) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         TableVocabulary.Entry ve12 = r.vocab.entries[(int) ref11 - 1];
                         if (TableMessage.reservedId(ve12.id) || ve12.kind != 0) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         int vHi = (int) (ve12.id >>> 32);
@@ -524,9 +524,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 9, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -535,7 +535,7 @@ public final class MixedEntityMessage {
                 {
                     long v13 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 0);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.damage = v13;
@@ -550,9 +550,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 1, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -561,7 +561,7 @@ public final class MixedEntityMessage {
                 {
                     long v14 = r.get(1);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.moving = (v14 != 0L);
@@ -576,9 +576,9 @@ public final class MixedEntityMessage {
                     if (TableMessage.entryWidens(entry, 1, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -587,7 +587,7 @@ public final class MixedEntityMessage {
                 {
                     long v15 = r.get(1);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.firing = (v15 != 0L);
@@ -598,7 +598,7 @@ public final class MixedEntityMessage {
             } else {
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
-                    r.report.malformed = true;
+                    r.report.damaged = true;
                     return false;
                 }
             }
