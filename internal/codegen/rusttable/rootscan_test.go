@@ -39,7 +39,7 @@ func TestRootNodeScanPassesDamageToTheBodyRust(t *testing.T) {
 	if !holds(scan) {
 		t.Errorf("the root node scan refuses the file on damage it should pass to the body")
 	}
-	reverted := strings.Replace(scan, stops[1], "let Some(id) = ref_id(ids, r) else { report.malformed = true; return None; };", 1)
+	reverted := strings.Replace(scan, stops[1], "let Some(id) = ref_id(ids, r) else { report.damaged = true; return None; };", 1)
 	if holds(reverted) {
 		t.Errorf("the reversed witness still passes, so the check cannot go red")
 	}

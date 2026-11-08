@@ -233,7 +233,7 @@ func TestFixedPointRidesItsRawStorage(t *testing.T) {
 
 	angle := &ir.Field{Name: "angle", HasIntRange: true, IntMin: big.NewInt(-180), IntMax: big.NewInt(180),
 		Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16, Signed: true}}
-	got := clampStmt(angle, 64, true, "i64", "report.clamped", "")
+	got := clampStmt(angle, 64, true, "i64", "report.damaged", "")
 	for _, want := range []string{"-11796480i64", "11796480i64"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("fixed(16, 16) in [-180, 180] clamps as %q, missing the raw bound %s", got, want)

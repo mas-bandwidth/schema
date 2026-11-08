@@ -148,7 +148,7 @@ fn r24_ill_formed_used_units_refuse_by_name_narrow() {
         report.reason.name()
     );
     checkf!(
-        n.is_none() && !report.malformed,
+        n.is_none() && !report.damaged,
         "truncated sequence: nothing decoded, the damage flag stays down: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
@@ -197,7 +197,7 @@ fn r24_narrow_counted_in_bytes_with_the_clamp_in_bytes() {
         "five bytes: the length word lands 5, in BYTES"
     );
     checkf!(
-        report.clamped == 0 && !report.malformed && !report.refused,
+        report.oor == 0 && !report.damaged && !report.refused,
         "five bytes: no clamp, no damage: {report:?}"
     );
     // the clamp is in the length's own units: a length word of 100 over a
@@ -211,11 +211,11 @@ fn r24_narrow_counted_in_bytes_with_the_clamp_in_bytes() {
         "length 100: the length clamps to the bound, 8 bytes"
     );
     checkf!(
-        report.clamped == 1,
+        report.oor == 1,
         "length 100: the clamp counts ONCE: {report:?}"
     );
     checkf!(
-        &values[0].label[..8] == b"abcdefgh" && !report.malformed && !report.refused,
+        &values[0].label[..8] == b"abcdefgh" && !report.damaged && !report.refused,
         "length 100: the content is read over the clamped length: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
@@ -240,7 +240,7 @@ fn r24_wide_counted_in_units_with_the_clamp_in_units() {
         "wide units: the two units land as their bytes"
     );
     checkf!(
-        !report.malformed && !report.refused && report.clamped == 0,
+        !report.damaged && !report.refused && report.oor == 0,
         "wide units: no clamp, no damage: {report:?}"
     );
     // the clamp holds in UNITS: a length word of 6 over a 4-unit bound clamps
@@ -252,7 +252,7 @@ fn r24_wide_counted_in_units_with_the_clamp_in_units() {
         "wide clamp: the length clamps to the bound, 4 units"
     );
     checkf!(
-        report.clamped == 1,
+        report.oor == 1,
         "wide clamp: the clamp counts ONCE: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
@@ -274,13 +274,13 @@ fn r24_slack_unspecified_on_read_and_not_a_refusal() {
     let (n, values, report) = load(&file);
     checkf!(n == Some(1), "slack garbage: the record reads on: {report:?}");
     checkf!(
-        !report.refused && !report.malformed,
+        !report.refused && !report.damaged,
         "slack garbage: NOT a refusal and NOT malformed: {report:?}"
     );
     checkf!(
-        report.clamped == 0
+        report.oor == 0
             && report.unknown == 0
-            && report.kind_mismatch == 0
+            && report.mismatch == 0
             && report.widened == 0,
         "slack garbage: no counter moves: {report:?}"
     );
@@ -307,7 +307,7 @@ fn r24_wide_slack_unspecified_and_not_a_refusal() {
         "wide slack: the used length lands 1 unit"
     );
     checkf!(
-        !report.malformed && !report.refused && report.clamped == 0,
+        !report.damaged && !report.refused && report.oor == 0,
         "wide slack: not judged, not a refusal, no counter: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);

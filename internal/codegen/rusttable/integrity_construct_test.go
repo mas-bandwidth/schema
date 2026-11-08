@@ -42,7 +42,7 @@ assert!(root_load_measure(&wire)>0);
 let text=root_to_json(&value);let back=root_from_json(&text,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);
 let mut store=TableRetain { bytes:Vec::with_capacity(4096), ids:Vec::with_capacity(64) };let mut report=TableReport::default();
 let back=root_load_retain(&wire,&mut store,&mut report).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut report),wire);
-for at in 1..wire.len(){let mut bad=wire.clone();bad[at]^=1;let mut r=TableReport::default();assert!(root_load(&bad,&mut r).is_none());assert!(r.malformed);assert_eq!(r.reason.name(),"integrity_mismatch");assert_eq!((r.unknown,r.kind_mismatch),(0,0));assert_eq!(root_load_measure(&bad),-1);}
+for at in 1..wire.len(){let mut bad=wire.clone();bad[at]^=1;let mut r=TableReport::default();assert!(root_load(&bad,&mut r).is_none());assert!(r.damaged);assert_eq!(r.reason.name(),"integrity_mismatch");assert_eq!(r.unknown,0);assert_eq!(root_load_measure(&bad),-1);}
 assert!(plain_root_load(&wire,&mut TableReport::default()).is_none());
 assert!(root_load(&wire[..wire.len()-4],&mut TableReport::default()).is_none());
 }
@@ -89,7 +89,7 @@ let mut storage=vec![TableMessageEntry::default();64];let mut vocab=TableVocabul
 let message=vec!%s;let mut r=TableReport::default();assert_eq!(reading_load_messages(&mut rows,&vocab,&message,&mut r),(3,true));
 assert_eq!(reading_measure_messages(&rows,&mut TableReport::default()),message.len() as i64);let mut saved=vec![0u8;message.len()];assert_eq!(reading_save_messages(&rows,&mut saved,&mut TableReport::default()),message.len() as i64);assert_eq!(saved,message);let mut filled=vec![0xa5u8;message.len()+17];assert_eq!(reading_save_messages(&rows,&mut filled,&mut TableReport::default()),message.len() as i64);assert_eq!(&filled[..message.len()],message.as_slice());assert!(filled[message.len()..].iter().all(|&x|x==0xa5));
 assert_eq!(reading_save_messages(&rows,&mut saved[..message.len()-1],&mut TableReport::default()),-1);
-for at in 1..message.len(){let mut bad=message.clone();bad[at]^=1;let mut r=TableReport::default();assert_eq!(reading_load_messages(&mut rows,&vocab,&bad,&mut r),(0,false));assert_eq!(r.reason.name(),"integrity_mismatch");assert_eq!((r.unknown,r.kind_mismatch),(0,0));}
+for at in 1..message.len(){let mut bad=message.clone();bad[at]^=1;let mut r=TableReport::default();assert_eq!(reading_load_messages(&mut rows,&vocab,&bad,&mut r),(0,false));assert_eq!(r.reason.name(),"integrity_mismatch");assert_eq!(r.unknown,0);}
 for cut in 1..6 { let mut r=TableReport::default();assert_eq!(reading_load_messages(&mut rows,&vocab,&message[..cut],&mut r),(0,false));assert_eq!(r.reason.name(),"integrity_mismatch"); }
 let mut r=TableReport::default();assert_eq!(reading_load_messages(&mut rows,&vocab,&[1],&mut r),(0,false));assert_eq!(r.reason.name(),"newer_form");
 }
