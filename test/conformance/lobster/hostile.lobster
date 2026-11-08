@@ -25,8 +25,8 @@
 // A carrier maps to the port's reader, as the engine's verdict does
 // (internal/ci/hostilecorpus EngineVerdict):
 //   wire              schema_rt.load: a refusal by the form byte, the
-//                     int32 count cap or a non-finite float; a read that stops
-//                     short of its root terminator is `damaged`
+//                     int32 count cap or a non-finite float; every other
+//                     refusal of the one read is `damaged`
 //   text              schema_rt.json_read (the tolerant JSON text form)
 //   message           the unit's own announcement read into a vocabulary, then
 //                     load_messages at capacity 1
@@ -108,17 +108,18 @@ def announce_answer(name:string, carrier:string, data:string) -> string:
 def wire_answer(name:string, table:string, data:string) -> string:
     let rep = schema_rt.LoadReport {}
     let rec = schema_rt.load(table, data, rep)
-    if rep.refused:
-        if length(data) >= 1 and data[0] == 2:
-            return name + " refuse message_form_as_file\n"
-        if length(data) >= 1 and data[0] != 1:
-            return name + " refuse newer_form\n"
-        return name + " refuse count_refusal\n"
-    if rep.non_finite_float != "":
-        // a NaN or infinity on the wire refuses the read by name (SPEC §4.3)
-        return name + " refuse non_finite_float\n"
-    if rep.stopped or not rec:
-        schema_rt.release(rec)
+    if not rec:
+        // the one read refuses by name (docs/SPEC-TABLES.md §6.5); the corpus
+        // keeps the engine's categories (internal/ci/hostilecorpus
+        // RefusalReason): the form byte, the int32 count cap and a non-finite
+        // float by name, every other refusal `damaged`
+        let why = schema_rt.strict_reason(rep)
+        if rep.non_finite_float != "" or find_string(why, "non_finite_float") == 0:
+            return name + " refuse non_finite_float\n"
+        if why == "message_form_as_file" or why == "newer_form":
+            return name + " refuse " + why + "\n"
+        if why == "count_over_extent_cap":
+            return name + " refuse count_refusal\n"
         return name + " refuse damaged\n"
     let answer = saved(name, rec)
     schema_rt.release(rec)
