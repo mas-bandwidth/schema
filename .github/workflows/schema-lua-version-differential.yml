@@ -14,7 +14,7 @@ name: Schema Lua version differential
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-lua-version-differential.mk'
       - 'make/lua.mk'

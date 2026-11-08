@@ -49,12 +49,18 @@ static class H
     internal static string Accept(string digest) { return "accept " + digest; }
     internal static string Refuse(string reason) { return "refuse " + reason; }
 
-    // A read's verdict off its report: a named refusal is its reason, a
-    // malformed or failed read (no name) is the corpus's `damaged`, and a clean
-    // read answers null so the caller goes on to digest the value. The port
+    // A read's verdict off its report. Strict-only: a read refuses or returns.
+    // A named refusal is its reason, a failed read with no name is the
+    // corpus's `damaged`, and a clean read answers null so the caller goes on to digest the value. The port
     // names a refusal and may follow the name with detail (non_finite_float:
     // ShipEntry.health); the name is the reason the corpus compares.
-    internal static string Read(bool ok, bool refused, string reason, bool malformed)
+    static readonly System.Collections.Generic.HashSet<string> Named = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+    {
+        "newer_form", "message_form_as_file", "no_vocabulary", "second_announcement",
+        "vocabulary_too_large", "batch_too_large", "non_finite_float",
+    };
+
+    internal static string Read(bool ok, bool refused, string reason)
     {
         if (refused)
         {
@@ -63,9 +69,14 @@ static class H
             string name = detail > 0 ? reason.Substring(0, detail) : reason;
             // The public region/managed reason is the storage cap; the shared
             // engine corpus calls the same refusal count_refusal.
-            return Refuse(name == "count_over_extent_cap" ? "count_refusal" : name);
+            if (name == "count_over_extent_cap") { return Refuse("count_refusal"); }
+            // Strict-only: the corpus names only the refusals that are not
+            // damage (a form, a vocabulary, a batch or storage cap, a
+            // non-finite float); every other refusal is the corpus's
+            // `damaged`, whatever detail the port gives it (as cpp-hostile).
+            return Refuse(Named.Contains(name) ? name : "damaged");
         }
-        if (!ok || malformed) { return Refuse("damaged"); }
+        if (!ok) { return Refuse("damaged"); }
         return null;
     }
 

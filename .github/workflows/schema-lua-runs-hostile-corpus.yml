@@ -20,7 +20,7 @@ on:
     - cron: '31 3 * * *'
   workflow_dispatch:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-lua-runs-hostile-corpus.mk'
       - 'internal/ci/schema_lua_runs_hostile_corpus_test.go'

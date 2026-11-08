@@ -21,7 +21,7 @@ name: schema-luau generated analyze strict gate
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-luau-generated-analyze-strict-gate.mk'
       - 'make/luau.mk'
