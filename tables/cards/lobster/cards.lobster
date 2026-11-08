@@ -358,13 +358,13 @@ def not_a_card(wire:string) -> bool:
     let n, whole, refused = schema_rt.load_measure(ROOT, wire)
     return refused or not whole or n < 0
 
-// read_wire is the one tolerant read every facade read shares: the measure
+// read_wire is the one read every facade read shares: the measure
 // first (a wire that is not a card), then the load into a zeroed report.
 def read_wire(wire:string) -> schema_rt.Record?, CardError?, schema_rt.LoadReport:
     let report = schema_rt.LoadReport {}
     if not_a_card(wire):
         return nil, refuse_with("cards: wire is not a card", "malformed", report), report
-    let root = schema_rt.load_tolerant(ROOT, wire, report)
+    let root = schema_rt.load(ROOT, wire, report)
     if not root:
         return nil, refuse_with("cards: wire is malformed", "malformed", report), report
     return root, nil, report
@@ -837,8 +837,8 @@ def upgrade_with(wire:string, retain_bytes:int, retain_ids:int) -> string?, Card
         return nil, refuse_with("cards: upgrade: wire is not a card", "malformed", report), report
     let retain = schema_rt.Retain { capacity: retain_bytes, id_capacity: retain_ids }
     let root = schema_rt.load_retain(ROOT, wire, retain, report)
-    // load_retain answers a fresh record where the tolerant read answered none
-    if report.refused or report.missing_required > 0 or report.non_finite_float != "":
+    // load_retain answers the whole record or none (docs/SPEC-TABLES.md §6.5)
+    if not root or report.refused or report.missing_required > 0 or report.non_finite_float != "":
         return nil, refuse_with("cards: upgrade: wire is malformed", "malformed", report), report
     let cerr = check_card(root)
     if cerr:
@@ -1023,7 +1023,7 @@ def edit(record:CardRecord, mutate) -> CardError?:
     if lossy:
         return lossy
     let report = schema_rt.LoadReport {}
-    let root = schema_rt.load_tolerant(ROOT, record.wire, report)
+    let root = schema_rt.load(ROOT, record.wire, report)
     if not root:
         return refuse("cards: reload into the fresh decode failed", "malformed")
     let again = refuse_lossy(report)

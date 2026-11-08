@@ -85,7 +85,10 @@ hex(substring(w.buffer, 0, w.bytes_processed()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) == 1 && bytes.Equal(lines[0], golden) {
+	if len(lines) != 1 || len(lines[0]) == 0 {
+		t.Fatalf("negative control: expected one nonempty wire line, got %q", out)
+	}
+	if bytes.Equal(lines[0], golden) {
 		t.Errorf("negative control: patched write produced the same bytes as the golden")
 	}
 }
