@@ -92,7 +92,7 @@ static partial class Program
         foreach(var entry in keyedVocabulary.Entries) { if(entry.Kind==0 && entry.Id==FieldId("Red")) { entry.Id=FieldId("UnknownTeam"); } }
         var keyedTarget=new[] {new Tabledemo.KeyedConfig()};
         Tabledemo.Schema.KeyedConfigLoadMessages(keyedTarget,keyedMessage,keyedVocabulary,keyedReport,out _);
-        Check(!keyedReport.Malformed && keyedReport.Unknown==1 && keyedTarget[0].Teams[(int)Tabledemo.Team.Red].SpawnCount==4,"unknown keyed table body is discarded with its report");
+        Check(!keyedReport.Damaged && keyedReport.Unknown==1 && keyedTarget[0].Teams[(int)Tabledemo.Team.Red].SpawnCount==4,"unknown keyed table body is discarded with its report");
         Check(MeasureCalls(()=> { Tabledemo.Schema.KeyedConfigLoadMessages(keyedTarget,keyedMessage,keyedVocabulary,keyedReport,out _); })==0,"discarding a fixed keyed table body allocates zero");
 
         var values = new Messagedemo.Cursor[256]; var loaded = new Messagedemo.Cursor[256];

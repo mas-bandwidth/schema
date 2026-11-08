@@ -242,7 +242,7 @@ const known = [new TableFixedKnownLayout(theirsLo, theirsHi, theirs, theirs.leng
 const plans = TableFixedLineagePlans(known, keyed.TeamConfigFixedHashLo, keyed.TeamConfigFixedHashHi,
   ownLayout, teamDst, body);
 const plan = plans[0];
-check(plan !== null && plan.ready && plan.why === 0 && plan.unknown === 0 && plan.kindMismatch === 0,
+check(plan !== null && plan.ready && plan.why === 0 && plan.unknown === 0 && plan.mismatch === 0,
   "compiled plan TeamConfig: the permuted writer's lineage entry compiles with nothing unknown and no kind mismatch");
 
 // THE THEIRS RECORD, derived from the declared widths under THEIRS: the
@@ -261,7 +261,7 @@ const value = new TeamConfig();
 TeamConfigFixedDecode(value, plan.view, 0, report);
 check(value.spawnCount === 42 && value.bannerLength === 3 &&
   value.banner[0] === 0x68 && value.banner[1] === 0x65 && value.banner[2] === 0x79 &&
-  report.clamped === 0 && report.unknown === 0 && report.kindMismatch === 0,
+  report.oor === 0 && report.unknown === 0 && report.mismatch === 0,
   "plan effect TeamConfig: the permuted writer's values land exactly where this build's decode walk reads them (42, \"hey\")");
 
 // ---- 7: the identity round trip, which a dst-row break must NOT bite ----

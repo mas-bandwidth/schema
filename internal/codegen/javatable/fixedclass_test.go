@@ -148,6 +148,7 @@ func runJavaVariableFixturesForUnit(t *testing.T, u *ir.Unit, fixtures []javaVar
 	}
 	pkg := javaPackageOf(u)
 	dir := t.TempDir()
+	fixtures = formOneFixtures(t, u, fixtures, dir)
 	classes := filepath.Join(dir, "classes")
 	if err := os.MkdirAll(classes, 0o755); err != nil {
 		t.Fatal(err)
@@ -169,7 +170,7 @@ func runJavaVariableFixturesForUnit(t *testing.T, u *ir.Unit, fixtures []javaVar
 		name := "FixedClassDriver_" + row.root
 		path := filepath.Join(dir, name+".java")
 		source := strings.ReplaceAll(variableRoundTripDriver(pkg, row.root), "Driver", name)
-		source = strings.Replace(source, "if (report.malformed || report.refused)", "if (report.malformed || report.refused || report.unknown != 0 || report.kindMismatch != 0 || report.clamped != 0 || report.widened != 0 || report.duplicate != 0)", 1)
+		source = strings.Replace(source, "if (report.damaged || report.refused)", "if (report.damaged || report.refused || report.unknown != 0 || report.widened != 0)", 1)
 		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -187,6 +188,57 @@ func runJavaVariableFixturesForUnit(t *testing.T, u *ir.Unit, fixtures []javaVar
 			t.Errorf("%s: %v\n%s", row.name, err, out)
 		}
 	}
+}
+
+// formOneFixtures holds a fixed-declared root's variable codec to form 1. The
+// Java variable codec reads and writes form 1 for every root; the committed
+// corpus wire and the Go encoder are form 3 for a root declared fixed (§3.4).
+// So each fixture's wire is replaced by the Go encoding of its own text under
+// the same declarations without the fixed keyword, as the C++ discard gate
+// does. It runs after the Java is generated: it clears FixedDeclared on u.
+func formOneFixtures(t *testing.T, u *ir.Unit, fixtures []javaVariableFixture, dir string) []javaVariableFixture {
+	t.Helper()
+	fixed := false
+	for _, st := range u.Tables {
+		if st.FixedDeclared {
+			fixed = true
+			st.FixedDeclared = false
+		}
+	}
+	if !fixed {
+		return fixtures
+	}
+	model := tabletext.NewModel(u)
+	out := make([]javaVariableFixture, len(fixtures))
+	for i, row := range fixtures {
+		st := u.Tables[row.root]
+		if st == nil {
+			t.Fatalf("%s: the unit has no root %s", row.name, row.root)
+		}
+		text, err := os.ReadFile(row.json)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inst := model.New(st)
+		rep := new(tabletext.Report)
+		if !model.Read(inst, text, rep) {
+			t.Fatalf("%s: the Go oracle refuses the fixture text: %+v", row.name, rep)
+		}
+		wire, err := tablewire.Encode(model, inst)
+		if err != nil {
+			t.Fatalf("%s: the Go oracle does not encode form 1: %v", row.name, err)
+		}
+		if len(wire) == 0 || wire[0] != 1 {
+			t.Fatalf("%s: the form 1 encoding starts with form byte %x", row.name, wire[:min(len(wire), 1)])
+		}
+		path := filepath.Join(dir, row.name+".form1.bin")
+		if err := os.WriteFile(path, wire, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		row.wire = path
+		out[i] = row
+	}
+	return out
 }
 
 func testPureFixedClosureRoundTrip(t *testing.T, repo string) {
@@ -285,6 +337,12 @@ fixed table Vessel
 	}
 	if files["VesselVariable.java"] == nil || files["BadgeVariable.java"] == nil {
 		t.Fatalf("Defaults.schema: VesselVariable.java or BadgeVariable.java was not emitted")
+	}
+	// The Java variable save is form 1; the Go encoder writes form 3 for a
+	// root declared fixed, so the default wire is the Go form 1 encoding of
+	// the same declarations without the fixed keyword (formOneFixtures).
+	for _, st := range u.Tables {
+		st.FixedDeclared = false
 	}
 	model := tabletext.NewModel(u)
 	defaultVessel := model.New(u.Tables["Vessel"])
@@ -406,8 +464,11 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 
 public final class RenameDriver {
-    static String rep(int u, int k, int w, int c, int d, boolean m, boolean r) {
-        return u + "," + k + "," + w + "," + c + "," + d + "," + m + "," + (r ? "refused" : "read");
+    // unknown, widened, damaged, and the verdict: a refusal is the flag AND
+    // no value, a read is a value and no flag; anything else is "torn".
+    static String rep(int u, int w, boolean m, boolean r, boolean value) {
+        final String verdict = (r && !value) ? "refused" : (!r && value) ? "read" : "torn";
+        return u + "," + w + "," + m + "," + verdict;
     }
     static void check(String name, String got, String want) {
         if (!want.equals(got)) {
@@ -421,8 +482,7 @@ public final class RenameDriver {
         {
             tblw2.TableVariable.Report r = new tblw2.TableVariable.Report();
             tblw2.FleetVariable.Value v = tblw2.FleetVariable.load(Files.readAllBytes(Paths.get(wireDir, "w1_fleet.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("w1_fleet_as_w2 refused");
-            check("w1_fleet_as_w2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("w1_fleet_as_w2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
             if (v.flagship == null || !"Aurora".equals(v.flagship.name) || v.escorts.size() != 2 || v.escorts.get(1) != v.flagship || v.flagship.hull != 250 || v.home.hull != 100) {
                 throw new AssertionError("w1_fleet_as_w2 value mismatch");
             }
@@ -431,15 +491,13 @@ public final class RenameDriver {
         {
             tblw1.TableVariable.Report r = new tblw1.TableVariable.Report();
             tblw1.FleetVariable.Value v = tblw1.FleetVariable.load(Files.readAllBytes(Paths.get(wireDir, "w2_fleet.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("w2_fleet_as_w1 refused");
-            check("w2_fleet_as_w1", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("w2_fleet_as_w1", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
         }
         // w1_fleet_default_as_w2
         {
             tblw2.TableVariable.Report r = new tblw2.TableVariable.Report();
             tblw2.FleetVariable.Value v = tblw2.FleetVariable.load(Files.readAllBytes(Paths.get(wireDir, "w1_fleet_default.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("w1_fleet_default_as_w2 refused");
-            check("w1_fleet_default_as_w2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("w1_fleet_default_as_w2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
             if (v.flagship != null || !"fleet".equals(v.title) || !"untitled".equals(v.home.name) || !Arrays.equals(v.home.tag, new byte[]{(byte) 'a', (byte) 'b'}) || v.home.caps != 5L || !"new".equals(v.home.badge.label) || v.home.hull != 100) {
                 throw new AssertionError("w1_fleet_default_as_w2 defaults did not land");
             }
@@ -448,8 +506,7 @@ public final class RenameDriver {
         {
             tblr2.TableVariable.Report r = new tblr2.TableVariable.Report();
             tblr2.CfgVariable.Value v = tblr2.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "r1_cfg.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("r1_cfg_as_r2 refused");
-            check("r1_cfg_as_r2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("r1_cfg_as_r2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
             if (v.grade != 2 || v.effect.tag != 2 || v.effect.shield.charge != 2.5f || v.buff.mult != 1.5f || v.tally.get(1) != 7) {
                 throw new AssertionError("r1_cfg_as_r2 value mismatch");
             }
@@ -458,8 +515,7 @@ public final class RenameDriver {
         {
             tblr2.TableVariable.Report r = new tblr2.TableVariable.Report();
             tblr2.CfgVariable.Value v = tblr2.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "r1_ping.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("r1_ping_as_r2 refused");
-            check("r1_ping_as_r2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("r1_ping_as_r2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
             if (v.effect.tag != 3) {
                 throw new AssertionError("r1_ping_as_r2 pong tag mismatch: " + v.effect.tag);
             }
@@ -468,34 +524,29 @@ public final class RenameDriver {
         {
             tblr1.TableVariable.Report r = new tblr1.TableVariable.Report();
             tblr1.CfgVariable.Value v = tblr1.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "r2_cfg.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("r2_cfg_as_r1 refused");
-            check("r2_cfg_as_r1", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("r2_cfg_as_r1", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
         }
         // v1_cfg_as_v2 and v1_seams_as_v2
         {
             tblv2.TableVariable.Report r = new tblv2.TableVariable.Report();
             tblv2.CfgVariable.Value v = tblv2.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "v1_cfg.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("v1_cfg_as_v2 refused");
-            check("v1_cfg_as_v2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "1,1,0,1,0,false,read");
+            check("v1_cfg_as_v2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "1,0,false,refused");
         }
         {
             tblv2.TableVariable.Report r = new tblv2.TableVariable.Report();
             tblv2.CfgVariable.Value v = tblv2.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "v1_seams.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("v1_seams_as_v2 refused");
-            check("v1_seams_as_v2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "2,2,0,0,0,false,read");
+            check("v1_seams_as_v2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "2,0,false,refused");
         }
         // v2_cfg_as_v1 and v2_seams_as_v1
         {
             tblv1.TableVariable.Report r = new tblv1.TableVariable.Report();
             tblv1.CfgVariable.Value v = tblv1.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "v2_cfg.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("v2_cfg_as_v1 refused");
-            check("v2_cfg_as_v1", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "5,1,0,1,0,false,read");
+            check("v2_cfg_as_v1", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "5,0,false,refused");
         }
         {
             tblv1.TableVariable.Report r = new tblv1.TableVariable.Report();
             tblv1.CfgVariable.Value v = tblv1.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "v2_seams.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("v2_seams_as_v1 refused");
-            check("v2_seams_as_v1", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "2,2,0,0,0,false,read");
+            check("v2_seams_as_v1", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "2,0,false,refused");
         }
         System.out.println("ok");
     }

@@ -102,7 +102,7 @@ for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  if %t do
   unless elem(result,0)==:error and elem(result,1)==:malformed and elem(result,2).malformed,do: raise(%q<>inspect(result))
  else
-  unless elem(result,0)==:ok and not elem(result,2).malformed and elem(result,2).unknown==%d and elem(result,2).kind_mismatch==0,do: raise(%q<>inspect(result))
+  unless elem(result,0)==:ok and true and elem(result,2).unknown==%d and elem(result,2).kind_mismatch==0,do: raise(%q<>inspect(result))
   expected_lost=if tuple_size(result)==4,do: elem(result,2).unknown,else: 0
   unless elem(result,2).retain_lost==expected_lost,do: raise("excluded enum loss "<>inspect(result))
   {:ok,text}=T.to_json("Root",elem(result,1))

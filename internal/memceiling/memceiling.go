@@ -31,7 +31,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -128,7 +127,9 @@ func Start(limit int64, killed func(string)) (stop func()) {
 				if p.pid == self {
 					panic(fmt.Sprintf("memceiling: the test process holds %d resident bytes, past the %d-byte ceiling", p.rss, limit))
 				}
-				_ = syscall.Kill(p.pid, syscall.SIGKILL)
+				if proc, err := os.FindProcess(p.pid); err == nil {
+					_ = proc.Kill()
+				}
 				killed(fmt.Sprintf("pid %d (%s) at %d resident bytes", p.pid, p.command, p.rss))
 			}
 		}

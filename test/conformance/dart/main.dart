@@ -1156,190 +1156,190 @@ String? loadReport(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
     case 'featurewitnesses Root':
       final r=feature.TableWireReport();feature.rootWireLoad(wire,r);
-      return _reportLine(r.unknown,r.kindMismatch,r.widened,r.clamped,r.duplicate,r.malformed,r.refused);
+      return _reportLine(r.unknown,0,r.widened,0,0,r.refused,r.refused);
     case 'featurewitnesses ArrayRoot':
       final r=feature.TableWireReport();feature.arrayRootWireLoad(wire,r);
-      return _reportLine(r.unknown,r.kindMismatch,r.widened,r.clamped,r.duplicate,r.malformed,r.refused);
+      return _reportLine(r.unknown,0,r.widened,0,0,r.refused,r.refused);
 
     case 'graphdemo ListNode':
       final r = graphdemo.TableWireReport();
       graphdemo.listNodeWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'listdemo Army':
       final r = listdemo.TableWireReport();
       listdemo.armyWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'listdemo Bounded':
       final r = listdemo.TableWireReport();
       listdemo.boundedWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'listdemo Ints':
       final r = listdemo.TableWireReport();
       listdemo.intsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'listdemo Squad':
       final r = listdemo.TableWireReport();
       listdemo.squadWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblv1 Cfg':
       final r = tblv1.TableWireReport();
       tblv1.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblv2 Cfg':
       final r = tblv2.TableWireReport();
       tblv2.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblw1 Fleet':
       final r = tblw1.TableWireReport();
       tblw1.fleetWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblw2 Fleet':
       final r = tblw2.TableWireReport();
       tblw2.fleetWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblr1 Cfg':
       final r = tblr1.TableWireReport();
       tblr1.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblr2 Cfg':
       final r = tblr2.TableWireReport();
       tblr2.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'graphdemo Scene':
       final r = graphdemo.TableWireReport();
       graphdemo.sceneWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'blobdemo Catalog':
       final r = blobdemo.TableWireReport();
       blobdemo.catalogWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'listdemo Save':
       final r = listdemo.TableWireReport();
       listdemo.saveWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'listdemo Album':
       final r = listdemo.TableWireReport();
       listdemo.albumWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'listdemo Sheet':
       final r = listdemo.TableWireReport();
       listdemo.sheetWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'listdemo Unbounded':
       final r = listdemo.TableWireReport();
       listdemo.unboundedWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Cells':
       final r = mapdemo.TableWireReport();
       mapdemo.cellsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Chunks':
       final r = mapdemo.TableWireReport();
       mapdemo.chunksWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Crews':
       final r = mapdemo.TableWireReport();
       mapdemo.crewsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Depth':
       final r = mapdemo.TableWireReport();
       mapdemo.depthWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Docs':
       final r = mapdemo.TableWireReport();
       mapdemo.docsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Fleet':
       final r = mapdemo.TableWireReport();
       mapdemo.fleetWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Pairs':
       final r = mapdemo.TableWireReport();
       mapdemo.pairsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Runs':
       final r = mapdemo.TableWireReport();
       mapdemo.runsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Slots':
       final r = mapdemo.TableWireReport();
       mapdemo.slotsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Spans':
       final r = mapdemo.TableWireReport();
       mapdemo.spansWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Text':
       final r = mapdemo.TableWireReport();
       mapdemo.textWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'mapdemo Trails':
       final r = mapdemo.TableWireReport();
       mapdemo.trailsWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'messagedemo ToolMessage':
       final r = messagedemo.TableWireReport();
       messagedemo.toolMessageWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'scalars SimState':
       final r = scalardemo.TableWireReport();
       scalardemo.simStateWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'widedemo Caption':
       final r = widedemo.TableWireReport();
       widedemo.captionWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'widedemo Stamp':
       final r = widedemo.TableWireReport();
       widedemo.stampWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     // THE P SET's presence evolution and the M SET's arm evolution
     // (docs/SPEC-TABLES.md §4, §5): a value, an optional and a pointer reading
     // one another, and a union whose arms moved, each read tolerantly
     case 'tblp1 Chain':
       final r = tblp1.TableWireReport();
       tblp1.chainWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblp3 Chain':
       final r = tblp3.TableWireReport();
       tblp3.chainWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     // the stream unit's parts: an element kind, a count past its bound and
     // an index out of range, each read tolerantly (§4)
     case 'streamdemo Feed':
       final r = streamdemo.TableWireReport();
       streamdemo.feedWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblp2 Chain':
       final r = tblp2.TableWireReport();
       tblp2.chainWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     // the 64-bit id-table pair and the arm retypes (§3, §5): K1 and K2 read
     // each other's escapes, A2 reads A1's arms moved, retyped and unknown
     case 'tblk1 Root':
       final r = tblk1.TableWireReport();
       tblk1.rootWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblk2 Root':
       final r = tblk2.TableWireReport();
       tblk2.rootWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tbla2 Root':
       final r = tbla2.TableWireReport();
       tbla2.rootWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblscalars2 SimState':
       final r = scalardemo2.TableWireReport();
       scalardemo2.simStateWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblm1 Msg':
       final r = tblm1.TableWireReport();
       tblm1.msgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
     case 'tblm2 Msg':
       final r = tblm2.TableWireReport();
       tblm2.msgWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
   }
   return null;
 }
@@ -1365,17 +1365,17 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
   switch ('$unit $root') {
     case 'featurewitnesses Root':
       final r=feature.TableWireReport();final value=feature.rootWireLoad(wire,r);
-      if(r.malformed||r.refused)return(-1,(_,__)=>false);
+      if(r.refused||r.refused)return(-1,(_,__)=>false);
       return(featurecook.RootCook.cookMeasure(value),(out,order)=>featurecook.RootCook.cook(value,out,order));
     case 'featurewitnesses ArrayRoot':
       final r=feature.TableWireReport();final value=feature.arrayRootWireLoad(wire,r);
-      if(r.malformed||r.refused)return(-1,(_,__)=>false);
+      if(r.refused||r.refused)return(-1,(_,__)=>false);
       return(featurecook.ArrayRootCook.cookMeasure(value),(out,order)=>featurecook.ArrayRootCook.cook(value,out,order));
 
     case 'graphdemo Scene':
       final r = graphdemo.TableWireReport();
       final value = graphdemo.sceneWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         ck.SceneCook.cookMeasure(value),
         (out, order) => ck.SceneCook.cook(value, out, order),
@@ -1383,7 +1383,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'blobdemo Catalog':
       final r = blobdemo.TableWireReport();
       final value = blobdemo.catalogWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         assets.CatalogCook.cookMeasure(value),
         (out, order) => assets.CatalogCook.cook(value, out, order),
@@ -1391,7 +1391,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tabledemo ArchiveConfig':
       final r = tabledemo.TableWireReport();
       final value = tabledemo.archiveConfigWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         nestedcook.ArchiveConfigCookWire.cookMeasure(value),
         (out, order) => nestedcook.ArchiveConfigCookWire.cook(value, out, order),
@@ -1399,7 +1399,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tabledemo KeyedConfig':
       final r = tabledemo.TableWireReport();
       final value = tabledemo.keyedConfigWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         keyedcook.KeyedConfigCookWire.cookMeasure(value),
         (out, order) => keyedcook.KeyedConfigCookWire.cook(value, out, order),
@@ -1407,7 +1407,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tabledemo LoadoutConfig':
       final r = tabledemo.TableWireReport();
       final value = tabledemo.loadoutConfigWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         tablescook.LoadoutConfigCookWire.cookMeasure(value),
         (out, order) => tablescook.LoadoutConfigCookWire.cook(value, out, order),
@@ -1415,7 +1415,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tabledemo ProfileConfig':
       final r = tabledemo.TableWireReport();
       final value = tabledemo.profileConfigWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         tablescook.ProfileConfigCookWire.cookMeasure(value),
         (out, order) => tablescook.ProfileConfigCookWire.cook(value, out, order),
@@ -1423,7 +1423,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tabledemo RootConfig':
       final r = tabledemo.TableWireReport();
       final value = tabledemo.rootConfigWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         tablescook.RootConfigCookWire.cookMeasure(value),
         (out, order) => tablescook.RootConfigCookWire.cook(value, out, order),
@@ -1431,7 +1431,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tabledemo WideBlob':
       final r = tabledemo.TableWireReport();
       final value = tabledemo.wideBlobWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         widecook.WideBlobCookWire.cookMeasure(value),
         (out, order) => widecook.WideBlobCookWire.cook(value, out, order),
@@ -1439,7 +1439,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tblv1 Cfg':
       final r = tblv1.TableWireReport();
       final value = tblv1.cfgWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         v1cook.CfgCookWire.cookMeasure(value),
         (out, order) => v1cook.CfgCookWire.cook(value, out, order),
@@ -1447,7 +1447,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tblv2 Cfg':
       final r = tblv2.TableWireReport();
       final value = tblv2.cfgWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         v2cook.CfgCookWire.cookMeasure(value),
         (out, order) => v2cook.CfgCookWire.cook(value, out, order),
@@ -1455,7 +1455,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tblp1 Chain':
       final r = tblp1.TableWireReport();
       final value = tblp1.chainWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         p1cook.ChainCookWire.cookMeasure(value),
         (out, order) => p1cook.ChainCookWire.cook(value, out, order),
@@ -1463,7 +1463,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tblp3 Chain':
       final r = tblp3.TableWireReport();
       final value = tblp3.chainWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         p3cook.ChainCookWire.cookMeasure(value),
         (out, order) => p3cook.ChainCookWire.cook(value, out, order),
@@ -1471,7 +1471,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tblm1 Msg':
       final r = tblm1.TableWireReport();
       final value = tblm1.msgWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         m1cook.MsgCookWire.cookMeasure(value),
         (out, order) => m1cook.MsgCookWire.cook(value, out, order),
@@ -1479,7 +1479,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'tblm2 Msg':
       final r = tblm2.TableWireReport();
       final value = tblm2.msgWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         m2cook.MsgCookWire.cookMeasure(value),
         (out, order) => m2cook.MsgCookWire.cook(value, out, order),
@@ -1487,7 +1487,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'messagedemo ToolMessage':
       final r = messagedemo.TableWireReport();
       final value = messagedemo.toolMessageWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         messagescook.ToolMessageCookWire.cookMeasure(value),
         (out, order) =>
@@ -1496,7 +1496,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'scalars SimState':
       final r = scalardemo.TableWireReport();
       final value = scalardemo.simStateWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         scalarscook.SimStateCookWire.cookMeasure(value),
         (out, order) => scalarscook.SimStateCookWire.cook(value, out, order),
@@ -1504,7 +1504,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'streamdemo Feed':
       final r = streamdemo.TableWireReport();
       final value = streamdemo.feedWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         streamcook.FeedCook.cookMeasure(value),
         (out, order) => streamcook.FeedCook.cook(value, out, order),
@@ -1512,7 +1512,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'listdemo Save':
       final r = listdemo.TableWireReport();
       final value = listdemo.saveWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         lsavecook.SaveCook.cookMeasure(value),
         (out, order) => lsavecook.SaveCook.cook(value, out, order),
@@ -1520,7 +1520,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'listdemo Mixed':
       final r = listdemo.TableWireReport();
       final value = listdemo.mixedWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         lsavecook.MixedCook.cookMeasure(value),
         (out, order) => lsavecook.MixedCook.cook(value, out, order),
@@ -1528,7 +1528,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'listdemo Album':
       final r = listdemo.TableWireReport();
       final value = listdemo.albumWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         lsharedcook.AlbumCook.cookMeasure(value),
         (out, order) => lsharedcook.AlbumCook.cook(value, out, order),
@@ -1536,7 +1536,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'listdemo Sheet':
       final r = listdemo.TableWireReport();
       final value = listdemo.sheetWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         lholderscook.SheetCook.cookMeasure(value),
         (out, order) => lholderscook.SheetCook.cook(value, out, order),
@@ -1544,7 +1544,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'listdemo Army':
       final r = listdemo.TableWireReport();
       final value = listdemo.armyWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         lholderscook.ArmyCook.cookMeasure(value),
         (out, order) => lholderscook.ArmyCook.cook(value, out, order),
@@ -1552,7 +1552,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'listdemo Unbounded':
       final r = listdemo.TableWireReport();
       final value = listdemo.unboundedWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         lmigratecook.UnboundedCook.cookMeasure(value),
         (out, order) => lmigratecook.UnboundedCook.cook(value, out, order),
@@ -1560,7 +1560,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Cells':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.cellsWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mcellscook.CellsCook.cookMeasure(value),
         (out, order) => mcellscook.CellsCook.cook(value, out, order),
@@ -1568,7 +1568,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Chunks':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.chunksWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mchunkscook.ChunksCook.cookMeasure(value),
         (out, order) => mchunkscook.ChunksCook.cook(value, out, order),
@@ -1576,7 +1576,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Crews':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.crewsWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mcrewscook.CrewsCook.cookMeasure(value),
         (out, order) => mcrewscook.CrewsCook.cook(value, out, order),
@@ -1584,7 +1584,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Depth':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.depthWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mdepthcook.DepthCook.cookMeasure(value),
         (out, order) => mdepthcook.DepthCook.cook(value, out, order),
@@ -1592,7 +1592,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Docs':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.docsWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mdocscook.DocsCook.cookMeasure(value),
         (out, order) => mdocscook.DocsCook.cook(value, out, order),
@@ -1600,7 +1600,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Fleet':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.fleetWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mfleetcook.FleetCook.cookMeasure(value),
         (out, order) => mfleetcook.FleetCook.cook(value, out, order),
@@ -1608,7 +1608,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Pairs':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.pairsWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mpairscook.PairsCook.cookMeasure(value),
         (out, order) => mpairscook.PairsCook.cook(value, out, order),
@@ -1616,7 +1616,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Runs':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.runsWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mrunscook.RunsCook.cookMeasure(value),
         (out, order) => mrunscook.RunsCook.cook(value, out, order),
@@ -1624,7 +1624,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Slots':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.slotsWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mslotscook.SlotsCook.cookMeasure(value),
         (out, order) => mslotscook.SlotsCook.cook(value, out, order),
@@ -1632,7 +1632,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Spans':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.spansWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mspanscook.SpansCook.cookMeasure(value),
         (out, order) => mspanscook.SpansCook.cook(value, out, order),
@@ -1640,7 +1640,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Text':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.textWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mtextcook.TextCook.cookMeasure(value),
         (out, order) => mtextcook.TextCook.cook(value, out, order),
@@ -1648,7 +1648,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'mapdemo Trails':
       final r = mapdemo.TableWireReport();
       final value = mapdemo.trailsWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         mtrailscook.TrailsCook.cookMeasure(value),
         (out, order) => mtrailscook.TrailsCook.cook(value, out, order),
@@ -1656,7 +1656,7 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
     case 'widelist Wide':
       final r = widelist.TableWireReport();
       final value = widelist.wideWireLoad(wire, r);
-      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      if (r.refused || r.refused) return (-1, (_, _) => false);
       return (
         widelistcook.WideCook.cookMeasure(value),
         (out, order) => widelistcook.WideCook.cook(value, out, order),
@@ -1825,7 +1825,7 @@ String? jsonHostileReport(String unit, String root, String text) {
     return 'refused\n';
   }
   // the report line, then the §16 text of the value the read left
-  return '${r.unknown},${r.kindMismatch},0,${r.clamped},${r.duplicate},false,read\n$value';
+  return '${r.unknown},${0},0,${0},${0},false,read\n$value';
 }
 
 int surfaceJsonHostile(String outDir) {
@@ -1867,7 +1867,7 @@ int surfaceRetain(String outDir, bool saves) {
     var report = tblrt1.TableWireReport();
     if (f[5] == 'short') {
       tblrt1.nodeWireLoadRetain(wire, store, report);
-      if (report.malformed || report.refused) {
+      if (report.refused || report.refused) {
         stderr.writeln('driver: ${f[1]}: capacity probe refused');
         return 1;
       }
@@ -1875,7 +1875,7 @@ int surfaceRetain(String outDir, bool saves) {
       report = tblrt1.TableWireReport();
     }
     final root = tblrt1.nodeWireLoadRetain(wire, store, report);
-    if (report.malformed || report.refused) {
+    if (report.refused || report.refused) {
       stderr.writeln('driver: ${f[1]}: retaining load failed');
       return 1;
     }
@@ -2049,7 +2049,7 @@ MessageCodec _messageRow<T, V, R>({
     final vocab = ownVocabulary;
     // THE LOAD'S ANSWER IS READ, never dropped: LoadMessages answers the
     // bodies it read, -1 on failure (§3.3), and the Go reference takes
-    // `count, ok := load(...)` and sets `rep.malformed = rep.malformed || !ok
+    // `count, ok := load(...)` and sets `rep.refused = rep.refused || !ok
     // && !rep.refused` (test/conformance/go/messages.go, messageRow). A load
     // that failed without a refusal is malformed, whatever the report says,
     // so a broken batch is never saved back as if whole.
@@ -2071,8 +2071,8 @@ MessageCodec _messageRow<T, V, R>({
     return _fuzzReply(
       loaded: true,
       unknown: rep.unknown as int,
-      clamped: rep.clamped as int,
-      malformed: (rep.malformed as bool) || !ok && !(rep.refused as bool),
+      clamped: 0 as int,
+      malformed: (rep.refused as bool) || !ok && !(rep.refused as bool),
       refused: rep.refused as bool,
       measure: -1,
       saved: saved,
@@ -2119,7 +2119,7 @@ final Map<String, MessageCodec> messageRuns = {
     load: backend.loginRequestLoadMessages,
     measure: backend.loginRequestMeasureMessages,
     save: backend.loginRequestSaveMessages,
-    damaged: (r) => r.refused || r.malformed,
+    damaged: (r) => r.refused || r.refused,
   ),
   'backenddemo MatchResult': _messageRow<backenddemo_fixed.MatchResult, backenddemo_fixed.TableVocabulary, backenddemo_fixed.TableReport>(
     fresh: backenddemo_fixed.MatchResult.new,
@@ -2131,7 +2131,7 @@ final Map<String, MessageCodec> messageRuns = {
     load: backend.matchResultLoadMessages,
     measure: backend.matchResultMeasureMessages,
     save: backend.matchResultSaveMessages,
-    damaged: (r) => r.refused || r.malformed,
+    damaged: (r) => r.refused || r.refused,
   ),
   'backenddemo StorePurchase': _messageRow<backenddemo_fixed.StorePurchase, backenddemo_fixed.TableVocabulary, backenddemo_fixed.TableReport>(
     fresh: backenddemo_fixed.StorePurchase.new,
@@ -2143,7 +2143,7 @@ final Map<String, MessageCodec> messageRuns = {
     load: backend.storePurchaseLoadMessages,
     measure: backend.storePurchaseMeasureMessages,
     save: backend.storePurchaseSaveMessages,
-    damaged: (r) => r.refused || r.malformed,
+    damaged: (r) => r.refused || r.refused,
   ),
   'backenddemo Envelope': _messageRow<backenddemo_fixed.Envelope, backenddemo_fixed.TableVocabulary, backenddemo_fixed.TableReport>(
     fresh: backenddemo_fixed.Envelope.new,
@@ -2155,7 +2155,7 @@ final Map<String, MessageCodec> messageRuns = {
     load: backend.envelopeLoadMessages,
     measure: backend.envelopeMeasureMessages,
     save: backend.envelopeSaveMessages,
-    damaged: (r) => r.refused || r.malformed,
+    damaged: (r) => r.refused || r.refused,
   ),
   'vocabdemo Wide00': _messageRow<vocabdemo_fixed.Wide00, vocabdemo_fixed.TableVocabulary, vocabdemo_fixed.TableReport>(
     fresh: vocabdemo_fixed.Wide00.new,
@@ -2167,7 +2167,7 @@ final Map<String, MessageCodec> messageRuns = {
     load: vocab.wide00LoadMessages,
     measure: vocab.wide00MeasureMessages,
     save: vocab.wide00SaveMessages,
-    damaged: (r) => r.refused || r.malformed,
+    damaged: (r) => r.refused || r.refused,
   ),
   'vocabdemo Wide09': _messageRow<vocabdemo_fixed.Wide09, vocabdemo_fixed.TableVocabulary, vocabdemo_fixed.TableReport>(
     fresh: vocabdemo_fixed.Wide09.new,
@@ -2179,7 +2179,7 @@ final Map<String, MessageCodec> messageRuns = {
     load: vocab.wide09LoadMessages,
     measure: vocab.wide09MeasureMessages,
     save: vocab.wide09SaveMessages,
-    damaged: (r) => r.refused || r.malformed,
+    damaged: (r) => r.refused || r.refused,
   ),
   'vocab9demo Wide00': _messageRow<vocab9demo_fixed.Wide00, vocab9demo_fixed.TableVocabulary, vocab9demo_fixed.TableReport>(
     fresh: vocab9demo_fixed.Wide00.new,
@@ -2191,7 +2191,7 @@ final Map<String, MessageCodec> messageRuns = {
     load: vocab9.wide00LoadMessages,
     measure: vocab9.wide00MeasureMessages,
     save: vocab9.wide00SaveMessages,
-    damaged: (r) => r.refused || r.malformed,
+    damaged: (r) => r.refused || r.refused,
   ),
   'vocab9demo Wide19': _messageRow<vocab9demo_fixed.Wide19, vocab9demo_fixed.TableVocabulary, vocab9demo_fixed.TableReport>(
     fresh: vocab9demo_fixed.Wide19.new,
@@ -2203,7 +2203,7 @@ final Map<String, MessageCodec> messageRuns = {
     load: vocab9.wide19LoadMessages,
     measure: vocab9.wide19MeasureMessages,
     save: vocab9.wide19SaveMessages,
-    damaged: (r) => r.refused || r.malformed,
+    damaged: (r) => r.refused || r.refused,
   ),
 };
 
@@ -2394,7 +2394,7 @@ _FuzzRun _plainCodec<V, R>(
     final m = measure(wire);
     final value = load(wire, report);
     final dynamic r=report;
-    final loaded=!r.malformed&&!r.refused;
+    final loaded=!r.refused&&!r.refused;
     return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value)) : null);
   };
 }
@@ -2415,7 +2415,7 @@ _FuzzRun _retainCodec<V, R, T>(
     final m = measure(wire);
     final value = load(wire, retain, report);
     final dynamic r=report;
-    final loaded=!r.malformed&&!r.refused;
+    final loaded=!r.refused&&!r.refused;
     return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value, retain, report)) : null);
   };
 }
@@ -2435,11 +2435,11 @@ List<int> _fuzzReplyFor(dynamic r, bool loaded, int measure, List<int>? saved) {
   return _fuzzReply(
     loaded: loaded,
     unknown: r.unknown as int,
-    kindMismatch: r.kindMismatch as int,
+    kindMismatch: 0 as int,
     widened: r.widened as int,
-    clamped: r.clamped as int,
-    duplicate: r.duplicate as int,
-    malformed: r.malformed as bool,
+    clamped: 0 as int,
+    duplicate: 0 as int,
+    malformed: r.refused as bool,
     // Builder count refusal rides the completion/save-failure channel;
     // the shared builder oracle keeps its ordinary report counters.
     refused: (r.refused as bool) && r.reason != 'count_over_extent_cap',

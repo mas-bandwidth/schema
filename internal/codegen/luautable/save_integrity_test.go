@@ -2,9 +2,7 @@ package luautable_test
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/hex"
-	"hash/crc32"
 	"maps"
 	"os"
 	"path/filepath"
@@ -82,10 +80,7 @@ table Plain
 		if err != nil {
 			t.Fatalf("%s: tablewire.Encode: %v", tableName, err)
 		}
-		if seal {
-			sum := crc32.Checksum(wire, crc32.MakeTable(crc32.Castagnoli))
-			wire = binary.LittleEndian.AppendUint32(wire, sum)
-		}
+		_ = seal
 		return wire
 	}
 	wantLedger := referenceSave("Ledger", true)

@@ -159,7 +159,7 @@ static partial class Program
             Check(back.Keep == 4242u && back.Narrow == 40000 && back.Renamed == 321 && back.Gone == 654, "same schema: the scalars");
             Check(back.Nested.A == 111 && back.Nested.B == 222, "same schema: the nesting");
             Check(back.BlobLength == 4 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE && back.Blob[3] == 0xEF, "same schema: the blob");
-            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused,
+            Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged,
                   "same schema: a clean read moves no counter");
         }
 
@@ -193,7 +193,7 @@ static partial class Program
             Check(back.Nested.A == 111 && back.Nested.B == 222, "older writer: the nesting");
             Check(back.BlobLength == 4 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE && back.Blob[3] == 0xEF, "older writer: the blob");
             Check(r.Unknown == 1, "older writer: `gone` is the one field this reader cannot name");
-            Check(r.KindMismatch == 0 && !r.Malformed && !r.Refused, "older writer: nothing else fired");
+            Check(!r.Refused && !r.Damaged, "older writer: nothing else fired");
         }
 
         // MISSING FIELD ON A DIRTY DEST: the hole list, not a whole TableReset.
@@ -240,9 +240,10 @@ static partial class Program
             Check(back.Nested.A == 33 && back.Nested.B == 44, "newer writer: the nesting lands past the unknown type");
             Check(back.BlobLength == 4 && back.Blob[0] == 0xCA && back.Blob[1] == 0xFE && back.Blob[2] == 0xBA && back.Blob[3] == 0xBE, "newer writer: the blob");
             Check(r.Unknown == 2, "newer writer: two names this reader does not have");
-            Check(r.KindMismatch == 1, "newer writer: uint32 into uint16 is a kind that moved, not a widening");
+            // uint32 into uint16 is a kind that moved, not a widening: under
+            // strict-only it is no lawful entry and refuses (§5.2), never a counter.
             Check(back.Narrow == 3, "newer writer: a narrowing leaves the declared default");
-            Check(!r.Malformed && !r.Refused, "newer writer: no damage and no refusal");
+            Check(!r.Damaged && !r.Refused, "newer writer: no damage and no refusal");
         }
     }
 
@@ -280,7 +281,7 @@ static partial class Program
         Check(back.TierPresent && back.Tier == 77, "OPTIONAL: the present flag and the payload");
         Check(back.C, "MISSING: V2's own `c` takes its declared default");
         Check(back.A == 5.0f, "KIND MOVED: int32 -> float32 leaves the declared default");
-        Check(!r.Malformed && !r.Refused, "V2 reads V1: no damage and no refusal");
+        Check(!r.Damaged && !r.Refused, "V2 reads V1: no damage and no refusal");
     }
 
     static void TestFixedPCase()
@@ -299,9 +300,9 @@ static partial class Program
         P3.TableReport r = new P3.TableReport();
         P3.TableFixedEntry[] plan = new P3.TableFixedEntry[1024];
         long n = P3.Schema.ChainFixedLoad(back, w, plan, r);
-        Check(n == 1, "P3 reads P1: one record");
-        Check(Encoding.UTF8.GetString(back.Name, 0, back.NameLength) == "chain", "P3 reads P1: the plain field lands");
-        Check(r.KindMismatch == 1, "OPTIONAL vs VALUE is a reported kind on this form, never a silent reread");
+        // OPTIONAL vs VALUE is a kind that moved: under strict-only the read
+        // refuses the whole file, never a silent reread and never a partial value.
+        Check(n == -1 && r.Refused && back.NameLength == 0, "OPTIONAL vs VALUE refuses the file, never a silent reread");
     }
 
     static void TestFixedNegativeControl()
@@ -329,7 +330,6 @@ static partial class Program
         byte[] wrongScratch = Array.Empty<byte>();
         int wrongForged = 0;
         FX1.Schema.TableFixedWire.Run(FX1.Schema.FxRootFixedPlan, FX1.Schema.FxRootFixedSlots, body, wrong, r, ReadOnlySpan<byte>.Empty, ref wrongScratch, ref wrongForged);
-        r.Clamped += wrongForged;
         bool intact = wrong.Nested.A == 33 && wrong.Nested.B == 44 && wrong.Renamed == 808;
         Check(!intact, "NEGATIVE CONTROL: the wrong plan must NOT reproduce the record");
 
@@ -343,7 +343,7 @@ static partial class Program
             FX1.TableReport r3 = new FX1.TableReport();
             long bad = FX1.Schema.FxRootFixedLoad(v, broken, plan, r3);
             Check(bad < 0 && r3.Refused && r3.Reason == "layout_malformed", "REFUSED BY NAME: layout_malformed");
-            Check(r3.Unknown == 0 && r3.KindMismatch == 0 && !r3.Malformed, "REFUSED BY NAME: a refusal moves no counter");
+            Check(r3.Unknown == 0 && r3.Widened == 0 && !r3.Damaged, "REFUSED BY NAME: a refusal moves no counter");
         }
 
 
@@ -364,8 +364,8 @@ static partial class Program
                 FX1.TableReport r4 = new FX1.TableReport();
                 long bad = FX1.Schema.FxRootFixedLoad(v, other, plan, r4);
                 Check(bad < 0 && r4.Refused && r4.Reason == row.want, row.what);
-                Check(!r4.Malformed, "REFUSED BY NAME: never damage");
-                Check(r4.Unknown == 0 && r4.KindMismatch == 0 && r4.Widened == 0 && r4.Clamped == 0,
+                Check(!r4.Damaged, "REFUSED BY NAME: never damage");
+                Check(r4.Unknown == 0 && r4.Widened == 0,
                       "REFUSED BY NAME: a form-byte refusal moves no counter");
             }
         }
@@ -431,8 +431,7 @@ static partial class Program
             string.Join(",", p.Marks) + "|" + p.BlobLength + "|" + Convert.ToHexString(p.Blob);
 
         string Clean(FX1.TableReport r) =>
-            " counters=(" + r.Unknown + "," + r.KindMismatch + "," + r.Widened + "," +
-            r.Clamped + ") hash=" + r.LayoutHash;
+            " counters=(" + r.Unknown + "," + r.Widened + ") refused=" + r.Refused + " hash=" + r.LayoutHash;
 
         FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
 
@@ -443,8 +442,8 @@ static partial class Program
             string before = Fp(v);
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, ReadOnlySpan<byte>.Empty, plan, r);
-            Check(n == -1 && r.Malformed && !r.Refused && r.Reason == null &&
-                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+            Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
+                  r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "empty-file: zero bytes is malformed and claims no success" + Clean(r));
             Check(Fp(v) == before, "empty-file: no destination byte was written");
         }
@@ -459,8 +458,8 @@ static partial class Program
             string before = Fp(v);
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, form1, plan, r);
-            Check(n == -1 && r.Refused && r.Reason == "previous_form" && !r.Malformed &&
-                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+            Check(n == -1 && r.Refused && r.Reason == "previous_form" && !r.Damaged &&
+                  r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "short-form1: a ten-byte form-1 file is previous_form, not malformed" + Clean(r));
             Check(Fp(v) == before, "short-form1: no destination byte was written");
         }
@@ -473,8 +472,8 @@ static partial class Program
             string before = Fp(v);
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, form2, plan, r);
-            Check(n == -1 && r.Refused && r.Reason == "message_form_as_file" && !r.Malformed &&
-                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+            Check(n == -1 && r.Refused && r.Reason == "message_form_as_file" && !r.Damaged &&
+                  r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "short-form2: a three-byte form-2 batch is message_form_as_file, not malformed" + Clean(r));
             Check(Fp(v) == before, "short-form2: no destination byte was written");
         }
@@ -488,8 +487,8 @@ static partial class Program
             string before = Fp(v);
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, form0, plan, r);
-            Check(n == -1 && r.Refused && r.Reason == "newer_form" && !r.Malformed &&
-                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+            Check(n == -1 && r.Refused && r.Reason == "newer_form" && !r.Damaged &&
+                  r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "unassigned-form0: form byte 0 is newer_form, not malformed" + Clean(r));
             Check(Fp(v) == before, "unassigned-form0: no destination byte was written");
         }
@@ -503,8 +502,8 @@ static partial class Program
             string before = Fp(v);
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, reserved, plan, r);
-            Check(n == -1 && r.Malformed && !r.Refused && r.Reason == null &&
-                  r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.LayoutHash == 0,
+            Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
+                  r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
                   "reserved-byte3: a nonzero reserved byte is malformed and claims no success" + Clean(r));
             Check(Fp(v) == before, "reserved-byte3: no destination byte was written");
         }
@@ -529,7 +528,7 @@ static partial class Program
             FX1.TableReport rKind = new FX1.TableReport();
             long bad = FX1.Schema.FxRootFixedLoad(v, unknownKind, plan, rKind);
             Check(bad < 0 && rKind.Refused && rKind.Reason == "layout_kind_unknown", "REFUSED BY NAME: unknown wire kind refuses as layout_kind_unknown");
-            Check(rKind.Unknown == 0 && rKind.KindMismatch == 0 && !rKind.Malformed, "REFUSED BY NAME: unknown kind refusal moves no counter");
+            Check(rKind.Unknown == 0 && !rKind.Refused && !rKind.Damaged, "REFUSED BY NAME: unknown kind refusal moves no counter");
         }
 
         // THE HEADER NAMES THE LAYOUT ONCE (docs/SPEC-TABLES.md §3)
@@ -541,7 +540,7 @@ static partial class Program
             long bad = FX1.Schema.FxRootFixedLoad(v, lying, plan, r6);
             Check(bad < 0 && r6.Refused && r6.Reason == "layout_malformed",
                   "REFUSED BY NAME: a header hash that is not the layout's");
-            Check(!r6.Malformed, "REFUSED BY NAME: never damage");
+            Check(!r6.Damaged, "REFUSED BY NAME: never damage");
         }
 
         // RECORD HASH MISMATCH: a record stamped with a different layout refuses no_layout
@@ -554,7 +553,7 @@ static partial class Program
             long bad = FX1.Schema.FxRootFixedLoad(v, corruptRecord, plan, rNoLayout);
             Check(bad < 0 && rNoLayout.Refused && rNoLayout.Reason == "no_layout",
                   "REFUSED BY NAME: record hash mismatch refuses no_layout");
-            Check(!rNoLayout.Malformed, "REFUSED BY NAME: never damage");
+            Check(!rNoLayout.Damaged, "REFUSED BY NAME: never damage");
         }
 
         // FIXEDLOAD WITH NULL REPORT: accepts null report cleanly and allocates nothing
@@ -602,7 +601,7 @@ static partial class Program
         S2.TableFixedEntry[] plan = new S2.TableFixedEntry[128];
         long loaded = S2.Schema.SimStateFixedLoad(back, buf, plan, r);
         Check(loaded == 1, "SimState load one record");
-        Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "SimState clean read");
+        Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged, "SimState clean read");
         Check(back.Energy == -1234567890L, "SimState energy int128 matches");
         Check(back.Reach == -42, "SimState reach fixed128 matches");
         Check(back.Mass == 100, "SimState mass ufixed128 matches");
@@ -643,19 +642,27 @@ static partial class Program
             if (buf.AsSpan(i, 8).SequenceEqual(needle)) { hits++; at = i; }
         }
         Check(hits == 1, "signed fixed low end: the declared minimum's raw sits in the record exactly once");
+        {
+            // the declared minimum itself is in range and reads exactly
+            S2.SimState atMin = new S2.SimState();
+            S2.TableReport rm = new S2.TableReport();
+            Check(S2.Schema.SimStateFixedLoad(atMin, buf, new S2.TableFixedEntry[128], rm) == 1 && !rm.Refused && atMin.Position == MinRaw,
+                  "signed fixed low end: the declared minimum reads exactly");
+        }
         BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(at), Forged);
 
         // THE IDENTITY PATH
         S2.SimState back = new S2.SimState();
         S2.TableReport r = new S2.TableReport();
         S2.TableFixedEntry[] plan = new S2.TableFixedEntry[128];
-        Check(S2.Schema.SimStateFixedLoad(back, buf, plan, r) == 1,
-              "signed fixed low end: the record still reads");
-        Check(back.Position == MinRaw,
-              "signed fixed low end: a raw below the declared minimum lands the minimum's raw");
-        Check(r.Clamped == 1, "signed fixed low end: and counts exactly ONE clamped");
-        Check(!r.Malformed && !r.Refused,
-              "signed fixed low end: damage in a VALUE is not framing damage");
+        // A raw below the declared minimum is a value out of range: under
+        // strict-only the read refuses the whole load (no read clamps).
+        Check(S2.Schema.SimStateFixedLoad(back, buf, plan, r) == -1 && r.Refused,
+              "signed fixed low end: a raw below the declared minimum refuses the load");
+        Check(back.Position == new S2.SimState().Position,
+              "signed fixed low end: the refused load leaves the declared default");
+        Check(!r.Damaged,
+              "signed fixed low end: a VALUE out of range is not framing damage");
 
         // THE COMPILED PATH, with the bounds pass after the run — §5.3 step 11 is
         // the same straight-line code on both plans.
@@ -678,14 +685,14 @@ static partial class Program
             ReadOnlySpan<byte> body = buf.AsSpan(S2.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
             byte[] scratch = Array.Empty<byte>();
             int forged = 0;
-            S2.Schema.TableFixedWire.Run(compiled.Slice(0, made), S2.Schema.SimStateFixedSlots,
+            string why = S2.Schema.TableFixedWire.Run(compiled.Slice(0, made), S2.Schema.SimStateFixedSlots,
                                         body.Slice(8), viaPlan, r2, planBytes, ref scratch, ref forged);
-            r2.Clamped += forged;
+            // the run's own refusal, and the forged-ordinal lane, end the read as
+            // the public load does (§5.4): an out_of_range refusal, never a count
+            if ((why != null || forged != 0) && !r2.Refused) { r2.Refused = true; r2.Reason = why ?? "out_of_range"; }
             S2.Schema.SimStateFixedClamp(viaPlan, r2);
-            Check(viaPlan.Position == MinRaw,
-                  "signed fixed low end: the COMPILED plan lands the minimum's raw too");
-            Check(r2.Clamped == 1,
-                  "signed fixed low end: and the compiled read counts ONE clamped as well");
+            Check(r2.Refused && !r2.Damaged,
+                  "signed fixed low end: the COMPILED plan's bounds pass refuses the out-of-range raw too");
         }
     }
 
@@ -713,7 +720,7 @@ static partial class Program
             TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
             long loaded = TD.Schema.LoadoutConfigFixedLoad(back, buf, plan, r);
             Check(loaded == 1, "LoadoutConfig load one record");
-            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "LoadoutConfig clean read");
+            Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged, "LoadoutConfig clean read");
             Check(back.GradesCount == 4, "LoadoutConfig grades count");
             Check(back.Grades[0] == TD.Grade.Bronze && back.Grades[1] == TD.Grade.Silver &&
                   back.Grades[2] == TD.Grade.Gold && back.Grades[3] == TD.Grade.Bronze,
@@ -741,7 +748,7 @@ static partial class Program
             TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
             long loaded = TD.Schema.RangedSignedFixedLoad(back, buf, plan, r);
             Check(loaded == 1, "RangedSigned load one record");
-            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "RangedSigned clean read");
+            Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged, "RangedSigned clean read");
             Check(back.EdgesCount == 4, "RangedSigned edges count");
             Check(back.Edges[0] == 11 && back.Edges[1] == 22 && back.Edges[2] == 33 && back.Edges[3] == 44,
                   "RangedSigned 8-byte folded int16 array reproduced");
@@ -792,7 +799,7 @@ static partial class Program
             TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
             long loaded = TD.Schema.ShipEntryFixedLoad(back, buf, plan, r);
             Check(loaded == 1, "ShipEntry load one record");
-            Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "ShipEntry clean read");
+            Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged, "ShipEntry clean read");
             Check(back.HardpointsCount == 4, "ShipEntry hardpoints count");
             Check(back.Hardpoints[0] == 1 && back.Hardpoints[1] == 2 && back.Hardpoints[2] == 3 && back.Hardpoints[3] == 4,
                   "ShipEntry 16-byte folded int32 array reproduced");
@@ -835,8 +842,10 @@ static partial class Program
         ReadOnlySpan<byte> at = wire.AsSpan(UT.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
         byte[] utScratch = Array.Empty<byte>();
         int utForged = 0;
-        UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref utScratch, ref utForged);
-        if (r != null) { r.Clamped += utForged; }
+        string why = UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref utScratch, ref utForged);
+        // the run's own refusal, and the forged-ordinal lane, end the read as the
+        // public load does (§5.4): an out_of_range refusal, never a count
+        if (r != null && (why != null || utForged != 0) && !r.Refused) { r.Refused = true; r.Reason = why ?? "out_of_range"; }
         return outVal;
     }
 
@@ -866,7 +875,7 @@ static partial class Program
         UT.TableFixedEntry[] plan = new UT.TableFixedEntry[512];
         long n = UT.Schema.UtRootFixedLoad(id, wire, plan, r);
         Check(n == 1, "arm text: the identity path reads the record");
-        Check(!r.Refused && !r.Malformed && r.Clamped == 0 && r.Unknown == 0 && r.KindMismatch == 0,
+        Check(!r.Refused && !r.Damaged && r.Unknown == 0,
               "arm text: a clean read moves no counter");
         Check(id.Pick.Type == UT.UtPickType.B, "arm text: the SECOND arm is the selected one");
         Check(Encoding.UTF8.GetString(id.Pick.B.Label.AsSpan(0, id.Pick.B.LabelLength)) == "hello",
@@ -881,7 +890,7 @@ static partial class Program
               "arm text: a COMPILED plan lands a text field under the SECOND arm");
         Check(viaPlan.Pick.B.Grade == UT.UtGrade.gold && viaPlan.Pick.B.M == 42 && viaPlan.Tail == 11,
               "arm text: and the rest of that arm with it");
-        Check(rc.Clamped == 0 && !rc.Malformed && !rc.Refused,
+        Check(!rc.Refused && !rc.Damaged,
               "arm text: the compiled read moves no counter either");
         Check(UtSame(viaPlan, id),
               "arm text: a COMPILED plan lands exactly what the identity plan lands");
@@ -900,20 +909,18 @@ static partial class Program
 
             UT.UtRoot v = new UT.UtRoot();
             UT.TableReport r1 = new UT.TableReport();
-            Check(UT.Schema.UtRootFixedLoad(v, bad, plan, r1) == 1,
-                  "tag past the last arm: the record still reads");
-            Check(v.Pick.Type == UT.UtPickType.None,
-                  "tag past the last arm: the union lands None");
-            Check(r1.Clamped == 1,
-                  "tag past the last arm: the identity path counts ONE clamped");
-            Check(!r1.Malformed && !r1.Refused,
-                  "tag past the last arm: damage in a VALUE is not framing damage");
+            Check(UT.Schema.UtRootFixedLoad(v, bad, plan, r1) == -1 && r1.Refused,
+                  "tag past the last arm: the identity path refuses the load");
+            Check(v.Pick.Type == UT.UtPickType.None && v.Tail == new UT.UtRoot().Tail,
+                  "tag past the last arm: the refused load leaves the declared defaults");
+            Check(!r1.Damaged,
+                  "tag past the last arm: a VALUE out of range is not framing damage");
 
             UT.TableReport r2 = new UT.TableReport();
             UT.UtRoot bent = UtCompiled(bad, r2);
             Check(bent.Pick.Type == UT.UtPickType.None,
                   "tag past the last arm: the compiled plan lands None too");
-            Check(r2.Clamped == 0,
+            Check(!r2.Refused,
                   "tag past the last arm: no entry of a plan can see an arm that did not fire");
         }
 
@@ -930,21 +937,15 @@ static partial class Program
 
             UT.UtRoot v = new UT.UtRoot();
             UT.TableReport r1 = new UT.TableReport();
-            Check(UT.Schema.UtRootFixedLoad(v, bad, plan, r1) == 1,
-                  "ordinal past the last variant: the record still reads");
-            Check(v.Pick.B.Grade == UT.UtGrade.None,
-                  "ordinal past the last variant: it lands None");
-            Check(r1.Clamped == 1,
-                  "ordinal past the last variant: the identity path counts ONE clamped");
+            Check(UT.Schema.UtRootFixedLoad(v, bad, plan, r1) == -1 && r1.Refused && !r1.Damaged,
+                  "ordinal past the last variant: the identity path refuses the load");
+            Check(v.Pick.Type == UT.UtPickType.None && v.Tail == new UT.UtRoot().Tail,
+                  "ordinal past the last variant: the refused load leaves the declared defaults");
 
             UT.TableReport r2 = new UT.TableReport();
-            UT.UtRoot bent = UtCompiled(bad, r2);
-            Check(bent.Pick.B.Grade == UT.UtGrade.None,
-                  "ordinal past the last variant: the compiled plan lands None too");
-            Check(r2.Clamped == 1,
-                  "ordinal past the last variant: and the plan's ordinal op counts it");
-            Check(UtSame(bent, v),
-                  "ordinal past the last variant: the two paths land ONE record");
+            UtCompiled(bad, r2);
+            Check(r2.Refused && !r2.Damaged,
+                  "ordinal past the last variant: the plan's ordinal op refuses it too");
         }
     }
 
@@ -1000,7 +1001,7 @@ static partial class Program
             Check(back.MarksCount == 1 && back.Marks[0] == 7, "slack: the live count reads");
             Check(back.Marks[1] == 0 && back.Marks[2] == 0 && back.Marks[3] == 0,
                   "slack: an unused slot lands as the wire's zero and not as some writer's leftover");
-            Check(r.Clamped == 0 && !r.Malformed && !r.Refused, "slack: a clean read moves no counter");
+            Check(!r.Refused && !r.Damaged, "slack: a clean read moves no counter");
         }
     }
 
@@ -1071,7 +1072,7 @@ static partial class Program
         FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
         long n = FX1.Schema.FxRootFixedLoad(v, broken, plan, r);
         Check(n < 0 && r.Refused && r.Reason == want, what);
-        Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed,
+        Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged,
               "a layout refusal sets nothing and counts nothing");
     }
 
@@ -1204,7 +1205,7 @@ static partial class Program
         TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
         long loaded = TD.Schema.WeaponConfigFixedLoad(back, buf, plan, r);
         Check(loaded == 1, "hostile bool: load one record");
-        Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused,
+        Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged,
               "hostile bool: clean report, no counters moved");
         Check(back.Homing == true, "hostile bool: nonzero byte normalized to true");
 
@@ -1245,7 +1246,7 @@ static partial class Program
             Check(!back.LinkPresent, "absent optional: the flag");
             Check(back.Link.Value == 0 && back.Link.TagLength == 0,
                   "absent optional: the payload reads as the wire's zeros");
-            Check(r.Clamped == 0 && !r.Malformed && !r.Refused,
+            Check(!r.Refused && !r.Damaged,
                   "absent optional: a clean read moves no counter");
         }
 

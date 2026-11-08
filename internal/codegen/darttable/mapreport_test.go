@@ -25,7 +25,6 @@ import (
 )
 
 func TestWireMapRootsDecodeAndReportDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	schemas, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", "maps", "*.schema"))
@@ -102,7 +101,7 @@ func TestWireMapRootsDecodeAndReportDart(t *testing.T) {
 			model := tabletext.NewModel(u)
 			inst := model.New(def)
 			var report tabletext.Report
-			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil {
+			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil && !report.Refused {
 				t.Fatalf("Go DecodeRegion on %s: %v", c.name, err)
 			}
 			if c.twoWidened && (report.Refused || report.Widened != 1) {
@@ -117,18 +116,17 @@ func TestWireMapRootsDecodeAndReportDart(t *testing.T) {
 			if report.Refused {
 				// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
 				// leg owes the refusal, and no counter or saved byte is compared
-				if !got.malformed {
-					t.Errorf("the Dart load did not refuse a damaged map on %s", c.name)
+				if !got.refused {
+					t.Errorf("the Dart load did not refuse a damaged map on %s (reason %q)", c.name, got.reason)
 				}
 				return
 			}
-			if got.unknown != report.Unknown || got.kindMismatch != 0 ||
-				got.widened != report.Widened || got.clamped != 0 ||
-				got.duplicate != 0 || got.malformed != report.Refused ||
+			if got.unknown != report.Unknown ||
+				got.widened != report.Widened ||
 				got.refused != report.Refused {
-				t.Errorf("Dart report = %d,%d,%d,%d,%d,%v,%v; the Go oracle = %d,%d,%d,%d,%d,%v,%v on %s",
-					got.unknown, got.kindMismatch, got.widened, got.clamped, got.duplicate, got.malformed, got.refused,
-					report.Unknown, 0, report.Widened, 0, 0, report.Refused, report.Refused, c.name)
+				t.Errorf("Dart report = %d,%d,%v; the Go oracle = %d,%d,%v on %s",
+					got.unknown, got.widened, got.refused,
+					report.Unknown, report.Widened, report.Refused, c.name)
 			}
 			if got.saved != hex.EncodeToString(wantSaved) {
 				t.Errorf("Dart saved %s, the Go oracle saves %s on %s", got.saved, hex.EncodeToString(wantSaved), c.name)
@@ -138,14 +136,11 @@ func TestWireMapRootsDecodeAndReportDart(t *testing.T) {
 }
 
 type mapAnswer struct {
-	unknown      int
-	kindMismatch int
-	widened      int
-	clamped      int
-	duplicate    int
-	malformed    bool
-	refused      bool
-	saved        string
+	unknown int
+	widened int
+	refused bool
+	reason  string
+	saved   string
 }
 
 // mapProbe runs the generated MapdemoWire load and save of one root over one
@@ -167,12 +162,9 @@ void main(List<String> args) {
   final v = ` + fn + `WireLoad(data, report);
   final saved = ` + fn + `WireSave(v);
   stdout.writeln('unknown=${report.unknown}');
-  stdout.writeln('kind=${report.kindMismatch}');
   stdout.writeln('widened=${report.widened}');
-  stdout.writeln('clamped=${report.clamped}');
-  stdout.writeln('duplicate=${report.duplicate}');
-  stdout.writeln('malformed=${report.malformed ? 1 : 0}');
   stdout.writeln('refused=${report.refused ? 1 : 0}');
+  stdout.writeln('reason=${report.reason}');
   stdout.writeln('saved=${saved.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 }
 `
@@ -194,16 +186,10 @@ void main(List<String> args) {
 		switch k {
 		case "unknown":
 			got.unknown = int(parseInt64(t, v))
-		case "kind":
-			got.kindMismatch = int(parseInt64(t, v))
 		case "widened":
 			got.widened = int(parseInt64(t, v))
-		case "clamped":
-			got.clamped = int(parseInt64(t, v))
-		case "duplicate":
-			got.duplicate = int(parseInt64(t, v))
-		case "malformed":
-			got.malformed = v == "1"
+		case "reason":
+			got.reason = v
 		case "refused":
 			got.refused = v == "1"
 		case "saved":

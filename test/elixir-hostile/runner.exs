@@ -10,7 +10,8 @@
 #
 # A carrier maps to the port's public reader:
 #   text              <Unit>.Table.from_json/2
-#   wire              <Unit>.Table.load/2
+#   wire              <Unit>.Table.load/2; a form-3 input (first byte 3) of a
+#                     root declared fixed: <Unit>.<File>Fixed.<root>_fixed_load/2
 #   wire_retain       <Unit>.Table.load_retain/4
 #   message           <Unit>.TableMessage.announce_read/1 then load_messages/3 (capacity 1)
 #   message_novocab   load_messages(nil, input)
@@ -77,6 +78,9 @@ empty_report = %{
 
 tables = %{
   "tables/examples" => Tabledemo.Table,
+  # Guarded.schema is one of the tables/examples unit's files (as the C++
+  # runner binds it): its roots live in Tabledemo.Table
+  "tables/examples/Guarded.schema" => Tabledemo.Table,
   "tables/messages" => Messagedemo.Table,
   "tables/blobs" => Blobdemo.Table,
   "tables/pointers" => Graphdemo.Table,
@@ -92,6 +96,56 @@ messages = %{
   "tables/examples" => Tabledemo.TableMessage,
   "tables/messages" => Messagedemo.TableMessage
 }
+
+# ---- the fixed-root file form (form 3) ----
+#
+# A root declared `fixed table` is written as a form-3 file, and its reader is
+# the unit's generated <File>Fixed.<root>_fixed_load/2; the variable load/2
+# answers `newer_form` to one. So a wire input is DISPATCHED BY ITS FORM BYTE
+# (the C++ runner's HC_FIXED, test/cpp-hostile/hostile.hpp): byte 3 goes to the
+# fixed read of a root the unit declares fixed, everything else to load/2.
+fixed_form = 3
+
+fixed_reader = fn mod, table ->
+  ns = mod |> Module.split() |> Enum.drop(-1) |> Enum.join(".")
+  fun = String.to_atom(Macro.underscore(table) <> "_fixed_load")
+  save = String.to_atom(Macro.underscore(table) <> "_fixed_save")
+
+  ebin
+  |> Path.join("Elixir.#{ns}.*Fixed.beam")
+  |> Path.wildcard()
+  |> Enum.map(&String.to_atom(Path.basename(&1, ".beam")))
+  |> Enum.find_value(fn fixed ->
+    Code.ensure_loaded(fixed)
+    if function_exported?(fixed, fun, 2), do: {fixed, fun, save}
+  end)
+end
+
+# The fixed form's value is a struct whose optional field rides beside a
+# `<name>_present` flag; the variable form's value (which its text writer
+# takes) is a string-keyed map whose absent optional is nil. One walk turns the
+# first into the second.
+to_variable = fn to_variable, value ->
+  cond do
+    is_struct(value) ->
+      fields = Map.from_struct(value)
+
+      for {k, v} <- fields, not String.ends_with?(Atom.to_string(k), "_present"), into: %{} do
+        name = Atom.to_string(k)
+
+        case Map.fetch(fields, String.to_atom(name <> "_present")) do
+          {:ok, false} -> {name, nil}
+          _ -> {name, to_variable.(to_variable, v)}
+        end
+      end
+
+    is_list(value) ->
+      Enum.map(value, &to_variable.(to_variable, &1))
+
+    true ->
+      value
+  end
+end
 
 sha = fn text -> :crypto.hash(:sha256, text) |> Base.encode16(case: :lower) end
 
@@ -209,6 +263,19 @@ packet = fn schema, type, payload ->
   end
 end
 
+# the variable form's read (form 1), and its refusal of any other form byte
+variable_wire = fn mod, table, payload ->
+  case apply(mod, :load, [table, payload]) do
+    {:ok, value, _report} ->
+      after_accept.({:accept, digest.(mod, table, value)}, fn -> exercise.(mod, table, value, payload) end)
+
+    {:error, r, _report} ->
+      canonical = if r == :newer_form and match?(<<2, _::binary>>, payload),
+        do: "message_form_as_file", else: reason.(r)
+      {:refuse, canonical}
+  end
+end
+
 run = fn carrier, schema, table, payload ->
   case carrier do
     "text" ->
@@ -225,14 +292,26 @@ run = fn carrier, schema, table, payload ->
     "wire" ->
       mod = Map.fetch!(tables, schema)
 
-      case apply(mod, :load, [table, payload]) do
-        {:ok, value, _report} ->
-          after_accept.({:accept, digest.(mod, table, value)}, fn -> exercise.(mod, table, value, payload) end)
+      case match?(<<^fixed_form, _::binary>>, payload) && fixed_reader.(mod, table) do
+        {fixed, fun, save} ->
+          case apply(fixed, fun, [payload, []]) do
+            {:ok, [value], _report} ->
+              variable = to_variable.(to_variable, value)
 
-        {:error, r, _report} ->
-          canonical = if r == :newer_form and match?(<<2, _::binary>>, payload),
-            do: "message_form_as_file", else: reason.(r)
-          {:refuse, canonical}
+              after_accept.({:accept, digest.(mod, table, variable)}, fn ->
+                {:ok, [_], _} = apply(fixed, fun, [apply(fixed, save, [[value]]), []])
+                mod.to_json(table, variable)
+              end)
+
+            {:ok, values, _report} ->
+              {:unhandled_decoded_value, values}
+
+            {:error, r, _report} ->
+              {:refuse, reason.(r)}
+          end
+
+        _ ->
+          variable_wire.(mod, table, payload)
       end
 
     "wire_retain" ->

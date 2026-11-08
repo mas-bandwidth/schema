@@ -24,11 +24,10 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	body := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n == 1, 'the newer reader did not read the older writer one record: n=$n ${why(report)}');
-  check(report.refused == 0 && !report.malformed,
+  check(report.refused == 0,
       'a clean NEW-READS-OLD is not a refusal: ${why(report)}');
   check(
-    report.unknown == 0 && report.kindMismatch == 0 && report.widened == 0 &&
-        report.clamped == 0 && report.duplicate == 0,
+    report.unknown == 0 && report.widened == 0,
     'counters moved on a clean backward read: ${why(report)}',
   );
   check(values[0].lead == 1 && values[0].trail == 2,

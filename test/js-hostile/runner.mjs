@@ -41,9 +41,21 @@
 // (serialize.js and the flat modules fix their mode at module load). Every
 // other carrier is one row, <name>, in development.
 //
-// VERDICTS. A table read's refusal is the reason its report names, cut at its
-// first ": " (the port appends the field, `non_finite_float: ShipEntry.health`);
-// a malformed read, or one that hands back no value, is the corpus's `damaged`.
+// VERDICTS. Every read is the one strict read (docs/plans/strict-only.md): it
+// returns the whole value or refuses the whole load. A refusal the corpus names
+// by its own reason (a form byte, a vocabulary or batch bound, a storage cap, a
+// non-finite float) is that reason, cut at its first ": " (the port appends the
+// field, `non_finite_float: ShipEntry.health`); every other refusal, damage, or
+// a read that hands back no value is the corpus's `damaged`, as the C and C++
+// runners answer it (test/cpp-hostile/hostile.hpp). Why else a read refused is
+// per-language diagnostic detail and is never compared (§6.5).
+//
+// A FIXED ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): a wire input whose
+// form byte is 3 is read through <T>FixedLoad, as the C and C++ runners pick
+// FixedLoad by the form byte. The fixed class carries no text writer in this
+// leg, so an accepted fixed read is carried field by field into the variable
+// class (off the unit's own TableUnitView descriptors) and digested through
+// that class's ToJson, after the fixed writer has re-saved it.
 // An accepted text, wire or wire_retain read is digested as the engine's is:
 // SHA-256 of the port's text writer with its one trailing newline removed. After
 // that accept the runner also drives the value through Measure, Save and ToJson
@@ -154,10 +166,62 @@ class Unbound extends Error {}
 
 const DAMAGED = { verdict: "refuse", detail: "damaged" };
 
+// the refusals the corpus names by their own reason; any other is `damaged`
+const NAMED = new Set(["newer_form", "message_form_as_file", "no_vocabulary", "second_announcement",
+  "vocabulary_too_large", "batch_too_large", "count_refusal", "non_finite_float"]);
+
 function reasonName(r) {
   const i = r.indexOf(": ");
   const name = i < 0 ? r : r.slice(0, i);
-  return name === "count_over_extent_cap" ? "count_refusal" : name;
+  const corpus = name === "count_over_extent_cap" ? "count_refusal" : name;
+  return NAMED.has(corpus) ? corpus : "damaged";
+}
+
+const TABLE_FIXED_FORM = 3;
+
+function camel(name) {
+  return name.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+}
+
+// fixedToVariable carries one fixed-class record into a fresh variable-class
+// value of the same table, by the unit's view descriptors (§8.1). A field kind
+// it does not carry throws, which the row reports as an error, never a pass.
+function fixedToVariable(view, vm, typeName, src) {
+  const desc = view.descriptors[typeName];
+  if (desc === undefined || desc.what !== "table" || typeof vm[typeName] !== "function") {
+    throw new Error(`no fixed-to-variable carry for ${typeName}`);
+  }
+  const out = new vm[typeName]();
+  for (const f of desc.fields) {
+    const p = camel(f.name);
+    if (f.optional && !src[p + "Present"]) { out[f.name] = null; continue; }
+    if (f.kind === 12) {
+      if (f.isArray && f.shape === "list") { throw new Error(`no carry for a list of strings: ${typeName}.${f.name}`); }
+      out[f.name] = new TextDecoder("utf-8", { fatal: true }).decode(src[p].subarray(0, src[p + "Length"]));
+      continue;
+    }
+    const one = (x) => {
+      if (f.table !== null) { return fixedToVariable(view, vm, f.typeName, x); }
+      const en = view.enums.find((e) => e.name === f.typeName);
+      if (en !== undefined) {
+        const v = en.variants.find((e) => e.value === x);
+        if (v === undefined) { throw new Error(`no ${f.typeName} variant ${x}`); }
+        return v.name;
+      }
+      if (f.kind === 1) { return Boolean(x); }
+      if (typeof x !== "number" && typeof x !== "bigint" && typeof x !== "boolean") {
+        throw new Error(`no carry for ${typeName}.${f.name} (${f.typeName})`);
+      }
+      return x;
+    };
+    if (f.isArray) {
+      const n = f.counted ? src[p + "Count"] : f.arrayBound;
+      out[f.name] = Array.from({ length: n }, (_, i) => one(src[p][i]));
+    } else {
+      out[f.name] = one(src[p]);
+    }
+  }
+  return out;
 }
 
 // A unit is every module the generator wrote for one schema, loaded once.
@@ -232,7 +296,7 @@ class Reader {
     if (report.reason) {
       return { verdict: "refuse", detail: reasonName(report.reason) };
     }
-    if (value === null || value === undefined || report.malformed) {
+    if (value === null || value === undefined || report.damaged) {
       return DAMAGED;
     }
     m[`${T}Measure`](value);
@@ -255,13 +319,36 @@ class Reader {
     }
     const report = new m.TableVariableReport();
     const value = m[`${T}FromJson`](text, report);
-    // Text syntax/storage refusals are malformed in the engine protocol,
-    // even when the public reader supplies a useful diagnostic reason.
-    if (report.malformed) { return DAMAGED; }
     return this.tableVerdict(m, T, value, report, null);
   }
 
+  // a form 3 file of a fixed root, read by its fixed codec (§3.4)
+  fixedWire(schema, T, payload) {
+    const u = this.unit(schema);
+    const fm = u.need("fixed file reader", `${T}FixedLoad`, `${T}FixedNewPlan`, `${T}FixedMeasure`, `${T}FixedSave`);
+    const rt = u.need("fixed class", `Init${T}`, T, "TableFixedReport", "TableFixedRefusalName");
+    const vm = u.need("text writer", `${T}ToJson`, "TableVariableReport", T);
+    const view = u.need("unit view", "TableUnitView").TableUnitView;
+    const value = new rt[T]();
+    const report = new rt.TableFixedReport();
+    const n = fm[`${T}FixedLoad`]([value], 1, payload, payload.length, fm[`${T}FixedNewPlan`](), report);
+    if (report.refused) {
+      return { verdict: "refuse", detail: reasonName(rt.TableFixedRefusalName(report.refused)) };
+    }
+    if (n !== 1 || report.damaged) {
+      return DAMAGED;
+    }
+    const size = fm[`${T}FixedMeasure`](1);
+    if (fm[`${T}FixedSave`]([value], 1, new Uint8Array(size)) !== size) {
+      return { verdict: "error", detail: "the fixed writer refused the value its reader accepted" };
+    }
+    return this.accepted(vm[`${T}ToJson`](fixedToVariable(view, vm, T, value)));
+  }
+
   wire(schema, T, payload) {
+    if (payload.length > 0 && payload[0] === TABLE_FIXED_FORM && this.unit(schema).with(`${T}FixedLoad`) !== null) {
+      return this.fixedWire(schema, T, payload);
+    }
     const m = this.unit(schema).need("wire reader", `${T}Load`, `${T}ToJson`, "TableVariableReport");
     const report = new m.TableVariableReport();
     return this.tableVerdict(m, T, m[`${T}Load`](payload, report), report, null);
@@ -296,7 +383,7 @@ class Reader {
       const own = new Uint8Array(fixed.AnnounceMeasure());
       fixed.Announce(own);
       const ar = {};
-      if (!fixed.AnnounceRead(vocab, own, ar) || ar.Malformed) {
+      if (!fixed.AnnounceRead(vocab, own, ar) || ar.Damaged) {
         return { verdict: "error", detail: "the unit could not read its own announcement" };
       }
     }
@@ -307,7 +394,7 @@ class Reader {
     if (report.Verdict === fixed.TableMessageOpenRefused) {
       return { verdict: "refuse", detail: reasonName(report.Reason || "") || "damaged" };
     }
-    if (report.Malformed || n !== 1) {
+    if (report.Damaged || n !== 1) {
       return DAMAGED;
     }
     const size = batch[`${T}MeasureMessages`]([value], {});
@@ -343,7 +430,7 @@ class Reader {
     if (report.Verdict === m.TableMessageOpenRefused) {
       return { verdict: "refuse", detail: reasonName(report.Reason || "") || "damaged" };
     }
-    if (report.Malformed || !ok) {
+    if (report.Damaged || !ok) {
       return DAMAGED;
     }
     return { verdict: "accept", detail: "-" };

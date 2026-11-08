@@ -396,22 +396,22 @@ export function FixedTableFixedSave(values, count, bytes) {
 // test. Answers the records read, or -1 with the reason named in the report.
 export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
   TableFixedResetReport(report);
-  if (bytes === null || byteLength < 1) { report.malformed = true; return -1; }
+  if (bytes === null || byteLength < 1) { report.damaged = true; return -1; }
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
   // the registry is ordered, so a byte this reader does not carry is named
   // by where it sits relative to this form and never by one word for both.
   // AND IT IS READ BEFORE THE FILE'S LENGTH (§5.3): a committed form-1 file
   // is TEN bytes and a form-2 batch THREE, so a reader that measured first
-  // would answer `malformed` for every real file of the two forms it names.
+  // would answer `damaged` for every real file of the two forms it names.
   if (bytes[0] !== TableFixedForm) {
     report.refused = bytes[0] === TableFixedVariableForm ? TableFixedRefusal.PreviousForm
                    : bytes[0] === TableFixedMessageForm ? TableFixedRefusal.MessageFormAsFile
                    : TableFixedRefusal.NewerForm;
     return -1;
   }
-  if (byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.malformed = true; return -1; }
+  if (byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.damaged = true; return -1; }
   // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
-  for (let i = 1; i < TableFixedHashAt; i++) { if (bytes[i] !== 0) { report.malformed = true; return -1; } }
+  for (let i = 1; i < TableFixedHashAt; i++) { if (bytes[i] !== 0) { report.damaged = true; return -1; } }
   const layoutAt = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes;
   const layoutBytes = (bytes[TableFixedHeaderBytes] | (bytes[TableFixedHeaderBytes + 1] << 8) |
                        (bytes[TableFixedHeaderBytes + 2] << 16) | (bytes[TableFixedHeaderBytes + 3] << 24)) >>> 0;
@@ -451,15 +451,15 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     entries = lane.entries; entryCount = lane.count; remap = lane.remap;
     // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4); it lands
     // after the loop, on a read that RETURNS — REFUSE moves no counter.
-    censusUnknown = lane.unknown; censusKind = lane.kindMismatch;
+    censusUnknown = lane.unknown; censusKind = lane.mismatch;
   }
   // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
   // against this build's; digest is not on the wire, so the header hash is
   // not a hash of the layout bytes alone (§3, bill §13).
   const rest = byteLength - layoutAt - layoutBytes;
-  // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
+  // BYTES LEFT OVER ARE damaged, which is §3's rule for the same reason:
   // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes !== 0) { report.malformed = true; return -1; }
+  if (recordBytes <= 8 || rest % recordBytes !== 0) { report.damaged = true; return -1; }
   const n = (rest / recordBytes) | 0;
   if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
   const image = plan.image, imageView = plan.view;
@@ -470,7 +470,7 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   // the prefill; the identity door below is §3.4's in-place read, not a hole rule.
   const holeN = TableFixedHoles(entries, entryCount, plan.cover, plan.holes);
   // §4.5, §5.3: stage the record loop's counters so a refusal leaves the
-  // caller's clamped and widened untouched; commit after the loop.
+  // caller's oor and widened untouched; commit after the loop.
   const stage = TableFixedResetReport(plan.stage);
   const identity = entries === FixedTableFixedIdentity && holeN === 0;
   let at = layoutAt + layoutBytes;
@@ -482,7 +482,7 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     }
     if (identity) {
       FixedTableFixedDecode(values[k], srcView, at + 8, stage);
-      if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
+      if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }
       at += recordBytes;
       continue;
     }
@@ -493,21 +493,21 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, stage);
     // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the
     // projection: refuse is total, no counter moves and no record lands.
-    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
+    if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }
     FixedTableFixedDecode(values[k], imageView, 0, stage);
     // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries
     // no text op, so the decode is where a byte string or a wide string
     // refuses by name, here and at the in-place door alike.
-    if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }
+    if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }
     at += recordBytes;
   }
   // THE COMPILE CENSUS AND THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on
   // a read that returns (§5.3, §5.9 #6). On a LAWFUL lineage unknown and
-  // kindMismatch land zero, always (§5.9 #30).
-  report.clamped += stage.clamped;
+  // mismatch land zero, always (§5.9 #30).
+  report.oor += stage.oor;
   report.widened += stage.widened;
   report.unknown += censusUnknown;
-  report.kindMismatch += censusKind;
+  report.mismatch += censusKind;
   return n;
 }
 
@@ -552,7 +552,7 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
   for (let i = 0; i < count; i++) {
     if (!FixedTableLoadMessageBody(r, values[i])) {
       // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
-      // §3.3), the tolerant read included: no body of it is delivered.
+      // §3.3), the strict read included: no body of it is delivered.
       if (report.NonFiniteFloat) {
         for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
         TableMessageRefuse(report, "non_finite_float: " + report.NonFiniteFloat);

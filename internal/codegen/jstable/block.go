@@ -348,7 +348,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("  // and nothing to fix up. On any failure it returns null and points at\n")
 	g.pf("  // nothing.\n")
 	g.pf("  //\n")
-	g.pf("  // There is ONE entry point and no tolerant twin: the block form is\n")
+	g.pf("  // There is ONE entry point and no strict twin: the block form is\n")
 	g.pf("  // same-build by construction — both sides generated from one declaration\n")
 	g.pf("  // at one build — so a consumer older than its producer is not a case. A\n")
 	g.pf("  // mismatch is a refusal; regenerate both sides. Data that must outlive the\n")

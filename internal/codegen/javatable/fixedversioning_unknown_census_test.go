@@ -59,9 +59,9 @@ public final class %[1]s {
 
     static void say(String tag, int n, %[2]s.TableFixed.Report r) {
         System.out.println(tag + " n=" + n
-            + " unknown=" + r.unknown + " kindMismatch=" + r.kindMismatch
-            + " widened=" + r.widened + " clamped=" + r.clamped
-            + " refused=" + r.refused + " malformed=" + r.malformed
+            + " unknown=" + r.unknown
+            + " widened=" + r.widened
+            + " refused=" + r.refused + " damaged=" + r.damaged
             + " reason=" + r.reason);
     }
 
@@ -131,10 +131,10 @@ public final class %[1]s {
 		if n := num(tag, "n"); n != 1 {
 			t.Errorf("%s: n=%d, want 1", tag, n)
 		}
-		if reads[tag]["refused"] != "false" || reads[tag]["malformed"] != "false" || reads[tag]["reason"] != "none" {
+		if reads[tag]["refused"] != "false" || reads[tag]["damaged"] != "false" || reads[tag]["reason"] != "none" {
 			t.Errorf("%s: a clean NEW-READS-OLD is not a refusal: %v", tag, reads[tag])
 		}
-		if num(tag, "kindMismatch") != 0 || num(tag, "widened") != 0 || num(tag, "clamped") != 0 {
+		if num(tag, "widened") != 0 {
 			t.Errorf("%s: a counter that must not move did: %v", tag, reads[tag])
 		}
 		if u := num(tag, "unknown"); u != 1 {

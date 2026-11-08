@@ -53,9 +53,9 @@ const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]
 const r = new TableFixedReport();
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, back.length, data, data.length, plan, r);
-if (n !== 1 || r.malformed || r.refused !== 0) { fail("the forged file reads one record: n=" + n + " " + reason(r)); }
-%[2]sif (r.clamped !== %[3]d) { fail("clamped=" + r.clamped + ", want exactly %[3]d: one forged value, one clamp"); }
-if (r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0 || r.duplicate !== 0) { fail("a counter that must not move did: " + reason(r)); }
+if (n !== 1 || r.damaged || r.refused !== 0) { fail("the forged file reads one record: n=" + n + " " + reason(r)); }
+%[2]sif (r.oor !== %[3]d) { fail("clamped=" + r.oor + ", want exactly %[3]d: one forged value, one clamp"); }
+if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) { fail("a counter that must not move did: " + reason(r)); }
 `, filepath.Join(corpus, vec.File), checks.String(), want.Clamped)
 			out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src)
 			if err != nil {

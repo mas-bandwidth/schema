@@ -18,12 +18,11 @@ import (
 // with a uint64 field, a []uint64 and a union arm of uint64, reads JSON values
 // at and above 2^63-1 (both integral and non-integral spellings) as well as
 // negative and out-of-range inputs, and compares the decoded values, the saved
-// bytes, and the report (clamped and kindMismatch counts) to what the Go oracle
-// (internal/tabletext, internal/tablewire) produces for the same JSON, byte for
-// byte. Values in 0..2^64-1 must be kept exactly; only values past the range
-// clamp (§16.2). Also verifies that int64 stays signed.
+// bytes and the verdict to what the Go oracle (internal/tabletext,
+// internal/tablewire) produces for the same JSON, byte for byte. Values in
+// 0..2^64-1 must be kept exactly; a value past the range refuses the whole read
+// (§16.2, docs/plans/strict-only.md). Also verifies that int64 stays signed.
 func TestFromJsonKeepsUint64AboveInt64MaxJava(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	javac, javaBin := javaTools(t)
 	src := `package probe
@@ -81,23 +80,26 @@ table T
 	cases := []struct {
 		json    string
 		want    string
-		clamped bool // the value is outside 0..2^64-1 (or int64 range), so the oracle clamps
+		refused bool // the value is outside 0..2^64-1 (or int64 range): the whole read refuses
 	}{
-		// in range (integral): kept exactly, clamped 0
+		// in range (integral): kept exactly
 		{`{ "f": 9223372036854775807, "xs": [9223372036854775807], "u": { "a": 9223372036854775807 } }`, "f=9223372036854775807 xs=[9223372036854775807] u.a=9223372036854775807 i=0", false},
 		{`{ "f": 9223372036854775808, "xs": [9223372036854775808], "u": { "a": 9223372036854775808 } }`, "f=9223372036854775808 xs=[9223372036854775808] u.a=9223372036854775808 i=0", false},
 		{`{ "f": 18446744073709551615, "xs": [18446744073709551615], "u": { "a": 18446744073709551615 } }`, "f=18446744073709551615 xs=[18446744073709551615] u.a=18446744073709551615 i=0", false},
-		// out of range (integral): clamped, same report as the oracle
-		{`{ "f": 18446744073709551616, "xs": [18446744073709551616], "u": { "a": 18446744073709551616 } }`, "f=18446744073709551615 xs=[18446744073709551615] u.a=18446744073709551615 i=0", true},
-		{`{ "f": -5, "xs": [-5], "u": { "a": -5 } }`, "f=0 xs=[0] u.a=0 i=0", true},
+		// out of range (integral): the whole read refuses, never clamps
+		{`{ "f": 18446744073709551616, "xs": [18446744073709551616], "u": { "a": 18446744073709551616 } }`, "", true},
+		{`{ "f": -5, "xs": [-5], "u": { "a": -5 } }`, "", true},
+		{`{ "f": 18446744073709551616 }`, "", true},
+		{`{ "xs": [1, 18446744073709551616] }`, "", true},
+		{`{ "u": { "a": -1 } }`, "", true},
 		// non-integral and -0 spellings (§16.2):
-		{`{ "f": -5.0, "xs": [-5.0], "u": { "a": -5.0 } }`, "f=0 xs=[0] u.a=0 i=0", true},
+		{`{ "f": -5.0, "xs": [-5.0], "u": { "a": -5.0 } }`, "", true},
 		{`{ "f": 9223372036854775808.0, "xs": [9223372036854775808.0], "u": { "a": 9223372036854775808.0 } }`, "f=9223372036854775808 xs=[9223372036854775808] u.a=9223372036854775808 i=0", false},
 		{`{ "f": 1e19, "xs": [1e19], "u": { "a": 1e19 } }`, "f=10000000000000000000 xs=[10000000000000000000] u.a=10000000000000000000 i=0", false},
 		{`{ "f": -0, "xs": [-0], "u": { "a": -0 } }`, "f=0 xs=[0] u.a=0 i=0", false},
 		// int64 stays signed:
 		{`{ "i": -5 }`, "f=0 xs=[] u.a=none i=-5", false},
-		{`{ "i": 9223372036854775808 }`, "f=0 xs=[] u.a=none i=9223372036854775807", true},
+		{`{ "i": 9223372036854775808 }`, "", true},
 	}
 
 	var in strings.Builder
@@ -140,52 +142,40 @@ table T
 		}
 		hexLine = strings.TrimSpace(sc.Text())
 
-		if !strings.HasPrefix(caseLine, "CASE "+strconv.Itoa(i)+" ") {
+		prefix := "CASE " + strconv.Itoa(i) + " "
+		if !strings.HasPrefix(caseLine, prefix) {
 			t.Fatalf("case %d: unexpected driver line %q", i, caseLine)
 		}
-		fields := strings.Fields(strings.TrimPrefix(caseLine, "CASE "+strconv.Itoa(i)))
-		var javaClamped, javaKind int
-		for j := 0; j+1 < len(fields); j += 2 {
-			switch fields[j] {
-			case "clamped":
-				javaClamped, err = strconv.Atoi(fields[j+1])
-				if err != nil {
-					t.Fatalf("case %d: bad clamped", i)
-				}
-			case "kind":
-				javaKind, err = strconv.Atoi(fields[j+1])
-				if err != nil {
-					t.Fatalf("case %d: bad kind", i)
-				}
-			}
-		}
+		javaRefused := strings.TrimPrefix(caseLine, prefix) == "refused"
 		javaVal := strings.TrimPrefix(valLine, "VAL ")
 		javaHex := strings.TrimPrefix(hexLine, "HEX ")
-		if _, err := hex.DecodeString(javaHex); err != nil {
-			t.Fatalf("case %d: bad HEX line %q: %v", i, hexLine, err)
-		}
 
 		inst := m.New(st)
 		rep := &tabletext.Report{}
-		if !m.Read(inst, []byte(c.json), rep) {
-			t.Fatalf("case %d: oracle Read failed", i)
+		oracleRead := m.Read(inst, []byte(c.json), rep)
+		if oracleRead == c.refused {
+			t.Fatalf("case %d (%s): the oracle read=%v, the case says refused=%v (%+v)", i, c.json, oracleRead, c.refused, rep)
+		}
+		if c.refused {
+			if !javaRefused {
+				t.Errorf("case %d (%s): Java read %s (%s), the oracle refuses the whole read", i, c.json, javaVal, caseLine)
+			}
+			continue
+		}
+		if javaRefused {
+			t.Errorf("case %d (%s): Java refused a value in range", i, c.json)
+			continue
+		}
+		if _, err := hex.DecodeString(javaHex); err != nil {
+			t.Fatalf("case %d: bad HEX line %q: %v", i, hexLine, err)
 		}
 		oracleWire, err := tablewire.Encode(m, inst)
 		if err != nil {
 			t.Fatalf("case %d: oracle Encode: %v", i, err)
 		}
-
-		if javaVal != c.want || !strings.EqualFold(javaHex, hex.EncodeToString(oracleWire)) || javaClamped != rep.Unknown || javaKind != rep.Unknown {
-			t.Errorf("case %d (%s): got %s (clamped=%d kind=%d hex=%s), want %s (oracle clamped=%d kind=%d hex=%s)",
-				i, c.json, javaVal, javaClamped, javaKind, javaHex, c.want, rep.Unknown, rep.Unknown, hex.EncodeToString(oracleWire))
-			continue
-		}
-
-		if c.clamped && javaClamped == 0 {
-			t.Errorf("case %d (%s): Java clamped=%d (%s) but the oracle clamps (clamped=%d)", i, c.json, javaClamped, javaVal, rep.Unknown)
-		}
-		if !c.clamped && javaClamped != 0 {
-			t.Errorf("case %d (%s): Java clamped=%d (%s) but value is in range (oracle clamped=%d)", i, c.json, javaClamped, javaVal, rep.Unknown)
+		if javaVal != c.want || !strings.EqualFold(javaHex, hex.EncodeToString(oracleWire)) {
+			t.Errorf("case %d (%s): got %s (hex=%s), want %s (oracle hex=%s)",
+				i, c.json, javaVal, javaHex, c.want, hex.EncodeToString(oracleWire))
 		}
 	}
 }
@@ -204,10 +194,15 @@ public final class Driver {
             byte[] text = line.getBytes(java.nio.charset.StandardCharsets.UTF_8);
             probe.TableVariable.Report rep = new probe.TableVariable.Report();
             probe.TVariable.Value v = probe.TVariable.fromJson(text, rep);
+            if (v == null || rep.refused || rep.damaged) {
+                System.out.println("CASE " + idx + " " + (v == null && (rep.refused || rep.damaged) ? "refused" : "partial"));
+                System.out.println("VAL -");
+                System.out.println("HEX -");
+                idx++;
+                continue;
+            }
             byte[] saved = probe.TVariable.save(v);
-            System.out.println("CASE " + idx + " clamped " + rep.clamped
-                    + " malformed " + (rep.malformed ? 1 : 0)
-                    + " kind " + rep.kindMismatch);
+            System.out.println("CASE " + idx + " read");
             StringBuilder xs = new StringBuilder("[");
             for (int i = 0; i < v.xs.size(); i++) {
                 if (i > 0) { xs.append(","); }

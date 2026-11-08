@@ -12,13 +12,14 @@ import (
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
 // shared cross-version vectors every leg reads (fixedvector.WriterRange): an
 // OLD writer's file with one ranged value forged past that writer's range, read
-// by the NEW reader whose own range is wider. The reader clamps to the WRITER's
-// range and counts `clamped` once: a scalar, one element of a ranged fixed
+// by the NEW reader whose own range is wider. The reader holds the WRITER's
+// range, and under the strict read (docs/plans/strict-only.md) a value past it
+// REFUSES the whole load as outOfRange: a scalar, one element of a ranged fixed
 // array (held the same as a scalar), and a uint64 at or above 2^63 (compared
-// unsigned, so it lands the max). The answer is the manifest's `expect=`, which
-// is what the C++ reference's own NEW reader landed from the same bytes. The
-// probe dumps a primitive array as one `list:` value, so the expected
-// elements are joined the same way.
+// unsigned, so it is past the max). A vector whose manifest names no forged
+// value (`clamped=0`) reads whole to the manifest's `expect=`; the probe dumps a
+// primitive array as one `list:` value, so the expected elements are joined
+// the same way.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 	slowtest.Gate(t, "javac and java (it runs the generated NEW reader over the forged file)")
 	corpus := corpusDir(t)
@@ -54,18 +55,21 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 				{key: "reads", schema: "VNEW_" + vec.Row + ".schema", older: []string{"VOLD_" + vec.Row + ".schema"}},
 			})
 			r := runProbe(t, classes, "Probe_reads", filepath.Join(corpus, vec.File))
-			if r.n != 1 || r.refused || r.malformed {
-				t.Fatalf("the forged file reads one record: %+v", r)
+			if want.Clamped > 0 {
+				// A value past the WRITER's range refuses the whole load
+				// under the strict read: nothing lands, nothing counts.
+				requireNamedRefusal(t, vec.File, r, "outOfRange")
+				return
+			}
+			if r.n != 1 || r.refused || r.damaged {
+				t.Fatalf("the file reads one record: %+v", r)
 			}
 			for _, field := range order {
 				if got := r.value[field]; got != expect[field] {
-					t.Errorf("%s landed %s, want %s: the forged value clamps to the WRITER's range", field, got, expect[field])
+					t.Errorf("%s landed %s, want %s", field, got, expect[field])
 				}
 			}
-			if int64(r.clamped) != want.Clamped {
-				t.Errorf("clamped=%d, want exactly %d: one forged value, one clamp", r.clamped, want.Clamped)
-			}
-			if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 {
+			if r.unknown != 0 || r.widened != 0 {
 				t.Errorf("a counter that must not move did: %+v", r)
 			}
 		})

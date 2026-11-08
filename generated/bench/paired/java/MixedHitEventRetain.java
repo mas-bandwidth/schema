@@ -95,7 +95,7 @@ public final class MixedHitEventRetain {
             }
         }
         // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
-        if (report.malformed) {
+        if (report.damaged || report.refused) {
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
@@ -103,7 +103,7 @@ public final class MixedHitEventRetain {
         }
         // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
         if (TableVariable.cyclic(nt)) {
-            report.malformed = true;
+            report.damaged = true;
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
@@ -262,7 +262,7 @@ public final class MixedHitEventRetain {
                 return;
             }
             if (!r.has(1)) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             }
             int kind = r.get8();
@@ -272,7 +272,7 @@ public final class MixedHitEventRetain {
                         if (r.has(2)) {
                             v.targetId = r.get16();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -280,17 +280,17 @@ public final class MixedHitEventRetain {
                             v.targetId = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.targetId & 0xffffffffL) > 4095L) {
                         v.targetId = (int) 4095L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedHitEventVariable.F_damage) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -298,7 +298,7 @@ public final class MixedHitEventRetain {
                         if (r.has(4)) {
                             v.damage = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -306,7 +306,7 @@ public final class MixedHitEventRetain {
                             v.damage = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -314,7 +314,7 @@ public final class MixedHitEventRetain {
                             v.damage = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -324,11 +324,11 @@ public final class MixedHitEventRetain {
                         } else {
                             v.damage = 4095;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedHitEventVariable.F_hitKind) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -336,7 +336,7 @@ public final class MixedHitEventRetain {
                         if (r.has(4)) {
                             v.hitKind = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -344,7 +344,7 @@ public final class MixedHitEventRetain {
                             v.hitKind = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -352,7 +352,7 @@ public final class MixedHitEventRetain {
                             v.hitKind = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -362,37 +362,37 @@ public final class MixedHitEventRetain {
                         } else {
                             v.hitKind = 7;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedHitEventVariable.F_crit) {
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
                         if (bv > 1) {
-                            report.malformed = true;
+                            report.damaged = true;
                         }
                         v.crit = bv != 0;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
                     r.skip(kind);
                 } else {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
             } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             } else {
                 captureUnknown(r, id, kind, retain, report, path, depth);

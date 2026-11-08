@@ -143,7 +143,7 @@ void main(List<String> args) {
   print(%[2]sWireMeasure(wire));
   final r = TableWireReport();
   final v = %[2]sWireLoad(wire, r);
-  print('${r.unknown},${r.kindMismatch},${r.widened},${r.clamped},0,${r.malformed},${r.refused ? 'refused' : 'read'}');
+  print('${r.unknown},${r.widened},${r.refused ? 'refused' : 'read'}');
   print(_hex(%[2]sWireSave(v)));
 }
 `, home, lower)
@@ -171,7 +171,7 @@ void main(List<String> args) {
 			if gotMeasure != wantMeasure {
 				t.Errorf("measure: Dart %d, oracle %d", gotMeasure, wantMeasure)
 			}
-			if fields := strings.Split(lines[1], ","); len(fields) != 7 || fields[5] != "true" {
+			if fields := strings.Split(lines[1], ","); len(fields) != 3 || fields[2] != "refused" {
 				t.Errorf("the Dart load did not refuse a damaged body: report %s", lines[1])
 			}
 		})

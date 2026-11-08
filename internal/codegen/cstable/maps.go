@@ -45,13 +45,12 @@ const tableMapWireSource = `
             }
         }
     }
-    static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report, ReadOnlySpan<byte> headerTail = default)
+    static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report)
     {
-        if (!a.Has(2)) { return true; }
+        // THE HEADER LIES INSIDE THE MAP'S OWN L (docs/SPEC-TABLES.md §2.8, §3)
+        if (!a.Has(2)) { return Damage(report); }
         byte kind = a.Byte();
-        Reader header = headerTail.IsEmpty ? a : new Reader(headerTail, a.Vocabulary) { Offset = 1 };
-        if (!header.Var(out ulong count)) { Damage(report); return true; }
-        a.Offset = Math.Min(a.Buffer.Length, header.Offset);
+        if (!a.Var(out ulong count)) { return Damage(report); }
         if (kind != 13) { return Fail(report, "kind_mismatch"); }
         if (count > int.MaxValue) { return CollectionCap(report); }
         f.ResetField(value);
@@ -75,7 +74,9 @@ const tableMapWireSource = `
             if (order == 0) { return Fail(report, "duplicate"); }
             else { last = KeyOf(entry, keyField); landed++; }
         }
-        f.SetCount(value, landed); return true;
+        f.SetCount(value, landed);
+        // bytes left inside the map's L after its entries are damage
+        return report.Damaged || report.Refused || a.Offset == a.Buffer.Length || Damage(report);
     }
 `
 

@@ -49,6 +49,6 @@ func emitRootData(g *luau.Gen, root *ir.Struct) {
 		g.Pf("\t{ id = %s, kind = %d, size = %d, children = %d }, -- %s\n",
 			luau.IntegerLit(new(big.Int).SetUint64(e.ID)), e.Kind, e.Size, e.Children, e.Note)
 	}
-	g.Pf("})\n\n")
+	g.Pf("}, %s)\n\n", g.Self)
 	emitLineage(g, root, FixedLineageEntry{Wire: hash, Layout: layout, Record: fixedHashBytes + record})
 }

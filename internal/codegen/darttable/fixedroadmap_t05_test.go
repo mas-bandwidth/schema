@@ -240,7 +240,7 @@ fixed table T
 	// THE CENSUS LANDS ONCE, AFTER THE LOOP, and comes from the plan's own
 	// numbers: a lawful lineage's plan names every field, so it is zero.
 	t05Has(t, src, "report.unknown += censusUnknown;", "R19 the census lands once per endpoint")
-	t05Has(t, src, "report.kindMismatch += censusKind;", "R19 kind_mismatch lands once per endpoint")
+	t05No(t, src, "censusKind", "R19 the strict census carries no kind counter")
 	if n := strings.Count(src, "report.unknown += censusUnknown;"); n != 1 {
 		t.Errorf("R19: the census lands %d times, want once per endpoint", n)
 	}
@@ -251,10 +251,11 @@ fixed table T
 			t.Errorf("R19/R16: the %s op does not move `widened` once for its entry", name)
 		}
 	}
-	for _, name := range []string{"count", "text"} {
-		if c := t05OpCase(t, t05Runtime(), name); !strings.Contains(c, "report.clamped++;") {
-			t.Errorf("R19/R16: the %s op does not move `clamped` once for its entry", name)
-		}
+	if c := t05OpCase(t, t05Runtime(), "count"); !strings.Contains(c, "return TableFixedRefusal.countOverBound;") {
+		t.Error("R19/R16: the count op does not refuse a count past its bound")
+	}
+	if c := t05OpCase(t, t05Runtime(), "text"); !strings.Contains(c, "return TableFixedRefusal.lengthOverBound;") {
+		t.Error("R19/R16: the text op does not refuse a length past its bound")
 	}
 }
 
@@ -265,11 +266,9 @@ fixed table T
 // whose every field is named twice over still moves nothing.
 func t05E9(t *testing.T) {
 	runtime := t05Runtime()
-	t05Has(t, runtime, "int duplicate = 0;", "E9 the duplicate lane starts at zero")
-	t05Has(t, runtime, "duplicate = 0;", "E9 the duplicate lane resets with the report")
-	t05No(t, runtime, "duplicate++", "E9 duplicate never raised")
-	if n := strings.Count(runtime, "duplicate"); n != 2 {
-		t.Errorf("E9: `duplicate` occurs %d times in the runtime, want the declaration and the reset only", n)
+	t05No(t, runtime, "duplicate", "E9 the strict report carries no duplicate lane")
+	if n := strings.Count(runtime, "duplicate"); n != 0 {
+		t.Errorf("E9: `duplicate` occurs %d times in the runtime, want none", n)
 	}
 	// This is a FIXED report invariant. The variable form's JSON reader has
 	// its own duplicate-key ledger (§16.3), so count only the fixed library.
@@ -287,8 +286,8 @@ fixed table T
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if n := strings.Count(string(files[runtimeHome(u)+"Fixed.dart"]), "duplicate"); n != 3 {
-		t.Errorf("E9: `duplicate` occurs %d times in the fixed library, want the fixed report lane and the message lane", n)
+	if n := strings.Count(string(files[runtimeHome(u)+"Fixed.dart"]), "duplicate"); n != 0 {
+		t.Errorf("E9: `duplicate` occurs %d times in the fixed library, want none", n)
 	}
 }
 
@@ -305,22 +304,22 @@ func t05R16(t *testing.T) {
 	// record (§5.4, §5.9 #6).
 	t05Has(t, runtime, "if (!named && census) {\n        report.unknown++;\n      }",
 		"R16 unknown is once per field of an endpoint at COMPILE")
-	t05Has(t, runtime, "report.kindMismatch++;", "R16 kind_mismatch is once per moved pair at COMPILE")
+	t05No(t, runtime, "kindMismatch", "R16 the strict compile census carries no kind counter")
 	// widened: once per entry per record.
 	for _, name := range []string{"widen", "widenFloat"} {
 		t05Has(t, t05OpCase(t, runtime, name), "report.widened++;",
 			"R16 widened once per entry per record")
 	}
-	// clamped: once per entry per record for a count and for a text length.
-	for _, name := range []string{"count", "text"} {
-		t05Has(t, t05OpCase(t, runtime, name), "report.clamped++;",
-			"R16 clamped once per entry per record for "+name)
-	}
+	// a count or a text length past its bound refuses the whole load.
+	t05Has(t, t05OpCase(t, runtime, "count"), "return TableFixedRefusal.countOverBound;",
+		"R16 a count past its bound refuses")
+	t05Has(t, t05OpCase(t, runtime, "text"), "return TableFixedRefusal.lengthOverBound;",
+		"R16 a text length past its bound refuses")
 	// THE BOUNDS PASS COUNTS A FORGED ORDINAL REMAPPED TO None, ON BOTH PLANS:
 	// the compiled plan's ordinal op counts it, and the identity plan's decode
 	// counts it after landing None. §4.6, §5.4's "counts twice" note.
-	t05Has(t, t05OpCase(t, runtime, "ordinal"), "report.clamped++;",
-		"R16 the compiled plan's ordinal op counts a forged ordinal")
+	t05Has(t, t05OpCase(t, runtime, "ordinal"), "report.unknown++;",
+		"R16 the compiled plan's ordinal op counts a forged ordinal unknown")
 	identity := t05Emitted(t, `package probe
 
 enum Tier
@@ -335,9 +334,9 @@ fixed table T
     tier Tier
 }
 `)
-	t05Has(t, identity, "report.clamped++;",
-		"R16 the identity plan's ordinal bounds pass counts a forged ordinal")
-	t05Has(t, identity, "= Tier.none;\n    report.clamped++;", "R16 a forged ordinal lands None and counts")
+	t05Has(t, identity, "report.unknown++;",
+		"R16 the identity plan's ordinal bounds pass counts a forged ordinal unknown")
+	t05Has(t, identity, "= Tier.none;\n    report.unknown++;", "R16 a forged ordinal lands None and counts unknown")
 	// A FOLDED ELEMENT RUN IS ONE and a widened run is never folded, so the
 	// coalescer merges COPY entries and nothing else (§5.4's "per ENTRY",
 	// §5.9 #33).
@@ -386,7 +385,7 @@ fixed table T
 `
 	live := t05Emitted(t, inside)
 	t05Has(t, live, "value.a > 1000", "R18 a bound inside the storage range is emitted")
-	t05Has(t, live, "report.clamped++;", "R18 the emitted clamp counts")
+	t05Has(t, live, "report.refused = TableFixedRefusal.outOfRange;", "R18 the emitted bound refuses out of range")
 
 	// AN ORDINAL WHOSE EXTENT FILLS ITS WIDTH: 255 variants live in a byte, so
 	// the read-side `> 255` has no false case. This leg writes the tautology,
@@ -426,11 +425,10 @@ fixed table T
 	runtime := t05Runtime()
 	t05Has(t, runtime, "final cap = size ~/ unit;", "C3 the text capacity is the entry's own size in units")
 	text := t05OpCase(t, runtime, "text")
-	t05Has(t, text, "} else if (used > cap) {", "C3 a length past the reader's cap is clamped")
-	t05Has(t, text, "used = cap;", "C3 the clamp lands the reader's own bound")
-	t05Has(t, text, "report.clamped++;", "C3 the clamp is counted once")
-	// A NEGATIVE LENGTH is the same clamp: it lands zero and counts.
-	t05Has(t, text, "if (used < 0) {", "C3 a negative length clamps to zero")
+	t05Has(t, text, "if (used < 0 || used > cap) {", "C3 a length past the reader's cap refuses")
+	t05Has(t, text, "return TableFixedRefusal.lengthOverBound;", "C3 the refusal is length_over_bound")
+	// A NEGATIVE LENGTH is the same refusal.
+	t05Has(t, text, "if (used < 0 || used > cap) {", "C3 a negative length refuses")
 
 	emitted := t05Emitted(t, src)
 	// THE DECODE'S SHARED PASS holds a length the plan COPIED rather than

@@ -17,7 +17,6 @@ import (
 )
 
 func TestDartTextListTotalNative(t *testing.T) {
-	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	fixture := "../../../testdata/conformance/feature-witnesses/text-list-total"
 	read := func(name string) string {
@@ -32,8 +31,10 @@ func TestDartTextListTotalNative(t *testing.T) {
 	m := tabletext.NewModel(u)
 	v := m.New(u.Tables["Totals"])
 	var r tabletext.Report
-	if !m.Read(v, []byte(input), &r) {
-		t.Fatalf("independent JSON prefix %+v", r)
+	// STRICT VERDICT: the Go oracle refuses the over-total input whole
+	// (length_over_bound), as the Dart read below must.
+	if m.Read(v, []byte(input), &r) || !r.Refused {
+		t.Fatalf("independent JSON total must refuse: %+v", r)
 	}
 	expected := m.New(u.Tables["Totals"])
 	if !m.Read(expected, []byte(read("expected.json")), &tabletext.Report{}) {
@@ -42,10 +43,6 @@ func TestDartTextListTotalNative(t *testing.T) {
 	expectedWire, err := tablewire.Encode(m, expected)
 	if err != nil {
 		t.Fatal(err)
-	}
-	gotWire, err := tablewire.Encode(m, v)
-	if err != nil || hex.EncodeToString(gotWire) != hex.EncodeToString(expectedWire) {
-		t.Fatal("neutral JSON prefix differs explicit fixture")
 	}
 	wideSchema := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(schema, "[..3]", "[..8]"), "string(5)", "string(32)"), "| total=5", "")
 	wideUnit := unitFrom(t, wideSchema)
@@ -73,11 +70,11 @@ Uint8List bytes(String s)=>Uint8List.fromList([for(var i=0;i<s.length;i+=2)int.p
 void main(){
 `)
 	fmt.Fprintf(&b, `final expected=bytes(%q);final jr=w.TableTextReport();final v=w.totalsFromJson(%q,jr);
-check(jr.clamped==10&&jr.clampedField=='Totals.a'&&hex(w.totalsWireSave(v))==hex(expected),'shared JSON total prefix');
+check(jr.refused&&jr.reason=='length_over_bound'&&v.a.isEmpty&&v.b.isEmpty&&v.c.isEmpty&&v.d.isEmpty,'shared JSON total refusal: ${jr.reason}');
 final wr=w.TableWireReport();final back=w.totalsWireLoad(bytes(%q),wr);
-check(!wr.malformed&&!wr.refused&&wr.clamped==10&&wr.clampedField=='Totals.a'&&hex(w.totalsWireSave(back))==hex(expected),'wire count plus element plus total clamps');
+check(wr.refused&&(wr.reason=='count_over_bound'||wr.reason=='length_over_bound')&&back.a.isEmpty&&back.c.isEmpty,'wire total refusal: ${wr.reason}');
 final store=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport();final retained=w.totalsWireLoadRetain(bytes(%q),store,rr);
-check(rr.clamped==10&&!rr.malformed&&hex(w.totalsWireSaveRetain(retained,store,w.TableWireReport()))==hex(expected),'retained prefix');
+check(rr.refused&&(rr.reason=='count_over_bound'||rr.reason=='length_over_bound')&&retained.a.isEmpty&&store.used==0,'retained total refusal: ${rr.reason}');
 `, hex.EncodeToString(expectedWire), input, hex.EncodeToString(wire), hex.EncodeToString(wire))
 	for _, big := range []bool{false, true} {
 		pin, err := tablecook.Cook(m, expected, tablecook.Options{Big: big})
@@ -88,7 +85,7 @@ check(rr.clamped==10&&!rr.malformed&&hex(w.totalsWireSaveRetain(retained,store,w
 		if big {
 			order = "Endian.big"
 		}
-		fmt.Fprintf(&b, "{final out=Uint8List(c.TotalsCook.cookMeasure(v));check(c.TotalsCook.cook(v,out,%s)&&hex(out)==%q,'total cooked prefix');}\n", order, hex.EncodeToString(pin))
+		fmt.Fprintf(&b, "{final ev=w.totalsWireLoad(expected,w.TableWireReport());final out=Uint8List(c.TotalsCook.cookMeasure(ev));check(c.TotalsCook.cook(ev,out,%s)&&hex(out)==%q,'total cooked prefix');}\n", order, hex.EncodeToString(pin))
 	}
 	for _, field := range []string{"a", "b", "c", "d"} {
 		present := ""
@@ -113,8 +110,8 @@ for(final order in [Endian.little,Endian.big]){final out=Uint8List(4096)..fillRa
 	tailWire = append(tailWire, 0)
 	tailWire = binary.LittleEndian.AppendUint64(tailWire, ir.TableWireId("c"))
 	tailWire = binary.LittleEndian.AppendUint64(tailWire, 1)
-	fmt.Fprintf(&b, `{final jr=w.TableTextReport();final v=w.totalsFromJson('{"c":["aaaaa","x","\\u0000"]}',jr);check(jr.clamped==1&&v.c.length==1&&v.c[0].value=='aaaaa','JSON ignores semantic tail after total');
-final r=w.TableWireReport();final back=w.totalsWireLoad(bytes(%q),r);check(r.clamped==1&&!r.malformed&&back.c.length==1&&back.c[0].value=='aaaaa','wire ignores semantic tail after total');}
+	fmt.Fprintf(&b, `{final jr=w.TableTextReport();final v=w.totalsFromJson('{"c":["aaaaa","x","\\u0000"]}',jr);check(jr.refused&&v.c.isEmpty,'JSON total refusal lands nothing: ${jr.reason}');
+final r=w.TableWireReport();final back=w.totalsWireLoad(bytes(%q),r);check(r.refused&&back.c.isEmpty,'wire total refusal lands nothing: ${r.reason}');}
 }
 `, hex.EncodeToString(tailWire))
 	runFormsProbe(t, files, b.String())

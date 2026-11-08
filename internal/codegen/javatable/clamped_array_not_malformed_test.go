@@ -15,15 +15,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// A bounded array [3] whose count is raised past the bound (3 to 4) clamps to
-// the bound in both engines; the oracle counts clamped and does NOT flag
-// malformed (docs/SPEC-TABLES.md §4: "A count past the READER's bound keeps
-// the bounded prefix and counts clamped; ... malformed is reserved for a count
-// the BODY cannot cover"). The Java leg used to scan the over-bound tail and
-// flag malformed when the body had no bytes for it: this pins the Java answer
-// to the oracle's.
+// A bounded array [3] whose count is raised past the bound (3 to 4) once
+// clamped to the bound. The clamp is retired (docs/plans/strict-only.md,
+// docs/SPEC-TABLES.md §4): a count past the reader's bound refuses the whole
+// load in both engines, and the Java leg hands back no value.
 func TestJavaFixClampedArrayNotMalformed(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repo, "tables", "scalars")
@@ -74,7 +70,7 @@ public final class Driver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         %s.TableVariable.Report report = new %s.TableVariable.Report();
         %s.SimStateVariable.Value v = %s.SimStateVariable.load(wire, report);
-        System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
+        System.out.println("R " + report.unknown + "," + report.widened + "," + report.damaged + "," + report.refused);
         if (v == null) System.out.println("V null"); else { System.out.print("V "); System.out.write(%s.SimStateVariable.toJson(v)); System.out.println(); }
     }
 }
@@ -106,29 +102,17 @@ public final class Driver {
 	model := tabletext.NewModel(u)
 	want := new(tabletext.Report)
 	value := model.New(u.Tables["SimState"])
-	ok, err := tablewire.Decode(model, value, mutant, want)
-	if !ok || err != nil {
-		t.Fatalf("oracle decode: ok=%v err=%v report=%+v", ok, err, want)
+	if ok, err := tablewire.Decode(model, value, mutant, want); ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("test setup: the oracle read a count past the bound: ok=%v err=%v report=%+v", ok, err, want)
 	}
 	gotFields := strings.Split(javaReport, ",")
-	if len(gotFields) != 7 {
+	if len(gotFields) != 4 {
 		t.Fatalf("java report shape: %q", javaReport)
 	}
-	wantFields := []string{
-		fmt.Sprintf("%d", want.Unknown),
-		fmt.Sprintf("%d", want.Unknown),
-		fmt.Sprintf("%d", want.Widened),
-		fmt.Sprintf("%d", want.Unknown),
-		fmt.Sprintf("%d", want.Unknown),
-		fmt.Sprintf("%t", want.Refused),
-		fmt.Sprintf("%t", want.Refused),
+	if gotFields[2] != "true" && gotFields[3] != "true" {
+		t.Errorf("Java SimState did not refuse a count past the bound: %q (oracle %+v)", javaReport, want)
 	}
-	for i := range wantFields {
-		if gotFields[i] != wantFields[i] {
-			t.Errorf("report field %d: java=%s oracle=%s (java report %q, oracle %+v)", i, gotFields[i], wantFields[i], javaReport, want)
-		}
-	}
-	if want.Unknown != 1 || want.Refused {
-		t.Fatalf("test setup: oracle report %+v, want clamped=1 and not malformed", want)
+	if !strings.Contains(string(out), "V null") {
+		t.Errorf("Java SimState handed back a value for a count past the bound:\n%s", out)
 	}
 }

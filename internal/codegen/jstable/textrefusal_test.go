@@ -31,8 +31,8 @@ for (const [text, field] of bad) {
  const r = new m.TableVariableReport();
  r.unknown = 3;
  const value = m.RootFromJson(text, r);
- if (value !== null || !r.malformed || r.reason !== "text_holds_zero: " + field ||
-     r.clamped !== 0 || r.unknown !== 3) {
+ if (value !== null || !r.damaged || r.reason !== "text_holds_zero: " + field ||
+     r.oor !== 0 || r.unknown !== 3) {
   fail("stored NUL must refuse before clamping: " + text + " " + JSON.stringify(r));
  }
  if (m.RootFromJson('{"name":"ok"}', r) === null || r.reason || r.refused)
@@ -40,7 +40,7 @@ for (const [text, field] of bad) {
 }
 for (const text of ['{"unknown":"\\u0000"}','{"\\u0000":"ignored"}','{"name":"\\u0001"}','{"name":"ab"}']) {
  const r = new m.TableVariableReport();
- if (m.RootFromJson(text, r) === null || r.malformed || r.reason)
+ if (m.RootFromJson(text, r) === null || r.damaged || r.reason)
   fail("valid/skipped control text refused: " + text);
 }
 `)

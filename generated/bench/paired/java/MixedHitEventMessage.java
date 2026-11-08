@@ -54,7 +54,7 @@ public final class MixedHitEventMessage {
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return false;
             }
             if (entry == null) {
@@ -69,9 +69,9 @@ public final class MixedHitEventMessage {
                     if (TableMessage.entryWidens(entry, 7, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -80,7 +80,7 @@ public final class MixedHitEventMessage {
                 {
                     long v1 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 12);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.targetId = (int) (v1);
@@ -95,9 +95,9 @@ public final class MixedHitEventMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -106,7 +106,7 @@ public final class MixedHitEventMessage {
                 {
                     long v2 = TableMessage.readSigned(r, entry.shape, 0L, 4095L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.damage = (int) (v2);
@@ -121,9 +121,9 @@ public final class MixedHitEventMessage {
                     if (TableMessage.entryWidens(entry, 4, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -132,7 +132,7 @@ public final class MixedHitEventMessage {
                 {
                     long v3 = TableMessage.readSigned(r, entry.shape, 0L, 7L, true);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.hitKind = (int) (v3);
@@ -147,9 +147,9 @@ public final class MixedHitEventMessage {
                     if (TableMessage.entryWidens(entry, 1, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -158,7 +158,7 @@ public final class MixedHitEventMessage {
                 {
                     long v4 = r.get(1);
                     if (r.err) {
-                        r.report.malformed = true;
+                        r.report.damaged = true;
                         return false;
                     }
                     v.crit = (v4 != 0L);
@@ -169,7 +169,7 @@ public final class MixedHitEventMessage {
             } else {
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
-                    r.report.malformed = true;
+                    r.report.damaged = true;
                     return false;
                 }
             }

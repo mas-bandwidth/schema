@@ -130,7 +130,7 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.pf("// A saved table is a form byte, a root body of fields (id reference, kind,\n")
 	g.pf("// payload), and an id table as the trailer (docs/SPEC-TABLES.md §3). A pointer\n")
 	g.pf("// *T, a *string and a *bytes ride as a node index into the flat node table the\n")
-	g.pf("// root body carries last (docs/SPEC-TABLES.md §3.1). Reading is tolerant: an\n")
+	g.pf("// root body carries last (docs/SPEC-TABLES.md §3.1). Reading is strict: an\n")
 	g.pf("// unknown id is skipped and counted, an absent field reads its declared\n")
 	g.pf("// default, and a kind mismatch is reported (§4).\n")
 	g.pf("\n")
@@ -209,7 +209,7 @@ export const TableVariableForm = 1;
 
 // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3, THE DISTINCTNESS CHECK;
 // docs/LAYERS/1-framing.md F6): an id table of more than 4096 entries is
-// malformed for the whole wire, whatever the buffer would hold, so the
+// damaged for the whole wire, whatever the buffer would hold, so the
 // distinctness proof never runs past it. kTableProbeBound in the C++ reference.
 export const TableVariableEntryBound = 4096n;
 
@@ -239,27 +239,72 @@ function TableVariableRound(n, a) {
 // byte answers message_form_as_file for form 2 and newer_form for any other.
 // A read that WIDENS is not a refusal: the value lands in the wider field, the
 // widened counter counts it (§4.1), and reason stays empty, exactly as Go's
-// does for a file read. Damage is the malformed flag, never a reason.
+// does for a file read. Damage is the damaged flag, never a reason.
 export class TableVariableReport {
-  constructor() {
+  constructor() { this.reset(); }
+
+  // reset puts every field back to a fresh report's value, so a caller reuses
+  // one report across reads without allocating another.
+  reset() {
     this.reason = "";
-    this.malformed = false;
+    this.damaged = false;
     this.refused = 0;
     this.unknown = 0;
-    this.kindMismatch = 0;
-    this.clamped = 0;
+    this.mismatch = 0;
+    this.oor = 0;
+    this.oorField = "";
     this.widened = 0;
-    this.duplicate = 0;
+    this.repeated = 0;
     this.missingRequired = 0;
-    // Extra successful namings of one blob record on a tolerant read (§2.5).
-    this.blobShared = 0;
+    // Extra successful namings of one blob record on a strict read (§2.5).
+    this.sharedBlob = 0;
     this.retained = 0;
     this.retainLost = 0;
     // the first float a read found to be a NaN or an infinity, <Table>.<field>
     // (docs/SPEC-TABLES.md §3.3): the read refuses, reason non_finite_float
     this.nonFiniteFloat = "";
   }
+
+  // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, "Strict
+  // error identity", §11): null when the strict rule accepts the read this
+  // report describes, else the one TableRefuseReason member it refuses with.
+  // A form byte the read does not carry is unknown_form whichever
+  // form-specific name the reason holds; then integrity_mismatch, a
+  // non-finite float, any damage as wire_damaged, a missing required field, a
+  // storage cap by its own name, a blob named from two slots, out_of_range, and
+  // kind_mismatch, in that order. unknown, widened, retained and repeated
+  // alone never refuse. No string is built: the answer is a frozen member.
+  err() {
+    const reason = this.reason;
+    if (reason === "newer_form" || reason === "message_form_as_file") { return TableRefuseReason.UnknownForm; }
+    if (reason === "integrity_mismatch") { return TableRefuseReason.IntegrityMismatch; }
+    if (this.nonFiniteFloat !== "") { return TableRefuseReason.NonFiniteFloat; }
+    if (this.damaged) { return TableRefuseReason.WireDamaged; }
+    if (this.missingRequired > 0) { return TableRefuseReason.MissingRequired; }
+    if (this.refused) {
+      return reason === "count_over_extent_cap" ? TableRefuseReason.CountOverExtentCap : TableRefuseReason.UnknownForm;
+    }
+    if (this.sharedBlob > 0) { return TableRefuseReason.BlobShared; }
+    if (this.oor > 0) { return TableRefuseReason.OutOfRange; }
+    if (this.mismatch > 0) { return TableRefuseReason.KindMismatch; }
+    return null;
+  }
 }
+
+// THE STRICT READ'S REASONS (docs/SPEC-TABLES.md §6.5, the refusal-names
+// table): each member's value is the enum's own value name, so a reason
+// compares by identity and spells itself with no lookup.
+export const TableRefuseReason = Object.freeze({
+  UnknownForm: "unknown_form",
+  IntegrityMismatch: "integrity_mismatch",
+  NonFiniteFloat: "non_finite_float",
+  WireDamaged: "wire_damaged",
+  MissingRequired: "missing_required",
+  CountOverExtentCap: "count_over_extent_cap",
+  BlobShared: "blob_shared",
+  OutOfRange: "out_of_range",
+  KindMismatch: "kind_mismatch",
+});
 
 // Ids intern a writer's ids in FIRST-USE order (docs/SPEC-TABLES.md §3), each a
 // BigInt, returning the 1-based reference. First-use order follows the write
@@ -466,7 +511,7 @@ function TableVariableWideClamp(s, bound) {
 
 // Kind 36, the timestamp, skips its eight bytes like any fixed-width kind
 // (§3: kinds 1-11, 18-29 and 36 skip their fixed width), so a field this
-// reader cannot name under it is counted, never malformed.
+// reader cannot name under it is counted, never damaged.
 function TableVariableSkip(r, kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
@@ -493,7 +538,7 @@ function TableVariableSkip(r, kind) {
 // scans its records, BEFORE any value decode: the numbering is positional and
 // read once. The table is whole or it is nothing — a field under another kind,
 // a length past the body, a record that cannot be framed or a count the scan
-// does not match is one malformed and answers null, and every pointer in the
+// does not match is one damaged and answers null, and every pointer in the
 // save then reads null (internal/tablewire nodetable.go). No node table at all
 // is an empty numbering.
 function TableVariableNodeTableScan(bytes, table, end, report) {
@@ -518,21 +563,21 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
     }
     if (!TableVariableSkip(w, kind)) { break; }
   }
-  if (present && bad) { report.malformed = true; return null; }
+  if (present && bad) { report.damaged = true; return null; }
   if (!present) { return []; }
   const rec = new TableVariableReader(payload, 0, payload.length);
   const count = rec.leb();
-  if (rec.bad) { report.malformed = true; return null; }
+  if (rec.bad) { report.damaged = true; return null; }
   const raw = [];
   while (rec.at < rec.end) {
     const tref = rec.leb();
-    if (rec.bad || tref === 0 || tref > table.length) { report.malformed = true; return null; }
+    if (rec.bad || tref === 0 || tref > table.length) { report.damaged = true; return null; }
     const tlen = rec.leb();
-    if (rec.bad || rec.at + tlen > rec.end) { report.malformed = true; return null; }
+    if (rec.bad || rec.at + tlen > rec.end) { report.damaged = true; return null; }
     raw.push({ tid: table[tref - 1], body: payload.slice(rec.at, rec.at + tlen) });
     rec.at += tlen;
   }
-  if (count !== raw.length) { report.malformed = true; return null; }
+  if (count !== raw.length) { report.damaged = true; return null; }
   return raw;
 }
 
@@ -944,7 +989,7 @@ func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int, guar
 	fmt.Fprintf(&b, "{ n: %s, key: %s, id: %s, o: %d, ",
 		jsStr(prop), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), ordinal)
 	// An integer's descriptor carries its scalar kind among intProps; a second
-	// `k` here would be a duplicate key whose value the later one overwrites
+	// `k` here would be a repeated key whose value the later one overwrites
 	// (eslint no-dupe-keys), so only the other shapes name the field kind here.
 	if !strings.HasPrefix(tail, intShapePrefix) {
 		fmt.Fprintf(&b, "k: %d, ", ir.TableWireFieldKind(f))
@@ -1140,7 +1185,7 @@ func intProps(f *ir.Field) string {
 // ---------------------------------------------------------------------------
 
 // emitRootCodec emits a variable root's whole surface: the wire Save/Measure,
-// the tolerant Load, the LoadMeasure the oracle fuzzer compares, and the text
+// the strict Load, the LoadMeasure the oracle fuzzer compares, and the text
 // ToJson/FromJson (docs/SPEC-TABLES.md §3, §16). Save answers null and Measure
 // -1 for a value the wire cannot carry: a data cycle (§3.1) or an enum value no
 // variant names (§5). ToJson answers null for a value the text cannot spell: a

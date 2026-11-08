@@ -92,7 +92,7 @@ public final class Driver {
         probe.TableVariable.Report report = new probe.TableVariable.Report();
         probe.TVariable.Value back = probe.TVariable.load(wire, report);
         if (back == null) { fail("load returned null"); }
-        if (report.malformed || report.refused) { fail("load reported malformed/refused"); }
+        if (report.damaged || report.refused) { fail("load reported damaged/refused"); }
         if (!v.xs.equals(back.xs)) { fail("xs: " + back.xs); }
         if (!v.gs.equals(back.gs)) { fail("gs: " + back.gs); }
         if (!v.ps.equals(back.ps)) { fail("ps: " + back.ps); }
