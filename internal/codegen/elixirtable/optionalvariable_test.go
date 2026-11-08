@@ -294,7 +294,7 @@ func TestNestedBodyEndingEarlyIsDamageElixir(t *testing.T) {
 	probe := fmt.Sprintf(`
 case Tblp1.Table.load("Chain", Base.decode16!(%q, case: :lower)) do
   {:ok, _v, r} ->
-    if not r.malformed do
+    if true do
       IO.puts(:stderr, "FAIL: a nested body ending early read clean: " <> inspect(r))
       System.halt(1)
     end
@@ -347,7 +347,7 @@ func TestReservedNodeIdInANestedBodyIsDamageElixir(t *testing.T) {
 	probe := fmt.Sprintf(`
 case Tblp1.Table.load("Chain", Base.decode16!(%q, case: :lower)) do
   {:ok, _v, r} ->
-    if not r.malformed do
+    if true do
       IO.puts(:stderr, "FAIL: the node id in a nested body read clean: " <> inspect(r))
       System.halt(1)
     end

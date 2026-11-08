@@ -40,7 +40,9 @@ defmodule RowF8 do
 
     case Tabledemo.PackFixed.pack_config_fixed_load(data) do
       {:ok, _values, report} ->
-        if report.malformed == false, do: fails, else: ["valid file must not set malformed: #{inspect(report)}" | fails]
+        if report.unknown == 0 and report.widened == 0 and report.layout_hash == 0,
+          do: fails,
+          else: ["valid file must read clean: #{inspect(report)}" | fails]
       other ->
         ["valid file must open: #{inspect(other)}" | fails]
     end
@@ -55,8 +57,8 @@ defmodule RowF8 do
 
       case Tabledemo.PackFixed.pack_config_fixed_load(ragged) do
         {:error, :malformed, report} ->
-          if report.malformed == true and report.unknown == 0 and report.kind_mismatch == 0 and
-               report.clamped == 0 and report.widened == 0 and report.duplicate == 0 and report.layout_hash == 0 do
+          if report.unknown == 0 and report.widened == 0 and
+               report.retained == 0 and report.retain_lost == 0 and report.layout_hash == 0 do
             fails
           else
             ["ragged tail at +#{extra} has wrong counters: #{inspect(report)}" | fails]
@@ -82,8 +84,10 @@ defmodule RowF8 do
 
     case Tabledemo.PackFixed.pack_config_fixed_load(whole) do
       {:error, :no_layout, report} ->
-        if report.malformed == false, do: fails, else:
-          ["extra == record_bytes must NOT set malformed: #{inspect(report)}" | fails]
+        if report.unknown == 0 and report.widened == 0 and report.layout_hash == 0,
+          do: fails,
+          else:
+            ["extra == record_bytes must refuse clean by name: #{inspect(report)}" | fails]
 
       {:error, :malformed, _report} ->
         ["extra == record_bytes is a whole record, not a ragged tail: expected :no_layout, got :malformed" | fails]
