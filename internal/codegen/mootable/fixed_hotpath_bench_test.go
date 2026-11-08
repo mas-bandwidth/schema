@@ -124,7 +124,7 @@ func TestMooFixedHotPathBench(t *testing.T) {
 			return float64(d.Nanoseconds()) / float64(iters*records)
 		}
 		var b, a []float64
-		for i := 0; i < pairs; i++ {
+		for i := range pairs {
 			if i%2 == 0 {
 				b, a = append(b, per(gb)), append(a, per(ga))
 			} else {
