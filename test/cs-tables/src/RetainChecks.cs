@@ -23,7 +23,7 @@ static partial class Program
             }
             new Span<byte>(region,(int)need+64).Fill(0xa5);
             var report=new RT.TableReport();
-            Check(RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref retain,report)!=null && !report.Malformed && !report.Refused,name+" retained load");
+            Check(RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref retain,report)!=null && !report.Damaged && !report.Refused,name+" retained load");
             Check(report.Retained==kept && report.RetainLost==lost && report.Unknown==unknown,name+" retained report "+report.Retained+","+report.RetainLost+","+report.Unknown);
             Check(retain.IdUsed==0,name+" load leaves retained ID store empty");
             for(long i=need;i<need+64;i++) { Check(region[i]==0xa5,name+" retention region overrun guard"); }
@@ -68,7 +68,7 @@ static partial class Program
         try
         {
             var report=new Listdemo.TableReport();
-            Check(Listdemo.Schema.SheetLoadRetain((IntPtr)region,need,wire,ref store,report)==null && report.Malformed && store.Count==0 && store.Used==0,"body framing damage discards the whole retaining load");
+            Check(Listdemo.Schema.SheetLoadRetain((IntPtr)region,need,wire,ref store,report)==null && report.Damaged && store.Count==0 && store.Used==0,"body framing damage discards the whole retaining load");
         }
         finally { NativeMemory.AlignedFree(region); }
     }
