@@ -17,7 +17,7 @@ import (
 )
 
 // TestJavaFixMapEntryDamageRefused pins the wire-fuzzer cause J6a: a damaged
-// map entry (mapdemo.Cells, pass entry #8 of the all-root gate) is malformed,
+// map entry (mapdemo.Cells, pass entry #8 of the all-root gate) is damage,
 // and DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the Java leg
 // owes the refusal and nothing it decoded or would save is compared.
 func TestJavaFixMapEntryDamageRefused(t *testing.T) {
@@ -32,17 +32,17 @@ func TestJavaFixMapEntryDamageRefused(t *testing.T) {
 	u := unitFromDir(t, filepath.Join(repo, "tables", "maps"))
 
 	ans := goOracleMapEntry(t, u, "Cells", wire)
-	if !ans.malformed {
-		t.Fatalf("oracle did not report malformed; this mutant does not pin the cause")
+	if !ans.refused {
+		t.Fatalf("oracle did not refuse; this mutant does not pin the cause")
 	}
-	if out := javaMapEntryOutput(t, u, "Cells", wire); !strings.Contains(out, "malformed=true") {
+	if out := javaMapEntryOutput(t, u, "Cells", wire); !strings.Contains(out, "rejected=true") || !strings.Contains(out, "saved=null") {
 		t.Fatalf("Java Cells did not refuse a damaged load:\n%s", out)
 	}
 }
 
 type oracleMapEntryAnswer struct {
-	encoded   []byte
-	malformed bool
+	encoded []byte
+	refused bool
 }
 
 func goOracleMapEntry(t *testing.T, u *ir.Unit, root string, wire []byte) oracleMapEntryAnswer {
@@ -58,7 +58,7 @@ func goOracleMapEntry(t *testing.T, u *ir.Unit, root string, wire []byte) oracle
 	if eerr != nil {
 		t.Fatal(eerr)
 	}
-	return oracleMapEntryAnswer{encoded: encoded, malformed: !ok && report.Refused}
+	return oracleMapEntryAnswer{encoded: encoded, refused: !ok && report.Refused}
 }
 
 func javaMapEntryOutput(t *testing.T, u *ir.Unit, root string, wire []byte) string {
@@ -102,10 +102,8 @@ public final class Driver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         %s.TableVariable.Report report = new %s.TableVariable.Report();
         %s.%sVariable.Value v = %s.%sVariable.load(wire, report);
-        System.out.println("malformed=" + report.malformed + " refused=" + report.refused +
-            " unknown=" + report.unknown + " kindMismatch=" + report.kindMismatch +
-            " widened=" + report.widened + " clamped=" + report.clamped +
-            " duplicate=" + report.duplicate);
+        System.out.println("rejected=" + (report.damaged || report.refused) + " damaged=" + report.damaged +
+            " refused=" + report.refused + " unknown=" + report.unknown + " widened=" + report.widened);
         if (v == null) { System.out.println("saved=null"); return; }
         byte[] saved = %s.%sVariable.save(v);
         System.out.println("saved=" + new String(java.util.HexFormat.of().formatHex(saved)));

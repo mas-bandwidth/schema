@@ -26,7 +26,7 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
 	body := `  final data = File(FILE).readAsBytesSync();
   final full = LOAD(values, values.length, data, data.length, plan, report);
   check(full >= 1, 'the corpus file did not read cleanly first: n=$full ${why(report)}');
-  check(report.refused == t.TableFixedRefusal.none && !report.malformed,
+  check(report.refused == t.TableFixedRefusal.none,
       'the corpus file read back dirty: ${why(report)}');
   for (var k = 0; k < t.TableFixedLimits.layoutAt; k++) {
     final rep = t.TableFixedReport();
@@ -37,19 +37,17 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
     final short = data.sublist(0, k);
     final n = LOAD(values, values.length, short, short.length, plan, rep);
     check(n == -1, 'a $k-byte file under the header owes -1, not $n: ${why(rep)}');
-    check(rep.malformed, 'a $k-byte file is malformed, not clean: ${why(rep)}');
-    check(rep.refused == t.TableFixedRefusal.none,
-        'a short file is the residue, never refused by name: ${name(rep.refused)}');
-    check(rep.unknown == 0 && rep.kindMismatch == 0 && rep.clamped == 0 &&
-        rep.widened == 0 && rep.duplicate == 0 && rep.hash == 0 && rep.layoutHash == 0,
-        'a malformed read moves no counter and no reported hash: ${why(rep)}');
+    check(rep.refused == t.TableFixedRefusal.damaged,
+        'a $k-byte file refuses wire_damaged, not clean: ${why(rep)}');
+    check(rep.unknown == 0 && rep.widened == 0 && rep.hash == 0 && rep.layoutHash == 0,
+        'a refused read moves no counter and no reported hash: ${why(rep)}');
     check(values[0].x == 0x5A5A5A5A && values[0].y == 0x5A5A5A5A &&
         values[0].z == 0x5A5A5A5A && values[0].w == 0x5A5A5A5A,
-        'a $k-byte malformed read wrote a destination byte: ${why(rep)}');
+        'a $k-byte refused read wrote a destination byte: ${why(rep)}');
   }`
 
 	out, err := runVersionProbe(t, dartBin, "VNEW_field_append", nil, 0, file, body)
 	if err != nil {
-		t.Fatalf("a file under the header is malformed, not refused: %v\n%s", err, out)
+		t.Fatalf("a file under the header is refused wire_damaged: %v\n%s", err, out)
 	}
 }

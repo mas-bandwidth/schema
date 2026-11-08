@@ -63,11 +63,11 @@ func TestDartArrayRootNative(t *testing.T) {
 			t.Fatal(err)
 		}
 		fmt.Fprintf(&body, `{final r=w.TableTextReport();final v=w.%sFromJson(%q,r);
-check(r.clamped==%d&&r.kindMismatch==%d,%q);
+check(!r.refused,%q);
 check(hex(w.%sWireSave(v))==%q,%q);
 check(w.%sToJson(v)==%q,%q);
 }
-`, fn, tc.Input, 0, 0, tc.Name+" report", fn, hex.EncodeToString(wire), tc.Name+" wire", fn, string(text)+"\n", tc.Name+" JSON")
+`, fn, tc.Input, tc.Name+" report", fn, hex.EncodeToString(wire), tc.Name+" wire", fn, string(text)+"\n", tc.Name+" JSON")
 	}
 	body.WriteString("}\n")
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(body.String()), 0600); err != nil {

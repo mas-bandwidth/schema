@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -14,9 +13,9 @@ import (
 )
 
 // jsonHostileDuplicateProbe reads one row per argument triple (name, root,
-// file) through the generated fromJson and prints the one counter this row
-// is about beside the verdict, in the report spelling the conformance surface
-// uses (docs/SPEC-TABLES.md §16.2).
+// file) through the generated fromJson and prints the verdict: refused when
+// no value comes back and the report refuses or says damaged, read when a value
+// comes back with neither (docs/SPEC-TABLES.md §16.2).
 const jsonHostileDuplicateProbe = `package tabledemo;
 public final class DuplicateProbe {
     private DuplicateProbe() {}
@@ -30,8 +29,9 @@ public final class DuplicateProbe {
             Class<?> codec = Class.forName("tabledemo." + root + "Variable");
             Object value = codec.getMethod("fromJson", byte[].class, TableVariable.Report.class)
                     .invoke(null, text, report);
-            String verdict = (value == null || report.malformed) ? "refused" : "read";
-            System.out.println(name + "," + report.duplicate + "," + verdict);
+            String verdict = (value == null && (report.refused || report.damaged)) ? "refused"
+                    : (value != null && !report.refused && !report.damaged) ? "read" : "partial";
+            System.out.println(name + "," + verdict);
         }
     }
 }
@@ -41,16 +41,16 @@ type duplicateRow struct {
 	name    string
 	root    string
 	text    string
-	want    int
 	verdict string
 }
 
-// TestJsonHostileReportDuplicateCounterJava is the card's row: for every
-// json-hostile case whose Go oracle counts `duplicate`, the Java text reader
-// must count the same number and reach the same verdict (docs/SPEC-TABLES.md
-// §16.2, §4). One subtest per row, so a divergence names the case.
+// TestJsonHostileReportDuplicateCounterJava holds the repeated-key rows: for
+// every json-hostile case of tabledemo that repeats a key (dup-key*,
+// keyed-duplicate-*), the Java text reader reaches the oracle's verdict. The
+// `duplicate` counter and last-wins are retired (docs/plans/strict-only.md): a
+// repeated key refuses the whole read (docs/SPEC-TABLES.md §16.2, §4). One
+// subtest per row, so a divergence names the case.
 func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
 	repo := filepath.Join("..", "..", "..")
@@ -72,18 +72,7 @@ func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
 		if len(fields) != 6 || fields[0] != "json-hostile" {
 			continue
 		}
-		if fields[5] == "refused" {
-			continue
-		}
-		parts := strings.Split(fields[5], ",")
-		if len(parts) != 7 {
-			t.Fatalf("%s: expected a report, got %q", fields[1], fields[5])
-		}
-		expected, err := strconv.Atoi(parts[4])
-		if err != nil {
-			t.Fatalf("%s: duplicate count %q: %v", fields[1], parts[4], err)
-		}
-		if expected == 0 {
+		if !strings.HasPrefix(fields[1], "dup-key") && !strings.HasPrefix(fields[1], "keyed-duplicate") {
 			continue
 		}
 		// this harness generates tabledemo only; a duplicate row of another
@@ -107,16 +96,16 @@ func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
 		if !ok || report.Refused {
 			verdict = "refused"
 		}
-		if report.Unknown == 0 {
-			t.Fatalf("%s: the manifest counts duplicate but the oracle counts none: %+v", fields[1], report)
+		if verdict != fields[5] {
+			t.Fatalf("%s: the manifest says %s, the oracle %s: %+v", fields[1], fields[5], verdict, report)
 		}
-		rows = append(rows, duplicateRow{name: fields[1], root: fields[3], text: string(text), want: report.Unknown, verdict: verdict})
+		rows = append(rows, duplicateRow{name: fields[1], root: fields[3], text: string(text), verdict: verdict})
 	}
 	if err := scan.Err(); err != nil {
 		t.Fatal(err)
 	}
 	if len(rows) == 0 {
-		t.Fatal("the manifest names no json-hostile row whose oracle counts duplicate")
+		t.Fatal("the manifest names no json-hostile repeated-key row")
 	}
 
 	files, err := Generate(u)
@@ -161,10 +150,10 @@ func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
 	got := map[string]string{}
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Split(strings.TrimSpace(line), ",")
-		if len(fields) != 3 {
-			t.Fatalf("driver line %q: want name,duplicate,verdict", line)
+		if len(fields) != 2 {
+			t.Fatalf("driver line %q: want name,verdict", line)
 		}
-		got[fields[0]] = fields[1] + "," + fields[2]
+		got[fields[0]] = fields[1]
 	}
 	if len(got) != len(rows) {
 		t.Fatalf("driver answered %d of %d rows:\n%s", len(got), len(rows), out)
@@ -173,12 +162,10 @@ func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
-			// docs/SPEC-TABLES.md §16.2: a repeated key is last-wins and
-			// counted `duplicate`, and §4's report is the same event here as
-			// it is for the Go walk.
-			want := fmt.Sprintf("%d,%s", row.want, row.verdict)
-			if answer := got[row.name]; answer != want {
-				t.Fatalf("%s: Java report duplicate,verdict = %s, oracle = %s", row.name, answer, want)
+			// docs/SPEC-TABLES.md §16.2: a repeated key refuses the whole
+			// read, the same verdict here as for the Go walk.
+			if answer := got[row.name]; answer != row.verdict {
+				t.Fatalf("%s: Java verdict = %s, oracle = %s", row.name, answer, row.verdict)
 			}
 		})
 	}

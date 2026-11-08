@@ -63,7 +63,7 @@ func jsonValueRows(t *testing.T) []jsonValueRow {
 	t.Helper()
 	var rows []jsonValueRow
 	for _, r := range jsonManifestRows(t) {
-		if r.kind != "json-hostile" || r.expected == "refused" || !strings.HasSuffix(r.expected, ",false,read") {
+		if r.kind != "json-hostile" || r.expected != "read" {
 			continue
 		}
 		if !strings.Contains(" "+strings.Join(jsonValueUnits, " ")+" ", " "+r.unit+" ") {
@@ -110,7 +110,7 @@ json.SetFlags(SCHEMA_JSON_FLAGS)
 local inputs = require("./inputs")
 local function probe(root: string, text: buffer)
 	local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-	local v = json.FromJsonTolerant(root, text, r)
+	local v = json.fromJsonWalk(root, text, r)
 	if v == nil or r.malformed then print("refused") return end
 	local ok, out = pcall(json.ToJson, root, v, r)
 	if not ok then print("error " .. string.gsub(tostring(out), "\n", " ")) return end

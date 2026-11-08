@@ -59,20 +59,22 @@ public final class Driver {
   byte[] json=java.nio.file.Files.readAllBytes(java.nio.file.Path.of(args[0],"json"));
   TableVariable.Report report=new TableVariable.Report();
   RootVariable.Value v=RootVariable.load(wire,report);
-  check(v!=null&&!report.malformed&&!report.refused&&report.unknown==0&&report.kindMismatch==0&&report.clamped==0&&report.widened==0,"reference report");
+  check(v!=null&&!report.damaged&&!report.refused&&report.unknown==0&&report.widened==0,"reference report");
   check(java.util.Arrays.equals(wire,RootVariable.save(v)),"canonical wire");
   check(java.util.Arrays.equals(json,RootVariable.toJson(v)),"canonical JSON expected="+new String(json,java.nio.charset.StandardCharsets.UTF_8)+" actual="+new String(RootVariable.toJson(v),java.nio.charset.StandardCharsets.UTF_8));
   v=RootVariable.fromJson(json,new TableVariable.Report());
   check(java.util.Arrays.equals(wire,RootVariable.save(v)),"JSON input");
   for(byte[] damage:new byte[][]{{1},{0,0},{0,(byte)0xd8},{0,(byte)0xdc}}) {
    report=new TableVariable.Report();v=RootVariable.load(frame(damage),report);
-   check(v==null&&report.malformed&&!report.refused,"damaged text discards the whole load");
+   check(v==null&&report.damaged&&!report.refused,"damaged text discards the whole load");
   }
   // Seven-unit bound cuts between the high and low surrogate at slots 6/7.
   report=new TableVariable.Report();v=RootVariable.load(frame(new byte[]{65,0,66,0,67,0,68,0,69,0,70,0,0,(byte)0xd8,0,(byte)0xdc}),report);
-  check(v.title.length==6&&report.clamped==1&&!report.malformed&&v.tail==17,"surrogate boundary clamp");
+  check(v==null&&(report.refused||report.damaged),"eight units past a seven-unit bound refuse the whole load, never clamp at the pair");
+  report=new TableVariable.Report();v=RootVariable.load(frame(new byte[]{65,0,66,0,67,0,68,0,69,0,0,(byte)0xd8,0,(byte)0xdc}),report);
+  check(v!=null&&!report.refused&&!report.damaged&&v.title.length==7&&v.tail==17,"a pair ending exactly at the bound reads whole");
   v.title=new char[]{0xd800};check(RootVariable.save(v)==null,"writer rejects unpaired surrogate");
-  System.out.println("wide reference wire/JSON, whole-load discard, pair clamp and writer validation pass");
+  System.out.println("wide reference wire/JSON, whole-load discard, over-bound refusal and writer validation pass");
  }
 }`
 	p := filepath.Join(dir, "Driver.java")
@@ -92,7 +94,7 @@ public final class Driver {
 	}
 }
 
-// Exact decimal conversion and raw-scale clamping are independent of double
+// Exact decimal conversion and raw-scale bound refusal are independent of double
 // precision and of the caller's ability to spell an enormous exponent (§15, §16.2).
 func TestJavaVariableWideScalarReports(t *testing.T) {
 	t.Parallel()
@@ -109,17 +111,27 @@ public final class Driver {
  static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
  static RootVariable.Value read(String text,TableVariable.Report report){return RootVariable.fromJson(text.getBytes(java.nio.charset.StandardCharsets.UTF_8),report);}
  public static void main(String[] args){
-  TableVariable.Report report=new TableVariable.Report();RootVariable.Value v=read("{\"quant\":1.5,\"quant\":0.1,\"wide\":1e40,\"entity\":340282366920938463463374607431768211455,\"tail\":17}",report);
-  check(v!=null&&!report.malformed&&report.kindMismatch==1&&report.clamped==2&&v.quant==98304&&v.wide.hi==0&&v.wide.lo==5000000000L&&v.entity.hi==-1L&&v.entity.lo==-1L&&v.tail==17,"exact fraction, preserved repeat, saturation and reader bound");
-  report=new TableVariable.Report();v=read("{\"wide\":1e999999999999,\"entity\":0e999999999999,\"quant\":1e-999999999999}",report);
-  check(v!=null&&!report.malformed&&report.clamped==2&&report.kindMismatch==1&&v.wide.lo==5000000000L&&v.entity.hi==0&&v.entity.lo==0,"bounded exponent classification");
+  TableVariable.Report report=new TableVariable.Report();RootVariable.Value v=read("{\"quant\":1.5,\"wide\":5000000000,\"entity\":340282366920938463463374607431768211455,\"tail\":17}",report);
+  check(v!=null&&!report.damaged&&!report.refused&&report.widened==0&&v.quant==98304&&v.wide.hi==0&&v.wide.lo==5000000000L&&v.entity.hi==-1L&&v.entity.lo==-1L&&v.tail==17,"exact fraction, reader bound and full uint128 read whole");
+  for(String bad:new String[]{"{\"quant\":1.5,\"quant\":0.1,\"tail\":17}","{\"quant\":0.1,\"tail\":17}","{\"wide\":1e40,\"tail\":17}","{\"wide\":5000000001,\"tail\":17}","{\"wide\":1e999999999999}","{\"quant\":1e-999999999999}"}){
+   report=new TableVariable.Report();v=read(bad,report);
+   check(v==null&&(report.refused||report.damaged),"repeat, inexact fraction, out-of-range and hostile exponents refuse the whole read: "+bad);
+  }
+  report=new TableVariable.Report();v=read("{\"entity\":0e999999999999}",report);
+  check(v!=null&&!report.refused&&!report.damaged&&v.entity.hi==0&&v.entity.lo==0,"a hostile exponent on zero is exactly zero");
   TableVariable.Writer w=new TableVariable.Writer(new byte[256],new TableVariable.Ids(64));
   w.put8(1);w.putLeb(w.ref(RootVariable.F_quant));w.put8(22);w.put32(0x7fffffff);
   w.putLeb(w.ref(RootVariable.F_wide));w.put8(5);w.put64(-42);
   w.putLeb(w.ref(RootVariable.F_tail));w.put8(4);w.put32(17);w.put8(0);w.trailer();
   report=new TableVariable.Report();v=RootVariable.load(java.util.Arrays.copyOf(w.buf,w.off),report);
-  check(v!=null&&!report.malformed&&!report.refused&&report.clamped==1&&report.widened==1&&v.quant==524288&&v.wide.hi==-1&&v.wide.lo==-42&&v.tail==17,"raw clamp and signed widening to 128 bits");
-  System.out.println("exact fixed/128 fractions, saturation, hostile exponents, raw bounds and widening pass");
+  check(v==null&&(report.refused||report.damaged),"a raw fixed value past its bound refuses the whole load, never clamps");
+  w=new TableVariable.Writer(new byte[256],new TableVariable.Ids(64));
+  w.put8(1);w.putLeb(w.ref(RootVariable.F_quant));w.put8(22);w.put32(524288);
+  w.putLeb(w.ref(RootVariable.F_wide));w.put8(5);w.put64(-42);
+  w.putLeb(w.ref(RootVariable.F_tail));w.put8(4);w.put32(17);w.put8(0);w.trailer();
+  report=new TableVariable.Report();v=RootVariable.load(java.util.Arrays.copyOf(w.buf,w.off),report);
+  check(v!=null&&!report.damaged&&!report.refused&&report.widened==1&&v.quant==524288&&v.wide.hi==-1&&v.wide.lo==-42&&v.tail==17,"raw value at its bound and signed widening to 128 bits");
+  System.out.println("exact fixed/128 fractions, out-of-range refusals, hostile exponents, raw bounds and widening pass");
  }
 }`)
 }

@@ -26,7 +26,7 @@ func squirrelArmFieldViolations(src string) []string {
 		if !strings.Contains(body, f.callee) {
 			out = append(out, f.name+" does not call "+f.callee)
 		}
-		for _, call := range []string{"readPrim(", "utf8Decode(", "wideDecode(", "wideClamp(", "clampScalar(", "bodyRead(", "readArrayBody(", "readArrayElems(", "readMapField("} {
+		for _, call := range []string{"readPrim(", "utf8Decode(", "wideDecode(", "wideClamp(", "rangeScalar(", "bodyRead(", "readArrayBody(", "readArrayElems(", "readMapField("} {
 			if strings.Contains(body, call) {
 				out = append(out, f.name+" decodes a payload with "+call)
 			}

@@ -6,9 +6,10 @@ package javatable
 // the resolution is a DEFINITION in the digest and the wire hash moves, not the record.
 // This row takes NO forged file (the page says so in as many words).
 //
-// `clamped` is asserted EXACTLY == 0 and never >= 1: the old writer quantized to 0.1
-// and 0.1 is a whole multiple of this reader's 0.01, so nothing requantizes — a reader
-// that counted a clamp on this lawful refinement is exactly the read the row exists to catch.
+// The read must land with NO refusal and the float bit-exact: the old writer quantized
+// to 0.1 and 0.1 is a whole multiple of this reader's 0.01, so nothing requantizes — a
+// reader that refused or requantized this lawful refinement is exactly the read the row
+// exists to catch.
 
 import (
 	"os"
@@ -32,8 +33,8 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	if r.n != 1 {
 		t.Errorf("n=%d, want 1", r.n)
 	}
-	if r.refused || r.malformed {
-		t.Errorf("a clean NEW-READS-OLD refused: refused=%v reason=%s malformed=%v", r.refused, r.reason, r.malformed)
+	if r.refused || r.damaged {
+		t.Errorf("a clean NEW-READS-OLD refused: refused=%v reason=%s malformed=%v", r.refused, r.reason, r.damaged)
 	}
 	if got := r.value["lead"]; got != "1" {
 		t.Errorf("lead=%s, want 1", got)
@@ -50,11 +51,8 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	if got := r.value["trail"]; got != "2" {
 		t.Errorf("trail=%s, want 2", got)
 	}
-	if r.clamped != 0 {
-		t.Errorf("clamped=%d, want 0 exactly — the refinement requantizes nothing (§5.8)", r.clamped)
-	}
-	if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 {
-		t.Errorf("counters moved on a clean read: unknown=%d kindMismatch=%d widened=%d, want all 0",
-			r.unknown, r.kindMismatch, r.widened)
+	if r.unknown != 0 || r.widened != 0 {
+		t.Errorf("counters moved on a clean read: unknown=%d widened=%d, want all 0",
+			r.unknown, r.widened)
 	}
 }

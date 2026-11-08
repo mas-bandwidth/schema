@@ -24,9 +24,8 @@ import (
 // Java load stopped at the entry's damaged key scan before it reached the
 // list, and loaded the file malformed. It must refuse exactly where the
 // oracle's framing refuses, and keep answering the clean wire as the oracle
-// does (saved bytes and every report counter).
+// does (saved bytes, unknown and widened).
 func TestJavaFixListCountPastBodyInMapValue(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	u := unitFromDir(t, filepath.Join(repo, "tables", "maps"))
@@ -95,7 +94,7 @@ func TestJavaFixListCountPastBodyInMapValue(t *testing.T) {
         long m=%s.%sVariable.loadMeasure(data);
         %s.TableVariable.Report report=new %s.TableVariable.Report();
         %s.%sVariable.Value v=%s.%sVariable.load(data,report);
-        String counters=report.unknown+","+report.kindMismatch+","+report.widened+","+report.clamped+","+report.duplicate+","+report.malformed+","+report.refused;
+        String counters=report.unknown+","+report.widened+","+report.damaged+","+report.refused;
         if(v==null){System.out.println("measure="+m+"|null|"+counters);return;}
         System.out.println("measure="+m+"|"+hexstr(%s.%sVariable.save(v))+"|"+counters);
     }
@@ -167,7 +166,7 @@ func TestJavaFixListCountPastBodyInMapValue(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := fmt.Sprintf("%d,%d,%d,%d,%d,%v,%v", oreport.Unknown, oreport.Unknown, oreport.Widened, oreport.Unknown, oreport.Unknown, oreport.Refused, oreport.Refused)
+		want := fmt.Sprintf("%d,%d,%v,%v", oreport.Unknown, oreport.Widened, false, oreport.Refused)
 		if counters != want {
 			t.Errorf("%s: report java=%s oracle=%s", tc.name, counters, want)
 		}

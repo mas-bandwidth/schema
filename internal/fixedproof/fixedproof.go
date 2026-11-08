@@ -1396,8 +1396,7 @@ static void fill_records( %[1]s * value )
 
 static bool clean( const TableReport & r )
 {
-    // the one read's report (cpptable TableReport): no event and no refusal
-    return !( r.unknown || r.widened || r.missing_required || r.damaged || r.refused || r.non_finite_floats );
+    return !( r.unknown || r.widened || r.damaged || r.refused );
 }
 
 int main( int argc, char ** argv )

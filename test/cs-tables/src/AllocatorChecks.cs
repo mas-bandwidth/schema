@@ -74,7 +74,7 @@ static partial class Program
                 using(var failed=new G.SceneBuilder(allocator))
                 {
                     var loadReport=new G.TableReport { Verdict=G.Schema.TableWire.Verdict.Ok };
-                    Check(!failed.Load(wire,loadReport) && loadReport.Verdict==G.Schema.TableWire.Verdict.BodyStopped && !loadReport.Malformed && !loadReport.Refused,"builder allocation failure replaces a stale verdict without inventing damage");
+                    Check(!failed.Load(wire,loadReport) && loadReport.Verdict==G.Schema.TableWire.Verdict.BodyStopped && !loadReport.Damaged && !loadReport.Refused,"builder allocation failure replaces a stale verdict without inventing damage");
                 }
                 Check(counts.Live==0,"failed builder releases owned allocations");
                 counts=default; counts.FailAt=fail;

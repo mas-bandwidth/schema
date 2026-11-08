@@ -61,7 +61,7 @@ table Root { known uint32
 			t.Fatal(err)
 		}
 		fmt.Fprintf(&b, `{final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();final v=w.rootWireLoadRetain(data,store,r);
-check(v.known==7&&!r.malformed&&!r.refused&&r.unknown==1&&r.retained==%d&&r.retainLost==%d,'framed retain %s');
+check(v.known==7&&!r.refused&&r.unknown==1&&r.retained==%d&&r.retainLost==%d,'framed retain %s');
 final saved=w.rootWireSaveRetain(v,store,w.TableWireReport());
 check(hex(saved)==%q,'independent framed resave %s');
 }

@@ -76,16 +76,13 @@ table Root {
 	}
 
 	type result struct {
-		OK           bool
-		Unknown      int
-		KindMismatch int
-		Widened      int
-		Clamped      int
-		Duplicate    int
-		Malformed    bool
-		Refused      bool
-		Canon        string
-		Wire         string
+		OK      bool
+		Unknown int
+		Widened int
+		Damaged bool
+		Refused bool
+		Canon   string
+		Wire    string
 	}
 
 	model := tabletext.NewModel(u)
@@ -158,7 +155,7 @@ public final class BomProbe {
             byte[] input = Files.readAllBytes(Path.of(path));
             TableVariable.Report r = new TableVariable.Report();
             RootVariable.Value v = RootVariable.fromJson(input, r);
-            boolean ok = v != null && !r.malformed && !r.refused;
+            boolean ok = v != null && !r.damaged && !r.refused;
             String canon = "";
             String wire = "";
             if (ok) {
@@ -170,11 +167,8 @@ public final class BomProbe {
             System.out.println(
                 "{\"OK\":" + ok +
                 ",\"Unknown\":" + r.unknown +
-                ",\"KindMismatch\":" + r.kindMismatch +
                 ",\"Widened\":" + r.widened +
-                ",\"Clamped\":" + r.clamped +
-                ",\"Duplicate\":" + r.duplicate +
-                ",\"Malformed\":" + r.malformed +
+                ",\"Damaged\":" + r.damaged +
                 ",\"Refused\":" + r.refused +
                 ",\"Canon\":" + esc(canon) +
                 ",\"Wire\":\"" + wire + "\"}");

@@ -43,7 +43,7 @@ import (
 type fixedCorpusContract struct {
 	reader  string   // the reading schema's base
 	older   []string // the older writers' schema bases, the reader's lineage
-	clamped int      // report.clamped the read must make, exactly
+	refuses bool     // the strict read refuses this row whole (out_of_range)
 	cite    string   // the section that rules the bytes
 	// expect builds the rewrite the standard asks for, from the reference's
 	// own bytes and the manifest
@@ -58,7 +58,7 @@ var fixedCorpusContracts = map[string]fixedCorpusContract{
 	// 7 << 4 = 112 with clamped == 1, as the C++ reference's own decode does,
 	// and the rewrite carries 112 where the file carried 1000.
 	"new_fixed_I_grow.bin": {
-		reader: "VNEW_fixed_I_grow", clamped: 1,
+		reader: "VNEW_fixed_I_grow", refuses: true,
 		cite: "docs/SPEC-TABLES.md §4 (out-of-range value: a fixed field clamps on the raw scale, counted)",
 		expect: func(t *testing.T, corpus string, data []byte) []byte {
 			return fixedCorpusClampedCell(t, corpus, "new_fixed_I_grow.bin", "VNEW_fixed_I_grow", data, "v", 0, "r0.v")
@@ -67,7 +67,7 @@ var fixedCorpusContracts = map[string]fixedCorpusContract{
 	// The same rule per slot: vals[0] carries raw 1000 past [4]fixed(28,4)'s
 	// max 7; the other three slots are zero and inside the range.
 	"new_fixed_I_grow_element.bin": {
-		reader: "VNEW_fixed_I_grow_element", clamped: 1,
+		reader: "VNEW_fixed_I_grow_element", refuses: true,
 		cite: "docs/SPEC-TABLES.md §4 (out-of-range value: a fixed field clamps on the raw scale, per element, counted)",
 		expect: func(t *testing.T, corpus string, data []byte) []byte {
 			return fixedCorpusClampedCell(t, corpus, "new_fixed_I_grow_element.bin", "VNEW_fixed_I_grow_element", data, "vals", 0, "r0.vals[0]")
@@ -79,7 +79,7 @@ var fixedCorpusContracts = map[string]fixedCorpusContract{
 	// pass, schema#1164 statement B). The rewrite is in the reader's own
 	// layout, so it is the reference's NEW file with aim = the forged value.
 	"hostile_cfloat_range_widen.bin": {
-		reader: "VNEW_cfloat_range_widen", older: []string{"VOLD_cfloat_range_widen"}, clamped: 0,
+		reader: "VNEW_cfloat_range_widen", older: []string{"VOLD_cfloat_range_widen"}, refuses: false,
 		cite: "docs/FIXED-FORM-VERSIONING-TESTS.md (compressed-float hostile pass; schema#1164 B) and docs/SPEC-TABLES.md §3.4 (a record is stamped by its writer's layout)",
 		expect: func(t *testing.T, corpus string, data []byte) []byte {
 			at, forged := fixedCorpusForgedAim(t, corpus, "hostile_cfloat_range_widen.bin")
@@ -89,7 +89,7 @@ var fixedCorpusContracts = map[string]fixedCorpusContract{
 	// The same old file with aim forged to 5.0, past the reader's [-2, 2] as
 	// well: it clamps to the READER's 2.0 and counts once (same citation).
 	"past_cfloat_range_widen.bin": {
-		reader: "VNEW_cfloat_range_widen", older: []string{"VOLD_cfloat_range_widen"}, clamped: 1,
+		reader: "VNEW_cfloat_range_widen", older: []string{"VOLD_cfloat_range_widen"}, refuses: true,
 		cite: "docs/FIXED-FORM-VERSIONING-TESTS.md (compressed-float hostile pass: past the reader's range clamps to the reader's bound) and docs/SPEC-TABLES.md §4",
 		expect: func(t *testing.T, corpus string, data []byte) []byte {
 			at, forged := fixedCorpusForgedAim(t, corpus, "past_cfloat_range_widen.bin")
@@ -162,22 +162,40 @@ func fixedCorpusRoundTrip(t *testing.T, corpus, file string, records int) {
 	}
 	want := c.expect(t, corpus, data)
 	lower := lowerFirst(versionRoot(t, versionSchema(t, c.reader)).Name)
+	if c.refuses {
+		// STRICT VERDICT: a value past its bound refuses the whole read
+		// (out_of_range); there is no clamped rewrite to compare.
+		body := `  final data = File(FILE).readAsBytesSync();
+  final n = LOAD(values, values.length, data, data.length, plan, report);
+  check(n == -1, 'a past-bound row refuses whole: n=$n ${why(report)}');
+  check(report.refused == t.TableFixedRefusal.outOfRange, 'a past-bound row refuses out_of_range: ${why(report)}');
+  check(fresh(values[0]), 'a refused read lands nothing: ${why(report)}');
+  check(report.unknown == 0 && report.widened == 0,
+      'no other counter moves: ${why(report)}');`
+		out, err := runVersionProbe(t, dartBinary(t), c.reader, c.older, 0, path, body)
+		if err != nil {
+			t.Fatalf("R27 %s (%s): probe failed: %v\n%s", file, c.cite, err, out)
+		}
+		if !strings.Contains(out, "ok") {
+			t.Fatalf("R27 %s printed no ok: %s", file, out)
+		}
+		return
+	}
 	body := fmt.Sprintf(`  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n == %[1]d, 'load returned $n, want %[1]d: ${why(report)}');
-  check(report.refused == 0 && !report.malformed, 'a clean read: ${why(report)}');
-  check(report.clamped == %[2]d, 'clamped is exactly %[2]d: ${why(report)}');
-  check(report.unknown == 0 && report.kindMismatch == 0 &&
-      report.widened == 0 && report.duplicate == 0,
+  check(report.refused == 0, 'a clean read: ${why(report)}');
+  check(report.unknown == 0 &&
+      report.widened == 0,
       'no other counter moves: ${why(report)}');
-  final back = Uint8List(t.%[3]sFixedMeasure(%[1]d));
-  final wrote = t.%[3]sFixedSave(values, %[1]d, back);
+  final back = Uint8List(t.%[2]sFixedMeasure(%[1]d));
+  final wrote = t.%[2]sFixedSave(values, %[1]d, back);
   check(wrote == back.length, 'rewrite length $wrote/${back.length}');
   final hex = StringBuffer();
   for (final b in back) {
     hex.write(b.toRadixString(16).padLeft(2, '0'));
   }
-  stdout.writeln('rewrite=$hex');`, records, c.clamped, lower)
+  stdout.writeln('rewrite=$hex');`, records, lower)
 	out, err := runVersionProbe(t, dartBinary(t), c.reader, c.older, 0, path, body)
 	if err != nil {
 		t.Fatalf("R27 %s (%s): probe failed: %v\n%s", file, c.cite, err, out)
@@ -344,7 +362,7 @@ func fixedCorpusForgedAim(t *testing.T, corpus, file string) (int, uint32) {
 func init() {
 	for _, vec := range fixedvector.WriterRange {
 		fixedCorpusContracts[vec.File] = fixedCorpusContract{
-			reader: "VNEW_" + vec.Row, older: []string{"VOLD_" + vec.Row}, clamped: 1,
+			reader: "VNEW_" + vec.Row, older: []string{"VOLD_" + vec.Row}, refuses: true,
 			cite: "docs/FIXED-FORM-ALGORITHM.md §4.5 (a ranged value, scalar or fixed-array element, clamps to the writer's range for its lineage entry, compared in its own type)",
 			expect: func(t *testing.T, corpus string, old []byte) []byte {
 				return fixedCorpusWriterRangeHostile(t, corpus, vec, old)

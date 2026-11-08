@@ -67,10 +67,16 @@ func TestCookWriteUnionsJavaReversed(t *testing.T) {
 			repo := filepath.Join("..", "..", "..")
 			inst, cook := m.instance[pl.row], m.cook[pl.row]
 			cmd := exec.Command(javaBin, "-ea", "-cp", dir, class,
-				filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]))
-			if out, err := cmd.CombinedOutput(); err == nil {
+				filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]),
+				filepath.Join(repo, "testdata", "conformance", "tables", "json", pl.row+".json"))
+			out, err := cmd.CombinedOutput()
+			if err == nil {
 				t.Fatalf("%s: the planted writer still matched %s byte for byte, so the row does not witness it\n%s",
 					pl.name, pl.row, out)
+			}
+			if !strings.Contains(string(out), "cook bytes order") && !strings.Contains(string(out), "AssertionError: measure") &&
+				!strings.Contains(string(out), "AssertionError: cook order") {
+				t.Fatalf("%s: red for a reason other than the planted writer's bytes\n%s", pl.name, out)
 			}
 		})
 	}
@@ -87,7 +93,8 @@ func TestCookWriteUnionTagRefusedJava(t *testing.T) {
 		map[string]string{"CookUnionTagDriver": cookUnionTagDriver})
 	m := readCookManifest(t)
 	cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookUnionTagDriver",
-		filepath.Join("..", "..", "..", m.instance["v1_cfg"][2]))
+		filepath.Join("..", "..", "..", m.instance["v1_cfg"][2]),
+		filepath.Join("..", "..", "..", "testdata", "conformance", "tables", "json", "v1_cfg.json"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java union tag refusal: %v\n%s", err, out)
@@ -105,7 +112,16 @@ public final class CookUnionTagDriver {
         byte[] wire = Files.readAllBytes(Path.of(args[0]));
         tblv1.TableVariable.Report report = new tblv1.TableVariable.Report();
         tblv1.CfgVariable.Value value = tblv1.CfgVariable.load(wire, report);
-        if (value == null || report.refused || report.malformed) throw new AssertionError("wire load");
+        if (wire.length > 0 && wire[0] == 3) {
+            // Cfg is declared fixed: its file is form 3, which the form 1
+            // reader refuses whole, so the value comes from its committed text
+            if (value != null || !report.refused || report.damaged) throw new AssertionError("form 3 file read as form 1");
+            tblv1.TableVariable.Report text = new tblv1.TableVariable.Report();
+            value = tblv1.CfgVariable.fromJson(Files.readAllBytes(Path.of(args[1])), text);
+            if (value == null || text.refused || text.damaged) throw new AssertionError("text load: " + text.reason);
+        } else if (value == null || report.refused || report.damaged) {
+            throw new AssertionError("wire load: " + report.reason);
+        }
         // Effect declares two arms, so tags 0..2 are values; each one cooks
         for (int tag = 0; tag <= 2; tag++) {
             value.effect.tag = tag;

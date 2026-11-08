@@ -21,7 +21,7 @@ const unboundedUTF8Probe = `local inputs = require("./inputs")
 local load = require("./schema_load")
 MODSfor _, name in NAMES do
 	local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-	load.loadTolerant("Where", inputs[name], report)
+	load.loadWalk("Where", inputs[name], report)
 	print(name .. ":" .. tostring(report.malformed))
 end
 `
