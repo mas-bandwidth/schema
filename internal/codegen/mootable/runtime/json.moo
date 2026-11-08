@@ -1867,7 +1867,7 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 			if keys == nil then
 				keys = { [key] = true }
 			elseif keys[key] then
-				r.bad = true -- malformed: a repeated key
+				r.bad = true -- a repeated key refuses
 				return false
 			else
 				keys[key] = true
@@ -2980,7 +2980,7 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 		elseif unknownSeen == nil then
 			unknownSeen = { [name] = true }
 		elseif unknownSeen[name] then
-			r.bad = true -- malformed: a repeated key
+			r.bad = true -- a repeated key refuses
 			return false
 		else
 			unknownSeen[name] = true
@@ -3274,7 +3274,7 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 			if unknownSeen == nil then
 				unknownSeen = { [key] = true }
 			elseif unknownSeen[key] then
-				r.bad = true -- malformed: a repeated key
+				r.bad = true -- a repeated key refuses
 				return false
 			else
 				unknownSeen[key] = true

@@ -262,7 +262,7 @@ func TestMooJsonHostileVerdictsNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
-	const site = "\t\telseif unknownSeen[name] then\n\t\t\tr.bad = true -- malformed: a repeated key\n\t\t\treturn false\n"
+	const site = "\t\telseif unknownSeen[name] then\n\t\t\tr.bad = true -- a repeated key refuses\n\t\t\treturn false\n"
 	if !strings.Contains(src, site) {
 		t.Fatal("the control's site moved: json.moo's readKeyed no longer refuses a repeated key that names no slot")
 	}
