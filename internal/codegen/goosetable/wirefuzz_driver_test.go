@@ -158,47 +158,65 @@ func gooseRetainingDriverFrames(t *testing.T, key, rootName string, frames [][]b
 	return stdout.Bytes()
 }
 
-// This committed legacy vector contains a repeated names field. The current
-// oracle replaces that map (retainmaprepeat_test.go); the upcoming duplicate
-// field damage contract must revise this success expectation explicitly.
+// A MAP WHOSE KEY IS DAMAGED, repeated or not, refuses the retaining read
+// whole (docs/SPEC-TABLES.md §4, §6.5; the Go oracle is
+// internal/tablewire/retainmaprepeat_test.go): no value, nothing saved. The
+// committed vector carries ill-formed text in a key and a second occurrence
+// of the map field; "damage only" cuts the second occurrence out.
 func TestGooseRetainingMapReplacement(t *testing.T) {
 	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
-	gooseRetainingMapReplay(t, nil, 0)
+	for name, loaded := range gooseRetainingMapReplay(t, nil) {
+		if loaded {
+			t.Errorf("%s: the retaining read kept a value", name)
+		}
+	}
 }
 
+// The control takes the strict refusals out of the runtime (the wire walk,
+// the body-damage return, the repeated-field verdict and load_error): both
+// reads must then keep a value, so the test above is held by them.
 func TestGooseRetainingMapReplacementNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
-	baseline := gooseRetainingMapReplay(t, nil, 0)
-	src := string(goosetable.Runtime()["wire_load.goose"])
-	const anchor = "        if c.retaining && c.vals[slot].made { forget_rec(c, slot); }\n"
-	if strings.Count(src, anchor) != 1 {
-		t.Fatal("map retirement anchor must occur once")
-	}
-	src = strings.Replace(src, anchor, "", 1)
-	mutant := gooseRetainingMapReplay(t, map[string][]byte{"wire_load.goose": []byte(src)}, 1)
-	// Only retain_lost may change. The loaded value and saved bytes agree.
-	binary.LittleEndian.PutUint32(baseline[36:], 1)
-	if !bytes.Equal(baseline, mutant) {
-		t.Fatal("map retirement sabotage changed more than retain_lost")
+	override := sabotageAll(t, "wire_load.goose", ctlWireWalk, ctlNoWalk, ctlBodyDmg, "",
+		"    if report.repeated > 0 {", "    if false {", ctlEndRefuse, ctlEndOk)
+	for name, loaded := range gooseRetainingMapReplay(t, override) {
+		if !loaded {
+			t.Errorf("%s: still refused with the end-of-load refusal removed", name)
+		}
 	}
 }
 
-func gooseRetainingMapReplay(t *testing.T, override map[string][]byte, lost uint32) []byte {
+// gooseRetainingMapReplay reads the vector and its damage-only cut through the
+// retaining driver and answers, per read, whether it kept a value.
+func gooseRetainingMapReplay(t *testing.T, override map[string][]byte) map[string]bool {
 	t.Helper()
 	wire, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := gooseRetainingDriverFrames(t, "mapdemo", "Text", [][]byte{wire}, override)
-	if len(out) < 48 || out[0] != 1 {
-		t.Fatalf("map retaining protocol: %x", out)
+	if len(wire) != 168 || wire[66] != 1 || wire[67] != 14 || wire[68] != 36 {
+		t.Fatal("replacement vector changed")
 	}
-	h := out[1:48]
-	if h[0] != 1 || h[21] != 0 || h[22] != 0 || binary.LittleEndian.Uint32(h[31:]) != 2 || binary.LittleEndian.Uint32(h[35:]) != lost {
-		t.Fatalf("map replacement: incorrect loaded/retention reply, want retained=2 lost=%d: %x", lost, h)
+	without := append(append([]byte(nil), wire[:66]...), wire[105:]...)
+	got := map[string]bool{}
+	for _, tc := range []struct {
+		name string
+		wire []byte
+	}{{"replacement", wire}, {"damage only", without}} {
+		out := gooseRetainingDriverFrames(t, "mapdemo", "Text", [][]byte{tc.wire}, override)
+		if len(out) < 48 || out[0] != 1 {
+			t.Fatalf("%s: map retaining protocol: %x", tc.name, out)
+		}
+		h := out[1:48]
+		n := int64(binary.LittleEndian.Uint64(h[39:]))
+		switch {
+		case h[0] == 0 && n == -1 && len(out) == 48:
+			got[tc.name] = false
+		case h[0] == 1 && n == int64(len(out)-48):
+			got[tc.name] = true
+		default:
+			t.Fatalf("%s: incoherent reply: %x", tc.name, out)
+		}
 	}
-	if n := int64(binary.LittleEndian.Uint64(h[39:])); n != int64(len(out)-48) || n != 72 {
-		t.Fatalf("map replacement saved length %d", n)
-	}
-	return out
+	return got
 }

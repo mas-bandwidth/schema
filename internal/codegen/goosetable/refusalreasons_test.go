@@ -1,31 +1,16 @@
 package goosetable_test
 
-// THE LOAD'S REFUSAL REASONS, for Goose (docs/SPEC-TABLES.md §6.5, §2.9, §3,
-// §4): a refused load names WHICH reason, by its spec name, and the name is
-// the reference's for the same bytes.
+// THE LOAD'S VERDICTS, for Goose, under the one strict read
+// (docs/SPEC-TABLES.md §6.5, §2.9, §3, §4; docs/plans/strict-only.md): every
+// row of testdata/load_refusal_reasons.tsv whose strict column is "ok" loads,
+// and every other row is refused, no root. The verdict is all this test pins:
+// which reason a refusal names is the leg's own, never compared across
+// languages.
 //
-//	TestGooseLoadRefusalReasons  every row of
-//	    testdata/load_refusal_reasons.tsv, whose answers the Go leg's
-//	    generated reader holds (gotable's TestLoadRefusalReasonPins): the
-//	    strict read's one reason (load_error, Go's <T>ReadStrict) and the
-//	    form refusal the report names (report.reason, Go's
-//	    TableReport.Reason); a count-cap row also moves no counter and
-//	    leaves malformed unset
-//	TestGooseLoadRefusalReasonsNegativeControl  breaks the verdict's damage,
-//	    the form refusal's mapping and the count cap's refusal, each of which
-//	    must turn exactly its own rows red
-//
-// The rows reach every reason Go's TestMeasureRefusalReasons proves that has
-// a load-time meaning. The file a measure refuses count_over_length is a
-// load's malformed body, and the one it refuses count_over_extent_cap is a
-// load that refuses by that same name, malformed not set (§2.9's table:
-// "damage: malformed counts" and the builder's count_over_extent_cap);
-// wire_damaged and unknown_form are the load's own. The other
-// three are a writer's or an allocator's and read no wire: data_cycle, "the
-// AUTHORING side's -1 and the one value here that is not about a wire" (a
-// cyclic WIRE is damage, §3.1); invalid_value, "a writer handed a value
-// outside the declaration"; allocation_failed, "an allocation the codec asked
-// for was refused" (§7.6), and the Goose load asks for none.
+//	TestGooseLoadRefusalReasons  every pin row's verdict
+//	TestGooseLoadRefusalReasonsNegativeControl  takes out, in turn, the
+//	    wire walk (wire_check), the end-of-load refusal (load_error) and the
+//	    count cap's refusal; each must turn exactly its own rows red
 
 import (
 	"fmt"
@@ -35,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
 )
 
 // reasonRow is one pinned file.
@@ -74,9 +60,7 @@ fn probe(name: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
     let root = schema_rt::load_table(conformance_unit(), "Root", data, vals, nodes, report);
-    let counters = report.unknown + report.mismatch + report.widened + report.oor + report.repeated;
-    write_stdout(str(name, " ", schema_rt::load_refusal_name(schema_rt::load_error(report, root)), "_ ",
-        schema_rt::load_refusal_name(report.reason), "_ ", counters, " ", report.body_damaged, "\n"));
+    if root < 0 { write_stdout(str(name, " refused\n")); } else { write_stdout(str(name, " ok\n")); }
 }
 
 fn main() {
@@ -107,25 +91,15 @@ func loadReasons(t *testing.T, override map[string][]byte) []string {
 		got := probeLines(gooserun.Run(t, t.TempDir(), "main.goose", files))
 		for _, r := range mine {
 			g := got[r.name]
-			if len(g) != 4 {
+			if len(g) != 1 {
 				t.Fatalf("%s: the probe printed %q", r.name, g)
 			}
-			strict, form := strings.TrimSuffix(g[0], "_"), strings.TrimSuffix(g[1], "_")
-			if strict == "" {
-				strict = "ok"
+			want := "refused"
+			if r.strict == "ok" {
+				want = "ok"
 			}
-			if r.form == "-" {
-				form = "-"
-			}
-			if strict != r.strict || form != r.form {
-				bad = append(bad, fmt.Sprintf("%s: strict %s, form %s; the reference %s, %s", r.name, strict, form, r.strict, r.form))
-			} else if r.strict == "count_over_extent_cap" && (g[2] != "0" || g[3] != "false") {
-				// the count-cap refusal moves no counter and is not damage (§2.9)
-				bad = append(bad, fmt.Sprintf("%s: counters %s, malformed %s; the refusal moves none and is not damage", r.name, g[2], g[3]))
-			} else if r.schema == "float" && r.strict == "non_finite_float" && strings.TrimSuffix(g[1], "_") != r.strict {
-				// two refusals in one read: the first in read order names the
-				// load's report too (§2.9)
-				bad = append(bad, fmt.Sprintf("%s: the report names %s; the first refusal is %s", r.name, g[1], r.strict))
+			if g[0] != want {
+				bad = append(bad, fmt.Sprintf("%s: %s; the strict read %s", r.name, g[0], want))
 			}
 		}
 	}
@@ -148,38 +122,56 @@ func TestGooseLoadRefusalReasons(t *testing.T) {
 	}
 }
 
-// TestGooseLoadRefusalReasonsNegativeControl:
+// sabotageAll applies each from/to pair to one runtime file, failing if any
+// from is not there exactly once.
+func sabotageAll(t *testing.T, file string, pairs ...string) map[string][]byte {
+	t.Helper()
+	src := string(goosetable.Runtime()[file])
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if n := strings.Count(src, pairs[i]); n != 1 {
+			t.Fatalf("sabotage: %s holds %q %d times, want once", file, pairs[i], n)
+		}
+		src = strings.Replace(src, pairs[i], pairs[i+1], 1)
+	}
+	return map[string][]byte{file: []byte(src)}
+}
+
+const (
+	ctlWireWalk  = "    let wfail, wnon = wire_check(file, 1, first, first, count as! i64, false);\n"
+	ctlNoWalk    = "    let wfail: i64 = 0;\n    let wnon = false;\n"
+	ctlBodyDmg   = "    if report.body_damaged { return -1; }\n"
+	ctlEndRefuse = "    let refusal = load_error(report, c.root_val);\n"
+	ctlEndOk     = "    let refusal = LoadRefuseOk;\n"
+)
+
+// TestGooseLoadRefusalReasonsNegativeControl: each control takes refusals out
+// of the runtime and names exactly the rows they alone hold.
 //
-//   - the verdict's damage no longer names wire_damaged: the rows whose
-//     framing failed, and the fixed root's damage its walk read past, answer
-//     malformed and go red; the count-cap rows, refused by name and not
-//     damaged, stay green;
-//   - a form byte this reader does not carry no longer answers unknown_form:
-//     the form rows go red, and only they;
-//   - a count past the int32 storage cap no longer answers
-//     count_over_extent_cap: the six cap rows go red, and only they (the
-//     five fall to the strict read's wire_damaged, and over_cap_then_nan to
-//     the NaN after the count);
-//   - a widened element kind counts before the builder's count-cap refusal:
-//     the widened cap row moves a counter and goes red, and only it.
+//   - end-of-load: the strict refusal at the end of the load (load_error)
+//     answers ok; the rows a counter alone refuses (a value out of range, a
+//     kind this reader cannot land) load;
+//   - damage: the wire walk, the body-damage return and load_error together
+//     stop refusing; every refused row loads but those the load's prologue
+//     refuses (no bytes, a form byte alone, a cut framing, a form this reader
+//     does not carry, a fixed root's early end or repeated id) and the
+//     non-finite floats, which the read refuses on its own (§3.3).
 func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 	t.Parallel()
 	for _, ctl := range []struct {
-		name, from, to string
-		red            []string
+		name  string
+		pairs []string
+		red   []string
 	}{
-		{"damage-verdict", "    if report.damaged { return LoadRefuseWireDamaged; }\n", "",
-			[]string{"cut_last", "empty", "fixed_bool_two", "fixed_dup_ids", "fixed_early_end", "form_only"}},
-		{"form-reason", "        LoadRefuseUnknownForm => \"unknown_form\",\n", "",
-			[]string{"form0", "form255", "form255_alone", "form2", "form2_alone", "form3", "form9"}},
-		{"count-cap", "    if report.count_refused { return LoadRefuseCountOverExtentCap; }\n", "",
-			[]string{"entries_cap31", "entries_cap32", "over_cap_then_nan", "values_cap31", "values_cap32", "values_widened_over_cap"}},
-		{"widened-at-cap", "                if widened && !c.cap { c.report.widened += 1; }\n", "                if widened { c.report.widened += 1; }\n",
-			[]string{"values_widened_over_cap"}},
+		{"end-of-load", []string{ctlEndRefuse, ctlEndOk},
+			[]string{"fixed_clamped", "fixed_kind_mismatch", "values_f32"}},
+		{"damage", []string{ctlWireWalk, ctlNoWalk, ctlBodyDmg, "", ctlEndRefuse, ctlEndOk},
+			[]string{"entries_cap31", "entries_cap32", "entries_over_length", "fixed_bool_two", "fixed_clamped",
+				"fixed_cut_payload", "fixed_kind_mismatch", "over_cap_then_nan", "values_cap31", "values_cap32",
+				"values_f32", "values_over_length", "values_widened_over_cap"}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()
-			bad := loadReasons(t, sabotage(t, "wire_load.goose", ctl.from, ctl.to))
+			bad := loadReasons(t, sabotageAll(t, "wire_load.goose", ctl.pairs...))
 			var red []string
 			for _, b := range bad {
 				red = append(red, b[:strings.Index(b, ":")])
@@ -190,7 +182,7 @@ func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 			if !slices.Equal(red, want) {
 				t.Fatalf("%s: red rows %v, want exactly %v", ctl.name, red, want)
 			}
-			t.Logf("%s: %d rows red, first %s", ctl.name, len(bad), bad[0])
+			t.Logf("%s: %d rows red", ctl.name, len(bad))
 		})
 	}
 }
