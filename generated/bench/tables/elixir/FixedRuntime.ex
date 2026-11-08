@@ -203,12 +203,10 @@ defmodule Benchtable.FixedRuntime do
   """
   def report do
     %{
-      malformed: false,
       unknown: 0,
-      kind_mismatch: 0,
-      clamped: 0,
       widened: 0,
-      duplicate: 0,
+      retained: 0,
+      retain_lost: 0,
       layout_hash: 0
     }
   end
@@ -216,7 +214,7 @@ defmodule Benchtable.FixedRuntime do
   defp bump(report, key), do: Map.update!(report, key, &(&1 + 1))
 
   @doc """
-  Add `n` `clamped` to a report at once, and the same report back when there were
+  Add `n` `out_of_range` to a report at once, and the same report back when there were
   none — which is what a record whose every ranged value was already in range
   hands back, so the common read allocates no new map at all.
 
@@ -226,13 +224,13 @@ defmodule Benchtable.FixedRuntime do
   IDENTITY plan is one copy run; a compiled plan copies a same-size ranged
   integer the same way. This is where the projection's number joins §4's six.
   """
-  def clamped(report, 0), do: report
-  def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))
+  def range_check(report, 0), do: report
+  def range_check(_report, _n), do: throw({:refuse, :out_of_range})
 
   @doc """
   The PLAN'S OWN CENSUS onto the report, ONCE, after the record loop (§5.9 #6).
 
-  unknown and kind_mismatch were fixed when the plan was built — §5.4 says once
+  unknown and mismatch were fixed when the plan was built — §5.4 says once
   per endpoint and never per record — so they ride in the lane and land here, on a
   read that RETURNS and on no other. On a LAWFUL lineage they are both zero,
   always (§5.9 #30): a newer reader names every field of every writer its lineage
@@ -240,20 +238,19 @@ defmodule Benchtable.FixedRuntime do
   """
   def census(report, 0, 0), do: report
 
-  def census(report, unknown, kind_mismatch) do
-    %{
-      report
-      | unknown: report.unknown + unknown,
-        kind_mismatch: report.kind_mismatch + kind_mismatch
-    }
+  def census(_report, _unknown, mismatch) when mismatch > 0,
+    do: throw({:refuse, :wire_damaged})
+
+  def census(report, unknown, _mismatch) do
+    %{report | unknown: report.unknown + unknown}
   end
 
   @doc """
   Set `malformed` when the projection's damage flag rode true, and the same
   report back when it did not — so a clean read allocates no new map.
   """
-  def damaged(report, false), do: report
-  def damaged(report, true), do: %{report | malformed: true}
+  def damage_check(report, false), do: report
+  def damage_check(_report, true), do: throw({:refuse, :wire_damaged})
 
   @doc """
   ONE VALUE AGAINST ONE PAIR OF BOUNDS: `acc` and one more when the value lies
@@ -368,7 +365,7 @@ defmodule Benchtable.FixedRuntime do
   # ---------------------------------------------------------------------------
   #
   # A read tests the RAW BITS for an all-ones exponent before they become a
-  # float and refuses the whole read as non_finite_float, the tolerant one too:
+  # float and refuses the whole read as non_finite_float, the strict one too:
   # the throw is caught where the read's other uniform refusals are, and no
   # destination byte lands. A write refuses what is not a float or narrows past
   # float32's range to an infinity, the packet codec's own reason (a BEAM float
@@ -960,7 +957,7 @@ defmodule Benchtable.FixedRuntime do
   # guards is the links {at, argw} and tags the parallel ordinals, the outer
   # union's first and each inner union's next, so an arm inside an arm answers
   # to EVERY tag that rode above it and not only its own. argw is the writer's
-  # tag width in bytes, clamped to 1..8, and a zero reads as one
+  # tag width in bytes, held to 1..8, and a zero reads as one
   # (docs/FIXED-FORM-ALGORITHM.md §5.2). The chain's only bound is the layout's
   # own depth, 64, the same walk bound ir.TableFixedMaxDepth holds.
   defp guarded(acc, [], _tags, entry), do: push(acc, entry)
@@ -1145,7 +1142,7 @@ defmodule Benchtable.FixedRuntime do
       {guarded(acc, guard, tag, entry), report}
     else
       # A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-      {acc, bump(report, :kind_mismatch)}
+      {acc, Map.update(report, :mismatch, 1, &(&1 + 1))}
     end
   end
 
@@ -1278,7 +1275,7 @@ defmodule Benchtable.FixedRuntime do
             {guarded(acc, guard, tag, entry), report}
 
           true ->
-            {acc, bump(report, :kind_mismatch)}
+            {acc, Map.update(report, :mismatch, 1, &(&1 + 1))}
         end
     end
   end
@@ -1758,7 +1755,7 @@ defmodule Benchtable.FixedRuntime do
     case body do
       <<_::binary-size(^src), raw::little-unsigned-size(^size)-unit(8), _::binary>>
       when raw > arms ->
-        step(rest, body, writes, bump(report, :clamped))
+        step(rest, body, writes, bump(report, :unknown))
 
       _ ->
         step(rest, body, writes, report)
@@ -1836,7 +1833,7 @@ defmodule Benchtable.FixedRuntime do
   defp image_bytes(v, width, false), do: <<v::little-unsigned-size(width)-unit(8)>>
 
   # AN ORDINAL PAST THE LAST VARIANT THE WRITER DECLARED IS NOT A VARIANT AT
-  # ALL: it lands None and counts one `clamped`, which is the answer §3 gives
+  # ALL: it lands None and counts one `out_of_range`, which is the answer §3 gives
   # every other value outside its range and the answer a union tag beyond the
   # declared arm count gets too. TAG 0 IS None and is not a clamp.
   #
@@ -1847,7 +1844,7 @@ defmodule Benchtable.FixedRuntime do
   defp ordinal(0, _remap, report), do: {0, report}
 
   defp ordinal(raw, variants, report) when is_integer(variants) do
-    if raw <= variants, do: {raw, report}, else: {0, bump(report, :clamped)}
+    if raw <= variants, do: {raw, report}, else: {0, bump(report, :unknown)}
   end
 
   defp ordinal(raw, remap, report) do
@@ -1856,13 +1853,13 @@ defmodule Benchtable.FixedRuntime do
     # exactly as a raw past the writer's set does on every leg.
     if raw <= elem(remap, 0),
       do: {elem(remap, raw), report},
-      else: {0, bump(report, :clamped)}
+      else: {0, bump(report, :unknown)}
   end
 
   defp clamp_count(raw, max, report) do
     cond do
-      raw < 0 -> {0, bump(report, :clamped)}
-      raw > max -> {max, bump(report, :clamped)}
+      raw < 0 -> throw({:refuse, :count_over_bound})
+      raw > max -> throw({:refuse, :count_over_bound})
       true -> {raw, report}
     end
   end
@@ -2093,7 +2090,7 @@ defmodule Benchtable.FixedRuntime do
         # ONCE, after the record loop, on a read that RETURNS.
         case compile(theirs, mine, dst, capacity, report()) do
           {:ok, plan, made, census} ->
-            {:ok, plan, k.record_bytes - 8, made, census.unknown, census.kind_mismatch}
+            {:ok, plan, k.record_bytes - 8, made, census.unknown, Map.get(census, :mismatch, 0)}
 
           {:error, why, _census} ->
             {:error, why}

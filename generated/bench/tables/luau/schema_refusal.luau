@@ -15,7 +15,7 @@
 -- field each first moved on.
 --
 -- For form 1 it is a WRAPPER over schema_load.luau's strict variable read (which
--- judges the tolerant walk L.loadTolerant, §6.5); this file keeps the form
+-- judges the walk walk L.loadWalk, §6.5); this file keeps the form
 -- dispatch and the fixed reader's path. There is no require cycle: refusal
 -- requires load, and load never requires refusal.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
