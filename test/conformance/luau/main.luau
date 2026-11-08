@@ -376,7 +376,7 @@ local function surfaceJsonWrite(lines: { { string } })
 		if u == nil or rootOf(u, f[4]) == nil then
 			say(f[2] .. ".json", nil)
 		else
-			local v = u.load.loadTolerant(f[4], file(f[5]), report())
+			local v = u.load.loadWalk(f[4], file(f[5]), report())
 			if v == nil then
 				error(f[2] .. ": load refused " .. f[5])
 			end

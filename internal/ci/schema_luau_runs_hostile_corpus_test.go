@@ -202,12 +202,11 @@ local V = require("./schema_save")
 local R = require("./schema_refusal")
 local M = require("./schema_message")
 local S = require("./schema_tables")
+local F = require("./schema_fixed")
 -- The text carrier has already passed the strict text read; the wire round
--- trip below only puts its value where the canonical writer takes it. Use the
--- tolerant wire walk when the base has one (the strict plain load judges the
--- wire, not the text), so a digest finding names the writer rather than the
--- vehicle.
-local LoadDigest = L.loadTolerant or L.load
+-- trip below only puts its value where the canonical writer takes it, through
+-- the one (strict) wire read.
+local LoadDigest = L.load
 local T = setmetatable({}, { __index = function(_, k) error("no module declares " .. tostring(k)) end })
 `)
 	for _, m := range mods {
@@ -274,7 +273,7 @@ for _, c in CASES do
 	local v = nil
 	if c.carrier == "text" then
 		local rep = newreport()
-		v = J.FromJsonTolerant(c.root, b, rep)
+		v = J.FromJson(c.root, b, rep)
 		if v == nil then
 			verdict, reason = "refuse", nn(rep.reason)
 		else
@@ -291,6 +290,18 @@ for _, c in CASES do
 		local form = buffer.len(b) > 0 and buffer.readu8(b, 0) or -1
 		if form == 2 then
 			verdict, reason = "refuse", "message_form_as_file"
+		elseif form == 3 then
+			-- A FIXED ROOT's file is form 3 (docs/SPEC-TABLES.md §3.4), read
+			-- through the fixed form by its form byte, as the C++ runner does
+			-- (test/cpp-hostile/hostile.hpp HC_FIXED): a file holds one record.
+			local recs = F.read(S.lookup(c.root), nil :: any, b, rep)
+			if recs == nil then
+				verdict, reason = "refuse", if rep.malformed then "damaged" else nn(rep.reason)
+			elseif #recs ~= 1 then
+				verdict, reason = "refuse", "damaged"
+			else
+				v = recs[1]
+			end
 		elseif form ~= 1 then
 			verdict, reason = "refuse", form < 0 and "damaged" or "newer_form"
 		else
