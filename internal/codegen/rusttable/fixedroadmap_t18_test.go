@@ -152,7 +152,7 @@ fn save_and_load(v: LineageRow) -> (Vec<u8>, LineageRow, TableFixedReport) {
 }
 
 fn clean(r: &TableFixedReport) -> bool {
-    !r.refused && !r.damaged && r.oor == 0 && r.unknown == 0 && r.mismatch == 0
+    !r.refused && !r.damaged && r.unknown == 0
 }
 
 fn main() {
@@ -391,7 +391,7 @@ fn say(id: &str, ok: bool, why: &str) {
 }
 
 fn clean(r: &TableFixedReport) -> bool {
-    !r.refused && !r.damaged && r.oor == 0 && r.unknown == 0 && r.mismatch == 0
+    !r.refused && !r.damaged && r.unknown == 0
 }
 
 fn arm_bytes_of_row(p: &PickRow) -> [u8; 4] {
@@ -475,8 +475,9 @@ fn main() {
     say("payload-free-arms/rust/valid-data/signal", signal_ok, "signal payload-free arm failed");
 
     // tag-past-the-arm-set: forge tag byte > 3 and non-zero arm payload bytes;
-    // load clamps tag to None (0), increments report.oor once, and never
-    // reads the forged payload into the overlay.
+    // strict-only: the load refuses the whole batch as out_of_range, and the
+    // record goes back to its declared defaults (the empty union), never
+    // reading the forged payload into the overlay.
     let mut forged = vec![0u8; lineage_fixed_measure(1)];
     lineage_fixed_save(&[r0], &mut forged).expect("save 1");
     let rec_body = forged.len() - LINEAGE_FIXED_RECORD_BYTES + 8;
@@ -486,20 +487,17 @@ fn main() {
     let mut fout = vec![LineageRow::default(); 1];
     fout[0].pick.set_alpha(12345);
     let mut freport = TableFixedReport::default();
-    let fn_read = lineage_fixed_load(&mut fout, &forged, &mut plan, &mut remap, &mut freport)
-        .expect("forged tag loads with clamp");
-    let clamp_ok = fn_read == 1
-        && !freport.refused
+    let fn_read = lineage_fixed_load(&mut fout, &forged, &mut plan, &mut remap, &mut freport);
+    let clamp_ok = fn_read.is_none()
+        && freport.refused
+        && freport.reason == TableFixedReason::OutOfRange
         && !freport.damaged
-        && freport.oor == 1
-        && fout[0].lead == -100
-        && fout[0].trail == 100
         && fout[0].pick.tag() == 0
         && fout[0].pick.alpha().is_none()
         && !fout[0].pick.is_quiet()
         && !fout[0].pick.is_signal()
         && arm_bytes_of_row(&fout[0].pick) == [0, 0, 0, 0];
-    say("tag-past-the-arm-set/pick", clamp_ok, "tag past the arm set did not clamp cleanly");
+    say("tag-past-the-arm-set/pick", clamp_ok, "tag past the arm set did not refuse out_of_range");
 }
 `
 }

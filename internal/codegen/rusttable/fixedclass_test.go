@@ -476,10 +476,10 @@ fixed table Ranged
 		}
 	}
 	for _, want := range []string{
-		"if x > 255u64 { x = 255u64; report.oor += 1; }",
-		"if x < 1u64 { x = 1u64; report.oor += 1; }",
-		"if x > 9i64 { x = 9i64; report.oor += 1; }",
-		"if x < -128i64 { x = -128i64; report.oor += 1; } else if x > 127i64 { x = 127i64; report.oor += 1; }",
+		"if x > 255u64 { x = 255u64; report.damaged = true; }",
+		"if x < 1u64 { x = 1u64; report.damaged = true; }",
+		"if x > 9i64 { x = 9i64; report.damaged = true; }",
+		"if x < -128i64 { x = -128i64; report.damaged = true; } else if x > 127i64 { x = 127i64; report.damaged = true; }",
 	} {
 		if !strings.Contains(codec, want) {
 			t.Errorf("the form-1 read lost a clamp that can fire: %q", want)

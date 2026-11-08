@@ -56,7 +56,7 @@ fn v_refuse_writes_nothing() {
     assert!(report.refused, "a refusal by name sets refused: {:?}", report);
     assert!(!report.damaged, "a refusal by name never sets malformed too: {:?}", report);
     assert!(
-        report.widened == 0 && report.unknown == 0 && report.mismatch == 0 && report.oor == 0,
+        report.widened == 0 && report.unknown == 0,
         "REFUSE is TOTAL: no counter moves: {:?}", report
     );
     // THE BYTE SWEEP: the prefill's 88 is nowhere and neither is a zero — every

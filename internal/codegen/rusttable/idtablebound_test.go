@@ -380,8 +380,6 @@ fn assert_clean_report(rep: &TableReport, want_unknown: u64) {
     assert!(!rep.damaged, "unexpected damaged: {:?}", rep);
     assert!(!rep.refused, "unexpected refused: {:?}", rep);
     assert_eq!(rep.unknown, want_unknown, "unknown mismatch: {:?}", rep);
-    assert_eq!(rep.mismatch, 0, "mismatch: {:?}", rep);
-    assert_eq!(rep.oor, 0, "oor: {:?}", rep);
     assert_eq!(rep.widened, 0, "widened: {:?}", rep);
 }
 

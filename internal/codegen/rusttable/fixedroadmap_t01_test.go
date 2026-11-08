@@ -87,7 +87,7 @@ fn t01_records(k: usize) -> Vec<u8> {
 }
 
 fn t01_total(report: &TableFixedReport) -> bool {
-    report.widened == 0 && report.unknown == 0 && report.mismatch == 0 && report.oor == 0
+    report.widened == 0 && report.unknown == 0
 }
 
 /// F9 (§5.3 step 6): "If rest / record_bytes passes the caller's capacity,

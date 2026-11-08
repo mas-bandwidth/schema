@@ -631,7 +631,7 @@ fn main() {
     std::io::stdin().read_to_end(&mut wire).unwrap();
     let mut report = widen::TableReport::default();
     let v = widen::probe_load(&wire, &mut report).expect("load");
-    println!("{} {} {} {} {} {} {} {}", report.widened, report.oor, report.mismatch, report.damaged, v.a, v.u, v.f, v.s);
+    println!("{} {} {} {} {} {}", report.widened, report.damaged, v.a, v.u, v.f, v.s);
     std::io::stdout().write_all(&widen::probe_save(&v)).unwrap();
 }
 `
@@ -646,8 +646,8 @@ fn main() {
 		t.Fatalf("the widening probe failed: %v", err)
 	}
 	line, saved, _ := bytes.Cut(out, []byte("\n"))
-	if got, wantLine := string(line), "4 0 0 false -5 65535 1.5 -2147483648"; got != wantLine {
-		t.Errorf("the Rust leg's widening read: %q, want %q (widened clamped kind_mismatch malformed a u f s)", got, wantLine)
+	if got, wantLine := string(line), "4 false -5 65535 1.5 -2147483648"; got != wantLine {
+		t.Errorf("the Rust leg's widening read: %q, want %q (widened damaged a u f s)", got, wantLine)
 	}
 	if !bytes.Equal(saved, want) {
 		t.Errorf("the widened value saves %d bytes, the oracle %d, first difference at byte %d", len(saved), len(want), firstDiff(saved, want))

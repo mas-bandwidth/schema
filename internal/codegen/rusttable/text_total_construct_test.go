@@ -15,7 +15,6 @@ import (
 )
 
 func TestRustTextTotalNative(t *testing.T) {
-	t.Skip("layer 4 (rust): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (streaming total text budgets)")
 	keyedRequireRustc(t)
 	read := func(name string) string {
@@ -28,10 +27,14 @@ func TestRustTextTotalNative(t *testing.T) {
 	source, input := read("Probe.schema"), read("input.json")
 	u := unitFrom(t, source)
 	m := tabletext.NewModel(u)
+	// STRICT-ONLY (docs/plans/strict-only.md): the input runs past its
+	// streaming total, so the whole read refuses in every form; nothing is
+	// clamped. Only the verdict is pinned, and the Go engine is the oracle.
 	v := m.New(u.Tables["Totals"])
 	var r tabletext.Report
-	if !m.Read(v, []byte(input), &r) {
-		t.Fatal(r)
+	inputOK := m.Read(v, []byte(input), &r)
+	if inputOK {
+		t.Fatalf("the Go engine accepted an input past its total: %+v", r)
 	}
 	expected := m.New(u.Tables["Totals"])
 	if !m.Read(expected, []byte(read("expected.json")), &tabletext.Report{}) {
@@ -51,11 +54,14 @@ func TestRustTextTotalNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wireV := m.New(u.Tables["Totals"])
+	wireOK, _ := tablewire.Decode(m, wireV, wire, &tabletext.Report{})
 	var b strings.Builder
-	fmt.Fprintf(&b, `let expected=vec!%s;let mut r=TableReport::default();let v=totals_from_json(%q,&mut r).unwrap();assert_eq!(r.oor,10,"JSON streaming total");assert_eq!(r.oor_field,"Totals.a");assert_eq!(totals_save(&v),expected);
-let wire=vec!%s;let mut r=TableReport::default();let back=totals_load(&wire,&mut r).unwrap();assert_eq!(r.oor,10,"wire count plus element plus total");assert_eq!(r.oor_field,"Totals.a");assert_eq!(totals_save(&back),expected);
-let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let mut r=TableReport::default();let back=totals_load_retain(&wire,&mut store,&mut r).unwrap();assert_eq!(r.oor,10);assert_eq!(totals_save_retain(&back,&mut store,&mut TableReport::default()),expected);
-`, rustByteVector(pin), input, rustByteVector(wire))
+	fmt.Fprintf(&b, `let expected=vec!%s;let mut r=TableReport::default();assert!(totals_from_json(%q,&mut r).is_none(),"JSON streaming total refuses");assert!(r.damaged);
+let wire=vec!%s;let mut r=TableReport::default();assert_eq!(totals_load(&wire,&mut r).is_some(),%t,"wire past its total");
+let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let mut r=TableReport::default();let back=totals_load_retain(&wire,&mut store,&mut r);assert_eq!(back.is_some(),%t,"retained wire past its total");if back.is_none(){assert!(store.bytes.is_empty()&&store.ids.is_empty(),"refusal retained state");}
+let mut r=TableReport::default();let v=totals_load(&expected,&mut r).expect("expected value");assert!(!r.damaged);assert_eq!(totals_save(&v),expected);
+`, rustByteVector(pin), input, rustByteVector(wire), wireOK, wireOK)
 	for _, big := range []bool{false, true} {
 		p, e := tablecook.Cook(m, expected, tablecook.Options{Big: big})
 		if e != nil {
@@ -81,7 +87,10 @@ let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(
 	tail = append(tail, 0)
 	tail = binary.LittleEndian.AppendUint64(tail, ir.TableWireId("c"))
 	tail = binary.LittleEndian.AppendUint64(tail, 1)
-	fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=totals_from_json(r#"{"c":["aaaaa","x","\u0000"]}"#,&mut r).unwrap();assert_eq!(r.oor,1);assert_eq!(v.c.len(),1);let mut r=TableReport::default();let v=totals_load(&vec!%s,&mut r).unwrap();assert_eq!(r.oor,1);assert_eq!(v.c.len(),1);}println!("total ok");`, rustByteVector(tail))
+	const tailText = `{"c":["aaaaa","x","\u0000"]}`
+	tailTextOK := m.Read(m.New(u.Tables["Totals"]), []byte(tailText), &tabletext.Report{})
+	tailWireOK, _ := tablewire.Decode(m, m.New(u.Tables["Totals"]), tail, &tabletext.Report{})
+	fmt.Fprintf(&b, `{let mut r=TableReport::default();assert_eq!(totals_from_json(%q,&mut r).is_some(),%t,"tail text verdict");let mut r=TableReport::default();assert_eq!(totals_load(&vec!%s,&mut r).is_some(),%t,"tail wire verdict");}println!("total ok");`, tailText, tailTextOK, rustByteVector(tail), tailWireOK)
 	out, e := rustConstructProbe(t, u, b.String())
 	if e != nil || !strings.Contains(out, "total ok") {
 		t.Fatalf("total native: %v\n%s", e, out)

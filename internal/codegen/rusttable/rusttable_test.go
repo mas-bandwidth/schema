@@ -370,7 +370,7 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 		"effect_fixed_write_body", "effect_fixed_scatter",
 		"let arm = unsafe { value.arms.boost };",
 		"value.arms.ward = arm;",
-		"report.oor += 1;",
+		"report.held += 1;",
 	} {
 		if !strings.Contains(ubody, want) {
 			t.Errorf("the union's fixed surface is missing %q", want)

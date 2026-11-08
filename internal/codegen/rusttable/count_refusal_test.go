@@ -145,7 +145,6 @@ func rustCountWire(t *testing.T, u *ir.Unit, shape string, count uint64, short b
 }
 
 func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
-	t.Skip("layer 4 (rust): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (the generated count-refusal and retention probe)")
 	u := unitFrom(t, rustCountRefusalSchema)
 	model := tabletext.NewModel(u)
@@ -160,11 +159,13 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 	for _, shape := range shapes {
 		for _, count := range []uint64{1 << 31, 1 << 32, 1<<32 + 1} {
 			root, wire := rustCountWire(t, u, shape, count, false)
-			r := tabletext.Report{Unknown: 7}
+			// THE VERDICT IS THE CONTRACT (docs/plans/strict-only.md): the
+			// oracle refuses, and only that is carried to the leg.
+			var r tabletext.Report
 			ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &r)
 			var refusal *tablewire.CountRefusal
-			if ok || !errors.As(err, &refusal) || r.Refused || r.Unknown < 7 {
-				t.Fatalf("%s/%d: oracle did not preserve storage refusal: %v %v %+v", shape, count, ok, err, r)
+			if ok || !errors.As(err, &refusal) {
+				t.Fatalf("%s/%d: oracle did not refuse the storage cap: %v %v %+v", shape, count, ok, err, r)
 			}
 			load := ir.RustSnake(root)
 			fmt.Fprintf(&body, `
@@ -172,8 +173,8 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
         let wire: &[u8] = &[%s];
         for old_damage in [false, true] {
             for retaining in [false, true] {
-                let mut report = TableReport { unknown: 7, mismatch: 11, widened: 13, oor: 17,
-                    repeated: 19, retained: 23, retain_lost: 29, damaged: old_damage,
+                let mut report = TableReport { unknown: 7, widened: 13,
+                    retained: 23, retain_lost: 29, damaged: old_damage,
                     cycle_on_save: true, ..Default::default() };
                 let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: vec![123] };
                 store.bytes.push(99);
@@ -181,21 +182,32 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
                 check!(result.is_none(), "%s/%d partial value");
                 check!(report.refused && report.reason == TableReason::CountOverExtentCap, "%s/%d named count refusal");
                 check!(report.damaged == old_damage && report.cycle_on_save, "%s/%d damage history");
-                check!(report.unknown == %d && report.mismatch == 11 && report.widened == 13 &&
-                    report.oor == 17 && report.repeated == 19 && report.retained >= 23 &&
-                    report.retain_lost >= 29, "%s/%d counters");
                 check!(!retaining || (store.bytes.is_empty() && store.ids.is_empty()), "%s/%d retained partial state");
             }
         }
     }
-`, rustBytes(wire), load, load, shape, count, shape, count, shape, count, r.Unknown, shape, count, shape, count)
+`, rustBytes(wire), load, load, shape, count, shape, count, shape, count, shape, count)
 		}
 		root, wire := rustCountWire(t, u, shape, 0, false)
 		var rep tabletext.Report
-		if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &rep); !ok || err != nil || rep.Refused {
-			t.Fatalf("%s: valid twin rejected by oracle: %v %v %+v", shape, ok, err, rep)
-		}
 		load := ir.RustSnake(root)
+		if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &rep); !ok || err != nil || rep.Refused {
+			// STRICT-ONLY: a twin the oracle refuses (equal map keys are a
+			// repeated key) is refused by the leg too, whole
+			fmt.Fprintf(&body, `
+    {
+        let wire: &[u8] = &[%s];
+        for retaining in [false, true] {
+            let mut report = TableReport::default();
+            let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new() };
+            let result = if retaining { %s_load_retain(wire, &mut store, &mut report) } else { %s_load(wire, &mut report) };
+            check!(result.is_none(), "%s twin the oracle refuses");
+            check!(!retaining || (store.bytes.is_empty() && store.ids.is_empty()), "%s twin retained state");
+        }
+    }
+`, rustBytes(wire), load, load, shape, shape)
+			continue
+		}
 		fmt.Fprintf(&body, `
     {
         let wire: &[u8] = &[%s];
@@ -213,8 +225,10 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 	}
 	root, descending := rustCountWire(t, u, "map-descending", 1<<31, false)
 	var descendingReport tabletext.Report
-	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), descending, &descendingReport); ok || err != nil || !descendingReport.Refused {
-		t.Fatalf("descending-map control is not damage: %v %v %+v", ok, err, descendingReport)
+	// which of the two refusals a language meets first is its own order
+	// (docs/SPEC-TABLES.md §6.5); only the verdict is the contract
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), descending, &descendingReport); ok {
+		t.Fatalf("descending-map control is not refused: %v %v %+v", ok, err, descendingReport)
 	}
 	fmt.Fprintf(&body, `
     for retaining in [false, true] {
@@ -222,14 +236,14 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
         let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new() };
         let wire: &[u8] = &[%s];
         let result = if retaining { map_holder_load_retain(wire, &mut store, &mut report) } else { map_holder_load(wire, &mut report) };
-        check!(result.is_none() && report.reason != TableReason::CountOverExtentCap, "descending key precedes nested value refusal");
+        check!(result.is_none(), "descending map refuses");
         check!(!retaining || (store.bytes.is_empty() && store.ids.is_empty()), "descending map retained state");
     }
 `, rustBytes(descending))
 	_, short := rustCountWire(t, u, "map", 1, true)
 	var rep tabletext.Report
-	if ok, err := tablewire.Decode(model, model.New(model.Lookup("Leaf")), short, &rep); ok || err != nil || !rep.Refused {
-		t.Fatalf("body-short control is not damage: %v %v %+v", ok, err, rep)
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup("Leaf")), short, &rep); ok {
+		t.Fatalf("body-short control is not refused: %v %v %+v", ok, err, rep)
 	}
 	fmt.Fprintf(&body, `
     for retaining in [false, true] {
@@ -253,43 +267,33 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 	}
 }
 
-// A later measure failure cannot erase the diagnostic prefix before refusal.
+// A later measure failure does not turn the storage refusal into an accepted
+// value. STRICT-ONLY (docs/plans/strict-only.md): the verdict is the contract;
+// the report's counters are per-language diagnostics and are not compared with
+// the oracle's.
 func TestCountRefusalKeepsEarnedPrefixRust(t *testing.T) {
-	t.Skip("layer 4 (rust): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (the generated count-refusal diagnostic-prefix probe)")
 	u := unitFrom(t, rustCountRefusalSchema)
 	model := tabletext.NewModel(u)
 	var body strings.Builder
 	for _, shape := range []string{"widened", "framing-tail"} {
 		root, wire := rustCountWire(t, u, shape, 1<<31, false)
-		report := tabletext.Report{Unknown: 7, Widened: 13}
+		var report tabletext.Report
 		ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &report)
-		var refusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &refusal) || report.Refused || report.Unknown != 8 || report.Widened != 14 {
-			t.Fatalf("%s: unexpected oracle prefix: %v %v %+v", shape, ok, err, report)
-		}
-		retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
-		retained := tablewire.Retain{Capacity: 4096, IdCapacity: 64}
-		ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &retainingReport)
-		if ok || !errors.As(err, &refusal) || retainingReport.Refused || retainingReport.Unknown != 8 || retainingReport.Widened != 14 {
-			t.Fatalf("%s: unexpected retaining oracle prefix: %v %v %+v", shape, ok, err, retainingReport)
+		if ok {
+			t.Fatalf("%s: the oracle did not refuse: %v %+v", shape, err, report)
 		}
 		fmt.Fprintf(&body, `
     {
         let wire: &[u8] = &[%s];
         for retaining in [false, true] {
-            let mut report = TableReport { unknown: 7, widened: 13, retained: 23, retain_lost: 29, ..Default::default() };
+            let mut report = TableReport::default();
             let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new() };
             let result = if retaining { holder_load_retain(wire, &mut store, &mut report) } else { holder_load(wire, &mut report) };
-            assert!(result.is_none() && report.refused && report.reason == TableReason::CountOverExtentCap, "%s reason");
-            assert!(!report.damaged && report.unknown == %d && report.widened == %d,
-                "%s prefix retaining={}: unknown={} widened={} malformed={}", retaining, report.unknown, report.widened, report.damaged);
-            assert!(report.retained == if retaining { %d } else { 23 } &&
-                report.retain_lost == if retaining { %d } else { 29 },
-                "%s retention counters: retained={} lost={}", report.retained, report.retain_lost);
+            assert!(result.is_none(), "%s refused: {:?}", report);
             assert!(store.bytes.is_empty() && store.ids.is_empty(), "%s partial retained state");
         }
-`, rustBytes(wire), shape, report.Unknown, report.Widened, shape, retainingReport.Retained, retainingReport.RetainLost, shape, shape)
+`, rustBytes(wire), shape, shape)
 		if shape == "framing-tail" {
 			body.WriteString("        assert!(holder_load_measure(wire) < 0, \"tail must take scratch refusal path\");\n")
 		}

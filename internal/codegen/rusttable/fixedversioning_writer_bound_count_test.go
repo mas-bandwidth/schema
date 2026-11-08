@@ -12,7 +12,9 @@ import (
 // writer's, and the forged file carries a count BETWEEN the two. The NEW build
 // reads the forged OLD bytes through its lineage, so the plan is a COMPILED one
 // and the count's bound is the WRITER's, carried by the plan — never the
-// reader's 8, never the forged 7. The probe forges the count word in Rust over
+// reader's 8: the forged 7 is past the writer's 4, so the load refuses it as
+// out_of_range (strict-only), where a reader bounding by its own 8 would read
+// it. The probe forges the count word in Rust over
 // the bytes it just read: the lead 0xAAAAAAAA followed by the count 4 is the
 // eight-byte locator, and 7 is written over the count.
 
@@ -24,7 +26,7 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
 /// writer's, and the forged file carries a count BETWEEN the two. The NEW build
 /// reads the forged OLD bytes through its lineage, so the plan is a COMPILED one
 /// and the count's bound is the WRITER's, carried by the plan — never the
-/// reader's 8, never the forged 7. The forge writes 7 as a little-endian u32
+/// reader's 8: the forged 7 refuses as out_of_range. The forge writes 7 as a little-endian u32
 /// over the count word the lead's needle locates.
 #[test]
 fn v_writer_bound_count_new_reads_old() {
@@ -46,37 +48,15 @@ fn v_writer_bound_count_new_reads_old() {
     let mut remap = vec![0u16; 4096];
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    let n = n.unwrap_or_else(|| panic!(
-        "a forged count inside the reader's bound is not a refusal: {} {:?}", report.reason.name(), report
-    ));
-    assert_eq!(n, 1, "the forged file reads exactly one record, not {n}");
+    // STRICT-ONLY (docs/plans/strict-only.md): a value past its bound refuses
+    // the whole batch as out_of_range; nothing lands and no counter moves.
+    assert!(n.is_none(), "the forged file was read, not refused: {:?}", report);
     assert!(
-        !report.refused && report.reason == TableFixedReason::None,
-        "a forged count inside the writer's bound is not a refusal: {:?}", report
+        report.refused && report.reason == TableFixedReason::OutOfRange,
+        "a forged value past its bound is an out_of_range refusal: {:?}", report
     );
-    assert!(!report.damaged, "a count inside the writer's bound is not damage: {:?}", report);
-    assert_eq!(
-        values[0].vals_count, 4,
-        "vals_count is the WRITER's bound carried by the plan, never the reader's 8 nor the forged 7"
-    );
-    for k in 0..4usize {
-        assert_eq!(values[0].vals[k], 1000 + k as i32, "vals[{k}] did not land");
-    }
-    for k in 4..8usize {
-        assert_eq!(values[0].vals[k], 0, "vals[{k}] past the writer's bound is not the reader's declared default");
-    }
-    assert!(
-        values[0].lead == 0xAAAA_AAAA && values[0].trail == 0xBBBB_BBBB,
-        "the row moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
-    );
-    assert_eq!(
-        report.oor, 1,
-        "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: {:?}", report
-    );
-    assert!(
-        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
-        "counters moved on a clean clamped read: {:?}", report
-    );
+    assert!(!report.damaged, "a forged value is not damage: {:?}", report);
+    assert!(report.unknown == 0 && report.widened == 0, "a refusal moved a counter: {:?}", report);
 }
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"))
 

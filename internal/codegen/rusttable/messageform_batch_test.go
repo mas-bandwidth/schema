@@ -159,14 +159,11 @@ func TestMessageFormBatchRust(t *testing.T) {
 
 	// 3. VERSIONING, the use case: an OLDER writer's batch read under ITS
 	// announcement by a NEWER reader (§3.3: "a reader decodes a body against
-	// the table THAT endpoint announced"). A removed field is skipped and counted
-	// unknown, a widened kind is decoded exactly and counted widened, a
-	// shrunk capacity, count bound or range clamps and counts clamped, a field
-	// the writer never had takes its declared default, and an unknown arm and
-	// an unknown enum variant land as None and count unknown. The counters are
-	// the oracle's, and the upgraded value saves back as the oracle saves it.
+	// the table THAT endpoint announced"). Strict-only: a value the newer
+	// table cannot hold (a shrunk capacity, count bound or range) refuses the
+	// whole batch; nothing is clamped. The verdict is the oracle's, and an
+	// accepted batch saves back as the oracle saves it.
 	t.Run("versioning_upgrade", func(t *testing.T) {
-		t.Skip("layer 4 (rust): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 		t.Parallel()
 		older := unitFrom(t, messageBatchOlderSrc)
 		newer := unitFrom(t, messageBatchNewerSrc)
@@ -195,17 +192,21 @@ func TestMessageFormBatchRust(t *testing.T) {
 		for i := range news {
 			news[i] = mn.New(mn.Lookup("Card"))
 		}
+		// STRICT-ONLY (docs/plans/strict-only.md): only the verdict is pinned,
+		// with the Go engine as its oracle. A batch the oracle refuses (a
+		// shrunk bound, a kind mismatch) is refused whole: (0, false). A batch
+		// it accepts must upgrade to the oracle's bytes. Counters stay
+		// per-language diagnostics.
 		var rep tabletext.Report
 		count, ok, err := tablewire.DecodeMessages(mn, news, wire, v, &rep)
-		if err != nil || !ok || count != len(olds) {
-			t.Fatalf("the oracle did not decode the older batch: count=%d ok=%v err=%v", count, ok, err)
-		}
-		if rep.Unknown == 0 || rep.Widened == 0 {
-			t.Fatalf("the versioning case no longer exercises every counter: %+v", rep)
-		}
-		upgraded, err := tablewire.EncodeMessages(mn, news)
-		if err != nil {
-			t.Fatalf("the oracle did not encode the upgraded batch: %v", err)
+		var upgraded []byte
+		if ok {
+			if err != nil || count != len(olds) {
+				t.Fatalf("the oracle did not decode the older batch: count=%d ok=%v err=%v", count, ok, err)
+			}
+			if upgraded, err = tablewire.EncodeMessages(mn, news); err != nil {
+				t.Fatalf("the oracle did not encode the upgraded batch: %v", err)
+			}
 		}
 		main := fmt.Sprintf(`
     {
@@ -219,18 +220,22 @@ func TestMessageFormBatchRust(t *testing.T) {
         let mut values = vec![CardRow::default(); %d];
         let mut lrep = TableReport::default();
         let (count, ok) = card_load_messages(&mut values, &vocab, &OLD, &mut lrep);
-        let counters = (lrep.unknown, lrep.mismatch, lrep.widened, lrep.oor);
-        let want = (%d, %d, %d, %d);
-        let mut srep = TableReport::default();
-        let mut buf = vec![0xa5u8; WANT.len()];
-        let wrote = card_save_messages(&values[..count], &mut buf, &mut srep);
-        let mut mrep = TableReport::default();
-        let measured = card_measure_messages(&values[..count], &mut mrep);
-        say("upgrade", announced && ok && count == %d && counters == want && wrote == WANT.len() as i64 && measured == WANT.len() as i64 && buf == WANT,
-            format!("announced={announced} ok={ok} count={count} counters={counters:?} want={want:?} wrote={wrote} measured={measured} same={} report={lrep:?}", buf == WANT));
+        let want_ok = %t;
+        let mut same = true;
+        if want_ok {
+            let mut srep = TableReport::default();
+            let mut buf = vec![0xa5u8; WANT.len()];
+            let wrote = card_save_messages(&values[..count], &mut buf, &mut srep);
+            let mut mrep = TableReport::default();
+            let measured = card_measure_messages(&values[..count], &mut mrep);
+            same = wrote == WANT.len() as i64 && measured == WANT.len() as i64 && buf == WANT;
+        }
+        let verdict = if want_ok { ok && count == %d } else { !ok && count == 0 && lrep.damaged };
+        say("upgrade", announced && verdict && same,
+            format!("announced={announced} ok={ok} want_ok={want_ok} count={count} same={same} report={lrep:?}"));
     }
 `, len(announce), rustBytes(announce), len(wire), rustBytes(wire), len(upgraded), rustBytes(upgraded),
-			len(olds), rep.Unknown, 0, rep.Widened, 0, len(olds))
+			len(olds), ok, len(olds))
 		out := runMessageBatchProbe(t, newer, main)
 		if line := messageBatchLine(out, "upgrade"); line != "BATCH upgrade ok" {
 			t.Fatalf("the newer Rust reader does not upgrade the older batch as the oracle does: %s", line)

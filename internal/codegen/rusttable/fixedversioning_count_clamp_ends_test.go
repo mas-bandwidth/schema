@@ -8,26 +8,22 @@ import (
 	"testing"
 )
 
-// rust/C1 and rust/C2 are the two ends of the count clamp in the array-bounds
+// rust/C1 and rust/C2 are the two ends of the count bound in the array-bounds
 // work set: "count clamp v<0" and "count clamp v>Max", quoted verbatim from
 // docs/roadmap.sexp. Row 4, writer_bound_count, forges this same count word
 // from 4 to 7 — neither negative nor past the reader's own max of 8 — so it
-// touches neither end. On 2026-09-19 the negative arm was deleted from the
-// emitted runtime and not one landed fixed-table test went red on five legs
-// (c, cs, dart, elixir and js): it is guarded by nothing. clamped is asserted
-// EXACTLY == 1, never >= 1, because a leg that counts in the count op and
-// again in the bounds pass lands 2. C2's count of 4 is the WRITER's bound
-// carried by the plan, never the reader's own 8.
+// touches neither end. Under strict-only (docs/plans/strict-only.md) both ends
+// refuse the whole batch as out_of_range: nothing lands, no counter moves.
 
 func TestFixedVersioningCountClampEnds(t *testing.T) {
 	corpus := versionCorpus(t)
 
 	tests := fmt.Sprintf(`
-/// count_clamp_ends, §5.8 rows C1 and C2: the two ENDS of the count clamp.
+/// count_clamp_ends, §5.8 rows C1 and C2: the two ENDS of the count bound.
 /// Row 4 forges this same count word to 7, inside the writer's bound, so it
 /// exercises neither end. C1 forges -1 (0xFFFFFFFF read as the wire's int32)
-/// and must clamp to ZERO; C2 forges 9, past the writer's 4 AND the reader's
-/// 8, and must clamp to the WRITER's 4 carried by the plan. The forge writes a
+/// and C2 forges 9, past the writer's 4 AND the reader's 8: each refuses as
+/// out_of_range. The forge writes a
 /// little-endian u32 over the count word the lead's needle locates.
 #[test]
 fn v_count_clamp_negative() {
@@ -49,31 +45,20 @@ fn v_count_clamp_negative() {
     let mut remap = vec![0u16; 4096];
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    let n = n.unwrap_or_else(|| panic!(
-        "a forged count is not a refusal: {} {:?}", report.reason.name(), report
-    ));
-    assert_eq!(n, 1, "the forged file reads exactly one record, not {n}");
+    // STRICT-ONLY: a count past its bound refuses the whole batch as
+    // out_of_range; nothing of the record lands.
+    assert!(n.is_none(), "a forged count was read, not refused: {:?}", report);
     assert!(
-        !report.refused && report.reason == TableFixedReason::None,
-        "a forged count is not a refusal: {:?}", report
+        report.refused && report.reason == TableFixedReason::OutOfRange,
+        "a forged count is an out_of_range refusal: {:?}", report
     );
     assert!(!report.damaged, "a forged count is not damage: {:?}", report);
     assert!(
-        values[0].lead == 0xAAAA_AAAA && values[0].trail == 0xBBBB_BBBB,
-        "a forged count moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
+        values[0].lead != 0xAAAA_AAAA && values[0].trail != 0xBBBB_BBBB,
+        "a refused batch landed the record: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
     );
-    assert_eq!(
-        values[0].vals_count, 0,
-        "the negative count clamps to ZERO, never -1, never the writer's 4, never the reader's 8"
-    );
-    assert_eq!(
-        report.oor, 1,
-        "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: {:?}", report
-    );
-    assert!(
-        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
-        "counters moved on a clean clamped read: {:?}", report
-    );
+    assert_eq!(values[0].vals_count, 0, "a refused batch landed a count");
+    assert!(report.unknown == 0 && report.widened == 0, "a refusal moved a counter: {:?}", report);
 }
 
 /// C2 — the count forged past the READER'S OWN bound, and past the writer's.
@@ -97,37 +82,20 @@ fn v_count_clamp_past_bound() {
     let mut remap = vec![0u16; 4096];
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    let n = n.unwrap_or_else(|| panic!(
-        "a forged count is not a refusal: {} {:?}", report.reason.name(), report
-    ));
-    assert_eq!(n, 1, "the forged file reads exactly one record, not {n}");
+    // STRICT-ONLY: a count past its bound refuses the whole batch as
+    // out_of_range; nothing of the record lands.
+    assert!(n.is_none(), "a forged count was read, not refused: {:?}", report);
     assert!(
-        !report.refused && report.reason == TableFixedReason::None,
-        "a forged count is not a refusal: {:?}", report
+        report.refused && report.reason == TableFixedReason::OutOfRange,
+        "a forged count is an out_of_range refusal: {:?}", report
     );
     assert!(!report.damaged, "a forged count is not damage: {:?}", report);
     assert!(
-        values[0].lead == 0xAAAA_AAAA && values[0].trail == 0xBBBB_BBBB,
-        "a forged count moved a neighbour: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
+        values[0].lead != 0xAAAA_AAAA && values[0].trail != 0xBBBB_BBBB,
+        "a refused batch landed the record: lead={:#x} trail={:#x}", values[0].lead, values[0].trail
     );
-    assert_eq!(
-        values[0].vals_count, 4,
-        "vals_count is the WRITER's bound carried by the plan, never the reader's 8, never the forged 9"
-    );
-    for k in 0..4usize {
-        assert_eq!(values[0].vals[k], 1000 + k as i32, "vals[{k}] did not land");
-    }
-    for k in 4..8usize {
-        assert_eq!(values[0].vals[k], 0, "vals[{k}] past the writer's bound is not the reader's declared default");
-    }
-    assert_eq!(
-        report.oor, 1,
-        "the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: {:?}", report
-    );
-    assert!(
-        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
-        "counters moved on a clean clamped read: {:?}", report
-    );
+    assert_eq!(values[0].vals_count, 0, "a refused batch landed a count");
+    assert!(report.unknown == 0 && report.widened == 0, "a refusal moved a counter: {:?}", report);
 }
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"), filepath.Join(corpus, "old_array_bounded_grow.bin"))
 

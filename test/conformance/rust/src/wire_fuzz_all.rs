@@ -115,11 +115,11 @@ macro_rules! arm {
                 reply.save_fail = true;
             }
         }
+        // STRICT-ONLY (docs/plans/strict-only.md): the report carries no
+        // kind_mismatch, clamped or duplicate counter; a read that would have
+        // moved one refuses, so those protocol fields stay zero.
         reply.unknown = report.unknown;
-        reply.mismatch = report.mismatch;
         reply.widened = report.widened;
-        reply.oor = report.oor;
-        reply.repeated = report.repeated;
         reply.damaged = report.damaged;
         reply.refused = report.refused || report.err().is_some();
         Some(reply)
@@ -152,11 +152,11 @@ macro_rules! message_arm {
         } else {
             reply.save_fail = true;
         }
+        // STRICT-ONLY (docs/plans/strict-only.md): the report carries no
+        // kind_mismatch, clamped or duplicate counter; a read that would have
+        // moved one refuses, so those protocol fields stay zero.
         reply.unknown = report.unknown;
-        reply.mismatch = report.mismatch;
         reply.widened = report.widened;
-        reply.oor = report.oor;
-        reply.repeated = report.repeated;
         reply.damaged = report.damaged;
         reply.refused = report.refused || report.err().is_some();
         Some(reply)

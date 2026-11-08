@@ -426,7 +426,7 @@ fn v_%[1]s_new_reads_old() {
     );
     assert!(!report.damaged, "a clean backward read is not damage: {:?}", report);
     assert!(
-        report.unknown == 0 && report.mismatch == 0 && report.oor == 0,
+        report.unknown == 0,
         "counters moved on a clean backward read: {:?}", report
     );
 %[4]s
@@ -457,7 +457,7 @@ fn v_%[1]s_new_reads_old() {
         "a refusal by name never sets malformed too (§5.3, the joint answer): {:?}", report
     );
     assert!(
-        report.widened == 0 && report.unknown == 0 && report.mismatch == 0 && report.oor == 0,
+        report.widened == 0 && report.unknown == 0,
         "REFUSE is TOTAL: no counter moves: {:?}", report
     );
     assert!(
@@ -526,15 +526,16 @@ fn v_%[1]s_old_refuses_new() {
 
 	// THE WRITER'S TEXT CAP, FORGED. The only thing that can catch a cap taken
 	// from the READER's bound is a length BETWEEN the two bounds, so this probe
-	// forges one: lawful for the reader, past the writer's span, and owed a
-	// clamp to the writer's 8 with one `clamped` counted (§5.2 TEXT, §5.4).
+	// forges one: lawful for the reader, past the writer's span, and owed an
+	// out_of_range refusal under strict-only (§5.2 TEXT, §5.4).
 	probes = append(probes, versionProbe{
 		name:   "probe_string_grow_forged_length",
 		reader: "VNEW_string_grow",
 		older:  []string{"VOLD_string_grow"},
 		src: versionProbeSource(fmt.Sprintf(`
 /// string_grow, THE WRITER'S CAP: a forged length inside the READER's bound but
-/// past the WRITER's span clamps to the writer's span and counts one clamped.
+/// past the WRITER's span refuses the batch as out_of_range (strict-only); a
+/// reader bounding by its own 16 would read it.
 #[test]
 fn v_string_grow_forged_length() {
     let mut data = std::fs::read(%q).expect("the reference's old_string_grow.bin");
@@ -549,19 +550,13 @@ fn v_string_grow_forged_length() {
     let mut remap = vec![0u16; 4096];
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    let n = n.unwrap_or_else(|| panic!(
-        "a forged LENGTH is not a refusal: {} {:?}", report.reason.name(), report
-    ));
-    assert!(n >= 1, "the forged record still reads, not {n}");
-    assert_eq!(
-        values[0].text_length, 8,
-        "a length past THE WRITER's span must clamp to the writer's 8, not to this reader's 16"
+    assert!(n.is_none(), "a length past THE WRITER's span was read, not refused: {:?}", report);
+    assert!(
+        report.refused && report.reason == TableFixedReason::OutOfRange,
+        "a length past THE WRITER's span is an out_of_range refusal: {:?}", report
     );
-    assert_eq!(
-        report.oor, 1,
-        "the clamp that fired must count ONE oor: {:?}", report
-    );
-    assert!(!report.damaged, "a forged length is clamped, not damage: {:?}", report);
+    assert!(!report.damaged, "a forged length is a refusal, not damage: {:?}", report);
+    assert_eq!(values[0].text_length, 0, "a refused batch landed the record");
 }
 `, filepath.Join(corpus, "old_string_grow.bin"))),
 	})
@@ -594,8 +589,7 @@ fn v_string_grow_forged_length() {
         "layout_unsupported carries the file's hash too: {:#018x} not {:#018x}", want, report.layout_hash
     );
     assert!(
-        !report.damaged && report.widened == 0 && report.unknown == 0
-            && report.mismatch == 0 && report.oor == 0,
+        !report.damaged && report.widened == 0 && report.unknown == 0,
         "REFUSE is TOTAL: {:?}", report
     );
     let mut report2 = TableFixedReport::default();
@@ -749,8 +743,6 @@ fn v_%[1]s() {
     let mut report = TableFixedReport::default();
     assert_eq!(LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report), Some(3));
     assert!(!report.refused && !report.damaged, "{:?}", report);
-    assert_eq!(report.oor, 0);
-    assert_eq!(report.mismatch, 0);
     assert_eq!(report.widened, 6); // signed integer and float, three records
     assert!(values[0].flag && values[0].note_present);
     assert_eq!(values[0].note, 44);

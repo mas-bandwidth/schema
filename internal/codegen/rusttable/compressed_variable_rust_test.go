@@ -12,7 +12,6 @@ import (
 )
 
 func TestRustCompressedVariableNative(t *testing.T) {
-	t.Skip("layer 4 (rust): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (compressed float variable prerequisites)")
 	keyedRequireRustc(t)
 	source, e := os.ReadFile("../../../testdata/conformance/feature-witnesses/required/compressed-writers/Probe.schema")
@@ -22,17 +21,8 @@ func TestRustCompressedVariableNative(t *testing.T) {
 	u := unitFrom(t, string(source))
 	m := tabletext.NewModel(u)
 	var b strings.Builder
+	refused := 0
 	for _, input := range []string{`{"x":0.75,"ys":[-0.5,0.5]}`, `{"x":-1,"ys":[-2,2]}`} {
-		v := m.New(u.Tables["R"])
-		var r tabletext.Report
-		if !m.Read(v, []byte(input), &r) {
-			t.Fatal(r)
-		}
-		wire, e := tablewire.Encode(m, v)
-		if e != nil {
-			t.Fatal(e)
-		}
-
 		rawUnit := unitFrom(t, `package probe
  table R { x float32 | required
  ys [..2]float32 | required }
@@ -46,12 +36,27 @@ func TestRustCompressedVariableNative(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		fmt.Fprintf(&b, `{let mut report=TableReport::default();let value=r_load(&vec!%s,&mut report).unwrap();assert_eq!(report.oor,%d);assert_eq!(r_save_checked(&value).unwrap(),vec!%s);}`, rustByteVector(rawWire), 0, rustByteVector(wire))
+
+		v := m.New(u.Tables["R"])
+		var r tabletext.Report
+		if !m.Read(v, []byte(input), &r) {
+			// STRICT-ONLY (docs/plans/strict-only.md): a value past the declared
+			// range refuses the whole read, on the text and on the wire alike.
+			fmt.Fprintf(&b, `{let mut r=TableReport::default();assert!(r_from_json(%q,&mut r).is_none());assert!(r.damaged);let mut w=TableReport::default();assert!(r_load(&vec!%s,&mut w).is_none());assert!(w.damaged);}
+`, input, rustByteVector(rawWire))
+			refused++
+			continue
+		}
+		wire, e := tablewire.Encode(m, v)
+		if e != nil {
+			t.Fatal(e)
+		}
+		fmt.Fprintf(&b, `{let mut report=TableReport::default();let value=r_load(&vec!%s,&mut report).unwrap();assert!(!report.damaged);assert_eq!(r_save_checked(&value).unwrap(),vec!%s);}`, rustByteVector(rawWire), rustByteVector(wire))
 		text, e := m.Write(v)
 		if e != nil {
 			t.Fatal(e)
 		}
-		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=r_from_json(%q,&mut r).unwrap();assert_eq!(r.oor,%d);assert_eq!(r_save_checked(&v).unwrap(),vec!%s);assert_eq!(r_to_json_checked(&v).unwrap().trim_end(),%q);let back=r_load(&vec!%s,&mut TableReport::default()).unwrap();assert_eq!(r_save_checked(&back).unwrap(),vec!%s);`, input, 0, rustByteVector(wire), string(text), rustByteVector(wire), rustByteVector(wire))
+		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=r_from_json(%q,&mut r).unwrap();assert!(!r.damaged);assert_eq!(r_save_checked(&v).unwrap(),vec!%s);assert_eq!(r_to_json_checked(&v).unwrap().trim_end(),%q);let back=r_load(&vec!%s,&mut TableReport::default()).unwrap();assert_eq!(r_save_checked(&back).unwrap(),vec!%s);`, input, rustByteVector(wire), string(text), rustByteVector(wire), rustByteVector(wire))
 		for _, big := range []bool{false, true} {
 			pin, e := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if e != nil {
@@ -64,6 +69,9 @@ func TestRustCompressedVariableNative(t *testing.T) {
 			fmt.Fprintf(&b, `assert_eq!(r_cook_write(&v,%d).unwrap(),vec!%s);`, order, rustByteVector(pin))
 		}
 		b.WriteString("}\n")
+	}
+	if refused != 1 {
+		t.Fatalf("the engine refused %d inputs, want exactly the out-of-range one", refused)
 	}
 	b.WriteString(`for v in [R{x:0.0,ys:vec![]},R{x:0.5,ys:vec![2.0]}]{assert!(r_save_checked(&v).is_err());assert!(r_to_json_checked(&v).is_none());assert!(r_cook_write(&v,1).is_err());}println!("compressed variable ok");`)
 	out, e := rustConstructProbe(t, u, b.String())

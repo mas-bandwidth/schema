@@ -14,9 +14,8 @@ import (
 // the pair `VOLD_/VNEW_enum_append` as they stand, plus a forged `hostile_enum_append.bin`
 // — `old_enum_append.bin` with `r0.tier` set to 4, past the WRITER's three variants.
 // The SAME bytes are read TWICE: the NEW build's COMPILED plan and the OLD build's
-// IDENTITY plan. `clamped` is asserted EXACTLY `== 1` on both, the bounds pass's count,
-// once per field (§5.4) — never `>= 1`: a leg that also counts the `ordinal` op lands 2
-// and passes the read this row exists to catch.
+// IDENTITY plan. Under strict-only both refuse the batch as out_of_range; a plan
+// that lands None silently reads the file, which this row exists to catch.
 
 func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 	corpus := versionCorpus(t)
@@ -58,32 +57,15 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
     let mut remap = vec![0u16; 4096];
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    let n = n.unwrap_or_else(|| panic!(
-        "the forged ordinal is not a refusal: {} {:?}", report.reason.name(), report
-    ));
-    assert!(n == 1, "the forged file reads one record, not {n}");
+    // STRICT-ONLY (docs/plans/strict-only.md): a value past its bound refuses
+    // the whole batch as out_of_range; nothing lands and no counter moves.
+    assert!(n.is_none(), "the forged file was read, not refused: {:?}", report);
     assert!(
-        !report.refused && report.reason == TableFixedReason::None,
-        "a forged ordinal is not a refusal: {:?}", report
+        report.refused && report.reason == TableFixedReason::OutOfRange,
+        "a forged value past its bound is an out_of_range refusal: {:?}", report
     );
-    assert!(!report.damaged, "a forged ordinal is not damage: {:?}", report);
-    assert!(
-        values[0].tier == 0,
-        "an ordinal past the writer's variants lands None, not {}", values[0].tier
-    );
-    assert!(
-        values[0].tier != 4,
-        "an ordinal past the writer's variants never lands Platinum: {}", values[0].tier
-    );
-    assert!(values[0].seq == 9, "the scalar after the enum is untouched: {}", values[0].seq);
-    assert_eq!(
-        report.oor, 1,
-        "the bounds pass counts the forged ordinal EXACTLY once, never twice: {:?}", report
-    );
-    assert!(
-        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
-        "no other counter moved: {:?}", report
-    );
+    assert!(!report.damaged, "a forged value is not damage: {:?}", report);
+    assert!(report.unknown == 0 && report.widened == 0, "a refusal moved a counter: {:?}", report);
 `, forged)
 
 	probes := []versionProbe{
@@ -104,7 +86,7 @@ fn v_forged_ordinal_compiled() {
 			reader: "VOLD_enum_append",
 			src: versionProbeSource(`/// forged_ordinal_both_plans, the IDENTITY plan (§5.8 row 12): the OLD build
 /// reads the forged bytes through its own hash, so the variant count is again
-/// the WRITER's three and clamped lands the SAME number as the compiled plan.
+/// the WRITER's three and refuses exactly as the compiled plan does.
 #[test]
 fn v_forged_ordinal_identity() {
 ` + body + `}

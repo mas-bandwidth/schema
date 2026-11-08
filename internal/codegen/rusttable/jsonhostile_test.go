@@ -106,7 +106,7 @@ use variable_runtime::*;
 fn verdict(text: &[u8]) -> String {
     let mut r = TableReport::default();
     match probe_from_json_bytes(text, &mut r) {
-        Some(_) if !r.damaged => format!("{},{},{},{},{}", r.unknown, r.mismatch, r.widened, r.oor, r.repeated),
+        Some(_) if !r.damaged => "accepted".to_string(),
         _ => "refused".to_string(),
     }
 }
@@ -120,9 +120,9 @@ fn main() {
         ("zero-map-key-over-bound", b"{\"names\": {\"aaaaaaaaa\\u0000\": 1}}", "refused"),
         ("zero-integer-map-key", b"{\"by_id\": {\"1\\u0000\": 1}}", "refused"),
         ("zero-after-lone-lead", b"{\"name\": \"\\ud800\\u0000\"}", "refused"),
-        ("zero-unknown-value", b"{\"nope\": \"a\\u0000b\"}", "1,0,0,0,0"),
-        ("zero-object-key", b"{\"a\\u0000b\": 1}", "1,0,0,0,0"),
-        ("one-escape-stored", b"{\"name\": \"a\\u0001b\"}", "0,0,0,0,0"),
+        ("zero-unknown-value", b"{\"nope\": \"a\\u0000b\"}", "accepted"),
+        ("zero-object-key", b"{\"a\\u0000b\": 1}", "accepted"),
+        ("one-escape-stored", b"{\"name\": \"a\\u0001b\"}", "accepted"),
         ("illformed-at-bound", b"{\"name\": \"aaaaaaaa\xff\"}", "refused"),
         ("illformed-inside", b"{\"name\": \"a\xffb\"}", "refused"),
         ("illformed-truncated", b"{\"name\": \"a\xe2\x82\"}", "refused"),
@@ -130,7 +130,7 @@ fn main() {
         ("illformed-unknown-value", b"{\"nope\": \"\xff\"}", "refused"),
         ("illformed-object-key", b"{\"\xff\": 1}", "refused"),
         ("illformed-map-key", b"{\"names\": {\"\xff\": 1}}", "refused"),
-        ("well-formed-at-bound", b"{\"name\": \"aaaaaaaa\xc3\xa9\"}", "0,0,0,1,0"),
+        ("well-formed-at-bound", b"{\"name\": \"aaaaaaaa\xc3\xa9\"}", "refused"),
     ];
     for (name, text, want) in cases {
         let got = verdict(text);
@@ -138,13 +138,10 @@ fn main() {
             println!("MISMATCH {name}: got {got}, want {want}");
         }
     }
-    // a lone lead surrogate rides as U+FFFD and the escape after it is read
-    // on its own, as Go's scanText does
-    let mut r = TableReport::default();
-    match probe_from_json_bytes(b"{\"name\": \"\\ud800\\u0041\"}", &mut r) {
-        Some(v) if v.name == "\u{fffd}A" => {}
-        Some(v) => println!("MISMATCH lone-lead-then-escape: got {:?}, want \"\\u{{fffd}}A\"", v.name),
-        None => println!("MISMATCH lone-lead-then-escape: refused"),
+    // STRICT-ONLY (docs/plans/strict-only.md): a lone lead surrogate refuses
+    // the whole read; nothing is repaired to U+FFFD. Only the verdict is pinned.
+    if verdict(b"{\"name\": \"\\ud800\\u0041\"}") != "refused" {
+        println!("MISMATCH lone-lead-then-escape: accepted");
     }
     // the &str entry point reads the same text the bytes entry point does
     let mut r = TableReport::default();

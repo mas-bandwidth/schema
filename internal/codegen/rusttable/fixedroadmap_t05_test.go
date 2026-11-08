@@ -199,7 +199,7 @@ func t05R19(t *testing.T) {
 	if copyArm == "" {
 		t.Fatal("R19: the Copy arm is not in the runtime")
 	}
-	for _, counter := range []string{"report.oor", "report.widened", "report.unknown", "report.mismatch"} {
+	for _, counter := range []string{"report.held", "report.widened", "report.unknown", "report.kind_changed"} {
 		if strings.Contains(copyArm, counter) {
 			t.Errorf("R19: a `copy` entry moves %s (§5.4):\n%s", counter, copyArm)
 		}
@@ -212,8 +212,11 @@ func t05R19(t *testing.T) {
 	}
 	t04Has(t, load, "report.unknown += census.0;",
 		"R19 the census lands once per endpoint and not per record")
-	t04Has(t, load, "report.mismatch += census.1;",
-		"R19 the kind census lands once per endpoint and not per record")
+	t04Has(t, load, "let _ = census.1;",
+		"R19 the kind census stays on the plan and never lands on a read (strict-only)")
+	if strings.Contains(load, "kind_changed +=") {
+		t.Error("R19: the load lands the compile census's kind changes on the report")
+	}
 }
 
 // ---- rust/E9 -----------------------------------------------------------------
@@ -233,9 +236,9 @@ func t05E9(t *testing.T) {
 	}
 	for _, field := range []string{
 		"pub unknown: u32,",
-		"pub mismatch: u32,",
+		"pub(crate) kind_changed: u32,",
 		"pub widened: u32,",
-		"pub oor: u32,",
+		"pub(crate) held: u32,",
 		"pub damaged: bool,",
 		"pub refused: bool,",
 		"pub reason: TableFixedReason,",
@@ -277,13 +280,13 @@ func t05R16(t *testing.T) {
 	if countArm == "" {
 		t.Fatal("R16: the Count arm is not in the runtime")
 	}
-	t04Has(t, countArm, "report.oor += 1;", "R16 `count` counts once per entry per record")
+	t04Has(t, countArm, "report.held += 1;", "R16 `count` counts once per entry per record")
 	textArm := t05Arm(runtime, "TableFixedOp::Text => {")
 	if textArm == "" {
 		t.Fatal("R16: the Text arm is not in the runtime")
 	}
-	t04Has(t, textArm, "report.oor += 1;", "R16 `text` counts once per entry per record")
-	if n := strings.Count(textArm, "report.oor += 1;"); n != 1 {
+	t04Has(t, textArm, "report.held += 1;", "R16 `text` counts once per entry per record")
+	if n := strings.Count(textArm, "report.held += 1;"); n != 1 {
 		t.Errorf("R16: `text` moves clamped %d times, want once per entry", n)
 	}
 	// the bounds pass counts a forged ordinal remapped to None on BOTH plans
@@ -298,7 +301,7 @@ func t05R16(t *testing.T) {
 	}
 	t04Has(t, ordinalArm, "if raw > u64::from(*count) {",
 		"R16 the compiled plan counts a forged enum ordinal at the ordinal op's own bound")
-	t04Has(t, ordinalArm, "report.oor += 1;",
+	t04Has(t, ordinalArm, "report.held += 1;",
 		"R16 the compiled plan counts the forged enum ordinal clamped")
 	constArm := t05Arm(runtime, "TableFixedOp::Const => {")
 	if constArm == "" {
@@ -306,7 +309,7 @@ func t05R16(t *testing.T) {
 	}
 	t04Has(t, constArm, "if raw > u64::from(p.dstsize) {",
 		"R16 the compiled plan counts a forged union tag at the const op's own bound")
-	t04Has(t, constArm, "report.oor += 1;",
+	t04Has(t, constArm, "report.held += 1;",
 		"R16 the compiled plan counts the forged union tag clamped")
 	// THE IDENTITY PLAN counts it in the scatter the read lands the value
 	// through: an enum ordinal past the declared extent and a union tag past
@@ -314,18 +317,18 @@ func t05R16(t *testing.T) {
 	enumMod := t05Module(t, t05Enum(5))
 	t04Has(t, enumMod, "if raw > 5 {",
 		"R16 the identity plan closes a forged enum ordinal's range at the scatter")
-	t04Has(t, enumMod, "report.oor += 1;",
+	t04Has(t, enumMod, "report.held += 1;",
 		"R16 the identity plan counts the forged enum ordinal clamped")
 	unionMod := t05Module(t, t05Union(2))
 	t04Has(t, unionMod, "if tag_raw > 2 {",
 		"R16 the identity plan closes a forged union tag's range at the scatter")
-	t04Has(t, unionMod, "report.oor += 1;",
+	t04Has(t, unionMod, "report.held += 1;",
 		"R16 the identity plan counts the forged union tag clamped")
 	// copy/const/present/ordinal: the value-landing ops move nothing of their
 	// own — the one forged-ordinal count above is the BOUNDS PASS's number and
 	// the law says it is counted once, on both plans.
 	copyArm := t05Arm(runtime, "TableFixedOp::Copy => {")
-	for _, counter := range []string{"report.oor", "report.widened", "report.unknown", "report.mismatch"} {
+	for _, counter := range []string{"report.held", "report.widened", "report.unknown", "report.kind_changed"} {
 		if strings.Contains(copyArm, counter) {
 			t.Errorf("R16: a `copy` entry moves %s:\n%s", counter, copyArm)
 		}
@@ -392,7 +395,7 @@ func t05C3(t *testing.T) {
 	t04Has(t, text, "let held = raw.clamp(0, p.aux as i32);",
 		"C3 the length is clamped to the plan's cap")
 	t04Has(t, text, "if held != raw {", "C3 the clamp counts when it fires")
-	t04Has(t, text, "report.oor += 1;", "C3 the clamp counts once")
+	t04Has(t, text, "report.held += 1;", "C3 the clamp counts once")
 	t04Has(t, runtime, "let unit = if me.kind == 33 { 2u32 } else { 1u32 };",
 		"C3 a wide text's unit is two bytes")
 	t04Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),",

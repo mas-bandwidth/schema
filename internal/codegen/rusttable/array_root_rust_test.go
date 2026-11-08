@@ -16,10 +16,10 @@ import (
 )
 
 // Array-root text is an array in every by-value position, while wire and cook
-// remain unchanged. Wrong top-level shapes are named damage; nested ones are
-// recoverable kind mismatches (§16.10).
+// remain unchanged (§16.10). STRICT-ONLY (docs/plans/strict-only.md): a wrong
+// shape anywhere refuses the whole read, and only the verdict is compared with
+// the engine; why it refused is per-language diagnostic detail.
 func TestRustArrayRootNative(t *testing.T) {
-	t.Skip("layer 4 (rust): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (array-root JSON closure and cook)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/array-root/closure")
@@ -32,9 +32,7 @@ func TestRustArrayRootNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cases []struct {
-		Root, Text, Reason string
-		Mismatch, Clamped  int
-		Malformed          bool
+		Root, Text string
 	}
 	if err := json.Unmarshal(data, &cases); err != nil {
 		t.Fatal(err)
@@ -50,20 +48,11 @@ func TestRustArrayRootNative(t *testing.T) {
 		value := m.New(u.Tables[tc.Root])
 		var report tabletext.Report
 		accepted := m.Read(value, []byte(tc.Text), &report)
-		if accepted == tc.Malformed || accepted == report.Refused {
-			t.Fatalf("neutral corpus case %d disagrees with explicit SPEC outcome: accepted=%t report=%+v", i, accepted, report)
-		}
-		reason := "none"
-		if strings.HasPrefix(report.Reason, "json_root_not_array:") {
-			reason = "json_root_not_array"
-		}
 		fmt.Fprintf(&body, `{
 let mut report=TableReport::default();
 let result=%s(%q,&mut report);
-assert_eq!((result.is_some(),report.mismatch,report.oor,report.damaged),(%t,%d,%d,%t),"array-root case %d");
-assert_eq!(report.reason.name(),%q,"array-root reason %d");
-`, fn(tc.Root, "from_json"), tc.Text, accepted, tc.Mismatch, tc.Clamped, tc.Malformed, i, reason, i)
-		fmt.Fprintf(&body, "assert_eq!(report.text_error,%q,\"array-root diagnostic %d\");\n", report.Reason, i)
+assert_eq!(result.is_some(),%t,"array-root verdict %d: {:?}",report);
+`, fn(tc.Root, "from_json"), tc.Text, accepted, i)
 		if accepted {
 			wire, err := tablewire.Encode(m, value)
 			if err != nil {

@@ -10,9 +10,9 @@ package rusttable
 // compiled plan (VNEW reader, VOLD in its lineage) and the identity plan (VOLD
 // reader on its own hash).
 //
-// `clamped` is `== 1` and never `>= 1`: a leg that counts the tag in the plan's
-// op AND again in the decode bounds lands 2, and the looser read is exactly what
-// this row exists to catch.
+// STRICT-ONLY (docs/plans/strict-only.md): the forged tag refuses the whole
+// batch as out_of_range on BOTH plans; a plan that lands None silently instead
+// reads the file, which is exactly what this row exists to catch.
 //
 // MEASURED 2026-09-19 on the gate rig at 380f1cad, one leg at a time, each edit
 // counted to exactly 1 and each file restored and proved restored: the union tag
@@ -21,7 +21,7 @@ package rusttable
 // ENUM ordinal, a separate site; dart's compiled-plan test reads only the
 // compiled half. The identity half is what nothing guarded.
 //
-// BOTH HALVES ASSERT `clampedOnce` NOW, AND THAT IS schema#1254 CLOSED ON THIS
+// BOTH HALVES ASSERT THE REFUSAL NOW, AND THAT IS schema#1254 CLOSED ON THIS
 // LEG. Over these same forged bytes the compiled plan used to count ZERO where
 // the identity plan counted ONE: the compiled plan's arms are guarded consts, a
 // forged 9 matched no guard, and the tag lane was left to the PREFILL over a
@@ -84,49 +84,23 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// clampedOnce is `== 1` and never `>= 1`: a leg that counts the tag in the
-	// plan's op AND again in the decode bounds lands 2, and the looser read is
-	// exactly what this row exists to catch.
-	clampedOnce := `    assert_eq!(
-        report.oor, 1,
-        "the bounds pass counts the forged tag EXACTLY once, never twice: {:?}", report
-    );`
-
-	body := func(clamped string) string {
+	body := func() string {
 		return fmt.Sprintf(`    let data = std::fs::read(%[1]q).expect("the forged hostile_union_append.bin");
     let mut values = vec![ROWTYPE::default(); 8];
     let mut plan = vec![TableFixedEntry::default(); 4096];
     let mut remap = vec![0u16; 4096];
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    let n = n.unwrap_or_else(|| panic!(
-        "the forged tag is not a refusal: {} {:?}", report.reason.name(), report
-    ));
-    assert!(n == 1, "the forged file reads one record, not {n}");
+    // STRICT-ONLY (docs/plans/strict-only.md): a value past its bound refuses
+    // the whole batch as out_of_range; nothing lands and no counter moves.
+    assert!(n.is_none(), "the forged file was read, not refused: {:?}", report);
     assert!(
-        !report.refused && report.reason == TableFixedReason::None,
-        "a forged tag is not a refusal: {:?}", report
+        report.refused && report.reason == TableFixedReason::OutOfRange,
+        "a forged value past its bound is an out_of_range refusal: {:?}", report
     );
-    assert!(!report.damaged, "a forged tag is not damage: {:?}", report);
-    assert!(
-        values[0].pick.tag() == 0,
-        "a tag past the arm set lands None (0), not {}", values[0].pick.tag()
-    );
-    assert!(
-        values[0].pick.tag() != 9,
-        "a tag past the arm set never lands the forged 9: {}", values[0].pick.tag()
-    );
-    assert!(
-        values[0].pick.tag() != 1,
-        "a tag past the arm set never lands the writer's 1: {}", values[0].pick.tag()
-    );
-    assert!(values[0].seq == 15, "the scalar after the union is untouched: {}", values[0].seq);
-%[2]s
-    assert!(
-        report.unknown == 0 && report.mismatch == 0 && report.widened == 0,
-        "no other counter moved: {:?}", report
-    );
-`, forged, clamped)
+    assert!(!report.damaged, "a forged value is not damage: {:?}", report);
+    assert!(report.unknown == 0 && report.widened == 0, "a refusal moved a counter: {:?}", report);
+`, forged)
 	}
 
 	probes := []versionProbe{
@@ -140,7 +114,7 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 /// this half asserts the LANDING and not the count (schema#1254, see header).
 #[test]
 fn v_union_tag_both_plans_compiled() {
-` + body(clampedOnce) + `}
+` + body() + `}
 `),
 		},
 		{
@@ -151,7 +125,7 @@ fn v_union_tag_both_plans_compiled() {
 /// emitter's union tag bound and this probe, and only this probe, goes red.
 #[test]
 fn v_union_tag_both_plans_identity() {
-` + body(clampedOnce) + `}
+` + body() + `}
 `),
 		},
 	}

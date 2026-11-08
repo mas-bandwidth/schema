@@ -588,7 +588,7 @@ fn check_f4() -> Result<(), String> {
         if r.reason.name() != "layout_malformed" || r.layout_hash != 0 {
             return Err(format!("cut={cut}: reason={} hash=0x{:x}", r.reason.name(), r.layout_hash));
         }
-        if r.unknown != 0 || r.mismatch != 0 || r.oor != 0 || r.widened != 0 {
+        if r.unknown != 0 || r.widened != 0 {
             return Err(format!("cut={cut}: non-zero counters on layout_malformed"));
         }
         if !is_all_poison(&dst[0]) {

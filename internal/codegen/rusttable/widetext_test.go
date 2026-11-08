@@ -243,7 +243,7 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 		if err := os.WriteFile(savedPath, saved, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		want := fmt.Sprintf("REPORT %s %d,%d,%d,%d,%d,%v SAVED OK", dc.name, rrep.Unknown, 0, rrep.Widened, 0, 0, false)
+		want := fmt.Sprintf("REPORT %s %d,%d,%v SAVED OK", dc.name, rrep.Unknown, rrep.Widened, false)
 		if !ok {
 			// THE ONE READ (docs/SPEC-TABLES.md §4, §6.5): the oracle refused,
 			// so the leg owes the refusal, and no counter or saved byte is
@@ -486,7 +486,7 @@ macro_rules! wide_report {
             (None, _) | (_, Some(_)) => println!("REPORT {} REFUSED", $case),
             (Some(v), None) => {
                 let again = table::$save(&v);
-                println!("REPORT {} {},{},{},{},{},{} SAVED {}", $case, r.unknown, r.mismatch, r.widened, r.oor, r.repeated, r.damaged, if again == saved { "OK" } else { "DIFF" });
+                println!("REPORT {} {},{},{} SAVED {}", $case, r.unknown, r.widened, r.damaged, if again == saved { "OK" } else { "DIFF" });
             }
         }
     }};
