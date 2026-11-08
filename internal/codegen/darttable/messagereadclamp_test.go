@@ -2,6 +2,7 @@ package darttable
 
 import (
 	"fmt"
+	"maps"
 	"math/big"
 	"strings"
 	"testing"
@@ -163,9 +164,7 @@ func storePurchaseClampMutant(t *testing.T, m *tabletext.Model) []byte {
 	// 7-bit span width — and the ranged reader must refuse it whole.
 	twinUnit := *m.Unit
 	tables := make(map[string]*ir.Struct, len(m.Unit.Tables))
-	for name, st := range m.Unit.Tables {
-		tables[name] = st
-	}
+	maps.Copy(tables, m.Unit.Tables)
 	st := *tables[root]
 	tables[root] = &st
 	fields := make([]*ir.Field, len(st.Fields))

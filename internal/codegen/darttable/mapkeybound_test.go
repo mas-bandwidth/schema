@@ -22,6 +22,7 @@ package darttable
 
 import (
 	"encoding/hex"
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -58,9 +59,7 @@ func TestWireMapStringKeyOverBoundDart(t *testing.T) {
 	// reader must refuse the over-bound key whole (length_over_bound).
 	twinUnit := *u
 	twinTables := make(map[string]*ir.Struct, len(u.Tables))
-	for name, st := range u.Tables {
-		twinTables[name] = st
-	}
+	maps.Copy(twinTables, u.Tables)
 	for name, st := range twinTables {
 		if st.MapEntryOf == "" {
 			continue
