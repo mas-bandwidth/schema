@@ -17,7 +17,7 @@ static partial class Program
         {
             RT.TableRetain store=new RT.TableRetain { Bytes=bytes,Capacity=16384,Ids=ids,IdCapacity=idsCapacity };
             var report=new RT.TableReport();
-            Check(RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref store,report)!=null && !report.Malformed && !report.Refused,"retention contract load");
+            Check(RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref store,report)!=null && !report.Damaged && !report.Refused,"retention contract load");
             Check(report.Retained==captured && report.RetainLost==lost && store.Count==remaining,"retention record lifetime "+report.Retained+","+report.RetainLost+","+store.Count);
             check?.Invoke(RT.Schema.NodeLoadBuilder((IntPtr)region));
             byte[] saved=new byte[RT.Schema.NodeMeasureRetain((IntPtr)region,ref store)];
@@ -52,7 +52,7 @@ static partial class Program
         var report=new Streamdemo.TableReport();
         try
         {
-            Check(Streamdemo.Schema.FeedLoadRetain((IntPtr)region,need,wire,ref retain,report)==null && report.Malformed,"damaged retained union arm discards the whole load");
+            Check(Streamdemo.Schema.FeedLoadRetain((IntPtr)region,need,wire,ref retain,report)==null && report.Damaged,"damaged retained union arm discards the whole load");
             Check(retain.Used==0 && retain.Count==0,"damaged retained union arm leaves the store empty");
         }
         finally { NativeMemory.AlignedFree(region); }
@@ -71,7 +71,7 @@ static partial class Program
         {
             var report=new Streamdemo.TableReport();
             Streamdemo.FeedRow* root=Streamdemo.Schema.FeedLoad((IntPtr)region,need,wire,report);
-            Check(root!=null && !report.Malformed,"large native graph loads");
+            Check(root!=null && !report.Damaged,"large native graph loads");
             byte[] saved=new byte[Streamdemo.Schema.FeedMeasure((IntPtr)region)];
             Check(Streamdemo.Schema.FeedSave((IntPtr)region,saved)==wire.Length && wire.AsSpan().SequenceEqual(saved),"native numbering grows and preserves sharing");
             Streamdemo.ChunkRow* last=&root->Frame.Chunk;

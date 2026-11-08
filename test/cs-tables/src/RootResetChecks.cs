@@ -45,9 +45,9 @@ static partial class Program
             Check(V1.Schema.TableWire.Load(value, type, bytes, report) == expected && report.Verdict == expected,
                 "root reset verdict: " + label);
             Check(resets == expectedResets && ResetTargetDefaults(value, a), "root resets and expected storage: " + label);
-            Check(report.Malformed == (expected == V1.Schema.TableWire.Verdict.Damaged || expected == V1.Schema.TableWire.Verdict.BodyStopped) &&
+            Check(report.Damaged == (expected == V1.Schema.TableWire.Verdict.Damaged || expected == V1.Schema.TableWire.Verdict.BodyStopped) &&
                 report.Refused == (expected == V1.Schema.TableWire.Verdict.Refused) &&
-                report.Unknown == 0 && report.KindMismatch == 0 && report.Clamped == 0 && report.Widened == 0 && report.Duplicate == 0,
+                report.Unknown == 0 && report.Widened == 0,
                 "root reset preserves report: " + label);
             Check(report.Reason == (expected == V1.Schema.TableWire.Verdict.Refused ?
                 (bytes[0] == 2 ? "message_form_as_file" : "newer_form") : null), "root reset refusal reason: " + label);
@@ -108,15 +108,14 @@ static partial class Program
             ReferenceEquals(value.Head, value.Alias) && ReferenceEquals(value.Head, value.Ground.Head) && value.Ground.Depth == 1 &&
             value.Tree?.Left != null && value.Tree.Right != null && ReferenceEquals(value.Tree.Right, value.Tree.Left.Left),
             "root and nested graph fields retain shared and diamond node identities");
-        Check(!report.Malformed && !report.Refused && report.Unknown == 0 && report.KindMismatch == 0 &&
-            report.Clamped == 0 && report.Widened == 0 && report.Duplicate == 0, "graph root reset preserves report");
+        Check(!report.Damaged && !report.Refused && report.Unknown == 0 && report.Widened == 0, "graph root reset preserves report");
         byte[] saved = new byte[golden.Length];
         Check(G.Schema.SceneSave(value, saved) == golden.Length && saved.AsSpan().SequenceEqual(golden),
             "graph root reset preserves exact shared golden bytes");
 
         Dirty(); report = new G.TableReport();
         Check(G.Schema.TableWire.Load(value, type, new byte[] { 2 }, report) == G.Schema.TableWire.Verdict.Refused && resets == 1 &&
-            report.Refused && report.Reason == "message_form_as_file" && !report.Malformed &&
+            report.Refused && report.Reason == "message_form_as_file" && !report.Damaged &&
             value.Head == null && value.Alias == null && value.Ground.Head == null && value.Ground.Depth == 0 &&
             value.Version == 1 && value.Meta.Build == 1 && value.LayersCount == 0 && value.Layers[1].Head == null,
             "graph early refusal resets stale pointers and nested state before parsing");
