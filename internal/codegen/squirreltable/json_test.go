@@ -75,9 +75,9 @@ local hostile = function(unit, mod, root, key) {
   local schema = dofile(unit + "/schema_module.nut", true);
   local T = schema.require(mod);
   local J = schema.require("schema_table_json");
-  local r = fresh();
-  J.fromJsonWalk(T, root, inputs[key + ".hostile"], r);
-  print("hostile " + key + " " + reportLine(r) + "\n");
+  // THE MANIFEST PINS THE VERDICT ONLY (docs/plans/strict-only.md decision 3)
+  local v = J.FromJson(T, root, inputs[key + ".hostile"], fresh());
+  print("hostile " + key + " " + (v == null ? "refused" : "read") + "\n");
 };
 `
 

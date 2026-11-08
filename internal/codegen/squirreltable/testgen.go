@@ -52,7 +52,7 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 		b.WriteString("local S = schema.require(\"schema_table_save\");\n")
 		b.WriteString("local TX = schema.require(\"schema_table_text\");\n")
 		b.WriteString("local R = schema.require(\"schema_table_refusal\");\n\n")
-		b.WriteString("local fresh = function() { return { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false }; };\n")
+		b.WriteString("local fresh = function() { return { unknown=0, mismatch=0, widened=0, oor=0, repeated=0, bodyDamaged=false, refused=false }; };\n")
 		b.WriteString("local sameBlob = function(a, b) {\n")
 		b.WriteString("  if (a == null || b == null || a.len() != b.len()) return false;\n")
 		b.WriteString("  for (local i = 0; i < a.len(); i++) if (a[i] != b[i]) return false;\n")

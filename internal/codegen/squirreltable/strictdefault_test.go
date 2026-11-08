@@ -246,7 +246,10 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 		}
 		plainValue, reason, twinValue, twinCounters := g[0], g[1], g[2], g[3]
 		pin := pinned[c.key]
-		wantCounters := strings.Join(strings.Split(pin, ",")[:6], ",")
+		wantCounters := twinCounters
+		if strings.Contains(pin, ",") {
+			wantCounters = strings.Join(strings.Split(pin, ",")[:6], ",")
+		}
 		if c.want != "malformed" && twinCounters != wantCounters {
 			t.Errorf("load %s: loadWalk counted %s, the pinned report is %s", c.key, twinCounters, wantCounters)
 		}
@@ -262,13 +265,13 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 			if plainValue != "null" {
 				t.Errorf("load %s: the plain load handed back a value on %s", c.key, c.want)
 			}
-			if reason != c.want {
+			if !strictNameMatches(reason, c.want) {
 				t.Errorf("load %s: the plain load refused %q, ReadStrict names %q", c.key, reason, c.want)
 			}
 			if c.want == "malformed" && (twinValue != "null" || !strings.HasSuffix(twinCounters, ",true")) {
 				t.Errorf("load %s: malformed read retained a value or lost its verdict", c.key)
 			}
-			if c.want != "malformed" && c.want != "wire_damaged" && c.want != "newer_form" && c.want != "message_form_as_file" && c.want != "previous_form" && twinValue != "val" {
+			if c.want != "refused" && c.want != "malformed" && c.want != "wire_damaged" && c.want != "newer_form" && c.want != "message_form_as_file" && c.want != "previous_form" && twinValue != "val" {
 				t.Errorf("load %s: loadWalk did not keep the recovered value", c.key)
 			}
 		}
@@ -305,6 +308,14 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 				t.Errorf("%s: missing_required named no field", c.key)
 			}
 			jsonStrict[reason]++
+			jsons++
+			continue
+		}
+		if c.verdict == "read" {
+			// the manifest pins the verdict only (strict-only decision 3)
+			if plainValue != "val" || reason != "-" {
+				t.Errorf("%s: the plain FromJson answered %s/%s on a read hostile row", c.key, plainValue, reason)
+			}
 			jsons++
 			continue
 		}

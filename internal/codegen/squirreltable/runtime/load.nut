@@ -500,6 +500,345 @@ local nodeScan = function(bytes, table, end, report) {
   return raw;
 };
 
+// THE WIRE-ALONE CHECK (docs/SPEC-TABLES.md §6.5, phase one): every
+// condition decidable from the wire alone, over EVERY byte of the file,
+// before any declaration-dependent decode. A port of
+// internal/tablewire/wirecheck.go (checkFile): framing, canonical LEB128,
+// bool bytes, well-formed text, the binary nesting bound, one field id per
+// body, one slot per keyed key, no bytes left inside an L, the node table read
+// whole, blob records, and the pointer graph (an index past the table, a
+// cycle, an unreachable record, a shared blob). A float that is not finite is
+// noted apart, so the decode can name its field (§3.3).
+//
+// wireCheck answers its state: fail is null, "damage", "count" (a collection
+// count past the int32 storage cap, §2.9) or "blob_shared"; nonFinite says a
+// float the wire carries is not finite.
+local WC_MAX_DEPTH = 128;
+local wcBody, wcPayload, wcContent;
+
+// canonical LEB128 at `at` inside `end`: the value with c.pos after it, or -1
+local wcLeb = function(c, at, end) {
+  local b = c.b;
+  local v = 0, shift = 0;
+  for (local i = 0; i < 10; i++) {
+    if (at >= end) return -1;
+    local x = b[at] & 0xff;
+    at++;
+    if (i == 9 && x > 1) return -1;
+    if (i == 9) v = 0x4000000000000000;
+    else v = v | ((x & 0x7f) << shift);
+    if ((x & 0x80) == 0) {
+      if (i > 0 && x == 0) return -1;
+      c.pos = at;
+      return v >= 0x4000000000000000 || v < 0 ? 0x4000000000000000 : v;
+    }
+    shift += 7;
+  }
+  return -1;
+};
+
+local wcDamage = function(c) {
+  if (c.fail == null) c.fail = "damage";
+  return false;
+};
+
+// well-formed UTF-8 with no zero byte (textValid in internal/tablewire/text.go)
+local utf8Ok = function(b, at, len) {
+  local i = 0;
+  while (i < len) {
+    local b0 = b[at + i] & 0xff;
+    if (b0 == 0) return false;
+    if (b0 < 0x80) { i++; continue; }
+    local need, cp;
+    if ((b0 & 0xe0) == 0xc0) { need = 1; cp = b0 & 0x1f; }
+    else if ((b0 & 0xf0) == 0xe0) { need = 2; cp = b0 & 0x0f; }
+    else if ((b0 & 0xf8) == 0xf0) { need = 3; cp = b0 & 0x07; }
+    else return false;
+    if (i + need >= len) return false;
+    for (local k = 1; k <= need; k++) {
+      local bb = b[at + i + k] & 0xff;
+      if ((bb & 0xc0) != 0x80) return false;
+      cp = (cp << 6) | (bb & 0x3f);
+    }
+    local min = need == 1 ? 0x80 : (need == 2 ? 0x800 : 0x10000);
+    if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return false;
+    i += 1 + need;
+  }
+  return true;
+};
+
+// a fixed-width value's bytes: a bool is 0 or 1, and a float is finite
+local wcScalar = function(c, at, kind) {
+  if (kind == 1) {
+    if ((c.b[at] & 0xff) > 1) return wcDamage(c);
+  } else if (kind == 10) {
+    if (!finiteF32(u32le(c.b, at))) c.nonFinite = true;
+  } else if (kind == 11) {
+    if (!finiteF64(u64At(c.b, at))) c.nonFinite = true;
+  }
+  return true;
+};
+
+// an array, keyed or map content's header: THE HEADER LIES INSIDE ITS OWN L
+// (§4). The count with c.pos after it and c.ek the element kind, or -1.
+local wcHeader = function(c, at, end) {
+  if (end - at < 2) { wcDamage(c); return -1; }
+  local count = wcLeb(c, at + 1, end);
+  if (count < 0) { wcDamage(c); return -1; }
+  if (count > 0x7fffffff) {
+    if (c.fail == null) c.fail = "count";
+    return -1;
+  }
+  c.ek = c.b[at] & 0xff;
+  return count;
+};
+
+local wcArray = function(c, at, end) {
+  local count = wcHeader(c, at, end);
+  if (count < 0) return false;
+  local ek = c.ek;
+  local off = c.pos;
+  for (local i = 0; i < count; i++) {
+    off = wcPayload(c, off, end, ek);
+    if (off < 0) return false;
+  }
+  if (off != end) return wcDamage(c);
+  return true;
+};
+
+local wcKeyed = function(c, at, end) {
+  local count = wcHeader(c, at, end);
+  if (count < 0) return false;
+  local ek = c.ek;
+  local off = c.pos;
+  local seen = {};
+  for (local i = 0; i < count; i++) {
+    local key = wcLeb(c, off, end);
+    if (key < 0 || key == 0 || key > c.ids.len()) return wcDamage(c);
+    if (key in seen) return wcDamage(c);
+    seen[key] <- true;
+    local n = wcLeb(c, c.pos, end);
+    if (n < 0 || n > end - c.pos) return wcDamage(c);
+    local s = c.pos;
+    off = s + n;
+    if (!wcContent(c, s, off, ek)) return false;
+  }
+  if (off != end) return wcDamage(c);
+  return true;
+};
+
+// a union payload in place: the arm reference, and for a set arm its kind
+// byte, its L and the content L frames. A STRUCTURAL ARM IS A LEVEL (§4).
+local wcUnion = function(c, at, end) {
+  local ref = wcLeb(c, at, end);
+  if (ref < 0) { wcDamage(c); return -1; }
+  local next = c.pos;
+  if (ref == 0) return next;
+  if (ref > c.ids.len() || next >= end) { wcDamage(c); return -1; }
+  local kind = c.b[next] & 0xff;
+  local n = wcLeb(c, next + 1, end);
+  if (n < 0 || n > end - c.pos) { wcDamage(c); return -1; }
+  local s = c.pos;
+  local e = s + n;
+  local structural = kind == 13 || kind == 14 || kind == 16 || kind == 15;
+  if (structural) {
+    if (c.depth >= WC_MAX_DEPTH) { wcDamage(c); return -1; }
+    c.depth++;
+  }
+  local ok = wcContent(c, s, e, kind);
+  if (structural) c.depth--;
+  return ok ? e : -1;
+};
+
+// one SELF-FRAMED payload of `kind` at `at`: the new offset, or -1
+wcPayload = function(c, at, end, kind) {
+  local w = kindWidth(kind);
+  if (w > 0) {
+    if (w > end - at) { wcDamage(c); return -1; }
+    return wcScalar(c, at, kind) ? at + w : -1;
+  }
+  switch (kind) {
+    case 17: {
+      local index = wcLeb(c, at, end);
+      if (index < 0) { wcDamage(c); return -1; }
+      c.edges.append(index);
+      return c.pos;
+    }
+    case 30: {
+      local ref = wcLeb(c, at, end);
+      if (ref < 0 || ref > c.ids.len()) { wcDamage(c); return -1; }
+      return c.pos;
+    }
+    case 15:
+      return wcUnion(c, at, end);
+    case 12: case 33: case 31: case 32: case 13: case 14: case 16: {
+      local n = wcLeb(c, at, end);
+      if (n < 0 || n > end - c.pos) { wcDamage(c); return -1; }
+      local s = c.pos;
+      return wcContent(c, s, s + n, kind) ? s + n : -1;
+    }
+  }
+  wcDamage(c);
+  return -1;
+};
+
+// a payload already framed by a length, consumed exactly
+wcContent = function(c, at, end, kind) {
+  local w = kindWidth(kind);
+  if (w > 0) {
+    if (end - at != w) return wcDamage(c);
+    return wcScalar(c, at, kind);
+  }
+  switch (kind) {
+    case 12:
+      return utf8Ok(c.b, at, end - at) ? true : wcDamage(c);
+    case 33:
+      if (((end - at) & 1) != 0 || wideDecode(c.b, at, end - at) == null) return wcDamage(c);
+      return true;
+    case 31:
+      return true; // opaque: the one kind whose meaning a reader may not know (§3)
+    case 32:
+      return end == at ? true : wcDamage(c);
+    case 13: case 14: case 16: {
+      // THE BINARY NESTING BOUND (§4): a framed body is one level deeper
+      if (c.depth >= WC_MAX_DEPTH) return wcDamage(c);
+      c.depth++;
+      local ok;
+      if (kind == 13) ok = wcBody(c, at, end, false);
+      else if (kind == 14) ok = wcArray(c, at, end);
+      else ok = wcKeyed(c, at, end);
+      c.depth--;
+      return ok;
+    }
+    case 17: case 30: case 15: {
+      local e = wcPayload(c, at, end, kind);
+      if (e < 0) return false;
+      return e == end ? true : wcDamage(c);
+    }
+  }
+  return wcDamage(c);
+};
+
+// one table body that ends with its terminator as its LAST byte; `root`
+// admits the node table's reserved id, whose extent is kept on c.table
+wcBody = function(c, at, end, root) {
+  local seen = {};
+  for (;;) {
+    local ref = wcLeb(c, at, end);
+    if (ref < 0) return wcDamage(c);
+    at = c.pos;
+    if (ref == 0) return at == end ? true : wcDamage(c);
+    if (ref > c.ids.len()) return wcDamage(c);
+    local id = c.ids[ref - 1];
+    if (id in seen) return wcDamage(c);
+    seen[id] <- true;
+    if (at >= end) return wcDamage(c);
+    local kind = c.b[at] & 0xff;
+    at++;
+    if (id == BUILD_VERSION_ID || id == MESSAGE_VOCABULARY_ID) {
+      if (!root || !c.announcement) return wcDamage(c);
+    } else if (id == NODE_TABLE_ID) {
+      if (!root || kind != 12) return wcDamage(c);
+      local n = wcLeb(c, at, end);
+      if (n < 0 || n > end - c.pos) return wcDamage(c);
+      c.table = [c.pos, c.pos + n];
+      at = c.pos + n;
+      continue;
+    }
+    at = wcPayload(c, at, end, kind);
+    if (at < 0) return false;
+  }
+};
+
+// the pointer graph: node 0 is the root, node k is record k - 1 (wire index
+// k + 1). Every pointer names null, the root or a record; a walk from the
+// root that meets a node whose descent is still open is a cycle; a record the
+// walk never enters is unreachable; a blob record named twice is blob_shared.
+local wcGraph = function(c, children, blobs) {
+  local n = children.len();
+  local names = array(n, 0);
+  foreach (out in children) {
+    foreach (index in out) {
+      if (index == 0) continue;
+      if (index - 1 >= n) return wcDamage(c);
+      names[index - 1]++;
+    }
+  }
+  foreach (k, blobRec in blobs) {
+    if (blobRec && names[k + 1] > 1) {
+      if (c.fail == null) c.fail = "blob_shared";
+      return false;
+    }
+  }
+  // 0 unvisited, 1 open, 2 closed
+  local mark = array(n, 0);
+  local stackNode = [0], stackNext = [0];
+  mark[0] = 1;
+  while (stackNode.len() > 0) {
+    local top = stackNode.len() - 1;
+    local node = stackNode[top];
+    local out = children[node];
+    local next = stackNext[top];
+    if (next == out.len()) {
+      mark[node] = 2;
+      stackNode.pop();
+      stackNext.pop();
+      continue;
+    }
+    local index = out[next];
+    stackNext[top] = next + 1;
+    if (index == 0) continue;
+    local t = index - 1;
+    if (mark[t] == 1) return wcDamage(c);
+    if (mark[t] == 2) continue;
+    mark[t] = 1;
+    stackNode.append(t);
+    stackNext.append(0);
+  }
+  for (local k = 1; k < n; k++) {
+    if (mark[k] == 0) return wcDamage(c);
+  }
+  return true;
+};
+
+// checkFile over the root body bytes[at, end) and the id table `ids`
+local wireCheck = function(b, at, end, ids, announcement) {
+  local c = { b = b, ids = ids, depth = 0, fail = null, nonFinite = false,
+    edges = [], table = null, pos = 0, ek = 0, announcement = announcement };
+  if (!wcBody(c, at, end, true)) return c;
+  local children = [c.edges];
+  local blobs = [];
+  if (c.table != null) {
+    local te = c.table[1];
+    local declared = wcLeb(c, c.table[0], te);
+    if (declared < 0) { wcDamage(c); return c; }
+    local off = c.pos;
+    local recs = [];
+    while (off < te) {
+      local ref = wcLeb(c, off, te);
+      if (ref < 0 || ref == 0 || ref > ids.len()) { wcDamage(c); return c; }
+      local len = wcLeb(c, c.pos, te);
+      if (len < 0 || len > te - c.pos) { wcDamage(c); return c; }
+      recs.append([ids[ref - 1], c.pos, c.pos + len]);
+      off = c.pos + len;
+    }
+    if (off != te || declared != recs.len()) { wcDamage(c); return c; }
+    foreach (rec in recs) {
+      c.edges = [];
+      if (rec[0] == STRING_BLOB_ID || rec[0] == BYTES_BLOB_ID) {
+        if (rec[0] == STRING_BLOB_ID && !utf8Ok(b, rec[1], rec[2] - rec[1])) { wcDamage(c); return c; }
+        blobs.append(true);
+      } else {
+        if (!wcBody(c, rec[1], rec[2], false)) return c;
+        blobs.append(false);
+      }
+      children.append(c.edges);
+    }
+  }
+  wcGraph(c, children, blobs);
+  return c;
+};
+
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
 local tableDesc = function(T, name) { return T.Descriptors[name]; };
 
@@ -521,14 +860,15 @@ local guardHolds = function(fd, v) {
 // ONE BODY (docs/SPEC-TABLES.md §3, §4): fields by id in any order, a field
 // this table cannot name skipped by its kind and counted unknown, a kind that
 // widens decoded at its own width and counted widened, any other kind a kind
-// mismatch skipped whole. A repeated id is read again and the last wins,
-// silently: repeated is never raised for a field id (§4). At the body's
+// mismatch skipped whole. A field id met twice in one body, known or not, is
+// damage (docs/plans/strict-only.md decision 5; tablewire wirecheck). At the body's
 // terminator every `| required` field the wire did not carry, and whose guard
 // holds, refuses the record: report.bodyDamaged and the field, whole at any
 // depth (docs/SPEC-TABLES.md §2.3).
 bodyRead = function(c, r, T, table, v, report, st, nested) {
   if (report.countRefusal) return false;
   local carried = {};
+  local idsSeen = {};
   for (;;) {
     local ref = leb(r);
     if (r.bad) { report.bodyDamaged = true; return false; }
@@ -546,6 +886,8 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
     if (r.at >= r.end) { report.bodyDamaged = true; return false; }
     local kind = u8(r);
     local id = table[ref - 1];
+    if (id in idsSeen) { report.bodyDamaged = true; return false; }
+    idsSeen[id] <- true;
     if (id == BUILD_VERSION_ID || id == MESSAGE_VOCABULARY_ID) {
       report.bodyDamaged = true;
       return false;
@@ -577,9 +919,6 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
     }
     local fd = c.byId[id];
     carried[fd.member] <- true;
-    // a field id met again in one body is read again and the last wins; it
-    // is not a `repeated`, which is a MAP KEY met twice (docs/SPEC-TABLES.md
-    // §4, §2.8), and this target carries no map
     if (kind != fd.kind) {
       if (widens(kind, fd.kind)) {
         local x = readPrim(r, kind, report);
@@ -824,25 +1163,15 @@ readMapField = function(fd, r, T, table, v, report, st) {
   if (r.bad || r.at + L > r.end) { report.bodyDamaged = true; return false; }
   local end = r.at + L;
   local empty = [];
-  if (L < 2) {
-    // a body shorter than its own header is inert (docs/SPEC-TABLES.md §3):
-    // the field keeps the value it has, and a repeat replaces nothing
-    r.at = end;
-    return true;
-  }
-  // THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is (the
-  // engine's mapField and subTo; docs/SPEC-TABLES.md §2.8, §3): a count that
-  // runs past the map's L still reads, the element kind is judged, and the
-  // entries walk an empty body
-  local elemKind = u8(r);
-  local count = leb(r);
-  if (r.bad) {
-    r.bad = false;
-    report.bodyDamaged = true;
-    r.at = end;
-    return true;
-  }
-  local sub = newReader(r.b, r.at, end < r.at ? r.at : end);
+  // THE MAP'S HEADER LIES INSIDE ITS OWN L (docs/plans/strict-only.md
+  // decision 7; tablewire wirecheck arrayHeader): a body too short for it, or
+  // a count that crosses it, is damage
+  if (L < 2) { report.bodyDamaged = true; return false; }
+  local hr = newReader(r.b, r.at, end);
+  local elemKind = u8(hr);
+  local count = leb(hr);
+  if (hr.bad) { report.bodyDamaged = true; return false; }
+  local sub = newReader(r.b, hr.at, end);
   if (elemKind != 13) {
     // a foreign ELEMENT kind is the ordinary array kind mismatch (§2.8, §4);
     // a skipped repeat keeps the earlier occurrence
@@ -908,16 +1237,18 @@ readMapField = function(fd, r, T, table, v, report, st) {
       break;
     }
     if (cmp == 0) {
-      // EQUAL: a DUPLICATE; last wins WHOLE and the count excludes it (§2.8)
-      report.repeated = report.repeated + 1;
-      arr[arr.len() - 1] = ent;
-    } else {
-      arr.append(ent);
-      haveLast = true;
-      last = key;
+      // EQUAL: a REPEATED KEY is damage (docs/plans/strict-only.md decision 5)
+      foreach (k, x in before) report[k] = x;
+      report.bodyDamaged = true;
+      break;
     }
+    arr.append(ent);
+    haveLast = true;
+    last = key;
     sub.at += el;
   }
+  // no byte is left inside the map's L after its entries (decision 7)
+  if (!report.bodyDamaged && arr.len() == count && sub.at != end) { report.bodyDamaged = true; return false; }
   v[fd.member] = arr;
   r.at = end;
   return true;
@@ -935,20 +1266,17 @@ readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {
   if (r.bad || r.at + L > r.end) { report.bodyDamaged = true; return false; }
   local end = r.at + L;
   local sel = ARRAY_SELECTED;
-  if (L >= 2) {
-    local ek = u8(r);
-    local count = leb(r);
-    if (r.bad) {
-      // a damaged count is framing damage inside the field's own L: counted,
-      // and the walk goes on past it
-      r.bad = false;
-      report.bodyDamaged = true;
-      sel = ARRAY_DAMAGED;
-    } else {
-      local sub = newReader(r.b, r.at, end < r.at ? r.at : end);
-      sel = readArrayElems(fd, sub, ek, count, T, table, v, report, st);
-    }
-  }
+  // THE HEADER LIES INSIDE ITS OWN L, and no byte is left inside the L after
+  // the elements (docs/plans/strict-only.md decision 7; tablewire wirecheck
+  // arrayHeader and array): either is damage, refused whole
+  if (L < 2) { report.bodyDamaged = true; return false; }
+  local hr = newReader(r.b, r.at, end);
+  local ek = u8(hr);
+  local count = leb(hr);
+  if (hr.bad) { report.bodyDamaged = true; return false; }
+  local sub = newReader(r.b, hr.at, end);
+  sel = readArrayElems(fd, sub, ek, count, T, table, v, report, st);
+  if (sel == ARRAY_SELECTED && sub.at != end) { report.bodyDamaged = true; return false; }
   r.at = end;
   if (selection != null) selection.selected = sel == ARRAY_SELECTED;
   if (fd.optional && sel != ARRAY_FOREIGN) v[fd.member + "Present"] = true;
@@ -1027,9 +1355,13 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
     // the wire and keeps the constructor's born value.
     out = v[fd.member];
     if (out == null || out.len() == 0) out = array(fd.bound, fd.elem.def);
+    local refsSeen = {};
     for (local i = 0; i < count; i++) {
       local keyRef = leb(r);
       if (r.bad || keyRef == 0 || keyRef > table.len()) { report.bodyDamaged = true; break; }
+      // THE SAME KEYED SLOT TWICE in one keyed body is damage (decision 5)
+      if (keyRef in refsSeen) { report.bodyDamaged = true; break; }
+      refsSeen[keyRef] <- true;
       local id = table[keyRef - 1];
       local slot = -1;
       if (fd.keyvariants != null) {
@@ -1757,6 +2089,51 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
     // without requiring this walk API to hand it a partial record.
     local frame = ::getstackinfos(2);
     if (frame != null && ("_strictFrame" in frame.locals)) frame.locals.store.walkDamaged = true;
+    return null;
+  }
+  // THE WIRE-ALONE CHECK (docs/SPEC-TABLES.md §6.5), over EVERY byte of the
+  // file, after the walk accepted it (decodeWalk's wire-last order): a field
+  // this reader cannot name, a node record the root never reaches and the
+  // bytes the walk skips are held to the same wire rules as the ones it
+  // decodes. Damage is the file's wire_damaged; a count past the storage cap
+  // and a shared blob refuse by name; a non-finite float the walk could not
+  // name refuses last.
+  // A read the walk already refuses (a refusing counter moved, a required
+  // field missing) answers the walk's own name and field.
+  local walkRefused = report.oor > 0 || report.mismatch > 0 || report.missingRequired;
+  local check = walkRefused ? { fail = null, nonFinite = false } : wireCheck(bytes, 1, end, table, false);
+  if (check.fail == "damage") { report.bodyDamaged = true; return null; }
+  if (check.fail == "count") {
+    report.countRefusal = true;
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.reason <- "count_over_extent_cap";
+    }
+    return null;
+  }
+  if (check.fail == "blob_shared") {
+    if (report.getdelegate() == null) {
+      report.sharedBlob <- 1;
+      report.reason <- "blob_shared";
+      return null;
+    }
+    local shared = ::getstackinfos(2);
+    if (shared != null && ("_strictFrame" in shared.locals)) {
+      shared.locals.report.sharedBlob <- 1;
+      shared.locals.report.reason = "blob_shared";
+    }
+    return null;
+  }
+  if (check.nonFinite) {
+    local unnamed = "a float the wire carries";
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.nonFiniteFloat = unnamed;
+      report.reason <- "non_finite_float: " + unnamed;
+      return null;
+    }
+    local nf = ::getstackinfos(2);
+    if (nf != null && ("_strictFrame" in nf.locals)) nf.locals.report.nonFiniteFloat <- unnamed;
     return null;
   }
   if (report.getdelegate() == null) {

@@ -3,6 +3,7 @@ package squirreltable_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -30,11 +31,18 @@ func TestStrictOnlySquirrelNoTolerantEntry(t *testing.T) {
 		"blobShared",
 		"duplicate",
 		"Duplicate",
-		".malformed",
-		"malformed =",
-		"malformed <-",
 	}
+	// the binary malformed verdict on a report, as a member: a reason NAME that
+	// ends in malformed (layout_malformed, docs/FIXED-FORM-ALGORITHM.md) is not it
+	malformedMember := regexp.MustCompile(`(\.malformed\b|(^|[^_A-Za-z"])malformed\s*(=|<-))`)
+	// the hand-editable text form's spec name for a key given twice
+	// (docs/SPEC-TABLES.md §16.9.4) is not the retired counter
+	specNames := strings.NewReplacer("text_duplicate_key", "", "DUPLICATE_KEY", "")
 	check := func(where, text string) {
+		if m := malformedMember.FindString(text); m != "" {
+			t.Errorf("%s: retired strict-only malformed verdict %q present", where, m)
+		}
+		text = specNames.Replace(text)
 		for _, bad := range retired {
 			if strings.Contains(text, bad) {
 				t.Errorf("%s: retired strict-only name %q present", where, bad)

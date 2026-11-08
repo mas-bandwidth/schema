@@ -109,6 +109,8 @@ func TestSquirrelCountRefusalStopsTheBuilderNegativeControl(t *testing.T) {
 		t.Fatalf("the root body's skip appears %d times in the load runtime, want exactly once", n)
 	}
 	patched = strings.Replace(patched, skip, "bodyRead(", 1)
+	// and the wire-alone check, which refuses the same count after the walk
+	patched = withoutWireCheck(t, patched)
 	got, want := runCountStop(t, patched)
 	if got == want {
 		t.Fatalf("with the read going on past the count refusal, the pin still answers %s", got)

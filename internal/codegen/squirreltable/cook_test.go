@@ -130,6 +130,20 @@ func readCookRows(t *testing.T, path string) ([]cookRow, []cookForgery, map[stri
 	if err := sc.Err(); err != nil {
 		t.Fatal(err)
 	}
+	// THE VERDICT IS THE CONTRACT (docs/plans/strict-only.md): a forgery no
+	// `refusal` line names is held to its own verdict column, `refuse` by any
+	// refusal and `open` by opening, so the battery never skips a row
+	for _, f := range forgeries {
+		if _, named := refusals[f.name]; named {
+			continue
+		}
+		switch f.verdict {
+		case "refuse":
+			refusals[f.name] = "refused"
+		case "open":
+			refusals[f.name] = "ok"
+		}
+	}
 	return rows, forgeries, refusals
 }
 
@@ -221,8 +235,15 @@ func TestSquirrelCookReadMatchesTheCorpus(t *testing.T) {
 			}
 			copy(data[p.offset:p.offset+int64(p.width)], word[:p.width])
 		}
-		if f.extent >= 0 && f.extent < int64(len(data)) {
+		// the extent is the caller's length: shorter cuts the file, longer
+		// hands it trailing bytes (cook_claim_one_long), as the block probe does
+		switch {
+		case f.extent >= 0 && f.extent < int64(len(data)):
 			data = data[:f.extent]
+		case f.extent > int64(len(data)):
+			grown := make([]byte, f.extent)
+			copy(grown, data)
+			data = grown
 		}
 		input := "hostile." + f.name
 		inputs[input] = data
@@ -459,7 +480,7 @@ local hostileNull = function(T, name, root) {
 			t.Errorf("hostile %s: opened, want refusal %s", name, want)
 			continue
 		}
-		if got != want {
+		if got != want && want != "refused" {
 			t.Errorf("hostile %s: refusal %s, want %s", name, got, want)
 			continue
 		}

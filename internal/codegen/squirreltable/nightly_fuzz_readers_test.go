@@ -39,8 +39,8 @@ local run = function(unit, mod, root, key) {
 `
 
 const textJSONFuzzPrelude = `local inputs = dofile("inputs.nut", true);
-local fresh = function() { return { unknown=0, kindMismatch=0, widened=0, clamped=0,
-  duplicate=0, malformed=false, refused=false }; };
+local fresh = function() { return { unknown=0, mismatch=0, widened=0, oor=0,
+  repeated=0, bodyDamaged=false, refused=false }; };
 local run = function(unit, mod, root, key, kind) {
   local schema = dofile(unit + "/schema_module.nut", true);
   local T = schema.require(mod);

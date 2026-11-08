@@ -45,7 +45,13 @@ func squirrelDamageProbe(t *testing.T, patchFile, anchor string) string {
 		if strings.Count(string(data), anchor) != 1 {
 			t.Fatalf("discard anchor in %s must occur once", patchFile)
 		}
-		writeFile(t, path, []byte(strings.Replace(string(data), anchor, "", 1)))
+		patched := strings.Replace(string(data), anchor, "", 1)
+		if strings.HasSuffix(patchFile, "schema_table_load.nut") {
+			// the wire-alone check refuses the same damage after the walk:
+			// the control takes both defences out
+			patched = withoutWireCheck(t, patched)
+		}
+		writeFile(t, path, []byte(patched))
 	}
 	program := fmt.Sprintf(`local I=dofile("inputs.nut",true);
 local S=dofile("messages/schema_module.nut",true); local T=S.require(%q); local L=S.require("schema_table_load");

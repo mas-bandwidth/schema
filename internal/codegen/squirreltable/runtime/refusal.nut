@@ -345,6 +345,6 @@ _M.ReadStrictNames <- {
   non_finite_float = true, out_of_range = true, kind_mismatch = true, count_over_extent_cap = true,
   missing_required = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
-  layout_bodyDamaged = true, layout_record_too_large = true, no_layout = true,
+  layout_malformed = true, layout_record_too_large = true, no_layout = true,
   plan_too_large = true
 };

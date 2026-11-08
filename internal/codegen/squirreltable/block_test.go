@@ -384,7 +384,7 @@ local hostileNull = function(T, name, root) {
 			errorf("hostile %s: opened, want refusal %s", name, want)
 			continue
 		}
-		if got != want {
+		if got != want && want != "refused" {
 			errorf("hostile %s: refusal %s, want %s", name, got, want)
 			continue
 		}

@@ -18,6 +18,8 @@ package squirreltable
 import (
 	"encoding/hex"
 	"fmt"
+	"math/big"
+	"strconv"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -82,15 +84,22 @@ func fixedTable(m *Module, st *ir.Struct) {
 	}
 	m.Printf("_M.%sFixedMeasure <- function(count = 1) { return count < 0 ? -1 : %d + count * %d; };\n", st.Name, int64(20+len(layout))+trailer, rec)
 
+	// EVERY READ SELECTS BY HASH AND HOLDS THE LAYOUT TO ITS BYTES
+	// (docs/FIXED-FORM-ALGORITHM.md §5.3; strict-only): a build with no lineage
+	// lock reads its own entry only, so a header whose hash is not this
+	// table's, or whose layout is not this table's byte for byte, refuses
+	// rather than being parsed loosely.
 	lineage := lineageOf(m.Unit)
-	strict := lineage != nil
-	if strict {
-		entries, floor := generateLineage(lineage[st.Name], FixedLineageEntry{
-			Wire: hash, Layout: layout, Record: rec,
-		})
-		emitFixedPlans(m, st, entries, hash)
-		emitFixedLineage(m, st, entries, floor)
+	var handed []FixedLineageEntry
+	if lineage != nil {
+		handed = lineage[st.Name]
 	}
+	strict := true
+	entries, floor := generateLineage(handed, FixedLineageEntry{
+		Wire: hash, Layout: layout, Record: rec,
+	})
+	emitFixedPlans(m, st, entries, hash)
+	emitFixedLineage(m, st, entries, floor)
 
 	emitFixedWrite(m, st, w)
 	emitFixedDeprecatedCheck(m, st)
@@ -626,6 +635,8 @@ func emitFixedDecodeBody(m *Module, st *ir.Struct) {
 func fixedEmitDecodeField(m *Module, f *ir.Field, at int64, expr, ind string) {
 	if f.Type.Optional {
 		m.Printf("%sif (at + %d <= lim) {\n", ind, at+1)
+		// a present byte other than 0 or 1 is damage (§3.4)
+		m.Printf("%s  if (b[at + %d] > 1) return \"wire_damaged\";\n", ind, at)
 		m.Printf("%s  %sPresent = b[at + %d] != 0;\n", ind, expr, at)
 		m.Printf("%s  if (%sPresent) {\n", ind, expr)
 		fixedEmitDecodePayload(m, f, at+1, expr, ind+"    ")
@@ -689,7 +700,9 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 		if r, ok := f.Type.Ref.(*ir.Union); ok {
 			tag := fixedUnionTagBytes(r)
 			m.Printf("%s%s.Type = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, tag)
-			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) %s.Type = 0;\n", ind, expr, expr, len(r.Variants), expr)
+			// A FORGED TAG, outside this reader's own set, refuses
+			// (docs/FIXED-FORM-ALGORITHM.md §5.4; tablewire fixed.go element)
+			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) return \"out_of_range\";\n", ind, expr, expr, len(r.Variants))
 			for i, v := range r.Variants {
 				if v.F == nil {
 					continue
@@ -736,6 +749,8 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 			}
 			m.Printf("%s{\n", ind)
 			m.Printf("%s  local ev = _rt_fixed.getu(b, at + %s, %d);\n", ind, off, fixedStorageBytes(f.Type))
+			// A FORGED ORDINAL refuses (docs/FIXED-FORM-ALGORITHM.md §5.4)
+			m.Printf("%s  if (ev < 0 || ev > %d) return \"out_of_range\";\n", ind, len(e.Variants))
 			m.Printf("%s  local val = null;\n", ind)
 			for i, v := range e.Variants {
 				kw := "if"
@@ -768,18 +783,90 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 		// (docs/SPEC-TABLES.md §3.3): the load answers non_finite_float
 		m.Printf("%s{\n%s  local x = _rt_fixed.%s(b, at + %s);\n", ind, ind, get, off)
 		m.Printf("%s  if (x == null) { _M.FixedField <- %s; return \"non_finite_float\"; }\n", ind, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
+		fixedEmitRangeGuard(m, f, "x", ind+"  ", fixedStorageBytes(f.Type))
 		m.Printf("%s  %s = x;\n%s}\n", ind, expr, ind)
 		return
 	}
 	if f.Type.Kind == ir.TBool {
+		// a bool byte other than 0 or 1 is damage (§3.4; tablewire fixed.go)
+		m.Printf("%sif (b[at + %s] > 1) return \"wire_damaged\";\n", ind, off)
 		m.Printf("%s%s = b[at + %s] != 0;\n", ind, expr, off)
 		return
 	}
 	if (f.Type.Kind == ir.TInt && !f.Type.Signed) || (f.Type.Kind == ir.TFixed && !f.Type.Signed) || f.Type.Kind == ir.TBits || (f.Type.Kind == ir.TNamed && f.Type.Ref != nil) {
 		m.Printf("%s%s = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, fixedStorageBytes(f.Type))
+		fixedEmitRangeGuard(m, f, expr, ind, fixedStorageBytes(f.Type))
 		return
 	}
 	m.Printf("%s%s = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, fixedStorageBytes(f.Type))
+	fixedEmitRangeGuard(m, f, expr, ind, fixedStorageBytes(f.Type))
+}
+
+// fixedEmitRangeGuard emits the declared-range refusal for one decoded leaf,
+// the Go engine's scalarAt rule over the fixed form's storage bytes
+// (docs/SPEC-TABLES.md §3.3, §4; docs/plans/strict-only.md: a value out of
+// range refuses, never clamps): a compressed float32 outside [min, max], an
+// integer or fixed-point raw value outside its declared range, and a bits(N)
+// value wider than N bits each answer out_of_range. A compressed float's -0
+// lands as +0. An end the storage width already holds is not spelled.
+func fixedEmitRangeGuard(m *Module, f *ir.Field, expr, ind string, storage int64) {
+	if f.Type.Kind == ir.TFloat32 {
+		if f.HasFloatRange {
+			lo := strconv.FormatFloat(f.FMin, 'e', -1, 64)
+			hi := strconv.FormatFloat(f.FMax, 'e', -1, 64)
+			m.Printf("%sif (%s < %s || %s > %s) return \"out_of_range\";\n", ind, expr, lo, expr, hi)
+			m.Printf("%sif (%s == 0.0) %s = 0.0;\n", ind, expr, expr)
+		}
+		return
+	}
+	if f.Type.Kind == ir.TFloat64 || storage < 1 || storage > 8 {
+		return
+	}
+	if f.Type.Kind == ir.TNamed {
+		return
+	}
+	signed := ir.TableKindSigned(ir.TableScalarKind(f))
+	bits := uint(storage * 8)
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		var smin, smax *big.Int
+		if signed {
+			smin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), bits-1))
+			smax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), bits-1), big.NewInt(1))
+		} else {
+			smin = big.NewInt(0)
+			smax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), bits), big.NewInt(1))
+		}
+		var conds []string
+		if !signed && storage == 8 {
+			// a uint64 is a signed Squirrel integer: compare with the sign
+			// bit flipped, so the unsigned order is the signed one
+			flip := func(v *big.Int) string {
+				return strconv.FormatInt(int64(v.Uint64()^(uint64(1)<<63)), 10)
+			}
+			if lo.Cmp(smin) > 0 {
+				conds = append(conds, fmt.Sprintf("(%s ^ (1 << 63)) < %s", expr, flip(lo)))
+			}
+			if hi.Cmp(smax) < 0 {
+				conds = append(conds, fmt.Sprintf("(%s ^ (1 << 63)) > %s", expr, flip(hi)))
+			}
+		} else {
+			if lo.Cmp(smin) > 0 {
+				conds = append(conds, fmt.Sprintf("%s < %s", expr, lo.String()))
+			}
+			if hi.Cmp(smax) < 0 {
+				conds = append(conds, fmt.Sprintf("%s > %s", expr, hi.String()))
+			}
+		}
+		if len(conds) == 2 {
+			m.Printf("%sif (%s || %s) return \"out_of_range\";\n", ind, conds[0], conds[1])
+		} else if len(conds) == 1 {
+			m.Printf("%sif (%s) return \"out_of_range\";\n", ind, conds[0])
+		}
+	}
+	if f.Type.Kind == ir.TBits && uint(f.Type.Width) < bits {
+		mask := (uint64(1) << uint(f.Type.Width)) - 1
+		m.Printf("%sif (%s < 0 || %s > %d) return \"out_of_range\";\n", ind, expr, expr, mask)
+	}
 }
 
 func byteHex(b []byte) string {

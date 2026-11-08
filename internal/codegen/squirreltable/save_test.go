@@ -26,6 +26,10 @@ local run = function(unit, mod, root, key) {
     repeated = 0, bodyDamaged = false, refused = false
   };
   local v = L.loadWalk(T, root, inputs[key], report);
+  // a wire the reader refuses (a blob two slots name, docs/SPEC-TABLES.md
+  // §2.5) hands the writer nothing; its own refusal is pinned in
+  // blobshared_test.go
+  if (v == null) { print(key + " null -1\n"); return; }
   local b = S.save(T, root, v);
   local m = S.measure(T, root, v);
   if (b == null) { print(key + " null -1\n"); return; }

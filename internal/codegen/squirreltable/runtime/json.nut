@@ -233,7 +233,10 @@ local floatText = function(v, single) {
     if (digits >= high) return text;
     local back = tokenFloat(text);
     if (single) {
-      if (widenF32(narrowF32(back, 0)[0]) == v) return text;
+      // read back as a float32 READER reads it, rounded ONCE (parseF32): a
+      // decimal through a double and then to float32 can land on the other
+      // side of a float32 midpoint (text_float32_double_round)
+      if (parseF32(text)[0] == v) return text;
     } else if (back == v) {
       return text;
     }
@@ -1378,7 +1381,14 @@ local scanUnit = function(r) {
           if (low >= 0xdc00 && low <= 0xdfff) code = 0x10000 + ((high - 0xd800) << 10) + (low - 0xdc00);
           else r.p = mark;
         }
-        if (code >= 0xd800 && code <= 0xdfff) code = 0xfffd;
+        // A LONE OR OUT-OF-ORDER SURROGATE ESCAPE REFUSES (docs/plans/strict-only.md
+        // decision 9, §16.3): it names no code point, and a U+FFFD would make
+        // two texts one value
+        if (code >= 0xd800 && code <= 0xdfff) {
+          if (!("reason" in r.report) || r.report.reason == null) r.report.reason <- "malformed";
+          r.bad = true;
+          return null;
+        }
         return encodeUTF8(code);
       }
     }
@@ -1563,6 +1573,7 @@ skipContainer = function(r, close, depth) {
   if (depth > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local first = true;
+  local keys = null;
   for (;;) {
     local c = peek(r);
     if (c == close) { r.p++; return true; }
@@ -1572,6 +1583,11 @@ skipContainer = function(r, close, depth) {
       if (key == null) return false;
       if (peek(r) != ':') { r.bad = true; return false; }
       r.p++;
+      // A REPEATED KEY IS DAMAGE IN EVERY OBJECT OF THE TEXT, a skipped one
+      // included (decision 5, §16.2, §16.12; read.go skipContainer)
+      if (keys == null) keys = {};
+      if (key in keys) { r.bad = true; return false; }
+      keys[key] <- true;
       if (key.len() > 0 && key[0] == '&' && r.graph != null) {
         if (!first || !skippedAmpersand(r, key)) { r.bad = true; return false; }
         first = false;
@@ -1621,6 +1637,7 @@ readTable = function(T, c, r, v, depth) {
 // its reader scanned to see whether it was "&node".
 readKeys = function(T, c, r, v, depth, firstKey) {
   local seen = {};
+  local keysSeen = {};
   for (;;) {
     local key;
     if (firstKey != null) {
@@ -1638,12 +1655,15 @@ readKeys = function(T, c, r, v, depth, firstKey) {
     // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (§16.7): malformed among
     // the keys a reader places, never unknown
     if (key.len() > 0 && key[0] == '&') { r.bad = true; return false; }
+    // A REPEATED KEY, known or not, IS DAMAGE (decision 5, §16.2): no writer
+    // produces it, so the whole text refuses
+    if (key in keysSeen) { r.bad = true; return false; }
+    keysSeen[key] <- true;
     if (!(key in c.byKey)) {
       r.report.unknown++;
       if (!skipValue(r, depth + 1)) return false;
     } else {
       local fd = c.byKey[key];
-      if (fd.name in seen) r.report.repeated++;
       seen[fd.name] <- true;
       local shape = valueShape(r);
       if (shape == 'z' && takesNull(fd)) {
@@ -1906,7 +1926,6 @@ readKeyed = function(T, c, fd, r, v, depth) {
   local shape = elemShapeOf(T, e);
   local seen = {};
   local seenKeys = {};
-  local dupUnknown = false;
   for (;;) {
     local ch = peek(r);
     if (ch == '}') { r.p++; break; }
@@ -1921,13 +1940,14 @@ readKeyed = function(T, c, fd, r, v, depth) {
         if (fd.keyvariants[k][0] == key) { slot = k; break; }
       }
     }
+    // A REPEATED SLOT OR KEY IS DAMAGE (decision 5, §16.2)
+    if (key in seenKeys) { r.bad = true; return false; }
+    seenKeys[key] <- true;
     if (slot >= 0) {
-      if (slot in seen) r.report.repeated++;
+      if (slot in seen) { r.bad = true; return false; }
       seen[slot] <- true;
     }
     if (slot < 0) {
-      if (key in seenKeys) dupUnknown = true;
-      seenKeys[key] <- true;
       r.report.unknown++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (valueShape(r) != shape) {
@@ -1942,7 +1962,6 @@ readKeyed = function(T, c, fd, r, v, depth) {
     r.bad = true;
     return false;
   }
-  if (dupUnknown && r.report.repeated == 0) { r.bad = true; return false; }
   return true;
 };
 
@@ -2022,8 +2041,10 @@ readMap = function(T, c, fd, r, v, depth) {
       for (local i = 0; i < out.len(); i++) {
         if (mapKeyOrder(kd, out[i][kd.member], ent[kd.member]) == 0) { at = i; break; }
       }
-      if (at >= 0) { r.report.repeated++; out[at] = ent; }
-      else out.append(ent);
+      // A REPEATED MAP KEY, judged as the reader decodes it, IS DAMAGE
+      // (decisions 5 and 11, §2.8)
+      if (at >= 0) { r.bad = true; return false; }
+      out.append(ent);
     }
     ch = peek(r);
     if (ch == ',') { r.p++; continue; }
@@ -2403,9 +2424,28 @@ readUnion = function(T, u, r, holder, key, depth) {
 // instance holds what was placed before any stop; a text that is not JSON,
 // or whose labels do not resolve, is malformed. A VARIABLE root reads with
 // the label map; a fixed root has none, which is what makes "&node" a
-// refusal there (§16.7). This is the TOLERANT read: it keeps the recovered
-// value and its counters; the plain FromJson is the strict read (§6.5).
+// refusal there (§16.7). It keeps the walked value and its counters for the
+// strict FromJson below, which is the only read a caller is handed (§6.5).
+//
+// THE STACK IS GROWN ONCE BEFORE THE FIRST WALK. A text at the depth cap
+// (graph_chain_text, 128 levels) reads each byte through the blob's native
+// _get, and the interpreter cannot resize its stack while inside a
+// metamethod: a fresh VM whose stack has not yet grown that deep stops with
+// "stack overflow". One recursion as deep as the walk's, with no metamethod
+// in it, grows the stack first; it never shrinks, so later reads pay nothing.
+local stackGrown = false;
+local growStack;
+growStack = function(n) {
+  local a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0, a7 = 0;
+  local b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, b7 = 0;
+  local c0 = 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0, c6 = 0, c7 = 0;
+  if (n > 0) growStack(n - 1);
+};
 _M.fromJsonWalk <- function(T, rootName, text, report) {
+  if (!stackGrown) {
+    growStack(MAX_DEPTH * 4);
+    stackGrown = true;
+  }
   foreach (k in ["unknown", "mismatch", "widened", "oor", "repeated"]) {
     if (!(k in report)) report[k] <- 0;
   }

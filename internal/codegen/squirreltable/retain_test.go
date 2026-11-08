@@ -115,7 +115,7 @@ table Root { link *Child
 local schema = dofile("probe/schema_module.nut", true);
 local T = schema.require("ProbeTables");
 local R = schema.require("schema_table_retain");
-local rep = function() { return { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false }; };
+local rep = function() { return { unknown=0, mismatch=0, widened=0, oor=0, repeated=0, bodyDamaged=false, refused=false }; };
 local r = rep();
 local store = { capacity = 1048576, idCapacity = 1024 };
 local v = R.LoadRetain(T, "Root", I.wire, store, r);

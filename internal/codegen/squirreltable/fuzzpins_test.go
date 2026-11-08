@@ -229,7 +229,7 @@ func requireSquirrelDiscardWithDelegate(t *testing.T, dir, pkg, mod, root string
 	t.Helper()
 	program := fmt.Sprintf(`local I=dofile("inputs.nut",true);
 local S=dofile(%q,true); local T=S.require(%q); local L=S.require("schema_table_load");
-local report={unknown=0,kindMismatch=0,widened=0,clamped=0,duplicate=0,malformed=false,refused=false,countRefusal=false,missingRequired=false}; if(%t)report.setdelegate({}); local value=L.loadWalk(T,%q,I["case"],report);
+local report={unknown=0,mismatch=0,widened=0,oor=0,repeated=0,bodyDamaged=false,refused=false,countRefusal=false,missingRequired=false}; if(%t)report.setdelegate({}); local value=L.loadWalk(T,%q,I["case"],report);
 print(report.bodyDamaged && value==null ? "discarded" : "kept");`, pkg+"/schema_module.nut", mod, delegated, root)
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(program))
 	got := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": data})))

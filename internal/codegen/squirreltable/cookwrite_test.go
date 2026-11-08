@@ -18,7 +18,7 @@ import (
 // whether each half is byte-equal to the fixture test/cookgen pinned
 // (docs/SPEC-TABLES.md §7.6).
 const cookWritePrelude = `local inputs = dofile("inputs.nut", true);
-local run = function(mod, root, key, unit) {
+local run = function(mod, root, key, unit, source = null, alias = null) {
   local schema = dofile(unit + "/schema_module.nut", true);
   local T = schema.require(mod);
   local L = schema.require("schema_table_load");
@@ -26,8 +26,19 @@ local run = function(mod, root, key, unit) {
     unknown = 0, mismatch = 0, widened = 0, oor = 0,
     repeated = 0, bodyDamaged = false, refused = false
   };
-  local value = L.loadWalk(T, root, inputs[key + ".wire"], report);
+  // an explicit JSON input is the value (test/conformance/README.md, cook
+  // writes use explicit value construction); a share option then makes two
+  // populated blobs one in-memory object, legal in memory and refused on
+  // the wire
+  local value = (key + ".json") in inputs
+    ? schema.require("schema_table_json").FromJson(T, root, inputs[key + ".json"], {})
+    : L.loadWalk(T, root, inputs[key + ".wire"], report);
   if (value == null) { print(key + " load refused\n"); return; }
+  if (source != null) {
+    local member = {};
+    foreach (f in T.Descriptors[root].fields) member[f.name] <- f.member;
+    value[member[alias]] = value[member[source]];
+  }
   local size = T.CookMeasure(root, value);
   local arms = [[1, ".little"], [2, ".big"]];
   foreach (a in arms) {
@@ -45,6 +56,9 @@ local run = function(mod, root, key, unit) {
 `
 
 type cookWriteRow struct {
+	input    string
+	source   string
+	alias    string
 	instance string
 	unit     string
 	root     string
@@ -76,7 +90,16 @@ func readCookWriteRows(t *testing.T, path string) ([]cookWriteRow, map[string]in
 		case "cook-write":
 			if len(fields) >= 4 {
 				in := instances[fields[1]]
-				rows = append(rows, cookWriteRow{instance: fields[1], unit: in.unit, root: in.root, wire: in.wire, little: fields[2], big: fields[3]})
+				row := cookWriteRow{instance: fields[1], unit: in.unit, root: in.root, wire: in.wire, little: fields[2], big: fields[3]}
+				for _, option := range fields[4:] {
+					switch {
+					case strings.HasPrefix(option, "input="):
+						row.input = strings.TrimPrefix(option, "input=")
+					case strings.HasPrefix(option, "share="):
+						row.source, row.alias, _ = strings.Cut(strings.TrimPrefix(option, "share="), ":")
+					}
+				}
+				rows = append(rows, row)
 			}
 		}
 	}
@@ -158,6 +181,13 @@ func TestSquirrelCookWriterMatchesTheCorpus(t *testing.T) {
 				t.Fatal(err)
 			}
 			inputs[r.instance+".wire"] = wire
+			if r.input != "" {
+				text, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(r.input)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				inputs[r.instance+".json"] = text
+			}
 			little, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(r.little)))
 			if err != nil {
 				t.Fatal(err)
@@ -168,7 +198,11 @@ func TestSquirrelCookWriterMatchesTheCorpus(t *testing.T) {
 				t.Fatal(err)
 			}
 			inputs[r.instance+".big"] = big
-			fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", mod, r.root, r.instance, key)
+			if r.source != "" {
+				fmt.Fprintf(&p, "run(%q, %q, %q, %q, %q, %q);\n", mod, r.root, r.instance, key, r.source, r.alias)
+			} else {
+				fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", mod, r.root, r.instance, key)
+			}
 			count++
 		}
 	}

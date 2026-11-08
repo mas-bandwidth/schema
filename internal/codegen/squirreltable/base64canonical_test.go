@@ -176,7 +176,7 @@ func TestSquirrelLoadTextRefusesNonCanonicalBase64(t *testing.T) {
   local v = null;
   if (r.wire) {
     local L = schema.require("schema_table_load");
-    local rep = { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false };
+    local rep = { unknown=0, mismatch=0, widened=0, oor=0, repeated=0, bodyDamaged=false, refused=false };
     v = L.loadWalk(T, r.root, inputs[r.key], rep);
     if (v == null || rep.refused) { print("error|" + r.key + "|load\n"); continue; }
   } else {
@@ -240,7 +240,7 @@ foreach (c in cases) {
   local T = schema.require(c.mod);
   local TX = schema.require("schema_table_text");
   foreach (label, text in c.texts) {
-    local report = { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false };
+    local report = { unknown=0, mismatch=0, widened=0, oor=0, repeated=0, bodyDamaged=false, refused=false };
     local v = TX.LoadText(T, c.root, text, report);
     local reason = ("reason" in report && report.reason != null) ? report.reason : "ok";
     print("reason|" + c.key + "|" + label + "|" + reason + "\n");

@@ -45,7 +45,9 @@ func runSquirrelOrphanCycleProbe(t *testing.T, wire []byte, plant bool) string {
 		if n := strings.Count(src, sqOrphanCycleFrom); n != 1 {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the pointer_orphan_cycle plant anchor appears %d times in schema_table_load.nut, want once", n)
 		}
-		files["schema_table_load.nut"] = []byte(strings.Replace(src, sqOrphanCycleFrom, sqOrphanCycleTo, 1))
+		// the wire-alone check's graph refuses the orphan cycle too: the
+		// control takes both defences out
+		files["schema_table_load.nut"] = []byte(withoutWireCheck(t, strings.Replace(src, sqOrphanCycleFrom, sqOrphanCycleTo, 1)))
 	}
 	dir := t.TempDir()
 	out := filepath.Join(dir, "graphdemo")

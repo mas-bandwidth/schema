@@ -5,7 +5,7 @@ local setSlot = function(o, k, v) { if (k in o) o[k] = v; else o[k] <- v; };
 local reset = function(r) {
   if (r == null) return;
   setSlot(r, "unknown", 0); setSlot(r, "mismatch", 0); setSlot(r, "widened", 0); setSlot(r, "oor", 0);
-  setSlot(r, "malformed", false); setSlot(r, "refused", false); setSlot(r, "reason", null);
+  setSlot(r, "bodyDamaged", false); setSlot(r, "refused", false); setSlot(r, "reason", null);
 };
 
 local refuse = function(r, why) {

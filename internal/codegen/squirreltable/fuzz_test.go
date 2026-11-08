@@ -121,11 +121,11 @@ func fuzzMutant(base []byte, r *splitmix64) []byte {
 // fuzzAnswer is one side's answer for one mutant: the leg's reply or the
 // engine's, in the same shape.
 type fuzzAnswer struct {
-	loaded                                             bool
+	loaded                                    bool
 	unknown, mismatch, widened, oor, repeated int
 	bodyDamaged, refused                      bool
-	saved                                              []byte
-	saveFail                                           bool
+	saved                                     []byte
+	saveFail                                  bool
 	// nonFinite is the engine's refusal of a NaN or an infinity
 	// (docs/SPEC-TABLES.md §3.3): every read refuses it, so the whole of
 	// what the leg owes is its own refusal verdict
@@ -549,7 +549,9 @@ func TestSquirrelWireFuzzNegativeControl(t *testing.T) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the anchor appears %d times in the emitted %s, want exactly once", n, name)
 		}
 		patched++
-		return []byte(strings.Replace(string(src), anchor, sabotaged, 1))
+		// the wire-alone check holds the same frame rule after the walk: the
+		// control takes both defences out
+		return []byte(withoutWireCheck(t, strings.Replace(string(src), anchor, sabotaged, 1)))
 	})
 	if patched == 0 {
 		t.Fatal("NEGATIVE CONTROL FAILED: no emitted unit carried schema_table_load.nut")

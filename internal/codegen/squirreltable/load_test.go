@@ -30,13 +30,22 @@ local run = function(unit, mod, root, key) {
     repeated = 0, bodyDamaged = false, refused = false
   };
   L.loadWalk(T, root, inputs[key], report);
-  local verdict = report.refused ? "refused" : "read";
+  // THE VERDICT IS THE STRICT READ'S (docs/SPEC-TABLES.md §6.5): the value or
+  // a refusal; the walk's counters beside it are this leg's diagnostics
+  local R = schema.require("schema_table_refusal");
+  local verdict = R.ReadStrict(T, root, inputs[key], {}) == null ? "refused" : "read";
   local m = report.bodyDamaged ? "true" : "false";
   print(key + " " + report.unknown.tostring() + "," + report.mismatch.tostring() + "," +
         report.widened.tostring() + "," + report.oor.tostring() + "," +
         report.repeated.tostring() + "," + m + "," + verdict + "\n");
 };
 `
+
+// reportVerdict is a probe line's verdict, the one field reports.txt pins
+// (docs/plans/strict-only.md decision 3).
+func reportVerdict(line string) string {
+	return line[strings.LastIndex(line, ",")+1:]
+}
 
 type reportRow struct {
 	name string
@@ -99,6 +108,10 @@ func readInstanceRows(t *testing.T, path string) []instanceRow {
 					r.noText = true
 				case strings.HasPrefix(a, "go-refusal="):
 					r.goRefusal = strings.TrimPrefix(a, "go-refusal=")
+				case a == "wire-refused":
+					// the engine's read and writer both refuse it: one blob
+					// record named from two slots is damage (§6.5, THE GRAPH)
+					r.goRefusal = "wire-refused"
 				}
 			}
 			rows = append(rows, r)
@@ -272,7 +285,7 @@ func TestSquirrelTableLoadMatchesTheReports(t *testing.T) {
 		if isRefused {
 			continue
 		}
-		if got[r.name] != pinned[r.name] {
+		if reportVerdict(got[r.name]) != pinned[r.name] {
 			t.Errorf("%s: the load reports %q, reports.txt pins %q", r.name, got[r.name], pinned[r.name])
 		}
 	}
@@ -312,8 +325,14 @@ func TestSquirrelTableLoadMatchesTheReports(t *testing.T) {
 		if len(fields) != 2 {
 			t.Fatalf("instance probe line %q is not a case and a report", line)
 		}
-		if strings.HasSuffix(fields[1], ",refused") {
-			t.Errorf("%s: an instance of a generated unit was refused", fields[0])
+		wantRefused := false
+		for _, in := range instances {
+			if in.name == fields[0] && in.goRefusal == "wire-refused" {
+				wantRefused = true
+			}
+		}
+		if refusedNow := strings.HasSuffix(fields[1], ",refused"); refusedNow != wantRefused {
+			t.Errorf("%s: an instance of a generated unit was refused=%t, the manifest says %t", fields[0], refusedNow, wantRefused)
 		}
 	}
 	if len(instOrder) != len(instances)-refusedInstanceCount(instances, refusedSet) {
@@ -363,10 +382,8 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 		writeFile(t, filepath.Join(out, name), data)
 	}
 
-	// a form-1 root body carrying field `a` twice: legal input whose last
-	// occurrence wins SILENTLY — duplicate is never raised for a field id on
-	// the wire (docs/SPEC-TABLES.md §4: "a wire read leaves it zero for every
-	// field id")
+	// a form-1 root body carrying field `a` twice: no writer produces it, so
+	// it is damage and the read refuses (docs/plans/strict-only.md decision 5)
 	cfg := unit.Tables["Cfg"]
 	var a *ir.Field
 	for _, f := range cfg.Fields {
@@ -402,8 +419,8 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 	fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", "tblv1", mod, "Cfg", "dup")
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 	inputs := map[string][]byte{"dup": wire, "unk": unk}
-	if got := reportLine(t, sqrun.Run(t, dir, "main.nut", inputs)); got != "0,0,0,0,0,false,read" {
-		t.Fatalf("a repeated field id reports %q, want %q", got, "0,0,0,0,0,false,read")
+	if got := reportLine(t, sqrun.Run(t, dir, "main.nut", inputs)); got != "0,0,0,0,0,true,refused" {
+		t.Fatalf("a repeated field id reports %q, want %q", got, "0,0,0,0,0,true,refused")
 	}
 	p.Reset()
 	p.WriteString(loadPrelude)

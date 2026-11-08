@@ -125,6 +125,11 @@ func checkFixedEntryExtentGuard(t *testing.T, module, src string) {
 	t.Helper()
 	read := strings.Index(src, "b[20 + 4 + 8]")
 	if read < 0 {
+		// the hash-selecting loader (every build since strict-only) reads the
+		// layout only to hold it to the selected entry's bytes
+		read = strings.Index(src, "b[20 + i] != e.layout[i]")
+	}
+	if read < 0 {
 		t.Fatalf("%s.nut reads no entry metadata; the fixed loader shape changed", module)
 	}
 	head := src[:read]
