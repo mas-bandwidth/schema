@@ -12,6 +12,7 @@ package tabledemo
 
 import (
 	"math"
+	"slices"
 	"unsafe"
 )
 
@@ -108,11 +109,9 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -334,11 +333,9 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -570,11 +567,9 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -871,11 +866,9 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -988,11 +981,9 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						for _, k := range seenKey {
-							if k == id {
-								r.Report.Refuse(TableRefuseWireDamaged, "")
-								return false
-							}
+						if slices.Contains(seenKey, id) {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						seenKey = append(seenKey, id)
 						var key Weapon
@@ -1254,11 +1245,9 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -1295,11 +1284,9 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						for _, k := range seenKey {
-							if k == id {
-								r.Report.Refuse(TableRefuseWireDamaged, "")
-								return false
-							}
+						if slices.Contains(seenKey, id) {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						seenKey = append(seenKey, id)
 						var key Team
@@ -1353,11 +1340,9 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						for _, k := range seenKey {
-							if k == id {
-								r.Report.Refuse(TableRefuseWireDamaged, "")
-								return false
-							}
+						if slices.Contains(seenKey, id) {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						seenKey = append(seenKey, id)
 						var key Hull
@@ -1504,11 +1489,9 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -1545,11 +1528,9 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						for _, k := range seenKey {
-							if k == id {
-								r.Report.Refuse(TableRefuseWireDamaged, "")
-								return false
-							}
+						if slices.Contains(seenKey, id) {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						seenKey = append(seenKey, id)
 						var key Team
