@@ -180,7 +180,7 @@ const tableMessageSource = `
             if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
             if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
             shape.Elem = r.Byte();
-            if (!MessageKind(shape.Elem) || shape.Elem == 12 || shape.Elem == 33) { return false; }
+            if (!MessageKind(shape.Elem) || shape.Elem == 33) { return false; }
             // An entry carries its own shape and one element shape. The C++
             // announcement reader does not recursively parse nested arrays.
             if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
@@ -202,10 +202,12 @@ const tableMessageSource = `
         if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
         ulong count = Read64(bytes, bytes.Length - 8);
         if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
+        // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+        // claims more than 4096 entries is malformed.
+        if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }
         int end = bytes.Length - 8 - (int)count * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-        for (int i = 0; i < ids.Length; i += 8)
-        { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { Damage(report); return Finish(report, Verdict.Damaged); } } }
+        if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader r = new Reader(bytes.Slice(1, end - 1), ids);
         if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader payload = default; int versions = 0, vocabularies = 0; bool terminated = false;
@@ -350,11 +352,13 @@ const tableMessageSource = `
         }
         BitWriter probe = new BitWriter(Span<byte>.Empty, true);
         MessageBatch(ref probe, values, type);
-        long size = (probe.At + 7) / 8;
+        long size = (probe.At + 7) / 8 + (type.Integrity ? 4 : 0);
         if (measure) { return size; }
         if (size > bytes.Length) { return -1; }
         bytes.Slice(0, (int)size).Clear(); BitWriter writer = new BitWriter(bytes, false);
-        MessageBatch(ref writer, values, type); return size;
+        MessageBatch(ref writer, values, type);
+        if (type.Integrity) { BinaryPrimitives.WriteUInt32LittleEndian(bytes.Slice((int)size - 4), IntegrityCrc(bytes.Slice(0, (int)size - 4))); }
+        return size;
     }
     static void MessageBatch(ref BitWriter w, object[] values, TableTypeInfo type)
     {

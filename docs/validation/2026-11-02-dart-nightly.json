@@ -1,0 +1,368 @@
+{
+  "language": "dart",
+  "tested_revision": "b469caa0f1ed10f5c11c799064d2efca4bcad666",
+  "tested_tree": "ae746c506b2b081511621f48b725d9111114a26d",
+  "host": "hulk",
+  "command": "python3 test/conformance/nightly-readiness dart",
+  "finished_utc": "2026-11-03T01:55:35.205666+00:00",
+  "finished_time_source": "results.json filesystem modification time",
+  "result": "NIGHTLY_READINESS_PASS language=dart phases=25",
+  "tracked_source_unchanged": true,
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 3
+  },
+  "native_test_events": {
+    "darttable": {
+      "pass": 916,
+      "fail": 0,
+      "skip": 0
+    },
+    "dart": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "lockfile": {
+      "pass": 295,
+      "fail": 0,
+      "skip": 0
+    }
+  },
+  "plain": {
+    "profile": "mixed-builder",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 221,
+    "roots": 64,
+    "enumerated_per_seed": 162045,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "retaining": {
+    "profile": "mixed-builder retain",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 98,
+    "roots": 28,
+    "normative_seeds_outside_arm": 123,
+    "enumerated_per_seed": 91398,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "total_fuzz_mutants": 1360329,
+  "finite_exemptions": false,
+  "test_deadlines": false,
+  "control_note": "Both planted emitter/report and retaining-save defects were detected. Their intentional failure output is inside the successful wire-retain-controls phase.",
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 21.129608322051354,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 1.1646816360298544,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 2.371709813014604,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 9.416204698034562,
+      "errors": []
+    },
+    {
+      "phase": "native-list-dart",
+      "exit": 0,
+      "seconds": 0.9056488239439204,
+      "errors": []
+    },
+    {
+      "phase": "native-dart",
+      "exit": 0,
+      "seconds": 1.1780247999122366,
+      "errors": []
+    },
+    {
+      "phase": "native-list-darttable",
+      "exit": 0,
+      "seconds": 6.101393479970284,
+      "errors": []
+    },
+    {
+      "phase": "native-darttable",
+      "exit": 0,
+      "seconds": 517.9953950350173,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 1.07070089597255,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-0",
+      "exit": 0,
+      "seconds": 1.3267105129780248,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-1",
+      "exit": 0,
+      "seconds": 4.015130711020902,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-2",
+      "exit": 0,
+      "seconds": 0.007394219050183892,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-0",
+      "exit": 0,
+      "seconds": 0.6348874850664288,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-1",
+      "exit": 0,
+      "seconds": 2.0809198829811066,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-2",
+      "exit": 0,
+      "seconds": 0.006079206010326743,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 17.399128422955982,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 33.01054482103791,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 45.57042890007142,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 173.68192161503248,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 156.60199566103984,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 215.12823196896352,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 697.5524162419606,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 577.6350468330784,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 428.79363731096964,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 82.10145674296655,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "external-table-gates.command.json": "e77e5f3eee496f635a4e485fd69794d95fdd3307cbb380db820b375336200563",
+    "external-table-gates.log": "0dd74dff0d50a410eb22d2dc3670fd982f4ddbe3175e4d4aba30a03698beffdb",
+    "implementation.command.json": "7d68c5ced90cc3d653621247a018484af673259d4b0bd0ab69f01e81b3ae9893",
+    "implementation.log": "498b67174f0b7f246c82caa2e333dd4577fa52a1caf12de225120a3616567184",
+    "native-dart.command.json": "4c81b994653ab5c94d62d5268ffce252e30804ec8e32929c8bbe24580830d9bc",
+    "native-dart.log": "7f00272cae02a32ba63dd44568a6301dcdb759045f3c26a107a81e434267cdfa",
+    "native-darttable.command.json": "7c8fb426624b5ea477af751d7b5bb9acf25f9745aa32a6cf70260767da4344c2",
+    "native-darttable.log": "950e64451b0e67ca8f171a03bdc67522b0347159ee502fd0e59cf0b9f0fed7e0",
+    "native-list-dart.command.json": "8653fed15009cf80bb11096476c4142ed65e523bbe33ac2b9611e8d8559b5c35",
+    "native-list-dart.log": "505dd39997dca2757a3505ceff89ffffe22ae00c0c83fce758ddcbdfaa446905",
+    "native-list-darttable.command.json": "ec60570ccf986a003a79f218cf51fe82d874c7e7c0cfc87a82f6e6ab79e2c67b",
+    "native-list-darttable.log": "fc571aab32aa73ae3f50833c3d8c73162d794537bc7f3962c199a504a3a8654d",
+    "native-list-lockfile.command.json": "d0384a9e13253b41831b766f84968442aef204c175aff3111ae6624b49e01208",
+    "native-list-lockfile.log": "ca9ce56f3a2c6cdfb800a2e131f547cdf6912da3e426d8c2e24315cc26f0f132",
+    "native-lockfile.command.json": "cc25df385f3352bd36ab41a17830937292b07cb4ec0baf067a0defa8d81b0f26",
+    "native-lockfile.log": "4f7a04fcd68172e1f183f9ed701de13516e5dd36158dba32597ae4da8cd1c449",
+    "packet-build.command.json": "f5781a57ab59a3d6ed474c76121600a8d1ae6ebf21d77c448f9138c84b63a240",
+    "packet-build.log": "865fbba972f9dc740f2b22bfd6a3df4368e386db9d9f12b0689ce319786784a2",
+    "packet-features.command.json": "971fc2e0b884656155d0785939b67affd361f326f8eb6acf51ea21f63e5dd600",
+    "packet-features.log": "21ff74d3e93dd85df647468b4e220fd8490efc97b124928cb63e8d786df6addf",
+    "packet-ludicrous-0.command.json": "fd24e9dbcaf8bb36b3b58cb360f6a2cd56eaf3ab14884b5f8e5812313c19aac5",
+    "packet-ludicrous-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-ludicrous-1.command.json": "5d994b48e322b130803bc3e00da1f2f796efd57c97d79dba32b0464ccbe17bae",
+    "packet-ludicrous-1.log": "9834ed72920d72605aeb33e831d12a0d2acfea4316b6044df1e95c6f108c5e6d",
+    "packet-ludicrous-2.command.json": "aeff76046fcdc165b0a3dbb6ae580d00e92ac159a09d1a8ad1297d347669c12f",
+    "packet-ludicrous-2.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-0.command.json": "d31142a89761ea16a54de86e87f59e53d062573f5749aa22d59fb295fc89eee4",
+    "packet-normal-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-1.command.json": "ecfa15845cd989b4b43764313a4a5d6762d18384ffd511665b1c33f9edbf0116",
+    "packet-normal-1.log": "1843854c7a36301647e2143ead38592ebdfba77e0e2782f292c6b4b556d06b62",
+    "packet-normal-2.command.json": "43b233c21d3d3e771750ed1571a5da05d4af49b244879cc64a4808675d822129",
+    "packet-normal-2.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "prerequisites.command.json": "f79a87f99cc518bc054a1af2873fa46148025b28403285b99e5c010a56c4114a",
+    "prerequisites.log": "df350a450d6c3ee14ebd9d4ebd1f6dacb7632b754c2b1179d901c6024077a634",
+    "results.json": "9a4c75e35e5fe5bac1036a63717e67c164ed4aabfc373629601ece05d03c8f6d",
+    "wire-driver-build.command.json": "36eaa9ff7bf35d3c53be047a6bbcc2cf787f0645daa681745b3f45bdeca507a6",
+    "wire-driver-build.log": "375b9cdb324db29ec686efe48e21de8ef3a199a3535d6fff7973e9e3b76e324d",
+    "wire-plain-1.command.json": "d129639d4bc0c97e1578beb09e14bb1bcaebd2760ac9b3c0ee9bcd1e6fb9c8b1",
+    "wire-plain-1.log": "bed7f46678040c078758c1b5886c6bfb95867605a1522288a563455d48999485",
+    "wire-plain-2.command.json": "ebd377b6753a070651bca976c06fa415cc973b37e872ae753030501f2f0be5cd",
+    "wire-plain-2.log": "53787f21acb44b602a913da13d4bf8e04173296e6be29bcee1d52ae1f97c7db7",
+    "wire-plain-3.command.json": "1fd6aaa81dccd76b3a1ed0dbf1d1a619349be1f5e5c548758de7693c119c7a14",
+    "wire-plain-3.log": "f21bee01a3e7ffbde0da24d8c081889a2c9530ed50ccc33c1d120edbc5ca9777",
+    "wire-retain-1.command.json": "d10a6a1b1714b7c7d95722d93ac91d0fee8cb021723f914f759126da1a9387cd",
+    "wire-retain-1.log": "dec6fc28f8c8cad01a7f6b48d35b3c13d49a37974bf21afc47c3cdfdba745c2e",
+    "wire-retain-2.command.json": "c667a153aef98fdc7214cd93b3da4a897f3b92397af7eab1636cb67acec90796",
+    "wire-retain-2.log": "0bdfa103b8b164d126f0cb2628f46ad0ec629344422db6a99baf0f44fb8c55b9",
+    "wire-retain-3.command.json": "8b3a9f43b6ffc21622229b5b188ee2300fd6fe64c8eba3da88a66e8efd1afaa9",
+    "wire-retain-3.log": "88916a10dfd4c5cc83180fdc82dbcaf71071cd051011d406fc1d2fea14170009",
+    "wire-retain-controls.command.json": "92d41d9fb33b6c1de572d26c4f1679a23229372d6e2e1298c9aa530852b6a835",
+    "wire-retain-controls.log": "f32043d403b38470d0f60509c0b4460f8d8b429ba3f4653f1142b741d94291bc"
+  },
+  "outer_sha256": {
+    "FINAL-SUMMARY.json": "bfd2514b1246b16719d5a7b13712d9f22c8760091b37c468340583cc0513de22",
+    "SOURCE.txt": "eac5af567af67c3b4bf875be6b1479a0f3418acf2de285e5ab569175c2074cc6",
+    "initial-status.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "nightly.log": "fb2ec78ac9a9cc776fd090733abfe654c84c717a42c54d36a42c2a646dc3601d",
+    "prerequisite-identity.json": "3039040f5a2a6969e03c7cb38dd70761f2aa55566953662ddae8b8d78a70efd6"
+  },
+  "archives": {
+    "full_nightly": {
+      "name": "stella-dart-full-nightly-b469-20261103.tar.gz",
+      "sha256": "05fdc9d2d5d6012bbac260057b485bb39e9cbcc0b16f3b51050a0c32e1826a15"
+    },
+    "bounded_repairs": {
+      "name": "stella-dart-qualified-retain-evidence-20261103.tar.gz",
+      "sha256": "d094df33753aeb492ae1bd5f861c3f2c01886591e4d93c18099bf05b8d38fbf3"
+    },
+    "studio_directory": "/Volumes/nova/ai/stella/working/schema-audit-evidence-20261102/dart-retain-final-20261103"
+  },
+  "subsequent_bounded_delta": {
+    "revision": "75d605f4be110a749681c7264dde80269821f73e",
+    "parent": "b469caa0f1ed10f5c11c799064d2efca4bcad666",
+    "not_in_frozen_nightly": true,
+    "scope": "Named refusal constants for explicit fixed-root wire/message retaining APIs, with driver callback alignment. Fixed plain wire and ordinary scalar-only table retention remain supported.",
+    "full_native_test_events": {
+      "pass": 919,
+      "fail": 0,
+      "skip": 0,
+      "packages_passed": 1
+    },
+    "full_native_provenance": "The completed full package compiled the same product code as75d605 and the initial new refusal test. The final test-only addition of whole-library Dart analysis was then validated separately in named-final.jsonl.",
+    "final_named_probe": {
+      "tests_passed": 3,
+      "packages_passed": 1,
+      "fail": 0,
+      "skip": 0,
+      "negative_call_checks": 10,
+      "generated_library_analysis": "clean"
+    },
+    "execution_modes": "Custom fixture probes execute Dart JIT with assertions enabled and disabled. AOT evidence is the separately compiled conformance driver, actual roster handshake and exact shared-vector replays; do not attribute AOT execution to all15 custom inline fixtures.",
+    "aot_driver": {
+      "build": "passed",
+      "form1_plain_available": 58,
+      "variable_retain_available": 29,
+      "fixed_retain_refused": 29
+    },
+    "static": {
+      "go_vet": "passed",
+      "modernize_v0_23_0": "passed"
+    },
+    "published_source_identity": {
+      "commit": "75d605f4be110a749681c7264dde80269821f73e",
+      "all_bytes_identical": true,
+      "files": [
+        {
+          "path": "internal/codegen/darttable/retainwire.go",
+          "sha256": "8123cd6a19edd75ca59822fdb1d1d0bca29ead87621c39c701d06961c34ce4ef"
+        },
+        {
+          "path": "internal/codegen/darttable/messageform_batch.go",
+          "sha256": "03b6d7d9e1ae948b0fe5dd0be3f3305f2f7e08caf0efb49ed0171082ce816c3e"
+        },
+        {
+          "path": "internal/codegen/darttable/fixed_retain_refusal_test.go",
+          "sha256": "83a8c34a6db83aa8fb2603b8eb59b884bf358bca2f8acd69859f5fb10c4dfe4f"
+        },
+        {
+          "path": "test/conformance/dart/main.dart",
+          "sha256": "655341d2852b2249fab0cd28f3ea90cc74f8e1aeceaf09fe53081774ed431ff8"
+        }
+      ]
+    },
+    "independent_review": "Elixir peer approved exact75d605 bounded named-refusal and driver scope after inspecting code and receipts.",
+    "sha256": {
+      "before.log": "f3ac92d8d4c9b53322aec521e4642a3f7537aa0ae03cc2139a1e2a36ce639700",
+      "named-before.log": "63c94cbe67fbf9789a41fc85d993b5474b9230ba14ba0dfd05c999d12c1b3980",
+      "named-final.jsonl": "1eb22d2149ebf0365a88959dd159a0599459e67f5fdda801ef429011856baf6a",
+      "full.jsonl": "6552fa3dd1a8bbb72d9c7fb77c9352cb19b31a6ff9efdb7f7d870ca51073ef8a",
+      "driver-build.log": "9dbeace5844796d49eee064d12af14f66493bce3a47536d48e78a670653a22c1",
+      "driver-after.log": "375b9cdb324db29ec686efe48e21de8ef3a199a3535d6fff7973e9e3b76e324d",
+      "driver-roster.log": "49eb77d564abe5dd272255b3f1c7365366511d8f7e3ea86d292fcdb003acd101",
+      "vet-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "modernize-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published-source-identity.json": "9f3950e87fefbb186da54e4b02fe28919f91d5d36d68cef940701a624c574f9c"
+    },
+    "shared_vector_replays": {
+      "inert_byte_array_header-plain.log": "179d79805b2f00c6ec0d93c5cb659d20a4d169ca75b7d8f2c57c9946210aa7a7",
+      "keyed_element_widen-plain.log": "695b8c4fdea45af523a7e416512c173f86e5191f8923816c6bf142bebeca752e",
+      "retain_nested_union_arm-plain.log": "742766bdf5323e7f633b4af0788fb91c46df2f08635d273c777c5dfc782c9d53",
+      "retain_union_arm_widen-plain.log": "4b5098b587f4cf7fb8fee13f81ab059a07bf8f5cfe160e5cf10eb1ad21316644"
+    },
+    "additional_retaining_replay": {
+      "inert_byte_array_header-retain.log": "179d79805b2f00c6ec0d93c5cb659d20a4d169ca75b7d8f2c57c9946210aa7a7"
+    }
+  },
+  "limits": [
+    "This is a Dart receipt, not an original-nine aggregate acceptance claim.",
+    "The fixed-root public API repair does not establish all-fixed zero-cost source omission: wireGen still emits the shared retain runtime unconditionally. That inherited source-cost question remains separate.",
+    "No unfinished announcement-count review or broader security audit is closed by this receipt.",
+    "Previous f8eb/6065 commit-message wording JIT/AOT for the custom fixtures was inaccurate. The corrected execution-mode scope above governs this evidence."
+  ]
+}

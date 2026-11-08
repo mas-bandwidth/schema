@@ -164,8 +164,8 @@ const cppHeldNoVocabulary = `
     TableReport r; memset( &r, 0, sizeof( r ) );
     if ( LoginRequestLoadMessages( out, &count, vocabulary, buf, n, &r ) )
         { printf( "TableMessageReason::no_vocabulary: a body from an endpoint that never announced was not refused\n" ); return 1; }
-    if ( !r.refused || r.reason != TableMessageReason::no_vocabulary || r.malformed )
-        { printf( "TableMessageReason::no_vocabulary: refused=%d reason=%d malformed=%d\n", (int) r.refused, (int) r.reason, (int) r.malformed ); return 1; }
+    if ( !r.refused || r.reason != TableMessageReason::no_vocabulary || r.damaged )
+        { printf( "TableMessageReason::no_vocabulary: refused=%d reason=%d malformed=%d\n", (int) r.refused, (int) r.reason, (int) r.damaged ); return 1; }
     if ( count != 0 ) { printf( "TableMessageReason::no_vocabulary moved the returned count: %lld\n", (long long) count ); return 1; }
 `
 
@@ -185,8 +185,8 @@ const cppHeldSecondAnnouncement = `
         { printf( "TableMessageReason::second_announcement: the first announcement was not accepted: refused=%d reason=%d\n", (int) first.refused, (int) first.reason ); return 1; }
     const int64_t before = v.count;
     TableReport second; memset( &second, 0, sizeof( second ) );
-    if ( AnnounceRead( v, ann, AnnounceMeasure(), &second ) || !second.refused || second.reason != TableMessageReason::second_announcement || second.malformed )
-        { printf( "TableMessageReason::second_announcement: a second announcement was not refused by name: refused=%d reason=%d malformed=%d\n", (int) second.refused, (int) second.reason, (int) second.malformed ); return 1; }
+    if ( AnnounceRead( v, ann, AnnounceMeasure(), &second ) || !second.refused || second.reason != TableMessageReason::second_announcement || second.damaged )
+        { printf( "TableMessageReason::second_announcement: a second announcement was not refused by name: refused=%d reason=%d malformed=%d\n", (int) second.refused, (int) second.reason, (int) second.damaged ); return 1; }
     if ( v.count != before ) { printf( "TableMessageReason::second_announcement: a second announcement replaced the vocabulary\n" ); return 1; }
     TableMessageEntry wentries[kTableMessageEntriesHere];
     TableVocabulary w( wentries, kTableMessageEntriesHere );
@@ -217,14 +217,14 @@ const cppHeldVocabularyTooLarge = `
     TableMessageEntry one[1];
     TableVocabulary entries( one, 1 );
     TableReport entryReport; memset( &entryReport, 0, sizeof( entryReport ) );
-    if ( AnnounceRead( entries, ann, AnnounceMeasure(), &entryReport ) || !entryReport.refused || entryReport.reason != TableMessageReason::vocabulary_too_large || entryReport.malformed || entries.announced )
-        { printf( "TableMessageReason::vocabulary_too_large entry bound: refused=%d reason=%d malformed=%d announced=%d\n", (int) entryReport.refused, (int) entryReport.reason, (int) entryReport.malformed, (int) entries.announced ); return 1; }
+    if ( AnnounceRead( entries, ann, AnnounceMeasure(), &entryReport ) || !entryReport.refused || entryReport.reason != TableMessageReason::vocabulary_too_large || entryReport.damaged || entries.announced )
+        { printf( "TableMessageReason::vocabulary_too_large entry bound: refused=%d reason=%d malformed=%d announced=%d\n", (int) entryReport.refused, (int) entryReport.reason, (int) entryReport.damaged, (int) entries.announced ); return 1; }
     TableMessageEntry all[kTableMessageEntriesHere];
     TableVocabulary bytes( all, kTableMessageEntriesHere );
     bytes.max_bytes = 4;
     TableReport byteReport; memset( &byteReport, 0, sizeof( byteReport ) );
-    if ( AnnounceRead( bytes, ann, AnnounceMeasure(), &byteReport ) || !byteReport.refused || byteReport.reason != TableMessageReason::vocabulary_too_large || byteReport.malformed || bytes.announced )
-        { printf( "TableMessageReason::vocabulary_too_large byte bound: refused=%d reason=%d malformed=%d announced=%d\n", (int) byteReport.refused, (int) byteReport.reason, (int) byteReport.malformed, (int) bytes.announced ); return 1; }
+    if ( AnnounceRead( bytes, ann, AnnounceMeasure(), &byteReport ) || !byteReport.refused || byteReport.reason != TableMessageReason::vocabulary_too_large || byteReport.damaged || bytes.announced )
+        { printf( "TableMessageReason::vocabulary_too_large byte bound: refused=%d reason=%d malformed=%d announced=%d\n", (int) byteReport.refused, (int) byteReport.reason, (int) byteReport.damaged, (int) bytes.announced ); return 1; }
 `
 
 // "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS: the build
@@ -279,8 +279,8 @@ const cppHeldStrictChecks = `
         TableMessageEntry entries[kTableMessageEntriesHere];
         TableVocabulary v( entries, kTableMessageEntriesHere );
         TableReport r; memset( &r, 0, sizeof( r ) );
-        if ( AnnounceRead( v, buildRows[i].data(), (int64_t) buildRows[i].size(), &r ) || !r.malformed || r.refused || v.announced )
-            { printf( "strict: the build version %s was not malformed: refused=%d malformed=%d announced=%d\n", buildRowNames[i], (int) r.refused, (int) r.malformed, (int) v.announced ); return 1; }
+        if ( AnnounceRead( v, buildRows[i].data(), (int64_t) buildRows[i].size(), &r ) || !r.damaged || r.refused || v.announced )
+            { printf( "strict: the build version %s was not malformed: refused=%d malformed=%d announced=%d\n", buildRowNames[i], (int) r.refused, (int) r.damaged, (int) v.announced ); return 1; }
     }
     // The vocabulary's element-kind row, over the announcement the leg itself
     // wrote: find the vocabulary field (ref 2, kind 14), an LEB length, then
@@ -301,8 +301,8 @@ const cppHeldStrictChecks = `
     TableVocabulary v( entries, kTableMessageEntriesHere );
     TableReport r; memset( &r, 0, sizeof( r ) );
     // The build version is kept the moment it is read, refusal or not.
-    if ( AnnounceRead( v, bad, bytes, &r ) || !r.malformed || r.refused || v.announced )
-        { printf( "strict: the bad element kind was not malformed: refused=%d malformed=%d announced=%d\n", (int) r.refused, (int) r.malformed, (int) v.announced ); return 1; }
+    if ( AnnounceRead( v, bad, bytes, &r ) || !r.damaged || r.refused || v.announced )
+        { printf( "strict: the bad element kind was not malformed: refused=%d malformed=%d announced=%d\n", (int) r.refused, (int) r.damaged, (int) v.announced ); return 1; }
     if ( v.build_version == 0 ) { printf( "strict: the refused announcement did not keep the build version\n" ); return 1; }
 `
 
@@ -336,8 +336,8 @@ const cppHeldBatchTooLarge = `
     LoginRequest storage[1];
     int64_t count = 1;
     TableReport r; memset( &r, 0, sizeof( r ) );
-    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n, &r ) || count != 2 || !r.refused || r.reason != TableMessageReason::batch_too_large || r.malformed )
-        { printf( "TableMessageReason::batch_too_large read: refused=%d count=%lld reason=%d malformed=%d\n", (int) r.refused, (long long) count, (int) r.reason, (int) r.malformed ); return 1; }
+    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n, &r ) || count != 2 || !r.refused || r.reason != TableMessageReason::batch_too_large || r.damaged )
+        { printf( "TableMessageReason::batch_too_large read: refused=%d count=%lld reason=%d malformed=%d\n", (int) r.refused, (long long) count, (int) r.reason, (int) r.damaged ); return 1; }
 `
 
 // "DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH" (docs/SPEC-TABLES.md
@@ -360,7 +360,7 @@ const cppHeldDamageInsideBody = `
     TableReport r; memset( &r, 0, sizeof( r ) );
     if ( LoginRequestLoadMessages( storage, &count, vocabulary, wire, 5, &r ) || count != 0 )
         { printf( "damage: body 2's damage delivered a body: count=%lld refused=%d\n", (long long) count, (int) r.refused ); return 1; }
-    if ( !r.malformed || r.refused ) { printf( "damage: one malformed did not count or it was refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
+    if ( !r.damaged || r.refused ) { printf( "damage: one malformed did not count or it was refused: malformed=%d refused=%d\n", (int) r.damaged, (int) r.refused ); return 1; }
     // the storage the walk touched is reset: no body of a damaged batch stands (§4)
     if ( storage[0].client_build != 0 || storage[1].client_build != 0 ) { printf( "damage: the storage was not reset: %u %u\n", (unsigned) storage[0].client_build, (unsigned) storage[1].client_build ); return 1; }
 `
@@ -384,8 +384,8 @@ const cppHeldBytesAfterPad = `
     LoginRequest storage[1];
     int64_t count = 1;
     TableReport r; memset( &r, 0, sizeof( r ) );
-    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n + 1, &r ) || count != 0 || !r.malformed || r.refused )
-        { printf( "pad: bytes after the pad were not malformed: count=%lld malformed=%d refused=%d\n", (long long) count, (int) r.malformed, (int) r.refused ); return 1; }
+    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n + 1, &r ) || count != 0 || !r.damaged || r.refused )
+        { printf( "pad: bytes after the pad were not malformed: count=%lld malformed=%d refused=%d\n", (long long) count, (int) r.damaged, (int) r.refused ); return 1; }
     if ( storage[0].client_build != 0 ) { printf( "pad: the body before the bad pad was handed back\n" ); return 1; }
 `
 
@@ -534,7 +534,7 @@ func cppConnectionBody(announcement string) string {
     TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
     TableReport r; memset( &r, 0, sizeof( r ) );
     if ( !AnnounceRead( vocabulary, want.data(), (int64_t) want.size(), &r ) )
-        { printf( "AnnounceRead refused the reference announcement: refused=%%d reason=%%d malformed=%%d\n", (int) r.refused, (int) r.reason, (int) r.malformed ); return 1; }
+        { printf( "AnnounceRead refused the reference announcement: refused=%%d reason=%%d malformed=%%d\n", (int) r.refused, (int) r.reason, (int) r.damaged ); return 1; }
     if ( vocabulary.count != kTableMessageEntriesHere )
         { printf( "announced %%lld entries, want %%lld\n", (long long) vocabulary.count, (long long) kTableMessageEntriesHere ); return 1; }
 `, announcement)
@@ -555,7 +555,13 @@ func cppMessageBody(root, announcement, fileWire, batchWire string) string {
         { printf( "AnnounceRead refused the reference announcement\n" ); return 1; }
     @ROOT@ want; memset( &want, 0, sizeof( want ) ); @ROOT@Reset( want );
     TableReport fileReport; memset( &fileReport, 0, sizeof( fileReport ) );
-    if ( !@ROOT@Load( want, fileWire.data(), (int64_t) fileWire.size(), &fileReport ) )
+    if ( !fileWire.empty() && fileWire[0] == kTableFixedForm )
+    {
+        std::vector<TableFixedEntry> plan( 1024 );
+        if ( @ROOT@FixedLoad( &want, 1, fileWire.data(), (int64_t) fileWire.size(), plan.data(), (int32_t) plan.size(), NULL, &fileReport ) != 1 )
+            { printf( "@ROOT@FixedLoad refused the file-form golden\n" ); return 1; }
+    }
+    else if ( !@ROOT@Load( want, fileWire.data(), (int64_t) fileWire.size(), &fileReport ) )
         { printf( "@ROOT@Load refused the file-form golden\n" ); return 1; }
     @ROOT@ storage[1]; memset( storage, 0, sizeof( storage ) ); @ROOT@Reset( storage[0] );
     int64_t count = 1;
@@ -765,9 +771,9 @@ static int expect_ok(const char * row, const TableVocabulary & vocabulary, const
 {
     Root storage; int64_t count = 0; TableReport report; int ok;
     ok = load_one(vocabulary, buf, n, storage, count, report);
-    if (!(ok && !report.malformed && report.unknown == 1 && storage.a == 0 && count == 1)) {
+    if (!(ok && !report.damaged && report.unknown == 1 && storage.a == 0 && count == 1)) {
         printf("%s: ok=%d malformed=%d unknown=%d a=%d count=%lld\n",
-            row, ok, (int)report.malformed, (int)report.unknown, (int)storage.a, (long long)count);
+            row, ok, (int)report.damaged, (int)report.unknown, (int)storage.a, (long long)count);
         return 1;
     }
     return 0;
@@ -776,8 +782,8 @@ static int expect_bad(const char * row, const TableVocabulary & vocabulary, cons
 {
     Root storage; int64_t count = 0; TableReport report; int ok;
     ok = load_one(vocabulary, buf, n, storage, count, report);
-    if (!(!ok && report.malformed && count == 0)) {
-        printf("%s: ok=%d malformed=%d count=%lld\n", row, ok, (int)report.malformed, (long long)count);
+    if (!(!ok && report.damaged && count == 0)) {
+        printf("%s: ok=%d malformed=%d count=%lld\n", row, ok, (int)report.damaged, (long long)count);
         return 1;
     }
     return 0;

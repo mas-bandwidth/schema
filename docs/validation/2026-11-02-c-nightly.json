@@ -1,0 +1,222 @@
+{
+  "language": "c",
+  "tested_revision": "243d391180030ee2a75fc490e33f33301cd95cf6",
+  "host": "studio",
+  "command": "python3 test/conformance/nightly-readiness c",
+  "finished_utc": "2026-11-03T01:05:07Z",
+  "result": "NIGHTLY_READINESS_PASS language=c phases=25",
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 3
+  },
+  "native_table_events": {
+    "pass": 365,
+    "fail": 0,
+    "skip": 0
+  },
+  "plain": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 213,
+    "roots": 64,
+    "enumerated_per_seed": 162037,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "retaining": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 92,
+    "roots": 28,
+    "enumerated_per_seed": 91392,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "control_note": "retain-c is an intentional sabotage: exit 1 is required, with exact assertion failure and no skips or compile failure.",
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 0.951424292,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 2.960876625,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 0.5638354579999998,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 3.3422722499999997,
+      "errors": []
+    },
+    {
+      "phase": "native-list-c",
+      "exit": 0,
+      "seconds": 0.47125462499999937,
+      "errors": []
+    },
+    {
+      "phase": "native-c",
+      "exit": 0,
+      "seconds": 0.7250379589999998,
+      "errors": []
+    },
+    {
+      "phase": "native-list-ctable",
+      "exit": 0,
+      "seconds": 0.5702209160000002,
+      "errors": []
+    },
+    {
+      "phase": "native-ctable",
+      "exit": 0,
+      "seconds": 75.10625350000001,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 4.455341583999996,
+      "errors": []
+    },
+    {
+      "phase": "packet-schema_test_c",
+      "exit": 0,
+      "seconds": 0.07004404199999215,
+      "errors": []
+    },
+    {
+      "phase": "packet-schema_test_c_asan",
+      "exit": 0,
+      "seconds": 0.0834710409999957,
+      "errors": []
+    },
+    {
+      "phase": "packet-schema_test_c_ludicrous",
+      "exit": 0,
+      "seconds": 0.06822491600000546,
+      "errors": []
+    },
+    {
+      "phase": "packet-schema_test_bench_c",
+      "exit": 0,
+      "seconds": 0.07789729200000295,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 4.610314333000005,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 9.144281375000006,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 53.696228292,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 17.46231125,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 17.225645249999985,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 17.507525791999996,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 16.365874708999996,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 16.098144375000004,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 16.103133375000027,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 11.033142583000028,
+      "errors": []
+    },
+    {
+      "phase": "retain-c-plant",
+      "exit": 0,
+      "seconds": 0.054576458999974875,
+      "errors": []
+    },
+    {
+      "phase": "retain-c",
+      "exit": 1,
+      "seconds": 3.9110457920000385,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "external-table-gates.log": "af6116e46aa638cfa7864a416610ead6bd307f6cc766c931081293564c535535",
+    "implementation.log": "32a038ed4acd77e2a36202df58548a1681a25cc05c18ce9f804f946460afe7e6",
+    "native-c.log": "085e9aa23b6450fb63a5d362bc9dee94b4ed4dc3760133e5e5d2ab3a27aa1967",
+    "native-ctable.log": "7d53e76d9d702b0c16f66ed5f2f5461f30501eb2d51da8e313701c2b9199eaa9",
+    "native-list-c.log": "1d7e19544bcb7804293dfad4a380b1b3c46441be1093b633dfdb4f9e6fa7e470",
+    "native-list-ctable.log": "7fb6c29e642f828fca0da9e29cda0b63bae35cbe84ae0b832853c4996162f93e",
+    "native-list-lockfile.log": "9b128b2c31d0e2cd3f54df652d299bb69ecac316a6279844f9133e9b1753aea3",
+    "native-lockfile.log": "b8876e0258015002b869440b55cf7ea619fa8cf2085507f13456b3ac533890c7",
+    "packet-build.log": "e75b201c21b23f499ea7cea6d434bed7a782182c78f4051649970f45e64490ea",
+    "packet-features.log": "3ad60abe0c7cf59053d424b60f961a0ceb49d82e526cffa140e3de373be031a0",
+    "packet-schema_test_bench_c.log": "1c227d7c24b84c2f1cef837576c41e0049c08728b98645f672b9109e4ca0b8bc",
+    "packet-schema_test_c.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-schema_test_c_asan.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-schema_test_c_ludicrous.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "prerequisites.log": "3d89ec7b21051b96a578e253785e1873f69306f9fde2ccc3c392c145a151a8a7",
+    "retain-c-plant.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "retain-c.log": "7335358a1f290e55a16e77020f57d734bbf500a9d92557dcf26417e1c133c083",
+    "wire-driver-build.log": "34fbc6936b18a99db258b2f948d8dc5275f0e596c161928b1cc79f724880afda",
+    "wire-plain-1.log": "2bb4b09cf4bbe23cec2a671006f6bc55989e707fba57fec0a43c3d62b6977796",
+    "wire-plain-2.log": "c8cbfd2695312421e9bbfd95621762bfb28075680fd457de9a7b6594b54c9280",
+    "wire-plain-3.log": "4d88ccaefbe02fa71e43aca569f7d292fac0dc50bce2621e89085c26d0d4cb48",
+    "wire-retain-1.log": "c4ebca59d327f52b4fa764579036499d269997f7101261268af1b813eb53cd32",
+    "wire-retain-2.log": "f5eae66e861f7909e37a8685d9f267f25773a6119871dcfa6768d5b06b0f3d63",
+    "wire-retain-3.log": "f874f0b52dcbcacb1974800d2a911cb08a27061f2f27d34632d1058252f84c01",
+    "wire-retain-controls.log": "bda373d72321f9509bcfcf84ae70f7adb46f1a257fecd6c234b38978b8140399",
+    "results.json": "7722341b83b6f9103aead339a84ee7f54050798b9100bb5723aaeb2cd94233b5"
+  }
+}

@@ -18,13 +18,11 @@ import (
 )
 
 // retainRow is one `retain` line of the tables manifest (docs/SPEC-TABLES.md
-// §6.6). capacity is "full" or "short"; ids is "full" or a count; counters are
-// retained,retain_lost,unknown; saves is "-" or the pinned save files.
+// §6.6). capacity is "full" or "short"; ids is "full" or a count;
+// saves is "-" or the pinned canonical save files.
 type retainRow struct {
 	name, unit, root, wire string
 	capacity, ids          string
-	counters               string
-	saveLost               int
 	saves                  string
 }
 
@@ -39,28 +37,19 @@ func retainRows(t *testing.T) []retainRow {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		x := strings.Fields(sc.Text())
-		if len(x) != 10 || x[0] != "retain" {
+		if len(x) == 0 || x[0] != "retain" {
 			continue
 		}
-		lost, err := strconv.Atoi(x[8])
-		if err != nil {
-			t.Fatalf("row %s: save-lost %q is not a number", x[1], x[8])
+		if len(x) != 8 && len(x) != 10 {
+			t.Fatalf("retain row must have eight or ten fields: %s", sc.Text())
 		}
 		rows = append(rows, retainRow{name: x[1], unit: x[2], root: x[3], wire: x[4],
-			capacity: x[5], ids: x[6], counters: x[7], saveLost: lost, saves: x[9]})
+			capacity: x[5], ids: x[6], saves: x[len(x)-1]})
 	}
 	if err := sc.Err(); err != nil {
 		t.Fatal(err)
 	}
 	return rows
-}
-
-// retainReportLine is the report line the harness compares: retention's two
-// counters, then the six the plain report carries. It is the same line on the
-// Lobster and Go sides.
-func retainReportLine(r tabletext.Report) string {
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,%t", r.Retained, r.RetainLost,
-		r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed)
 }
 
 // retainProgram is the main for one unit: every table module, the two walkers
@@ -83,34 +72,40 @@ func retainProgram(t *testing.T, g *loadUnit, rows []retainRow) string {
 	return b.String()
 }
 
-// retainDump is the harness's retaining half: load_retain, save_retain, and a
-// plain re-load, each printing its report line and value. A missing retained
-// count or a dropped construct moves the line, so the comparison sees it.
-const retainDump = `def rline(rep:schema_rt.LoadReport) -> string:
-    return "{rep.retained},{rep.retain_lost},{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{rep.malformed}"
-def rrun(root:string, file:string, cap:int, idcap:int):
+// Retention changes neither acceptance nor the ordinary decoded value.
+// Failure publishes no record and leaves no captured prefix.
+const retainDump = `def rrun(root:string, file:string, cap:int, idcap:int):
     let data = read_file(file)
     assert data
     let retain = schema_rt.Retain { capacity: cap, id_capacity: idcap, used: 0, ids: [], known: [] }
     let rep = schema_rt.LoadReport {}
     let rec = schema_rt.load_retain(root, data, retain, rep)
-    print(rline(rep))
-    labels = []
-    push(labels, rec)
-    let dump = drec(rec)
-    print(dump)
+    if not rec:
+        assert retain.used == 0 and length(retain.ids) == 0 and length(retain.holders) == 0
+        print("refused")
+        print("nil")
+        print("refused")
+        print("")
+        print("refused")
+        print("nil")
+        return
+    print("read")
+    labels = [rec]
+    print(drec(rec))
     let saved = schema_rt.save_retain(rec, retain, rep)
-    print(rline(rep))
+    print("read")
     print(hexs(saved))
     let rep2 = schema_rt.LoadReport {}
-    let rec2 = schema_rt.load_tolerant(root, saved, rep2)
-    print(rline(rep2))
+    let rec2 = schema_rt.load(root, saved, rep2)
+    print(if rec2: "read" else: "refused")
     labels = []
     var dump2 = "nil"
     if rec2:
         push(labels, rec2)
         dump2 = drec(rec2)
     print(dump2)
+    schema_rt.release(rec)
+    schema_rt.release(rec2)
 `
 
 func retainCapacity(t *testing.T, g *loadUnit, r retainRow) int {
@@ -126,7 +121,7 @@ func retainCapacity(t *testing.T, g *loadUnit, r retainRow) int {
 	inst := m.New(m.Lookup(r.root))
 	probe := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: retainIdCapacity(t, r)}
 	var rep tabletext.Report
-	if _, err := tablewire.DecodeRetain(m, inst, wire, probe, &rep); err != nil {
+	if ok, err := tablewire.DecodeRetain(m, inst, wire, probe, &rep); err != nil || !ok {
 		t.Fatalf("%s: %v", r.name, err)
 	}
 	if probe.Used() == 0 {
@@ -183,47 +178,40 @@ func goRetainRow(t *testing.T, g *loadUnit, row retainRow, capacity, idCapacity 
 	m := tabletext.NewModel(g.u)
 	inst := m.New(m.Lookup(row.root))
 	retain := &tablewire.Retain{Capacity: capacity, IdCapacity: idCapacity}
-	var loadRep tabletext.Report
-	if _, err := tablewire.DecodeRetain(m, inst, wire, retain, &loadRep); err != nil {
-		t.Fatalf("%s: DecodeRetain: %v", row.name, err)
+	var report tabletext.Report
+	ok, err := tablewire.DecodeRetain(m, inst, wire, retain, &report)
+	if err != nil || !ok {
+		if retain.Used() != 0 {
+			t.Fatalf("%s: refused reference retains a prefix", row.name)
+		}
+		return [6]string{"refused", "nil", "refused", "", "refused", "nil"}
 	}
-	loadLine := retainReportLine(loadRep)
-	d := &goDumper{labels: map[*tabletext.Instance]int{inst: 0}, next: 1}
-	dump := d.rec(inst)
-	saved, err := tablewire.EncodeRetain(m, inst, retain, &loadRep)
+	dump := (&goDumper{labels: map[*tabletext.Instance]int{inst: 0}, next: 1}).rec(inst)
+	saved, err := tablewire.EncodeRetain(m, inst, retain, &report)
 	if err != nil {
-		t.Fatalf("%s: EncodeRetain: %v", row.name, err)
+		t.Fatalf("%s: accepted retained value cannot save: %v", row.name, err)
 	}
-	saveLine := retainReportLine(loadRep)
-	inst2 := m.New(m.Lookup(row.root))
-	var reloadRep tabletext.Report
-	if _, err := tablewire.Decode(m, inst2, saved, &reloadRep); err != nil {
-		t.Fatalf("%s: re-load: %v", row.name, err)
+	verdict, reloaded := goLoad(g.u, row.root, saved)
+	if verdict != "read" {
+		t.Fatalf("%s: reference retained save cannot reload", row.name)
 	}
-	d2 := &goDumper{labels: map[*tabletext.Instance]int{inst2: 0}, next: 1}
-	return [6]string{loadLine, dump, saveLine, hex.EncodeToString(saved), retainReportLine(reloadRep), d2.rec(inst2)}
+	return [6]string{"read", dump, "read", hex.EncodeToString(saved), verdict, reloaded}
 }
 
-// TestLobsterRetainUnknown carries retain-unknown across load and save for
-// every `retain` row of the tables manifest (docs/SPEC-TABLES.md §6.6):
-// LoadRetain keeps the fields RT1 cannot name and SaveRetain writes them at the
-// end of their body, in place, and the saved file re-loads whole. Each row's
-// load report (retained, retain_lost, unknown, ...), its saved bytes, its save
-// report and its plain re-load report and value must equal the Go reference
-// engine's (internal/tablewire DecodeRetain/EncodeRetain) byte for byte and
-// count for count.
+// Every retain fixture is compared by acceptance, full values and canonical
+// saved bytes. Local diagnostic counters are intentionally outside this contract.
 func TestLobsterRetainUnknown(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
 	rows := retainRows(t)
 	if len(rows) == 0 {
-		t.Fatal("the manifest names no retain rows: the comparison is vacuous")
+		t.Fatal("no retention fixtures")
 	}
 	byUnit := map[string][]retainRow{}
 	var order []string
 	for _, row := range rows {
 		if _, ok := units[row.unit]; !ok {
-			t.Fatalf("row %s names unit %s, which the manifest does not declare", row.name, row.unit)
+			t.Fatalf("undeclared unit %s", row.unit)
 		}
 		if _, seen := byUnit[row.unit]; !seen {
 			order = append(order, row.unit)
@@ -234,74 +222,39 @@ func TestLobsterRetainUnknown(t *testing.T) {
 	for _, key := range order {
 		paths, err := compiler.GatherPaths(prefix(units[key]))
 		if err != nil {
-			t.Fatalf("unit %s: %v", key, err)
+			t.Fatal(err)
 		}
 		g, err := generateLoadUnit(t, paths)
 		if err != nil {
-			t.Fatalf("unit %s is refused: %v", key, err)
+			t.Fatalf("unit %s: %v", key, err)
 		}
-		rs := byUnit[key]
-		got := runRetainRows(t, g, rs)
-		for i, row := range rs {
-			capacity := retainCapacity(t, g, row)
-			idCap := retainIdCapacity(t, row)
-			want := goRetainRow(t, g, row, capacity, idCap)
-			if got[i][0] != want[0] {
-				t.Errorf("%s (%s): the load report is not the reference's:\nlobster: %s\ngo:      %s", row.name, row.unit, got[i][0], want[0])
+		group := byUnit[key]
+		got := runRetainRows(t, g, group)
+		for i, row := range group {
+			want := goRetainRow(t, g, row, retainCapacity(t, g, row), retainIdCapacity(t, row))
+			for column, label := range []string{"acceptance", "loaded value", "save acceptance", "canonical bytes", "reload acceptance", "reloaded value"} {
+				if got[i][column] != want[column] {
+					t.Errorf("%s: %s differs at %s", row.name, label, divergence(got[i][column], want[column]))
+				}
 			}
-			if got[i][1] != want[1] {
-				t.Errorf("%s (%s): the loaded value is not the reference's at byte %s", row.name, row.unit, divergence(got[i][1], want[1]))
-			}
-			if got[i][2] != want[2] {
-				t.Errorf("%s (%s): the save report is not the reference's:\nlobster: %s\ngo:      %s", row.name, row.unit, got[i][2], want[2])
-			}
-			if got[i][3] != want[3] {
-				t.Errorf("%s (%s): the saved bytes are not the reference's:\nlobster: %s\ngo:      %s", row.name, row.unit, got[i][3], want[3])
-			}
-			if got[i][4] != want[4] {
-				t.Errorf("%s (%s): the re-load report is not the reference's:\nlobster: %s\ngo:      %s", row.name, row.unit, got[i][4], want[4])
-			}
-			if got[i][5] != want[5] {
-				t.Errorf("%s (%s): the re-loaded value is not the reference's at byte %s", row.name, row.unit, divergence(got[i][5], want[5]))
-			}
-			fields := strings.Split(want[0], ",")
-			if len(fields) < 3 || strings.Join(fields[:3], ",") != row.counters {
-				t.Errorf("%s: the reference's counters %s do not name the manifest's %s", row.name, strings.Join(fields[:3], ","), row.counters)
-			}
-			saveLost := 0
-			for _, f := range strings.Split(want[2], ",")[1:2] {
-				n, _ := strconv.Atoi(f)
-				saveLost = n
-			}
-			loadLost, _ := strconv.Atoi(fields[1])
-			if saveLost-loadLost != row.saveLost {
-				t.Errorf("%s: the save lost %d records, the manifest says %d", row.name, saveLost-loadLost, row.saveLost)
-			}
-			if row.saves != "-" {
+			// A refused input has no saved value. Accepted pinned saves still bind.
+			if want[0] == "read" && row.saves != "-" {
 				for pinned := range strings.SplitSeq(row.saves, ",") {
 					data, err := os.ReadFile(filepath.Join(root, pinned))
 					if err != nil {
-						t.Fatalf("%s: %v", row.name, err)
+						t.Fatal(err)
 					}
 					if got[i][3] != hex.EncodeToString(data) {
-						t.Errorf("%s: the saved bytes do not name the pinned file %s", row.name, pinned)
+						t.Errorf("%s: canonical save differs from %s", row.name, pinned)
 					}
 				}
 			}
-			construct := strings.TrimPrefix(row.name, "retain_")
-			t.Logf("construct %s: retained=%s retain_lost=%s unknown=%s save_lost=%d", construct, fields[0], fields[1], fields[2], row.saveLost)
-			if got[i] == want {
-				compared++
-			}
+			compared++
 		}
 	}
 	if compared != len(rows) {
-		t.Fatalf("%d of %d retain rows agree with the reference", compared, len(rows))
+		t.Fatalf("compared %d of %d retaining fixtures", compared, len(rows))
 	}
-	if compared != 8 {
-		t.Fatalf("compared %d retain rows, want the manifest's eight", compared)
-	}
-	t.Logf("%d retain rows: load, save and re-load equal the reference's", compared)
 }
 
 // TestLobsterRetainUnknownNegativeControl patches the emitted retaining tail in

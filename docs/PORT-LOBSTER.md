@@ -30,9 +30,9 @@ name (the toolchain gate, issue #599). The fleet installs the same pin.
 
 ## THE TYPE MAPPING
 
-One module per schema file, `<Base>.lobster`, and `<Base>Table.lobster` for a
-file with tables (or with a packet type a table reaches). Every module of a
-unit declares the same `namespace <package>`, so a consumer spells a
+One packet module per schema file, `<Base>.lobster`, and a separate
+`<Base>Table.lobster` carrying its reflection declarations and any table codecs.
+Every module of a unit declares the same `namespace <package>`, so a consumer spells a
 declaration `<package>.<Name>` and one module names another's declarations
 bare. A value is a Lobster `class` (a mutable object, copied by reference)
 with EVERY field present from construction (the storage principle, SPEC
@@ -115,6 +115,45 @@ a small per-table accessor the form's card emits — one function per table
 that hands the walk each slot in descriptor order, joined through
 `lobstertable.Register` — never through per-field codec logic. That accessor
 is the only per-table code a form emits; the walk itself is one runtime file.
+
+## THE UNIT REGISTRY
+
+Import `<package>View.lobster` and call `<package>.UnitView()` to enumerate
+all six declaration sets. The entry point imports every file's reflection
+module, including constant-only files and packet types no table reaches.
+Table-free units keep all metadata in the view entry point and emit only its
+descriptor dependencies (`descriptors` and `schema_tables`), with no `*Table`
+module or load runtime. Deprecated-enum read hooks live in `descriptors_load`
+and are imported only by table units. Packet modules keep their packet
+imports; a consumer opts into reflection by importing the view module.
+
+The extra output is part of generation, so runtime module file names are
+reserved only when the unit emits those modules. A schema basename that
+collides with `<package>View.lobster` is refused before output is written.
+Generated `UnitView`, `<Name>Descriptor`, and enum-keyed `Slot`/`At`/`Each`
+accessor names are also claimed before emission; conflicting declarations
+or fields must be renamed. Flattened enum and flags member names participate
+in the same collision check. Package names matching a namespace-scope binding
+in an emitted packet or descriptor/table runtime are refused conservatively:
+Lobster can interpret a global's member access as a package-qualified name.
+The scan reserves top-level `def`, `class`, `let` and `var` names only;
+parameters, locals and callback variables are function-scoped and reserve
+nothing, so ordinary names such as `tag` and `t` still generate. Comments,
+literal contents and plain class fields are also ignored.
+`TestLobsterUnitViewRuntimePackages` checks the remaining namespace-scope
+refusals and that `package tag` and `package t` still generate; `package tag`
+also runs under the native compiler.
+`TestLobsterUnitViewIncludesUnreachedFiles` checks table-free and mixed units,
+all six sets, and missing constant metadata as its negative control.
+
+`make tables-lobster-view` runs `TestLobsterUnitViewListing`: the native view
+printer byte-compares every `VIEW_CORPUS` and table-manifest unit with the
+shared IR listing (§8.7), including field type spellings, source filenames,
+closure-only wire identity, vocabulary widths, union payloads, docs and tags.
+Descriptor-ID and arm-offset mutations must change the listing. The union
+arm and payload offsets describe the shared region/cook projection, not VM
+addresses; the printer compares those independently emitted columns.
+The package-wide `test-lobster` gate includes this test as well.
 
 ## THE NUMBER MODEL
 
@@ -326,6 +365,23 @@ carries no `reason`; the text-lists card (schema-lobster-vt-text-lists)
 carries it. Retention (§6.6) and the region read are later cards'
 (retain-unknown).
 
+**The final widened map key.** A repeated map key whose earlier occurrence
+carried an incompatible kind keeps its `kind_bad` flag only until a later
+occurrence widens to the declared kind; the later key replaces the earlier
+kind (§2.8, §3), so `map_key` clears `kind_bad` when it takes the widening
+branch. Without that store the widening entry is discarded even though the
+last key wins. The reset is one store inside the widening branch, so a map
+key that does not widen never executes it. On a Linux/x86-64 fleet host with
+the pinned toolchain (default JIT), 200,000 plain loads of the shared
+`map_repeated_key_widen` vector took a median of 1.274s with the reset and
+0.537s without it: the difference is the repair keeping the widened entry
+instead of dropping it early. On `map_key_widen`, where no key repeats, the
+medians were 0.480s with and 0.471s without, inside run-to-run noise, because
+the added line is unreachable there. `TestLobsterMapRepeatedKeyLastKindWins`
+holds the repeated-key value to the Go reader and removes the reset to check
+the original misdecode returns; `TestLobsterMapRepeatedKeySharedVector` holds
+the shared vector through plain and retaining load, save and reload.
+
 **The test.** `TestLobsterTableLoadMatchesTheReports` loads every report and
 instance row of the tables manifest, one program per unit, and holds each
 row's report to reports.txt and to the Go engine's `tablewire.Decode` on the
@@ -337,6 +393,53 @@ red. `TestLobsterTableLoadBytesCountPastItsBody` raises a bytes body's count
 past what its L frames (§4) and holds the leg to Go's refusal: damage
 discards the whole load, so the read says malformed and nothing of the value
 is compared.
+
+## THE FIXED FORM'S HOT PATH
+
+The fixed-proof repair changed the emitted fixed save/load in three places:
+the optional-array payload decode (`fixedform.go`), the union arm routed
+through the array-aware payload reader (`fixedform.go`), and the plan-capacity
+check in the evolution load (`fixedevolve.go`), beside the leaf-walk local
+names. The first two are NEW paths: before the change a table with an optional
+array had no fixed surface at all, and a union arm that is a counted array was
+emitted as a scalar read and did not compile. There is therefore no earlier
+running implementation of those two paths to regress; the common fixed
+save/load path, which is the one every fixed table already ran, is measured.
+
+The emitter under test was built from the pre-change sprint tip b00a89e12 and
+from the change fc9c7866a, each with `go build ./cmd/schema`, and the same
+schema was generated from each:
+
+```
+fixed table T {
+    a uint8
+    b int32
+    arr [..3]int16
+    s string(5)
+    tail uint32
+}
+```
+
+One program constructs 200 records set off their defaults, saves them once,
+then runs 2,000 load-then-save round trips over that wire (400,000 record round
+trips), timing the loop with `seconds_elapsed()` under the pinned v2026.8
+default JIT with no compiler flags, both arms under `nice -n 19`. The two arms
+were run alternately in one sitting, median of seven runs, on a Linux/x86-64
+fleet host: **before 216,966 µs, after 214,416 µs** — the change is 1.2%
+FASTER, not slower. For this schema the emitted before/after code differs
+only in the plan-capacity clause and the leaf-walk local names; the
+optional-array and array-union-arm decode loops are not emitted before
+because those tables were refused or did
+not compile.
+
+The new paths were measured the same way, after only, median of five runs
+(200 records, 2,000 round trips, `nice -n 19`): optional-arrays 105,253 µs
+(263 ns/record) and array union arms 159,692 µs (399 ns/record). Those loops
+run only when the
+schema declares the shape, so they add nothing to a fixed table that does not.
+The byte verdict is the qualification's: the shared fixed-proof suite holds
+every row to the live C++ oracle's bytes in both directions, and the writer
+mutation and negative controls hold the refusal.
 
 ## THE HARNESS
 
@@ -459,7 +562,7 @@ reason, and `compiler/porting_test.go` holds it to the tree:
   `constant_descriptor` and `accessor_descriptor` planted bugs turn it red),
   M16 and M20 (the variable-wire load and save, every manifest instance byte
   for byte and report for report against the Go engine), I4 (per-case absent,
-  in the driver's line grammar), I10 (`TestLobsterTableFreeUnitAddsNothing`)
+  in the driver's line grammar), I10 (`TestLobsterTableFreePacketIdentity`)
   and J4 (`tables-lobster-clean`, the strict gate below).
 - **— the platform cannot:** M2 (an `int` is an unboxed 64-bit word), M3 (a
   `float` is an unboxed 64-bit slot), M4 (no inlining directive or aliasing

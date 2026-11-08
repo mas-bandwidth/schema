@@ -22,6 +22,11 @@ func cppRuntimeNames() []Name {
 			"TableBlobMeasureThunk", "TableBlobSaveThunk", "TableBlobStorage", "TableBytesSlot", "TableBytesViewOf",
 			"TableStringSlot", "TableStringViewOf", "kTableBlobHeader", "kTableBlobMaxLength",
 		}},
+		{what: "the table graph cycle check and stored-slot walk (docs/SPEC-TABLES.md §3.1, §4)", names: []string{
+			"TableCycle", "TableCycleAcyclic", "TableCycleBegin", "TableCycleEdge", "TableCycleEnd",
+			"TableCycleIsVertex", "TableCycleNode", "TableCycleOrdinal", "TableCyclePush", "TableCycleRestore",
+			"TableMapVisitStored", "kTableCycleAbsent", "kTableCycleOffsetMask", "kTableCycleOrdinalShift", "kTableCycleVertex",
+		}},
 		{what: "a bound of the text form's JSON walk (§16)", names: []string{
 			"kTableJsonDecimalBand",
 		}},
@@ -85,6 +90,7 @@ func cppRuntimeNames() []Name {
 		}},
 		{what: "the message form's runtime: batches, entries, quantization and the skip walk (docs/SPEC-TABLES.md §3.3)", names: []string{
 			"TableMessageArmEntry", "TableMessageBatch", "TableMessageBatchBegin", "TableMessageBatchBytes",
+			"TableMessageBatchCheckIntegrity", "TableMessageBatchOpenSealed", "TableMessageBatchSeal",
 			"TableMessageBatchEnd", "TableMessageDequantize", "TableMessageElementRunBits", "TableMessageFixedKind",
 			"TableMessageIntegerKind", "TableMessageNameEntry", "TableMessageQuantization", "TableMessageQuantize",
 			"TableMessageRefuseBatch", "TableMessageReserved", "TableMessageSkipElement", "TableMessageSkipRun",

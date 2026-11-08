@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,15 +20,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestLuauEveryTypeHasAView holds docs/SPEC-TABLES.md §8.2 for the Luau leg:
-// every type in the unit has a descriptor, a type no table reaches included,
-// in a view module beside the table surface (§8.5). The table module's bytes
-// are pinned to the BASE digest, so carrying the view changes nothing a game
-// links; the view's struct descriptors are the type list the generated Go
-// view carries; and every generated module passes luau-analyze.
-func TestLuauEveryTypeHasAView(t *testing.T) {
-	t.Parallel()
-	source := `package viewprobe
+const viewProbeSource = `package viewprobe
 
 enum Hue
 {
@@ -67,9 +60,12 @@ table Root
     reached Reached
 }
 `
+
+func buildViewProbeFiles(t *testing.T) (*ir.Unit, map[string][]byte, map[string][]byte) {
+	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ViewProbe.schema")
-	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(viewProbeSource), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	u, err := compiler.New().Load([]string{path})
@@ -90,21 +86,16 @@ table Root
 		}
 		files[name] = data
 	}
+	return u, files, tables
+}
 
+func verifyLuauEveryTypeHasAView(t *testing.T, u *ir.Unit, files map[string][]byte) error {
+	t.Helper()
 	const view = "ViewProbeView.luau"
-	if tables[view] == nil {
-		t.Errorf("no view module %s: every type has a view (docs/SPEC-TABLES.md §8.2)", view)
+	if files[view] == nil {
+		return fmt.Errorf("no view module %s: every type has a view (docs/SPEC-TABLES.md §8.2)", view)
 	}
-	tableModule := tables["ViewProbeTable.luau"]
-	if tableModule == nil {
-		t.Fatal("no table module")
-	}
-	sum := sha256.Sum256(tableModule)
-	gotDigest := hex.EncodeToString(sum[:])
-	if gotDigest != wantTableDigest {
-		t.Errorf("the table module's bytes changed from BASE: got %s, want %s", gotDigest, wantTableDigest)
-	}
-
+	dir := t.TempDir()
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -119,9 +110,12 @@ table Root
 	got := map[string]bool{}
 	var structs []string
 	for _, line := range lines {
+		if strings.HasPrefix(line, "CLAUSE ") {
+			return fmt.Errorf("view clause violation: %s", strings.TrimPrefix(line, "CLAUSE "))
+		}
 		fields := strings.Split(line, " ")
 		if len(fields) != 2 {
-			t.Fatalf("the probe printed %q", line)
+			return fmt.Errorf("the probe printed %q", line)
 		}
 		got[fields[0]] = true
 		if fields[1] == "type" {
@@ -130,26 +124,116 @@ table Root
 	}
 	for _, name := range viewNames {
 		if !got[name] {
-			t.Errorf("%s has no descriptor through %s (docs/SPEC-TABLES.md §8.2)", name, view)
+			return fmt.Errorf("%s has no descriptor through %s (docs/SPEC-TABLES.md §8.2)", name, view)
 		}
 	}
 	sort.Strings(structs)
 	goTypes, err := goViewTypes(u)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	if strings.Join(structs, ",") != strings.Join(goTypes, ",") {
-		t.Errorf("the view's struct descriptors %v are not the Go view's type list %v", structs, goTypes)
+		return fmt.Errorf("the view's struct descriptors %v are not the Go view's type list %v", structs, goTypes)
+	}
+	return nil
+}
+
+// TestLuauEveryTypeHasAView holds docs/SPEC-TABLES.md §8.2 for the Luau leg:
+// every type in the unit has a descriptor, a type no table reaches included,
+// in a view module beside the table surface (§8.5). The table module's bytes
+// are pinned to the BASE digest, so carrying the view changes nothing a game
+// links; the view's struct descriptors are the type list the generated Go
+// view carries; and every generated module passes luau-analyze.
+func TestLuauEveryTypeHasAView(t *testing.T) {
+	t.Parallel()
+	u, files, tables := buildViewProbeFiles(t)
+
+	tableModule := tables["ViewProbeTable.luau"]
+	if tableModule == nil {
+		t.Fatal("no table module")
+	}
+	sum := sha256.Sum256(tableModule)
+	gotDigest := hex.EncodeToString(sum[:])
+	if gotDigest != wantTableDigest {
+		t.Errorf("the table module's bytes changed from BASE: got %s, want %s", gotDigest, wantTableDigest)
 	}
 
+	if err := verifyLuauEveryTypeHasAView(t, u, files); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
 	var analyze []string
-	for name := range files {
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		if strings.HasSuffix(name, ".luau") {
 			analyze = append(analyze, name)
 		}
 	}
 	sort.Strings(analyze)
 	luaurun.Analyze(t, dir, analyze...)
+}
+
+// TestLuauEveryTypeHasAViewNegativeControl breaks one §8.2 clause at a time in
+// ViewProbeView.luau and requires verifyLuauEveryTypeHasAView to fail on that
+// clause.
+func TestLuauEveryTypeHasAViewNegativeControl(t *testing.T) {
+	t.Parallel()
+	u, baseFiles, _ := buildViewProbeFiles(t)
+
+	controls := []struct {
+		name   string
+		from   string
+		to     string
+		expect string
+	}{
+		{
+			name:   "drop-unreached-type",
+			from:   `name = "Unreached"`,
+			to:     `name = "MissingUnreached"`,
+			expect: "Unreached has no descriptor through ViewProbeView.luau",
+		},
+		{
+			name:   "outside-nonzero-id",
+			from:   "name = \"Unreached\",\n\tid = 0i,",
+			to:     "name = \"Unreached\",\n\tid = 1i,",
+			expect: "Unreached.id=1",
+		},
+		{
+			name:   "outside-field-json",
+			from:   `{ id = 0i, name = "Count", slot = "Count", o = 0`,
+			to:     `{ id = 0i, name = "Count", slot = "Count", json = "Count", o = 0`,
+			expect: "Unreached.Count.json=Count",
+		},
+		{
+			name:   "outside-enum-nonzero-id",
+			from:   `variants = { { "Red", 0i, false }, { "Green", 0i, false } }`,
+			to:     `variants = { { "Red", 1i, false }, { "Green", 0i, false } }`,
+			expect: "Hue.Red.id=1",
+		},
+	}
+
+	for _, ctl := range controls {
+		t.Run(ctl.name, func(t *testing.T) {
+			t.Parallel()
+			files := maps.Clone(baseFiles)
+			src := string(files["ViewProbeView.luau"])
+			if strings.Count(src, ctl.from) != 1 {
+				t.Fatalf("ViewProbeView.luau carries %q %d times, want 1", ctl.from, strings.Count(src, ctl.from))
+			}
+			files["ViewProbeView.luau"] = []byte(strings.Replace(src, ctl.from, ctl.to, 1))
+			err := verifyLuauEveryTypeHasAView(t, u, files)
+			if err == nil {
+				t.Fatalf("NEGATIVE CONTROL FAILED (%s): broken ViewProbeView.luau passed verifyLuauEveryTypeHasAView", ctl.name)
+			}
+			if !strings.Contains(err.Error(), ctl.expect) {
+				t.Fatalf("NEGATIVE CONTROL (%s) failed with %q, want substring %q", ctl.name, err.Error(), ctl.expect)
+			}
+			t.Logf("red as required (%s): %v", ctl.name, err)
+		})
+	}
 }
 
 // wantTableDigest is ViewProbeTable.luau's sha256 at BASE. The view is a leaf:
@@ -182,13 +266,16 @@ func declaredViewNames(u *ir.Unit) []string {
 }
 
 // viewProbe loads the table modules and the view, collects every
-// <Name>Descriptor, and prints one line per descriptor: its name and whether
-// it is a table, a type (a non-table field list) or another declaration
-// (docs/SPEC-TABLES.md §8.1, §8.2).
+// <Name>Descriptor, checks §8.2's outside-closure id=0 and json=nil clauses,
+// and prints one line per descriptor: its name and whether it is a table, a
+// type (a non-table field list) or another declaration (docs/SPEC-TABLES.md
+// §8.1, §8.2).
 func viewProbe(names []string) string {
 	var b strings.Builder
 	b.WriteString(`local seen: { [string]: string } = {}
-local function collect(m: any)
+local T = require("./ViewProbeTable")
+local V = require("./ViewProbeView")
+local function collect(m: any, outside: boolean)
   for k, v in m do
     if type(k) == "string" and string.sub(k, -10) == "Descriptor" and type(v) == "table" and type(v.name) == "string" then
       local kind = "other"
@@ -198,12 +285,43 @@ local function collect(m: any)
         kind = "type"
       end
       seen[v.name] = kind
+      if not table.isfrozen(v) then
+        print("CLAUSE " .. v.name .. ".unfrozen")
+      end
+      if outside and v.fields ~= nil then
+        if v.id ~= 0i then
+          print("CLAUSE " .. v.name .. ".id=" .. tostring(v.id))
+        end
+        for _, f in v.fields do
+          if f.id ~= 0i then
+            print("CLAUSE " .. v.name .. "." .. tostring(f.name) .. ".id=" .. tostring(f.id))
+          end
+          if f.json ~= nil then
+            print("CLAUSE " .. v.name .. "." .. tostring(f.name) .. ".json=" .. tostring(f.json))
+          end
+        end
+      elseif outside and v.arms ~= nil then
+        for _, a in v.arms do
+          if a.id ~= 0i then
+            print("CLAUSE " .. v.name .. "." .. tostring(a.name) .. ".id=" .. tostring(a.id))
+          end
+          if a.json ~= nil then
+            print("CLAUSE " .. v.name .. "." .. tostring(a.name) .. ".json=" .. tostring(a.json))
+          end
+        end
+      elseif outside and v.kind == "enum" and v.variants ~= nil then
+        for _, pair in v.variants do
+          if pair[2] ~= 0i then
+            print("CLAUSE " .. v.name .. "." .. tostring(pair[1]) .. ".id=" .. tostring(pair[2]))
+          end
+        end
+      end
     end
   end
 end
+collect(T, false)
+collect(V, true)
 `)
-	b.WriteString("collect(require(\"./ViewProbeTable\"))\n")
-	b.WriteString("collect(require(\"./ViewProbeView\"))\n")
 	b.WriteString(`local names = {`)
 	for i, name := range names {
 		if i > 0 {
@@ -252,5 +370,5 @@ func goViewTypes(u *ir.Unit) ([]string, error) {
 		sort.Strings(names)
 		return names, nil
 	}
-	return nil, fmt.Errorf("no generated Go view file")
+	return nil, fmt.Errorf("gotable emitted no View.go")
 }

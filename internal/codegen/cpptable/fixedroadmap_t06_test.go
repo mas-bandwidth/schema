@@ -85,7 +85,7 @@ func t06Case(src, op string) string {
 
 func t06Has(t *testing.T, src, want, clause string) {
 	t.Helper()
-	if !strings.Contains(src, want) {
+	if !strings.Contains(cppSourceSpelling(src), cppSourceSpelling(want)) {
 		t.Errorf("%s: the emitted source does not carry %q", clause, want)
 	}
 }
@@ -115,12 +115,12 @@ func TestFixedRoadmapCppT06Bounds(t *testing.T) {
 	}{
 		{"cpp/C1", func(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md §5.4: "the count op clamps to the
-			// reader's own bound ... COUNT clamped", both ends. An array's
+			// reader's own bound ... COUNT out_of_range", both ends. An array's
 			// count is an int32 on the wire, so the low end is v < 0.
 			if count == "" {
 				t.Fatal("the emitted runtime has no kTableFixedCount op")
 			}
-			t06Has(t, count, "if ( v < 0 ) { v = 0; clamped++; }", "cpp/C1 count clamp v<0")
+			t06Has(t, count, "if ( v < 0 )\n            {\n                v = 0;\n                oor_count++;\n            }", "cpp/C1 count clamp v<0")
 		}},
 		{"cpp/C2", func(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md §5.4: the count clamps to
@@ -129,19 +129,23 @@ func TestFixedRoadmapCppT06Bounds(t *testing.T) {
 			if count == "" {
 				t.Fatal("the emitted runtime has no kTableFixedCount op")
 			}
-			t06Has(t, count, "else if ( v > (int32_t) p.size ) { v = (int32_t) p.size; clamped++; }", "cpp/C2 count clamp v>Max")
+			t06Has(t, count, "else if ( v > (int32_t) p.size )\n            {\n                v = (int32_t) p.size;\n                oor_count++;\n            }", "cpp/C2 count clamp v>Max")
 		}},
 		{"cpp/C7", func(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md:351: "A RANGED SCALAR clamps to its
-			// declared min and max, COUNT clamped." The bounds are the
+			// declared min and max, COUNT out_of_range." The bounds are the
 			// WRITER's, emitted as TableFixedKnownRange data the pass reads,
 			// and the pass runs over storage after the plan (§4.6).
 			t06Has(t, cppFX1, "constexpr TableFixedKnownRange FxRootFixedKnown0Ranges[] = {", "cpp/C7 the known-ranges table")
 			t06Has(t, cppFX1, "{ 8u, 4u, 1u, 0, 1000 },", "cpp/C7 renamed | min = 0, max = 1000")
 			t06Has(t, cppFX1, "{ 12u, 4u, 1u, 0, 1000 },", "cpp/C7 gone | min = 0, max = 1000")
 			t06Has(t, cppFX1, "TableFixedClampKnownRanges( FxRootFixedKnownRanges[lineage_at]", "cpp/C7 the pass is called after the plan")
-			t06Has(t, cppFX1, "if ( landed < b.lo ) { landed = b.lo; clamped++; }", "cpp/C7 clamp at min")
-			t06Has(t, cppFX1, "else if ( landed > b.hi ) { landed = b.hi; clamped++; }", "cpp/C7 clamp at max")
+			t06Has(t, cppFX1, "if ( below )\n        {\n            landed = (uint64_t) b.lo;\n            oor_count++;\n        }", "cpp/C7 clamp at min")
+			t06Has(t, cppFX1, "else if ( above )\n        {\n            landed = (uint64_t) b.hi;\n            oor_count++;\n        }", "cpp/C7 clamp at max")
+			// The comparison is in the field's own type: an unsigned kind compares
+			// unsigned, so a uint64 at or above 2^63 is past the max.
+			t06Has(t, cppFX1, "below = raw < (uint64_t) b.lo;", "cpp/C7 an unsigned kind compares unsigned at min")
+			t06Has(t, cppFX1, "above = raw > (uint64_t) b.hi;", "cpp/C7 an unsigned kind compares unsigned at max")
 		}},
 		{"cpp/C9", func(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md §4.5, §5.8 row 6: a union tag past
@@ -149,18 +153,18 @@ func TestFixedRoadmapCppT06Bounds(t *testing.T) {
 			// that None as an UNGUARDED const carrying the WRITER's arm count
 			// (fixedruntime.go:1142, :1144); the const op then counts a raw
 			// tag past that count (fixedruntime.go:385).
-			t06Has(t, cppUnion, "none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;", "cpp/C9 the union tag's None const plan entry")
+			t06Has(t, cppUnion, "none.aux = 0;\n                none.guard = guard;\n                none.op = kTableFixedConst;\n                none.arg = arg;", "cpp/C9 the union tag's None const plan entry")
 			t06Has(t, cppUnion, "if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }", "cpp/C9 the None carries the writer's arm count")
-			t06Has(t, cppUnion, "if ( raw > (uint64_t) p.dstsize ) { clamped++; }", "cpp/C9 a tag past the writer's arms lands None and counts")
+			t06Has(t, cppUnion, "if ( raw > (uint64_t) p.dstsize ) { oor_count++; }", "cpp/C9 a tag past the writer's arms lands None and counts")
 		}},
 		{"cpp/C10", func(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md §5.8 row 12: an enum ordinal past
-			// the writer's top lands None and counts clamped exactly once.
+			// the writer's top lands None and counts out_of_range exactly once.
 			if ordinalEnum == "" {
 				t.Fatal("the emitted enum runtime has no kTableFixedOrdinal op")
 			}
 			t06Has(t, ordinalEnum, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }", "cpp/C10 the enum remap table")
-			t06Has(t, ordinalEnum, "else if ( raw != 0 ) { clamped++; }", "cpp/C10 past the top lands None and counts")
+			t06Has(t, ordinalEnum, "else if ( raw != 0 ) { oor_count++; }", "cpp/C10 past the top lands None and counts")
 		}},
 		{"cpp/R31", func(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md §5.8 row 5: "arg and arg2 are
@@ -176,7 +180,7 @@ func TestFixedRoadmapCppT06Bounds(t *testing.T) {
 			// overflow refuses it."
 			t06Has(t, cppEnum, "const uint32_t n = te.children;", "cpp/R31 the remap table length is the writer's variant count")
 			t06Has(t, cppEnum, "const uint32_t at_map = TableFixedLayTable( c, NULL, (int32_t) n );", "cpp/R31 the table is laid at that length")
-			t06Has(t, cppEnum, "if ( n < 0 || n > 65535 ) { c.overflow = true; return 0; }", "cpp/R31 refuse by name past the length word")
+			t06Has(t, cppEnum, "if ( n < 0 || n > 65535 )\n    {\n        c.overflow = true;\n        return 0;\n    }", "cpp/R31 refuse by name past the length word")
 		}},
 		{"cpp/C12", func(t *testing.T) {
 			// docs/FIXED-FORM-ALGORITHM.md §4.5 fix 2: "a `bool` ... lands as
@@ -203,7 +207,7 @@ func TestFixedRoadmapCppT06Bounds(t *testing.T) {
 				t.Fatal("the emitted runtime has no kTableFixedBool op")
 			}
 			t06Has(t, boolCase, "d[i] = (uint8_t) ( s[i] != 0 );", "cpp/R17 normalise to 0/1")
-			t06NotHas(t, boolCase, "clamped++", "cpp/R17 a forged bool counts nothing")
+			t06NotHas(t, boolCase, "out_of_range++", "cpp/R17 a forged bool counts nothing")
 			t06NotHas(t, boolCase, "widened++", "cpp/R17 a forged bool widens nothing")
 		}},
 	}

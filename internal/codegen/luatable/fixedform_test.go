@@ -109,6 +109,8 @@ refusal("previous_form", "\1" .. base:sub(2))
 refusal("layout_malformed", base:sub(1, 20) .. string.pack("<I4", 0) .. base:sub(25))
 refusal("layout_malformed", base:sub(1, 33) .. string.pack("<I4", 65537) .. base:sub(38))
 refusal("plan_too_large", base:sub(1, L - 1) .. string.rep(base:sub(L), 4097))
+local ok4096, err4096 = pcall(function() T.FixedLoad("Lineage", base:sub(1, L - 1) .. string.rep(base:sub(L), 4097), 4096) end)
+assert(not ok4096 and tostring(err4096):find("batch_too_large", 1, true), "expected batch_too_large, got " .. tostring(err4096))
 print("fixed-refusals-ok")
 `
 	writeFile(t, filepath.Join(oldDir, "main.lua"), oldProbe)

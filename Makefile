@@ -85,6 +85,12 @@ GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
 # bin/schema stale and every generate re-emitted the old runtime.
 # bin-schema-embeds checks it against `go list`'s own EmbedFiles.
 EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go')
+# every .schema file the tables conformance manifest's units name (a unit path
+# is a file or a directory of them): the input of each build/conformance-<leg>
+# that generates the units itself, beside the compiler and the runtimes it
+# embeds, so an edit to any of the three regenerates the leg's units.
+CONFORMANCE_UNIT_PATHS := $(shell [ -f testdata/conformance/tables/MANIFEST.txt ] && awk '/^unit[ \t]/ { for (i = 3; i <= NF; i++) print $$i }' testdata/conformance/tables/MANIFEST.txt)
+CONFORMANCE_UNIT_SCHEMAS := $(foreach p,$(CONFORMANCE_UNIT_PATHS),$(if $(filter %.schema,$(p)),$(p),$(wildcard $(p)/*.schema)))
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 # the WIDE TEXT unit (examples-wide/) — wstring(N) and the string(N) read-side
@@ -384,6 +390,7 @@ define tables_generate
 	# because examples/ pins gate 1 for all nine targets and eight of them
 	# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
 	$(1) generate --lang cpp --out $(2)/wide examples-wide
+	$(1) generate --lang cpp --out $(2)/features testdata/conformance/feature-witnesses/full/Features.schema
 	# ---- rowan/cpp-versioning-numbers: BEGIN ----
 	# the versioning law's rows, every unit into ONE directory (see SCHEMAS_VERSIONING)
 	$(foreach sc,$(SCHEMAS_VERSIONING),$(1) generate --lang cpp --out $(2)/vnum $(sc)
@@ -393,9 +400,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING)
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -3364,11 +3371,11 @@ build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 
 build/schema_test_hostile: build/tables-generated/.stamp test/tables/hostile_main.cpp
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) build/tables-generated/maps/TextTable.cpp $(LISTS_SOURCES) -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/features test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) build/tables-generated/maps/TextTable.cpp $(LISTS_SOURCES) build/tables-generated/features/FeaturesTable.cpp -o $@
 
 build/schema_test_hostile_asan: build/tables-generated/.stamp test/tables/hostile_main.cpp
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) build/tables-generated/maps/TextTable.cpp $(LISTS_SOURCES) -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/features test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) build/tables-generated/maps/TextTable.cpp $(LISTS_SOURCES) build/tables-generated/features/FeaturesTable.cpp -o $@
 
 .PHONY: tables-hostile-values
 tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp
@@ -5039,45 +5046,6 @@ tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test
 
 test: tables-fixed-matched
 
-# THE PYTHON LEG'S ROW GATE (mas-bandwidth/schema#1400). The python port is one
-# matrix row at a time, each row a self-checking script under
-# test/py-packet/<row>/test_<row>.py that exits non-zero on the first failed
-# assertion. The target runs EVERY such script, so the next row is gated the
-# day it lands without a line here, and it goes red if it ran none: a glob that
-# matches nothing is a gate that ran nothing (#1315). PYTHONDONTWRITEBYTECODE
-# keeps a run from leaving __pycache__ in the tree. The go-test job in
-# ci-full.yml runs it (the stream's go-test job; ci.yml is gone), and `make test`
-# carries it.
-PY_PACKET_ROWS = $(sort $(wildcard test/py-packet/*/test_*.py))
-
-.PHONY: tables-py-packet
-tables-py-packet:
-	@n=0; for f in $(PY_PACKET_ROWS); do \
-		echo "== $$f"; PYTHONDONTWRITEBYTECODE=1 python3 "$$f" || exit 1; n=$$((n+1)); \
-	done; \
-	if [ $$n -eq 0 ]; then echo "tables-py-packet: no test/py-packet/*/test_*.py ran" >&2; exit 1; fi; \
-	echo "tables-py-packet: $$n row(s) passed"
-
-test: tables-py-packet
-
-# Its control: a copy of the leg with F11's plan-capacity check removed
-# (python/packet.py's `if entry_count > len(plan):` becomes `if False:`) must
-# turn the F11 row red, or the gate above is not watching the rule it names.
-.PHONY: tables-py-packet-negative-control
-tables-py-packet-negative-control:
-	@rm -rf build/py-packet-negative && mkdir -p build/py-packet-negative/python build/py-packet-negative/test/py-packet
-	@cp python/packet.py build/py-packet-negative/python/
-	@cp -R test/py-packet/f11 build/py-packet-negative/test/py-packet/
-	@sed -i.orig 's/if entry_count > len(plan):/if False:/' build/py-packet-negative/python/packet.py
-	@if cmp -s python/packet.py build/py-packet-negative/python/packet.py; then \
-		echo "tables-py-packet-negative-control: the sabotage patched nothing" >&2; exit 1; fi
-	@if PYTHONDONTWRITEBYTECODE=1 python3 build/py-packet-negative/test/py-packet/f11/test_f11.py >build/py-packet-negative/out.txt 2>&1; then \
-		cat build/py-packet-negative/out.txt; \
-		echo "tables-py-packet-negative-control: F11 stayed green without the plan-capacity check" >&2; exit 1; fi
-	@grep -q 'Expected count=-1' build/py-packet-negative/out.txt || { cat build/py-packet-negative/out.txt; \
-		echo "tables-py-packet-negative-control: F11 went red for the wrong reason" >&2; exit 1; }
-	@echo "tables-py-packet-negative-control: F11 went red without the plan-capacity check (ok)"
-
 # THE C / C++ FIXED RUNTIME TWIN GATE (bench/paired/TWIN.md). Emit both
 # paired headers, normalise the fixed runtimes through the documented token
 # map, and diff the rest. Any leftover line that is not one of the three
@@ -5246,7 +5214,7 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/l
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -Ibuild/tables-generated/features -I$(SERIALIZE)
 CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildcard build/tables-generated/lists/*Table.cpp) $(wildcard build/tables-generated/widelist/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
@@ -5264,7 +5232,7 @@ CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildc
 	build/tables-generated/k1/K1Table.cpp build/tables-generated/k2/K2Table.cpp \
 	build/tables-generated/g1/G1Table.cpp \
 	build/tables-generated/backend/BackendTable.cpp build/tables-generated/vocab/VocabTable.cpp build/tables-generated/vocab9/Vocab9Table.cpp \
-	build/tables-generated/wide/CaptionTable.cpp
+	build/tables-generated/wide/CaptionTable.cpp build/tables-generated/features/FeaturesTable.cpp
 
 # the harness LINKS the compiler's own engine — internal/tablewire and
 # internal/tabletext, reached through compiler/ — so its dependencies are the
@@ -5396,7 +5364,7 @@ define wire_fuzz_control
 		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the wire fuzzer stayed green"; \
 		cat build/wire-fuzz-nc-$(1)/log; exit 1; \
 	fi
-	@grep -q "$(4)" build/wire-fuzz-nc-$(1)/log || \
+	@grep -qE "$(4)" build/wire-fuzz-nc-$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the $(1) check"; \
 		  cat build/wire-fuzz-nc-$(1)/log; exit 1; }
 	@grep -m1 "FAILED" build/wire-fuzz-nc-$(1)/log
@@ -5526,7 +5494,7 @@ tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tabl
 # differ on the mutant that carried it. Without the pass this control could not
 # go red, so it is the pass's own gate as much as the rule's.
 tables-wire-fuzz-wide-text-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,wide-text,internal/codegen/cpptable/text.go,s|if ( unit >= 0xD800 \&\& unit <= 0xDBFF )|if ( false ) // NEGATIVE CONTROL: the pairing rule is gone|,differs)
+	$(call wire_fuzz_control,wide-text,internal/codegen/cpptable/text.go,s|if ( unit >= 0xD800 \&\& unit <= 0xDBFF )|if ( false ) // NEGATIVE CONTROL: the pairing rule is gone|,differs|the oracle discards a damaged load)
 
 # the string read's `room( len )`. THE ONE CONTENT RULE THE WIRE HAS
 # (docs/SPEC-TABLES.md §3, §4) reads a kind `12` payload AS IT ARRIVES, over
@@ -5539,12 +5507,12 @@ tables-wire-fuzz-wide-text-negative-control: build/conformance-harness
 # length this pass plants is 0xFFFFFFFFFFFFFFFF, the largest the wire can spell
 # and the one no buffer ever has room for.
 tables-wire-fuzz-length-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->malformed = true; return false; }|if ( !r.getleb( len ) ) { r.report->malformed = true; return false; } // NEGATIVE CONTROL: the fit check is gone|,the report differs)
+	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->malformed = true; return false; }|if ( !r.getleb( len ) ) { r.report->malformed = true; return false; } if ( !r.room( len ) ) { return false; } // NEGATIVE CONTROL: the fit check is gone|,the report differs|the oracle discards a damaged load)
 
 # the numbering's `index - 1 >= map.count`: an index past the node table then
 # reads a directory entry the region does not hold
 tables-wire-fuzz-index-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,index,internal/codegen/cpptable/arena.go,s|if ( index - 1 >= (uint64_t) map.count )|if ( false ) // NEGATIVE CONTROL: the range check is gone|,the report differs)
+	$(call wire_fuzz_control,index,internal/codegen/cpptable/arena.go,s|if ( index - 1 >= (uint64_t) map.count )|if ( false ) // NEGATIVE CONTROL: the range check is gone|,the report differs|the oracle discards a damaged load)
 
 # AN ARM'S `L` IS CHECKED AGAINST ITS KIND'S WIDTH (docs/SPEC-TABLES.md §3):
 # the arm header carries the kind, and an `L` that is not that kind's width is
@@ -5552,14 +5520,14 @@ tables-wire-fuzz-index-negative-control: build/conformance-harness
 # every width the closed set has and to zero; without the check the arm decodes
 # a value out of a payload that is not its own.
 tables-wire-fuzz-arm-width-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,arm-width,internal/codegen/cpptable/arms.go,s|if ( %s.size != %d ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.size != %d ) { %s = %s; r.report->malformed = true|,differs)
+	$(call wire_fuzz_control,arm-width,internal/codegen/cpptable/arms.go,s|if ( %s.size != %d ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.size != %d ) { %s = %s; r.report->malformed = true|,differs|the oracle discards a damaged load)
 
 # A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3), for an arm whose payload
 # is a body as much as for a kind `13` field: the fuzzer writes the ZERO
 # REFERENCE ahead of the payload's last byte, so the body ends inside its own
 # `L` and the bytes after it are claimed by no field.
 tables-wire-fuzz-arm-terminator-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,arm-terminator,internal/codegen/cpptable/arms.go,s|if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->malformed = true|,the decoded value differs)
+	$(call wire_fuzz_control,arm-terminator,internal/codegen/cpptable/arms.go,s|if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->malformed = true|,the decoded value differs|the oracle discards a damaged load)
 
 # THE ORACLE NEVER PANICS, which is what makes it an oracle. The four controls
 # above sabotage the C++ EMITTER and ask whether the fuzzer notices a leg that
@@ -5599,33 +5567,33 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
 	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
 
-# DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31; docs/SPEC-TABLES.md §4):
-# on a mutant the oracle reads as damaged, the wire fuzzer compares the
-# refusal and nothing after it. The control removes the discard from a COPY
-# of wirefuzz.go, reached through a Go build overlay, so the re-saved bytes
-# and the retention report are compared again on damaged input, and the gate
-# TestWireVerdictComparesOnlyTheRefusalOnDamage must go red on exactly that.
-# Nothing tracked is written to.
+# THE VERDICT IS THE WHOLE CONTRACT (docs/rulings.json refusal-verdict-only):
+# an answer that is not accepted is held to its verdict alone, never to a
+# value or a diagnostic after it. The control removes that guard from a COPY
+# of wirefuzz.go, reached through a Go build overlay, so a refused answer's
+# bytes are compared again, and the gate
+# TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues must go red on exactly
+# that. Nothing tracked is written to.
 DISCARD_NC := build/wire-fuzz-nc-discard
 .PHONY: tables-wire-fuzz-discard-negative-control
 tables-wire-fuzz-discard-negative-control:
 	@rm -rf $(DISCARD_NC) && mkdir -p $(DISCARD_NC)
-	@sed -e 's|discarded := ans.report.Malformed \|\| ans.report.Refused|discarded := false // NEGATIVE CONTROL: damaged loads are compared whole|' \
+	@sed -e 's|if !ans.accepted {|if false { // NEGATIVE CONTROL: a refused answer is compared whole|' \
 		test/conformance/harness/wirefuzz.go > $(DISCARD_NC)/wirefuzz.go.txt
 	@cmp -s test/conformance/harness/wirefuzz.go $(DISCARD_NC)/wirefuzz.go.txt && \
 		{ echo "NEGATIVE CONTROL: the discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/test/conformance/harness/wirefuzz.go":"%s/$(DISCARD_NC)/wirefuzz.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(DISCARD_NC)/overlay.json
-	@if go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyTheRefusalOnDamage$$' \
+	@if go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues$$' \
 			./test/conformance/harness > $(DISCARD_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: damaged loads are compared whole and the gate stayed green"; \
+		echo "NEGATIVE CONTROL FAILED: refused answers are compared whole and the gate stayed green"; \
 		cat $(DISCARD_NC)/log; exit 1; \
 	fi
-	@grep -q "a leg that refuses the damaged load is red" $(DISCARD_NC)/log || \
+	@grep -q "the decoded value differs" $(DISCARD_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(DISCARD_NC)/log; exit 1; }
-	@grep -m1 "refuses the damaged load is red" $(DISCARD_NC)/log
-	@echo "negative control: comparing a damaged load's saved bytes turns the discard gate RED"
+	@grep -m1 "the decoded value differs" $(DISCARD_NC)/log
+	@echo "negative control: comparing a refused answer's saved bytes turns the verdict gate RED"
 
 # DAMAGE DISCARDS THE WHOLE LOAD in the C++ reference (docs/SPEC-TABLES.md §4):
 # the control removes the discard from a COPY of the emitter's LoadVerdict,
@@ -5662,7 +5630,7 @@ CPP_REGION_DISCARD_NC := build/cpp-region-discard-nc
 .PHONY: tables-cpp-region-discard-negative-control
 tables-cpp-region-discard-negative-control:
 	@rm -rf $(CPP_REGION_DISCARD_NC) && mkdir -p $(CPP_REGION_DISCARD_NC)
-	@sed -e 's|if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; }|if ( false ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // NEGATIVE CONTROL: the region discard is gone|' \
+	@sed -e '/damage discards the whole load/ { /TableRetainReset/! s|if ( out->malformed )|if ( false )|; }' \
 		internal/codegen/cpptable/pointers.go > $(CPP_REGION_DISCARD_NC)/pointers.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_REGION_DISCARD_NC)/pointers.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
@@ -5678,6 +5646,177 @@ tables-cpp-region-discard-negative-control:
 		  cat $(CPP_REGION_DISCARD_NC)/log; exit 1; }
 	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
 	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
+
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn's ruling,
+# 2026-10-31). The C++ check is Kahn's algorithm over the load's directory
+# (TableCycleAcyclic, internal/codegen/cpptable/arena.go). The first control
+# drops its verdict in a COPY of arena.go, so a cyclic graph loads, and
+# TestPointerNamingAnOpenNodeIsRefusedCPP must go red on it.
+CPP_CYCLE_NC := build/cpp-cycle-nc
+.PHONY: tables-cpp-cycle-negative-control
+tables-cpp-cycle-negative-control:
+	@rm -rf $(CPP_CYCLE_NC) && mkdir -p $(CPP_CYCLE_NC)
+	@sed -e 's#    if ( c.broken || c.processed != c.vertices ) { return false; } // an unfreed node sits on a cycle#    if ( c.broken ) { return false; } // NEGATIVE CONTROL: the cycle verdict is gone#' \
+		internal/codegen/cpptable/arena.go > $(CPP_CYCLE_NC)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(CPP_CYCLE_NC)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ cycle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_NC)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(CPP_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedCPP$$' \
+			./internal/codegen/cpptable > $(CPP_CYCLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ cycle verdict is gone and the gate stayed green"; \
+		cat $(CPP_CYCLE_NC)/log; exit 1; \
+	fi
+	@grep -q "cycle: the region load handed back a cyclic graph" $(CPP_CYCLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(CPP_CYCLE_NC)/log; exit 1; }
+	@grep -m1 "cyclic graph" $(CPP_CYCLE_NC)/log
+	@echo "negative control: removing the C++ cycle verdict turns the cycle gate RED"
+
+# The LINEAR control: the second pass stacks a node at EVERY slot naming it
+# rather than at the last, so a shared node is entered once per path into it,
+# and the forty-diamond chain TestDiamondChainLoadsLinearCPP loads must go red.
+CPP_CYCLE_LINEAR_NC := build/cpp-cycle-linear-nc
+.PHONY: tables-cpp-cycle-linear-negative-control
+tables-cpp-cycle-linear-negative-control:
+	@rm -rf $(CPP_CYCLE_LINEAR_NC) && mkdir -p $(CPP_CYCLE_LINEAR_NC)
+	@sed -e 's|    if ( degree == 1 ) { TableCyclePush( c, p ); } // the last slot naming it: its descent is free|    TableCyclePush( c, p ); // NEGATIVE CONTROL: entered once per path|' \
+		internal/codegen/cpptable/arena.go > $(CPP_CYCLE_LINEAR_NC)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(CPP_CYCLE_LINEAR_NC)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ linear sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_LINEAR_NC)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_LINEAR_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -timeout 300s -overlay $(CPP_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearCPP$$' \
+			./internal/codegen/cpptable > $(CPP_CYCLE_LINEAR_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
+		cat $(CPP_CYCLE_LINEAR_NC)/log; exit 1; \
+	fi
+	@grep -q "diamond: the walk did not finish linear" $(CPP_CYCLE_LINEAR_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the diamond gate went red for some other reason"; \
+		  cat $(CPP_CYCLE_LINEAR_NC)/log; exit 1; }
+	@grep -m1 "diamond:" $(CPP_CYCLE_LINEAR_NC)/log
+	@echo "negative control: entering a shared node once per path turns the diamond gate RED"
+
+# The engine's twin: a pointer to an OPEN node is let through in a COPY of
+# decodenodes.go, so the oracle reads node_cycle_self clean, and the framing
+# oracle check TestFramingVectorsReadThroughTheEngine must go red on that row.
+ENGINE_CYCLE_NC := build/engine-cycle-nc
+.PHONY: tables-engine-cycle-negative-control
+tables-engine-cycle-negative-control:
+	@rm -rf $(ENGINE_CYCLE_NC) && mkdir -p $(ENGINE_CYCLE_NC)
+	@sed -e 's|return true // a pointer to an OPEN node: a cycle|continue // NEGATIVE CONTROL: cycles read clean|' \
+		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_NC)/decodenodes.go.txt
+	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_NC)/decodenodes.go.txt && \
+		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_NC)/decodenodes.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
+	@if go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
+			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
+		cat $(ENGINE_CYCLE_NC)/log; exit 1; \
+	fi
+	@grep -q "node_cycle_self" $(ENGINE_CYCLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red, but not on node_cycle_self"; \
+		  cat $(ENGINE_CYCLE_NC)/log; exit 1; }
+	@grep -m1 "node_cycle_self" $(ENGINE_CYCLE_NC)/log
+	@echo "negative control: letting the engine read a cycle turns node_cycle_self RED"
+
+# THE CHECK IS LINEAR (docs/SPEC-TABLES.md §3.1): a COPY of decodenodes.go
+# re-enters a CLOSED node instead of taking it as a share, which is the
+# open-path-only walk, exponential on a diamond chain, and
+# TestDiamondChainLoadsLinear must miss its deadline.
+ENGINE_CYCLE_LINEAR_NC := build/engine-cycle-linear-nc
+.PHONY: tables-engine-cycle-linear-negative-control
+tables-engine-cycle-linear-negative-control:
+	@rm -rf $(ENGINE_CYCLE_LINEAR_NC) && mkdir -p $(ENGINE_CYCLE_LINEAR_NC)
+	@sed -e 's|continue // a pointer to a CLOSED node: a share, never re-entered|// NEGATIVE CONTROL: a share is re-entered|' \
+		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt
+	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt && \
+		{ echo "NEGATIVE CONTROL: the engine linear sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_LINEAR_NC)/overlay.json
+	@if go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
+			./internal/tablewire > $(ENGINE_CYCLE_LINEAR_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: shares are re-entered and the diamond gate stayed green"; \
+		cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; \
+	fi
+	@grep -q "diamond: the walk did not finish linear" $(ENGINE_CYCLE_LINEAR_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the diamond gate went red for some other reason"; \
+		  cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; }
+	@grep -m1 "did not finish linear" $(ENGINE_CYCLE_LINEAR_NC)/log
+	@echo "negative control: re-entering a shared node turns the diamond gate RED"
+
+# NOTHING OF A REFUSED BUILDER LOAD IS USED (docs/SPEC-TABLES.md §4): the control
+# removes the root reset from a COPY of pointers.go, so a damaged builder load
+# leaves its root holding what it decoded.
+TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR := build/tables-cpp-builder-discard-negative-control
+.PHONY: tables-cpp-builder-discard-negative-control
+tables-cpp-builder-discard-negative-control:
+	@rm -rf $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)
+	@sed -e 's#if ( out->malformed || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
+		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt
+	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+			./internal/codegen/cpptable > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestDamageDiscardsTheWholeLoadCPP stayed green"; \
+		cat $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log; exit 1; \
+	fi
+	@grep -q "builder: a damaged load left a usable root" $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log; exit 1; }
+	@grep -m1 "usable root" $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the reset turns TestDamageDiscardsTheWholeLoadCPP RED"
+
+# A REFUSED RETAINING LOAD KEEPS NOTHING (docs/SPEC-TABLES.md §3.3, §6.6): the
+# control removes the store reset from the non-finite exit of a COPY of
+# pointers.go, so a NaN leaves the retention store holding records.
+TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR := build/tables-cpp-retain-refusal-negative-control
+.PHONY: tables-cpp-retain-refusal-negative-control
+tables-cpp-retain-refusal-negative-control:
+	@rm -rf $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)
+	@sed -e '/if ( TableNonFiniteRefused/ s|        TableRetainReset( retain, nodes, region );\\n||' \
+		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt
+	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestRefusedLoadsHandBackNothingCPP$$' \
+			./internal/codegen/cpptable > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestRefusedLoadsHandBackNothingCPP stayed green"; \
+		cat $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; \
+	fi
+	@grep -q "nan: the retention store kept" $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; }
+	@grep -m1 "retention store kept" $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the reset turns TestRefusedLoadsHandBackNothingCPP RED"
+
+# A REFUSED FIXED BATCH KEEPS NOTHING (docs/SPEC-TABLES.md §4, §6.5): the control
+# removes the no_layout reset from a COPY of fixedform.go, so record 0 of a
+# batch refused at record 1 stays decoded.
+TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR := build/tables-cpp-fixed-refusal-negative-control
+.PHONY: tables-cpp-fixed-refusal-negative-control
+tables-cpp-fixed-refusal-negative-control:
+	@rm -rf $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)
+	@sed -e 's|for ( int64_t j = 0; j < k; ++j ) { %sReset( values\[j\] ); }|for ( int64_t j = 0; j < 0; ++j ) { %sReset( values[j] ); } // NEGATIVE CONTROL: the reset is gone|' \
+		internal/codegen/cpptable/fixedform.go > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt
+	@cmp -s internal/codegen/cpptable/fixedform.go $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/fixedform.go":"%s/$(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestFixedRefusalHandsBackNothingCPP$$' \
+			./internal/codegen/cpptable > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestFixedRefusalHandsBackNothingCPP stayed green"; \
+		cat $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; \
+	fi
+	@grep -q "fixed: no_layout left record 0 usable" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; }
+	@grep -m1 "left record 0" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the reset turns TestFixedRefusalHandsBackNothingCPP RED"
 
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
@@ -6087,8 +6226,9 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 	@grep -m1 "FAILED" $(MESSAGE_TEXT_LEG_NC)/log
 	@echo "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED"
 
-# The GENERATED half of the data: the JSON text of every instance and the read
-# report of every evolution case, both from the compiler's own engine.
+# The GENERATED half of the data: the JSON text of every instance, the read
+# report of every evolution case, and the canonical write-back wire of every
+# readable report, framing and hostile row, all from the compiler's own engine.
 .PHONY: conformance-generate
 conformance-generate: build/conformance-harness
 	./build/conformance-harness generate
@@ -6320,6 +6460,15 @@ include make/checks/schema-shared-hostile-corpus.mk
 # (issue #599): --skip takes the same names, and the harness prints each one it
 # passes over. The reference leg cannot be skipped.
 .PHONY: conformance
+# A separate four-case whole-text entry gate, not four new global corpus rows.
+# The caller builds the selected driver first; nightly already has that build.
+CONFORMANCE_BOM_LANG ?= cpp
+CONFORMANCE_BOM_HARNESS ?= build/conformance-harness
+CONFORMANCE_BOM_OUT ?= build/conformance-bom-entry/$(CONFORMANCE_BOM_LANG)
+.PHONY: conformance-bom-entry
+conformance-bom-entry: $(CONFORMANCE_BOM_HARNESS)
+	sh test/conformance/bom-entry "$(CONFORMANCE_BOM_LANG)" "$(CONFORMANCE_BOM_HARNESS)" "$(CONFORMANCE_BOM_OUT)"
+
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
 		--results build/conformance/results.json \
@@ -6751,6 +6900,10 @@ SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SE
 # is up to date, and a phony target with only that prerequisite would report
 # nothing to be done.
 SERIALIZE_GO_PIN     ?= v2.1.1
+SERIALIZE_C_PIN      ?= v2.1.1
+SERIALIZE_CS_PIN     ?= v2.1.1
+SERIALIZE_RS_PIN     ?= v5.0.0
+SERIALIZE_JS_PIN     ?= v2.1.2
 # Immutable commit resolved from refs/tags/v2.1.1 (annotated tag object: 36717230bfad4d890fe23882d14f87b9658205ab).
 SERIALIZE_GO_COMMIT  ?= 97c6825383cffe9f43af64526dea4e0ef10d1662
 SERIALIZE_GO_REPO    ?= https://github.com/mas-bandwidth/serialize.go.git
@@ -6783,8 +6936,33 @@ else \
 fi
 endef
 
-.PHONY: deps
-deps:
+# THE SIBLING RUNTIMES AT THE PINS ABOVE. The pins are the single source: this
+# stages the C/C++/CS/Rust/JS checkouts CI clones, at the same tags, for a local
+# bench. deps names it as a prerequisite below, after deps-go has staged the Go
+# runtime, because deps owns the Go checkout's staged placement and tag-commit
+# verification (internal/ci/serializefetch_test.go holds that): a direct clone
+# here would bypass them. A pin that only this file reads would bind no
+# checkout (internal/ci/mainreds_pins_test.go refuses that). ci-full.yml's tags
+# are held to what these resolve to. An existing sibling is left alone; remove
+# it to re-stage. When NOVA_MIRRORS names a mirror directory but not this
+# runtime, the sibling is left absent and named, never cloned from the network:
+# a bench that mirrors part of the fleet stays offline.
+define stage-sibling
+if test ! -e "$(4)"; then \
+	if test -n "$(NOVA_MIRRORS)" && ! test -d "$(NOVA_MIRRORS)/$(2)"; then \
+		echo "serialize-siblings: no mirror for $(2); $(4) stays absent"; \
+	else \
+		$(call fetch-runtime,$(1),$(2),$(3),$(4),$(5)); \
+	fi; \
+fi
+endef
+
+# DEPS-GO owns the Go sibling: it stages the checkout under a temporary name,
+# verifies the pinned tag's commit, and publishes it only after a placement
+# race check (internal/ci/serializefetch_test.go). Keeping it separate from
+# deps lets the sibling staging hang off deps without running first.
+.PHONY: deps-go
+deps-go:
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
 		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
 		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
@@ -6820,6 +6998,17 @@ deps:
 		rm -rf "$$stage"; \
 	fi
 	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "make deps: serialize.go at '$(SERIALIZE_GO)' has no go.mod; refusing" >&2; exit 1; }
+
+.PHONY: serialize-siblings
+serialize-siblings: deps-go
+	@$(call stage-sibling,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),../serialize,C++)
+	@$(call stage-sibling,$(SERIALIZE_C_PIN),mas-bandwidth/serialize.c.git,https://github.com/mas-bandwidth/serialize.c.git,../serialize.c,C)
+	@$(call stage-sibling,$(SERIALIZE_CS_PIN),mas-bandwidth/serialize.cs.git,https://github.com/mas-bandwidth/serialize.cs.git,../serialize.cs,CS)
+	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
+	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
+
+.PHONY: deps
+deps: serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
@@ -7056,10 +7245,11 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h
 # the differential, naming the difference, with no tag decision printed.
 RELEASE_GATE_TEST ?= build/release-gate-test
 # the same Makefile this test was read from, so its control can hand it a copy
-RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD PROOF=$(RELEASE_GATE_TEST)/green.json
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
 release-refuses-on-differential:
 	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
+	@printf '{"commit":"%s","cells":1,"red":[]}\n' "$$(git rev-parse HEAD)" > $(RELEASE_GATE_TEST)/green.json
 	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema
 	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_GATE_TEST)/encode.gotext internal/tablewire/encode.go
 	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
@@ -7083,7 +7273,7 @@ release-refuses-on-differential:
 RELEASE_GATE_CONTROL := build/release-gate-control
 release-refuses-on-differential-negative-control: release-refuses-on-differential
 	@rm -rf $(RELEASE_GATE_CONTROL) && mkdir -p $(RELEASE_GATE_CONTROL)
-	@sed 's/^release: release-differential$$/release: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
+	@sed 's/^\t$$(MAKE) --no-print-directory release-differential$$/\t@: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
 	@! cmp -s Makefile $(RELEASE_GATE_CONTROL)/Makefile || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage no longer matches release's prerequisite line"; exit 1; }
 	@if $(MAKE) --no-print-directory -f $(RELEASE_GATE_CONTROL)/Makefile release-refuses-on-differential RELEASE_GATE_TEST=$(RELEASE_GATE_CONTROL)/test > $(RELEASE_GATE_CONTROL)/red.out 2>&1; then \
@@ -7263,13 +7453,13 @@ build-version-elemkind-negative-control:
 .PHONY: tables-wire-text-total-negative-control
 tables-wire-text-total-negative-control:
 	@mkdir -p build
-	@sed -e 's@^[[:space:]]*if f.TextTotal <= 0 || !f.IsTextList() {$$@if true { // SABOTAGED: the total is never held@' \
+	@sed -e 's@^[[:space:]]*if f.TextTotal <= 0 || !f.IsTextList() {$$@if true || f.TextTotal <= 0 || !f.IsTextList() { // SABOTAGED: the total is never held@' \
 		internal/tablewire/decode.go > build/tablewire-no-total.gotext
 	@grep -q SABOTAGED build/tablewire-no-total.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch the total clamp"; exit 1; }
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/tablewire-no-total.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/tablewire-no-total-overlay.json
-	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/tablewire-no-total-overlay.json \
+	@if SCHEMA_SLOW=1 go test -timeout=0 -count=1 -overlay=build/tablewire-no-total-overlay.json \
 		./internal/tablewire -run TestTextTotalClampsTheReadToAPrefix > build/tablewire-no-total.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the total test passed with the clamp gone"; \
 		cat build/tablewire-no-total.log; exit 1; \
@@ -7363,3 +7553,10 @@ test: vuln-selftest
 
 # Ensure the Go sibling runtime before any tests can enter a Go gate.
 test: deps
+
+# Strict CookCheck is the hostile boundary; generated Open consumes trusted bytes.
+# Exercise accepted cooks in optimized and debug/checkptr Go builds, and prove
+# the gate catches both a weakened checker and a broken native accessor.
+.PHONY: tables-go-checked-cook
+tables-go-checked-cook:
+	SCHEMA_SLOW=1 go test -count=1 -v ./compiler -run '^TestCheckedCookGoConsumers'

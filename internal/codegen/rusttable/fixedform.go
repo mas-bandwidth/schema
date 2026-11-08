@@ -1116,6 +1116,26 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.\n")
 	g.pf("pub const %s_FIXED_OWN: usize = %d;\n\n", up, ownIndex)
 
+	// THE WRITER'S RANGES, per lineage entry (docs/FIXED-FORM-ALGORITHM.md
+	// §4.5): a record read under an older entry is held to what THAT writer
+	// declared, then to this reader's own ranges. One straight-line pass per
+	// entry that bounds anything, spelled by the reader's own clamp emitter
+	// over the reader's storage with the writer's numbers.
+	var writerClamps []int
+	for i, fields := range fixedWriterFields(st, lineage, hash) {
+		if len(fields) == 0 {
+			continue
+		}
+		writerClamps = append(writerClamps, i)
+		g.pf("/// LINEAGE ENTRY %d's WRITER RANGES (§4.5): every clamp counts.\n", i)
+		g.pf("#[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)\n")
+		g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32) {\n", fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
+		for _, f := range fields {
+			g.emitFixedClampField(f, "value."+f.Name, 4)
+		}
+		g.pf("}\n\n")
+	}
+
 	if len(lineage) > 1 {
 		planCap := max(int(body)+2*len(entries)+256, 512)
 		remapCap := 1024 + 32*len(entries)
@@ -1211,7 +1231,12 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// and the body at 16 — then the layout behind its u32 length, then the\n")
 	g.pf("/// records back to back to the end of it (§3.4).\n")
 	g.pf("pub const fn %s_fixed_measure(count: usize) -> usize {\n", name)
-	g.pf("    TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
+	if st.Integrity == "crc32c" {
+		g.pf("    4 + ")
+	} else {
+		g.pf("    ")
+	}
+	g.pf("TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
 
 	finite := fixedFiniteNeededStruct(st, map[string]bool{})
 	g.pf("/// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or\n")
@@ -1242,6 +1267,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        body.fill(0); // the template's zeros, and every byte of declared slack with them\n")
 	g.pf("        %s(body, value);\n", fn(st.Name, "fixed_write_body"))
 	g.pf("        at += %s_FIXED_RECORD_BYTES;\n    }\n", up)
+	if st.Integrity == "crc32c" {
+		g.pf("    let sum = table_integrity_checksum(&buffer[..at]);\n    buffer[at..at + 4].copy_from_slice(&sum.to_le_bytes());\n")
+	}
 	g.pf("    Some(need)\n}\n\n")
 
 	g.pf("/// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when\n")
@@ -1257,7 +1285,31 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// The plan's storage is the CALLER's, declared by capacity: this codec never\n")
 	g.pf("/// allocates, and a layout whose plan does not fit is a refusal by name.\n")
 	g.pf("/// Returns the records read, or None on a refusal `report` names.\n")
+	g.pf("///\n")
+	g.pf("/// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that\n")
+	g.pf("/// meets damage anywhere answers None with `malformed` set, and every record\n")
+	g.pf("/// in `values` goes back to its declared defaults, so nothing the read\n")
+	g.pf("/// decoded before or after the damage is a value to use.\n")
 	g.pf("pub fn %s_fixed_load(\n", name)
+	g.pf("    values: &mut [%sRow],\n", st.Name)
+	g.pf("    data: &[u8],\n")
+	g.pf("    plan: &mut [TableFixedEntry],\n")
+	g.pf("    remap: &mut [u16],\n")
+	g.pf("    report: &mut TableFixedReport,\n")
+	g.pf(") -> Option<usize> {\n")
+	g.pf("    let malformed_before = report.malformed;\n")
+	g.pf("    report.malformed = false;\n")
+	g.pf("    let read = %s(values, data, plan, remap, report);\n", fn(st.Name, "fixed_load_records"))
+	g.pf("    let damaged = report.malformed;\n")
+	g.pf("    report.malformed |= malformed_before;\n")
+	g.pf("    if damaged {\n")
+	g.pf("        for value in values.iter_mut() {\n")
+	g.pf("            %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+	g.pf("        }\n")
+	g.pf("        return None;\n")
+	g.pf("    }\n")
+	g.pf("    read\n}\n\n")
+	g.pf("fn %s_fixed_load_records(\n", name)
 	g.pf("    values: &mut [%sRow],\n", st.Name)
 	g.pf("    data: &[u8],\n")
 	g.pf("    plan: &mut [TableFixedEntry],\n")
@@ -1278,6 +1330,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            _ => TableFixedReason::NewerForm,         // a byte no form defines\n")
 	g.pf("        });\n")
 	g.pf("    }\n")
+	if st.Integrity == "crc32c" {
+		g.pf("    let Some(data) = table_integrity_body(data, 5) else { report.malformed = true; return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
+	}
 	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        report.malformed = true;\n        return None;\n    }\n")
 	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
 	g.pf("    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {\n        report.malformed = true;\n        return None;\n    }\n")
@@ -1378,9 +1433,15 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);\n")
 	g.pf("    let holes = &hole_buf[..hole_n];\n")
 	g.pf("    let mut image = [0u8; %s_FIXED_BODY_BYTES];\n", up)
+	g.pf("    let (clamped_before, widened_before) = (report.clamped, report.widened);\n")
 	g.pf("    for k in 0..n {\n")
 	g.pf("        let record = &rest[k * record_bytes..(k + 1) * record_bytes];\n")
 	g.pf("        if u64::from_le_bytes(record[..8].try_into().expect(\"eight bytes\")) != hash {\n")
+	g.pf("            for value in values.iter_mut().take(k) {\n")
+	g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+	g.pf("            }\n")
+	g.pf("            report.clamped = clamped_before;\n")
+	g.pf("            report.widened = widened_before;\n")
 	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
 	g.pf("        for h in holes {\n")
 	g.pf("            let o = h.off as usize;\n")
@@ -1400,8 +1461,27 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            for value in values.iter_mut().take(k + 1) {\n")
 		g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 		g.pf("            }\n")
+		g.pf("            report.clamped = clamped_before;\n")
+		g.pf("            report.widened = widened_before;\n")
 		g.pf("            return report.refuse_non_finite(why);\n")
 		g.pf("        }\n")
+	}
+	if len(writerClamps) > 0 {
+		g.pf("        // THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),\n")
+		g.pf("        // then this reader's own below.\n")
+		g.pf("        {\n            let mut clamped = 0i32;\n")
+		if len(writerClamps) == 1 {
+			i := writerClamps[0]
+			g.pf("            if found == %d {\n                %s(&mut values[k], &mut clamped);\n            }\n",
+				i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+		} else {
+			g.pf("            match found {\n")
+			for _, i := range writerClamps {
+				g.pf("                %d => %s(&mut values[k], &mut clamped),\n", i, fn(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+			}
+			g.pf("                _ => {}\n            }\n")
+		}
+		g.pf("            report.clamped += clamped as u32;\n        }\n")
 	}
 	if fixedRangeClampNeeded(st) {
 		g.pf("        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the\n")
@@ -1415,7 +1495,13 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            // fix 11; §5.8 row 8): it is the packet reader's verdict, this form\n")
 		g.pf("            // having no `L` to continue past. REFUSE is total, so the refusal\n")
 		g.pf("            // is taken before any counter is added.\n")
-		g.pf("            if damaged != 0 {\n                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
+		g.pf("            if damaged != 0 {\n")
+		g.pf("                for value in values.iter_mut().take(k + 1) {\n")
+		g.pf("                    %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+		g.pf("                }\n")
+		g.pf("                report.clamped = clamped_before;\n")
+		g.pf("                report.widened = widened_before;\n")
+		g.pf("                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
 		g.pf("            report.clamped += clamped as u32;\n")
 		g.pf("        }\n")
 	}

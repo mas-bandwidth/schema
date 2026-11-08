@@ -1,6 +1,10 @@
 package elixirtable
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +12,9 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // TestKeyedAccessorCoversBothEndsElixir pins docs/PORTING.md M5 (#407):
@@ -403,4 +410,198 @@ func writeKeyedModules(t *testing.T, dir string, files map[string][]byte) []stri
 		names = append(names, name)
 	}
 	return sortedRuntimeFirst(names)
+}
+
+// An unknown enum-keyed array slot in variable form must skip its length-framed
+// element bytes without decoding them, and a damaged slot key ref must stop the
+// keyed-array body immediately (docs/SPEC-TABLES.md §3.2, §4, §6.6).
+func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
+	slowtest.Gate(t, "the Elixir toolchain")
+	v2Path := filepath.Join("..", "..", "..", "test", "tables", "V2.schema")
+	u := loadUnit(t, v2Path)
+	root := u.Tables["Cfg"]
+	if root == nil {
+		t.Fatal("V2.schema declares no Cfg root")
+	}
+	model := tabletext.NewModel(u)
+
+	const mutantHex = "010104030000000210220d03030c04040b000000050c0261310006070404160000000007000404210000000008101404030304650000000604660000000904680000000a10081e0203010b07010c0d0e0e04030700000000000000090000000e0d070f0a0000c84000100429000000111e0b008cec01864cdc63afb7f401aa9bdf1a9a8be145c2cb04da4fe6b4e78a35d1f9ee3d62cb8fecfcf7398794b696a762b5a0ca487f91235e50e2132b7121f0b8fa9321f3285edc4dc7115c80b0b211ca9752b318320d7ec916c491c5c4aa397792c46cbd988a923b0d4a69cb79a912ee29fda6ecee9a99eb45458959b62eef846f1ec0ca7ecea23f3b1f1100000000000000"
+	const mutantSHA256 = "2f94fd221fa801921b3c2014429d8e4acdb257424efdeaeba4ebf1059792d660"
+
+	mutant, err := hex.DecodeString(mutantHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(mutant)); got != mutantSHA256 {
+		t.Fatalf("mutant sha256 = %s, want %s", got, mutantSHA256)
+	}
+	if size, whole, refused := tablewire.FileRegionMeasure(u, root, mutant); size != 320 || !whole || refused {
+		t.Fatalf("FileRegionMeasure(mutant) = (%d, %v, %v), want (320, true, false)", size, whole, refused)
+	}
+
+	val := model.New(root)
+	var report tabletext.Report
+	ok, err := tablewire.Decode(model, val, mutant, &report)
+	if !ok || err != nil || report.Refused || report.Unknown != 2 {
+		t.Fatalf("Decode(mutant) = (%v, %v, %+v)", ok, err, report)
+	}
+	wantSave, err := tablewire.Encode(model, val)
+	if err != nil || len(wantSave) != 192 {
+		t.Fatalf("Encode(mutant) = (%d bytes, %v), want 192 bytes", len(wantSave), err)
+	}
+
+	v2Src, err := os.ReadFile(v2Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retainSchema := strings.Replace(
+		strings.Replace(string(v2Src), "package tblv2", "package tblv2retain", 1),
+		"fixed table Cfg", "table Cfg", 1,
+	)
+	retainUnit := unitFrom(t, retainSchema)
+	retainModel := tabletext.NewModel(retainUnit)
+	rval := retainModel.New(retainUnit.Tables["Cfg"])
+	var rreport tabletext.Report
+	rt := tablewire.Retain{Capacity: 4096, IdCapacity: 512}
+	ok, err = tablewire.DecodeRetain(retainModel, rval, mutant, &rt, &rreport)
+	if !ok || err != nil || rreport.Refused || rreport.Unknown != 2 {
+		t.Fatalf("DecodeRetain(mutant) = (%v, %v, %+v)", ok, err, rreport)
+	}
+	var sreport tabletext.Report
+	wantRetainSave, err := tablewire.EncodeRetain(retainModel, rval, &rt, &sreport)
+	if err != nil || len(wantRetainSave) != 192 {
+		t.Fatalf("EncodeRetain(mutant) = (%d bytes, %v), want 192 bytes", len(wantRetainSave), err)
+	}
+
+	badKey := append([]byte(nil), mutant...)
+	if badKey[12] != 0x03 {
+		t.Fatalf("bank pair 1 key ref moved: byte 12 = 0x%02x, want 0x03", badKey[12])
+	}
+	badKey[12] = 0x00
+	var badReport tabletext.Report
+	if ok, err := tablewire.Decode(model, model.New(root), badKey, &badReport); ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("Decode(badKey) = (%v, %v, %+v), want ok=false malformed=true unknown=1", ok, err, badReport)
+	}
+
+	files := generateElixir(t, u)
+	retainFiles := generateElixir(t, retainUnit)
+	files["RetainTable.ex"] = retainFiles["Table.ex"]
+
+	probe := fmt.Sprintf(`
+mutant = Base.decode16!(%q, case: :lower)
+want_save = Base.decode16!(%q, case: :lower)
+want_retain_save = Base.decode16!(%q, case: :lower)
+bad_key = Base.decode16!(%q, case: :lower)
+
+if Tblv2.Table.load_measure("Cfg", mutant) != 320 do
+  raise("expected 320 for mutant load_measure, got " <> inspect(Tblv2.Table.load_measure("Cfg", mutant)))
+end
+
+case Tblv2.Table.load("Cfg", mutant) do
+  {:ok, v, r} ->
+    if r.unknown != 2 or r.kind_mismatch != 2 or r.widened != 0 or r.clamped != 0 or r.malformed do
+      raise("unexpected plain report: " <> inspect(r))
+    end
+    case Tblv2.Table.save("Cfg", v) do
+      {:ok, ^want_save} -> :ok
+      other -> raise("plain save mismatch: " <> inspect(other))
+    end
+  other ->
+    raise("unexpected plain load result: " <> inspect(other))
+end
+
+empty = %%{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+store = %%{records: [], used: 0, cap: 4096, ids: [], id_cap: 512}
+case Tblv2retain.Table.load_retain("Cfg", mutant, store, empty) do
+  {:ok, rv, rr, retain} ->
+    if rr.unknown != %d or rr.kind_mismatch != %d or rr.retained != %d or rr.retain_lost != %d or rr.malformed do
+      raise("unexpected retain load report: " <> inspect(rr))
+    end
+    case Tblv2retain.Table.save_retain("Cfg", rv, retain, empty) do
+      {:ok, ^want_retain_save, sr, _retain} ->
+        if sr.retained != %d or sr.retain_lost != %d or sr.malformed do
+          raise("unexpected retain save report: " <> inspect(sr))
+        end
+      other ->
+        raise("retain save mismatch: " <> inspect(other))
+    end
+  other ->
+    raise("unexpected retain load result: " <> inspect(other))
+end
+
+case Tblv2.Table.load("Cfg", bad_key) do
+  {:error, :malformed, r} when r.malformed == true and r.unknown == 1 -> :ok
+  other -> raise("expected bad_key plain refusal with unknown=1, got " <> inspect(other))
+end
+
+case Tblv2retain.Table.load_retain("Cfg", bad_key, store, empty) do
+  {:error, :malformed, r, _retain} when r.malformed == true and r.unknown == 1 -> :ok
+  other -> raise("expected bad_key retain refusal with unknown=1, got " <> inspect(other))
+end
+
+IO.puts("UNKNOWN_KEYED_SLOT_OK")
+`,
+		mutantHex,
+		hex.EncodeToString(wantSave),
+		hex.EncodeToString(wantRetainSave),
+		hex.EncodeToString(badKey),
+		rreport.Unknown, 0, rreport.Retained, rreport.RetainLost,
+		sreport.Retained, sreport.RetainLost,
+	)
+
+	out, err := runArmProbe(t, elixirBinary(t), files, probe)
+	if err != nil || !strings.Contains(out, "UNKNOWN_KEYED_SLOT_OK") || strings.Contains(out, "warning:") {
+		t.Fatalf("unknown keyed slot probe failed: %v\n%s", err, out)
+	}
+
+	// Negative control: decoding the slot element before checking whether its key
+	// names a known slot contaminates the report with malformed=true on unknown
+	// slots whose body was mutated inside the outer keyed-array frame.
+	const target = `      case Map.fetch(f.key_by_id, kid) do
+        {:ok, name} ->
+          case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+            {:cont, v, report} ->
+              read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
+
+            {:halt, v, report} ->
+              {:halt, Map.put(acc, name, v), report}
+          end
+
+        :error ->
+          read_keyed_pairs(
+            f,
+            rest,
+            n - 1,
+            nodes,
+            ids,
+            acc,
+            %{report | unknown: report.unknown + 1}
+          )
+      end`
+	const sabotage = `      {_status, v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
+      case Map.fetch(f.key_by_id, kid) do
+        {:ok, name} ->
+          read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
+
+        :error ->
+          read_keyed_pairs(
+            f,
+            rest,
+            n - 1,
+            nodes,
+            ids,
+            acc,
+            %{report | unknown: report.unknown + 1}
+          )
+      end`
+	tableEx := string(files["Table.ex"])
+	if !strings.Contains(tableEx, target) {
+		t.Fatal("negative control target not found in generated Table.ex")
+	}
+	badFiles := make(map[string][]byte, len(files))
+	maps.Copy(badFiles, files)
+	badFiles["Table.ex"] = []byte(strings.Replace(tableEx, target, sabotage, 1))
+	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil {
+		t.Fatalf("negative control passed unexpectedly:\n%s", badOut)
+	}
 }

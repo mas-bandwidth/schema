@@ -61,8 +61,13 @@ func jsonPart(g *Gen) error {
 			fmt.Fprintf(&extras, "_json.extra(%s, { flags = { %s } })\n", target, strings.Join(names, ", "))
 		}
 		if f.IsTextList() {
+			// an unbounded element's bound is -1: the reader never clamps it
+			bound := ir.TextListValue(f).Type.Size
+			if ir.TextListValue(f).Type.TextUnbounded() {
+				bound = -1
+			}
 			fmt.Fprintf(&extras, "_json.extra(%s, { tl = { opt = %v, bound = %d, rec = %q } })\n",
-				path, ir.TextListOptional(f), ir.TextListValue(f).Type.Size, f.TextListElem().Name)
+				path, ir.TextListOptional(f), bound, f.TextListElem().Name)
 		}
 	}
 	structExtras := func(d *ir.Struct) {
@@ -107,7 +112,7 @@ func jsonPart(g *Gen) error {
 		}
 		d := fmt.Sprintf("%s.%sDescriptor", g.Self, t.Name)
 		g.Pf("-- %sFromJson fills ONE %s from ONE text (docs/SPEC-TABLES.md §16.1): false,\n", t.Name, t.Name)
-		g.Pf("-- with report.malformed set, for a text that is not JSON or that a rule\n")
+		g.Pf("-- with report.damaged set, for a text that is not JSON or that a rule\n")
 		g.Pf("-- refuses by name, and the value is then reset to its declared defaults.\n")
 		g.Pf("function %s.%sFromJson(value: %s, text: string | buffer, report: any?): boolean\n", g.Self, t.Name, t.Name)
 		g.Pf("\treturn %s.fromJson(%s, value, text, report)\nend\n\n", j, d)

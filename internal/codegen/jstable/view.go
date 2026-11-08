@@ -299,7 +299,14 @@ func (v *viewGen) fieldDescriptor(st *ir.Struct, f *ir.Field, ml *ir.MemberLayou
 	if outside {
 		json, id = "null", "0n"
 	}
-	return fmt.Sprintf("{ name: %s, json: %s, id: %s, typeName: %s, kind: %d, shape: %s, bound: %d, arrayBound: %d, "+
+	extra := ""
+	if f.Type.TextUnbounded() {
+		extra = "unbounded: true, "
+	}
+	if f.IsTextList() {
+		extra += fmt.Sprintf("textList: true, textTotal: %d, ", f.TextTotal)
+	}
+	return fmt.Sprintf("{ "+extra+"name: %s, json: %s, id: %s, typeName: %s, kind: %d, shape: %s, bound: %d, arrayBound: %d, "+
 		"isArray: %v, counted: %v, optional: %v, isPointer: %v, offset: %d, elementSize: %d, countOffset: %d, presentOffset: %d, "+
 		"vocabulary: null, key: null, table: null, doc: %s, tags: %s }",
 		jsStr(f.Name), json, id, jsStr(ir.TableTypeSpelling(f)), viewKind(f), jsStr(fieldShape(f)), fieldBound(f), viewArrayBound(f),

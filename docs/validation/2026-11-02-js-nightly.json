@@ -1,0 +1,207 @@
+{
+  "language": "js",
+  "tested_revision": "846afa7881311fcc8fe32eeda4e354e1527cc572",
+  "host": "studio",
+  "command": "NODE=node python3 test/conformance/nightly-readiness js",
+  "finished_utc": "2026-11-03T02:46:15Z",
+  "result": "NIGHTLY_READINESS_PASS language=js phases=23",
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 3
+  },
+  "native_table_events": {
+    "pass": 490,
+    "fail": 0,
+    "skip": 0
+  },
+  "plain": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 218,
+    "roots": 64,
+    "enumerated_per_seed": 162042,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "retaining": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 95,
+    "roots": 28,
+    "enumerated_per_seed": 91395,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 1.658899666974321,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 0.6161272079916671,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 0.33900108304806054,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 2.8165860840235837,
+      "errors": []
+    },
+    {
+      "phase": "native-list-js",
+      "exit": 0,
+      "seconds": 0.24811362498439848,
+      "errors": []
+    },
+    {
+      "phase": "native-js",
+      "exit": 0,
+      "seconds": 0.64230129099451,
+      "errors": []
+    },
+    {
+      "phase": "native-list-jstable",
+      "exit": 0,
+      "seconds": 0.419496541027911,
+      "errors": []
+    },
+    {
+      "phase": "native-jstable",
+      "exit": 0,
+      "seconds": 26.886920917022508,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 0.5620637499960139,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-0",
+      "exit": 0,
+      "seconds": 0.12777508300496265,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-1",
+      "exit": 0,
+      "seconds": 0.12600237497827038,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-0",
+      "exit": 0,
+      "seconds": 0.10117520799394697,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-1",
+      "exit": 0,
+      "seconds": 0.10235358297359198,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 5.5193822080036625,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 0.7198381660273299,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 0.5759783330140635,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 11.518329499987885,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 11.50509279203834,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 11.574136999959592,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 22.076199542032555,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 24.818107291008346,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 25.06954441597918,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 1.6321895839646459,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "external-table-gates.log": "20c880666c112feac33f6a99f3f6edfa59fa9e683d5a5c96a4d68e4e07b87b6b",
+    "implementation.log": "305e8c4a224401e68f21437cd9b00bfbf51dd0c5c1a99cbb1d6067214959bc1f",
+    "native-js.log": "394952669f67b7ca0266220e38eefe5432d75ac0882c8984e502c324ce218eb2",
+    "native-jstable.log": "26c1539168cc1fabdb6fb526f5a5d7220d34d5d725758b02677cf5b4537799c0",
+    "native-list-js.log": "a6a46b857006759871fdf6d4fc3763ed5768813c8475e24a2ca671f293a4ee15",
+    "native-list-jstable.log": "c70eb6b00a8038dabeed2b46f49bedc7d97f71398f1ec3e1e0b8b3a35d4e8ae3",
+    "native-list-lockfile.log": "96ddacf3fcb478b0f283bed99d355e245d5f6432c0ee99ae982b820cb83a07b9",
+    "native-lockfile.log": "f98a01806f32c228ddaadc911dd5742179986f8c3a21f2023c27cda2638f4ee4",
+    "packet-build.log": "757767667091fd7830721469ecb68871b234989727ce370fc87209d0eca31861",
+    "packet-features.log": "65552202e2ff2458405f419fda14973959d2257a68aed41f459379b387bb81f6",
+    "packet-ludicrous-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-ludicrous-1.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-1.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "prerequisites.log": "3d89ec7b21051b96a578e253785e1873f69306f9fde2ccc3c392c145a151a8a7",
+    "results.json": "d0cb4c541929e6c5da4ce6a0c6c671731fba403e3b82e0775fe06b748121dd5f",
+    "wire-driver-build.log": "dcc93811a3d3a9f17e1923f8820ffdeb4de6a21ecba9e139066328f289bfa35e",
+    "wire-plain-1.log": "2601825babdd477d0865390d43feac897d0afd7372f123ecf5c09902e37f9aec",
+    "wire-plain-2.log": "0378aff7e143b178520fe7db072497327caaabd6ac4046464ee81c72bbad98b8",
+    "wire-plain-3.log": "1e0fd1e6f28e0caae398e145d5c661b07876c70b5eca3c16d1b02693a0bb7467",
+    "wire-retain-1.log": "f52b72e2e635be18ceeedd03cdf5eae22d0ecc5d8b1596b167cff744baeece41",
+    "wire-retain-2.log": "ade8245f46501184a91bebec32e8160cad88056d3a12b7654dcd78b58dca2d64",
+    "wire-retain-3.log": "e3e7a5b705dd5e0db1ff6222fce25560dd54e86333197101d8b4a7114f0c5714",
+    "wire-retain-controls.log": "933b36019fbd65033e3d45b2d705cecfbcf84cda94cc4dc12e33c71a9c637af9"
+  }
+}

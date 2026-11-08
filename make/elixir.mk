@@ -108,7 +108,8 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # pointer arm and arrays of pointers (§2.1, §2.6); tblm1/tblm2 and tbla1/tbla2
 # the union-arm evolution pairs (§4), tblk1/tblk2 the enum-kind pair,
 # tblscalars2 the second scalars version and tblrt1/tblrt2/tblrt3 the retain
-# units (§6.6). The variable-class surfaces (wire,
+# units (§6.6); widelist (tables/widelist) a 128-bit list whose node aligns
+# sixteen (§2.8, the cook's node alignment rule). The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
 # outside the class writes <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
@@ -127,9 +128,10 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
 	tblscalars2:test/tables/Scalars2.schema \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
-	tblg1:test/tables/G1.schema
+	tblg1:test/tables/G1.schema widelist:tables/widelist \
+	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -143,7 +145,7 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES
 
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(ELIXIRC) -o build/elixir-tables-ebin build/tables-generated-elixir/*/*.ex \
+	$(ELIXIRC_STRICT) -o build/elixir-tables-ebin build/tables-generated-elixir/*/*.ex \
 		test/conformance/elixir/driver_impl.ex
 	@touch $@
 
@@ -1713,7 +1715,7 @@ test-elixir: cards-elixir-retain-fuzz
 # ELIXIR_WIRE_FUZZ_ABSENT_COUNT, naming each root that moved. The absent check
 # runs before the harness status is read, so a red run still names them. The
 # --retain arm of this roster is its own gate.
-ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 32
+ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 0
 ELIXIR_WIRE_FUZZ_ABSENT_LOG = build/tables-elixir-wire-fuzz-all.absent
 .PHONY: tables-elixir-wire-fuzz-all
 tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
@@ -1740,6 +1742,131 @@ tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/
 	@grep -qE '[1-9][0-9]* mutants' build/tables-elixir-wire-fuzz-all.log
 
 test-elixir: tables-elixir-wire-fuzz-all
+
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), Elixir side: every
+# framing vector the manifest answers `malformed`, through the plain and the
+# retaining read, and a damaged text through the text read, must hand back no
+# value (TestDamageDiscardsTheWholeLoadElixir). Its control removes the plain
+# read's discard from a COPY of the emitter, reached through `go test -overlay`,
+# and the gate must go red on a framing vector. Nothing tracked is written to.
+ELIXIR_DISCARD_NC := build/elixir-discard-nc
+
+.PHONY: tables-elixir-discard tables-elixir-discard-negative-control
+tables-elixir-discard:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s \
+		-run '^TestDamageDiscardsTheWholeLoadElixir$$'
+
+tables-elixir-discard-negative-control:
+	@rm -rf $(ELIXIR_DISCARD_NC) && mkdir -p $(ELIXIR_DISCARD_NC)
+	@sed -e 's|            if Map.get(report, :malformed) do|            if false do # NEGATIVE CONTROL: the discard is gone|' \
+		internal/codegen/elixirtable/variableform.go > $(ELIXIR_DISCARD_NC)/variableform.go.txt
+	@cmp -s internal/codegen/elixirtable/variableform.go $(ELIXIR_DISCARD_NC)/variableform.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/variableform.go":"%s/$(ELIXIR_DISCARD_NC)/variableform.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ELIXIR_DISCARD_NC)/overlay.json
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test -count=1 -overlay $(ELIXIR_DISCARD_NC)/overlay.json \
+			-run '^TestDamageDiscardsTheWholeLoadElixir$$' ./internal/codegen/elixirtable > $(ELIXIR_DISCARD_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Elixir discard is gone and the gate stayed green"; \
+		cat $(ELIXIR_DISCARD_NC)/log; exit 1; \
+	fi
+	@grep -q "the plain read handed back {:ok" $(ELIXIR_DISCARD_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(ELIXIR_DISCARD_NC)/log; exit 1; }
+	@grep -m1 "the plain read handed back" $(ELIXIR_DISCARD_NC)/log
+	@echo "negative control: removing the Elixir discard turns the whole-load gate RED"
+
+test-elixir: tables-elixir-discard tables-elixir-discard-negative-control
+
+# THE WIRE-FUZZ DRIVER's REFUSAL ANSWERS (docs/PORTING.md I15, the discard rule
+# of #2447): a load that meets damage refuses and its report says malformed, and
+# a form this reader does not know is refused by name. The gate replays an empty
+# buffer and a newer form byte through the harness against a variable root
+# (graphdemo.Scene) and a fixed one (tabledemo.WideBlob), each answered by the
+# leg's own driver; ELIXIR_WIRE_FUZZ_REFUSAL_EBIN lets the control point it at a
+# sabotaged driver.
+ELIXIR_WIRE_FUZZ_REFUSAL_DIR  := build/elixir-wire-fuzz-refusal
+ELIXIR_WIRE_FUZZ_REFUSAL_EBIN ?= $(CURDIR)/build/elixir-tables-ebin
+
+.PHONY: tables-elixir-wire-fuzz-refusal tables-elixir-wire-fuzz-refusal-negative-control
+tables-elixir-wire-fuzz-refusal: build/conformance-harness build/elixir-tables-ebin/.stamp
+	@mkdir -p $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)
+	@printf '' > $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/empty.bin
+	@printf '\002' > $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/newer-form.bin
+	@for mutant in empty newer-form; do \
+		for root in graphdemo:Scene tabledemo:WideBlob; do \
+			ELIXIR_TABLES_EBIN=$(ELIXIR_WIRE_FUZZ_REFUSAL_EBIN) ./build/conformance-harness wire-fuzz \
+				--driver 'test/conformance/elixir/driver wire-fuzz' \
+				--replay $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/$$mutant.bin --unit $${root%%:*} --root $${root#*:} \
+				> $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/$$mutant-$${root%%:*}.log 2>&1 || \
+				{ cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/$$mutant-$${root%%:*}.log; \
+				  echo "tables-elixir-wire-fuzz-refusal: the $$mutant buffer under $$root is not answered as the oracle refuses it"; exit 1; }; \
+		done; \
+	done
+	@echo "tables-elixir-wire-fuzz-refusal: an empty buffer and a newer form are refused as the oracle refuses them, on a variable and a fixed root"
+
+# ITS CONTROL: the driver answers a refused load, and a refused measure, with an
+# EMPTY report (the answer it gave before the discard rule), compiled over a
+# copy of the corpus; the gate must go red on the fixed root's empty buffer.
+tables-elixir-wire-fuzz-refusal-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
+	@rm -rf $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control && mkdir -p $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin
+	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin/
+	@sed -e 's|          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)|          stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>) # SABOTAGED|' \
+		-e 's|      {:error, _reason, report} -> %{report \| malformed: true}|      {:error, _reason, _report} -> %{} # SABOTAGED|' \
+		test/conformance/elixir/driver_impl.ex > $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex
+	@grep -q SABOTAGED $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex || \
+		{ echo "NEGATIVE CONTROL: the driver sabotage did not apply"; exit 1; }
+	@$(ELIXIRC) --ignore-module-conflict -o $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex > /dev/null 2>&1
+	@if $(MAKE) --no-print-directory tables-elixir-wire-fuzz-refusal \
+			ELIXIR_WIRE_FUZZ_REFUSAL_EBIN=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin \
+			> $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log 2>&1; then \
+		cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log; \
+		echo "NEGATIVE CONTROL FAILED: a driver that drops the refused load's report left the refusal gate green"; exit 1; \
+	fi
+	@grep -q 'the empty buffer under tabledemo:WideBlob' $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log || \
+		{ cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log; echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the fixed root's empty buffer"; exit 1; }
+	@echo "elixir wire-fuzz refusal negative control: a driver that drops a refused load's report reds the gate on tabledemo.WideBlob"
+
+test-elixir: tables-elixir-wire-fuzz-refusal tables-elixir-wire-fuzz-refusal-negative-control
+
+# WHAT A READ REACHES (docs/SPEC-TABLES.md §4), Elixir side: damage ends the
+# body it is met in and the enclosing body reads on, so a non-finite float
+# after damage in a nested body is reached and refuses the read. The pinned
+# `reach_` vectors (testdata/wire/tables/fuzz-vectors/INDEX.txt) ride every
+# wire-fuzz run. Their control compiles tabledemo from a COPY of the emitter
+# whose nested-body read ends the WHOLE read at damage, which is the answer
+# the Elixir leg gave before this rule, over a copy of the corpus ebin, and
+# replays three vectors: each must go red on the oracle's refusal. Nothing
+# tracked is written to.
+ELIXIR_REACH_NC := build/elixir-reach-nc
+ELIXIR_REACH_NC_VECTORS := reach_nested_damage_then_nan reach_deep_damage_then_nan reach_element_damage_then_element_nan
+
+.PHONY: tables-elixir-reach-negative-control
+tables-elixir-reach-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
+	@rm -rf $(ELIXIR_REACH_NC) && mkdir -p $(ELIXIR_REACH_NC)/ebin $(ELIXIR_REACH_NC)/gen
+	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_REACH_NC)/ebin/
+	@sed -e '/defp read_element(desc, sub, nodes, ids) do/,/^  end$$/ s@{:cont, %{}, %{report | malformed: true}}@throw(:wire_damaged)@' \
+		internal/codegen/elixirtable/variableform.go > $(ELIXIR_REACH_NC)/variableform.go.txt
+	@test "$$(grep -c 'throw(:wire_damaged)' $(ELIXIR_REACH_NC)/variableform.go.txt)" -gt \
+		"$$(grep -c 'throw(:wire_damaged)' internal/codegen/elixirtable/variableform.go)" || \
+		{ echo "NEGATIVE CONTROL: the Elixir reach sabotage patched nothing"; exit 1; }
+	@root="$$(dirname "$$(go env GOMOD)")"; \
+		printf '{"Replace":{"%s/internal/codegen/elixirtable/variableform.go":"%s/$(ELIXIR_REACH_NC)/variableform.go.txt"}}\n' \
+		"$$root" "$(CURDIR)" > $(ELIXIR_REACH_NC)/overlay.json
+	@go build -overlay $(ELIXIR_REACH_NC)/overlay.json -o $(ELIXIR_REACH_NC)/schema ./cmd/schema
+	@$(ELIXIR_REACH_NC)/schema generate --lang elixir --out $(ELIXIR_REACH_NC)/gen tables/examples > /dev/null
+	@$(ELIXIRC) --ignore-module-conflict -o $(ELIXIR_REACH_NC)/ebin $(ELIXIR_REACH_NC)/gen/Table.ex > /dev/null 2>&1
+	@for v in $(ELIXIR_REACH_NC_VECTORS); do \
+		if ELIXIR_TABLES_EBIN=$(CURDIR)/$(ELIXIR_REACH_NC)/ebin ./build/conformance-harness wire-fuzz \
+				--driver 'test/conformance/elixir/driver wire-fuzz' \
+				--replay testdata/wire/tables/fuzz-vectors/$$v.bin --unit tabledemo --root ProfileConfig \
+				--failed $(ELIXIR_REACH_NC)/$$v.failed.bin > $(ELIXIR_REACH_NC)/$$v.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: a read that stops at nested damage left $$v green"; exit 1; fi; \
+		grep -q 'the oracle refuses a non-finite float' $(ELIXIR_REACH_NC)/$$v.log || \
+			{ cat $(ELIXIR_REACH_NC)/$$v.log; echo "NEGATIVE CONTROL FAILED: $$v went red, but not on the refusal"; exit 1; }; \
+	done
+	@echo "negative control: an Elixir read that stops at nested damage turns $(words $(ELIXIR_REACH_NC_VECTORS)) reach_ vectors RED"
+
+test-elixir: tables-elixir-reach-negative-control
 
 # cards-elixir-test compiles the facade (tables/cards/elixir/cards.ex) against
 # the generated codec ebin and runs the ExUnit tests (cards_test.exs). The
@@ -1906,15 +2033,110 @@ test-elixir: tables-elixir-view
 
 # THE FRAMING SURFACE, its Elixir leg (docs/LAYERS/1-framing.md): the Elixir
 # driver answers every framing row and passes it, none absent
-# (test/conformance/framing/gate). Its negative control takes the id table's
-# 4096-entry cap out of the emitter's open (§3, THE DISTINCTNESS CHECK; rule
-# F6), rebuilds the corpus, and requires framing RED while report stays green.
-ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|'
+# (test/conformance/framing/gate). Its negative control takes two rules out of
+# the emitter: the id table's 4096-entry cap (§3, THE DISTINCTNESS CHECK; F6)
+# and the cycle refusal (§3.1, §4; T8). It rebuilds the corpus and requires
+# framing RED on frame_entries_4097 and the three cycle rows, while report
+# stays green. A second build drops all but one dependent of each node, so
+# a shared node cannot release every parent; node_diamond_chain must go RED
+# while json-read stays green. The shared-dependency fault also affects report
+# rows with shared nodes; the independent text reader does not run that loader.
+# The diamond fixture has 2^40 paths over 82 nodes and guards against
+# expanding paths instead of preserving shared nodes. It is not a general
+# linear-time guarantee for save or JSON.
+ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|' \
+	-e 's|    if map_size(assembled) != map_size(records), do: throw(:wire_damaged)|    if false and map_size(assembled) != map_size(records), do: throw(:wire_damaged)|'
+ELIXIR_CONFORMANCE_FRAMING_SHARE_SED := -e 's|Enum.reduce(Map.get(parents, idx, \[\]), {pending, ready}, fn|Enum.reduce(Enum.take(Map.get(parents, idx, []), 1), {pending, ready}, fn|'
 .PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
 conformance-elixir-framing: build/conformance-harness build-conformance-elixir
+	SCHEMA_SLOW=1 $(GO) test -timeout=0 ./internal/codegen/elixirtable -run '^(TestCyclicWireIsDamageElixir|TestCycleSlotKindsElixir)$$'
 	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
 conformance-negative-control-elixir-framing: build/conformance-harness
-	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries read as legal)
-	@grep -q "elixir / framing: frame_entries_4097:" build/elixir-conformance-negative-framing/log || \
-		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on frame_entries_4097"; exit 1; }
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries and a cyclic wire read as legal)
+	@for c in frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid; do \
+		grep -q "elixir / framing: $$c:" build/elixir-conformance-negative-framing/log || \
+			{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on $$c"; exit 1; }; done
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing-share,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SHARE_SED,framing,json-read,a shared node failing to release every dependent)
+	@grep -q "elixir / framing: node_diamond_chain:" build/elixir-conformance-negative-framing-share/log || \
+		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on node_diamond_chain"; exit 1; }
 test-elixir: conformance-elixir-framing conformance-negative-control-elixir-framing
+
+# THE MAP AND LIST COOK (docs/PORTING.md M19, docs/SPEC-TABLES.md §2.8, §2.9,
+# §7.6). TestCookWriteMapsAndListsElixir cooks every map_*, list_* and
+# widelist_* cook-write row of the conformance manifest from its wire in both
+# byte orders and holds each to the C++ reference's cook, a row answered absent
+# being a failure; TestCookMapWriterHoldsTheSortElixir hands the writer maps
+# whose keys come out of order (past thirty-two keys, and integer keys spelled
+# as strings), reads the cook back through the holder's span and <field>_find,
+# and requires the entries ascending and every key found where it lies. Both
+# run the leg's own toolchain, so SCHEMA_REQUIRE_CORPUS=1 turns a missing one
+# into a failure.
+.PHONY: tables-elixir-cook-map
+tables-elixir-cook-map:
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
+		-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$'
+
+test-elixir: tables-elixir-cook-map
+
+# Its control plants the two faults the layout model's reversed witnesses name
+# (tla/NodeExtent.tla), each through a Go overlay of the cook writer's emitter:
+#   unsorted   the cook lays a map's entries DESCENDING: map_full (and every
+#              map row with two entries) and the sort test go red.
+#   misaligned the extent begins at sizeof rounded to the floor of eight and
+#              the node aligns to its record alone: widelist_wide goes red,
+#              and no other row, because no other row holds an element that
+#              asks for more than eight.
+ELIXIR_COOK_MAP_UNSORTED_SED := -e 's|Enum.map_reduce(map_entries(f, v), acc,|Enum.map_reduce(Enum.reverse(map_entries(f, v)), acc,|'
+ELIXIR_COOK_MAP_MISALIGNED_SED := \
+	-e 's|	return ir.CookExtentStart(u, st)|	return (ir.RecordLayout(u, st).Size + ir.RegionAlignFloor - 1) \& ^(ir.RegionAlignFloor - 1)|' \
+	-e 's|	return ir.CookNodeAlign(u, st)|	return ir.RecordLayout(u, st).Align|'
+
+# $(call ELIXIR_COOK_MAP_CONTROL,name,sedvar,red pattern,what,only)
+define ELIXIR_COOK_MAP_CONTROL
+	@rm -rf build/elixir-cook-map-nc-$(1) && mkdir -p build/elixir-cook-map-nc-$(1)
+	@sed $($(2)) internal/codegen/elixirtable/cookwrite.go > build/elixir-cook-map-nc-$(1)/cookwrite.go.txt
+	@cmp -s internal/codegen/elixirtable/cookwrite.go build/elixir-cook-map-nc-$(1)/cookwrite.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: $(2) matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/cookwrite.go":"%s/build/elixir-cook-map-nc-$(1)/cookwrite.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/elixir-cook-map-nc-$(1)/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+			go test -overlay build/elixir-cook-map-nc-$(1)/overlay.json ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
+			-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$' \
+			> build/elixir-cook-map-nc-$(1)/log 2>&1; then \
+		cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) left the map and list cook gate green"; exit 1; \
+	fi
+	@for p in $(3); do \
+		grep -q "FAIL $$p" build/elixir-cook-map-nc-$(1)/log || \
+			{ cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) did not red $$p"; exit 1; }; \
+	done
+	@if [ -n "$(5)" ] && grep -E '^ *FAIL [a-z_ -]+:' build/elixir-cook-map-nc-$(1)/log | grep -v -q -E 'FAIL $(5)(-be)?:'; then \
+		cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) red more than $(5)"; exit 1; \
+	fi
+	@echo "elixir cook map negative control: $(4) reds [$(3)]"
+endef
+
+.PHONY: tables-elixir-cook-map-negative-control
+tables-elixir-cook-map-negative-control:
+	$(call ELIXIR_COOK_MAP_CONTROL,unsorted,ELIXIR_COOK_MAP_UNSORTED_SED,map_full: map_full-be: tiers:,a cook that lays a map's entries descending,)
+	$(call ELIXIR_COOK_MAP_CONTROL,misaligned,ELIXIR_COOK_MAP_MISALIGNED_SED,widelist_wide: widelist_wide-be:,an extent begun at the floor of eight in a node aligned to its record,widelist_wide)
+
+test-elixir: tables-elixir-cook-map-negative-control
+
+# Void-only unions must compile without unreachable payload alternatives.
+.PHONY: tables-elixir-void-union
+tables-elixir-void-union: toolchain-elixir
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		sh test/slowgate/proof tables-elixir-void-union 'TestElixirVoidUnionNative' \
+		-count=1 -timeout=0 -run '^TestElixirVoidUnionNative$$' ./internal/codegen/elixirtable/
+
+test-elixir: tables-elixir-void-union
+
+
+# Framing-driven map, keyed and union extents use shared independent region pins.
+.PHONY: tables-elixir-region-closure
+tables-elixir-region-closure: toolchain-elixir
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		sh test/slowgate/proof tables-elixir-region-closure 'TestRegionClosureElixir' \
+		-count=1 -timeout=0 -run '^TestRegionClosureElixir$$' ./internal/codegen/elixirtable/
+
+test-elixir: tables-elixir-region-closure

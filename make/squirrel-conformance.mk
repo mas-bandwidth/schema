@@ -57,6 +57,18 @@ conformance-negative-control-squirrel-framing: build/conformance-harness build/c
 
 test-squirrel: conformance-negative-control-squirrel-framing
 
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the load forgets its
+# cycle check, so the framing rows node_cycle_self, node_cycle_to_root and
+# node_cycle_mid read where they owe the refusal and the framing surface goes
+# red, while wire and report, which hold no cycle, stay green.
+.PHONY: conformance-negative-control-squirrel-cycle
+conformance-negative-control-squirrel-cycle: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/negative-control cycle load.nut \
+		's/if (_require("schema_table_save").cyclic/if (false \&\& _require("schema_table_save").cyclic/' \
+		framing wire report
+
+test-squirrel: conformance-negative-control-squirrel-cycle
+
 # THE EMBEDDED RUNTIME IS A BUILD INPUT. squirreltable.go carries
 # `//go:embed runtime/*.nut`, but the Makefile's GO_SOURCES names only *.go, so
 # without this prerequisite a runtime change leaves build/schema-squirrel — and

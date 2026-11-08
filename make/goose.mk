@@ -44,6 +44,20 @@ dist-goose:
 toolchain-goose:
 	@$(call toolchain_probe,goose,GOOSE,$(GOOSE))
 
+# THE PINNED COMPILER, fetched when it is missing and then probed: the
+# readiness prerequisite (test/conformance/nightly-readiness goose).
+.PHONY: goose-toolchain-ready
+goose-toolchain-ready:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@$(call toolchain_probe,goose,GOOSE,$(GOOSE))
+
+# THE HARNESS WITH THE TARGET'S TAG: `implementation --lang goose` reads
+# compiler.Carried("goose"), which only a schema_leg_goose build registers
+# (test/conformance/harness/implementation_goose.go).
+build/conformance-harness-goose: $(wildcard test/conformance/harness/*.go) $(GO_SOURCES)
+	@mkdir -p build
+	go build -tags schema_leg_goose -o $@ ./test/conformance/harness
+
 # test-goose runs both Goose packages: the type surface (internal/codegen/goose)
 # and the table surface (internal/codegen/goosetable), each under the pinned
 # compiler, AGAINST THE C++ REFERENCE'S BYTES: the fixed form's suite
@@ -75,14 +89,18 @@ tables-goose-fixedform-negative-control: build/fixedform-corpus/.stamp
 .PHONY: tables-goose-tablewire-negative-control
 tables-goose-tablewire-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go test -count=1 -timeout 600s -run '^TestGooseTableWireNegativeControl$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestGooseTableWireNegativeControl$$' ./internal/codegen/goosetable/
 
 # build/conformance-goose is the manifest's units generated for goose, one
 # directory per unit. The schema_leg_goose tag is the target's until the port
 # joins the builtins (compiler/target_goose.go). A unit the target refuses is
-# recorded as its refusal line, never dropped in silence.
+# recorded as its refusal line, never dropped in silence. The units move with
+# the compiler, the goose runtimes it embeds and the unit schemas, not only with
+# the manifest.
 GOOSE_MANIFEST := testdata/conformance/tables/MANIFEST.txt
-build/conformance-goose: $(GOOSE_MANIFEST) make/goose.mk
+build/conformance-goose: $(GOOSE_MANIFEST) make/goose.mk $(GO_SOURCES) \
+	$(filter internal/codegen/goose/% internal/codegen/goosetable/%,$(EMBED_SOURCES)) \
+	$(CONFORMANCE_UNIT_SCHEMAS)
 	@rm -rf $@ && mkdir -p $@
 	go build -tags schema_leg_goose -o build/schema-goose ./cmd/schema
 	@grep '^unit ' $(GOOSE_MANIFEST) | while read -r _ key paths; do \
@@ -111,11 +129,12 @@ conformance-negative-control-goose: build/conformance-harness build/conformance-
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control load
 
-# Whole-load discard (§4), including retaining reads. The control removes
-# the emitted runtime's discard and requires the damaged roots to escape.
+# Whole-load discard (§4), including retaining reads, and the cyclic wire as
+# damage (§3.1). The controls remove the emitted runtime's discard and its
+# cycle check, and require the damaged and the cyclic roots to escape.
 .PHONY: tables-goose-damage tables-goose-damage-negative-control
 tables-goose-damage: toolchain-goose
-	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadReturnsNoRoot$$'
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadReturnsNoRoot|TestGooseCyclicWireIsDamage)$$'
 tables-goose-damage-negative-control: toolchain-goose
-	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadNegativeControl$$'
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadNegativeControl|TestGooseCyclicWireNegativeControl)$$'
 test-goose: tables-goose-damage tables-goose-damage-negative-control

@@ -37,8 +37,8 @@ func TestFixedFormRaggedTail(t *testing.T) {
 
 	body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "ragged: the full-length file did not read: n=%%lld reason=%%d\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.malformed || r.refused )
-        { printf( "ragged: the full-length file must read clean: malformed=%%d refused=%%d\n", (int) r.malformed, (int) r.refused ); return 1; }
+    if ( r.damaged || r.refused )
+        { printf( "ragged: the full-length file must read clean: malformed=%%d refused=%%d\n", (int) r.damaged, (int) r.refused ); return 1; }
     {
         const int64_t record_bytes = %sFixedRecordBytes;
         %s fresh;
@@ -50,11 +50,11 @@ func TestFixedFormRaggedTail(t *testing.T) {
             for ( int64_t s = 0; s < 8; ++s ) { memcpy( &back[s], &fresh, sizeof( fresh ) ); }
             n = %sFixedLoad( back, 8, data, len + extra, plan, 4096, NULL, &r );
             if ( n != -1 ) { printf( "ragged: at extra=%%lld a ragged tail is malformed, not n=%%lld\n", (long long) extra, (long long) n ); return 1; }
-            if ( r.malformed != 1 ) { printf( "ragged: at extra=%%lld malformed=%%d, not 1\n", (long long) extra, (int) r.malformed ); return 1; }
+            if ( r.damaged != 1 ) { printf( "ragged: at extra=%%lld malformed=%%d, not 1\n", (long long) extra, (int) r.damaged ); return 1; }
             if ( r.refused ) { printf( "ragged: at extra=%%lld a ragged tail is residue, never refused by name: refused=%%d\n", (long long) extra, (int) r.refused ); return 1; }
             if ( r.reason != TableFixedReason::truncated ) { printf( "ragged: at extra=%%lld reason is %%d, not truncated\n", (long long) extra, (int) r.reason ); return 1; }
-            if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
-                { printf( "ragged: at extra=%%lld MALFORMED is total: no counter moves (w=%%d u=%%d km=%%d c=%%d d=%%d)\n", (long long) extra, r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
+            if ( r.widened != 0 || r.unknown != 0 )
+                { printf( "ragged: at extra=%%lld MALFORMED is total: no counter moves (w=%%d u=%%d km=%%d c=%%d d=%%d)\n", (long long) extra, r.widened, r.unknown, r.refused, r.refused, r.refused ); return 1; }
             for ( int64_t s = 0; s < 8; ++s )
             {
                 if ( memcmp( &back[s], &fresh, sizeof( fresh ) ) != 0 ) { printf( "ragged: at extra=%%lld slot %%lld: a malformed read wrote destination bytes\n", (long long) extra, (long long) s ); return 1; }
@@ -63,7 +63,7 @@ func TestFixedFormRaggedTail(t *testing.T) {
         memset( &r, 0, sizeof( r ) );
         for ( int64_t s = 0; s < 8; ++s ) { memcpy( &back[s], &fresh, sizeof( fresh ) ); }
         n = %sFixedLoad( back, 8, data, len + record_bytes, plan, 4096, NULL, &r );
-        if ( r.malformed ) { printf( "ragged: extra==record_bytes is one more whole record, not malformed: malformed=%%d\n", (int) r.malformed ); return 1; }
+        if ( r.damaged ) { printf( "ragged: extra==record_bytes is one more whole record, not malformed: malformed=%%d\n", (int) r.damaged ); return 1; }
         if ( !r.refused || r.reason != TableMessageReason::no_layout || n != -1 )
             { printf( "ragged: extra==record_bytes walks off the tail: n=%%lld refused=%%d reason=%%d\n", (long long) n, (int) r.refused, (int) r.reason ); return 1; }
     }

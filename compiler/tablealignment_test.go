@@ -40,7 +40,7 @@ func TestCppVariableWideAlignment(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				needle := fmt.Sprintf("kTableAlign       = %d;", tc.align)
+				needle := fmt.Sprintf("kTableAlign = %d;", tc.align)
 				suffix := "Table.h"
 				if lang == "go" {
 					needle = fmt.Sprintf("tableRegionAlign int64 = %d", tc.align)
@@ -92,14 +92,18 @@ free(region); free(output); return 0;}
 
 // Compile the emitted table implementation with the actual serialize runtime.
 // No replacement typedef can conceal the wide scalar alignment contract.
-func referenceCompileRun(t *testing.T, files map[string][]byte, source string) {
+func referenceCompileRun(t *testing.T, files map[string][]byte, source string, flags ...string) {
 	t.Helper()
 	slowtest.Gate(t, "the C++ compiler")
 	compiler, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skipf("c++ unavailable: %v", err)
 	}
-	runtime, err := filepath.Abs("../../serialize")
+	runtime := os.Getenv("SERIALIZE")
+	if runtime == "" {
+		runtime = "../../serialize"
+	}
+	runtime, err = filepath.Abs(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,11 +120,15 @@ func referenceCompileRun(t *testing.T, files map[string][]byte, source string) {
 	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, sanitize := range []bool{false, true} {
-		t.Run(fmt.Sprintf("sanitizers=%v", sanitize), func(t *testing.T) {
+	for _, mode := range []string{"debug", "release", "sanitize"} {
+		t.Run(mode, func(t *testing.T) {
 			bin := filepath.Join(dir, "probe")
 			args := []string{"-std=c++17", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-I" + runtime, path, "-o", bin}
-			if sanitize {
+			args = append(args, flags...)
+			if mode == "release" {
+				args = append(args, "-O2", "-DNDEBUG")
+			}
+			if mode == "sanitize" {
 				args = append(args, "-fsanitize=address,undefined", "-fno-sanitize-recover=all")
 			}
 			if out, err := exec.Command(compiler, args...).CombinedOutput(); err != nil {

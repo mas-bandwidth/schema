@@ -35,7 +35,13 @@ import (
 const BlockRuntimeModule = "BlockRuntime"
 
 func generateBlocks(u *ir.Unit, ns string, blocks *ir.BlockUnit) (map[string][]byte, error) {
-	if len(blocks.Tables) == 0 {
+	var eligible []*ir.BlockLayout
+	for _, bl := range blocks.Tables {
+		if bl.Table.CarriesForm("block") {
+			eligible = append(eligible, bl)
+		}
+	}
+	if len(eligible) == 0 {
 		return nil, nil
 	}
 	out := map[string][]byte{}
@@ -43,7 +49,7 @@ func generateBlocks(u *ir.Unit, ns string, blocks *ir.BlockUnit) (map[string][]b
 		"\n" + fmt.Sprintf("defmodule %s.BlockRuntime do\n", ns) + blockRuntimeSource + "end\n")
 
 	byFile := map[string][]*ir.BlockLayout{}
-	for _, bl := range blocks.Tables {
+	for _, bl := range eligible {
 		base := u.DeclFile[bl.Table.Name]
 		byFile[base] = append(byFile[base], bl)
 	}

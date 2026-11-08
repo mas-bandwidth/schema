@@ -1,0 +1,10 @@
+package probe
+table Note { lines []string }
+table Root {
+ capped [..3]string
+ maybe_capped [..3]?string
+ open []string
+ maybe_open []?string
+ by_name map[string]int32
+ note *Note
+}

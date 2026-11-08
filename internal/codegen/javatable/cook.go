@@ -77,6 +77,9 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	sort.Strings(names)
 	for _, name := range names {
 		st := u.Tables[name]
+		if !st.CarriesForm("cook") {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
@@ -98,7 +101,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	aligns := make([]int64, 0, len(c.members)+len(c.unions))
 	for name := range c.members {
 		c.order = append(c.order, name)
-		aligns = append(aligns, c.members[name].Align)
+		aligns = append(aligns, ir.CookNodeAlign(u, cookMember(u, name)))
 	}
 	for _, un := range c.unions {
 		_, align, _, _ := ir.UnionLayout(u, un)
@@ -167,13 +170,6 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 	field = func(owner string, f *ir.Field) string {
 		if f == nil {
 			return ""
-		}
-		// A WSTRING is retired (the wstring-removed-utf8 ruling, docs/rulings.json):
-		// the Java cook form carries no wstring slot, so a closure that holds
-		// one by value gets the stub, named here, rather than a writer that
-		// refuses every value at measure.
-		if f.Type.Kind == ir.TWString && !f.Type.Pointer {
-			return owner + "." + f.Name + " is a wstring, which is retired (docs/rulings.json wstring-removed-utf8); the Java cook carries no wstring slot"
 		}
 		// a map's key and value are its entry's fields
 		if f.IsMap() {
@@ -256,6 +252,7 @@ public enum TableCookStorage {
     WIDE, // a 128-bit integer: sixteen bytes at sixteen, one eight-byte lane per half
     LIST, // a []T holder: sixteen bytes, a self-relative reference and an int32 count (§2.9)
     MAP, // a map holder: the same sixteen bytes over its sorted entry array (§2.8)
+    WSTRING, // char16_t[N + 1] with an int32 used length in UTF-16 code units
 }
 `
 
@@ -415,6 +412,9 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		if !u.Tables[name].CarriesForm("cook") {
+			continue
+		}
 		var b strings.Builder
 		if !ck.opens(name) {
 			fmt.Fprintf(&b, "// table %s has NO Java cook Open: %s (docs/SPEC-TABLES.md §7, §19.3).\n", name, ck.skipped[name])
@@ -472,7 +472,7 @@ func (g *cookGen) emit() {
 	g.f("    // the greatest alignof in the region, floor eight\n")
 	g.f("    public static final long regionAlignment = %dL;\n", align)
 	g.f("    public static final long rootSize = %dL;\n", ml.Size)
-	g.f("    public static final long rootAlign = %dL;\n\n", ml.Align)
+	g.f("    public static final long rootAlign = %dL;\n\n", ir.CookNodeAlign(g.unit, g.table))
 	g.f("    public byte[] data() { return data; }\n")
 	g.f("    public int region() { return region; }\n")
 	g.f("    public long regionLength() { return regionLength; }\n\n")
@@ -768,7 +768,7 @@ func cookExtentWalk(u *ir.Unit, st *ir.Struct, un *ir.Union, seen map[string]boo
 		}
 	}
 	for _, f := range fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
@@ -787,4 +787,3 @@ func cookExtentWalk(u *ir.Unit, st *ir.Struct, un *ir.Union, seen map[string]boo
 	}
 	return false
 }
-

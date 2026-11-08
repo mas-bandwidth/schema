@@ -46,12 +46,195 @@ struct TableExtentCarve
 // answers non-zero here too, and refusing on it is the same answer one level up.
 inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
 
+// ---- UNBOUNDED TEXT in the node extent (docs/SPEC-TABLES.md §2.13.1) ----
+//
+// An unbounded string ([]string, []?string, [..N]string, [..N]?string,
+// map[string]V) stores a TableRef in its generated element or entry record.
+// A zero TableRef is the empty string "". A non-zero TableRef resolves (via
+// self-relative delta in a region/cook, or TableArenaAt in a builder) to an
+// 8-byte aligned TableBlob record in the holder's node extent (§2.5, §2.13.1):
+//   [uint32_t byte_length][uint32_t zero][len UTF-8 bytes]['\0']
+static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
+{
+    if ( raw == NULL ) { len = -1; return NULL; }
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
+{
+    return schema_table_text_at_( ref, len );
+}
+inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
+{
+    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    return schema_table_text_at_( *ctx.arena, ref, len );
+}
+
+inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, const char * text, int64_t len )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return false; }
+    if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
+    if ( len > 0 && text == NULL ) { return false; }
+    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( len == 0 ) { slot.value = 0; return true; }
+    uint32_t at = 0;
+    uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
+    if ( dst == NULL ) { return false; }
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( dst, &u, 4 );
+    memcpy( dst + 4, &z, 4 );
+    memcpy( dst + 8, text, (size_t) len );
+    dst[8 + len] = 0;
+    slot.value = (int64_t) at;
+    return true;
+}
+
+inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slot, const uint8_t * src, int64_t len )
+{
+    slot.value = 0;
+    if ( len < 0 || len > kTableBlobMaxLength )
+    {
+        if ( nodes.carve != NULL && nodes.carve->worker != NULL ) { nodes.refused = true; }
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    if ( nodes.carve == NULL ) { return false; }
+    if ( nodes.carve->worker != NULL )
+    {
+        uint32_t at = 0;
+        uint8_t * dst = nodes.carve->worker->AllocRaw( 8 + len + 1, 8, at );
+        if ( dst == NULL )
+        {
+            nodes.refused = true;
+            return false;
+        }
+        uint32_t u = (uint32_t) len;
+        uint32_t z = 0;
+        memcpy( dst, &u, 4 );
+        memcpy( dst + 4, &z, 4 );
+        memcpy( dst + 8, src, (size_t) len );
+        dst[8 + len] = 0;
+        slot.value = (int64_t) at;
+        return true;
+    }
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    const int64_t bytes = TableAlignUp64( 9 + len );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return false; }
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( base, &u, 4 );
+    memcpy( base + 4, &z, 4 );
+    memcpy( base + 8, src, (size_t) len );
+    base[8 + len] = 0;
+    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    return true;
+}
+
+inline int32_t schema_table_text_placed_len_( const TableNodeMap & nodes, const TableRef & ref )
+{
+    int32_t len = 0;
+    if ( nodes.carve != NULL && nodes.carve->worker != NULL && nodes.carve->worker->arena != NULL )
+    {
+        schema_table_text_at_( *nodes.carve->worker->arena, ref, len );
+    }
+    else
+    {
+        schema_table_text_at_( ref, len );
+    }
+    return len > 0 ? len : 0;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, int64_t & at )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, slot, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, TableRef & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, src, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { dst.value = 0; return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    if ( at + need > capacity ) { return false; }
+    uint8_t * block = extent + at;
+    at += need;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( block, &u, 4 );
+    memcpy( block + 4, &z, 4 );
+    memcpy( block + 8, bytes, (size_t) len );
+    block[8 + len] = 0;
+    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    return true;
+}
+
+inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    r.offset += (int64_t) len;
+    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+inline bool schema_table_list_text_wire_extent_( const uint8_t * body, int64_t length, uint64_t bound, int64_t & at, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, NULL );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 12 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( bound > 0 && n > bound ) { n = bound; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }
+        if ( r.offset >= r.size ) { break; }
+    }
+    return true;
+}
+
 // ---- LoadMeasure's framing walk (§6.5) ----
 //
 // The measure reads no field value: it walks each record's field headers,
 // skipping every payload by its framing, to reach each N at every depth. A
 // false is a REFUSAL, and it carries its reason (§6.5).
-typedef bool ( * TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
+typedef bool ( *TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
 
 // the framing walk over an ARRAY OF TABLES held by value: its elements' own
 // lists and maps are part of this node's extent too
@@ -120,7 +303,7 @@ inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t 
 // members that carry an extent, and the ones whose extent walks are emitted.
 func (g *tableGen) hasExtent(st *ir.Struct) bool {
 	for _, f := range st.Fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		// A CONTAINER REACHABLE BY VALUE IS THIS RECORD'S EXTENT, whichever
@@ -191,6 +374,7 @@ func alignOfEntry(u *ir.Unit, entry *ir.Struct) int64 {
 type extentVisitor struct {
 	mapField  func(f *ir.Field, expr edgeExpr, ind string)
 	listField func(f *ir.Field, expr edgeExpr, ind string)
+	textField func(f *ir.Field, expr edgeExpr, ind string)
 	descend   func(table string, expr edgeExpr, ind string)
 }
 
@@ -212,6 +396,12 @@ func (g *tableGen) emitExtentWalk(st *ir.Struct, base edgeVisitor, v extentVisit
 		}
 		if f.IsList() {
 			v.listField(f, g.fieldExpr(ev, f), "    ")
+			continue
+		}
+		if f.Type.TextUnbounded() {
+			if v.textField != nil {
+				v.textField(f, g.fieldExpr(ev, f), "    ")
+			}
 			continue
 		}
 		switch g.edgeOf(f) {
@@ -269,17 +459,19 @@ func (g *tableGen) emitListElementExtents(f *ir.Field, element edgeExpr, ev edge
 // emitExtent emits `<T>ExtentAt`: the running offset every array reachable by
 // value from one record takes, in the order the pack lays them, and
 // `<T>Extent`, the whole extent from a fresh offset.
+// The optional mode selects canonical scalar array layout; the default retains
+// native pack layout. Its name uses the already reserved schema_ prefix.
 func (g *tableGen) emitExtent(st *ir.Struct) {
-	g.pf("// %sExtentAt: the node extent %s's lists and maps take, PRE-ORDER, advancing\n", st.Name, st.Name)
-	g.pf("// the running offset exactly as %sExtentPack advances it (§2.8, §2.9).\n", st.Name)
-	g.pf("template <typename Ctx>\ninline bool %sExtentAt( const Ctx & ctx, const %s & value, int64_t & at )\n{\n", st.Name, st.Name)
+	g.pf("// %sExtentAt: the node extent %s's lists and maps take, PRE-ORDER.\n", st.Name, st.Name)
+	g.pf("// The default native mode advances exactly as %sExtentPack (§2.8, §2.9).\n", st.Name)
+	g.pf("template <typename Ctx, bool schema_cook_extent = false>\ninline bool %sExtentAt( const Ctx & ctx, const %s & value, int64_t & at )\n{\n", st.Name, st.Name)
 	if !g.hasExtent(st) {
-		g.pf("    (void) ctx; (void) value; (void) at; // no list or map below this record\n")
+		g.pf("    (void) ctx;\n    (void) value;\n    (void) at; // no list or map below this record\n")
 		g.pf("    return true;\n}\n\n")
 		// a variable member with no extent of its own is still a root Lock and
 		// a cook size from, so its whole extent is spelled, and it is zero
-		g.pf("template <typename Ctx>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
-		g.pf("    (void) ctx; (void) value; // no list or map below this record\n")
+		g.pf("template <typename Ctx, bool schema_cook_extent = false>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
+		g.pf("    (void) ctx;\n    (void) value; // no list or map below this record\n")
 		g.pf("    return 0;\n}\n\n")
 		return
 	}
@@ -295,7 +487,7 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, entry.Name)
 			if g.isVar(entry.Name) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
+				g.pf("%s        if ( !%sExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
 				g.pf("%s    }\n", ind)
 			}
 			g.pf("%s    TableMapRelease( cursor );\n", ind)
@@ -306,22 +498,31 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.pf("%s{\n", ind)
 			g.pf("%s    TableListCursor<%s> cursor = TableListElements( ctx, %s );\n", ind, elem, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
-			g.pf("%s    at = ( at + (int64_t) alignof( %s ) - 1 ) & ~( (int64_t) alignof( %s ) - 1 );\n", ind, elem, elem)
-			g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, elem)
+			size, align := ir.ListElementLayout(g.unit, f)
+			g.pf("%s    if constexpr ( schema_cook_extent )\n%s    {\n", ind, ind)
+			g.pf("%s        at = ( at + %d ) & ~(int64_t) %d;\n", ind, align-1, align-1)
+			g.pf("%s        at += (int64_t) cursor.count * %d; // canonical cook layout\n", ind, size)
+			g.pf("%s    }\n%s    else\n%s    {\n", ind, ind, ind)
+			g.pf("%s        at = ( at + (int64_t) alignof( %s ) - 1 ) & ~( (int64_t) alignof( %s ) - 1 );\n", ind, elem, elem)
+			g.pf("%s        at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // native pack layout\n", ind, elem)
+			g.pf("%s    }\n", ind)
 			g.emitListElementExtents(f, edgeExpr{Src: "cursor[i]"}, ev, v, ind, " // then, element by element in index order")
 			g.pf("%s}\n", ind)
 		},
+		textField: func(f *ir.Field, expr edgeExpr, ind string) {
+			g.pf("%sif ( !schema_table_text_extent_( ctx, %s, at ) ) { return false; }\n", ind, expr.Src)
+		},
 		descend: func(table string, expr edgeExpr, ind string) {
-			g.pf("%sif ( !%sExtentAt( ctx, %s, at ) ) { return false; }\n", ind, table, expr.Src)
+			g.pf("%sif ( !%sExtentAt<Ctx, schema_cook_extent>( ctx, %s, at ) ) { return false; }\n", ind, table, expr.Src)
 		},
 	}
 	g.emitExtentWalk(st, ev, v)
 	g.pf("    return true;\n}\n\n")
 	g.pf("// the whole extent of one node, from a fresh offset: what a pack reserves\n")
 	g.pf("// for it beside the record's own storage.\n")
-	g.pf("template <typename Ctx>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("template <typename Ctx, bool schema_cook_extent = false>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    int64_t at = 0;\n")
-	g.pf("    if ( !%sExtentAt( ctx, value, at ) ) { return -1; }\n", st.Name)
+	g.pf("    if ( !%sExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }\n", st.Name)
 	g.pf("    return at;\n}\n\n")
 }
 
@@ -334,7 +535,7 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 	g.pf("// advancing the same running offset %sExtentAt advances (§2.8, §2.9).\n", st.Name)
 	g.pf("template <typename Ctx>\ninline bool %sExtentPack( const Ctx & ctx, const %s & src, %s & dst, uint8_t * extent, int64_t & at, int64_t capacity )\n{\n", st.Name, st.Name, st.Name)
 	if !g.hasExtent(st) {
-		g.pf("    (void) ctx; (void) src; (void) dst; (void) extent; (void) at; (void) capacity; // no list or map below this record\n")
+		g.pf("    (void) ctx;\n    (void) src;\n    (void) dst;\n    (void) extent;\n    (void) at;\n    (void) capacity; // no list or map below this record\n")
 		g.pf("    return true;\n}\n\n")
 		return
 	}
@@ -385,6 +586,9 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s    }\n", ind)
 			g.emitListElementExtents(f, edgeExpr{Src: "cursor[i]", Dst: "placed[i]"}, ev, v, ind, "")
 			g.pf("%s}\n", ind)
+		},
+		textField: func(f *ir.Field, expr edgeExpr, ind string) {
+			g.pf("%sif ( !schema_table_text_pack_( ctx, %s, %s, extent, at, capacity ) ) { return false; }\n", ind, expr.Src, expr.Dst)
 		},
 		descend: func(table string, expr edgeExpr, ind string) {
 			g.pf("%sif ( !%sExtentPack( ctx, %s, %s, extent, at, capacity ) ) { return false; }\n", ind, table, expr.Src, expr.Dst)
@@ -527,7 +731,7 @@ func (g *tableGen) emitWireExtent(st *ir.Struct) {
 	g.pf("// expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).\n")
 	g.pf("inline bool %sWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )\n{\n", st.Name)
 	if !g.hasExtent(st) {
-		g.pf("    (void) body; (void) length; (void) at; (void) ids; (void) reason; // no list or map below this record\n")
+		g.pf("    (void) body;\n    (void) length;\n    (void) at;\n    (void) ids;\n    (void) reason; // no list or map below this record\n")
 		g.pf("    return true;\n}\n\n")
 		return
 	}
@@ -571,7 +775,7 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 		if f.IsList() {
 			elem := g.listElementType(f)
 			inner := "NULL"
-			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
+			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) && !ir.TextListPlain(f) {
 				inner = "&" + ref.Name + "WireExtent"
 			}
 			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: an unbounded array\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
@@ -581,11 +785,30 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			g.pf("            r.offset += (int64_t) list_len;\n")
 			g.pf("            if ( !TableListWireExtent( list_body, (int64_t) list_len, at, (int64_t) sizeof( %s ), (int64_t) alignof( %s ), %d, %d, %s, ids, reason ) ) { return false; }\n",
 				elem, elem, listElementWireKind(f), listElementFloor(f), inner)
+			if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+				g.pf("            if ( !schema_table_list_text_wire_extent_( list_body, (int64_t) list_len, 0, at, reason ) ) { return false; }\n")
+			}
 			if un := listElementUnion(f); un != nil && g.unionHasExtent(un, map[*ir.Union]bool{}) {
 				// the elements' arms, after the whole array: one arm header
 				// per element, read over the same body (§2.6, §2.9)
 				g.pf("            if ( !%sWireArmsExtent( list_body, (int64_t) list_len, at, ids, reason ) ) { return false; }\n", un.Name)
 			}
+			g.pf("            continue;\n        }\n")
+			continue
+		}
+		if f.Type.TextUnbounded() {
+			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: an unbounded text\n        {\n", ir.TableFieldWireId(f), tkString, f.Name)
+			g.pf("            if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }\n")
+			g.pf("            continue;\n        }\n")
+			continue
+		}
+		if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a bounded array of unbounded strings\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
+			g.pf("            uint64_t list_len = 0;\n")
+			g.pf("            if ( !r.getleb( list_len ) || !r.room( list_len ) ) { return true; }\n")
+			g.pf("            const uint8_t * list_body = r.buffer + r.offset;\n")
+			g.pf("            r.offset += (int64_t) list_len;\n")
+			g.pf("            if ( !schema_table_list_text_wire_extent_( list_body, (int64_t) list_len, %d, at, reason ) ) { return false; }\n", f.ArrayBound)
 			g.pf("            continue;\n        }\n")
 			continue
 		}
@@ -643,13 +866,17 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 // plus the extent its own lists and maps take, read from the wire framing
 // (§2.8, §2.9, §6.5). `reason` is the refusal's carrier, declared by the
 // caller where a unit has an extent.
-func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind, onBad string) {
+func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind string, onBad ...string) {
 	if !g.anyExtent {
 		g.pf("%sint64_t data = TableAlignUp64( (int64_t) sizeof( %s ) );\n", ind, st.Name)
 		return
 	}
 	g.pf("%sint64_t root_extent = 0;\n", ind)
-	g.pf("%sif ( !%sWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { %s }\n", ind, st.Name, onBad)
+	g.pf("%sif ( !%sWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )\n%s{\n", ind, st.Name, ind)
+	for _, statement := range onBad {
+		g.pf("%s    %s\n", ind, statement)
+	}
+	g.pf("%s}\n", ind)
 	g.pf("%sint64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent );\n", ind, st.Name)
 }
 
@@ -664,7 +891,7 @@ func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind, onBad string) {
 
 // cookExtentSignature is one record's extent writer.
 func (g *tableGen) cookExtentSignature(st *ir.Struct) string {
-	return fmt.Sprintf("template <typename Ctx> inline bool %sCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const %s & value, TableByteOrder order )", st.Name, st.Name)
+	return fmt.Sprintf("template <typename Ctx>\ninline bool %[1]sCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const %[2]s & value, TableByteOrder order )", st.Name, st.Name)
 }
 
 // emitCookExtent emits one record's extent writer: every list and map
@@ -676,7 +903,7 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 	g.pf("// own cook writer (§2.8, §2.9, §7.6).\n")
 	g.pf("%s\n{\n", g.cookExtentSignature(st))
 	if !g.hasExtent(st) {
-		g.pf("    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;\n")
+		g.pf("    (void) ctx;\n    (void) region;\n    (void) extent;\n    (void) at;\n    (void) record;\n    (void) value;\n    (void) order;\n")
 		g.pf("    return true; // no list or map below this record\n}\n\n")
 		return
 	}
@@ -742,6 +969,24 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 			g.emitListElementExtents(f, element, ev, v, ind, " // then, element by element in index order")
 			g.pf("%s}\n", ind)
 		},
+		textField: func(f *ir.Field, expr edgeExpr, ind string) {
+			g.pf("%s{ // %s: an unbounded text's bytes\n", ind, f.Name)
+			g.pf("%s    int32_t len = 0;\n", ind)
+			g.pf("%s    const char * bytes = schema_table_text_at_( ctx, %s, len );\n", ind, expr.Src)
+			g.pf("%s    if ( bytes == NULL ) { return false; }\n", ind)
+			g.pf("%s    if ( len == 0 )\n%s    {\n", ind, ind)
+			g.pf("%s        table_cook_put( %s, 0, 8, order );\n", ind, expr.addr(0))
+			g.pf("%s    }\n%s    else\n%s    {\n", ind, ind, ind)
+			g.pf("%s        at = ( at + 7 ) & ~(int64_t) 7;\n", ind)
+			g.pf("%s        uint8_t * block = extent + at;\n", ind)
+			g.pf("%s        at += TableAlignUp64( 9 + (int64_t) len );\n", ind)
+			g.pf("%s        table_cook_put( %s, (uint64_t) (int64_t) ( block - ( %s ) ), 8, order );\n", ind, expr.addr(0), expr.addr(0))
+			g.pf("%s        table_cook_put( block, (uint64_t) (uint32_t) len, 4, order );\n", ind)
+			g.pf("%s        table_cook_put( block + 4, 0, 4, order );\n", ind)
+			g.pf("%s        memcpy( block + 8, bytes, (size_t) len );\n", ind)
+			g.pf("%s        block[8 + len] = 0;\n", ind)
+			g.pf("%s    }\n%s}\n", ind, ind)
+		},
 		descend: func(table string, expr edgeExpr, ind string) {
 			g.pf("%sif ( !%sCookExtent( ctx, region, extent, at, %s, %s, order ) ) { return false; }\n", ind, table, expr.addr(0), expr.Src)
 		},
@@ -761,7 +1006,7 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 func (g *tableGen) emitCookNode(st *ir.Struct) {
 	record := ir.CookExtentStart(g.unit, st)
 	g.pf("// %sCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).\n", st.Name)
-	g.pf("template <typename Ctx> inline bool %sCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
+	g.pf("template <typename Ctx>\ninline bool %[1]sCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %[2]s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
 	if g.isVar(st.Name) {
 		g.pf("    if ( !%sCookBody( ctx, region, at, value, order ) ) { return false; }\n", st.Name)
 	} else {
@@ -773,7 +1018,7 @@ func (g *tableGen) emitCookNode(st *ir.Struct) {
 		return
 	}
 	g.pf("    if ( !%sCookExtent( ctx, region, at + %d, extent_at, at, value, order ) ) { return false; }\n", st.Name, record)
-	g.pf("    return extent_at == %sExtent( ctx, value ); // the extent written is the extent measured, or no header is written\n}\n\n", st.Name)
+	g.pf("    return extent_at == %sExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written\n}\n\n", st.Name)
 }
 
 // emitCookExtentSurface emits the extent writer and the node writer for every
@@ -806,13 +1051,13 @@ func (g *tableGen) emitCookExtentSurface(members []*ir.Struct) {
 func (g *tableGen) emitCookNodeBytes(st *ir.Struct, ind, expr, onBad string) {
 	ml := ir.RecordLayout(g.unit, st)
 	if !g.anyExtent || !g.hasExtent(st) {
-		g.pf("%ssize = %d; node_align = %d;\n", ind, ml.Size, ml.Align)
+		g.pf("%ssize = %d;\n%snode_align = %d;\n", ind, ml.Size, ind, ml.Align)
 		return
 	}
 	g.pf("%s{\n", ind)
-	g.pf("%s    const int64_t extent = %sExtent( ctx, %s );\n", ind, st.Name, expr)
-	g.pf("%s    if ( extent < 0 ) { %s }\n", ind, onBad)
-	g.pf("%s    size = %d + extent; node_align = %d; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)\n", ind, ir.CookExtentStart(g.unit, st), ir.CookNodeAlign(g.unit, st))
+	g.pf("%[1]s    const int64_t extent = %[2]sExtent<Ctx, true>( ctx, %[3]s );\n", ind, st.Name, expr)
+	g.pf("%[1]s    if ( extent < 0 ) { %[2]s }\n", ind, onBad)
+	g.pf("%[1]s    size = %[2]d + extent;\n%[1]s    node_align = %[3]d; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)\n", ind, ir.CookExtentStart(g.unit, st), ir.CookNodeAlign(g.unit, st))
 	g.pf("%s}\n", ind)
 }
 
@@ -821,7 +1066,7 @@ func (g *tableGen) emitCookNodeBytes(st *ir.Struct, ind, expr, onBad string) {
 // because the extent writer fills them.
 func onlyExtentFields(st *ir.Struct) bool {
 	for _, f := range st.Fields {
-		if !f.IsMap() && !f.IsList() {
+		if !f.IsMap() && !f.IsList() && !f.Type.TextUnbounded() {
 			return false
 		}
 	}

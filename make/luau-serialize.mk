@@ -50,7 +50,7 @@ vendor-serialize-luau:
 		echo "# The files are copied verbatim from the port's src/ directory at the commit."; \
 		echo "repository $(LUAU_SERIALIZE_REPO)"; \
 		echo "commit $$commit"; \
-		( cd $(LUAU_SERIALIZE_RUNTIME) && sha256sum serialize*.luau ) | sed 's/^/sha256  /'; \
+		( cd $(LUAU_SERIALIZE_RUNTIME) && (sha256sum serialize*.luau 2>/dev/null || shasum -a 256 serialize*.luau) ) | sed 's/^/sha256  /'; \
 	} > $(LUAU_SERIALIZE_PIN_FILE).tmp; \
 	mv $(LUAU_SERIALIZE_PIN_FILE).tmp $(LUAU_SERIALIZE_PIN_FILE); \
 	echo "vendor-serialize-luau: $$commit -> $(LUAU_SERIALIZE_RUNTIME)/ ($$(ls $(LUAU_SERIALIZE_RUNTIME)/serialize*.luau | wc -l | tr -d ' ') files)"

@@ -109,7 +109,7 @@ func writeVariableWideArrayRead(b *strings.Builder, f *ir.Field) {
 		fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!(%s)){report.kindMismatch++;}else{if(ek!=%d)report.widened++;long take=count;if(take<0||take>%dL){take=%dL;report.clamped++;}%sfor(long i=0;i<take;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);%s;}%s}}}}else{r.skip(kind);report.kindMismatch++;}\n", variableCompatibleKinds(kind, "ek"), kind, f.ArrayBound, f.ArrayBound, clear, lo, hi, fmt.Sprintf(place, variableRawStorage(f, "raw")), pad)
 		return
 	}
-	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.kindMismatch++;}else if(count<0||count>0x7fffffffL){report.refused=true;report.reason=\"count_refusal\";}else{if(ek!=%d)report.widened++;v.%s.clear();for(long i=0;i<count;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);v.%s.add(%s);}}}}}else{r.skip(kind);report.kindMismatch++;}\n", variableCompatibleKinds(kind, "ek"), kind, m, lo, hi, m, variableRawStorage(f, "raw"))
+	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.kindMismatch++;}else if(count<0||count>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else{if(ek!=%d)report.widened++;v.%s.clear();for(long i=0;i<count;i++){java.math.BigInteger raw=TableVariable.readInteger(ar,ek);if(raw==null)break;raw=TableVariable.clampInteger(raw,%s,%s,report);v.%s.add(%s);}}}}}else{r.skip(kind);report.kindMismatch++;}\n", variableCompatibleKinds(kind, "ek"), kind, m, lo, hi, m, variableRawStorage(f, "raw"))
 }
 func writeVariableWideJsonRead(b *strings.Builder, f *ir.Field, expr string, array bool) {
 	lo, hi := variableRawBounds(f)
@@ -134,8 +134,8 @@ const variableWideRuntime = `
         java.math.BigInteger upper=signed?java.math.BigInteger.valueOf(hi):new java.math.BigInteger(Long.toUnsignedString(hi));
         return upper.shiftLeft(64).add(new java.math.BigInteger(Long.toUnsignedString(lo)));
     }
-    static int integerWidth(int kind){switch(kind){case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 22:case 27:return 4;case 5:case 9:case 23:case 28:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
-    static boolean signedKind(int kind){return kind>=2&&kind<=5||kind==18||kind>=20&&kind<=24;}
+    static int integerWidth(int kind){switch(kind){case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 22:case 27:return 4;case 5:case 9:case 23:case 28:case 36:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
+    static boolean signedKind(int kind){return kind>=2&&kind<=5||kind==18||kind>=20&&kind<=24||kind==36;}
     static java.math.BigInteger readInteger(Reader r,int kind){
         int width=integerWidth(kind);if(width==0||!r.has(width)){r.report.malformed=true;r.fail=true;return null;}
         byte[] bytes=new byte[width];for(int i=0;i<width;i++)bytes[width-i-1]=(byte)r.get8();

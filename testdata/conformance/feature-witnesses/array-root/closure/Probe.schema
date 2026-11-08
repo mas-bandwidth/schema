@@ -1,0 +1,17 @@
+package probe
+
+table ArrayRoot | json="array" {
+    values []int32
+}
+table Bounded | json="array" {
+    values [..3]int32
+}
+union Selection {
+    items ArrayRoot
+}
+table Nested {
+    direct ArrayRoot
+    rows [..2]ArrayRoot
+    mapping map[uint8]ArrayRoot
+    choice Selection
+}

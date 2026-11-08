@@ -25,6 +25,9 @@ var (
 	_ = carryGoose(carryOneSidedRange)
 	_ = carryGoose(carryOptionalVariableClosure)
 	_ = carryGoose(carryOptionalMap)
+	_ = carryGoose(carryForms)
+	_ = carryGoose(carryIntegrity)
+	_ = carryGoose(carryArrayRoot)
 )
 
 func init() {

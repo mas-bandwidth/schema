@@ -194,7 +194,7 @@ namespace Tabledemo
             if (v.SpawnCount != 4)
             {
                 w.HeaderAt(120, 0xceec99e2d65db674ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.SpawnCount, 4);
+                w.Fixed(unchecked((ulong)(long)(v.SpawnCount)), 4);
             }
             long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
             TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
@@ -220,6 +220,7 @@ namespace Tabledemo
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + TeamConfigBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -227,6 +228,7 @@ namespace Tabledemo
             TeamConfigWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -317,6 +319,7 @@ namespace Tabledemo
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + GunnerConfigBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -324,6 +327,7 @@ namespace Tabledemo
             GunnerConfigWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -425,6 +429,7 @@ namespace Tabledemo
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + TurretConfigBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -432,6 +437,7 @@ namespace Tabledemo
             TurretConfigWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -535,6 +541,7 @@ namespace Tabledemo
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + HullConfigBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -542,6 +549,7 @@ namespace Tabledemo
             HullConfigWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -642,6 +650,7 @@ namespace Tabledemo
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + KeyedConfigBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -649,6 +658,7 @@ namespace Tabledemo
             KeyedConfigWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -731,6 +741,7 @@ namespace Tabledemo
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + ScoreBoardBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -738,6 +749,7 @@ namespace Tabledemo
             ScoreBoardWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -785,13 +797,14 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.TeamConfig(); };
                 info.StorageSize = 28; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "spawn_count", Json = "spawn_count", TypeName = "int32", Id = 0xceec99e2d65db674, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 64.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.TeamConfig)o).SpawnCount; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.TeamConfig)o).SpawnCount = unchecked((int)(long)r); }, MessageSlot = 98, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x40ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TeamConfig)o; value.SpawnCount = 4; }, DefaultRaw = (ulong)(long)4, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 64) { r.Clamped++; v = 64; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "spawn_count", Json = "spawn_count", TypeName = "int32", Id = 0xceec99e2d65db674, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 64.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.TeamConfig)o).SpawnCount)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.TeamConfig)o).SpawnCount = unchecked((int)(long)r); }, MessageSlot = 98, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x40ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TeamConfig)o; value.SpawnCount = 4; }, DefaultRaw = unchecked((ulong)(long)(4)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L || v > 64L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RangeRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 64) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
                     new TableFieldInfo { Name = "banner", Json = "banner", TypeName = "string", Id = 0xbca0dab1c7a00ccf, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Tabledemo.TeamConfig)o).Banner; }, GetCount = delegate (object o) { return ((global::Tabledemo.TeamConfig)o).BannerLength; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.TeamConfig)o).BannerLength = n; }, MessageSlot = 99, Ordinal = 1, NativeOffset = 4, NativeElementSize = 17, NativeCountOffset = 24, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TeamConfig)o; Array.Clear(value.Banner, 0, value.Banner.Length); value.BannerLength = 0; } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.TeamConfig)o); };
@@ -821,13 +834,14 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.GunnerConfig(); };
                 info.StorageSize = 8; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "reaction", Json = "reaction", TypeName = "float32", Id = 0xb75aa3662201646a, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.GunnerConfig)o).Reaction)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.GunnerConfig)o).Reaction = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 11, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.GunnerConfig)o; value.Reaction = 0.2f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.2f)), NonFiniteField = "GunnerConfig.reaction", NonFiniteReason = "non_finite_float: GunnerConfig.reaction", ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "reaction", Json = "reaction", TypeName = "float32", Id = 0xb75aa3662201646a, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.GunnerConfig)o).Reaction)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.GunnerConfig)o).Reaction = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 11, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.GunnerConfig)o; value.Reaction = 0.2f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.2f)), NonFiniteField = "GunnerConfig.reaction", NonFiniteReason = "non_finite_float: GunnerConfig.reaction", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "tracking", Json = "tracking", TypeName = "bool", Id = 0xa6bf719a4602b0bc, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return ((global::Tabledemo.GunnerConfig)o).Tracking ? 1ul : 0ul; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.GunnerConfig)o).Tracking = r != 0; }, MessageSlot = 12, Ordinal = 1, NativeOffset = 4, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.GunnerConfig)o; value.Tracking = false; }, DefaultRaw = false ? 1ul : 0ul },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.GunnerConfig)o); };
@@ -857,14 +871,15 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.TurretConfig(); };
                 info.StorageSize = 20; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "float32", Id = 0x7f6308be8ab37fc0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.TurretConfig)o).Damage)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.TurretConfig)o).Damage = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 100, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TurretConfig)o; value.Damage = 10.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(10.0f)), NonFiniteField = "TurretConfig.damage", NonFiniteReason = "non_finite_float: TurretConfig.damage", ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-                    new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0xdc2cbe6953343d48, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.TurretConfig)o).Cooldown)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.TurretConfig)o).Cooldown = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 101, Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TurretConfig)o; value.Cooldown = 0.5f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.5f)), NonFiniteField = "TurretConfig.cooldown", NonFiniteReason = "non_finite_float: TurretConfig.cooldown", ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "float32", Id = 0x7f6308be8ab37fc0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.TurretConfig)o).Damage)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.TurretConfig)o).Damage = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 100, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TurretConfig)o; value.Damage = 10.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(10.0f)), NonFiniteField = "TurretConfig.damage", NonFiniteReason = "non_finite_float: TurretConfig.damage", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0xdc2cbe6953343d48, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.TurretConfig)o).Cooldown)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.TurretConfig)o).Cooldown = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 101, Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.TurretConfig)o; value.Cooldown = 0.5f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.5f)), NonFiniteField = "TurretConfig.cooldown", NonFiniteReason = "non_finite_float: TurretConfig.cooldown", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerConfig", Id = 0x40dbb648c0cd44aa, Kind = 13, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.TurretConfig)o).Gunner; }, GetPresent = delegate (object o) { return ((global::Tabledemo.TurretConfig)o).GunnerPresent; }, SetPresent = delegate (object o, bool p) { ((global::Tabledemo.TurretConfig)o).GunnerPresent = p; }, MessageSlot = 97, Ordinal = 2, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = 16, ResetField = delegate (object o) { var value = (global::Tabledemo.TurretConfig)o; TableReset(value.Gunner); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.TurretConfig)o); };
@@ -894,14 +909,15 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.HullConfig(); };
                 info.StorageSize = 68; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "health", Json = "health", TypeName = "float32", Id = 0x7f69d4b5288ba9cf, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.HullConfig)o).Health)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.HullConfig)o).Health = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 14, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.HullConfig)o; value.Health = 100.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(100.0f)), NonFiniteField = "HullConfig.health", NonFiniteReason = "non_finite_float: HullConfig.health", ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-                    new TableFieldInfo { Name = "mass", Json = "mass", TypeName = "float32", Id = 0x1f3757a2ce7b0ab1, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.HullConfig)o).Mass)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.HullConfig)o).Mass = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 15, Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.HullConfig)o; value.Mass = 1.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(1.0f)), NonFiniteField = "HullConfig.mass", NonFiniteReason = "non_finite_float: HullConfig.mass", ClampRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "health", Json = "health", TypeName = "float32", Id = 0x7f69d4b5288ba9cf, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.HullConfig)o).Health)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.HullConfig)o).Health = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 14, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.HullConfig)o; value.Health = 100.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(100.0f)), NonFiniteField = "HullConfig.health", NonFiniteReason = "non_finite_float: HullConfig.health", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "mass", Json = "mass", TypeName = "float32", Id = 0x1f3757a2ce7b0ab1, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.HullConfig)o).Mass)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.HullConfig)o).Mass = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 15, Ordinal = 1, NativeOffset = 4, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.HullConfig)o; value.Mass = 1.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(1.0f)), NonFiniteField = "HullConfig.mass", NonFiniteReason = "non_finite_float: HullConfig.mass", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "turrets", Json = "turrets", TypeName = "TurretConfig", Id = 0x84f8260bc283608c, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Tabledemo.Schema.WeaponMax, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Weapon", KeyName = delegate (ulong v) { return v <= (ulong)WeaponMax ? EnumNameWeapon((global::Tabledemo.Weapon)v) : "???"; }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Tabledemo.Weapon)v, out id); return id; }, Guard = "", TableRef = delegate { return TurretConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.HullConfig)o).Turrets.Slots[i]; }, MessageSlot = 16, Ordinal = 2, NativeOffset = 8, NativeElementSize = 20, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.HullConfig)o; for (int i = 0; i < value.Turrets.Slots.Length; i++) { TableReset(value.Turrets.Slots[i]); } } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.HullConfig)o); };
@@ -931,6 +947,7 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.KeyedConfig(); };
                 info.StorageSize = 300; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -968,13 +985,14 @@ namespace Tabledemo
                 info.Create = delegate { return new global::Tabledemo.ScoreBoard(); };
                 info.StorageSize = 12; info.StorageAlign = 4; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "per_team", Json = "per_team", TypeName = "int32", Id = 0xf10fad739a0e1660, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Tabledemo.Schema.TeamMax, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate (ulong v) { return v <= (ulong)TeamMax ? EnumNameTeam((global::Tabledemo.Team)v) : "???"; }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Tabledemo.Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)(long)((global::Tabledemo.ScoreBoard)o).PerTeam[i]; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ScoreBoard)o).PerTeam[i] = unchecked((int)(long)r); }, MessageSlot = 94, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x186a0ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ScoreBoard)o; Array.Clear(value.PerTeam, 0, value.PerTeam.Length); }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 100000) { r.Clamped++; v = 100000; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "per_team", Json = "per_team", TypeName = "int32", Id = 0xf10fad739a0e1660, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Tabledemo.Schema.TeamMax, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate (ulong v) { return v <= (ulong)TeamMax ? EnumNameTeam((global::Tabledemo.Team)v) : "???"; }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Tabledemo.Team)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.ScoreBoard)o).PerTeam[i])); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ScoreBoard)o).PerTeam[i] = unchecked((int)(long)r); }, MessageSlot = 94, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x186a0ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ScoreBoard)o; Array.Clear(value.PerTeam, 0, value.PerTeam.Length); }, DefaultRaw = unchecked((ulong)(long)(0)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L || v > 100000L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RangeRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 100000) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.ScoreBoard)o); };
                 info.Doc = TableDocNone;
@@ -1187,8 +1205,7 @@ namespace Tabledemo
         public static void TeamConfigFixedClampBody(TeamConfig value, ref int clamped)
         {
             if (value == null) return;
-            if (value.SpawnCount < 0) { value.SpawnCount = 0; clamped++; }
-            else if (value.SpawnCount > 64) { value.SpawnCount = 64; clamped++; }
+            if (value.SpawnCount < 0 || value.SpawnCount > 64) { clamped++; }
         }
 
         // ScoreBoard's read-side bounds (§4.6).
@@ -1199,8 +1216,7 @@ namespace Tabledemo
             {
                 for (int i = 0; i < 3 && i < value.PerTeam.Length; ++i)
                 {
-                    if (value.PerTeam[i] < 0) { value.PerTeam[i] = 0; clamped++; }
-                    else if (value.PerTeam[i] > 100000) { value.PerTeam[i] = 100000; clamped++; }
+                    if (value.PerTeam[i] < 0 || value.PerTeam[i] > 100000) { clamped++; }
                 }
             }
         }
@@ -1292,7 +1308,7 @@ namespace Tabledemo
         {
             int clamped = 0;
             TeamConfigFixedClampBody(value, ref clamped);
-            if (report != null) { report.Clamped += clamped; }
+            if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
         }
 
         // ---- TeamConfig, the fixed form ----
@@ -1469,8 +1485,7 @@ namespace Tabledemo
                     case TableFixedWire.Count:
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                             TeamConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -1479,8 +1494,7 @@ namespace Tabledemo
                             uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
                             uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -1513,7 +1527,7 @@ namespace Tabledemo
                                 {
                                     v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                 }
-                                if (raw > count) { forgedOrdinal++; }
+                                if (raw > count) { return "out_of_range"; }
                             }
                             TeamConfigFixedSetRaw(dst, p.Dst, v, report);
                             break;
@@ -1613,7 +1627,7 @@ namespace Tabledemo
 
         public static long TeamConfigFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + TeamConfigFixedLayoutBytes + count * TeamConfigFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + TeamConfigFixedLayoutBytes + count * TeamConfigFixedRecordBytes + 0;
         }
 
         public static long TeamConfigFixedSave(ReadOnlySpan<TeamConfig> values, Span<byte> buffer)
@@ -1655,7 +1669,7 @@ namespace Tabledemo
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -1672,14 +1686,14 @@ namespace Tabledemo
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                     return -1;
                 }
             }
@@ -1746,11 +1760,11 @@ namespace Tabledemo
                 // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
-                census_kind = lane.KindMismatch;
+                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -1766,7 +1780,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new TeamConfig(); }
@@ -1777,17 +1792,24 @@ namespace Tabledemo
                 string run_why = TeamConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 TeamConfigFixedClamp(values[k], report);
-                if (report != null) { report.Clamped += forgedOrdinal; }
+                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                if (report != null && report.Refused)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    report.Verdict = TableWire.Verdict.Refused;
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
             {
                 report.Unknown += census_unknown;
-                report.KindMismatch += census_kind;
+                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -1814,7 +1836,7 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
             string run_why = TeamConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
-            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -1990,8 +2012,7 @@ namespace Tabledemo
                     case TableFixedWire.Count:
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                             GunnerConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -2000,8 +2021,7 @@ namespace Tabledemo
                             uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
                             uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -2034,7 +2054,7 @@ namespace Tabledemo
                                 {
                                     v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                 }
-                                if (raw > count) { forgedOrdinal++; }
+                                if (raw > count) { return "out_of_range"; }
                             }
                             GunnerConfigFixedSetRaw(dst, p.Dst, v, report);
                             break;
@@ -2134,7 +2154,7 @@ namespace Tabledemo
 
         public static long GunnerConfigFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + GunnerConfigFixedLayoutBytes + count * GunnerConfigFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + GunnerConfigFixedLayoutBytes + count * GunnerConfigFixedRecordBytes + 0;
         }
 
         public static long GunnerConfigFixedSave(ReadOnlySpan<GunnerConfig> values, Span<byte> buffer)
@@ -2177,7 +2197,7 @@ namespace Tabledemo
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -2194,14 +2214,14 @@ namespace Tabledemo
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                     return -1;
                 }
             }
@@ -2268,11 +2288,11 @@ namespace Tabledemo
                 // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
-                census_kind = lane.KindMismatch;
+                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -2288,7 +2308,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new GunnerConfig(); }
@@ -2299,23 +2320,30 @@ namespace Tabledemo
                 string run_why = GunnerConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = GunnerConfigFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                if (report != null) { report.Clamped += forgedOrdinal; }
+                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                if (report != null && report.Refused)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    report.Verdict = TableWire.Verdict.Refused;
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
             {
                 report.Unknown += census_unknown;
-                report.KindMismatch += census_kind;
+                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -2342,7 +2370,7 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
             string run_why = GunnerConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
-            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -2537,8 +2565,7 @@ namespace Tabledemo
                     case TableFixedWire.Count:
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                             TurretConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -2547,8 +2574,7 @@ namespace Tabledemo
                             uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
                             uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -2581,7 +2607,7 @@ namespace Tabledemo
                                 {
                                     v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                 }
-                                if (raw > count) { forgedOrdinal++; }
+                                if (raw > count) { return "out_of_range"; }
                             }
                             TurretConfigFixedSetRaw(dst, p.Dst, v, report);
                             break;
@@ -2688,7 +2714,7 @@ namespace Tabledemo
 
         public static long TurretConfigFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + TurretConfigFixedLayoutBytes + count * TurretConfigFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + TurretConfigFixedLayoutBytes + count * TurretConfigFixedRecordBytes + 0;
         }
 
         public static long TurretConfigFixedSave(ReadOnlySpan<TurretConfig> values, Span<byte> buffer)
@@ -2731,7 +2757,7 @@ namespace Tabledemo
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -2748,14 +2774,14 @@ namespace Tabledemo
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                     return -1;
                 }
             }
@@ -2822,11 +2848,11 @@ namespace Tabledemo
                 // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
-                census_kind = lane.KindMismatch;
+                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -2842,7 +2868,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new TurretConfig(); }
@@ -2853,23 +2880,30 @@ namespace Tabledemo
                 string run_why = TurretConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = TurretConfigFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                if (report != null) { report.Clamped += forgedOrdinal; }
+                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                if (report != null && report.Refused)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    report.Verdict = TableWire.Verdict.Refused;
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
             {
                 report.Unknown += census_unknown;
-                report.KindMismatch += census_kind;
+                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -2896,7 +2930,7 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
             string run_why = TurretConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
-            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -3152,8 +3186,7 @@ namespace Tabledemo
                     case TableFixedWire.Count:
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                             HullConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -3162,8 +3195,7 @@ namespace Tabledemo
                             uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
                             uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -3196,7 +3228,7 @@ namespace Tabledemo
                                 {
                                     v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                 }
-                                if (raw > count) { forgedOrdinal++; }
+                                if (raw > count) { return "out_of_range"; }
                             }
                             HullConfigFixedSetRaw(dst, p.Dst, v, report);
                             break;
@@ -3324,7 +3356,7 @@ namespace Tabledemo
 
         public static long HullConfigFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + HullConfigFixedLayoutBytes + count * HullConfigFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + HullConfigFixedLayoutBytes + count * HullConfigFixedRecordBytes + 0;
         }
 
         public static long HullConfigFixedSave(ReadOnlySpan<HullConfig> values, Span<byte> buffer)
@@ -3367,7 +3399,7 @@ namespace Tabledemo
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -3384,14 +3416,14 @@ namespace Tabledemo
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                     return -1;
                 }
             }
@@ -3458,11 +3490,11 @@ namespace Tabledemo
                 // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
-                census_kind = lane.KindMismatch;
+                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -3478,7 +3510,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new HullConfig(); }
@@ -3489,23 +3522,30 @@ namespace Tabledemo
                 string run_why = HullConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = HullConfigFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                if (report != null) { report.Clamped += forgedOrdinal; }
+                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                if (report != null && report.Refused)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    report.Verdict = TableWire.Verdict.Refused;
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
             {
                 report.Unknown += census_unknown;
-                report.KindMismatch += census_kind;
+                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -3532,7 +3572,7 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
             string run_why = HullConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
-            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
 
@@ -3545,7 +3585,7 @@ namespace Tabledemo
         {
             int clamped = 0;
             KeyedConfigFixedClampBody(value, ref clamped);
-            if (report != null) { report.Clamped += clamped; }
+            if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
         }
 
         // ---- KeyedConfig, the fixed form ----
@@ -4003,8 +4043,7 @@ namespace Tabledemo
                     case TableFixedWire.Count:
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                             KeyedConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -4013,8 +4052,7 @@ namespace Tabledemo
                             uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
                             uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -4047,7 +4085,7 @@ namespace Tabledemo
                                 {
                                     v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                 }
-                                if (raw > count) { forgedOrdinal++; }
+                                if (raw > count) { return "out_of_range"; }
                             }
                             KeyedConfigFixedSetRaw(dst, p.Dst, v, report);
                             break;
@@ -4240,7 +4278,7 @@ namespace Tabledemo
 
         public static long KeyedConfigFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + KeyedConfigFixedLayoutBytes + count * KeyedConfigFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + KeyedConfigFixedLayoutBytes + count * KeyedConfigFixedRecordBytes + 0;
         }
 
         public static long KeyedConfigFixedSave(ReadOnlySpan<KeyedConfig> values, Span<byte> buffer)
@@ -4283,7 +4321,7 @@ namespace Tabledemo
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -4300,14 +4338,14 @@ namespace Tabledemo
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                     return -1;
                 }
             }
@@ -4374,11 +4412,11 @@ namespace Tabledemo
                 // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
-                census_kind = lane.KindMismatch;
+                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -4394,7 +4432,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new KeyedConfig(); }
@@ -4405,24 +4444,31 @@ namespace Tabledemo
                 string run_why = KeyedConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = KeyedConfigFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 KeyedConfigFixedClamp(values[k], report);
-                if (report != null) { report.Clamped += forgedOrdinal; }
+                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                if (report != null && report.Refused)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    report.Verdict = TableWire.Verdict.Refused;
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
             {
                 report.Unknown += census_unknown;
-                report.KindMismatch += census_kind;
+                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -4449,7 +4495,7 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
             string run_why = KeyedConfigFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
-            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }

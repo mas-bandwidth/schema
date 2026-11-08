@@ -231,8 +231,8 @@ func TestLuaLoadAllocationNegativeControl(t *testing.T) {
 			"local function queue(ctx, holder, key, index, d, null)\n  local _ = string.rep(\"q\", 1000 + ctx.np)\n  local n = ctx.np + 1\n",
 			[]string{"pointer nodes and slots", "a list of records"}},
 		{"an allocation per array body",
-			"array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)\n  local report = ctx.report\n",
-			"array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)\n  local _ = string.rep(\"a\", 2000)\n  local report = ctx.report\n",
+			"array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)\n  local report = ctx.report\n",
+			"array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)\n  local _ = string.rep(\"a\", 2000)\n  local report = ctx.report\n",
 			[]string{"by-value record, keyed arrays, strings", "scalars and strings", "nested records", "counted arrays of records, union arms", "a list of records"}},
 	}
 	for _, p := range plants {

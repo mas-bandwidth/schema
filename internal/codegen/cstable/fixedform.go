@@ -2004,7 +2004,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 
 	g.pf("public static long %sFixedMeasure(long count)\n{\n", name)
-	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes;\n}\n\n", name, name)
+	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes + %d;\n}\n\n", name, name, integrityTrailerBytes(st))
 
 	g.pf("public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
@@ -2024,7 +2024,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        BinaryPrimitives.WriteUInt64LittleEndian(at, %sFixedHash);\n", name)
 	g.pf("        at.Slice(8, (int)%sFixedBodyBytes).Clear();\n", name)
 	g.pf("        %sFixedWriteBody(at.Slice(8), values[k]);\n", name)
-	g.pf("        at = at.Slice((int)%sFixedRecordBytes);\n    }\n    return need;\n}\n\n", name)
+	g.pf("        at = at.Slice((int)%sFixedRecordBytes);\n    }\n", name)
+	if st.Integrity == "crc32c" {
+		g.pf("    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice((int)need - 4), TableWire.IntegrityCrc(buffer.Slice(0, (int)need - 4)));\n")
+	}
+	g.pf("    return need;\n}\n\n")
 
 	g.pf("public static long %sFixedSave(%s[] values, Span<byte> buffer)\n{\n", name, name)
 	g.pf("    return %sFixedSave((ReadOnlySpan<%s>)values, buffer);\n}\n\n", name, name)
@@ -2044,7 +2048,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// legs answer: 1 previous_form, 2 message_form_as_file, OTHERWISE newer_form
 	// — never "below this form" for a byte, which named 0 previous_form.
 	g.pf("    if (data.Length < 1)\n    {\n")
-	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    if (data[0] != TableFixedWire.Form)\n    {\n")
 	g.pf("        if (report != null)\n        {\n")
@@ -2054,13 +2058,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                          : \"newer_form\";\n")
 	g.pf("            report.Verdict = TableWire.Verdict.Refused;\n        }\n")
 	g.pf("        return -1;\n    }\n")
+	if st.Integrity == "crc32c" {
+		g.pf("    if (!TableWire.IntegrityRead(ref data)) { if (report != null) { TableWire.IntegrityDamage(report); } return -1; }\n")
+	}
 	g.pf("    if (data.Length < TableFixedWire.HeaderBytes + 4)\n    {\n")
-	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	// STEP 2's second half: THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED.
 	g.pf("    for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)\n    {\n")
 	g.pf("        if (data[reserved] != 0)\n        {\n")
-	g.pf("            if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("            if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("            return -1;\n        }\n    }\n")
 	g.pf("    uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));\n")
 	g.pf("    if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)\n    {\n")
@@ -2138,13 +2145,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and\n")
 	g.pf("        // it lands only on a read that RETURNS: REFUSE moves no counter.\n")
 	g.pf("        census_unknown = lane.Unknown;\n")
-	g.pf("        census_kind = lane.KindMismatch;\n")
+	g.pf("        census_kind = lane.KindChanged;\n")
 	if hasWriterBounds {
 		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
 	}
 	g.pf("    }\n")
 	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0)\n    {\n")
-	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    long n = rest / record_bytes;\n")
 	g.pf("    if (n > values.Length)\n    {\n")
@@ -2162,7 +2169,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE PER-RECORD HASH CHECK IS FIRST — before the prefill, so a refusal has
 	// written not one destination byte (§5.3, §5.8 row 9).
 	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n        {\n")
-	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("            for (int j = 0; j < k; ++j) { TableReset(values[j]); }\n")
+	g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
 	g.pf("        if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]); }\n", name)
@@ -2174,7 +2182,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        // Specialized per-table twin of TableFixedWire.Run(entries, %sFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.\n", name)
 	g.pf("        string run_why = %sFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
 	g.pf("        if (run_why != null)\n        {\n")
-	g.pf("            if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
+	g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
@@ -2185,7 +2194,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        string finite_why = %sFixedFiniteBody(values[k]);\n", name)
 		g.pf("        if (finite_why != null)\n        {\n")
 		g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
-		g.pf("            if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = \"non_finite_float: \" + finite_why; report.Verdict = TableWire.Verdict.Refused; }\n")
+		g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = \"non_finite_float: \" + finite_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 		g.pf("            return -1;\n        }\n")
 	}
 	// STEP 11's BOUNDS(out[rec]): straight-line code after the plan run, over
@@ -2200,7 +2209,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE FORGED ORDINAL'S CLAMP IS THE BOUNDS STEP'S TOO (§5.4): the ordinal
 	// op lands `None` and moves nothing, recording the forge in the per-record
 	// lane; the count reaches the report here, beside the storage pass's own.
-	g.pf("        if (report != null) { report.Clamped += forgedOrdinal; }\n")
+	g.pf("        if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
+	g.pf("        if (report != null && report.Refused)\n        {\n")
+	g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
+	g.pf("            report.Verdict = TableWire.Verdict.Refused;\n")
+	g.pf("            return -1;\n        }\n")
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
 	// THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that
 	// returns n (§5.9 #6). Not inside the loop — §5.4 says once per endpoint — and
@@ -2208,7 +2221,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// counter and REFUSE IS TOTAL.
 	g.pf("    if (report != null)\n    {\n")
 	g.pf("        report.Unknown += census_unknown;\n")
-	g.pf("        report.KindMismatch += census_kind;\n")
+	g.pf("        _ = census_kind; // the compile census stays on the lineage lane, never a read counter\n")
 	g.pf("        report.Verdict = TableWire.Verdict.Ok;\n    }\n    return n;\n}\n\n")
 
 	g.pf("public static long %sFixedLoad(%s[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)\n{\n", name, name)
@@ -2227,7 +2240,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    byte[] widenScratch = Array.Empty<byte>();\n")
 	g.pf("    int forgedOrdinal = 0;\n")
 	g.pf("    string run_why = %sFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
-	g.pf("    if (report != null) { report.Clamped += forgedOrdinal; }\n")
+	g.pf("    if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
 	g.pf("    if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n}\n\n")
 }
 
@@ -2370,16 +2383,14 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Count:\n                {\n")
 	g.pf("                    int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
-	g.pf("                    if (v < 0) { v = 0; if (report != null) report.Clamped++; }\n")
-	g.pf("                    else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }\n")
+	g.pf("                    if (v < 0 || (uint)v > p.Size) { return \"count_over_bound\"; }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Text:\n                {\n")
 	g.pf("                    uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;\n")
 	g.pf("                    uint cap = p.Size / unit;\n")
 	g.pf("                    int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
-	g.pf("                    if (v < 0) { v = 0; if (report != null) report.Clamped++; }\n")
-	g.pf("                    else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }\n")
+	g.pf("                    if (v < 0 || (uint)v > cap) { return \"length_over_bound\"; }\n")
 	g.pf("                    ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);\n")
 	g.pf("                    if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))\n                    {\n")
 	g.pf("                        return \"text_ill_formed\";\n                    }\n")
@@ -2403,7 +2414,7 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                        ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);\n")
 	g.pf("                        if (raw != 0 && raw <= count)\n                        {\n")
 	g.pf("                            v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));\n                        }\n")
-	g.pf("                        if (raw > count) { forgedOrdinal++; }\n                    }\n")
+	g.pf("                        if (raw > count) { return \"out_of_range\"; }\n                    }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, v, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Widen:\n                {\n")

@@ -37,7 +37,7 @@ func TestSchemaJavaRunsHostileCorpusWiring(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the port runner is missing: %v", err)
 	}
-	for _, want := range []string{"manifest.tsv", "FIX-CARD", "known-findings.tsv", "fromJson", "loadMessages"} {
+	for _, want := range []string{"manifest.tsv", "FIX-CARD", "known-findings.tsv", "fromJson", "loadMessages", "loadRetain", "\"packet\"", "512 * 1024", "HOSTILE_CASE_BUDGET_MS"} {
 		if !strings.Contains(string(runner), want) {
 			t.Errorf("test/java-hostile/Runner.java does not carry %q", want)
 		}
@@ -70,7 +70,8 @@ func TestSchemaJavaRunsHostileCorpusWiring(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the carried-findings list is missing: %v", err)
 	}
-	carried := 0
+	// An empty list is valid once every corpus case agrees. The native runner
+	// still rejects unexplained disagreements and stale carried findings.
 	for line := range strings.SplitSeq(string(findingsBytes), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -90,10 +91,6 @@ func TestSchemaJavaRunsHostileCorpusWiring(t *testing.T) {
 		if !strings.HasPrefix(f[1], "java-hostile-") || strings.TrimSpace(f[3]) == "" {
 			t.Errorf("carried finding %q has no FIX-CARD slug and one line: %q", f[0], line)
 		}
-		carried++
-	}
-	if carried == 0 {
-		t.Fatal("the carried-findings list is empty — a corpus with unexplained disagreements needs no list, and a list with no teeth needs a case")
 	}
 
 	workflow, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "schema-java-runs-hostile-corpus.yml"))

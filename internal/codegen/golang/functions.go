@@ -611,11 +611,32 @@ func (g *gen) emitReadCompressedFold(f *ir.Field, name, ind string) {
 		g.pf("%s\t\treturn ErrValidation\n%s\t}\n", ind, ind)
 	}
 	g.pf("%s\tnormalizedValue := float32(integerValue) / %s\n", ind, f32lit(float32(steps)))
-	if min32 == 0 {
-		g.pf("%s\t%s = float32(normalizedValue * %s)\n%s}\n", ind, name, f32lit(delta), ind)
-	} else {
-		g.pf("%s\t%s = %s\n%s}\n", ind, name, floatPlusMin("float32(normalizedValue*"+f32lit(delta)+")", min32), ind)
+	g.emitDequantize(f, name, ind+"\t", min32, delta)
+	g.pf("%s}\n", ind)
+}
+
+// emitDequantize stores the dequantized value. Where the declaration's top
+// step dequantizes past the largest float32 (ir.CompressedFloatDecodeFinite),
+// the value is computed into a local and a non-finite result is refused with
+// serialize.ErrNonFiniteFloat before the field is touched, as serialize.go's
+// compressed-float read does. Rounding is monotone and the index is bounded by
+// the step count, so a declaration whose top step is finite can produce no
+// other value, and the test is elided; the checker refuses such a declaration,
+// so the guard is the reader's own floor, not a path a checked schema takes.
+func (g *gen) emitDequantize(f *ir.Field, name, ind string, min32, delta float32) {
+	expr := "float32(normalizedValue * " + f32lit(delta) + ")"
+	if min32 != 0 {
+		expr = floatPlusMin("float32(normalizedValue*"+f32lit(delta)+")", min32)
 	}
+	if ir.CompressedFloatDecodeFinite(f.FMin, f.FMax, f.Resolution) {
+		g.pf("%s%s = %s\n", ind, name, expr)
+		return
+	}
+	g.needsMath = true
+	g.pf("%sdecoded := %s\n", ind, expr)
+	g.pf("%sif math.Float32bits(decoded)&0x7f800000 == 0x7f800000 { // the top steps round past the largest float32\n", ind)
+	g.pf("%s\treturn serialize.ErrNonFiniteFloat\n%s}\n", ind, ind)
+	g.pf("%s%s = decoded\n", ind, name)
 }
 
 // f32lit prints a float32 as a Go literal that converts back to exactly that

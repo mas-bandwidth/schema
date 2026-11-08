@@ -87,6 +87,16 @@ func (g *wireGen) textEnums() []*ir.Enum {
 // load/save have landed: the generic writer/reader runtime, the enum helpers,
 // and per-table toJson/fromJson bodies (roots get the top-level entry points).
 func (g *wireGen) emitTextForm() {
+	present := false
+	for _, st := range g.closure {
+		if st.IsTable && !st.IsMapEntry() && st.CarriesForm("json") {
+			present = true
+			break
+		}
+	}
+	if !present {
+		return
+	}
 	g.emitTextRuntime()
 	g.emitTextMoreRuntime()
 	for _, e := range g.textEnums() {
@@ -99,7 +109,7 @@ func (g *wireGen) emitTextForm() {
 		g.emitTextFromJsonFields(st)
 	}
 	for _, st := range g.closure {
-		if !st.IsTable || st.IsMapEntry() {
+		if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("json") {
 			continue
 		}
 		g.emitTextToJson(st)
@@ -112,6 +122,8 @@ func (g *wireGen) emitTextForm() {
 // invents no contract of its own — the byte layout is §16.1's, read down to the
 // card's closure.
 func (g *wireGen) emitTextRuntime() {
+	g.pf("%s", timestampTextRuntime)
+	g.pf("%s", textListJSONRuntime)
 	g.pf(`// ---- the JSON text form (docs/SPEC-TABLES.md §16) ----
 
 // TableTextReport is a tolerant text read's report (§16.3): the three events
@@ -121,8 +133,10 @@ final class TableTextReport {
   int unknown = 0;
   int kindMismatch = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
-  final Map<String, int> duplicateKeys = <String, int>{};
+  int missingRequired = 0;
+  String missingFields = '';
   final Set<int> textLabels = <int>{};
 }
 
@@ -145,7 +159,8 @@ const String _jsonHex = '0123456789abcdef';
 
 // _jsonString renders one Dart string as one JSON string (§16.3): the escapes
 // JSON names and every other code point whole, so a multi-byte character rides
-// as itself.
+// as itself. A string holding an unpaired surrogate is not text: the write
+// refuses (invalid_value, §16.14 W0) and nothing is replaced.
 String _jsonString(String s) {
   final b = StringBuffer();
   b.write('"');
@@ -169,6 +184,9 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune >> 4]);
       b.write(_jsonHex[rune & 0xF]);
     } else {
+      if (rune >= 0xD800 && rune <= 0xDFFF) {
+        throw StateError('invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
+      }
       b.write(String.fromCharCode(rune));
     }
   }
@@ -194,18 +212,22 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 // the read only SKIPS (an unknown key's value) never reaches here.
 String _jsonText(String s) {
   if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
-  return s;
+  // Lone or inverted JSON surrogate escapes normalize until the deferred
+  // string_lone_surrogate card lands (SPEC §16.3).
+  if (_wideValid(s.codeUnits)) return s;
+  return String.fromCharCodes(s.runes.map((r) => r >= 0xD800 && r <= 0xDFFF ? 0xFFFD : r));
 }
 
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
 // mismatch; a string past N is clamped at a CODE POINT boundary and counted,
 // never cut through a multi-byte character (§16.3).
-String _jsonStringField(dynamic val, int bound, TableTextReport r) {
+String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
     r.kindMismatch++;
-    return '';
+    return def;
   }
-  if (utf8.encode(_jsonText(val)).length <= bound) return val;
+  val = _jsonText(val);
+  if (utf8.encode(val).length <= bound || bound < 0) return val;
   final kept = StringBuffer();
   var used = 0;
   for (final rune in val.runes) {
@@ -219,11 +241,18 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r) {
 }
 
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
-// float, placed and range-clamped; anything else is a kind mismatch.
-int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false]) {
-  int clamp(int v) {
+// float, placed and range-clamped; anything else is a kind mismatch. lo and hi
+// are the declared range, or the storage width below 64 bits; an unsigned
+// field's bounds are 64-bit patterns. A token an int holds is placed by int
+// compares. Every other integral value (a token at or past +-2^63, a negative
+// token in an unsigned field, an integral float) is placed EXACTLY as the
+// engine places it (internal/tabletext interpretInteger, integerInDomain): its
+// sign and magnitude, saturated at 2^64-1 and counted; the declared range;
+// then the 64-bit storage domain, each move counted.
+int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
+  if (val is int && (!unsigned || val >= 0)) {
+    var v = val;
     if (unsigned) {
-      if (v < 0 && hi != null && hi >= 0) { v = lo ?? 0; r.clamped++; }
       if (lo != null && _u64Below(v, lo)) { v = lo; r.clamped++; }
       if (hi != null && _u64Above(v, hi)) { v = hi; r.clamped++; }
     } else {
@@ -232,32 +261,51 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
     }
     return v;
   }
-  if (val is int) return clamp(val);
-  if (unsigned && val is _JNum && (hi == null || hi < 0)) {
-    final wide = BigInt.tryParse(val.token);
-    if (wide != null && wide >= BigInt.zero && wide <= BigInt.parse('18446744073709551615')) {
-      final signed = wide > BigInt.from(9223372036854775807)
-          ? wide - (BigInt.one << 64) : wide;
-      return clamp(signed.toInt());
+  BigInt wide;
+  if (val is int) {
+    wide = BigInt.from(val);
+  } else if (val is _JNum && val.integral) {
+    wide = BigInt.parse(val.token);
+  } else {
+    final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
+    if (!d.isFinite || d != d.truncateToDouble()) {
+      r.kindMismatch++;
+      return def;
     }
+    wide = d.abs() >= 18446744073709551616.0 ? (d.isNegative ? -_jsonU64Span : _jsonU64Span) : BigInt.from(d);
   }
-  if (val is num && val.isFinite && val.toDouble() == val.toDouble().truncateToDouble()) {
-    if (val.toDouble() > 9223372036854775807.0) { r.clamped++; return clamp(9223372036854775807); }
-    if (val.toDouble() < -9223372036854775808.0) { r.clamped++; return clamp(-9223372036854775808); }
-    return clamp(val.toInt());
+  if (wide.abs() > _jsonU64Max) {
+    wide = wide.isNegative ? -_jsonU64Max : _jsonU64Max;
+    r.clamped++;
   }
-  if (val is _JNum && val.d.isFinite && val.d == val.d.truncateToDouble()) {
-    if (val.d > 9223372036854775807.0) { r.clamped++; return clamp(9223372036854775807); }
-    if (val.d < -9223372036854775808.0) { r.clamped++; return clamp(-9223372036854775808); }
-    return clamp(val.d.toInt());
+  BigInt bound(int b) => unsigned ? BigInt.from(b).toUnsigned(64) : BigInt.from(b);
+  if (lo != null && wide < bound(lo)) {
+    wide = bound(lo);
+    r.clamped++;
+  } else if (hi != null && wide > bound(hi)) {
+    wide = bound(hi);
+    r.clamped++;
   }
-  r.kindMismatch++;
-  return 0;
+  if (unsigned) {
+    if (wide.isNegative) { wide = BigInt.zero; r.clamped++; }
+  } else if (wide < _jsonI64Min) {
+    wide = _jsonI64Min;
+    r.clamped++;
+  } else if (wide > _jsonI64Max) {
+    wide = _jsonI64Max;
+    r.clamped++;
+  }
+  return wide.toSigned(64).toInt();
 }
 
-// _jsonFloat spells a float at the shortest precision that reads back the same
-// value AT ITS OWN WIDTH (§16.2): a float32 from six significant digits up to
-// nine, a float64 from fifteen up to seventeen, each candidate C's %%.*g
+final _jsonU64Span = BigInt.one << 64;
+final _jsonU64Max = _jsonU64Span - BigInt.one;
+final _jsonI64Min = -(BigInt.one << 63);
+final _jsonI64Max = (BigInt.one << 63) - BigInt.one;
+
+// _jsonFloat spells a float at the first precision that reads back the same
+// value AT ITS OWN WIDTH (§16.14, W12): a float32 from six significant digits
+// up to nine, a float64 from fifteen up to seventeen, each candidate C's %%.*g
 // (_formatG). single is a float32 field.
 // A non-finite float has no JSON spelling and the writer refuses it.
 String _jsonFloat(double v, bool single) {
@@ -272,7 +320,10 @@ String _jsonFloat(double v, bool single) {
     final back = double.tryParse(text);
     if (back == null) continue;
     if (single) {
-      if (_f32Bits(back) == _f32Bits(v)) return text;
+      // ONE correctly rounded conversion, as the reader lands it (§16.14,
+      // W12): the double narrowed alone rounds twice
+      final narrowed = _narrowF32(back, text);
+      if (narrowed != null && _f32Bits(narrowed) == _f32Bits(v)) return text;
     } else if (back == v) {
       return text;
     }
@@ -406,6 +457,7 @@ void _writePtr(_JOut out, Object? node, int depth, _Share sh, void Function(int?
     out.raw('null');
     return;
   }
+  _jsonDepth(depth);
   if ((sh.count[node] ?? 0) <= 1) {
     body(null);
     return;
@@ -423,20 +475,34 @@ void _writePtr(_JOut out, Object? node, int depth, _Share sh, void Function(int?
   body(sh.define(node));
 }
 
-Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() make, void Function(Object obj, Map<String, dynamic> m) fill) {
-  if (val == null) return null;
-  if (val is! Map) {
-    r.kindMismatch++;
-    return null;
+// _jsonDepth is the depth cap (§16.14 W2): a table value written past depth
+// 128 refuses the write; a scalar, a string or a null nests nothing.
+void _jsonDepth(int depth) {
+  if (depth > 128) {
+    throw StateError('invalid_value: a table value past the depth cap of 128 (docs/SPEC-TABLES.md §16.14 W2)');
   }
-  final obj = Map<String, dynamic>.from(val);
-  if (obj.containsKey('&node')) {
-    if (obj.keys.first != '&node') throw const FormatException('node label is not first');
-    final raw = obj['&node'];
+}
+
+Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() make, void Function(Object obj, List<MapEntry<String, dynamic>> m) fill, [Object? def]) {
+  if (val == null) return null;
+  final entries = _jsonEntries(val);
+  if (entries == null) {
+    r.kindMismatch++;
+    return def;
+  }
+  var hasNode = false;
+  for (var i = 0; i < entries.length; i++) {
+    if (entries[i].key == '&node') {
+      if (i != 0) throw const FormatException('node label is not first');
+      hasNode = true;
+    }
+  }
+  if (hasNode) {
+    final raw = entries.first.value;
     if (raw is! int || raw < 1) {
       throw const FormatException('invalid node label');
     }
-    if (obj.length == 1) {
+    if (entries.length == 1) {
       final have = sh.defined[raw];
       if (have == null) {
         if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
@@ -449,38 +515,130 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (have != null) throw const FormatException('node label defined twice');
     final made = make();
     sh.pending.add(raw);
-    fill(made, obj);
+    fill(made, entries);
     sh.pending.remove(raw);
     sh.defined[raw] = made;
     return made;
   }
   final made = make();
-  fill(made, obj);
+  fill(made, entries);
   return made;
+}
+
+int _cmpDecimalToMidpoint(String token, BigInt n, int e2) {
+  var i = 0;
+  if (i < token.length && (token[i] == '-' || token[i] == '+')) i++;
+  final intDigits = StringBuffer();
+  final fracDigits = StringBuffer();
+  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
+    intDigits.write(token[i++]);
+  }
+  if (i < token.length && token[i] == '.') {
+    i++;
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
+      fracDigits.write(token[i++]);
+    }
+  }
+  var exp = 0;
+  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
+    i++;
+    var neg = false;
+    if (i < token.length && (token[i] == '-' || token[i] == '+')) neg = token[i++] == '-';
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
+      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
+      i++;
+    }
+    if (neg) exp = -exp;
+  }
+  var digits = intDigits.toString() + fracDigits.toString();
+  var point = intDigits.length + exp;
+  while (digits.isNotEmpty && digits[0] == '0') {
+    digits = digits.substring(1);
+    point--;
+  }
+  while (digits.isNotEmpty && digits[digits.length - 1] == '0') {
+    digits = digits.substring(0, digits.length - 1);
+  }
+  if (digits.isEmpty) return -1;
+  final e10 = point - digits.length;
+  var lhs = BigInt.parse(digits);
+  var rhs = n;
+  final ten = BigInt.from(10);
+  if (e10 >= 0) {
+    lhs *= ten.pow(e10);
+  } else {
+    rhs *= ten.pow(-e10);
+  }
+  if (e2 >= 0) {
+    rhs <<= e2;
+  } else {
+    lhs <<= -e2;
+  }
+  return lhs.compareTo(rhs);
+}
+
+double? _narrowF32(double d, String token) {
+  if (d == 0.0) return d;
+  final bd = ByteData(8)..setFloat64(0, d.abs(), Endian.big);
+  final hi = bd.getUint32(0, Endian.big);
+  final lo = bd.getUint32(4, Endian.big);
+  final biased = (hi >> 20) & 0x7FF;
+  if (biased == 0) return d.isNegative ? -0.0 : 0.0;
+  var e2 = biased - 1023;
+  if (e2 > 127) return null;
+  final mant = (BigInt.from(hi & 0xFFFFF) << 32) | BigInt.from(lo);
+  final n = (BigInt.one << 52) | mant;
+  var s = 29;
+  final sub = e2 < -126;
+  if (sub) s = -e2 - 97;
+  if (s > 53) return d.isNegative ? -0.0 : 0.0;
+  var q = (n >> s).toInt();
+  final rem = n & ((BigInt.one << s) - BigInt.one);
+  final half = BigInt.one << (s - 1);
+  var up = rem > half;
+  if (rem == half) {
+    final cmp = _cmpDecimalToMidpoint(token, n, e2 - 52);
+    up = cmp > 0 || (cmp == 0 && (q & 1) != 0);
+  }
+  if (up) q++;
+  int bits32;
+  if (sub) {
+    bits32 = q == 0x800000 ? 0x00800000 : (q & 0x007FFFFF);
+  } else {
+    if (q >= 0x1000000) {
+      q >>= 1;
+      e2++;
+    }
+    if (e2 > 127) return null;
+    bits32 = ((e2 + 127) << 23) | (q & 0x007FFFFF);
+  }
+  if (d.isNegative) bits32 |= 0x80000000;
+  final out = ByteData(4)..setUint32(0, bits32, Endian.big);
+  return out.getFloat32(0, Endian.big);
 }
 
 // _jsonFloatField reads one float field (§16.2): a number, placed; anything
 // else is a kind mismatch.
-double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false]) {
+double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, double def = 0.0]) {
   double? d;
-  if (val is num) d = val.toDouble();
-  if (val is _JNum) d = val.d;
-  if (val is String) {
-    d = double.tryParse(val);
+  var token = '';
+  if (val is int) {
+    d = val.toDouble();
+    token = val.toString();
+  } else if (val is _JNum) {
+    d = val.d;
+    token = val.token;
+  } else if (val is num) {
+    d = val.toDouble();
+    token = val.toString();
   }
   if (d != null && d.isFinite) {
     if (!single) return d;
-    // The field's storage encoder rounds; do not round a value on the read
-    // path before the caller can apply its own range and shape checks.
-    if (d.abs() < 3.4028235677973366e38) return d;
-    if (val is _JNum && !val.token.contains('.') && !val.token.contains('e') && !val.token.contains('E')) {
-      final integer = BigInt.tryParse(val.token);
-      final edge = BigInt.parse('340282356779733661637539395458142568448');
-      if (integer != null && integer.abs() < edge) return d;
-    }
+    final narrowed = _narrowF32(d, token);
+    if (narrowed != null) return narrowed;
   }
   r.kindMismatch++;
-  return 0.0;
+  return def;
 }
 `)
 	g.pf(`// §16.2: comments and trailing commas are layout, not values. The
@@ -528,8 +686,10 @@ String _jsonPrepare(String text, TableTextReport r) {
       stripped.add(0x20);
       continue;
     }
+    // the root container is the first: one at count 130 sits at depth 129,
+    // past the cap (§16.14 W2)
     if (c == 0x7b || c == 0x5b) {
-      if (++depth > 128) throw const FormatException('JSON nesting past 128');
+      if (++depth > 129) throw const FormatException('JSON nesting past 128');
     } else if (c == 0x7d || c == 0x5d) {
       depth--;
     }
@@ -574,10 +734,6 @@ String _jsonPrepare(String text, TableTextReport r) {
     while (j < clean.length && clean[j] <= 0x20) j++;
     if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
     final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (!stack.last!.add(key)) {
-      r.duplicate++;
-      r.duplicateKeys[key] = (r.duplicateKeys[key] ?? 0) + 1;
-    }
     if (key == '&node') {
       var at = j + 1;
       while (at < clean.length && clean[at] <= 0x20) at++;
@@ -609,8 +765,8 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	}
 	g.pf("\t}\n\treturn '';\n}\n\n")
 	none := g.enumConst(e, 0)
-	g.pf("%s %sFromName(dynamic val, TableTextReport r) {\n", g.enumType(e), dn)
-	g.pf("\tif (val is! String) { r.kindMismatch++; return %s; }\n", none)
+	g.pf("%s %sFromName(dynamic val, TableTextReport r, [%s? def]) {\n", g.enumType(e), dn, g.enumType(e))
+	g.pf("\tif (val is! String) { r.kindMismatch++; return def ?? %s; }\n", none)
 	g.pf("\tswitch (val) {\n")
 	g.pf("\t\tcase \"None\": return %s;\n", none)
 	for i, name := range e.Variants {
@@ -627,6 +783,13 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 	fn := dartName(st.Name) + "ToJsonBody"
 	g.pf("void %s(_JOut out, %s v, int depth, _Share sh, [int? label]) {\n", fn, st.Name)
+	g.pf("\t_jsonDepth(depth);\n")
+	if st.JsonArray {
+		f := st.Fields[0]
+		g.emitJsonValue(f, "v."+fieldMember(f), 0, "\t", st.Name+"."+f.Name)
+		g.pf("}\n\n")
+		return
+	}
 	// an object with nothing written is `{}` (§16.1): a table with no fields,
 	// or one whose every field is an absent optional (§2.3)
 	g.pf("\tout.raw('{');\n")
@@ -637,7 +800,12 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 	g.pf("\t\tout.raw(label.toString());\n")
 	g.pf("\t\tcomma = true;\n")
 	g.pf("\t}\n")
+	guards := wireGuards(st)
 	for _, f := range st.Fields {
+		cond := g.guardCond(st, guards[f.Name])
+		if cond != "" {
+			g.pf("\tif (%s) {\n", cond)
+		}
 		if f.Type.Optional {
 			// an ABSENT optional is omitted from the text (§2.3, §16.2)
 			g.pf("\tif (v.%s) {\n", hasMember(f))
@@ -648,6 +816,9 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 		if f.Type.Optional {
 			g.pf("\t}\n")
 		}
+		if cond != "" {
+			g.pf("\t}\n")
+		}
 	}
 	g.pf("\tif (comma) out.line(depth);\n")
 	g.pf("\tout.raw('}');\n")
@@ -655,6 +826,7 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 }
 
 func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
+	g.pf("%s", requiredRangeCheck(f, "v."+fieldMember(f), "\t", "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\tout.line(depth + 1);\n")
@@ -777,8 +949,18 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 // table's storage defaults survive any key the text does not carry.
 func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	fn := dartName(st.Name) + "FromJsonFields"
-	g.pf("void %s(%s v, Map<String, dynamic> obj, TableTextReport r, _Share sh, [bool pointer = false]) {\n", fn, st.Name)
-	g.pf("\tfor (final entry in obj.entries) {\n")
+	g.pf("void %s(%s v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {\n", fn, st.Name)
+	if st.JsonArray {
+		g.pf("\tif (obj is! List) return;\n")
+		g.pf("\tfinal entries = <MapEntry<String, dynamic>>[MapEntry(%s, obj)];\n", strconv.Quote(ir.TableFieldJsonKey(st.Fields[0])))
+	} else {
+		g.pf("\tfinal entries = _jsonEntries(obj);\n")
+	}
+	g.pf("\tif (entries == null) return;\n")
+	if len(st.Fields) > 0 {
+		g.pf("\tfinal seen = <String>{};\n")
+	}
+	g.pf("\tfor (final entry in entries) {\n")
 	g.pf("\t\tfinal key = entry.key;\n")
 	g.pf("\t\tfinal val = entry.value;\n")
 	g.pf("\t\tswitch (key) {\n")
@@ -789,6 +971,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	g.pf("\t\t\tdefault:\n\t\t\t\tr.unknown++;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
+	g.emitRequiredCheck(st, false, "\t")
 	g.pf("}\n\n")
 }
 
@@ -796,34 +979,36 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
+	g.pf("\t\t\t\tif (!seen.add(key)) r.duplicate++;\n")
 	switch {
 	case needsGenericText(f):
 		// the constructs textmore.go reads (§16.2, §16.3); an optional's null
 		// or missing key is ABSENT (§2.3)
 		if f.Type.Optional {
-			g.pf("\t\t\t\tif (val == null) { v.%s = false; break; }\n", hasMember(f))
+			if f.IsMap() {
+				g.pf("\t\t\t\tif (val == null) { v.%s = false; v.%s = []; break; }\n", hasMember(f), fieldMember(f))
+			} else {
+				g.pf("\t\t\t\tif (val == null) { v.%s = false; break; }\n", hasMember(f))
+			}
 			g.pf("\t\t\t\tv.%s = true;\n", hasMember(f))
 		}
-		g.pf("\t\t\t\tv.%s = %s;\n", name, g.jsonReadExpr(f, "val", 1))
+		g.pf("\t\t\t\tv.%s = %s;\n", name, g.jsonReadExpr(f, "val", 1, "v."+name))
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
-			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
-			g.pf("\t\t\t\telse if (val is String) { v.%s = _jsonText(val); }\n", name)
-			g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
+			g.pf("\t\t\t\tv.%s = _jsonStringBlob(val, r, v.%s);\n", name, name)
 		} else {
 			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
-			g.pf("\t\t\t\telse { v.%s = _jsonBytesBlob(val, r); }\n", name)
+			g.pf("\t\t\t\telse { v.%s = _jsonBytesBlob(val, r, v.%s); }\n", name, name)
 		}
 		g.pf("\t\t\t\tbreak;\n")
 	case isPointerTable(f):
 		ref := tableRef(f)
-		g.pf("\t\t\t\tv.%s = _readPtr(val, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }) as %s?;\n", name, ref.Name, dartName(ref.Name), ref.Name, ref.Name)
+		g.pf("\t\t\t\tv.%s = _readPtr(val, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }, v.%s) as %s?;\n", name, ref.Name, dartName(ref.Name), ref.Name, name, ref.Name)
 		g.pf("\t\t\t\tbreak;\n")
 	case isByValueTable(f):
 		ref := tableRef(f)
-		g.pf("\t\t\t\tif (val is Map<String, dynamic>) { %sFromJsonFields(v.%s, val, r, sh); }\n", dartName(ref.Name), name)
-		g.pf("\t\t\t\telse if (val is Map) { %sFromJsonFields(v.%s, Map<String, dynamic>.from(val), r, sh); }\n", dartName(ref.Name), name)
+		g.pf("\t\t\t\tif (%s) { v.%s = %s(); %sFromJsonFields(v.%s, val, r, sh); }\n", jsonTableShape(ref, "val"), name, ref.Name, dartName(ref.Name), name)
 		g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
 		g.pf("\t\t\t\tbreak;\n")
 	case f.CountedOnWire():
@@ -837,24 +1022,20 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\t\tfinal item = val[index];\n")
 		switch listElementKind(f) {
 		case wireKindTable:
-			g.pf("\t\t\t\t\tif (item is Map<String, dynamic>) {\n")
-			g.pf("\t\t\t\t\t\tfinal e = %s();\n", f.Type.Name)
+			g.pf("\t\t\t\t\tfinal e = %s();\n", f.Type.Name)
+			g.pf("\t\t\t\t\tif (%s) {\n", jsonTableShape(tableRef(f), "item"))
 			g.pf("\t\t\t\t\t\t%sFromJsonFields(e, item, r, sh);\n", dartName(f.Type.Name))
-			g.pf("\t\t\t\t\t\tv.%s.add(e);\n", name)
-			g.pf("\t\t\t\t\t} else if (item is Map) {\n")
-			g.pf("\t\t\t\t\t\tfinal e = %s();\n", f.Type.Name)
-			g.pf("\t\t\t\t\t\t%sFromJsonFields(e, Map<String, dynamic>.from(item), r, sh);\n", dartName(f.Type.Name))
-			g.pf("\t\t\t\t\t\tv.%s.add(e);\n", name)
 			g.pf("\t\t\t\t\t} else {\n")
 			g.pf("\t\t\t\t\t\tr.kindMismatch++;\n")
 			g.pf("\t\t\t\t\t}\n")
+			g.pf("\t\t\t\t\tv.%s.add(e);\n", name)
 		case wireKindPtr:
 			ref := tableRef(f)
 			g.pf("\t\t\t\t\tv.%s.add(_readPtr(item, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }) as %s?);\n", name, ref.Name, dartName(ref.Name), ref.Name, ref.Name)
 		default:
 			switch listElementKind(f) {
 			case wireKindBool:
-				g.pf("\t\t\t\t\tif (item is bool) { v.%s.add(item); } else { r.kindMismatch++; }\n", name)
+				g.pf("\t\t\t\t\tv.%s.add(_jsonBoolField(item, r));\n", name)
 			case wireKindF32, wireKindF64:
 				g.pf("\t\t\t\t\tv.%s.add(_jsonFloatField(item, r, %t));\n", name, listElementKind(f) == wireKindF32)
 			case wireKindEnum:
@@ -876,26 +1057,26 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TInt:
 		lo, hi := jsonIntBounds(f)
-		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, %s, %s, %s);\n", name, lo, hi, jsonUnsigned(f))
+		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, %s, %s, %s, v.%s);\n", name, lo, hi, jsonUnsigned(f), name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TString:
-		g.pf("\t\t\t\tv.%s = _jsonStringField(val, %d, r);\n", name, f.Type.Size)
+		g.pf("\t\t\t\tv.%s = _jsonStringField(val, %d, r, v.%s);\n", name, textBound(f), name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBits:
 		hi := "null"
 		if f.Type.Width < 64 {
 			hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
 		}
-		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, null, %s, true);\n", name, hi)
+		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, null, %s, true, v.%s);\n", name, hi, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBytes:
-		g.pf("\t\t\t\tv.%s = _jsonBytesField(val, r, %d);\n", name, f.Type.Size)
+		g.pf("\t\t\t\tv.%s = _jsonBytesField(val, r, %d, v.%s);\n", name, f.Type.Size, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r, %t);\n", name, f.Type.Kind == ir.TFloat32)
+		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r, %t, v.%s);\n", name, f.Type.Kind == ir.TFloat32, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case enumRef(f) != nil:
-		g.pf("\t\t\t\tv.%s = %sFromName(val, r);\n", name, dartName(enumRef(f).Name))
+		g.pf("\t\t\t\tv.%s = %sFromName(val, r, v.%s);\n", name, dartName(enumRef(f).Name), name)
 		g.pf("\t\t\t\tbreak;\n")
 	default:
 		g.pf("\t\t\t\tr.kindMismatch++;\n")
@@ -952,6 +1133,11 @@ func (g *wireGen) emitTextCountField(f *ir.Field, ind string) {
 func (g *wireGen) emitTextToJson(st *ir.Struct) {
 	fn := dartName(st.Name) + "ToJson"
 	g.pf("String %s(%s v) {\n", fn, st.Name)
+	if bytesBlob, stringBlob := ir.PointerReachableBlobs(st); bytesBlob || stringBlob {
+		// §2.5: text must refuse shared blobs before expanding their contents.
+		g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
+		g.pf("\tstate.indexRoot(v);\n\t%sNumber(state, v, <Object>{v});\n", dartName(st.Name))
+	}
 	g.pf("\tfinal sh = _Share();\n")
 	g.pf("\t%sCount(sh, v);\n", dartName(st.Name))
 	g.pf("\tfinal out = _JOut();\n")
@@ -967,16 +1153,27 @@ func (g *wireGen) emitTextToJson(st *ir.Struct) {
 func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	fn := dartName(st.Name) + "FromJson"
 	g.pf("%s %s(String text, [TableTextReport? report]) {\n", st.Name, fn)
-	g.pf("\tfinal r = report ?? TableTextReport();\n")
+	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.missingFields = '';\n")
 	g.pf("\tfinal v = %s();\n", st.Name)
 	// Keep source numeric tokens so float32's exact overflow boundary and
 	// wide integer values are decided before dart:convert rounds them.
 	g.pf("\tfinal root = _jsonDecodeExact(_jsonPrepare(text, r));\n")
-	g.pf("\tif (root is Map<String, dynamic>) {\n")
+	if st.JsonArray {
+		g.pf("\tif (root is! List) throw const FormatException('json_root_not_array: %s');\n", st.Name)
+	} else {
+		g.pf("\tif (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: %s');\n", st.Name)
+	}
+	g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
 	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
-	g.pf("\t} else if (root is Map) {\n")
-	g.pf("\t\t%sFromJsonFields(v, Map<String, dynamic>.from(root), r, _Share());\n", dartName(st.Name))
 	g.pf("\t}\n")
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
+}
+
+// A json=array table keeps its alternate shape at every by-value occurrence.
+func jsonTableShape(st *ir.Struct, expr string) string {
+	if st != nil && st.JsonArray {
+		return expr + " is List"
+	}
+	return "_jsonEntries(" + expr + ") != null"
 }

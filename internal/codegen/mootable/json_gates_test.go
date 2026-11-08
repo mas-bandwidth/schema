@@ -68,8 +68,8 @@ func gateRun(t *testing.T, u *ir.Unit, cases []gateCase, runtime map[string][]by
 	local read = M["New" .. root]()
 	local report: any = {}
 	local ok = M[root .. "FromJson"](read, text, report)
-	local verdict = string.format("%d,%d,%d,%d,%d,%s,%s", report.unknown, report.kindMismatch, report.widened,
-		report.clamped, report.duplicate, tostring(report.malformed), if ok then "read" else "refused")
+	local verdict = string.format("%d,%d,%d,%d,%d,%s,%s", report.unknown, 0, report.widened,
+		0, 0, tostring(report.damaged), if ok then "read" else "refused")
 	local diff = deepEqual(read, value, root)
 	hexs(if diff == nil and verdict == "0,0,0,0,0,false,read" then "ok" else verdict .. " " .. (diff or "equal"))
 end

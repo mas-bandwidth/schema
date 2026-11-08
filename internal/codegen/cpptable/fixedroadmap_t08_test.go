@@ -298,7 +298,7 @@ func t08R28(t *testing.T) {
 	if !strings.Contains(tableFixedRuntime, "constexpr int32_t kTableFixedMaxDepth = 64;") {
 		t.Error("R28: the layout's depth cap is not 64")
 	}
-	if !strings.Contains(tableFixedRuntime, "if ( c.depth > 64 ) { c.hostile = true; return; }") {
+	if !strings.Contains(cppSourceSpelling(tableFixedRuntime), "if ( c.depth > 64 ) { c.hostile = true; return; }") {
 		t.Error("R28: the walk does not refuse a chain past 64")
 	}
 }
@@ -499,7 +499,7 @@ int main( void )
     static TableFixedEntry plan[4096];
     TableReport r;
     memset( &r, 0, sizeof( r ) );
-    const int64_t n = FxRootFixedLoadTolerant( values, 8, data, len, plan, 4096, NULL, &r );
+    const int64_t n = FxRootFixedLoad( values, 8, data, len, plan, 4096, NULL, &r );
     if ( n < 0 ) { printf( "P2: the reference file did not load\n" ); return 1; }
     static uint8_t ob[1 << 20];
     const int64_t m = FxRootFixedSave( values, n, ob, (int64_t) sizeof( ob ) );
@@ -585,7 +585,7 @@ int main( void )
     static TableFixedEntry plan[4096];
     TableReport r;
     memset( &r, 0, sizeof( r ) );
-    const int64_t n = FxRootFixedLoadTolerant( values, 8, data, len, plan, 4096, NULL, &r );
+    const int64_t n = FxRootFixedLoad( values, 8, data, len, plan, 4096, NULL, &r );
     if ( n != 2 ) { printf( "R27: read %%lld records, want 2\n", (long long) n ); return 1; }
     printf( "r0.keep=%%lld\n", (long long) values[0].keep );
     printf( "r0.narrow=%%lld\n", (long long) values[0].narrow );
@@ -665,7 +665,7 @@ int main( void )
                 static TableFixedEntry plan[4096];
                 TableReport rr;
                 memset( &rr, 0, sizeof( rr ) );
-                const int64_t nn = FxRootFixedLoadTolerant( back, 8, data, len, plan, 4096, NULL, &rr );
+                const int64_t nn = FxRootFixedLoad( back, 8, data, len, plan, 4096, NULL, &rr );
                 ++loads;
                 if ( nn >= 0 )
                 {
@@ -678,7 +678,7 @@ int main( void )
                         }
                     }
                 }
-                else if ( !rr.refused && !rr.malformed )
+                else if ( !rr.refused && !rr.damaged )
                 {
                     printf( "P3: record %%lld byte %%lld poison %%02x failed without a named refusal\n", (long long) k, (long long) i, poisons[p] );
                     return 1;

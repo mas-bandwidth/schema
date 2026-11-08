@@ -29,8 +29,8 @@ import (
 // needsGenericText reports whether a field's text goes through the generic
 // walk below rather than the card-class emitters in textform.go.
 func needsGenericText(f *ir.Field) bool {
-	return f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString ||
-		isWide(f) || f.Type.Optional || isFlags(f)
+	return f.IsTextList() || f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString ||
+		isWide(f) || f.Type.Optional || isFlags(f) || f.Type.Timestamp
 }
 
 func depthExpr(d int) string {
@@ -79,11 +79,31 @@ func (g *wireGen) textFlags() []*ir.Flags {
 // §16.3), once per unit.
 func (g *wireGen) emitTextMoreRuntime() {
 	g.pf(`// _JNum is a JSON number the int type cannot hold exactly, kept as its
-// token so a wide field reads it without rounding (docs/SPEC-TABLES.md §16.2).
+// token so a wide or 64-bit field reads it without rounding
+// (docs/SPEC-TABLES.md §16.2). integral is the token's spelling: no fraction
+// and no exponent.
 final class _JNum {
   final String token;
   final double d;
-  _JNum(this.token) : d = double.parse(token);
+  final bool integral;
+  _JNum(this.token)
+      : d = double.parse(token),
+        integral = !token.contains('.') && !token.contains('e') && !token.contains('E');
+}
+
+final class _JObj {
+  final List<MapEntry<String, dynamic>> entries = <MapEntry<String, dynamic>>[];
+}
+
+List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
+  if (val is _JObj) return val.entries;
+  if (val is List<MapEntry<String, dynamic>>) return val;
+  if (val is Map) {
+    return val.entries
+        .map((e) => MapEntry<String, dynamic>(e.key as String, e.value))
+        .toList();
+  }
+  return null;
 }
 
 // _jsonDecodeExact is JSON decoding that keeps every number's token
@@ -116,13 +136,15 @@ final class _JParse {
     i++;
   }
 
+  // the depth cap counts containers (§16.14 W2): a scalar, a string or a
+  // null at depth 129 nests nothing
   dynamic value(int depth) {
-    if (depth > 128) throw const FormatException('nested past the depth cap of 128');
     if (i >= s.length) throw const FormatException('unexpected end of text');
     final c = s.codeUnitAt(i);
+    if ((c == 0x7B || c == 0x5B) && depth > 128) throw const FormatException('nested past the depth cap of 128');
     if (c == 0x7B) {
       i++;
-      final m = <String, dynamic>{};
+      final m = _JObj();
       ws();
       if (i < s.length && s.codeUnitAt(i) == 0x7D) {
         i++;
@@ -134,7 +156,7 @@ final class _JParse {
         ws();
         expect(0x3A);
         ws();
-        m[k] = value(depth + 1);
+        m.entries.add(MapEntry<String, dynamic>(k, value(depth + 1)));
         ws();
         if (i < s.length && s.codeUnitAt(i) == 0x2C) {
           i++;
@@ -187,7 +209,9 @@ final class _JParse {
       }
     }
     final token = number.group(0)!;
-    if (!token.contains('.') && !token.contains('e') && !token.contains('E')) {
+    // -0 stays a _JNum: an int has no negative zero, and a float field owes
+    // the sign the token spells (§16.2)
+    if (token != '-0' && !token.contains('.') && !token.contains('e') && !token.contains('E')) {
       final n = int.tryParse(token);
       if (n != null) return n;
     }
@@ -361,13 +385,13 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
   return raw;
 }
 
-bool _jsonBoolField(dynamic val, TableTextReport r) {
+bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
   if (val is bool) return val;
   r.kindMismatch++;
-  return false;
+  return def;
 }
 
-String _jsonBytesField(dynamic val, TableTextReport r, int bound) {
+String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = '']) {
   if (val is String) {
     try {
       final b = base64Decode(base64.normalize(val));
@@ -377,56 +401,58 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound) {
       }
       return latin1.decode(b);
     } on FormatException {
-      // falls through to the mismatch below
+      r.kindMismatch++;
+      return '';
     }
   }
   r.kindMismatch++;
-  return '';
+  return def;
 }
 
-String? _jsonStringBlob(dynamic val, TableTextReport r) {
+String? _jsonStringBlob(dynamic val, TableTextReport r, [String? def]) {
   if (val == null) return null;
   if (val is String) return _jsonText(val);
   r.kindMismatch++;
-  return null;
+  return def;
 }
 
-Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r) {
+Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
   if (val == null) return null;
   if (val is String) {
     try {
       return base64Decode(base64.normalize(val));
     } on FormatException {
-      // falls through to the mismatch below
+      r.kindMismatch++;
+      return null;
     }
   }
   r.kindMismatch++;
-  return null;
+  return def;
 }
 
 // _jsonWStringField reads wide text (docs/SPEC-TABLES.md §16.2): a string,
 // clamped at its bound in CODE UNITS and never through a surrogate pair.
-String _jsonWStringField(dynamic val, int bound, TableTextReport r) {
+String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
     r.kindMismatch++;
-    return '';
+    return def;
   }
-  if (_jsonText(val).length <= bound) return val;
+  val = _jsonText(val);
+  if (val.length <= bound) return val;
   var keep = bound;
-  if (keep > 0) {
-    final u = val.codeUnitAt(keep - 1);
-    if (u >= 0xD800 && u <= 0xDBFF) keep--;
+  if (keep > 0 && (val.codeUnitAt(keep - 1) & 0xFC00) == 0xD800 && (val.codeUnitAt(keep) & 0xFC00) == 0xDC00) {
+    keep--;
   }
   r.clamped++;
   return val.substring(0, keep);
 }
 
-List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynamic) f) {
-  final out = <T>[];
+List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynamic) f, [List<T>? fallback]) {
   if (val is! List) {
     r.kindMismatch++;
-    return out;
+    return fallback ?? <T>[];
   }
+  final out = <T>[];
   for (final item in val) {
     if (bound >= 0 && out.length >= bound) {
       r.clamped += val.length - out.length;
@@ -437,60 +463,165 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
-List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic) f) {
-  final out = List<T>.generate(n, (_) => def());
+List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
     r.kindMismatch++;
-    return out;
+    return fallback ?? List<T>.generate(n, (_) => def());
   }
+  final out = List<T>.generate(n, (_) => def());
   for (var i = 0; i < val.length; i++) {
     if (i >= n) {
       r.clamped += val.length - i;
       break;
     }
-    out[i] = f(val[i]);
+    out[i] = f(val[i], out[i]);
   }
   return out;
 }
 
-List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, Map<String, int> slots, T Function(dynamic) f) {
-  final out = List<T>.generate(n, (_) => def());
-  if (val is! Map) {
+List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, Map<String, int> slots, T Function(dynamic, T) f, [List<T>? fallback]) {
+  final entries = _jsonEntries(val);
+  if (entries == null) {
     r.kindMismatch++;
-    return out;
+    return fallback ?? List<T>.generate(n, (_) => def());
   }
-  for (final entry in val.entries) {
+  final out = List<T>.generate(n, (_) => def());
+  final seen = <int>{};
+  for (final entry in entries) {
     final slot = slots[entry.key];
     if (slot == null) {
-      final extra = r.duplicateKeys.remove(entry.key) ?? 0;
-      r.unknown += 1 + extra;
-      r.duplicate -= extra;
+      r.unknown++;
       continue;
     }
-    out[slot] = f(entry.value);
+    if (!seen.add(slot)) r.duplicate++;
+    out[slot] = f(entry.value, out[slot]);
   }
   return out;
 }
 
-List<T> _jsonMap<T>(dynamic val, TableTextReport r, T Function(String, dynamic) f) {
+List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
+  final entries = _jsonEntries(val);
+  if (entries == null) {
+    r.kindMismatch++;
+    return fallback ?? <T>[];
+  }
   final out = <T>[];
-  if (val is! Map) {
-    r.kindMismatch++;
-    return out;
+  final seen = <Object, int>{};
+  for (final entry in entries) {
+    final item = f(entry.key, entry.value);
+    if (item == null) continue;
+    final k = keyOf(item);
+    final at = seen[k];
+    if (at != null) {
+      r.duplicate++;
+      out[at] = item;
+    } else {
+      seen[k] = out.length;
+      out.add(item);
+    }
   }
-  for (final entry in val.entries) {
-    out.add(f(entry.key as String, entry.value));
-  }
-  return out;
+  return _stableSorted(out, cmp);
 }
 
-int _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
-  final v = int.tryParse(k);
-  if (v == null) {
-    r.kindMismatch++;
-    return 0;
+String? _jsonStringKey(String k, int bound, TableTextReport r) {
+  k = _jsonText(k);
+  final len = utf8.encode(k).length;
+  if (bound >= 0 && (len > bound || len > 255)) {
+    r.clamped++;
+    return null;
   }
-  return _jsonIntField(v, r, lo, hi, unsigned);
+  return k;
+}
+
+int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
+  _jsonText(k);
+  if (utf8.encode(k).length > 255) {
+    r.kindMismatch++;
+    return null;
+  }
+  var i = 0;
+  var negative = false;
+  if (i < k.length && k.codeUnitAt(i) == 0x2d) {
+    negative = true;
+    i++;
+  }
+  if (i >= k.length) throw const FormatException('invalid integer map key');
+  final intStart = i;
+  final c0 = k.codeUnitAt(i);
+  if (c0 == 0x30) {
+    i++;
+  } else if (c0 >= 0x31 && c0 <= 0x39) {
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
+  } else {
+    throw const FormatException('invalid integer map key');
+  }
+  final intDigits = k.substring(intStart, i);
+  var fracDigits = '';
+  if (i < k.length && k.codeUnitAt(i) == 0x2e) {
+    i++;
+    final fracStart = i;
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
+    if (i == fracStart) throw const FormatException('invalid integer map key');
+    fracDigits = k.substring(fracStart, i);
+  }
+  var exp = 0;
+  if (i < k.length && (k.codeUnitAt(i) == 0x65 || k.codeUnitAt(i) == 0x45)) {
+    i++;
+    var expNeg = false;
+    if (i < k.length && (k.codeUnitAt(i) == 0x2b || k.codeUnitAt(i) == 0x2d)) {
+      expNeg = k.codeUnitAt(i) == 0x2d;
+      i++;
+    }
+    final expStart = i;
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) {
+      if (exp < 100000) exp = exp * 10 + (k.codeUnitAt(i) - 0x30);
+      i++;
+    }
+    if (i == expStart) throw const FormatException('invalid integer map key');
+    if (expNeg) exp = -exp;
+  }
+  if (i != k.length) throw const FormatException('invalid integer map key');
+  var digits = intDigits + fracDigits;
+  var point = intDigits.length + exp;
+  while (digits.isNotEmpty && digits.codeUnitAt(0) == 0x30) {
+    digits = digits.substring(1);
+    point--;
+  }
+  while (digits.isNotEmpty && digits.codeUnitAt(digits.length - 1) == 0x30) {
+    digits = digits.substring(0, digits.length - 1);
+  }
+  BigInt mag;
+  if (digits.isEmpty) {
+    mag = BigInt.zero;
+    negative = false;
+  } else if (point < digits.length || point > 20) {
+    r.kindMismatch++;
+    return null;
+  } else {
+    mag = BigInt.parse(digits) * BigInt.from(10).pow(point - digits.length);
+  }
+  if (unsigned) {
+    if (negative) {
+      r.kindMismatch++;
+      return null;
+    }
+    final minU = lo != null ? BigInt.from(lo).toUnsigned(64) : BigInt.zero;
+    final maxU = hi != null ? BigInt.from(hi).toUnsigned(64) : (BigInt.one << 64) - BigInt.one;
+    if (mag < minU || mag > maxU) {
+      r.kindMismatch++;
+      return null;
+    }
+    final signed = mag > BigInt.from(9223372036854775807) ? mag - (BigInt.one << 64) : mag;
+    return signed.toInt();
+  }
+  final val = negative ? -mag : mag;
+  final minS = lo != null ? BigInt.from(lo) : -(BigInt.one << 63);
+  final maxS = hi != null ? BigInt.from(hi) : (BigInt.one << 63) - BigInt.one;
+  if (val < minS || val > maxS) {
+    r.kindMismatch++;
+    return null;
+  }
+  return val.toInt();
 }
 
 `)
@@ -515,8 +646,8 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tout.line(depth);\n")
 		g.pf("\tout.raw(']');\n")
 		g.pf("}\n\n")
-		g.pf("int %s(dynamic val, TableTextReport r) {\n", flagsFn(fl, "FromJson"))
-		g.pf("\tif (val is! List) { r.kindMismatch++; return 0; }\n")
+		g.pf("int %s(dynamic val, TableTextReport r, [int def = 0]) {\n", flagsFn(fl, "FromJson"))
+		g.pf("\tif (val is! List) { r.kindMismatch++; return def; }\n")
 		g.pf("\tvar bits = 0;\n")
 		g.pf("\tfor (final item in val) {\n")
 		g.pf("\t\tswitch (item) {\n")
@@ -552,20 +683,25 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tthrow StateError('union %s: tag ${v.armTag} names no arm — the writer refuses it (docs/SPEC-TABLES.md §5)');\n", un.Name)
 		g.pf("}\n\n")
 
-		g.pf("%s %s(dynamic val, TableTextReport r, _Share sh) {\n", un.Name, unionFn(un, "FromJson"))
+		g.pf("%s %s(dynamic val, TableTextReport r, _Share sh, [%s? def]) {\n", un.Name, unionFn(un, "FromJson"), un.Name)
+		g.pf("\tfinal entries = _jsonEntries(val);\n")
+		g.pf("\tif (entries == null) { r.kindMismatch++; return def ?? %s(); }\n", un.Name)
 		g.pf("\tfinal v = %s();\n", un.Name)
-		g.pf("\tif (val is! Map) { r.kindMismatch++; return v; }\n")
-		g.pf("\tif (val.isEmpty) return v;\n")
-		g.pf("\tif (val.length != 1) throw const FormatException('union has two keys');\n")
-		g.pf("\tfinal item = val.values.first;\n")
-		g.pf("\tswitch (val.keys.first) {\n")
+		g.pf("\tif (entries.isEmpty) return v;\n")
+		g.pf("\tif (entries.length != 1) throw const FormatException('union has two keys');\n")
+		g.pf("\tfinal item = entries.first.value;\n")
+		g.pf("\tswitch (entries.first.key) {\n")
 		for i, arm := range un.Variants {
 			g.pf("\t\tcase %s:\n", strconv.Quote(arm.Name))
-			g.pf("\t\t\tv.armTag = %d;\n", i+1)
 			if arm.Void() {
-				g.pf("\t\t\tif (item != null) r.kindMismatch++;\n")
+				g.pf("\t\t\tif (item == null) { v.armTag = %d; } else { r.kindMismatch++; }\n", i+1)
 			} else {
-				g.pf("\t\t\tv.%s = %s;\n", armMember(arm), g.jsonReadExpr(arm.F, "item", 1))
+				g.pf("\t\t\tif (%s) {\n", unionArmShapeCond(arm.F, "item"))
+				g.pf("\t\t\t\tv.armTag = %d;\n", i+1)
+				g.pf("\t\t\t\tv.%s = %s;\n", armMember(arm), g.jsonReadExpr(arm.F, "item", 1, "v."+armMember(arm)))
+				g.pf("\t\t\t} else {\n")
+				g.pf("\t\t\t\tr.kindMismatch++;\n")
+				g.pf("\t\t\t}\n")
 			}
 		}
 		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n")
@@ -587,16 +723,14 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("}\n\n")
 	}
 	for _, st := range g.closure {
-		g.pf("%s _%sFromJsonValue(dynamic val, TableTextReport r, _Share sh) {\n", st.Name, dartName(st.Name))
-		g.pf("\tfinal v = %s();\n", st.Name)
-		g.pf("\tif (val is Map<String, dynamic>) {\n")
+		g.pf("%s _%sFromJsonValue(dynamic val, TableTextReport r, _Share sh, [%s? def]) {\n", st.Name, dartName(st.Name), st.Name)
+		g.pf("\tif (%s) {\n", jsonTableShape(st, "val"))
+		g.pf("\t\tfinal v = %s();\n", st.Name)
 		g.pf("\t\t%sFromJsonFields(v, val, r, sh);\n", dartName(st.Name))
-		g.pf("\t} else if (val is Map) {\n")
-		g.pf("\t\t%sFromJsonFields(v, Map<String, dynamic>.from(val), r, sh);\n", dartName(st.Name))
-		g.pf("\t} else {\n")
-		g.pf("\t\tr.kindMismatch++;\n")
+		g.pf("\t\treturn v;\n")
 		g.pf("\t}\n")
-		g.pf("\treturn v;\n")
+		g.pf("\tr.kindMismatch++;\n")
+		g.pf("\treturn def ?? %s();\n", st.Name)
 		g.pf("}\n\n")
 	}
 }
@@ -621,6 +755,8 @@ func mapKeyText(f *ir.Field, entry string) string {
 func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where string) {
 	e := fmt.Sprintf("e%d", d)
 	switch {
+	case f.IsTextList():
+		g.emitJsonTextList(f, expr, d, ind, where)
 	case f.Type.Optional:
 		g.emitJsonValue(nonOptional(f), expr, d, ind, where)
 	case f.IsMap():
@@ -694,6 +830,8 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		g.pf("%sout.raw(_jsonWide(%s, %d, %v));\n", ind, expr, f.Type.FracBits, k == ir.TableKindI128 || k == ir.TableKindU128)
 	case isFlags(f):
 		g.pf("%s%s(out, %s, %s);\n", ind, flagsFn(flagsRef(f), "ToJson"), expr, depthExpr(d))
+	case f.Type.Timestamp:
+		g.pf("%sout.raw(_jsonString(_timestampText(%s)));\n", ind, expr)
 	case f.Type.Kind == ir.TWString, f.Type.Kind == ir.TString:
 		g.pf("%sout.raw(_jsonString(%s));\n", ind, expr)
 	case f.Type.Kind == ir.TBytes:
@@ -711,28 +849,75 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 	}
 }
 
+func unionArmShapeCond(f *ir.Field, item string) string {
+	var cond string
+	switch {
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+		cond = item + " is String"
+	case f.IsMap(), isKeyed(f):
+		cond = "_jsonEntries(" + item + ") != null"
+	case f.Array != ir.ArrayNone:
+		cond = item + " is List"
+	case tableRef(f) != nil:
+		cond = jsonTableShape(tableRef(f), item)
+	case unionRef(f) != nil:
+		cond = "_jsonEntries(" + item + ") != null"
+	case enumRef(f) != nil:
+		cond = item + " is String"
+	case isFlags(f):
+		cond = item + " is List"
+	case f.Type.Timestamp:
+		cond = item + " is String"
+	case f.Type.Kind == ir.TBool:
+		cond = item + " is bool"
+	default:
+		cond = "(" + item + " is num || " + item + " is _JNum)"
+	}
+	if f.Type.Optional || f.Type.Blob() || isPointerTable(f) {
+		return item + " == null || " + cond
+	}
+	return cond
+}
+
 // jsonReadExpr is the Dart expression that reads one field-shaped value out of
 // the decoded JSON value `val` (§16.2, §16.3).
-func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int) string {
+func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...string) string {
 	item := fmt.Sprintf("i%d", d)
+	prev := fmt.Sprintf("p%d", d)
+	fb := ""
+	if len(fallback) > 0 {
+		fb = fallback[0]
+	}
+	fbArg := ""
+	if fb != "" {
+		fbArg = ", " + fb
+	}
 	switch {
+	case f.IsTextList():
+		return g.jsonTextListRead(f, val, d, fbArg)
 	case f.Type.Optional:
-		return g.jsonReadExpr(nonOptional(f), val, d)
+		return g.jsonReadExpr(nonOptional(f), val, d, fallback...)
 	case f.IsMap():
 		key, value := f.MapEntry.Fields[0], f.MapEntry.Fields[1]
 		var keyExpr string
 		if key.Type.Kind == ir.TString {
-			keyExpr = fmt.Sprintf("_jsonStringField(k%d, %d, r)", d, key.Type.Size)
+			keyExpr = fmt.Sprintf("_jsonStringKey(k%d, %d, r)", d, textBound(key))
 		} else {
-			lo, hi := "null", "null"
-			if key.HasIntRange {
-				lo, hi = dartBoundLiteral(key.IntMin), dartBoundLiteral(key.IntMax)
-			}
+			lo, hi := jsonIntBounds(key)
 			keyExpr = fmt.Sprintf("_jsonIntKey(k%d, r, %s, %s, %s)", d, lo, hi, jsonUnsigned(key))
 		}
 		et := f.MapEntry.Name
-		return fmt.Sprintf("_jsonMap<%s>(%s, r, (k%d, %s) { final m%d = %s(); m%d.%s = %s; m%d.%s = %s; return m%d; })",
-			et, val, d, item, d, et, d, fieldMember(key), keyExpr, d, fieldMember(value), g.jsonReadExpr(value, item, d+1), d)
+		valMember := fieldMember(value)
+		cmpExpr := fmt.Sprintf("(%s a, %s b) => %s", et, et, mapKeyCompare(f))
+		var valBody string
+		if value.Type.Optional {
+			valBody = fmt.Sprintf("if (%s == null) { m%d.%s = false; } else { m%d.%s = true; m%d.%s = %s; }",
+				item, d, hasMember(value), d, hasMember(value), d, valMember, g.jsonReadExpr(value, item, d+1, fmt.Sprintf("m%d.%s", d, valMember)))
+		} else {
+			valBody = fmt.Sprintf("m%d.%s = %s;", d, valMember, g.jsonReadExpr(value, item, d+1, fmt.Sprintf("m%d.%s", d, valMember)))
+		}
+		return fmt.Sprintf("_jsonMap<%s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
+			et, val, d, d, fieldMember(key), cmpExpr, d, item, d, keyExpr, d, d, et, d, fieldMember(key), d, valBody, d, fbArg)
 	case isKeyed(f):
 		en := f.KeyEnumRef
 		var slots strings.Builder
@@ -741,63 +926,66 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int) string {
 			fmt.Fprintf(&slots, "%s: %d, ", strconv.Quote(en.Variants[i]), i)
 		}
 		slots.WriteString("}")
-		return fmt.Sprintf("_jsonKeyed<%s>(%s, r, %d, () => %s, %s, (%s) => %s)",
-			g.listElemType(f), val, f.ArrayBound, g.elemDefault(f), slots.String(), item, g.jsonReadExpr(singleOf(f), item, d+1))
+		return fmt.Sprintf("_jsonKeyed<%s>(%s, r, %d, () => %s, %s, (%s, %s) => %s%s)",
+			g.listElemType(f), val, f.ArrayBound, g.elemDefault(f), slots.String(), item, prev, g.jsonReadExpr(singleOf(f), item, d+1, prev), fbArg)
 	case f.Array == ir.ArrayFixed:
-		return fmt.Sprintf("_jsonFixed<%s>(%s, r, %d, () => %s, (%s) => %s)",
-			g.listElemType(f), val, f.ArrayBound, g.elemDefault(f), item, g.jsonReadExpr(singleOf(f), item, d+1))
+		return fmt.Sprintf("_jsonFixed<%s>(%s, r, %d, () => %s, (%s, %s) => %s%s)",
+			g.listElemType(f), val, f.ArrayBound, g.elemDefault(f), item, prev, g.jsonReadExpr(singleOf(f), item, d+1, prev), fbArg)
 	case f.Array != ir.ArrayNone:
 		bound := -1
 		if f.Array == ir.ArrayCounted {
 			bound = int(f.ArrayBound)
 		}
-		return fmt.Sprintf("_jsonList<%s>(%s, r, %d, (%s) => %s)",
-			g.listElemType(f), val, bound, item, g.jsonReadExpr(singleOf(f), item, d+1))
+		return fmt.Sprintf("_jsonList<%s>(%s, r, %d, (%s) => %s%s)",
+			g.listElemType(f), val, bound, item, g.jsonReadExpr(singleOf(f), item, d+1), fbArg)
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
-			return fmt.Sprintf("_jsonStringBlob(%s, r)", val)
+			return fmt.Sprintf("_jsonStringBlob(%s, r%s)", val, fbArg)
 		}
-		return fmt.Sprintf("_jsonBytesBlob(%s, r)", val)
+		return fmt.Sprintf("_jsonBytesBlob(%s, r%s)", val, fbArg)
 	case isPointerTable(f):
 		ref := tableRef(f)
-		return fmt.Sprintf("_readPtr(%s, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }) as %s?",
-			val, ref.Name, dartName(ref.Name), ref.Name, ref.Name)
+		return fmt.Sprintf("_readPtr(%s, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }%s) as %s?",
+			val, ref.Name, dartName(ref.Name), ref.Name, fbArg, ref.Name)
 	case isByValueTable(f):
-		return fmt.Sprintf("_%sFromJsonValue(%s, r, sh)", dartName(tableRef(f).Name), val)
+		return fmt.Sprintf("_%sFromJsonValue(%s, r, sh%s)", dartName(tableRef(f).Name), val, fbArg)
 	case unionRef(f) != nil:
-		return fmt.Sprintf("%s(%s, r, sh)", unionFn(unionRef(f), "FromJson"), val)
+		return fmt.Sprintf("%s(%s, r, sh%s)", unionFn(unionRef(f), "FromJson"), val, fbArg)
 	case isWide(f):
 		lo, hi := "null", "null"
 		if l, h, ok := ir.TableRawRange(singleOf(f)); ok {
 			lo, hi = bigLiteral(l), bigLiteral(h)
 		}
-		return fmt.Sprintf("_jsonWideField(%s, r, %d, %v, %s, %s, %s)", val, f.Type.FracBits, ir.TableKindSigned(wideKind(f)), lo, hi, g.wideDefault(singleOf(f)))
+		wdef := g.wideDefault(singleOf(f))
+		if fb != "" {
+			wdef = fb
+		}
+		return fmt.Sprintf("_jsonWideField(%s, r, %d, %v, %s, %s, %s)", val, f.Type.FracBits, ir.TableKindSigned(wideKind(f)), lo, hi, wdef)
 	case isFlags(f):
-		return fmt.Sprintf("%s(%s, r)", flagsFn(flagsRef(f), "FromJson"), val)
+		return fmt.Sprintf("%s(%s, r%s)", flagsFn(flagsRef(f), "FromJson"), val, fbArg)
+	case f.Type.Timestamp:
+		return fmt.Sprintf("_timestampField(%s, r%s)", val, fbArg)
 	case f.Type.Kind == ir.TWString:
-		return fmt.Sprintf("_jsonWStringField(%s, %d, r)", val, f.Type.Size)
+		return fmt.Sprintf("_jsonWStringField(%s, %d, r%s)", val, f.Type.Size, fbArg)
 	case f.Type.Kind == ir.TString:
-		return fmt.Sprintf("_jsonStringField(%s, %d, r)", val, f.Type.Size)
+		return fmt.Sprintf("_jsonStringField(%s, %d, r%s)", val, textBound(f), fbArg)
 	case f.Type.Kind == ir.TBytes:
-		return fmt.Sprintf("_jsonBytesField(%s, r, %d)", val, f.Type.Size)
+		return fmt.Sprintf("_jsonBytesField(%s, r, %d%s)", val, f.Type.Size, fbArg)
 	case f.Type.Kind == ir.TBool:
-		return fmt.Sprintf("_jsonBoolField(%s, r)", val)
+		return fmt.Sprintf("_jsonBoolField(%s, r%s)", val, fbArg)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("_jsonFloatField(%s, r, %t)", val, f.Type.Kind == ir.TFloat32)
+		return fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, f.Type.Kind == ir.TFloat32, fbArg)
 	case enumRef(f) != nil:
-		return fmt.Sprintf("%sFromName(%s, r)", dartName(enumRef(f).Name), val)
+		return fmt.Sprintf("%sFromName(%s, r%s)", dartName(enumRef(f).Name), val, fbArg)
 	case f.Type.Kind == ir.TBits:
 		hi := "null"
 		if f.Type.Width < 64 {
 			hi = fmt.Sprintf("%d", uint64(1)<<f.Type.Width-1)
 		}
-		return fmt.Sprintf("_jsonIntField(%s, r, null, %s, true)", val, hi)
+		return fmt.Sprintf("_jsonIntField(%s, r, null, %s, true%s)", val, hi, fbArg)
 	default:
-		lo, hi := "null", "null"
-		if f.HasIntRange {
-			lo, hi = dartBoundLiteral(f.IntMin), dartBoundLiteral(f.IntMax)
-		}
-		return fmt.Sprintf("_jsonIntField(%s, r, %s, %s, %s)", val, lo, hi, jsonUnsigned(f))
+		lo, hi := jsonIntBounds(f)
+		return fmt.Sprintf("_jsonIntField(%s, r, %s, %s, %s%s)", val, lo, hi, jsonUnsigned(f), fbArg)
 	}
 }
 

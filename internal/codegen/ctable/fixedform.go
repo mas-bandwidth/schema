@@ -557,6 +557,27 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   layout_newer (ship the reader). A retired entry stays forever (§5.2). */\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_floor = %d;\n\n", n, floor)
 
+	// THE WRITER'S RANGES, per lineage entry (docs/FIXED-FORM-ALGORITHM.md
+	// §4.5): a record read under an older entry is held to what THAT writer
+	// declared, then to this reader's own ranges. One straight-line pass per
+	// entry that bounds anything, spelled by the reader's own clamp emitter
+	// over the reader's storage with the writer's numbers.
+	writerFields := fixedWriterFields(st, lineage, hash)
+	var writerClamps []int
+	for i, fields := range writerFields {
+		if len(fields) == 0 {
+			continue
+		}
+		writerClamps = append(writerClamps, i)
+		g.pf("/* lineage entry %d's WRITER ranges (§4.5): every clamp counts. */\n", i)
+		g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * out_of_range )\n{\n",
+			tableInlineMacro(g.unit.Package), g.sym(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
+		for _, f := range fields {
+			g.emitFixedClampField(f, "value->", 4)
+		}
+		g.pf("}\n\n")
+	}
+
 	older := 0
 	for _, e := range lineage {
 		if e.Wire != hash {
@@ -635,7 +656,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        %s_fixed_lineage[i].fill_count = fills;\n", n)
 		g.pf("        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */\n")
 		g.pf("        %s_fixed_lineage[i].unknown = census.unknown;\n", n)
-		g.pf("        %s_fixed_lineage[i].kind_mismatch = census.kind_mismatch;\n", n)
+		g.pf("        %s_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */\n", n)
 		g.pf("    }\n")
 		g.pf("    /* AND THE FLAG LAST: every entry above is written before this store, and\n")
 		g.pf("       this store is what a waiting thread's acquire is waiting for. */\n")
@@ -646,7 +667,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —\n")
 	g.pf("   then the layout behind its u32 length, then the records to the end of it. */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( int64_t count )\n{\n", g.api(st.Name, "fixed_measure"))
-	g.pf("    return kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout ) + count * ( 8 + %d );\n}\n\n", n, body)
+	fixedTrailer := ""
+	if st.Integrity != "" {
+		fixedTrailer = " + 4"
+	}
+	g.pf("    return kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout ) + count * ( 8 + %d )%s;\n}\n\n", n, body, fixedTrailer)
 
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n",
 		g.api(st.Name, "fixed_save"), st.Name)
@@ -669,21 +694,25 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        table_fixed_put64( at, %s_fixed_hash );\n", n)
 	g.pf("        memset( at + 8, 0, (size_t) %d ); /* the prefill's zeros */\n", body)
 	g.pf("        %s( at + 8, values + k );\n", g.sym(st.Name, "fixed_write_body"))
-	g.pf("        at += 8 + %d;\n    }\n    return need;\n}\n\n", body)
+	if st.Integrity != "" {
+		g.pf("        at += 8 + %d;\n    }\n    return schema_table_integrity_seal_( buffer, need - 4 );\n}\n\n", body)
+	} else {
+		g.pf("        at += 8 + %d;\n    }\n    return need;\n}\n\n", body)
+	}
 
 	// ---- LOAD(R, file): §5.3'S ELEVEN STEPS, IN ORDER ----
 	//
 	// The order is load-bearing and it is NOT §1.1's order. A layout arriving on
 	// the wire is no longer walked: the hash is looked up, then the floor, then
 	// the bytes are COMPARED with the lock's. The seven §1.1 malformations under
-	// a KNOWN hash all come back as ONE name, layout_malformed — "a lie about a
+	// a KNOWN hash all come back as ONE name, layout_damaged — "a lie about a
 	// known version" (§5.3, bill §12.4).
 	g.pf("/* THE READ: SELECT BY HASH, NEVER PARSE A STRANGER (docs/FIXED-FORM-ALGORITHM.md\n")
 	g.pf("   §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not\n")
 	g.pf("   on the wire, so the hash cannot be re-derived from a file at all — and it\n")
 	g.pf("   selects one entry of the lineage THE BUILD laid down. Outside the lineage is\n")
 	g.pf("   layout_newer (ship the reader); below the floor is layout_unsupported\n")
-	g.pf("   (upgrade the client); a known hash whose bytes differ is layout_malformed.\n")
+	g.pf("   (upgrade the client); a known hash whose bytes differ is layout_damaged.\n")
 	g.pf("   Then ONE loop over ONE plan, the identity plan for this build's own hash and\n")
 	g.pf("   the entry's own static plan otherwise. Same loop either way (§3.4).\n\n")
 	g.pf("   THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND, and on the identity\n")
@@ -696,10 +725,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   built from the lock's bytes. The signature keeps both so every caller in\n")
 	g.pf("   test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,\n")
 	g.pf("   not API). */\n")
-	g.pf("/* %s is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it\n", g.api(st.Name, "fixed_load_tolerant"))
-	g.pf("   keeps every recovered record, the counters counted onto the report. */\n")
+	g.pf("/* %s is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it\n", g.api(st.Name, "fixed_load"))
+	g.pf("   returns every record, or refuses the whole load at the first\n")
+	g.pf("   condition it meets and lands nothing. */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
-		g.api(st.Name, "fixed_load_tolerant"), st.Name)
+		g.api(st.Name, "fixed_load"), st.Name)
 	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n")
 	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
@@ -708,7 +738,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int32_t reserved_at;\n")
 	g.pf("    int32_t census_unknown = 0;\n    int32_t census_kind = 0;\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
-		g.pf("    int32_t read_clamped, read_widened;\n")
+		g.pf("    int32_t read_widened;\n")
 	}
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
@@ -722,14 +752,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */\n")
 	g.pf("    memset( &local, 0, sizeof( local ) );\n")
 	g.pf("    if ( report == NULL ) { report = &local; }\n")
+	g.pf("    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
 	// STEP 1.
-	g.pf("    if ( values == NULL || data == NULL || bytes < 1 ) { report->malformed = 1; return -1; }\n")
+	g.pf("    if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n")
 	// STEP 1's second half: THE FORM BYTE, BEFORE THE LENGTH.
 	g.pf("    /* 1. THE FORM BYTE, AND IT SAYS WHICH DIRECTION (§3, §5.3): the registry is\n")
 	g.pf("       ordered, so a byte this reader does not carry is named by where it sits\n")
 	g.pf("       relative to this form and never by one word for both. IT IS READ BEFORE\n")
 	g.pf("       THE FILE'S LENGTH: a committed form-1 file is TEN bytes and a form-2\n")
-	g.pf("       batch THREE, so measuring first would answer malformed for every real\n")
+	g.pf("       batch THREE, so measuring first would answer damaged for every real\n")
 	g.pf("       file of the two forms this reader is supposed to name. */\n")
 	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
 	g.pf("        report->refused = 1;\n")
@@ -737,12 +768,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                       : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE\n")
 	g.pf("                       : SCHEMA_TABLE_NEWER_FORM;\n")
 	g.pf("        return -1;\n    }\n")
+	if st.Integrity != "" {
+		g.pf("    if ( !schema_table_integrity_holds_( data, bytes ) )\n    {\n")
+		g.pf("        report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
+		g.pf("        report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;\n")
+		g.pf("        return -1;\n    }\n")
+		g.pf("    bytes -= 4;\n")
+	}
 	// STEP 2: the length, then the seven reserved bytes.
 	g.pf("    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are\n")
 	g.pf("       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */\n")
-	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }\n")
+	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n")
 	g.pf("    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )\n")
-	g.pf("    {\n        if ( data[reserved_at] != 0 ) { report->malformed = 1; return -1; }\n    }\n")
+	g.pf("    {\n        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n    }\n")
 	// STEP 3.
 	g.pf("    /* 3. the layout's length, and the bytes behind it. */\n")
 	g.pf("    layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );\n")
@@ -785,14 +823,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop\n")
 		g.pf("           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */\n")
 		g.pf("        census_unknown = %s_fixed_lineage[pick].unknown;\n", n)
-		g.pf("        census_kind = %s_fixed_lineage[pick].kind_mismatch;\n", n)
+		g.pf("        census_kind = %s_fixed_lineage[pick].kind_changed;\n", n)
 		g.pf("    }\n")
 	}
 	// STEPS 9 and 10.
 	g.pf("    /* 9 and 10. the tail must be whole records, and they must fit the caller. */\n")
 	g.pf("    at = layout + layout_bytes;\n")
 	g.pf("    rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;\n")
-	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->malformed = 1; return -1; }\n")
+	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n")
 	g.pf("    count = rest / record_bytes;\n")
 	g.pf("    if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }\n")
 	// STEP 11.
@@ -806,21 +844,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        %s( &defaults );\n    }\n", g.api(st.Name, "reset"))
 	finite := fixedFiniteNeededStruct(st, map[string]bool{})
 	if finite {
-		g.pf("    read_clamped = report->clamped;\n    read_widened = report->widened;\n")
+		g.pf("    read_widened = report->widened;\n")
 	}
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	if ir.TableFixedClampNeeded(st) {
-		g.pf("        int32_t rec_clamped = report->clamped;\n")
 		g.pf("        int32_t rec_widened = report->widened;\n")
 	}
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
 	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );\n")
+	g.pf("        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { %s( values + j ); } return -1; }\n", g.api(st.Name, "reset"))
 	if finite {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
 		// FIRST, before the bounds pass, over the storage the run just wrote,
 		// and a NaN or an infinity refuses the whole batch as
-		// non_finite_float, the tolerant read included. Nothing of the batch
+		// non_finite_float, the strict read included. Nothing of the batch
 		// is kept: every record this call wrote goes back to its defaults, and
 		// no counter moves.
 		g.pf("        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the\n")
@@ -829,9 +867,20 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        if ( !%s( values + k ) )\n        {\n", g.sym(st.Name, "fixed_finite_body"))
 		g.pf("            int64_t j;\n")
 		g.pf("            for ( j = 0; j <= k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
-		g.pf("            report->clamped = read_clamped;\n            report->widened = read_widened;\n")
+		g.pf("            report->widened = read_widened;\n")
 		g.pf("            table_non_finite_float( report );\n")
 		g.pf("            return -1;\n        }\n")
+	}
+	if len(writerClamps) > 0 {
+		g.pf("        /* THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),\n")
+		g.pf("           then this reader's own below. */\n")
+		g.pf("        {\n            int32_t known_out_of_range = 0;\n")
+		g.pf("            switch ( pick )\n            {\n")
+		for _, i := range writerClamps {
+			g.pf("            case %d: %s( values + k, &known_out_of_range ); break;\n", i, g.sym(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+		}
+		g.pf("            default: break;\n            }\n")
+		g.pf("            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { %s( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; return -1; }\n        }\n", g.api(st.Name, "reset"))
 	}
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
@@ -839,39 +888,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("           content rule that refuses ends the read here, nothing decoded,\n")
 		g.pf("           and the plan's counters are committed only past it (§5.8). */\n")
 		g.pf("        if ( %s( values + k, report ) != 0 )\n", g.sym(st.Name, "fixed_clamp"))
-		g.pf("        {\n            report->clamped = rec_clamped;\n            report->widened = rec_widened;\n            return -1;\n        }\n")
+		g.pf("        {\n            int64_t j;\n            for ( j = 0; j <= k; ++j ) { %s( values + j ); }\n            report->widened = rec_widened;\n            return -1;\n        }\n", g.api(st.Name, "reset"))
 	}
 	g.pf("        at += record_bytes;\n    }\n")
 	g.pf("    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */\n")
 	g.pf("    report->unknown += census_unknown;\n")
-	g.pf("    report->kind_mismatch += census_kind;\n")
+	g.pf("    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { %s( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_KIND_MISMATCH; return -1; }\n", g.api(st.Name, "reset"))
 	g.pf("    return count;\n}\n\n")
-	g.emitFixedLoadStrict(st)
-}
-
-// emitFixedLoadStrict emits the PLAIN <name>_fixed_load, which is the STRICT
-// read (docs/SPEC-TABLES.md §6.5), as the Go oracle's FixedLoad wraps
-// FixedLoadTolerant (internal/codegen/gotable/fixedform.go) and the C++ one
-// does (internal/codegen/cpptable/fixedform.go): -1 for every refusal of the
-// tolerant read and for a read the strict rule refuses, with every value it
-// had written reset. A supplied report receives THIS read's report.
-func (g *tableGen) emitFixedLoadStrict(st *ir.Struct) {
-	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for\n", g.api(st.Name, "fixed_load"))
-	g.pf("   every refusal of %s and for a read the strict rule\n", g.api(st.Name, "fixed_load_tolerant"))
-	g.pf("   refuses -- malformed, clamped, kind-mismatched or refused -- with every\n")
-	g.pf("   value it had written reset to its declared defaults. A supplied report\n")
-	g.pf("   receives THIS read's report, its refuse_reason set. unknown and widened\n")
-	g.pf("   alone never refuse. */\n")
-	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
-		g.api(st.Name, "fixed_load"), st.Name)
-	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
-	g.pf("    TableReport local;\n    int64_t n, k;\n")
-	g.pf("    if ( report == NULL ) { report = &local; }\n")
-	g.pf("    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
-	g.pf("    n = %s( values, capacity, data, bytes, plan, plan_capacity, cache, report );\n", g.api(st.Name, "fixed_load_tolerant"))
-	g.pf("    if ( !table_report_strict_refuses( report, n >= 0 ) ) { return n; }\n")
-	g.pf("    for ( k = 0; k < n; ++k ) { %s( values + k ); }\n", g.api(st.Name, "reset"))
-	g.pf("    return -1;\n}\n\n")
 }
 
 func fixedOpName(op int) string {
@@ -973,9 +996,9 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 		return
 	}
 	g.pf("/* %s's read-side bounds. */\n", st.Name)
-	g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * clamped, int32_t * damaged )\n{\n",
+	g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * out_of_range, int32_t * damaged )\n{\n",
 		tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_clamp_body"), st.Name)
-	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
+	g.pf("    (void) value; (void) out_of_range; (void) damaged;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value->", 4)
 	}
@@ -997,16 +1020,16 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("   clamp COUNTS, and a content rule refuses by name. */\n")
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, TableReport * report )\n{\n",
 		g.sym(st.Name, "fixed_clamp"), st.Name)
-	g.pf("    int32_t clamped = 0;\n")
+	g.pf("    int32_t out_of_range = 0;\n")
 	g.pf("    int32_t damaged = 0;\n")
-	g.pf("    %s( value, &clamped, &damaged );\n", g.sym(st.Name, "fixed_clamp_body"))
+	g.pf("    %s( value, &out_of_range, &damaged );\n", g.sym(st.Name, "fixed_clamp_body"))
 	g.pf("    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,\n")
 	g.pf("       fix 11): nothing is decoded, no counter moves, and the flag that\n")
-	g.pf("       carries the verdict is `refused` + the name, never `malformed`. A\n")
+	g.pf("       carries the verdict is `refused` + the name, never `damaged`. A\n")
 	g.pf("       refusal is total (§5.8): the clamp count reaches the report only on\n")
 	g.pf("       a read that lands values, never beside a refusal. */\n")
 	g.pf("    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED; return -1; }\n")
-	g.pf("    report->clamped += clamped;\n")
+	g.pf("    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; return -1; }\n")
 	g.pf("    return 0;\n}\n\n")
 }
 
@@ -1099,12 +1122,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				g.pf("%s%s( &%s, clamped, damaged );\n", ind, g.sym(r.Name, "fixed_clamp_body"), expr)
+				g.pf("%s%s( &%s, out_of_range, damaged );\n", ind, g.sym(r.Name, "fixed_clamp_body"), expr)
 			}
 			return
 		case *ir.Union:
-			g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %s; (*clamped)++; }\n",
-				ind, expr, r.Max, expr, enumNoneConst(f.Type.Name+"Type"))
+			g.pf("%sif ( (uint32_t) %s.type > %du ) { (*out_of_range)++; }\n",
+				ind, expr, r.Max)
 			if !ir.TableFixedClampNeededUnionArm(r) {
 				return
 			}
@@ -1120,8 +1143,8 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
-			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s; (*clamped)++; }\n",
-				ind, expr, r.Max, expr, enumNoneConst(f.Type.Name))
+			g.pf("%sif ( (uint64_t) %s > %du ) { (*out_of_range)++; }\n",
+				ind, expr, r.Max)
 			return
 		}
 		return
@@ -1186,8 +1209,7 @@ func (g *tableGen) fixedClampBoth(expr, loTest, lo, hiTest, hi, ind string) {
 	   mistyped `||` and reds it (-Wbitwise-instead-of-logical), which is a good
 	   warning about code that is not this. A sum would silence it too and is
 	   measurably slower (test/bench/fixedform_measure.cpp). */
-	g.pf("%s(*clamped) += (int) ( %s ) | (int) ( %s );\n", ind, loTest, hiTest)
-	g.pf("%s%s = ( %s ) ? %s : ( ( %s ) ? %s : %s );\n", ind, expr, loTest, lo, hiTest, hi, expr)
+	g.pf("%s(*out_of_range) += (int) ( %s ) | (int) ( %s );\n", ind, loTest, hiTest)
 }
 
 /*
@@ -1196,8 +1218,7 @@ fixedClampEnd is the one-ended twin: an end the storage's own width already
 	holds is an end the emitter drops (tableClampEnds).
 */
 func (g *tableGen) fixedClampEnd(expr, test, bound, ind string) {
-	g.pf("%s(*clamped) += ( %s );\n", ind, test)
-	g.pf("%s%s = ( %s ) ? %s : %s;\n", ind, expr, test, bound, expr)
+	g.pf("%s(*out_of_range) += ( %s );\n", ind, test)
 }
 
 // tableFixedOnce is THE ONCE-FLAG AND ITS PUBLICATION, emitted beside the lazy
@@ -1225,7 +1246,7 @@ func (g *tableGen) fixedClampEnd(expr, test, bound, ind string) {
 // compare-and-exchange there is nothing to claim with, so two threads can both
 // walk the build and write THE SAME BYTES into the same storage. No load ever
 // reads a zeroed plan — a thread reaches the plan only after its own build
-// returned — but the duplicate write is a data race in the abstract machine and
+// returned — but the repeated write is a data race in the abstract machine and
 // this leg owes the fix the spec already names: §5.9 #7's GENERATOR-SIDE
 // COMPILE, which lays every older endpoint's plan down as static const data at
 // generate time and deletes the lazy build, the flag and this whole block with

@@ -823,7 +823,7 @@ end
 -- (docs/SPEC-TABLES.md §3.3). maxBytes is the vocabulary field's byte bound,
 -- checked from its own length before an entry is touched; maxEntries is the
 -- receiver's entry capacity. Zero or nil takes the conforming defaults.
-function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
+function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
   report = report or {}
   if vocab.announced or vocab.refused then
     report.refused = 1
@@ -890,14 +890,17 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
       if kind ~= 14 then return damage() end
       local n
       n, at = read_leb(body, at)
-      if n == nil or at + n - 1 > #body then return damage() end
-      local field = body:sub(at, at + n - 1)
-      at = at + n
-      if #field < 1 or string.byte(field, 1) ~= 6 then return damage() end
-      local length, nextAt2 = read_leb(field, 2)
-      if length == nil or nextAt2 + length - 1 ~= #field then return damage() end
-      vocabulary = field:sub(nextAt2, nextAt2 + length - 1)
+      -- bounded before the cursor moves: a length near 2^63 must not wrap
+      if n == nil or math.ult(#body - at + 1, n) then return damage() end
+      -- the field's framing and its length are read in place and checked
+      -- against the bound before any part of it is copied out
+      local fieldEnd = at + n - 1
+      if n < 1 or string.byte(body, at) ~= 6 then return damage() end
+      local length, nextAt2 = read_leb(body, at + 1)
+      if length == nil or nextAt2 + length - 1 ~= fieldEnd then return damage() end
       if length > maxBytes then return too_large(version) end
+      vocabulary = body:sub(nextAt2, nextAt2 + length - 1)
+      at = at + n
       seenVocabulary = seenVocabulary + 1
     else
       -- THE ANNOUNCEMENT READS TOLERANTLY (docs/SPEC-TABLES.md §3.3): an
@@ -912,8 +915,12 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
     if tooLarge then return too_large(version) end
     return damage()
   end
-  for i, e in ipairs(entries) do vocab[i] = e end
-  for i = #entries + 1, #vocab do vocab[i] = nil end
+  for i, e in ipairs(entries) do
+    vocab[i] = e
+  end
+  for i = #entries + 1, #vocab do
+    vocab[i] = nil
+  end
   vocab.count = #entries
   vocab.refBits = bits_max(#entries)
   vocab.buildVersion = version
@@ -961,7 +968,13 @@ end
 -- refused by name before any byte is read or written.
 local function message_root(T, root)
   if T.MessageRoots == nil or not T.MessageRoots[root] then
-    error("message: " .. tostring(root) .. " is not a fixed table: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)", 0)
+    error(
+      "message: "
+        .. tostring(root)
+        .. " is not a fixed table: "
+        .. "the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)",
+      0
+    )
   end
 end
 

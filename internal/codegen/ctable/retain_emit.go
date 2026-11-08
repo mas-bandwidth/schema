@@ -194,7 +194,7 @@ func retainHoldsBodies(f *ir.Field) bool {
 	if f.IsMap() {
 		return true
 	}
-	if f.Type.Pointer {
+	if f.Type.Pointer || ir.TextListPlain(f) {
 		return false
 	}
 	switch f.Type.Ref.(type) {

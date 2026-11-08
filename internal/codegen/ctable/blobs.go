@@ -28,7 +28,8 @@ import (
 // this emitter's retain and message paths compare against the id LITERAL, and
 // the only code that names the macros is the node-type switch the blob census
 // already gates.
-func tableBlobRuntime(anyBlob bool) string {
+func tableBlobRuntime(anyBlob, anyUnboundedText bool) string {
+	unboundedText := ""
 	views, accessors := "", ""
 	if anyBlob {
 		views = fmt.Sprintf(`typedef struct TableBytesView { const uint8_t * data; int64_t length; } TableBytesView;
@@ -54,6 +55,26 @@ static SCHEMA_UNUSED TableStringView table_string_at( const TableCtx * ctx, cons
     const TableBlob * blob=table_blob_at(ctx,ref);
     TableStringView view={NULL,0};
     if(blob!=NULL) { view.data=(const char *)(blob+1); view.length=blob->length; } return view;
+}`
+	}
+	if anyUnboundedText {
+		unboundedText = `
+#define SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED const char * schema_table_text_at_( const TableCtx * ctx, const TableRef * ref, int32_t * out_len )
+{
+    const TableBlob * blob;
+    if ( ref->value == 0 ) { if ( out_len != NULL ) { *out_len = 0; } return ""; }
+    blob = (const TableBlob *)(const void *)(ctx != NULL && ctx->arena != NULL
+        ? table_arena_at(ctx->arena,(uint32_t)ref->value) : (const uint8_t *)(const void *)ref+ref->value);
+    if ( out_len != NULL ) { *out_len = (int32_t)blob->length; }
+    return (const char *)(blob + 1);
+}
+static SCHEMA_UNUSED int schema_table_text_store_( TableWorker * worker, TableRef * ref, const char * text, int64_t length )
+{
+    if ( worker == NULL || worker->arena == NULL || worker->arena->locked || length < 0 || (uint64_t)length > UINT32_MAX || ( length > 0 && text == NULL ) ) { return 0; }
+    if ( !table_wire_utf8( (const uint8_t *)text, (uint64_t)length ) ) { return 0; }
+    if ( length == 0 ) { ref->value = 0; return 1; }
+    return table_string_emplace( worker, ref, text, length ) != NULL;
 }`
 	}
 	return `
@@ -89,7 +110,7 @@ static SCHEMA_UNUSED char * table_string_emplace( TableWorker * worker, TableRef
     char * data;
     if(blob==NULL) { return NULL; }
     data=(char *)(blob+1); if(text!=NULL && length>0) { memcpy(data,text,(size_t)length); } data[length]=0; return data;
-}
+}` + unboundedText + `
 #endif
 `
 }

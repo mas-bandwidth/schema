@@ -96,7 +96,7 @@ public readonly unsafe struct TableMap<T> where T : unmanaged
         int at = Search(text, raw, textual, out bool found); if (at < 0) { return null; }
         if (found) { return At(at); }
         byte* entry = TableListStorage.Add(worker, slot, field); if (entry == null) { return null; }
-        Schema.TableWire.BuilderKeySet((IntPtr)entry, field.Table.Fields[0], text, raw);
+        if(!Schema.TableWire.BuilderKeySet(worker,(IntPtr)entry, field.Table.Fields[0], text, raw)){slot->Count--;return null;}
         TableListStorage.Head* head = (TableListStorage.Head*)((byte*)slot + slot->Reference);
         for (int i = slot->Count - 1; i > at; i--) { head->Items[i] = head->Items[i - 1]; }
         head->Items[at] = entry; return (T*)entry;
@@ -134,10 +134,21 @@ const tableBuilderCollectionWireSource = `
         ulong stored = value.Raw(key, 0);
         return key.Kind >= 2 && key.Kind <= 5 ? unchecked((long)stored).CompareTo(unchecked((long)raw)) : stored.CompareTo(raw);
     }
-    public static void BuilderKeySet(IntPtr pointer, TableFieldInfo key, ReadOnlySpan<byte> text, ulong raw)
+    static bool BuilderTextSet(TableWorker worker, NativeValue value, TableFieldInfo field, ReadOnlySpan<byte> text)
+    {
+        if(text.Length==0){NativePut(value.Slot(field),0,8);return true;}
+        if(worker==null||worker.Arena.Closed){return false;}
+        byte* blob=worker.Raw(9L+text.Length);if(blob==null){return false;}
+        System.Runtime.InteropServices.NativeMemory.Clear(blob,(nuint)(9L+text.Length));
+        NativePut(blob,(uint)text.Length,4);text.CopyTo(new Span<byte>(blob+8,text.Length));
+        NativePut(value.Slot(field),unchecked((ulong)(blob-value.Slot(field))),8);return true;
+    }
+    public static bool BuilderKeySet(TableWorker worker, IntPtr pointer, TableFieldInfo key, ReadOnlySpan<byte> text, ulong raw)
     {
         NativeValue value = new NativeValue((byte*)pointer, 0);
+        if(key.Unbounded){return BuilderTextSet(worker,value,key,text);}
         if (key.Kind == 12) { value.Buffer(key).Clear(); text.CopyTo(value.Buffer(key)); value.SetCount(key, text.Length); }
         else { value.SetRaw(key, 0, raw); }
+        return true;
     }
 `

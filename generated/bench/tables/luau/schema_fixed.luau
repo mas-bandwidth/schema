@@ -364,6 +364,10 @@ local function readScalar(f: any, w: Node, buf: buffer, at: number): any
 	end
 	local width = w.size
 	local v: any
+	if width == 16 then
+		-- a 128-bit value is its two 64-bit halves, the low one first (§3)
+		return { lo = buffer.readinteger(buf, at), hi = buffer.readinteger(buf, at + 8) }
+	end
 	if width == 1 then
 		v = signed(k) and buffer.readi8(buf, at) or buffer.readu8(buf, at)
 	elseif width == 2 then
@@ -731,6 +735,9 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 			else
 				buffer.writeinteger(buf, off, asInt(v))
 			end
+		elseif w == 16 then
+			buffer.writeinteger(buf, off, asInt(v.lo))
+			buffer.writeinteger(buf, off + 8, asInt(v.hi))
 		end
 	end
 end

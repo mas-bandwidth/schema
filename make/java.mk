@@ -122,8 +122,9 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/conformance/feature-witnesses/full/Features.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
 	@mkdir -p build/tables-generated-java
+	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),rm -rf build/tables-generated-java/featurewitnesses && ./bin/schema generate --lang java --out build/tables-generated-java/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
 	rm -rf build/tables-generated-java/examples && ./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
 	# variable-class codecs ride this stamp, and the LIST unit (tables/lists)
@@ -886,7 +887,7 @@ tables-java-fixed-t18: tables-fixedform-corpus
 # oracle can never pass silently.
 .PHONY: tables-java-package
 tables-java-package: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 900s
 	@echo 'tables Java package: the whole javatable package passes with the fixed-form corpus built first'
 
@@ -917,7 +918,7 @@ tables-java-t14:
 .PHONY: tables-java-json-differential tables-java-json-differential-negative-control
 tables-java-json-differential:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl)$$'
+		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl|TestJsonLeadingBOMBoundaryJava)$$'
 	@echo 'tables Java text differential: 200 random float instances agree with the Go engine byte for byte, both directions, and a six-digit float32 writer is red'
 tables-java-json-differential-negative-control:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
@@ -1085,6 +1086,34 @@ tables-java-finite-float-negative-control:
 	@grep -q -- '--- PASS: TestJavaFiniteFloatNegativeControl ' build/java-finite/control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: TestJavaFiniteFloatNegativeControl did not run to a PASS"; tail -20 build/java-finite/control.log; exit 1; }
 	@grep 'negative control: with the' build/java-finite/control.log
+
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): damage inside a
+# nested body, and every framing row whose answer is malformed
+# (docs/LAYERS/1-framing.md), makes every Java load entry point hand back no
+# usable value: load and fromJson answer null, loadRetain answers null with the
+# retention store emptied. The gate is TestDamageDiscardsTheWholeLoadJava; its
+# NEGATIVE CONTROL removes the discard from the generated load, the text read
+# and the retaining load in turn and requires the gate red on exactly that
+# entry point. Under SCHEMA_REQUIRE_CORPUS=1 a missing JDK is a failure.
+.PHONY: tables-java-discard tables-java-discard-negative-control
+tables-java-discard:
+	@mkdir -p build/java-discard
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestDamageDiscardsTheWholeLoadJava$$' \
+		> build/java-discard/log 2>&1 || { tail -40 build/java-discard/log; exit 1; }
+	@grep -q -- '--- PASS: TestDamageDiscardsTheWholeLoadJava ' build/java-discard/log || \
+		{ echo "tables-java-discard: TestDamageDiscardsTheWholeLoadJava did not run to a PASS"; tail -20 build/java-discard/log; exit 1; }
+	@echo 'tables Java: damage discards the whole load on every entry point (§4)'
+test-java: tables-java-discard
+
+tables-java-discard-negative-control:
+	@mkdir -p build/java-discard
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 900s -v -run '^TestDamageDiscardsTheWholeLoadJavaNegativeControl$$' \
+		> build/java-discard/control.log 2>&1 || { tail -40 build/java-discard/control.log; exit 1; }
+	@grep -q -- '--- PASS: TestDamageDiscardsTheWholeLoadJavaNegativeControl ' build/java-discard/control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: TestDamageDiscardsTheWholeLoadJavaNegativeControl did not run to a PASS"; tail -20 build/java-discard/control.log; exit 1; }
+	@grep 'negative control: with the' build/java-discard/control.log
 
 # THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
 # matched bench uses, written by the C++ reference with its form-3 writer and
@@ -1630,6 +1659,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
+		$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),build/tables-generated-java/featurewitnesses/*.java) \
 		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 
 # THE PER-CASE ABSENT GATE (docs/PORTING.md I4; test/conformance/README.md).
@@ -1683,27 +1713,27 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # retention arm's pair. The harness owns the mutants and the oracle
 # (internal/tablewire, the compiler's own engine).
 #
-# The gate runs every ENUMERATED pass and every pinned vector over BOTH
-# arms: the plain pair, and the retaining pair (--retain, §6.6), whose own
-# pinned vectors it also replays. The seeded RANDOM pass stays at N = 0: at
-# the shared SEED the plain arm's first finding is DAMAGED input (stream_arm_first
-# random #22918, both reports malformed), parked under the discard-on-damage
-# ruling, and it stops the pass before it reaches the mutants behind it.
-JAVA_WIRE_FUZZ_N ?= 0
+# The gate runs every ENUMERATED pass, the seeded RANDOM pass at N (default
+# 2000 from Makefile), and every pinned vector over BOTH arms: the plain pair,
+# and the retaining pair (--retain, §6.6), whose own pinned vectors it also
+# replays.
+JAVA_WIRE_FUZZ_N ?= $(N)
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells ../widelist_wide:widelist:Wide
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
 # no damage. They join INDEX.txt, which every leg replays, when every leg reads
 # these headers against the parent.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene
+# KeyedConfig and ArchiveConfig are fixed tables (!r.variable), which wirefuzz.go excludes from --retain --replay;
+# ArchiveConfigRetain on bits_width_clamp_archive_r83429.bin is covered in TestBitsFieldAndArrayWidthClampJava.
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells bits_width_clamp_archive_r83429:tabledemo:ArchiveConfig ../widelist_wide:widelist:Wide
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
+	./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
+	./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java-retain.bin
 	@set -e; for v in $(JAVA_PLAIN_VECTORS); do \
 		name=$${v%%:*}; rest=$${v#*:}; unit=$${rest%%:*}; root=$${rest#*:}; \
@@ -1723,8 +1753,9 @@ test-java: tables-java-wire-fuzz
 # with the same leg. The ENUMERATED canonical pass plants exactly those
 # spellings, so the differential must go red on the read report, and the
 # unplanted gate above must be green.
-JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 messages wide stream lists rt1 \
-	block v1 v2 w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 k1 k2 backend vocab vocab9
+JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 messages wide widelist stream lists rt1 \
+	block v1 v2 w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 k1 k2 backend vocab vocab9 \
+	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),featurewitnesses)
 JAVA_WIRE_FUZZ_SABOTAGE := build/java-wire-sabotage
 tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_WIRE_FUZZ_SABOTAGE) && mkdir -p $(JAVA_WIRE_FUZZ_SABOTAGE)/generated $(JAVA_WIRE_FUZZ_SABOTAGE)/classes
@@ -1736,7 +1767,7 @@ tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 		{ echo 'NEGATIVE CONTROL: the Java canonical LEB128 sabotage did not apply'; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_WIRE_FUZZ_SABOTAGE)/classes \
 		$(JAVA_WIRE_FUZZ_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/java \
+	@if ./build/conformance-harness wire-fuzz \
 			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_WIRE_FUZZ_SABOTAGE)/classes TablesWireFuzz" --seed 1 --n 0 \
 			--failed $(JAVA_WIRE_FUZZ_SABOTAGE)/failed.bin > $(JAVA_WIRE_FUZZ_SABOTAGE)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a Java reader that accepts noncanonical LEB128 left the differential green'; exit 1; \
@@ -1889,6 +1920,37 @@ tables-java-node-index-negative-control: tables-java-wire-fuzz
 
 test-java: tables-java-node-index-negative-control
 
+# THE MAP KEY DAMAGE CONTROL (docs/SPEC-TABLES.md §2.8, §4): a scratch copy of
+# the generated units whose key scan reads on past a key its read judged
+# malformed. A later occurrence of the key then turns the damaged map into a
+# kind mismatch, and the replay of map_key_past_entry_body (mapdemo.Cells: a
+# key string whose length runs into the entry's value, a length past its body)
+# must go red in both arms.
+JAVA_MAP_KEY_SABOTAGE := build/java-map-key-sabotage
+.PHONY: tables-java-map-key-damage-negative-control
+tables-java-map-key-damage-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_MAP_KEY_SABOTAGE) && mkdir -p $(JAVA_MAP_KEY_SABOTAGE)/generated $(JAVA_MAP_KEY_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_KEY_SABOTAGE)/generated/$$u || exit 1; done
+	@for f in $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/*Variable.java; do \
+		sed 's/if (r\.fail || report\.malformed) return;/if (r.fail) return; \/\/ SABOTAGED map key damage/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED map key damage' $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/CellsVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java map-key sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_MAP_KEY_SABOTAGE)/classes \
+		$(JAVA_MAP_KEY_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@for arm in "" --retain; do \
+		if ./build/conformance-harness wire-fuzz $$arm \
+				--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_MAP_KEY_SABOTAGE)/classes TablesWireFuzz" \
+				--replay testdata/wire/tables/fuzz-vectors/map_key_past_entry_body.bin --unit mapdemo --root Cells \
+				--failed $(JAVA_MAP_KEY_SABOTAGE)/failed.bin > $(JAVA_MAP_KEY_SABOTAGE)/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: a key scan that reads on past a damaged key left the $$arm replay green"; exit 1; \
+		fi; \
+		grep -q 'damaged load' $(JAVA_MAP_KEY_SABOTAGE)/log || { cat $(JAVA_MAP_KEY_SABOTAGE)/log; exit 1; }; \
+	done
+	@echo 'Java map-key control: a key scan that reads on past a damaged key reads a damaged load as a kind mismatch in both arms'
+
+test-java: tables-java-map-key-damage-negative-control
+
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
 # a CHECK — the array's pitch against this build's own — so the forged image
@@ -1909,6 +1971,7 @@ conformance-negative-control-java-block: build/conformance-harness
 	@printf '{"Replace":{"%s/internal/codegen/javatable/block.go":"%s/$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/javatable-block.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/overlay.json
 	go build -overlay $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/overlay.json -o $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema ./cmd/schema
+	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/examples tables/examples
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/pointers tables/pointers
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/blobs tables/blobs
@@ -1960,6 +2023,7 @@ conformance-negative-control-java-walk: build/conformance-harness
 	@printf '{"Replace":{"%s/internal/codegen/javatable/variableform.go":"%s/$(CONFORMANCE_NEGATIVE_JAVA_WALK)/variableform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/overlay.json
 	go build -overlay $(CONFORMANCE_NEGATIVE_JAVA_WALK)/overlay.json -o $(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema ./cmd/schema
+	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/examples tables/examples
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/pointers tables/pointers
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/blobs tables/blobs
@@ -2313,22 +2377,42 @@ test-java: tables-java-view tables-java-descriptor-doc
 
 # THE FRAMING SURFACE, its Java leg (docs/LAYERS/1-framing.md): the Java driver
 # answers every framing row and passes it, none absent
-# (test/conformance/framing/gate). Its negative control recompiles the tblr1
-# unit with the id table's 4096-entry cap taken out of trailerBase (§3, THE
-# DISTINCTNESS CHECK; rule F6) and requires the framing surface to go RED on
-# frame_entries_4097.
+# (test/conformance/framing/gate). The diamond-chain row (2^40 paths over 82
+# shared nodes) passing is the linear-time check: a walk that re-entered a
+# closed node would not finish. Its negative control recompiles two units
+# twice. First, one rule out of each: tblr1 without the id table's 4096-entry
+# cap (§3, THE DISTINCTNESS CHECK; F6), and the pointers unit's ListNode load
+# without the cycle check (§3.1, §4; T8); framing must go RED on
+# frame_entries_4097 and the three cycle rows. Second, the pointers unit's
+# cycle walk taking a CLOSED node for an open one, so a share reads as a
+# cycle: framing must go RED on node_diamond_chain.
 JAVA_FRAMING_CONTROL := build/conformance-java-framing-control
 .PHONY: conformance-java-framing conformance-negative-control-java-framing
 conformance-java-framing: build/conformance-harness build-conformance-java
 	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/build/conformance-java Driver" build/conformance-java-framing
 conformance-negative-control-java-framing: build/conformance-harness build-conformance-java
-	@rm -rf $(JAVA_FRAMING_CONTROL) && mkdir -p $(JAVA_FRAMING_CONTROL)/src $(JAVA_FRAMING_CONTROL)/classes
-	@cp build/tables-generated-java/r1/*.java $(JAVA_FRAMING_CONTROL)/src/
-	@sed -i.orig 's/count < 0 || count > 4096 || count/count < 0 || count/' $(JAVA_FRAMING_CONTROL)/src/TableVariable.java
-	@! cmp -s $(JAVA_FRAMING_CONTROL)/src/TableVariable.java $(JAVA_FRAMING_CONTROL)/src/TableVariable.java.orig || \
-		{ echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
-	@rm $(JAVA_FRAMING_CONTROL)/src/TableVariable.java.orig
-	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_FRAMING_CONTROL)/classes $(JAVA_FRAMING_CONTROL)/src/*.java
+	@rm -rf $(JAVA_FRAMING_CONTROL) && mkdir -p $(JAVA_FRAMING_CONTROL)/r1 $(JAVA_FRAMING_CONTROL)/pointers \
+		$(JAVA_FRAMING_CONTROL)/share $(JAVA_FRAMING_CONTROL)/classes $(JAVA_FRAMING_CONTROL)/share-classes
+	@cp build/tables-generated-java/r1/*.java $(JAVA_FRAMING_CONTROL)/r1/
+	@cp build/tables-generated-java/pointers/*.java $(JAVA_FRAMING_CONTROL)/pointers/
+	@cp build/tables-generated-java/pointers/*.java $(JAVA_FRAMING_CONTROL)/share/
+	@sed -i.orig 's/count < 0 || count > 4096 || count/count < 0 || count/' $(JAVA_FRAMING_CONTROL)/r1/TableVariable.java
+	@sed -i.orig 's/if (TableVariable.cyclic(nt))/if (false \&\& TableVariable.cyclic(nt))/' $(JAVA_FRAMING_CONTROL)/pointers/ListNodeVariable.java
+	@sed -i.orig 's/if (state\[t\] == 1) {/if (state[t] != 0) {/' $(JAVA_FRAMING_CONTROL)/share/TableVariable.java
+	@for f in r1/TableVariable.java pointers/ListNodeVariable.java share/TableVariable.java; do \
+		! cmp -s $(JAVA_FRAMING_CONTROL)/$$f $(JAVA_FRAMING_CONTROL)/$$f.orig || \
+			{ echo "NEGATIVE CONTROL: the sabotage of $$f did not apply"; exit 1; }; done
+	@rm $(JAVA_FRAMING_CONTROL)/*/*.orig
+	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_FRAMING_CONTROL)/classes \
+		$(JAVA_FRAMING_CONTROL)/r1/*.java $(JAVA_FRAMING_CONTROL)/pointers/*.java
+	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_FRAMING_CONTROL)/share-classes \
+		$(JAVA_FRAMING_CONTROL)/share/*.java
 	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/classes:$(CURDIR)/build/conformance-java Driver" \
-		$(JAVA_FRAMING_CONTROL)/run frame_entries_4097
+		$(JAVA_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
+	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/share-classes:$(CURDIR)/build/conformance-java Driver" \
+		$(JAVA_FRAMING_CONTROL)/run-share node_diamond_chain
 test-java: conformance-java-framing
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-java/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

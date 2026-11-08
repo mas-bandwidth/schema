@@ -137,7 +137,7 @@ func looseInstance(t *testing.T, m *tabletext.Model) *tabletext.Instance {
 }
 
 // overTotalInstance is a Wide value (no total) whose names sum to 16, past
-// Total.names' 12: the Total reader keeps its longest prefix within 12.
+// Total.names' 12: the Total reader refuses the whole value.
 func overTotalInstance(t *testing.T, m *tabletext.Model) *tabletext.Instance {
 	t.Helper()
 	inst := m.New(m.Lookup("Wide"))
@@ -158,7 +158,7 @@ func encodeInstance(t *testing.T, m *tabletext.Model, inst *tabletext.Instance) 
 // unbounded spellings to the Go reference through runtime/load.lobster and
 // runtime/schema_save.lobster (docs/SPEC-TABLES.md §2.13, §2.13.1;
 // docs/PORT-LOBSTER.md, THE LOAD): load, save and re-load must agree byte for
-// byte and report for report, each construct named with its count.
+// byte with complete values; over-bound lists refuse whole.
 func TestLobsterTextLists(t *testing.T) {
 	t.Parallel()
 	g := textListsUnit(t)
@@ -181,17 +181,16 @@ func TestLobsterTextLists(t *testing.T) {
 		{kind: "instance", name: "unbounded_loose", unit: "textlists", root: "Loose", data: encodeInstance(t, m, looseValue)},
 	}
 	loaded := runUnit(t, g, within)
-	// Total is bounded: its report and value are the tablewire reference's.
+	// Total is bounded: acceptance and the complete value match the reference.
 	if loaded.lob[0] != loaded.goLine[0] {
-		t.Errorf("total_within: the report is not the reference's:\nlobster: %s\ngo:      %s", loaded.lob[0], loaded.goLine[0])
+		t.Errorf("total_within: acceptance is not the reference's:\nlobster: %s\ngo:      %s", loaded.lob[0], loaded.goLine[0])
 	}
 	if loaded.lob[1] != loaded.goDump[0] {
 		t.Errorf("total_within: the loaded value is not the reference's at byte %s", divergence(loaded.lob[1], loaded.goDump[0]))
 	}
 	// Unbounded text has no length bound, so tablewire.Decode's string(N)
-	// clamp is not its answer; the Go MODEL of the same instance is. The read
-	// reports nothing, as §2.13.1 states.
-	if got, want := loaded.lob[2], "0,0,0,0,0,false,read"; got != want {
+	// bound does not apply; the complete Go model is the expected value.
+	if got, want := loaded.lob[2], "read"; got != want {
 		t.Errorf("unbounded_loose: report %s, want %s", got, want)
 	}
 	looseDump := &goDumper{labels: map[*tabletext.Instance]int{looseValue: 0}, next: 1}
@@ -220,22 +219,14 @@ func TestLobsterTextLists(t *testing.T) {
 		t.Errorf("unbounded_loose: the re-loaded value is not the Go model's at byte %s", divergence(saved.dump[1], looseDump.rec(looseValue)))
 	}
 
-	// THE TOTAL on the read side: a wire whose names sum to 16 is read by
-	// Total with the first element kept and the second dropped, clamped once
-	// and the field named (docs/SPEC-TABLES.md §2.13).
-	over := loadRow{kind: "instance", name: "total_prefix", unit: "textlists", root: "Total", data: encodeInstance(t, m, overTotalInstance(t, m))}
+	// A total violation refuses the complete value; no longest prefix survives.
+	over := loadRow{kind: "instance", name: "total_over_bound", unit: "textlists", root: "Total", data: encodeInstance(t, m, overTotalInstance(t, m))}
 	res := runUnit(t, g, []loadRow{over})
-	if got, want := res.lob[0], "0,0,0,1,0,false,read"; got != want {
-		t.Errorf("total_prefix: report %s, want %s", got, want)
+	if res.lob[0] != "refused" || res.lob[1] != "nil" {
+		t.Errorf("over-total list publishes a value: %v", res.lob)
 	}
-	keep := m.New(m.Lookup("Total"))
-	setTextList(t, m, keep, "names", []string{"abcdefgh"}, nil)
-	d := &goDumper{labels: map[*tabletext.Instance]int{keep: 0}, next: 1}
-	if got, want := res.lob[1], d.rec(keep); got != want {
-		t.Errorf("total_prefix: value is not the prefix Go holds at byte %s", divergence(got, want))
-	}
-	if !strings.Contains(res.lob[1], "names=#1") {
-		t.Errorf("total_prefix: the kept prefix is not one element: %s", res.lob[1])
+	if res.goLine[0] != "refused" {
+		t.Fatal("reference unexpectedly accepts over-total fixture")
 	}
 
 	// THE UNBOUNDED element and key past every string(N) bound: the same
@@ -280,5 +271,5 @@ func TestLobsterTextListsNegativeControl(t *testing.T) {
 	if got.lob[1] == want {
 		t.Fatalf("the patched runtime still matches the Go model: %s", got.lob[1])
 	}
-	t.Logf("the value comparison went red under the patch: text-list unbounded element was clamped to the string bound")
+	t.Logf("the value comparison went red under the patch: text-list unbounded element was incorrectly constrained by the string bound")
 }

@@ -1,0 +1,16 @@
+#!/bin/sh
+# The typed JSON/value bridge: both forms against the committed corpus.
+set -eu
+out=build/goose-json-conformance
+mkdir -p "$out"
+cat > "$out/driver" <<'DRIVER'
+#!/bin/sh
+if [ "$2" = list ]; then
+    printf '%s\n' wire json-read json-write json-hostile
+    exit 0
+fi
+exec test/conformance/goose/driver "$@"
+DRIVER
+chmod +x "$out/driver"
+printf 'goose %s/driver\n' "$out" > "$out/drivers.txt"
+exec build/conformance-harness run --only goose --drivers "$out/drivers.txt" --work "$out/work"

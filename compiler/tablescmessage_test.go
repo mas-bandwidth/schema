@@ -110,6 +110,12 @@ int main(void) {
 }`)
 }
 
+// A message read across a lawful lineage (docs/SPEC-TABLES.md §4, §6.5):
+// every kind the receiver widened decodes exactly and counts `widened`, and
+// the fields the receiver dropped count `unknown`. The engine is the oracle
+// for the C read, which reports the same counters, nothing past them, and
+// saves the same bytes. A receiver whose ranges and bounds the sender's
+// values cross, or whose kind changed, refuses the message whole.
 func TestCTableMessageEvolution(t *testing.T) {
 	sender := unitFromSource(t, `package probe
 type Item { value int8 }
@@ -127,14 +133,13 @@ changed bool }
 	receiver := unitFromSource(t, `package probe
 type Item { value int32 }
 union Payload { number uint32 }
-fixed table Root { x int32 = 1000 | min=1000,max=2000
-y uint64 | min=0,max=100
+fixed table Root { x int32
+y uint64
 actual float64
-name string(4)
-values [..2]uint32 | min=0,max=100
+name string(16)
+values [..4]uint32
 child Item
-choice Payload
-changed string(4) }
+choice Payload }
 `)
 	sm, rm := tabletext.NewModel(sender), tabletext.NewModel(receiver)
 	v := sm.New(sm.Lookup("Root"))
@@ -152,9 +157,40 @@ changed string(4) }
 	if err := vocabulary.AnnounceRead(announcement, &report); err != nil {
 		t.Fatal(err)
 	}
+
+	// the refusal: each receiver below crosses one rule, and the message
+	// refuses whole with no value placed
+	for _, crossed := range []string{
+		"x int32 = 1000 | min=1000,max=2000",
+		"y uint64 | min=0,max=100",
+		"name string(4)",
+		"values [..2]uint32",
+		"values [..4]uint32 | min=0,max=100",
+		"changed string(4)",
+	} {
+		field := strings.Fields(crossed)[0]
+		var lines []string
+		for _, line := range []string{"x int32", "y uint64", "actual float64", "name string(16)", "values [..4]uint32", "child Item", "choice Payload"} {
+			if strings.Fields(line)[0] != field {
+				lines = append(lines, line)
+			}
+		}
+		lines = append(lines, crossed)
+		ru := unitFromSource(t, "package probe\ntype Item { value int32 }\nunion Payload { number uint32 }\nfixed table Root { "+strings.Join(lines, "\n")+" }\n")
+		rr := tabletext.NewModel(ru)
+		var refused tabletext.Report
+		if ok, err := tablewire.DecodeMessage(rr, rr.New(rr.Lookup("Root")), wire, &vocabulary, &refused); ok || !tablewire.ReadRefusal(err) || !refused.Refused {
+			t.Fatalf("%s: the message read: ok=%v err=%v %+v", crossed, ok, err, refused)
+		}
+	}
+
+	report = tabletext.Report{}
 	decoded := rm.New(rm.Lookup("Root"))
 	if ok, err := tablewire.DecodeMessage(rm, decoded, wire, &vocabulary, &report); err != nil || !ok {
 		t.Fatalf("oracle: %v %+v", err, report)
+	}
+	if report.Refused || report.Widened == 0 || report.Unknown != 2 {
+		t.Fatalf("oracle: want widenings and two unknown fields, got %+v", report)
 	}
 	expected, err := tablewire.Encode(rm, decoded)
 	if err != nil {
@@ -176,7 +212,7 @@ int main(void){
  CHECK(announce_read(&v,announcement,sizeof(announcement),&report));CHECK(root_load_messages_tolerant(&value,&count,&v,wire,sizeof(wire),&report));
  CHECK(!report.malformed&&!report.refused&&report.widened==%d&&report.clamped==%d&&report.kind_mismatch==%d&&report.unknown==%d);
  n=root_save(&value,saved,sizeof(saved));CHECK(n==sizeof(expected));CHECK(!memcmp(saved,expected,sizeof(expected)));return 0;
-}`, octets(announcement), octets(wire), octets(expected), report.Widened, report.Clamped, report.KindMismatch, report.Unknown)
+}`, octets(announcement), octets(wire), octets(expected), report.Widened, 0, 0, report.Unknown)
 	runCTableWireProbe(t, receiver, source)
 }
 

@@ -1,0 +1,3 @@
+package formwitnesses
+table Holder | forms="wire,json,cook" { by_name map[string(8)]Disabled
+    child *Disabled }

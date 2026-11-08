@@ -29,6 +29,7 @@ func lobsterJsonWalkChanges(t *testing.T, order []string, units map[string]*load
 	return changed
 }
 func TestLobsterJsonWalkIsOneRuntime(t *testing.T) {
+	t.Parallel()
 	order, _, units := jsonUnits(t)
 	if len(order) < 2 {
 		t.Fatal("one unit cannot prove a shared runtime")
@@ -39,6 +40,7 @@ func TestLobsterJsonWalkIsOneRuntime(t *testing.T) {
 	t.Logf("%d units carry the exact embedded JSON walk", len(order))
 }
 func TestLobsterJsonWalkNegativeControl(t *testing.T) {
+	t.Parallel()
 	order, _, units := jsonUnits(t)
 	if len(order) < 2 {
 		t.Fatal("one unit cannot prove a shared runtime")

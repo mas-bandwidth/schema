@@ -211,7 +211,17 @@ public final class BenchMixedFixed {
         v.ackBits = TableFixed.get32(b, at + 8);
         v.sessionId = TableFixed.get64(b, at + 12);
         v.clientId = TableFixed.get32(b, at + 20);
-        v.nonce = TableFixed.get64(b, at + 24);
+        {
+            long q = TableFixed.get64(b, at + 24);
+            if (Long.compareUnsigned(q, 0x0L) < 0) {
+                q = 0x0L;
+                r.clamped++;
+            } else if (Long.compareUnsigned(q, 0xffffffffffffffffL) > 0) {
+                q = 0xffffffffffffffffL;
+                r.clamped++;
+            }
+            v.nonce = q;
+        }
         {
             long q = TableFixed.get64(b, at + 32);
             if (q < -1000000000000L) {

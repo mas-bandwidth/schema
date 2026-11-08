@@ -41,7 +41,7 @@ WFR_DRIVER_cs    = $(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconform
 
 WFR_DEPS_dart    = build/conformance-dart
 WFR_DRIVER_dart  = build/conformance-dart wire-fuzz
-WFR_FLAGS_dart   = --finite-owed tables-finite/dart
+WFR_FLAGS_dart   = --builder --finite-owed tables-finite/dart
 
 WFR_DEPS_elixir  = build/elixir-tables-ebin/.stamp
 WFR_DRIVER_elixir = test/conformance/elixir/driver wire-fuzz
@@ -55,11 +55,10 @@ WFR_DRIVER_goose =
 
 WFR_DEPS_java    = build-conformance-java
 WFR_DRIVER_java  = $(JAVA_WIRE_FUZZ_DRIVER)
-WFR_FLAGS_java   = --finite-owed tables-finite/java
 
 WFR_DEPS_js      = build/tables-generated-js/.stamp cards-js-generate
 WFR_DRIVER_js    = test/conformance/js/driver wire-fuzz
-WFR_FLAGS_js     = --finite-owed tables-finite/js
+WFR_FLAGS_js     = --mixed-builder --finite-owed tables-finite/js
 
 WFR_DEPS_lobster = lobster-dist-present build/conformance-lobster build/lobster-wirefuzzhost
 WFR_DRIVER_lobster = $(LOBSTER_WIRE_FUZZ_HOST)

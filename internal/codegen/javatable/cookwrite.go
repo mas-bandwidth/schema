@@ -12,7 +12,7 @@ import (
 // only on the cold producer path (docs/SPEC-TABLES.md §7.6).
 func tableCookWriteSource(u *ir.Unit, ck *cookUnit) string {
 	var b strings.Builder
-	b.WriteString(tableCookWriteRuntime)
+	b.WriteString(strings.ReplaceAll(tableCookWriteRuntime, "/*REGION_ALIGN*/8L", fmt.Sprintf("%dL", ir.TableRegionAlign(u))))
 	b.WriteString("    private static TableCookInfo info(long id) {\n")
 	for _, name := range ck.order {
 		st := u.Tables[name]
@@ -65,12 +65,75 @@ public final class TableCookWrite {
     public static final class Plan {
         private final java.util.ArrayList<Node> nodes = new java.util.ArrayList<>();
         private final java.util.IdentityHashMap<Object, Node> index = new java.util.IdentityHashMap<>();
+        private Object[] slotHolders = new Object[16];
+        private TableCookFieldInfo[] slotFields = new TableCookFieldInfo[16];
+        private Node[] slotNodes = new Node[16];
+        private int slotCount;
         public long total;
         private long dataLength;
         private long alignment;
+
+        static int slotHash(Object holder, TableCookFieldInfo f) {
+            int h = System.identityHashCode(holder) * 31 + System.identityHashCode(f);
+            return h ^ (h >>> 16);
+        }
+
+        Node slotNode(Object holder, TableCookFieldInfo f) {
+            int mask = slotHolders.length - 1;
+            int idx = slotHash(holder, f) & mask;
+            while (slotHolders[idx] != null) {
+                if (slotHolders[idx] == holder && slotFields[idx] == f) {
+                    return slotNodes[idx];
+                }
+                idx = (idx + 1) & mask;
+            }
+            return null;
+        }
+
+        void putSlotNode(Object holder, TableCookFieldInfo f, Node n) {
+            if (slotCount * 2 >= slotHolders.length) {
+                rehashSlots(slotHolders.length * 2);
+            }
+            int mask = slotHolders.length - 1;
+            int idx = slotHash(holder, f) & mask;
+            while (slotHolders[idx] != null) {
+                if (slotHolders[idx] == holder && slotFields[idx] == f) {
+                    slotNodes[idx] = n;
+                    return;
+                }
+                idx = (idx + 1) & mask;
+            }
+            slotHolders[idx] = holder;
+            slotFields[idx] = f;
+            slotNodes[idx] = n;
+            slotCount++;
+        }
+
+        void rehashSlots(int cap) {
+            Object[] oldH = slotHolders;
+            TableCookFieldInfo[] oldF = slotFields;
+            Node[] oldN = slotNodes;
+            slotHolders = new Object[cap];
+            slotFields = new TableCookFieldInfo[cap];
+            slotNodes = new Node[cap];
+            int mask = cap - 1;
+            for (int i = 0; i < oldH.length; i++) {
+                if (oldH[i] == null) {
+                    continue;
+                }
+                int idx = slotHash(oldH[i], oldF[i]) & mask;
+                while (slotHolders[idx] != null) {
+                    idx = (idx + 1) & mask;
+                }
+                slotHolders[idx] = oldH[i];
+                slotFields[idx] = oldF[i];
+                slotNodes[idx] = oldN[i];
+            }
+        }
     }
 
     private static final long FLOOR = 8; // the region's alignment floor (§7.1)
+    private static final long REGION_ALIGN = /*REGION_ALIGN*/8L;
 
     // where a node's extent begins: its record's size rounded to the greater of
     // the floor and every element alignment its types can hold (§7.6)
@@ -146,14 +209,34 @@ public final class TableCookWrite {
                 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"));
     }
 
+    private static void addString(Plan p, Object holder, String value, TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        if (value == null) { return; }
+        if (holder != null) {
+            long idx = ((Number) field(holder, f.sourceName + "Idx")).longValue();
+            if (idx < 0) {
+                Node shared = p.index.get(value);
+                if (shared != null) {
+                    p.putSlotNode(holder, f, shared);
+                    return;
+                }
+            }
+        }
+        Node n = new Node(value, value.getBytes(java.nio.charset.StandardCharsets.UTF_8), true);
+        p.index.putIfAbsent(value, n);
+        p.nodes.add(n);
+        if (holder != null) { p.putSlotNode(holder, f, n); }
+    }
+
     private static void discoverField(Plan p, Object value, TableCookFieldInfo f)
             throws ReflectiveOperationException {
         if (absentRecord(value, f)) { return; }
         Object source = field(value, f.sourceName);
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
             // a holder's elements are walked in the order the array lays them:
             // a list's in index order, a map's entries ascending by key (§2.8)
-            for (Object e : elements(source, f)) { discoverValue(p, e, f.element); }
+            for (Object e : elements(source, f)) { discoverValue(p, null, e, f.element); }
             return;
         }
         if (f.isArray) {
@@ -164,16 +247,18 @@ public final class TableCookWrite {
             // a FIXED array's value may hold fewer than N elements: the slots
             // past it are value-initialized (§7.2) and reach no node
             used = Math.min(used, length(source));
-            for (int i = 0; i < used; i++) { discoverValue(p, element(source, i), f); }
+            for (int i = 0; i < used; i++) { discoverValue(p, value, element(source, i), f); }
         } else {
-            discoverValue(p, source, f);
+            discoverValue(p, value, source, f);
         }
     }
 
-    private static void discoverValue(Plan p, Object source, TableCookFieldInfo f)
+    private static void discoverValue(Plan p, Object holder, Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
-        if (f.isPointer) { add(p, source, f.record()); }
-        else if (f.storage == TableCookStorage.RECORD && source != null) {
+        if (f.isPointer) {
+            if (source instanceof String) { addString(p, holder, (String) source, f); }
+            else { add(p, source, f.record()); }
+        } else if (f.storage == TableCookStorage.RECORD && source != null) {
             discover(p, source, f.record());
         } else if (f.storage == TableCookStorage.UNION && source != null) {
             // the SET arm is the union's one edge (§2.6, §3.1), walked in the
@@ -215,7 +300,33 @@ public final class TableCookWrite {
     private static void carveField(Plan p, byte[] out, int order, long at, long base, long[] cursor,
             Object value, TableCookFieldInfo f) throws ReflectiveOperationException {
         if (f.isPointer || absentRecord(value, f)) { return; }
+        if (f.storage == TableCookStorage.STRING && f.countOffset < 0) {
+            long slot = at + f.offset;
+            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) {
+                Object raw = field(value, f.sourceName);
+                if (raw instanceof String && !((String) raw).isEmpty()) {
+                    throw new IllegalArgumentException("absent optional text holds extent");
+                }
+                put(out, order, slot, 0, 8);
+                return;
+            }
+            String s = (String) field(value, f.sourceName);
+            if (s == null || s.isEmpty()) {
+                put(out, order, slot, 0, 8);
+                return;
+            }
+            byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            int n = bytes.length;
+            cursor[0] = aligned(cursor[0], 8);
+            long blob = base + cursor[0];
+            cursor[0] += aligned(8L + n + 1L, REGION_ALIGN);
+            put(out, order, slot, blob - slot, 8);
+            put(out, order, blob, n, 4);
+            if (out != null) { System.arraycopy(bytes, 0, out, (int) (blob + 8L), n); }
+            return;
+        }
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
             java.util.List<Object> elems = elements(field(value, f.sourceName), f);
             int n = elems.size();
             cursor[0] = aligned(cursor[0], f.extentAlign);
@@ -225,7 +336,7 @@ public final class TableCookWrite {
             put(out, order, slot, n > 0 ? array - slot : 0, 8);
             put(out, order, slot + 8, n, 4);
             for (int i = 0; i < n; i++) {
-                value(p, out, order, array + (long) i * f.extentSize, elems.get(i), f.element);
+                value(p, out, order, array + (long) i * f.extentSize, null, elems.get(i), f.element);
             }
             for (int i = 0; i < n; i++) {
                 carveValue(p, out, order, array + (long) i * f.extentSize, base, cursor, elems.get(i), f.element);
@@ -376,10 +487,10 @@ public final class TableCookWrite {
         return ((Number) source).longValue();
     }
 
-    private static void value(Plan p, byte[] out, int order, long at, Object source, TableCookFieldInfo f)
+    private static void value(Plan p, byte[] out, int order, long at, Object holder, Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
         if (f.isPointer) {
-            Node target = p.index.get(source);
+            Node target = (source instanceof String && holder != null) ? p.slotNode(holder, f) : p.index.get(source);
             if (source != null && target == null) { throw new IllegalArgumentException("unnumbered pointer"); }
             put(out, order, at, target == null ? 0 : (64L + target.offset - at), 8);
         } else if (f.storage == TableCookStorage.RECORD) {
@@ -417,22 +528,32 @@ public final class TableCookWrite {
     // descriptor's offsets: a record's field, or a union's set arm.
     private static void store(Plan p, byte[] out, int order, long at, Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
-        // a LIST's or a MAP's holder is written by the extent's carve, which
-        // places the array it points at (§7.6)
-        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) { return; }
-        Object v = field(source, f.sourceName);
         if (f.presentOffset >= 0) {
             Object present = field(source, f.sourceName + "Present");
             put(out, order, at + f.presentOffset, Boolean.TRUE.equals(present) ? 1 : 0, 1);
         }
+        // a LIST's or a MAP's holder is written by the extent's carve, which
+        // places the array it points at (§7.6)
+        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP || (f.storage == TableCookStorage.STRING && !f.isPointer && f.countOffset < 0)) { return; }
+        Object v = field(source, f.sourceName);
         long dest = at + f.offset;
         if (absentRecord(source, f)) {
             if (f.countOffset >= 0) { put(out, order, at + f.countOffset, 0, 4); }
             int slots = f.isArray ? f.arrayBound : 1;
-            for (int i = 0; i < slots; i++) { value(p, out, order, dest + (long) i * f.elemSize, null, f); }
+            for (int i = 0; i < slots; i++) { value(p, out, order, dest + (long) i * f.elemSize, source, null, f); }
             return;
         }
-        if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
+        if (f.storage == TableCookStorage.WSTRING) {
+            char[] units = (char[]) v;
+            int used = units == null ? 0 : units.length;
+            if (used > f.arrayBound || (units != null && !TableVariable.wideValid(units))) {
+                throw new IllegalArgumentException("wide text value");
+            }
+            // Count and encode Java's UTF-16 units directly, preserving surrogate pairs.
+            // The plan validates before writing; the zeroed region supplies the terminator.
+            for (int i = 0; i < used; i++) { put(out, order, dest + 2L * i, units[i], 2); }
+            put(out, order, at + f.countOffset, used, 4);
+        } else if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
             byte[] bytes = v instanceof String ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
                     : (byte[]) v;
             if (bytes == null) { bytes = new byte[0]; }
@@ -457,10 +578,10 @@ public final class TableCookWrite {
             // element record's declared defaults for a record
             int live = f.countOffset >= 0 ? used : Math.min(used, length(v));
             for (int i = 0; i < f.arrayBound; i++) {
-                value(p, out, order, dest + (long) i * f.elemSize, i < live ? element(v, i) : null, f);
+                value(p, out, order, dest + (long) i * f.elemSize, source, i < live ? element(v, i) : null, f);
             }
         } else {
-            value(p, out, order, dest, v, f);
+            value(p, out, order, dest, source, v, f);
         }
     }
 

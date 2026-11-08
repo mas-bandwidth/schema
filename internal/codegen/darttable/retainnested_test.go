@@ -56,8 +56,9 @@ func TestRetainedRecordsReturnToTheirOwnBody(t *testing.T) {
 	}
 
 	// the witness: the old matcher, a record keyed by its field walk
-	const keyed = "    if (!identical(rec.owner, owner)) continue;\n"
-	const walked = `    if (rec.path.length != w.path.length) continue;
+	const keyed = "  for (final rec in t._byOwner[owner] ?? const <_RetainRecord>[]) {\n"
+	const walked = `  for (final rec in t.records) {
+    if (rec.path.length != w.path.length) continue;
     var same = true;
     for (var i = 0; i < w.path.length; i++) {
       if (rec.path[i] != w.path[i]) {

@@ -86,9 +86,9 @@ const cppT01F4 = cppT01Preface + `
         Lineage got[4];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 4, buffer, cut, plan, 4096, NULL, &lr );
-        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::layout_malformed || lr.malformed )
-            { printf( "F4: cut=%lld m=%lld refused=%d reason=%d malformed=%d\n", (long long) cut, (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.malformed ); return 1; }
-        if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 )
+        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::layout_malformed || lr.damaged )
+            { printf( "F4: cut=%lld m=%lld refused=%d reason=%d malformed=%d\n", (long long) cut, (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.damaged ); return 1; }
+        if ( lr.unknown != 0 || lr.widened != 0 )
             { printf( "F4: cut=%lld moved a counter\n", (long long) cut ); return 1; }
     }
 `
@@ -103,10 +103,10 @@ const cppT01F7 = cppT01Preface + `
         Lineage got[4];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 4, buffer, k, plan, 4096, NULL, &lr );
-        if ( m != -1 || lr.malformed != 1 || lr.refused )
-            { printf( "F7: k=%lld m=%lld malformed=%d refused=%d\n", (long long) k, (long long) m, (int) lr.malformed, (int) lr.refused ); return 1; }
+        if ( m != -1 || lr.damaged != 1 || lr.refused )
+            { printf( "F7: k=%lld m=%lld malformed=%d refused=%d\n", (long long) k, (long long) m, (int) lr.damaged, (int) lr.refused ); return 1; }
         if ( lr.reason != TableFixedReason::truncated ) { printf( "F7: k=%lld reason is %d, not truncated\n", (long long) k, (int) lr.reason ); return 1; }
-        if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 )
+        if ( lr.unknown != 0 || lr.widened != 0 )
             { printf( "F7: k=%lld moved a counter\n", (long long) k ); return 1; }
     }
 `
@@ -122,18 +122,18 @@ const cppT01F8 = cppT01Preface + `
         Lineage got[4];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 8, buffer, written + extra, plan, 4096, NULL, &lr );
-        if ( m != -1 || lr.malformed != 1 || lr.refused )
-            { printf( "F8: extra=%lld m=%lld malformed=%d refused=%d\n", (long long) extra, (long long) m, (int) lr.malformed, (int) lr.refused ); return 1; }
+        if ( m != -1 || lr.damaged != 1 || lr.refused )
+            { printf( "F8: extra=%lld m=%lld malformed=%d refused=%d\n", (long long) extra, (long long) m, (int) lr.damaged, (int) lr.refused ); return 1; }
         if ( lr.reason != TableFixedReason::truncated ) { printf( "F8: extra=%lld reason is %d, not truncated\n", (long long) extra, (int) lr.reason ); return 1; }
-        if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 )
+        if ( lr.unknown != 0 || lr.widened != 0 )
             { printf( "F8: extra=%lld moved a counter\n", (long long) extra ); return 1; }
     }
     {
         Lineage got[8];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 8, buffer, written + recbytes, plan, 4096, NULL, &lr );
-        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::no_layout || lr.malformed )
-            { printf( "F8: extra==record_bytes is one more whole record (TableMessageReason::no_layout), not a ragged tail: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.malformed ); return 1; }
+        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::no_layout || lr.damaged )
+            { printf( "F8: extra==record_bytes is one more whole record (TableMessageReason::no_layout), not a ragged tail: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.damaged ); return 1; }
     }
 `
 
@@ -149,8 +149,8 @@ const cppT01F12 = cppT01Preface + `
         Lineage got[4];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 4, f, written, plan, 4096, NULL, &lr );
-        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::layout_malformed || lr.malformed )
-            { printf( "F12: a changed byte: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.malformed ); return 1; }
+        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::layout_malformed || lr.damaged )
+            { printf( "F12: a changed byte: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.damaged ); return 1; }
     }
     {
         static uint8_t f[1 << 16];
@@ -159,8 +159,8 @@ const cppT01F12 = cppT01Preface + `
         Lineage got[4];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 4, f, written, plan, 4096, NULL, &lr );
-        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::layout_malformed || lr.malformed )
-            { printf( "F12: a changed length: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.malformed ); return 1; }
+        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::layout_malformed || lr.damaged )
+            { printf( "F12: a changed length: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.damaged ); return 1; }
     }
 `
 
@@ -175,9 +175,9 @@ const cppT01F9 = cppT01Preface + `
         memset( dest, 0x5A, sizeof( dest ) );
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( (Lineage *) (void *) dest, 3, buffer, written, plan, 4096, NULL, &lr );
-        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::batch_too_large || lr.malformed )
-            { printf( "F9: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.malformed ); return 1; }
-        if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 )
+        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::batch_too_large || lr.damaged )
+            { printf( "F9: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.damaged ); return 1; }
+        if ( lr.unknown != 0 || lr.widened != 0 )
             { printf( "F9: a counter moved\n" ); return 1; }
         const uint8_t * p = dest;
         for ( int64_t i = 0; i < (int64_t) sizeof( Lineage ) * 3; ++i )
@@ -197,9 +197,9 @@ const cppT01F10 = cppT01Preface + `
         Lineage got[4];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 4, f, written, plan, 4096, NULL, &lr );
-        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::no_layout || lr.malformed )
-            { printf( "F10: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.malformed ); return 1; }
-        if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 )
+        if ( m != -1 || !lr.refused || lr.reason != TableMessageReason::no_layout || lr.damaged )
+            { printf( "F10: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.damaged ); return 1; }
+        if ( lr.unknown != 0 || lr.widened != 0 )
             { printf( "F10: a counter moved\n" ); return 1; }
     }
 `
@@ -219,8 +219,8 @@ const cppT01R7 = cppT01Preface + `
         Lineage got[4];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 4, buffer, written, plan, 4096, &cache, &lr );
-        if ( m != 4 || lr.malformed || lr.refused )
-            { printf( "R7: the identity read did not land: m=%lld malformed=%d refused=%d\n", (long long) m, (int) lr.malformed, (int) lr.refused ); return 1; }
+        if ( m != 4 || lr.damaged || lr.refused )
+            { printf( "R7: the identity read did not land: m=%lld malformed=%d refused=%d\n", (long long) m, (int) lr.damaged, (int) lr.refused ); return 1; }
         if ( cache.compiles != 0 || cache.used != 0 )
             { printf( "R7: the identity lane compiled a plan: compiles=%d used=%d\n", cache.compiles, cache.used ); return 1; }
     }
@@ -240,11 +240,11 @@ const cppT01R8 = cppT01Preface + `
         memset( dest, 0x5A, sizeof( dest ) );
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( (Lineage *) (void *) dest, 4, f, written, plan, 4096, NULL, &lr );
-        if ( m != -1 || !lr.refused || lr.reason != TableFixedReason::layout_unknown || lr.malformed )
-            { printf( "R8: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.malformed ); return 1; }
+        if ( m != -1 || !lr.refused || lr.reason != TableFixedReason::layout_unknown || lr.damaged )
+            { printf( "R8: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.damaged ); return 1; }
         if ( lr.layout_hash != forged )
             { printf( "R8: reported hash 0x%llx, not the file's 0x%llx\n", (unsigned long long) lr.layout_hash, (unsigned long long) forged ); return 1; }
-        if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 || lr.retained != 0 || lr.retain_lost != 0 )
+        if ( lr.unknown != 0 || lr.widened != 0 || lr.retained != 0 || lr.retain_lost != 0 )
             { printf( "R8: TableFixedReason::layout_unknown reports the hash AND NOTHING ELSE; a counter moved\n" ); return 1; }
         const uint8_t * p = dest;
         for ( int64_t i = 0; i < (int64_t) sizeof( Lineage ) * 4; ++i )
@@ -283,8 +283,8 @@ const cppT01R9 = cppT01Preface + `
         Lineage got[2];
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( got, 2, ob, olen, plan, 4096, NULL, &lr );
-        if ( m != 1 || lr.malformed || lr.refused )
-            { printf( "R9: the old file did not read through the lineage: m=%lld malformed=%d refused=%d reason=%d\n", (long long) m, (int) lr.malformed, (int) lr.refused, (int) lr.reason ); return 1; }
+        if ( m != 1 || lr.damaged || lr.refused )
+            { printf( "R9: the old file did not read through the lineage: m=%lld malformed=%d refused=%d reason=%d\n", (long long) m, (int) lr.damaged, (int) lr.refused, (int) lr.reason ); return 1; }
         if ( got[0].x != 0x11111111 || got[0].y != 0x22222222 || got[0].z != 0x33333333 )
             { printf( "R9: the old values did not land: x=%d y=%d z=%d\n", got[0].x, got[0].y, got[0].z ); return 1; }
         if ( got[0].w != 77 )
@@ -295,7 +295,7 @@ const cppT01R9 = cppT01Preface + `
             TableFixedPut32( f + kTableFixedHeaderBytes, (uint32_t) ( L0 - 1 ) ); /* a known hash, a different LENGTH */
             TableReport mr; memset( &mr, 0, sizeof( mr ) );
             int64_t mm = LineageFixedLoad( got, 2, f, olen, plan, 4096, NULL, &mr );
-            if ( mm != -1 || !mr.refused || mr.reason != TableMessageReason::layout_malformed || mr.malformed )
+            if ( mm != -1 || !mr.refused || mr.reason != TableMessageReason::layout_malformed || mr.damaged )
                 { printf( "R9: a different layout length is not TableMessageReason::layout_malformed: mm=%lld refused=%d reason=%d\n", (long long) mm, (int) mr.refused, (int) mr.reason ); return 1; }
         }
         {
@@ -304,7 +304,7 @@ const cppT01R9 = cppT01Preface + `
             f[kTableFixedHeaderBytes + 4] ^= 0xFF; /* a known hash, different BYTES */
             TableReport mr; memset( &mr, 0, sizeof( mr ) );
             int64_t mm = LineageFixedLoad( got, 2, f, olen, plan, 4096, NULL, &mr );
-            if ( mm != -1 || !mr.refused || mr.reason != TableMessageReason::layout_malformed || mr.malformed )
+            if ( mm != -1 || !mr.refused || mr.reason != TableMessageReason::layout_malformed || mr.damaged )
                 { printf( "R9: different layout bytes are not TableMessageReason::layout_malformed: mm=%lld refused=%d reason=%d\n", (long long) mm, (int) mr.refused, (int) mr.reason ); return 1; }
         }
     }
@@ -341,9 +341,9 @@ const cppT01R12 = cppT01Preface + `
         memset( dest, 0x5A, sizeof( dest ) );
         TableReport r2; memset( &r2, 0, sizeof( r2 ) );
         int64_t m = LineageFixedLoad( (Lineage *) (void *) dest, 2, f, olen, plan, 4096, NULL, &r2 );
-        if ( m != -1 || !r2.refused || r2.reason != TableMessageReason::no_layout || r2.malformed )
-            { printf( "R12: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) r2.refused, (int) r2.reason, (int) r2.malformed ); return 1; }
-        if ( r2.clamped != 0 || r2.unknown != 0 || r2.kind_mismatch != 0 || r2.widened != 0 || r2.duplicate != 0 )
+        if ( m != -1 || !r2.refused || r2.reason != TableMessageReason::no_layout || r2.damaged )
+            { printf( "R12: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) r2.refused, (int) r2.reason, (int) r2.damaged ); return 1; }
+        if ( r2.unknown != 0 || r2.widened != 0 )
             { printf( "R12: a counter moved\n" ); return 1; }
         const uint8_t * p = dest;
         for ( int64_t i = 0; i < (int64_t) sizeof( Lineage ) * 2; ++i )
@@ -365,9 +365,9 @@ const cppT01R13 = cppT01Preface + `
         TableReport lr; memset( &lr, 0, sizeof( lr ) );
         int64_t m = LineageFixedLoad( (Lineage *) (void *) dest, 4, f, written, plan, 4096, NULL, &lr );
         if ( m != -1 ) { printf( "R13: a refusal returns -1, not %lld\n", (long long) m ); return 1; }
-        if ( !lr.refused || lr.malformed ) { printf( "R13: refused=%d malformed=%d — refused+reason and malformed are never both set\n", (int) lr.refused, (int) lr.malformed ); return 1; }
+        if ( !lr.refused || lr.damaged ) { printf( "R13: refused=%d malformed=%d — refused+reason and malformed are never both set\n", (int) lr.refused, (int) lr.damaged ); return 1; }
         if ( lr.reason != TableFixedReason::layout_unknown ) { printf( "R13: reason=%d, not TableFixedReason::layout_unknown\n", (int) lr.reason ); return 1; }
-        if ( lr.unknown != 0 || lr.kind_mismatch != 0 || lr.clamped != 0 || lr.widened != 0 || lr.duplicate != 0 || lr.retained != 0 || lr.retain_lost != 0 )
+        if ( lr.unknown != 0 || lr.widened != 0 || lr.retained != 0 || lr.retain_lost != 0 )
             { printf( "R13: a counter moved on a refusal\n" ); return 1; }
         const uint8_t * p = dest;
         for ( int64_t i = 0; i < (int64_t) sizeof( Lineage ) * 4; ++i )

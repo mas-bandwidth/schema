@@ -38,6 +38,7 @@ tblr2 = { path = "../../../build/tables-generated-rust/tblr2" }
 tblg1 = { path = "../../../build/tables-generated-rust/tblg1" }
 backenddemo = { path = "../../../build/tables-generated-rust/backenddemo" }
 vocabdemo = { path = "../../../build/tables-generated-rust/vocabdemo" }
+widelistdemo = { path = "../../../build/tables-generated-rust/widelistdemo" }
 vocab9demo = { path = "../../../build/tables-generated-rust/vocab9demo" }
 tblrt1 = { path = "../../../build/tables-generated-rust/tblrt1" }
 widedemo = { path = "../../../build/tables-generated-rust/widedemo" }

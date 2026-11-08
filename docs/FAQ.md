@@ -245,6 +245,9 @@ in: C++ engine, C# for Unity, Go for backend services, Rust for tooling,
 JavaScript for the browser client, Dart for Flutter clients, Elixir for the
 BEAM realtime services, Java for the JVM side of the estate.
 
+Python is being ported now, one layer at a time, and does not generate code
+yet: [PORT-PYTHON.md](PORT-PYTHON.md) is its design.
+
 A new backend is a Go package that walks the same IR the existing nine consume,
 and the cross-language test harness would tell you immediately whether it
 agrees with the others bit for bit. That is the mechanism, but it is real work

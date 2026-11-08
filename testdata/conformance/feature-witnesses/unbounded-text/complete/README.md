@@ -1,0 +1,1 @@
+All five unbounded-text collection spellings, pointer-child closure, long UTF-8 keys/elements, and absent versus present-empty values. The native Rust/Dart tests compare populated bytes and both cooked byte orders against independent neutral writers.

@@ -1,0 +1,4 @@
+package probe
+fixed table Root {
+    at timestamp
+}

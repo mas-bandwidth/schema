@@ -14,12 +14,14 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// RELEASE (docs/PORT-LOBSTER.md, THE LOAD): a pointer graph may close a cycle
-// (docs/SPEC-TABLES.md §3.1) and the tolerant read places it, but Lobster
-// frees by reference counting, so a cycle of Records outlives the caller. The
-// VM reports such records at exit ("LEAKS FOUND"). These tests load a cyclic
-// ListNode wire of tables/pointers and hold the exit report empty, with a
-// reversed witness for each of the two rules.
+// RELEASE (docs/PORT-LOBSTER.md, THE LOAD): Lobster frees by reference
+// counting, so a cycle of Records outlives the caller, and the VM reports such
+// records at exit ("LEAKS FOUND"). A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md
+// §3.1, §4; Glenn, 2026-10-31): the load refuses it as malformed and answers
+// nil, and the refusal itself must leak nothing. These tests load a cyclic
+// ListNode wire of tables/pointers, hold the refusal and an empty exit report,
+// and carry a reversed witness for the cycle check and for each of the two
+// rules that end what the refused load placed.
 
 // cyclicListWire writes a four-node ListNode chain root -> B -> C -> D through
 // the engine and rewrites C's pointer (node index 4, D) to name `to`, which
@@ -77,9 +79,11 @@ func cyclicListWire(t *testing.T, to byte, orphan bool) []byte {
 	return wire
 }
 
-// runRelease loads the wire at ListNode, saves it (so the graph is walked as
-// a caller walks it), releases it when release is set, and returns the whole
-// of stdout, which carries the VM's exit-time leak report.
+// runRelease loads the wire at ListNode, tolerantly, and prints the report's
+// malformed flag and whether the load answered a record; a record it does
+// answer is saved (so the graph is walked as a caller walks it) and released
+// when release is set. It returns the whole of stdout, which carries the VM's
+// exit-time leak report. patch, when set, rewrites the emitted load.lobster.
 func runRelease(t *testing.T, wire []byte, release bool, patch func(string) string) string {
 	t.Helper()
 	paths, err := compiler.GatherPaths(prefix([]string{"tables/pointers"}))
@@ -108,13 +112,14 @@ func runRelease(t *testing.T, wire []byte, release bool, patch func(string) stri
 	b.WriteString(`let data = read_file("w0")
 assert data
 let rep = schema_rt.LoadReport {}
-let rec = schema_rt.load_tolerant("ListNode", data, rep)
-assert rec
-let out, why = schema_rt.save_reasoned(rec)
-print("loaded unknown={rep.unknown} malformed={rep.malformed} save=" + (if why == "": "ok" else: why))
+let rec = schema_rt.load("ListNode", data, rep)
+print("answered=" + (if rec: "record" else: "nil"))
+if rec:
+    let out, why = schema_rt.save_reasoned(rec)
+    print("save=" + (if why == "": "accepted" else: "refused") + " bytes={length(out)}")
 `)
 	if release {
-		b.WriteString("schema_rt.release(rec)\n")
+		b.WriteString("    schema_rt.release(rec)\n")
 	}
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(b.String()), 0o644); err != nil {
 		t.Fatal(err)
@@ -122,52 +127,114 @@ print("loaded unknown={rep.unknown} malformed={rep.malformed} save=" + (if why =
 	return string(lobsterrun.Run(t, g.dir, "main.lobster", map[string][]byte{"w0": wire}))
 }
 
-const leakReport = "LEAKS FOUND"
+const (
+	leakReport   = "LEAKS FOUND"
+	cycleRefused = "answered=nil\n"
+)
 
-// TestLobsterTableLoadUnlinksWhatTheRootDoesNotReach: an orphan cycle (B and
-// C naming each other, the root naming neither) is the load's to end, so a
-// caller that never releases anything leaks nothing.
+// Wire cycles refuse before allocation. Test cleanup against deliberately
+// constructed in-memory cycles as a separate boundary.
+func runMemoryCycle(t *testing.T, orphan, cleanup bool) string {
+	t.Helper()
+	paths, err := compiler.GatherPaths(prefix([]string{"tables/pointers"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := generateLoadUnit(t, paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for _, m := range g.mods {
+		fmt.Fprintf(&b, "import .%s\n", m)
+	}
+	b.WriteString(`import .load
+def link(source:schema_rt.Record, target:schema_rt.Record):
+    for(source.fields) sl:
+        if sl.fd.name == "next":
+            sl.cell.node = target
+            return
+    assert false
+def exercise():
+    let root = schema_rt.new_record(schema_rt.table_of("ListNode"))
+    let b = schema_rt.new_record(schema_rt.table_of("ListNode"))
+    let c = schema_rt.new_record(schema_rt.table_of("ListNode"))
+    link(b, c)
+`)
+	if orphan {
+		b.WriteString(`    link(c, b)
+    let state = schema_rt.LoadState { data: "", ids: [], report: schema_rt.LoadReport {}, variable: true, good: true, root: root, nodes: [schema_rt.Node { kind: 1, rec: b, blob: nil }, schema_rt.Node { kind: 1, rec: c, blob: nil }], named: [], count_refused: false }
+`)
+		if cleanup {
+			b.WriteString("    schema_rt.unlink_unreached(state, root)\n")
+		} else {
+			b.WriteString("    assert length(state.nodes) == 2\n")
+		}
+	} else {
+		b.WriteString("    link(root, b)\n    link(c, root)\n")
+		if cleanup {
+			b.WriteString("    schema_rt.release(root)\n")
+		}
+	}
+	b.WriteString("exercise()\nprint(\"cycle exercised\")\n")
+	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(b.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return string(lobsterrun.Run(t, g.dir, "main.lobster", nil))
+}
+
 func TestLobsterTableLoadUnlinksWhatTheRootDoesNotReach(t *testing.T) {
 	t.Parallel()
 	out := runRelease(t, cyclicListWire(t, 2, true), false, nil)
-	if !strings.HasPrefix(out, "loaded ") || strings.Contains(out, leakReport) {
-		t.Fatalf("an orphan cycle outlived the load:\n%s", out)
+	if !strings.Contains(out, cycleRefused) || strings.Contains(out, leakReport) {
+		t.Fatalf("orphan wire was accepted or leaked:\n%s", out)
+	}
+	out = runMemoryCycle(t, true, true)
+	if !strings.Contains(out, "cycle exercised") || strings.Contains(out, leakReport) {
+		t.Fatalf("orphan cleanup failed:\n%s", out)
 	}
 }
 
-// TestLobsterTableLoadUnlinksWhatTheRootDoesNotReachNegativeControl takes the
-// load's pass out and requires the orphan cycle to leak.
 func TestLobsterTableLoadUnlinksWhatTheRootDoesNotReachNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "    if length(st.nodes) > 0:\n        unlink_unreached(st, root)\n"
-	out := runRelease(t, cyclicListWire(t, 2, true), false, func(src string) string {
-		if n := strings.Count(src, anchor); n != 1 {
-			t.Fatalf("the unlink anchor is in the emitted runtime %d times, want 1", n)
-		}
-		return strings.Replace(src, anchor, "    if length(st.nodes) < 0:\n        unlink_unreached(st, root)\n", 1)
-	})
-	if !strings.Contains(out, leakReport) {
-		t.Fatalf("NEGATIVE CONTROL FAILED: without the unlink pass the orphan cycle still did not leak:\n%s", out)
+	if out := runMemoryCycle(t, true, false); !strings.Contains(out, leakReport) {
+		t.Fatalf("omitting orphan cleanup did not expose the leak:\n%s", out)
 	}
 }
 
-// TestLobsterTableReleaseEndsAReachedCycle: root -> B -> C -> root is the
-// caller's graph, and release(root) ends it.
 func TestLobsterTableReleaseEndsAReachedCycle(t *testing.T) {
 	t.Parallel()
 	out := runRelease(t, cyclicListWire(t, 1, false), true, nil)
-	if !strings.HasPrefix(out, "loaded ") || strings.Contains(out, leakReport) {
-		t.Fatalf("a released cycle outlived the program:\n%s", out)
+	if !strings.Contains(out, cycleRefused) || strings.Contains(out, leakReport) {
+		t.Fatalf("cyclic wire was accepted or leaked:\n%s", out)
+	}
+	out = runMemoryCycle(t, false, true)
+	if !strings.Contains(out, "cycle exercised") || strings.Contains(out, leakReport) {
+		t.Fatalf("reached cycle cleanup failed:\n%s", out)
 	}
 }
 
-// TestLobsterTableReleaseEndsAReachedCycleNegativeControl drops the release
-// and requires the reached cycle to leak: the witness that the test above
-// loads a real cycle.
 func TestLobsterTableReleaseEndsAReachedCycleNegativeControl(t *testing.T) {
 	t.Parallel()
-	out := runRelease(t, cyclicListWire(t, 1, false), false, nil)
-	if !strings.Contains(out, leakReport) {
-		t.Fatalf("NEGATIVE CONTROL FAILED: an unreleased reached cycle did not leak:\n%s", out)
+	if out := runMemoryCycle(t, false, false); !strings.Contains(out, leakReport) {
+		t.Fatalf("omitting release did not expose the leak:\n%s", out)
+	}
+}
+
+// Both generic wire validation and the declared graph check reject cycles.
+// Disabling both defenses proves the fixture carries a reached cycle.
+func TestLobsterTableCyclicWireIsDamageNegativeControl(t *testing.T) {
+	t.Parallel()
+	out := runRelease(t, cyclicListWire(t, 1, false), true, func(src string) string {
+		const generic = "    if not wire_check(st, first):"
+		const declared = "and load_cyclic(st, root):"
+		if strings.Count(src, generic) != 1 || strings.Count(src, declared) != 1 {
+			t.Fatal("cycle guards not unique")
+		}
+		src = strings.Replace(src, generic, "    if false:", 1)
+		return strings.Replace(src, declared, "and false and load_cyclic(st, root):", 1)
+	})
+	if !strings.Contains(out, "answered=record\n") || strings.Contains(out, leakReport) {
+		t.Fatalf("cycle-check mutation did not expose a releasable cycle:\n%s", out)
 	}
 }

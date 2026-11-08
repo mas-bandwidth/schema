@@ -163,8 +163,8 @@ func textRun(t *testing.T, u *ir.Unit, cases []textCase, inputs map[string][]byt
 	local value = mod["New" .. root]()
 	local report: any = {}
 	local ok = mod[root .. "FromJson"](value, inputs[input], report)
-	hexs(string.format("%d,%d,%d,%d,%d,%s,%s,%s", report.unknown, report.kindMismatch, report.widened,
-		report.clamped, report.duplicate, tostring(report.malformed), if ok then "read" else "refused", report.reason or ""))
+	hexs(string.format("%d,%d,%d,%d,%d,%s,%s,%s", report.unknown, 0, report.widened,
+		0, 0, tostring(report.damaged), if ok then "read" else "refused", report.reason or ""))
 	local size = mod[root .. "ToJsonMeasure"](value)
 	if size < 0 then
 		hexs("refused")

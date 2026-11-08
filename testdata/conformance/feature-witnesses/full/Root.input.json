@@ -1,0 +1,11 @@
+{
+  "revision": 7,
+  "at": "2026-11-02T12:34:56.123456789Z",
+  "lower": 9,
+  "tags": {"a": 3, "z": 11},
+  "optional": {"child": {"value": 17}},
+  "labels": ["é", "schema"],
+  "optional_labels": [null, "", "active"],
+  "words": ["unbounded text is populated"],
+  "by_name": {"a key longer than eight bytes": 23}
+}

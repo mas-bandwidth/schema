@@ -176,6 +176,11 @@ int main()
         CHECK( b.Lock() ); // Lock packs a shared node ONCE (Go TestBlobNamedTwiceWriters)
         const Root * c = b.AsConst();
         CHECK( RootToJsonMeasure( c ) == -1 );
+        TableReport retained_report = {};
+        CHECK( RootMeasureRetain( c, NULL ) == -1 );
+        memset( saved, 0xA5, sizeof saved );
+        CHECK( RootSaveRetain( c, NULL, saved, sizeof saved, &retained_report ) == -1 );
+        for ( size_t i = 0; i < sizeof saved; ++i ) { CHECK( saved[i] == 0xA5 ); }
     }
 
     // THE SAME VALUE WITH TWO BLOBS SAVES AND ROUND-TRIPS (Go
@@ -198,6 +203,11 @@ int main()
         TableRefuseReason why = clamped;
         const Root * v = RootReadStrict( saved, m, &why );
         CHECK( v != NULL && why == ok );
+        CHECK( s.Lock() );
+        const Root * packed = s.AsConst();
+        TableReport retained_report = {};
+        CHECK( RootMeasureRetain( packed, NULL ) == m );
+        CHECK( RootSaveRetain( packed, NULL, saved, sizeof saved, &retained_report ) == m );
     }
 
     // TWO BLOBS READ TOLERANT WITH NO blob_shared COUNT.

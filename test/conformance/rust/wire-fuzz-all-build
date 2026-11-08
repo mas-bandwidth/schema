@@ -19,7 +19,8 @@ gen=${*:-./bin/schema}
 dir=$out.d
 rm -rf "$dir"
 mkdir -p "$dir/src"
-for unit in backenddemo:tables/backend \
+for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
+	backenddemo:tables/backend \
 	blobdemo:tables/blobs \
 	graphdemo:tables/pointers \
 	listdemo:tables/lists \
@@ -46,7 +47,8 @@ for unit in backenddemo:tables/backend \
 	tblw2:test/tables/W2.schema \
 	vocab9demo:tables/vocab9 \
 	vocabdemo:tables/vocab \
-	widedemo:examples-wide; do
+	widedemo:examples-wide \
+	widelist:tables/widelist; do
 	name=${unit%%:*}
 	path=${unit#*:}
 	$gen generate --lang rust --out "$dir/gen/$name" "$path" 2>"$dir/gen-$name.log" || {
@@ -56,7 +58,7 @@ for unit in backenddemo:tables/backend \
 	mkdir -p "$dir/src/$name"
 	: >"$dir/src/$name/mod.rs"
 	for f in "$dir/gen/$name/build_version.rs" "$dir/gen/$name/variable_runtime.rs" \
-		"$dir/gen/$name/table_enums.rs" "$dir/gen/$name/fixed_runtime.rs" "$dir/gen/$name/message_runtime.rs" \
+		"$dir/gen/$name/integrity_runtime.rs" "$dir/gen/$name/table_enums.rs" "$dir/gen/$name/fixed_runtime.rs" "$dir/gen/$name/message_runtime.rs" \
 		"$dir/gen/$name"/*_records.rs "$dir/gen/$name"/*_fixed.rs \
 		"$dir/gen/$name"/*_table.rs "$dir/gen/$name"/*_variable.rs \
 		"$dir/gen/$name"/*_message.rs; do

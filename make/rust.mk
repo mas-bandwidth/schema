@@ -318,7 +318,7 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
-	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists \
+	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists widelistdemo:tables/widelist \
 	messagedemo:tables/messages streamdemo:tables/stream \
 	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
@@ -1617,9 +1617,10 @@ test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
 # corpus with the generated writer, in both byte orders, and holds the bytes to
 # `schema cook`'s (the C++ reference's cook lands on the same bytes in the
 # conformance cook-write rows); then it opens map_full's cook and searches every
-# map of the root in place, a map inside an entry included. Its controls make
-# the carve lay a map's entries unsorted, and an array unaligned, each red on
-# its own line.
+# map of the root in place, a map inside an entry included; widelist_wide's
+# 128-bit list (sizeof = 8 mod 16) holds the node-alignment rule. Its controls
+# make the carve lay a map's entries unsorted, an array unaligned, and the
+# 128-bit holder's extent start at the floor of eight, each red on its own line.
 .PHONY: tables-rust-cook-map tables-rust-cook-map-negative-control
 tables-rust-cook-map: build/tables-generated-rust/.stamp
 	cd test/rust-cookmap && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
@@ -1628,34 +1629,119 @@ tables-rust-cook-map: build/tables-generated-rust/.stamp
 tables-rust-cook-map-negative-control: bin/schema
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control sort
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control align
+	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control wide
 
 test-rust: tables-rust-cook-map tables-rust-cook-map-negative-control
 
 # THE FRAMING SURFACE, its Rust leg (docs/LAYERS/1-framing.md): the Rust
 # driver answers every framing row and passes it, none absent
-# (test/conformance/framing/gate). Its negative control rebuilds the driver
-# over a copy of the tblr1 crate whose load takes the id table's 4096-entry cap
-# out (§3, THE DISTINCTNESS CHECK; rule F6), and requires the framing surface
-# to go RED on frame_entries_4097.
+# (test/conformance/framing/gate). The diamond-chain row (2^40 paths over 82
+# shared nodes) passing is the linear-time check: a walk that re-entered a
+# closed node would not finish. Its negative control rebuilds the driver over
+# copies of two crates, twice. First, one rule out of each: tblr1 without the
+# id table's 4096-entry cap (§3, THE DISTINCTNESS CHECK; F6), graphdemo without
+# the cycle refusal (§3.1, §4; T8); framing must go RED on frame_entries_4097
+# and the three cycle rows. Second, graphdemo taking a CLOSED (built) node for
+# an open one, so a share reads as a cycle: framing must go RED on
+# node_diamond_chain.
 RUST_FRAMING_CONTROL := build/rust-framing-control
 .PHONY: conformance-rust-framing conformance-negative-control-rust-framing
 conformance-rust-framing: build/conformance-harness build/conformance-rust
 	sh test/conformance/framing/gate rust test/conformance/rust/driver build/conformance-rust-framing
+# $(call RUST_FRAMING_SABOTAGE,dir,crate,from,to)
+define RUST_FRAMING_SABOTAGE
+	@grep -rl '$(3)' $(1)/$(2) | xargs sed -i.orig 's|$(3)|$(4) /* SABOTAGED */|'
+	@grep -rq SABOTAGED $(1)/$(2) || { echo "NEGATIVE CONTROL: the $(2) sabotage did not apply"; exit 1; }
+	@find $(1)/$(2) -name '*.orig' -delete
+endef
+# $(call RUST_FRAMING_DRIVER,dir): the driver over the two copied crates
+define RUST_FRAMING_DRIVER
+	@mkdir -p $(1)/driver && cp -R test/conformance/rust/src $(1)/driver/src
+	@sed -e 's|^tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }|tblr1 = { path = "../tblr1" }|' \
+		-e 's|^graphdemo = { path = "../../../build/tables-generated-rust/graphdemo" }|graphdemo = { path = "../graphdemo" }|' \
+		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
+	@[ "$$(grep -c '"\.\./tblr1"\|"\.\./graphdemo"' $(1)/driver/Cargo.toml)" = 2 ] || \
+		{ echo "NEGATIVE CONTROL: the crate paths did not move"; exit 1; }
+	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+endef
 conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
-	@rm -rf $(RUST_FRAMING_CONTROL) && mkdir -p $(RUST_FRAMING_CONTROL)/driver
-	@cp -R build/tables-generated-rust/tblr1 $(RUST_FRAMING_CONTROL)/tblr1
-	@grep -rl 'if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }' $(RUST_FRAMING_CONTROL)/tblr1 | \
-		xargs sed -i.orig 's|if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }|if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; } // SABOTAGED|'
-	@[ "$$(grep -rc 'SABOTAGED' $(RUST_FRAMING_CONTROL)/tblr1 --include='*.rs' | awk -F: '{s+=$$2} END {print s}')" -ge 1 ] || \
-		{ echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
-	@find $(RUST_FRAMING_CONTROL)/tblr1 -name '*.orig' -delete
-	@cp -R test/conformance/rust/src $(RUST_FRAMING_CONTROL)/driver/src
-	@sed 's|^tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }|tblr1 = { path = "../tblr1" }|' \
-		test/conformance/rust/Cargo.toml > $(RUST_FRAMING_CONTROL)/driver/Cargo.toml
-	@! cmp -s test/conformance/rust/Cargo.toml $(RUST_FRAMING_CONTROL)/driver/Cargo.toml || \
-		{ echo "NEGATIVE CONTROL: the tblr1 path did not move"; exit 1; }
-	cd $(RUST_FRAMING_CONTROL)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
-		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_FRAMING_CONTROL)/target cargo build --quiet
+	@rm -rf $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share && mkdir -p $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share
+	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/
+	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)-share/
+	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL),tblr1,if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; },if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; })
+	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL),graphdemo,if report.cycle_on_save { report.malformed = true; return None; },if false \&\& report.cycle_on_save { report.malformed = true; return None; })
+	@grep -rl 'TableNodeSlot::Built(_, n) => return Some(n.clone()),' $(RUST_FRAMING_CONTROL)-share/graphdemo | \
+		xargs sed -i.orig 's|TableNodeSlot::Built(_, n) => return Some(n.clone()),|TableNodeSlot::Built(_, _) => { report.cycle_on_save = true; return None; } /* SABOTAGED */|'
+	@grep -rq SABOTAGED $(RUST_FRAMING_CONTROL)-share/graphdemo || { echo "NEGATIVE CONTROL: the share sabotage did not apply"; exit 1; }
+	@find $(RUST_FRAMING_CONTROL)-share -name '*.orig' -delete
+	$(call RUST_FRAMING_DRIVER,$(RUST_FRAMING_CONTROL))
+	$(call RUST_FRAMING_DRIVER,$(RUST_FRAMING_CONTROL)-share)
 	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/target/debug/conformance-rust \
-		$(RUST_FRAMING_CONTROL)/run frame_entries_4097
+		$(RUST_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
+	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)-share/target/debug/conformance-rust \
+		$(RUST_FRAMING_CONTROL)-share/run node_diamond_chain
 test-rust: conformance-rust-framing conformance-negative-control-rust-framing
+
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) in the Rust leg:
+# TestDamageDiscardsTheWholeLoadRust reads damaged input through every public
+# load entry point (the variable wire's tolerant and retaining loads of a fixed
+# and a variable root, the fixed form, the message batch, the text read) and
+# requires no usable value. The fixed-load transaction probe also distinguishes
+# fresh damage from accumulated report history and named preflight refusals.
+# The two controls remove the discard from a COPY of
+# the emitter, reached through a Go build overlay, and the gate must go red on
+# exactly that entry point. Nothing tracked is written to.
+RUST_DISCARD_NC := build/rust-discard-nc
+.PHONY: tables-rust-discard tables-rust-discard-negative-control tables-rust-fixed-discard-negative-control
+tables-rust-discard:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout=0 -run '^(TestDamageDiscardsTheWholeLoadRust|TestFixedLoadDamageDefaultsAndReportReuseRust)$$' -v
+
+tables-rust-discard-negative-control:
+	@rm -rf $(RUST_DISCARD_NC)/variable && mkdir -p $(RUST_DISCARD_NC)/variable
+	@sed -e 's|fmt.Fprintf(b, "    if damaged {\\n")|fmt.Fprintf(b, "    if false \&\& damaged { // NEGATIVE CONTROL: the discard is gone\\n")|' \
+		internal/codegen/rusttable/variablecodec.go > $(RUST_DISCARD_NC)/variable/variablecodec.go.txt
+	@cmp -s internal/codegen/rusttable/variablecodec.go $(RUST_DISCARD_NC)/variable/variablecodec.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/$(RUST_DISCARD_NC)/variable/variablecodec.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/variable/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/variable/overlay.json \
+			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/variable/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Rust discard is gone and the gate stayed green"; \
+		cat $(RUST_DISCARD_NC)/variable/log; exit 1; \
+	fi
+	@grep -q "root: load handed back a value on damage" $(RUST_DISCARD_NC)/variable/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_DISCARD_NC)/variable/log; exit 1; }
+	@grep -m1 "load handed back a value" $(RUST_DISCARD_NC)/variable/log
+	@echo "negative control: removing the Rust variable-wire discard turns the whole-load gate RED"
+
+tables-rust-fixed-discard-negative-control:
+	@rm -rf $(RUST_DISCARD_NC)/fixed && mkdir -p $(RUST_DISCARD_NC)/fixed
+	@sed -e 's|g.pf("    if damaged {\\n")|g.pf("    if false \&\& damaged { // NEGATIVE CONTROL: the discard is gone\\n")|' \
+		internal/codegen/rusttable/fixedform.go > $(RUST_DISCARD_NC)/fixed/fixedform.go.txt
+	@cmp -s internal/codegen/rusttable/fixedform.go $(RUST_DISCARD_NC)/fixed/fixedform.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust fixed discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_DISCARD_NC)/fixed/fixedform.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/fixed/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/fixed/overlay.json \
+			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/fixed/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Rust fixed discard is gone and the gate stayed green"; \
+		cat $(RUST_DISCARD_NC)/fixed/log; exit 1; \
+	fi
+	@grep -q "fixed: a damaged load left a caller record" $(RUST_DISCARD_NC)/fixed/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_DISCARD_NC)/fixed/log; exit 1; }
+	@grep -m1 "fixed: a damaged load" $(RUST_DISCARD_NC)/fixed/log
+	@echo "negative control: removing the Rust fixed-form discard turns the whole-load gate RED"
+
+test-rust: tables-rust-discard
+
+.PHONY: tables-rust-json-bom
+tables-rust-json-bom:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 0 -run '^TestJsonLeadingBOMBoundaryRust$$' -v
+
+test-rust: tables-rust-json-bom
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-rust/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

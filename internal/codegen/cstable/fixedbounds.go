@@ -72,7 +72,7 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("public static void %sFixedClamp(%s value, TableReport report)\n{\n", st.Name, st.Name)
 	g.pf("    int clamped = 0;\n")
 	g.pf("    %sFixedClampBody(value, ref clamped);\n", st.Name)
-	g.pf("    if (report != null) { report.Clamped += clamped; }\n")
+	g.pf("    if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
 	g.pf("}\n\n")
 }
 
@@ -154,8 +154,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			tagType := f.Type.Name + "Type"
 			g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
 			if !csOrdinalFillsStorage(r.Max, ir.StorageBitsFor(r.Max)) {
-				g.pf("%s    if ((ulong)%s.Type > %d) { %s.Type = (%s)0; clamped++; }\n",
-					ind, expr, r.Max, expr, tagType)
+				g.pf("%s    if ((ulong)%s.Type > %d) { clamped++; }\n", ind, expr, r.Max)
 			}
 			if ir.TableFixedClampNeededUnionArm(r) {
 				g.pf("%s    switch (%s.Type)\n%s    {\n", ind, expr, ind)
@@ -184,8 +183,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			if csOrdinalFillsStorage(r.Max, r.StorageBits) {
 				return
 			}
-			g.pf("%sif ((ulong)%s > %d) { %s = (%s)0; clamped++; }\n",
-				ind, expr, r.Max, expr, f.Type.Name)
+			g.pf("%sif ((ulong)%s > %d) { clamped++; }\n", ind, expr, r.Max)
 			return
 		}
 		return
@@ -235,22 +233,21 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 }
 
 // fixedWriterBound is one bounded leaf of a lineage entry's WRITER, resolved
-// onto this reader's value: the reader's field (same storage width and kind —
-// a ranged field narrows its width only by the ladder, and the reference's
-// collectKnownRanges skips a pair whose widths differ) and the writer's raw
-// bounds.
+// onto this reader's value: the reader's field (the same scalar kind, so the
+// same width and scale, ir.TableFixedWriterField) and the writer's raw bounds.
 type fixedWriterBound struct {
 	field  *ir.Field
 	lo, hi *big.Int
 }
 
 // fixedWriterBounds resolves every lineage entry's ranged leaves against this
-// reader's own fields BY NAME — the match the reference's collectKnownRanges
-// makes — so the compiled lane's bounds pass holds an endpoint to what IT declared
-// and never to this reader's wider own (§4.6, bill §12.5). The identity entry
-// needs none: its writer IS this reader, and the reader's own pass holds it. A
-// field this reader cannot name bounds nothing. The answer is nil when no
-// entry bounds anything, so a table without ranged writers emits no clamp.
+// reader's own fields (ir.TableFixedWriterField: the same name and scalar
+// kind, a range the storage does not already hold), so the compiled lane's
+// bounds pass holds an endpoint to what IT declared, then to this reader's own
+// (§4.5). The identity entry needs none: its writer IS this reader, and the
+// reader's own pass holds it. A fixed array is one row, its clamp walking every
+// slot. The answer is nil when no entry bounds anything, so a table without
+// ranged writers emits no clamp.
 func (g *tableGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry, hash uint64) [][]fixedWriterBound {
 	var all [][]fixedWriterBound
 	any := false
@@ -259,11 +256,10 @@ func (g *tableGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 		if e.Wire != hash {
 			for _, spec := range e.Ranges {
 				for _, f := range st.Fields {
-					if f.Name != spec.Name {
-						continue
+					if _, ok := ir.TableFixedWriterField(f, spec); ok {
+						rows = append(rows, fixedWriterBound{field: f, lo: big.NewInt(spec.Lo), hi: big.NewInt(spec.Hi)})
+						break
 					}
-					rows = append(rows, fixedWriterBoundsOfField(f, spec.Lo, spec.Hi)...)
-					break
 				}
 			}
 		}
@@ -276,22 +272,6 @@ func (g *tableGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 		return nil
 	}
 	return all
-}
-
-// fixedWriterBoundsOfField spells one writer-bound spec at this reader's
-// field: a fixed array is one row per slot; a counted array's live count is a
-// run-time fact a static clamp does not carry, so it bounds nothing (the
-// reader's own §4.6 pass walks a counted array's live elements).
-func fixedWriterBoundsOfField(f *ir.Field, lo, hi int64) []fixedWriterBound {
-	blo, bhi := big.NewInt(lo), big.NewInt(hi)
-	if f.Array == ir.ArrayFixed {
-		out := make([]fixedWriterBound, 0, f.ArrayBound)
-		for i := int64(0); i < f.ArrayBound; i++ {
-			out = append(out, fixedWriterBound{field: f, lo: blo, hi: bhi})
-		}
-		return out
-	}
-	return []fixedWriterBound{{field: f, lo: blo, hi: bhi}}
 }
 
 // emitFixedWriterClamp writes ONE lineage entry's writer-bounds pass: a
@@ -308,7 +288,7 @@ func (g *tableGen) emitFixedWriterClamp(name string, idx int, rows []fixedWriter
 	for _, r := range rows {
 		g.emitFixedWriterClampField(r, 4)
 	}
-	g.pf("    if (report != null) { report.Clamped += clamped; }\n")
+	g.pf("    if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
 	g.pf("}\n\n")
 }
 
@@ -372,8 +352,7 @@ func (g *tableGen) csClampBoth(expr, lo, hi, ind string) {
 // csClampBothAs is csClampBoth with the COMPARED operand spelled apart from the
 // ASSIGNED one: a 128-bit leaf compares through its BCL type (csWideCompare).
 func (g *tableGen) csClampBothAs(cmp, expr, lo, hi, ind string) {
-	g.pf("%sif (%s < %s) { %s = %s; clamped++; }\n", ind, cmp, lo, expr, lo)
-	g.pf("%selse if (%s > %s) { %s = %s; clamped++; }\n", ind, cmp, hi, expr, hi)
+	g.pf("%sif (%s < %s || %s > %s) { clamped++; }\n", ind, cmp, lo, cmp, hi)
 }
 
 // csClampEnd is the one-ended twin: an end the storage's own width already holds
@@ -385,7 +364,7 @@ func (g *tableGen) csClampEnd(expr, op, bound, ind string) {
 
 // csClampEndAs is csClampEnd with the compared operand spelled apart.
 func (g *tableGen) csClampEndAs(cmp, expr, op, bound, ind string) {
-	g.pf("%sif (%s %s %s) { %s = %s; clamped++; }\n", ind, cmp, op, bound, expr, bound)
+	g.pf("%sif (%s %s %s) { clamped++; }\n", ind, cmp, op, bound)
 }
 
 // csWideCompare spells a 128-bit leaf's COMPARED operand through its BCL type.

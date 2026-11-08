@@ -948,7 +948,9 @@ public final class TableFixed {
      * width, signed, lo, hi} rows, one per leaf the writer declared, or null when the entry bounds
      * nothing — the reader's range is the wider one, so clamping to it would land a value the old
      * writer could not have written (bill §12.5). Every clamp COUNTS, once per leaf per record,
-     * exactly as the scatter's own pass counts the reader's.
+     * exactly as the scatter's own pass counts the reader's. The comparison is in the field's own
+     * type: signed for a signed kind, UNSIGNED for an unsigned one, so a uint64 at or above 2^63
+     * is past the max and never below the min (an unsigned kind's bounds are never negative).
      */
     public static void clampWriterBounds(long[] spec, byte[] image, Report report) {
         if (spec == null || spec.length == 0 || image == null) {
@@ -962,12 +964,13 @@ public final class TableFixed {
             }
             final long lo = spec[i + 3];
             final long hi = spec[i + 4];
-            final long v = spec[i + 2] != 0 ? getInt(image, at, width) : getUint(image, at, width);
+            final boolean signed = spec[i + 2] != 0;
+            final long v = signed ? getInt(image, at, width) : getUint(image, at, width);
             long landed = v;
-            if (landed < lo) {
+            if (signed ? v < lo : Long.compareUnsigned(v, lo) < 0) {
                 landed = lo;
                 report.clamped++;
-            } else if (landed > hi) {
+            } else if (signed ? v > hi : Long.compareUnsigned(v, hi) > 0) {
                 landed = hi;
                 report.clamped++;
             }
@@ -2381,5 +2384,26 @@ public final class TableFixed {
             }
         }
         return out;
+    }
+
+    /** Castagnoli CRC-32C over the first len bytes of data (docs/SPEC-TABLES.md §2.14). */
+    public static int crc32c(byte[] data, int len) {
+        int crc = 0xffffffff;
+        for (int i = 0; i < len; i++) {
+            crc ^= data[i] & 0xff;
+            for (int k = 0; k < 8; k++) {
+                crc = (crc >>> 1) ^ ((crc & 1) != 0 ? 0x82f63b78 : 0);
+            }
+        }
+        return ~crc;
+    }
+
+    /** true when data holds at least five bytes and ends with the CRC-32C of the prefix (§2.14). */
+    public static boolean integrityHolds(byte[] data) {
+        if (data == null || data.length < 5) {
+            return false;
+        }
+        final int n = data.length - 4;
+        return get32(data, n) == crc32c(data, n);
     }
 }

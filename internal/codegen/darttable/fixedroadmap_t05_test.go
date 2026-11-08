@@ -463,7 +463,7 @@ fixed table T
 }
 `)
 	t05Has(t, emitted, "final runWhy = tableFixedRun(", "C4 the load reads the run's refusal")
-	t05Has(t, emitted, "if (runWhy != TableFixedRefusal.none) {\n      report.refused = runWhy;\n      return -1;\n    }",
+	t05Has(t, emitted, "if (runWhy != TableFixedRefusal.none) {\n      for (var j = 0; j < k; j++) {\n        initT(values[j]);\n      }\n      report.refused = runWhy;\n      return -1;\n    }",
 		"C4 the load refuses the whole read by name")
 }
 

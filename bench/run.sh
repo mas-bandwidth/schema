@@ -27,7 +27,7 @@
 #                 whose toolchain is missing prints as an ABSENT row with
 #                 the reason (#175).
 #                 Scaling constants are PROPOSED in BENCH-STANDARD.md terms.
-#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau).
+#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel).
 #                 An --only run whose leg is skipped (missing toolchain)
 #                 exits non-zero with the reason — zero rows is a refusal,
 #                 never a quietly green empty CSV (#175). For shared boxes
@@ -143,8 +143,8 @@ if [ "$QUICK" = 1 ]; then
     RUNNER_ARGS="$RUNNER_ARGS --quick"
 fi
 case "$ONLY" in
-    ""|c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau) ;;
-    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau)" >&2; exit 1 ;;
+    ""|c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel) ;;
+    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel)" >&2; exit 1 ;;
 esac
 
 # §3.5 provenance mechanics: sets the SERIALIZE* defaults, materializes the
@@ -152,7 +152,7 @@ esac
 # provides verify_runtime (the fail-closed check used below)
 . bench/tools/runtime-paths.sh
 runtime_paths_init
-if [ ! -f "$SERIALIZE/serialize.h" ]; then
+if [ "$ONLY" != squirrel ] && [ ! -f "$SERIALIZE/serialize.h" ]; then
     echo "serialize.h not found at $SERIALIZE — set SERIALIZE to the classic serialize checkout" >&2
     exit 1
 fi
@@ -244,6 +244,11 @@ LUAU_BIN="${LUAU:-$PWD/dist/luau-0.741/luau}"
 LUAU_VERSION=""
 if [ -x "$LUAU_BIN" ]; then
     LUAU_VERSION="$LUAU_BIN (pin 0.741)"
+fi
+SQ_BIN="${SQ:-$PWD/dist/squirrel-3.2/bin/sq}"
+SQ_VERSION=""
+if [ -x "$SQ_BIN" ]; then
+    SQ_VERSION="$SQ_BIN (pin 3.2)"
 fi
 
 # The Lobster leg (bench/lobster/run): the pinned toolchain, LOBSTER overriding,
@@ -369,6 +374,7 @@ emit_preamble() {
         echo "# goose: ${GOOSE_VERSION:-not present} (generated codec over vendored serialize.goose; goose build -O2 with the host C compiler, one translation unit)"
         echo "# lobster: ${LOBSTER_VERSION:-not present} (generated codec + vendored serialize.lobster; default JIT, --runtime-no-asserts; the --cpp row is owed, schema-lobster-bench-cpp)"
         echo "# luau: ${LUAU_VERSION:-not present} (generated codec + vendored serialize.luau; the interpreter, native codegen OFF; iters rescaled for the interpreter, recorded per row)"
+        echo "# squirrel: ${SQ_VERSION:-not present} (generated codec + vendored serialize.nut; Squirrel 3.2 64-bit interpreter; iters rescaled for the interpreter, recorded per row)"
         echo "# pinning: $PIN_DESC"
         echo "# noise: ${BENCH_NOISE:-unlabelled}"
         # the schema commit carries its BRANCH, exactly as every runtime line
@@ -413,6 +419,10 @@ commit_of() {
 # --bare emits rows with no preamble, so it verifies the leg it will run:
 # those rows land under a preamble that makes the same claim.
 prov_verify() {
+    if [ "$1" = squirrel ]; then
+        echo "squirrel: generated codecs, no runtime checkout — nothing for the §3.5 guard to verify" >&2
+        return 0
+    fi
     local resolved rc=0
     resolved="$(verify_runtime "$1")" || rc=$?
     case $rc in
@@ -731,6 +741,280 @@ if [ -z "$ONLY" ] || [ "$ONLY" = luau ]; then
     fi
 fi
 
+# ---- Squirrel (generated codec + its vendored serialize.nut; Squirrel 3.2 64-bit interpreter) ----
+if [ -z "$ONLY" ] || [ "$ONLY" = squirrel ]; then
+    if [ -x "$SQ_BIN" ]; then
+        if [ "$REUSE" = 1 ] && [ -f build/bench/squirrel/main.nut ] && [ -f build/bench/squirrel/Bench.nut ]; then
+            echo "== squirrel: reusing build/bench/squirrel ==" >&2
+        else
+            echo "== squirrel: build ==" >&2
+            go build -o build/schema-squirrel ./cmd/schema
+            rm -rf build/bench/squirrel && mkdir -p build/bench/squirrel
+            ./build/schema-squirrel generate --lang squirrel --out build/bench/squirrel bench/corpus/Bench.schema
+            cat > build/bench/squirrel/main.nut << 'SQEOF'
+local serialize = dofile("internal/codegen/squirrel/serialize/serialize.nut", true);
+local Generated = dofile("build/bench/squirrel/schema_module.nut", true).require("Bench");
+
+local NUM_VARIANTS = 64;
+local MIXED_ITERS = 320;
+local QUICK_MIXED_ITERS = 128;
+local MAX_ITERATIONS = 2147483584;
+local CSV_SUFFIX = "gen,pkg,always,default,unknown";
+
+local csv = false;
+local gate = false;
+local quick = false;
+local roundMode = false;
+local iterations = 0;
+local wireDir = "testdata/wire";
+local variantDir = "bench/corpus/variants";
+local bad = "";
+
+local i = 0;
+while (i < vargv.len()) {
+  local a = vargv[i];
+  if (a == "--csv") csv = true;
+  else if (a == "--gate") gate = true;
+  else if (a == "--quick") quick = true;
+  else if (a == "--round" && i + 1 < vargv.len()) {
+    i++;
+    roundMode = true;
+  } else if (a == "--iterations" && i + 1 < vargv.len()) {
+    i++;
+    local n = vargv[i].tointeger();
+    if (n <= 0 || n > MAX_ITERATIONS || (n % NUM_VARIANTS) != 0) {
+      bad = "--iterations requires a positive multiple of 64";
+    } else {
+      iterations = n;
+    }
+  } else if (a == "--wire-dir" && i + 1 < vargv.len()) {
+    i++;
+    wireDir = vargv[i];
+  } else if (a == "--variant-dir" && i + 1 < vargv.len()) {
+    i++;
+    variantDir = vargv[i];
+  } else {
+    bad = "unknown option: " + a;
+  }
+  i++;
+}
+
+local log = function(s) { print("log " + s + "\n"); };
+if (bad != "") {
+  log(bad);
+  throw bad;
+}
+
+local readBytes = function(path) {
+  local f = file(path, "rb");
+  local b = f.len() == 0 ? blob(0) : f.readblob(f.len());
+  f.close();
+  return b;
+};
+
+local sameBlob = function(a, b, n) {
+  if (a.len() < n || b.len() < n) return false;
+  for (local j = 0; j < n; j++) {
+    if (a[j] != b[j]) return false;
+  }
+  return true;
+};
+
+local FNV_OFFSET = (0xcbf29ce4 << 32) | 0x84222325;
+local FNV_PRIME = (0x100 << 32) | 0x000001b3;
+local HEX = "0123456789abcdef";
+local fnvString = function(h, s) {
+  for (local j = 0; j < s.len(); j++) h = (h ^ (s[j] & 0xff)) * FNV_PRIME;
+  return h;
+};
+local fnvBlob = function(h, b) {
+  for (local j = 0; j < b.len(); j++) h = (h ^ (b[j] & 0xff)) * FNV_PRIME;
+  return h;
+};
+local hex64 = function(h) {
+  local s = "";
+  for (local shift = 60; shift >= 0; shift -= 4) {
+    s += format("%c", HEX[(h >> shift) & 15]);
+  }
+  return s;
+};
+
+local sortFloats = function(arr) {
+  local a = clone arr;
+  a.sort();
+  return a;
+};
+
+local stats = function(rates) {
+  local s = sortFloats(rates);
+  local n = s.len();
+  local median = s[n / 2];
+  local lo = s[0];
+  local hi = s[n - 1];
+  local spread = (hi - lo) / median * 100.0;
+  return { median = median, lo = lo, hi = hi, spread = spread };
+};
+
+local row = "bench_mixed";
+local golden = readBytes(wireDir + "/" + row + ".bin");
+local packed = readBytes(variantDir + "/" + row + ".variants.bin");
+
+local h = FNV_OFFSET;
+h = fnvString(h, row + ".bin");
+h = (h ^ 0) * FNV_PRIME;
+h = fnvBlob(h, golden);
+h = fnvString(h, row + ".variants.bin");
+h = (h ^ 0) * FNV_PRIME;
+h = fnvBlob(h, packed);
+local cid = hex64(h);
+
+if (packed.len() == 0 || (packed.len() % NUM_VARIANTS) != 0) {
+  log("FAILED: " + row + ": bad variant stride");
+  throw "bench failed";
+}
+local record = packed.len() / NUM_VARIANTS;
+local bufs = array(NUM_VARIANTS);
+for (local k = 0; k < NUM_VARIANTS; k++) {
+  packed.seek(k * record);
+  bufs[k] = packed.readblob(record);
+}
+
+if (golden.len() != record || !sameBlob(bufs[0], golden, record)) {
+  log("FAILED: " + row + ": variant 0 != wire golden");
+  throw "bench failed";
+}
+
+local root = "Bench" + "Mixed";
+local newValue = Generated[root];
+local writeValue = Generated["Write" + root];
+local readValue = Generated["Read" + root];
+
+local cap = (record / 8 + 2) * 8;
+local buf = blob(cap);
+local ws = serialize.WriteStream(buf);
+local rs = serialize.ReadStream(bufs[0]);
+
+local writeOne = function(v) {
+  ws.reset(buf);
+  if (!writeValue(ws, v)) return -1;
+  ws.flush();
+  return ws.bytesProcessed();
+};
+
+local readOne = function(v, k) {
+  rs.reset(bufs[k]);
+  return readValue(rs, v);
+};
+
+local instances = array(NUM_VARIANTS);
+for (local k = 0; k < NUM_VARIANTS; k++) {
+  local v = newValue();
+  if (!readOne(v, k)) {
+    log("FAILED: " + row + ": decode of variant " + k + " failed");
+    throw "bench failed";
+  }
+  local n = writeOne(v);
+  if (n != record || !sameBlob(buf, bufs[k], record)) {
+    log("FAILED: " + row + ": variant " + k + " round-trip bytes differ");
+    throw "bench failed";
+  }
+  instances[k] = v;
+}
+
+local out = newValue();
+for (local m = 0; m < 2 * NUM_VARIANTS; m++) {
+  local k = m & (NUM_VARIANTS - 1);
+  if (!readOne(out, k)) {
+    log("FAILED: " + row + ": decode into reused holder failed");
+    throw "bench failed";
+  }
+  local n = writeOne(out);
+  if (n != record || !sameBlob(buf, bufs[k], record)) {
+    log("FAILED: " + row + ": reused holder round-trip bytes differ");
+    throw "bench failed";
+  }
+}
+
+log("schema bench (squirrel, generated codec, Squirrel 3.2 interpreter" + (quick ? ", --quick: iteration instrument, not certification" : "") + ")");
+
+local sink = 0;
+local csvRows = [];
+if (!gate) {
+  local iters = iterations > 0 ? iterations : (quick ? QUICK_MIXED_ITERS : MIXED_ITERS);
+  local numRuns = roundMode ? 1 : (quick ? 3 : 7);
+
+  local writeRates = [];
+  for (local run = 0; run <= numRuns; run++) {
+    local t0 = clock();
+    local acc = 0;
+    for (local m = 0; m < iters; m++) {
+      local n = writeOne(instances[m & (NUM_VARIANTS - 1)]);
+      if (n != record) throw "write failed in loop";
+      acc += n;
+    }
+    local elapsed = clock() - t0;
+    sink += acc;
+    if (run > 0) writeRates.append(iters.tofloat() / elapsed);
+  }
+
+  local tripRates = [];
+  for (local run = 0; run <= numRuns; run++) {
+    local t0 = clock();
+    local acc = 0;
+    for (local m = 0; m < iters; m++) {
+      local k = m & (NUM_VARIANTS - 1);
+      if (!readOne(out, k)) throw "decode failed in loop";
+      local n = writeOne(out);
+      if (n != record) throw "re-encode failed in loop";
+      acc += n;
+    }
+    local elapsed = clock() - t0;
+    sink += acc;
+    if (run > 0) tripRates.append(iters.tofloat() / elapsed);
+  }
+
+  local reportRow = function(path, rates) {
+    local st = stats(rates);
+    local mbps = st.median * record / (1024.0 * 1024.0);
+    log(format("%-18s %-11s%10.4f M msg/s %10.2f MB/s   (min %.4f, max %.4f, spread %.1f%%)", row, path, st.median / 1e6, mbps, st.lo / 1e6, st.hi / 1e6, st.spread));
+    csvRows.append(format("squirrel,%s,%s,%d,%d,%d,%.0f,%.0f,%.0f,%.2f,%.2f,%s,%s", row, path, iters, record, rates.len(), st.median, st.lo, st.hi, mbps, st.spread, cid, CSV_SUFFIX));
+  };
+
+  reportRow("write", writeRates);
+  reportRow("round_trip", tripRates);
+  local wst = stats(writeRates);
+  local rtst = stats(tripRates);
+  local readTime = 1.0 / rtst.median - 1.0 / wst.median;
+  if (readTime > 0.0) {
+    log(format("%-18s %-11s%10.4f M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)", row, "read", 1e-6 / readTime));
+  }
+}
+
+if (csv && !gate) {
+  print("csv lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline\n");
+  foreach (r in csvRows) {
+    print("csv " + r + "\n");
+  }
+}
+log("OK (corpus_id " + cid + ")");
+log("sink: " + sink);
+SQEOF
+        fi
+        echo "== squirrel: run ==" >&2
+        SQ_OUT="build/bench/squirrel/out.txt"
+        $PIN "$SQ_BIN" build/bench/squirrel/main.nut $RUNNER_ARGS > "$SQ_OUT"
+        while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in
+                "csv "*) printf '%s\n' "${line#csv }" >> "$OUT" ;;
+                "log "*) printf '%s\n' "${line#log }" >&2 ;;
+                *) printf 'squirrel leg REFUSES an untagged line: %s\n' "$line" >&2; exit 1 ;;
+            esac
+        done < "$SQ_OUT"
+    else
+        skip_leg squirrel "no sq at $SQ_BIN (make dist-squirrel, or set SQ)"
+    fi
+fi
+
 # ---- inline verdict pass (§4.1/§4.2): backfill the inline column ----
 # js is absent from this list DELIBERATELY: the verdict is a per-compiled-
 # language disassembly pass and a JIT leg has no AOT artifact to walk —
@@ -783,7 +1067,7 @@ fi
 
 # ---- #175: an --only run that produced zero data rows is a failure, not a
 # quietly green empty CSV — the leg was skipped, not measured. Refuse. ----
-DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau),' "$OUT" 2>/dev/null || true)"
+DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel),' "$OUT" 2>/dev/null || true)"
 if [ -n "$ONLY" ] && [ "${DATA_ROWS:-0}" -eq 0 ]; then
     echo "REFUSED (#175): --only $ONLY produced ZERO rows — see the SKIP reason above; nothing was measured" >&2
     echo "results: $OUT (EMPTY — refused)" >&2

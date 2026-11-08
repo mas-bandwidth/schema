@@ -36,6 +36,7 @@ local MAX_ALIGN = 64
 local records: { [string]: any } = {}
 local unions: { [string]: any } = {}
 local build: any = nil
+local regionAlign = 8
 
 local function freezeFields(list: { any })
 	for _, f in list do
@@ -45,9 +46,11 @@ local function freezeFields(list: { any })
 	table.freeze(list)
 end
 
--- unit registers this build's version (§20), the same in every module
-function C.unit(version: any)
+-- unit registers this build's version (§20) and the region's alignment
+-- (ir.TableRegionAlign), the same in every module
+function C.unit(version: any, align: number)
 	build = version
+	regionAlign = align
 end
 
 -- record and union register one cooked layout by its descriptor's name
@@ -268,6 +271,11 @@ local function readElement(ctx: any, owner: string, fd: any, e: any, at: number,
 		return inst
 	elseif s == "union" then
 		return readUnion(ctx, e.t, at)
+	elseif s == "str" and (e.bound or 0) == 0 then
+		-- an UNBOUNDED element (§2.13.1, bound 0) is one eight-byte slot
+		-- naming a blob record; a null slot is the empty string
+		local blob = blobAt(ctx, at)
+		return if blob == nil then "" else buffer.tostring(blob)
 	elseif s == "str" then
 		return textAt(ctx, e, at, nil)
 	end
@@ -313,8 +321,9 @@ local function readField(ctx: any, owner: string, fd: any, l: any, base: number,
 		v[slot] = out
 		v[slot .. "Length"] = n
 	elseif s == "text" then
+		-- a null slot is the empty string (§2.13.1)
 		local blob = blobAt(ctx, at)
-		v[slot] = if blob == nil then nil else buffer.tostring(blob)
+		v[slot] = if blob == nil then "" else buffer.tostring(blob)
 	elseif s == "sblob" or s == "bblob" or s == "ptr" then
 		v[slot] = readElement(ctx, owner, fd, fd, at, 8, false)
 	elseif s == "tab" then
@@ -434,6 +443,12 @@ end
 
 function C.version(): any
 	return build
+end
+
+-- the region's alignment: the size an unbounded text's blob record rounds to
+-- in its holder's extent (§2.13.1)
+function C.regionAlign(): number
+	return regionAlign
 end
 
 return table.freeze(C)

@@ -3,17 +3,15 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-// TestHostileIllFormedRowExemptsUnportedLegs pins the ill-formed-UTF-8 hostile
-// row to docs/SPEC-TABLES.md §16.3's hold: the rule is held first in Go, so Go
-// owes `refused` (as do C and Rust, which carry it), and C++ still owes the counters its port answers until it
-// takes the rule. A C++ answer of `refused` and a Go answer of those counters
-// each score red, because the exemption is a different expectation and never a
-// skip.
-func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
+// TestHostileIllFormedRowHasNoPortExemption pins the ill-formed-UTF-8 hostile
+// row to docs/SPEC-TABLES.md §16.3's rule. Under layer 3's one read every port,
+// including a synthetic unported leg, owes the same verdict: the old
+// `uncarried` counters are retired, not re-pinned, and no leg may be excused
+// from the row. Answering the retired counters scores red.
+func TestHostileIllFormedRowHasNoPortExemption(t *testing.T) {
 	t.Parallel()
 
 	const root = "../../../"
@@ -37,22 +35,16 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 		t.Fatalf("the manifest names no hostile row %q", caseName)
 	}
 
-	want := map[string]string{
-		"go":   "refused",
-		"c":    "refused",
-		"rust": "refused",
-		"cpp":  oldCounters,
-	}
-	for lang, verdict := range want {
-		if got := row.VerdictFor(lang); got != verdict {
-			t.Fatalf("%s: %s expects %q, got %q", caseName, lang, verdict, got)
+	langs := []string{"go", "c", "rust", "cpp", "unported"}
+	for _, lang := range langs {
+		if got := row.VerdictFor(lang); got != "refused" {
+			t.Fatalf("%s: %s expects refused, got %q", caseName, lang, got)
 		}
 	}
 
 	// the harness's own expectations, not a second copy of the rule
 	byLang := map[string]expectation{}
-	exemptNamed := map[string]bool{}
-	for lang := range want {
+	for _, lang := range langs {
 		legWant, exemptions := hostileExpectations(m, lang)
 		for _, e := range legWant {
 			if e.name == caseName {
@@ -60,62 +52,51 @@ func TestHostileIllFormedRowExemptsUnportedLegs(t *testing.T) {
 			}
 		}
 		for _, line := range exemptions {
-			if strings.Contains(line, caseName) {
-				exemptNamed[lang] = true
+			if line != "" {
+				t.Fatalf("%s: %s still carries a retired exemption: %s", caseName, lang, line)
 			}
 		}
-	}
-	if exemptNamed["go"] || exemptNamed["c"] || exemptNamed["rust"] {
-		t.Fatalf("%s: Go, C and Rust carry the rule and must not be exempted", caseName)
-	}
-	if !exemptNamed["cpp"] {
-		t.Fatalf("%s: C++ is exempted but the harness names no exemption on its line; it must never skip the row in silence", caseName)
+		if got := string(byLang[lang].want); got != "refused\n" {
+			t.Fatalf("%s: %s owes %q, got %q", caseName, lang, "refused\n", got)
+		}
 	}
 
 	dir := t.TempDir()
 
-	// the reversed witness: each leg answering the OTHER leg's verdict is red
-	reversed := map[string]string{
-		"go":   oldCounters,
-		"rust": oldCounters,
-		"cpp":  "refused",
-	}
-	for lang, answer := range reversed {
+	// the retired counters on any leg score red
+	for _, lang := range langs {
 		e, ok := byLang[lang]
 		if !ok {
 			t.Fatalf("%s: the harness has no expectation for %s", caseName, lang)
 		}
-		out := filepath.Join(dir, lang)
+		out := filepath.Join(dir, lang+"-old")
 		if err := os.MkdirAll(out, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(out, e.name), []byte(answer+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(out, e.name), []byte(oldCounters+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		r := &result{}
 		scoreAnswer(lang, "json-hostile", out, e, Instance{}, r)
 		if len(r.failures) == 0 {
-			t.Fatalf("%s: %s answering %q scored green against %q; it must score red", caseName, lang, answer, e.want)
+			t.Fatalf("%s: %s answering the retired counters scored green against %q; it must score red", caseName, lang, e.want)
 		}
 	}
 
 	// and each leg's own answer is green
-	for lang, answer := range want {
-		e, ok := byLang[lang]
-		if !ok {
-			t.Fatalf("%s: the harness has no expectation for %s", caseName, lang)
-		}
+	for _, lang := range langs {
+		e := byLang[lang]
 		out := filepath.Join(dir, lang+"-right")
 		if err := os.MkdirAll(out, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(out, e.name), []byte(answer+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(out, e.name), []byte("refused\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		r := &result{}
 		scoreAnswer(lang, "json-hostile", out, e, Instance{}, r)
 		if len(r.failures) != 0 {
-			t.Fatalf("%s: %s answering %q scored red against %q: %v", caseName, lang, answer, e.want, r.failures)
+			t.Fatalf("%s: %s answering refused scored red against %q: %v", caseName, lang, e.want, r.failures)
 		}
 	}
 }

@@ -129,6 +129,7 @@ let SaveRefuseDeprecatedVariant: i64 = 4;
 let SaveRefuseUnionNoArm: i64 = 5;
 let SaveRefuseUnknownRoot: i64 = 6;
 let SaveRefuseNonFiniteFloat: i64 = 7;
+let SaveRefuseInvalidValue: i64 = 8;
 
 // save_refusal_name is a refusal's name, "" for none.
 fn save_refusal_name(code: i64) -> const u8[:] {
@@ -140,6 +141,7 @@ fn save_refusal_name(code: i64) -> const u8[:] {
         SaveRefuseUnionNoArm => "union_no_arm",
         SaveRefuseUnknownRoot => "unknown_root",
         SaveRefuseNonFiniteFloat => "non_finite_float",
+        SaveRefuseInvalidValue => "invalid_value",
         _ => "",
     };
 }
@@ -277,9 +279,13 @@ recursive fn visit(c: SaveCtx&, wire: i64) {
     c.open[wire] = false;
 }
 
+// edge_of is a pointer slot's node index, 0 for null; an index past the node
+// table, or one with any high bit set, is refused as invalid_value.
 fn edge_of(c: SaveCtx&, s: i64) -> i64 {
     if s < 0 || c.vals[s].state != ValPresent { return 0; }
-    return c.vals[s].bits.lo as! i64;
+    let wire = c.vals[s].bits.lo;
+    if c.vals[s].bits.hi != 0 || wire > (c.nodes.len + 1) as! u64 { refuse(c, SaveRefuseInvalidValue); return 0; }
+    return wire as! i64;
 }
 
 // live_of: the elements an array carries on the wire — every slot of a fixed
@@ -345,7 +351,7 @@ recursive fn edges_arm(c: SaveCtx&, s: i64, name: const u8[:]) {
     let tag = c.vals[s].bits.lo as! i64;
     if c.vals[s].state != ValPresent || tag == 0 { return; }
     let u = save_union_index(c, name);
-    if u < 0 || tag > c.unit.unions[u].arms.len { return; }
+    if u < 0 || tag < 0 || tag > c.unit.unions[u].arms.len { return; }
     let a = c.unit.unions[u].arms[tag - 1];
     let p = c.vals[s].first;
     if p < 0 { return; }
@@ -622,10 +628,29 @@ recursive fn put_value(c: SaveCtx&, s: i64, d: const FieldDesc&, kind: u8) {
 
 // field_array: kind 14 — the element kind, the count, the elements (§3).
 fn field_array(c: SaveCtx&, s: i64, d: FieldDesc, count: i64) {
+    // a text list past its total is refused, as a count past its bound is
+    // (docs/SPEC-TABLES.md §2.13)
+    if d.text_total > 0 && text_sum(c, s, count) > d.text_total {
+        refuse(c, SaveRefuseInvalidValue);
+        return;
+    }
     header(c, d.id, KindArray);
     let start = c.out.len;
     array_body(c, s, d, count);
     frame(c, start);
+}
+
+// text_sum is the bytes of a text list's first count elements: each
+// element record's one value, 0 for an absent `?string(M)` element.
+fn text_sum(c: SaveCtx&, s: i64, count: i64) -> i64 {
+    if s < 0 || !c.vals[s].made { return 0; }
+    var sum: i64 = 0;
+    for k in count {
+        if k >= c.vals[s].count { break; }
+        let vs = slot_of(c, c.vals[s].first + k, 0);
+        if state_of(c, vs) == ValPresent { sum += c.vals[vs].len; }
+    }
+    return sum;
 }
 
 recursive fn array_body(c: SaveCtx&, s: i64, d: const FieldDesc&, count: i64) {
@@ -801,12 +826,17 @@ fn save_into(c: SaveCtx&, root_val: i64) -> i64 {
     edges(c, t, root_val);
     c.open[1] = false;
     if c.refusal != 0 { return c.refusal; }
+    let start = c.out.len;
     put(c, 1); // THE FORM BYTE (§3)
     body(c, t, root_val, true);
     if c.refusal != 0 { return c.refusal; }
     // THE ID TABLE IS THE LAST THING IN THE FILE: the entries, then the count
     for id in c.ids { put_le(c, id, 8); }
     put_le(c, c.ids.len as! u64, 8);
+    if c.unit.tables[t].integrity {
+        let sum = crc32c(c.out, start, c.out.len);
+        put_le(c, sum, 4);
+    }
     return 0;
 }
 

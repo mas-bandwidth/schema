@@ -120,6 +120,7 @@ type manifestRow struct {
 	Records int64
 	Values  map[string]string
 	Forged  map[string]string
+	Expect  map[string]string // what the reference's reader landed from a forged file, `clamped` included
 }
 
 // readManifest is THE one reader of a manifest line's entries: it parses every
@@ -138,6 +139,7 @@ func readManifest(corpus string) (map[string]manifestRow, error) {
 		var r manifestRow
 		r.Values = map[string]string{}
 		r.Forged = map[string]string{}
+		r.Expect = map[string]string{}
 		// `values=` is the LAST entry of a line and its text may hold spaces
 		// (`r0.note="first build"`), so the line is cut there and never split
 		// on white space past it; the identity entries before it carry none.
@@ -160,6 +162,8 @@ func readManifest(corpus string) (map[string]manifestRow, error) {
 				r.Records, _ = strconv.ParseInt(v, 10, 64)
 			case "forged":
 				collectManifestPairs(v, r.Forged)
+			case "expect":
+				collectManifestPairs(v, r.Expect)
 			}
 		}
 		if hasVals {
@@ -692,12 +696,10 @@ type sideSpec struct {
 // lineageOf is the lock a test plays: every fixed root of every older unit, in
 // order, oldest first, with the first `retire` entries marked retired.
 //
-// Each entry also carries the WRITER's bounded leaves (ALGORITHM §4.6, bill
-// §12.5): the ranged scalars the older unit declared, on the raw scale — a
-// fixed-point's whole-unit bounds shifted by F — matched by the field's name.
-// The reference's collectKnownRanges hands its emitter the same facts from the
-// same endpoint schemas; a leg's bounds pass holds a compiled lane to the endpoint's
-// own bounds, so the entry is where they ride.
+// Each entry also carries the WRITER's ranged leaves, which FixedLineageOf
+// reads off the older unit (ir.TableFixedWriterRanges, docs/FIXED-FORM-ALGORITHM.md
+// §4.5): a leg's bounds pass holds a compiled lane to the endpoint's own
+// bounds, so the entry is where they ride.
 func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLineageEntry {
 	t.Helper()
 	out := map[string][]FixedLineageEntry{}
@@ -712,37 +714,8 @@ func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLinea
 			if e.Retired {
 				e.Reason = "retired by the test's lock"
 			}
-			e.Ranges = fixedWriterRanges(t, st)
 			out[st.Name] = append(out[st.Name], e)
 		}
-	}
-	return out
-}
-
-// fixedWriterRanges is the older unit's own ranged leaves, top level of the
-// root, on the RAW scale the wire carries (ir.TableRawRange shifts a
-// fixed-point's bounds by F). Bounds that do not fit an int64 bound nothing
-// and are skipped rather than clamped to a zero nobody declared. A FIXED
-// array's range bounds every element; a counted array's live count is a
-// run-time fact this static entry does not carry, so only the fixed shape
-// rides here (the scatter's own pass walks a counted array's live elements).
-func fixedWriterRanges(t *testing.T, st *ir.Struct) []FixedRangeSpec {
-	t.Helper()
-	var out []FixedRangeSpec
-	for _, f := range st.Fields {
-		if f.Array == ir.ArrayCounted || f.Type.Optional || f.KeyEnum != "" {
-			continue
-		}
-		switch f.Type.Kind {
-		case ir.TInt, ir.TBits, ir.TFixed:
-		default:
-			continue
-		}
-		lo, hi, ok := ir.TableRawRange(f)
-		if !ok || !lo.IsInt64() || !hi.IsInt64() {
-			continue
-		}
-		out = append(out, FixedRangeSpec{Name: f.Name, Lo: lo.Int64(), Hi: hi.Int64()})
 	}
 	return out
 }
@@ -1163,44 +1136,50 @@ func TestFixedVersioningHash(t *testing.T) {
 	_, classes := buildRow(t, dir, "hash", []sideSpec{
 		{key: "reads", schema: "VNEW_field_append.schema", older: []string{"VOLD_field_append.schema"}},
 	})
-	// hash_identity: the reader's own hash selects the identity plan.
-	got := runProbe(t, classes, "Probe_reads", own)
-	if got.refused || got.malformed || got.n < 1 {
-		t.Errorf("hash_identity: the reader's own file does not read: n=%d refused=%v reason=%s", got.n, got.refused, got.reason)
-	}
-	// hash_unknown: one byte of the header's hash moved is a hash in no lineage.
 	raw, err := os.ReadFile(own)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stranger := append([]byte(nil), raw...)
-	stranger[8] ^= 0xFF
-	path := filepath.Join(dir, "stranger.bin")
-	if err := os.WriteFile(path, stranger, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	unknown := runProbe(t, classes, "Probe_reads", path)
-	if !unknown.refused || unknown.reason != "layoutNewer" {
-		t.Errorf("hash_unknown: refused=%v reason=%s, want layoutNewer", unknown.refused, unknown.reason)
-	}
-	if want := fileHash(t, path); unknown.layoutHash != want {
-		t.Errorf("hash_unknown: layoutHash=%s, want the file's own hash %s and nothing else", unknown.layoutHash, want)
-	}
-	if unknown.malformed {
-		t.Error("hash_unknown: malformed is set beside a reason")
-	}
-	// hash_known_bytes_differ: a KNOWN hash whose layout bytes differ is
-	// `layout_malformed`, one name for all seven §1.1 malformations (§5.3).
-	lie := append([]byte(nil), raw...)
-	lie[20+4] ^= 0xFF // the first entry's id, behind a hash this reader holds
-	liePath := filepath.Join(dir, "lie.bin")
-	if err := os.WriteFile(liePath, lie, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	bad := runProbe(t, classes, "Probe_reads", liePath)
-	if !bad.refused || bad.reason != "layoutMalformed" {
-		t.Errorf("hash_known_bytes_differ: refused=%v reason=%s, want layoutMalformed", bad.refused, bad.reason)
-	}
+	t.Run("hash_identity", func(t *testing.T) {
+		// hash_identity: the reader's own hash selects the identity plan.
+		got := runProbe(t, classes, "Probe_reads", own)
+		if got.refused || got.malformed || got.n < 1 {
+			t.Errorf("hash_identity: the reader's own file does not read: n=%d refused=%v reason=%s", got.n, got.refused, got.reason)
+		}
+	})
+	t.Run("hash_unknown", func(t *testing.T) {
+		// hash_unknown: one byte of the header's hash moved is a hash in no lineage.
+		stranger := append([]byte(nil), raw...)
+		stranger[8] ^= 0xFF
+		path := filepath.Join(dir, "stranger.bin")
+		if err := os.WriteFile(path, stranger, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		unknown := runProbe(t, classes, "Probe_reads", path)
+		if !unknown.refused || unknown.reason != "layoutNewer" {
+			t.Errorf("hash_unknown: refused=%v reason=%s, want layoutNewer", unknown.refused, unknown.reason)
+		}
+		if want := fileHash(t, path); unknown.layoutHash != want {
+			t.Errorf("hash_unknown: layoutHash=%s, want the file's own hash %s and nothing else", unknown.layoutHash, want)
+		}
+		if unknown.malformed {
+			t.Error("hash_unknown: malformed is set beside a reason")
+		}
+	})
+	t.Run("hash_known_bytes_differ", func(t *testing.T) {
+		// hash_known_bytes_differ: a KNOWN hash whose layout bytes differ is
+		// `layout_malformed`, one name for all seven §1.1 malformations (§5.3).
+		lie := append([]byte(nil), raw...)
+		lie[20+4] ^= 0xFF // the first entry's id, behind a hash this reader holds
+		liePath := filepath.Join(dir, "lie.bin")
+		if err := os.WriteFile(liePath, lie, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		bad := runProbe(t, classes, "Probe_reads", liePath)
+		if !bad.refused || bad.reason != "layoutMalformed" {
+			t.Errorf("hash_known_bytes_differ: refused=%v reason=%s, want layoutMalformed", bad.refused, bad.reason)
+		}
+	})
 	_ = hex.EncodeToString
 }
 
@@ -1229,3 +1208,306 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 		}
 	}
 }
+
+// The old compiled-plan fixture now reads through the writer's locked lineage.
+// Exercise its second-arm text, signed/float widenings, and noncanonical true
+// bytes against the C++ fu1.bin corpus on both identity (FU1) and compiled (FU2) paths.
+func TestFixedVersioningTextUnderArm(t *testing.T) {
+	runFixedVersioningTextUnderArm(t, false)
+}
+
+func TestFixedVersioningTextUnderArmTrueBytes(t *testing.T) {
+	runFixedVersioningTextUnderArm(t, true)
+}
+
+func runFixedVersioningTextUnderArm(t *testing.T, trueBytes bool) {
+	t.Helper()
+	corpus := corpusDir(t)
+	fu1Bin := filepath.Join(corpus, "fu1.bin")
+	if _, err := os.Stat(fu1Bin); err != nil {
+		t.Fatalf("the corpus has no fu1.bin: run `make tables-fixedform-corpus`")
+	}
+	fu1Files, err := Generate(versioningSchemaUnit(t, "FU1.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fu2Files, err := GenerateLineage(versioningSchemaUnit(t, "FU2.schema"), lineageOf(t, []string{"FU1.schema"}, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	javac, javaBin := javaTools(t)
+	dir := t.TempDir()
+	srcDir := filepath.Join(dir, "src")
+	classes := filepath.Join(dir, "classes")
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixedJava(t, srcDir, "tblfu1", fu1Files)
+	writeFixedJava(t, srcDir, "tblfu2", fu2Files)
+	driverPath := filepath.Join(srcDir, "ArmProbe.java")
+	if err := os.WriteFile(driverPath, []byte(fixedVersioningArmProbeDriver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fu1Src, err := filepath.Glob(filepath.Join(srcDir, "tblfu1", "*.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fu2Src, err := filepath.Glob(filepath.Join(srcDir, "tblfu2", "*.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, fu1Src...)
+	args = append(args, fu2Src...)
+	args = append(args, driverPath)
+	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	mode := "plain"
+	if trueBytes {
+		mode = "true_bytes"
+	}
+	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "ArmProbe", fu1Bin, mode).CombinedOutput()
+	if err != nil {
+		t.Fatalf("java ArmProbe (%s): %v\n%s", mode, err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("ArmProbe (%s): %s", mode, out)
+	}
+}
+
+const fixedVersioningArmProbeDriver = `import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+public final class ArmProbe {
+    private ArmProbe() {}
+
+    static void fail(String what) {
+        System.out.println("FAILED: " + what);
+        System.exit(1);
+    }
+
+    static String textOf(byte[] buf, int length) {
+        return new String(buf, 0, length, StandardCharsets.UTF_8);
+    }
+
+    public static void main(String[] args) throws Exception {
+        byte[] data = Files.readAllBytes(Paths.get(args[0]));
+        final boolean trueBytes = args.length > 1 && args[1].equals("true_bytes");
+        final int layoutBytes = tblfu2.TableFixed.get32(data, 16);
+        final int body = 20 + layoutBytes + 8;
+        if (trueBytes) {
+            data[body] = 2;
+            data[body + 1] = 7;
+        }
+
+        // 1. Identity read on FU1
+        final tblfu1.FuRootFixed.Value[] v1 = {
+            new tblfu1.FuRootFixed.Value(),
+            new tblfu1.FuRootFixed.Value(),
+            new tblfu1.FuRootFixed.Value(),
+        };
+        final tblfu1.TableFixed.Report r1 = new tblfu1.TableFixed.Report();
+        final int n1 = tblfu1.FuRootFixed.load(v1, v1.length, data,
+                tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), r1);
+        if (n1 != 3 || r1.refused || r1.malformed || r1.clamped != 0 || r1.kindMismatch != 0
+                || r1.unknown != 0 || r1.widened != 0) {
+            fail("FU1 identity report: n=" + n1 + " refused=" + r1.refused + " malformed=" + r1.malformed);
+        }
+        if (!v1[0].flag || !v1[0].notePresent || v1[0].note != 44
+                || v1[0].pick.type != tblfu1.PickFixed.labelled
+                || v1[0].pick.labelled.lead != 101
+                || v1[0].pick.labelled.labelLength != 5
+                || !textOf(v1[0].pick.labelled.label, 5).equals("hello")
+                || v1[0].pick.labelled.label[5] != 0
+                || v1[0].pick.labelled.label[6] != 0
+                || v1[0].pick.labelled.label[7] != 0
+                || v1[0].pick.labelled.trail != 202
+                || v1[0].tail != 11
+                || v1[0].mark != -1
+                || Float.floatToRawIntBits(v1[0].heat) != 1) {
+            fail("FU1 record 0 mismatch");
+        }
+        if (v1[1].flag || v1[1].notePresent
+                || v1[1].pick.type != tblfu1.PickFixed.plain
+                || v1[1].pick.plain.n != 303
+                || v1[1].tail != 12
+                || v1[1].mark != -32768
+                || Float.floatToRawIntBits(v1[1].heat) != Float.floatToRawIntBits(-0.0f)) {
+            fail("FU1 record 1 mismatch");
+        }
+        if (v1[2].pick.type != tblfu1.PickFixed.labelled
+                || v1[2].pick.labelled.labelLength != 0
+                || v1[2].pick.labelled.lead != -5
+                || v1[2].pick.labelled.trail != 606
+                || v1[2].note != -7
+                || v1[2].tail != 13
+                || v1[2].mark != 32767
+                || v1[2].heat != 1.5f) {
+            fail("FU1 record 2 mismatch");
+        }
+
+        // 2. Compiled lineage read on FU2 (with FU1 locked in its lineage)
+        final tblfu2.FuRootFixed.Value[] v2 = {
+            new tblfu2.FuRootFixed.Value(),
+            new tblfu2.FuRootFixed.Value(),
+            new tblfu2.FuRootFixed.Value(),
+        };
+        final tblfu2.TableFixed.Report r2 = new tblfu2.TableFixed.Report();
+        final int n2 = tblfu2.FuRootFixed.load(v2, v2.length, data,
+                tblfu2.TableFixed.plan(4096), new short[4096], tblfu2.FuRootFixed.image(), r2);
+        if (n2 != 3 || r2.refused || r2.malformed || r2.clamped != 0 || r2.kindMismatch != 0
+                || r2.unknown != 0 || r2.widened != 6) {
+            fail("FU2 compiled report: n=" + n2 + " refused=" + r2.refused + " reason=" + r2.reason
+                    + " malformed=" + r2.malformed + " widened=" + r2.widened);
+        }
+        if (!v2[0].flag || !v2[0].notePresent || v2[0].note != 44
+                || v2[0].pick.type != tblfu2.PickFixed.labelled
+                || v2[0].pick.labelled.lead != 101
+                || v2[0].pick.labelled.labelLength != 5
+                || !textOf(v2[0].pick.labelled.label, 5).equals("hello")
+                || v2[0].pick.labelled.label[5] != 0
+                || v2[0].pick.labelled.label[6] != 0
+                || v2[0].pick.labelled.label[7] != 0
+                || v2[0].pick.labelled.trail != 202
+                || v2[0].tail != 11
+                || v2[0].extra != 11
+                || v2[0].mark != -1
+                || v2[0].heat != (double) Float.intBitsToFloat(1)) {
+            fail("FU2 record 0 mismatch");
+        }
+        if (v2[1].flag || v2[1].notePresent
+                || v2[1].pick.type != tblfu2.PickFixed.plain
+                || v2[1].pick.plain.n != 303
+                || v2[1].tail != 12
+                || v2[1].extra != 11
+                || v2[1].mark != -32768
+                || Double.doubleToRawLongBits(v2[1].heat) != Double.doubleToRawLongBits(-0.0d)) {
+            fail("FU2 record 1 mismatch");
+        }
+        if (v2[2].pick.type != tblfu2.PickFixed.labelled
+                || v2[2].pick.labelled.labelLength != 0
+                || v2[2].pick.labelled.lead != -5
+                || v2[2].pick.labelled.trail != 606
+                || v2[2].note != -7
+                || v2[2].tail != 13
+                || v2[2].extra != 11
+                || v2[2].mark != 32767
+                || v2[2].heat != 1.5d) {
+            fail("FU2 record 2 mismatch");
+        }
+
+        // 3. Real zero-byte control rules out treating every bool/presence as true.
+        data[body] = 0;
+        data[body + 1] = 0;
+        if (tblfu1.FuRootFixed.load(v1, v1.length, data,
+                tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), r1) != 3) {
+            fail("FU1 zero-byte control load");
+        }
+        if (v1[0].flag || v1[0].notePresent || v1[0].pick.labelled.labelLength != 5) {
+            fail("FU1 zero-byte control values");
+        }
+        if (tblfu2.FuRootFixed.load(v2, v2.length, data,
+                tblfu2.TableFixed.plan(4096), new short[4096], tblfu2.FuRootFixed.image(), r2) != 3) {
+            fail("FU2 zero-byte control load");
+        }
+        if (v2[0].flag || v2[0].notePresent || v2[0].pick.labelled.labelLength != 5) {
+            fail("FU2 zero-byte control values");
+        }
+        System.out.println("ok");
+    }
+}
+`
+
+// TestFixedVersioningPlanTooLarge proves the retired plan_too_large negative
+// control on the lineage harness (§5.9 #5, #39, #45): a one-entry plan slice
+// handed to a reader whose selected lineage plan requires more than one entry
+// is refused as planTooLarge with no counter moved and the poisoned destination
+// untouched, while the same file reads cleanly at sufficient capacity.
+func TestFixedVersioningPlanTooLarge(t *testing.T) {
+	corpus := corpusDir(t)
+	fu1Bin := filepath.Join(corpus, "fu1.bin")
+	if _, err := os.Stat(fu1Bin); err != nil {
+		t.Fatalf("the corpus has no fu1.bin: run `make tables-fixedform-corpus`")
+	}
+	fu2Files, err := GenerateLineage(versioningSchemaUnit(t, "FU2.schema"), lineageOf(t, []string{"FU1.schema"}, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	javac, javaBin := javaTools(t)
+	dir := t.TempDir()
+	srcDir := filepath.Join(dir, "src")
+	classes := filepath.Join(dir, "classes")
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixedJava(t, srcDir, "tblfu2", fu2Files)
+	driverPath := filepath.Join(srcDir, "PlanCapProbe.java")
+	if err := os.WriteFile(driverPath, []byte(fixedVersioningPlanCapProbeDriver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fu2Src, err := filepath.Glob(filepath.Join(srcDir, "tblfu2", "*.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, fu2Src...)
+	args = append(args, driverPath)
+	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "PlanCapProbe", fu1Bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("java PlanCapProbe: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("PlanCapProbe: %s", out)
+	}
+}
+
+const fixedVersioningPlanCapProbeDriver = `import java.nio.file.Files;
+import java.nio.file.Paths;
+
+public final class PlanCapProbe {
+    private PlanCapProbe() {}
+
+    static void fail(String what) {
+        System.out.println("FAILED: " + what);
+        System.exit(1);
+    }
+
+    public static void main(String[] args) throws Exception {
+        final byte[] data = Files.readAllBytes(Paths.get(args[0]));
+        final tblfu2.FuRootFixed.Value[] vals = {
+            new tblfu2.FuRootFixed.Value(),
+            new tblfu2.FuRootFixed.Value(),
+            new tblfu2.FuRootFixed.Value(),
+        };
+        vals[0].tail = 0x5A5A5A5A;
+        vals[0].extra = 0x5A5A5A5A;
+        vals[0].pick.labelled.lead = 0x5A5A5A5A;
+
+        final tblfu2.TableFixed.Report r = new tblfu2.TableFixed.Report();
+        final int n = tblfu2.FuRootFixed.load(vals, vals.length, data,
+                tblfu2.TableFixed.plan(1), new short[1], tblfu2.FuRootFixed.image(), r);
+        if (n != -1 || !r.refused || r.reason != tblfu2.TableFixed.Reason.planTooLarge) {
+            fail("expected planTooLarge refusal, got n=" + n + " refused=" + r.refused + " reason=" + r.reason);
+        }
+        if (r.malformed || r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0
+                || r.clamped != 0 || r.layoutHash != 0) {
+            fail("planTooLarge moved a counter or set malformed/layoutHash");
+        }
+        if (vals[0].tail != 0x5A5A5A5A || vals[0].extra != 0x5A5A5A5A || vals[0].pick.labelled.lead != 0x5A5A5A5A) {
+            fail("planTooLarge wrote into poisoned destination");
+        }
+
+        // Same file reads cleanly when given sufficient plan capacity.
+        final tblfu2.TableFixed.Report okReport = new tblfu2.TableFixed.Report();
+        final int okN = tblfu2.FuRootFixed.load(vals, vals.length, data,
+                tblfu2.TableFixed.plan(1024), new short[1024], tblfu2.FuRootFixed.image(), okReport);
+        if (okN != 3 || okReport.refused || okReport.malformed || okReport.widened != 6) {
+            fail("expected clean read at sufficient capacity, got n=" + okN + " refused=" + okReport.refused);
+        }
+        System.out.println("ok");
+    }
+}
+`

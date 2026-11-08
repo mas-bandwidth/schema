@@ -5,7 +5,7 @@ import "github.com/mas-bandwidth/schema/v2/ir"
 func (g *tableGen) emitReadWString(f *ir.Field, expr, rdr, ind, bad string) {
 	g.pf("%sclear(%s[:]); %sLength=0\n", ind, expr, expr)
 	g.pf("%sif !tableUtf16Valid(%s.Buffer) { %s }\n", ind, rdr, bad)
-	g.pf("%skeep:=len(%s.Buffer)/2;if keep>%d {keep=tableUtf16Clamp(%s.Buffer,%d);r.Report.Clamped++}\n", ind, rdr, f.Type.Size, rdr, f.Type.Size)
+	g.pf("%skeep:=len(%s.Buffer)/2;if keep>%d {%s}\n", ind, rdr, f.Type.Size, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"))
 	g.pf("%sfor i := range keep {%s[i]=uint16(%s.Buffer[2*i])|uint16(%s.Buffer[2*i+1])<<8};%sLength=int32(keep)\n", ind, expr, rdr, rdr, expr)
 }
 
@@ -22,10 +22,6 @@ func tableUtf16Valid(data []byte) bool {
  }
  return true
 }
-func tableUtf16Clamp(data []byte,keep int) int {
- if keep>0 && keep<len(data)/2 {u:=binary.LittleEndian.Uint16(data[(keep-1)*2:]);if u>=0xd800 && u<=0xdbff {keep--}}
- return keep
-}
 `
 
 const tableJSONWStringSource = `
@@ -36,7 +32,7 @@ func tableJSONWriteWString(out *tableJSONOut,units []uint16) {
   if code>=0xd800 && code<=0xdbff && i+1<len(units) && units[i+1]>=0xdc00 && units[i+1]<=0xdfff {
    code=0x10000+(code-0xd800)<<10+(uint32(units[i+1])-0xdc00);i++
   }
-  if code>=0xd800 && code<=0xdfff {code=0xfffd}
+  if code>=0xd800 && code<=0xdfff {out.invalid=true;continue} // an unpaired surrogate is not text: the write refuses (§16.14 W0)
   var encoded [4]byte;n:=tableJSONEncodeUTF8(code,encoded[:])
   tableJSONWriteStringBody(out,encoded[:n])
  }

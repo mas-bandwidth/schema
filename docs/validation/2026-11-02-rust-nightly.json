@@ -1,0 +1,215 @@
+{
+  "language": "rust",
+  "tested_revision": "8bb3969aa3d3ac6044253c347525216be19606c9",
+  "host": "hulk",
+  "command": "CARGO_BUILD_JOBS=2 PYTHONUNBUFFERED=1 test/conformance/nightly-readiness rust",
+  "finished_utc": "2026-11-02T23:58:09Z",
+  "result": "NIGHTLY_READINESS_PASS language=rust phases=24",
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 3
+  },
+  "native_table_events": {
+    "pass": 365,
+    "fail": 0,
+    "skip": 0
+  },
+  "plain": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 212,
+    "roots": 64,
+    "enumerated_per_seed": 162036,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "retaining": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 92,
+    "roots": 28,
+    "enumerated_per_seed": 91392,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "control_note": "retain-rust is an intentional sabotage: exit 1 is required, with exact assertion failure and no skips or compile failure.",
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 3.4918577150674537,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 1.3957575269741938,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 1.0782955270260572,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 11.484324728953652,
+      "errors": []
+    },
+    {
+      "phase": "native-list-rust",
+      "exit": 0,
+      "seconds": 0.3101401240564883,
+      "errors": []
+    },
+    {
+      "phase": "native-rust",
+      "exit": 0,
+      "seconds": 0.755939390975982,
+      "errors": []
+    },
+    {
+      "phase": "native-list-rusttable",
+      "exit": 0,
+      "seconds": 0.7909780279733241,
+      "errors": []
+    },
+    {
+      "phase": "native-rusttable",
+      "exit": 0,
+      "seconds": 409.7266493450152,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 1.3665232000639662,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-0",
+      "exit": 0,
+      "seconds": 0.623841710970737,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-1",
+      "exit": 0,
+      "seconds": 5.371207535034046,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-0",
+      "exit": 0,
+      "seconds": 0.2919792759930715,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-1",
+      "exit": 0,
+      "seconds": 0.5786867419956252,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 10.208851650008,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 5.9099411310162395,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 53.70842574699782,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 62.39922820706852,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 61.78464078903198,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 61.273211083956994,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 55.756354477023706,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 59.35433172993362,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 54.016438373946585,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 74.60328385897446,
+      "errors": []
+    },
+    {
+      "phase": "retain-rust",
+      "exit": 1,
+      "seconds": 73.4311152070295,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "external-table-gates.log": "3f3a4348bf1e4d9ea4049c91c9cf8239533cc267b22eb57f88fd778dd1475201",
+    "implementation.log": "b65e6d0f0cc534e3e4bb315dd60dfbca54d5d600d107a31add8623cf67f9723b",
+    "native-list-lockfile.log": "b67194e7ad73d0636f855a6e830904bac76921f503f62e323258d4e97d8d2d47",
+    "native-list-rust.log": "d8c6840d182804a5042026a663908559b4c73425da8bcddfed36825f2d02e038",
+    "native-list-rusttable.log": "fd3d2262a49de4230394e726e13351dc08c098ae30a3642fea5b68e232180af9",
+    "native-lockfile.log": "822415c623ccedfe9c50eaeb587e8f22872e4e213bdfec142bc6ec6395ca9acc",
+    "native-rust.log": "a44ddbbcf4e6c384ff2c71715bba77aa6287d7695a4f52ec9a8dae99f318ffee",
+    "native-rusttable.log": "5932fac717a160839e3cf8da35a64eb9a7b12aebc8e99ea47d5176a047ca72c9",
+    "packet-build.log": "7ee66f85274874cce51b09952dd3ae9548d53b532fffd280f7ba047db4982fcf",
+    "packet-features.log": "f41f21a1e735c039dd9771f40036e9d38064f9613fd41a4d8bc8f2c1898517da",
+    "packet-ludicrous-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-ludicrous-1.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-1.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "prerequisites.log": "e3ac0ca3d03dc64e14d81ab1ad06f0055d5947267e3cecaf3f62674af4cd788b",
+    "retain-rust.log": "357fe92ffe8b6f547cf8105bb792f49045a86e20fb4250994c57ff78fad5bfc7",
+    "wire-driver-build.log": "2a11e62ceb61746b622fb0706ddd3b014f03d4389c22604299e581aa8afdaf47",
+    "wire-plain-1.log": "2d3629eafb4efce423f475b21924fb7dd415dcb526d301c6783697c7a1c27fb5",
+    "wire-plain-2.log": "a12e7fe112b025ba2a70fe76c857b39a77b82e4d507bd6a9bc6adb22dfaa2a1e",
+    "wire-plain-3.log": "3e6d6089842eb3a99486f9bdebbb8389ea721ec6398020aa2e4423465fe94678",
+    "wire-retain-1.log": "007d2c484bdbe14b5360d05a2a2666c804f93fffcadcaa89af310d4e9796a20a",
+    "wire-retain-2.log": "4ba06cb7092006d2ec243e96d5e14bd0dae18ba250d762bd9a1c3324a6d358de",
+    "wire-retain-3.log": "dda7125924626381298e5da04fc9ba9e84e7944985e1382108446e0e9da27065",
+    "wire-retain-controls.log": "70af70bd6d712d2b6d434b0ce57f03e4226fb484baa23b313cead7eab8d301de",
+    "results.json": "76609c6d96daee15480f88a68731adcc9655aac341f3ed0cbc9571da43288461"
+  }
+}

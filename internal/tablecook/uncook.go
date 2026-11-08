@@ -1,5 +1,5 @@
 // UNCOOK: a cook read back into the instance model, and from there onto the
-// tolerant wire.
+// wire.
 //
 // It is a TOOL and never a runtime path — a runtime points at a cook and reads
 // it where it lies (§7). It exists because the wire is the FORMAT OF RECORD: a
@@ -23,6 +23,12 @@ import (
 // is: the directory is what names each node's start and type, and a file that
 // carries none cannot be read back any more than it can be checked.
 func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instance, error) {
+	// ONE VERDICT ON BOTH READS OF A COOK (docs/SPEC-TABLES.md §4, §7): Uncook
+	// refuses every file Check refuses, a cycle and a reference to another
+	// node type included, so it asks Check first.
+	if _, err := Check(m, file); err != nil {
+		return nil, err
+	}
 	h, err := ReadHeader(file, ir.BuildVersion(m.Unit), ir.RecordLayout(m.Unit, root).Align)
 	if err != nil {
 		return nil, err
@@ -68,6 +74,11 @@ func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instan
 		if r.nodes[i] == nil {
 			continue
 		}
+		r.nodeBase = e.Offset
+		r.nodeEnd = h.DataLength
+		if i+1 < len(dir) {
+			r.nodeEnd = dir[i+1].Offset
+		}
 		if err := r.record(e.Offset, byTypeId[e.TypeId], r.nodes[i]); err != nil {
 			return nil, err
 		}
@@ -76,12 +87,14 @@ func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instan
 }
 
 type regionReader struct {
-	m     *tabletext.Model
-	ord   order
-	buf   []byte
-	dir   []DirectoryEntry
-	nodes []*tabletext.Instance // by directory position; nil where the entry is a blob
-	blobs []*tabletext.Blob     // by directory position; nil where the entry is a table
+	m        *tabletext.Model
+	ord      order
+	buf      []byte
+	dir      []DirectoryEntry
+	nodes    []*tabletext.Instance // by directory position; nil where the entry is a blob
+	blobs    []*tabletext.Blob     // by directory position; nil where the entry is a table
+	nodeBase int64
+	nodeEnd  int64
 }
 
 func (r *regionReader) record(base int64, st *ir.Struct, inst *tabletext.Instance) error {
@@ -113,6 +126,8 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		return r.mapEntries(value.Offset, f, fv)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return r.ref(value.Offset, f, &fv.Cell)
+	case f.Type.TextUnbounded():
+		return r.text(value.Offset, f, fv)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		n := int64(int32(r.ord.Uint32(r.buf[pieces[1].Offset:])))
 		bound := f.Type.Size
@@ -155,6 +170,39 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 	return r.element(value.Offset, f, &fv.Cell)
 }
 
+// text reads back ONE unbounded text value (docs/SPEC-TABLES.md §2.13.1): the
+// slot's int64 self-relative delta to a blob record in the holder's own node
+// extent, or RefNull for the empty string.
+func (r *regionReader) text(at int64, f *ir.Field, fv *tabletext.Field) error {
+	delta := int64(r.ord.Uint64(r.buf[at:]))
+	if delta == RefNull {
+		fv.Cell.Str = nil
+		fv.Count = 0
+		return nil
+	}
+	if f.Type.Optional && !fv.Present {
+		return fmt.Errorf("field %s: the optional is absent and its text reference is %d, not null", f.Name, delta)
+	}
+	start, _, fits := arrayExtent(at, delta, BlobHeader, 1, r.nodeBase, r.nodeEnd)
+	if !fits || start%BlobAlign != 0 {
+		return fmt.Errorf("field %s: the text blob at %d with delta %d leaves the holder's node [%d, %d) or is not %d-aligned", f.Name, at, delta, r.nodeBase, r.nodeEnd, BlobAlign)
+	}
+	length := int64(r.ord.Uint32(r.buf[start:]))
+	if length <= 0 {
+		return fmt.Errorf("field %s: the text reference is not null and the blob's length is %d: an empty string's reference is null (docs/SPEC-TABLES.md §2.13.1)", f.Name, length)
+	}
+	need := BlobHeader + length + 1
+	if _, _, fits := arrayExtent(at, delta, need, 1, r.nodeBase, r.nodeEnd); !fits {
+		return fmt.Errorf("field %s: the text blob at %d of length %d leaves the holder's node [%d, %d)", f.Name, start, length, r.nodeBase, r.nodeEnd)
+	}
+	if r.buf[start+BlobHeader+length] != 0 {
+		return fmt.Errorf("field %s: the text blob at %d of length %d is not NUL-terminated", f.Name, start, length)
+	}
+	fv.Cell.Str = append([]byte(nil), r.buf[start+BlobHeader:start+BlobHeader+length]...)
+	fv.Count = int(length)
+	return nil
+}
+
 // mapEntries reads back ONE map (docs/SPEC-TABLES.md §2.8): the slot's int64
 // SELF-RELATIVE delta and int32 count, then the generated `{ key, value }`
 // entries at the array the delta names, in the order they lie, which a cook
@@ -172,6 +220,9 @@ func (r *regionReader) mapEntries(at int64, f *ir.Field, fv *tabletext.Field) er
 		}
 		fv.Entries = fv.Entries[:0]
 		return nil
+	}
+	if f.Type.Optional && !fv.Present {
+		return fmt.Errorf("field %s: the optional is absent and its map slot is (%d, %d), not (0, 0)", f.Name, delta, count)
 	}
 	if count == 0 {
 		return fmt.Errorf("field %s: the count is 0 and the reference is not null: an empty map's reference is null in every encoding", f.Name)

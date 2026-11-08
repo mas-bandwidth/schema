@@ -20,6 +20,9 @@ import (
 // region is laid out from, their layout contract as const asserts, and one
 // <Name>Cook per table in the file.
 func (g *gen) cookModule() []byte {
+	if !anyCookForm(g.unit) {
+		return nil
+	}
 	roots := g.cookRoots()
 	if len(roots) == 0 {
 		return nil
@@ -44,8 +47,10 @@ func (g *gen) cookModule() []byte {
 	g.body.Reset()
 	g.emitCookDescriptors(roots)
 	for _, st := range roots {
-		g.emitCookHandle(st)
-		g.emitCookWrite(st)
+		if st.CarriesForm("cook") {
+			g.emitCookHandle(st)
+			g.emitCookWrite(st)
+		}
 	}
 	b.WriteString(g.body.String())
 	return []byte(b.String())
@@ -732,7 +737,7 @@ func (g *gen) emitCookRow(st *ir.Struct) {
 	g.pf("// %s — a cooked record: %d bytes, aligned %d.\n", st.Name, layout.Size, layout.Align)
 	g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub struct %sRow {\n", st.Name)
 	if len(st.Fields) == 0 {
-		g.pf("    _empty: [u8; 0],\n")
+		g.pf("    _empty: [u8; %d],\n", layout.Size)
 	}
 	for _, f := range st.Fields {
 		g.emitCookRowField(f)
@@ -803,7 +808,11 @@ func (g *gen) emitCookMapFinds(st *ir.Struct) {
 		if key.Type.Kind == ir.TString {
 			g.pf("    pub unsafe fn %s_find(&self, key: &[u8]) -> Option<&%s> {\n", f.Name, entry)
 			g.pf("        let entries = unsafe { self.%s.as_slice() };\n", f.Name)
-			g.pf("        entries\n            .binary_search_by(|e| e.%s[..e.%s_length.max(0) as usize].cmp(key))\n", k, k)
+			if key.Type.TextUnbounded() {
+				g.pf("        entries.binary_search_by(|e| { let bytes: &[u8] = if e.%s == 0 { &[] } else { let slot=core::ptr::addr_of!(e.%s) as *const u8; let blob=unsafe {slot.offset(e.%s as isize)}; let n=unsafe {core::ptr::read_unaligned(blob as *const u32)} as usize; unsafe {core::slice::from_raw_parts(blob.add(8),n)} }; bytes.cmp(key) })\n", k, k, k)
+			} else {
+				g.pf("        entries\n            .binary_search_by(|e| e.%s[..e.%s_length.max(0) as usize].cmp(key))\n", k, k)
+			}
 			g.pf("            .ok()\n            .map(|i| &entries[i])\n    }\n\n")
 			continue
 		}
@@ -891,6 +900,8 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 
 func (g *gen) emitCookRowField(f *ir.Field) {
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("    pub %s: i64, // unbounded text: self-relative inline-blob reference\n", f.Name)
 	case f.IsMap():
 		g.pf("    pub %s: TableCookSpan<%sRow>, // map: the entries in the holder's node extent, ascending (§2.8)\n", f.Name, f.MapEntry.Name)
 	case f.IsList() && cookSpanElement(f) != "":
@@ -1033,7 +1044,7 @@ func cookRowMembers(f *ir.Field) []string {
 	var names []string
 	names = append(names, f.Name)
 	switch {
-	case f.IsMap(), f.IsList():
+	case f.IsMap(), f.IsList(), f.Type.TextUnbounded():
 	case f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "":
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
@@ -1070,7 +1081,7 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("    // not a description of them.\n")
 	g.pf("    pub const REGION_ALIGNMENT: u64 = %d; // the greatest alignof in the region, floor eight\n", align)
 	g.pf("    pub const ROOT_SIZE: u64 = %d;\n", layout.Size)
-	g.pf("    pub const ROOT_ALIGN: u64 = %d;\n\n", layout.Align)
+	g.pf("    pub const ROOT_ALIGN: u64 = %d;\n\n", ir.CookNodeAlign(g.unit, st))
 	g.pf("    /// Open checks the header and POINTS, and that is the WHOLE check.\n")
 	g.pf("    ///\n    /// # Safety\n    /// `bytes` must point at `length` readable bytes that outlive the handle.\n")
 	g.pf("    pub unsafe fn open(bytes: *const u8, length: u64) -> Option<%sCook> {\n", st.Name)
@@ -1192,7 +1203,7 @@ func (g *gen) cookRegionAligns(st *ir.Struct) []int64 {
 		if member == nil {
 			return
 		}
-		aligns = append(aligns, ir.RecordLayout(g.unit, member).Align)
+		aligns = append(aligns, ir.CookNodeAlign(g.unit, member))
 		for _, f := range member.Fields {
 			if f.Type.Kind != ir.TNamed {
 				continue
@@ -1441,6 +1452,8 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	isArray := false
 	arrayBound := int64(0)
 	switch {
+	case f.Type.TextUnbounded():
+		storage, elemSize = "TableCookStorage::Reference", 8
 	case f.Type.Blob():
 		// a BYTE BUFFER's slot is a reference to a blob node, which is bytes and
 		// carries no record of its own (docs/SPEC-TABLES.md §2.5)

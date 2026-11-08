@@ -108,10 +108,7 @@ def textmain():
     let ed = schema_rt.text_edit(doc, "%s", "%s")
     assert ed
     print(schema_rt.text_save(ed))
-    let rep = schema_rt.LoadReport {}
-    let back = schema_rt.load_tolerant("Config", wire, rep)
-    assert back
-    print(drec(back))
+    print(drec(doc.rec))
 textmain()
 `
 
@@ -154,7 +151,7 @@ func textFieldCarried(f *ir.Field) bool {
 }
 
 // textSweepProgram is one manifest unit's default document through the text
-// form: every table the unit declares reads "()", saves, and re-loads, each
+// form: every table reads "()", writes canonical JSON, and exposes its value, each
 // answer named by its root.
 func textSweepProgram(g *loadUnit, roots []string) string {
 	var b strings.Builder
@@ -167,13 +164,10 @@ func textSweepProgram(g *loadUnit, roots []string) string {
 		fmt.Fprintf(&b, "def sweep_%s():\n", r)
 		fmt.Fprintf(&b, "    let doc = schema_rt.text_load(%s, \"()\")\n", lobsterString(r))
 		b.WriteString("    assert doc\n")
-		b.WriteString("    let wire = schema_rt.save(doc.rec)\n")
-		fmt.Fprintf(&b, "    print(%s + \" \" + hexs(wire))\n", lobsterString(r))
-		b.WriteString("    let rep = schema_rt.LoadReport {}\n")
-		fmt.Fprintf(&b, "    let back = schema_rt.load_tolerant(%s, wire, rep)\n", lobsterString(r))
-		b.WriteString("    assert back\n")
-		fmt.Fprintf(&b, "    print(%s + \" \" + report_line(rep))\n", lobsterString(r))
-		fmt.Fprintf(&b, "    print(%s + \" \" + drec(back))\n", lobsterString(r))
+		b.WriteString("    let text, reason = schema_rt.json_write(doc.rec)\n    assert reason == \"\"\n")
+		fmt.Fprintf(&b, "    print(%s + \" \" + hexs(text))\n", lobsterString(r))
+		fmt.Fprintf(&b, "    print(%s + \" read\")\n", lobsterString(r))
+		fmt.Fprintf(&b, "    print(%s + \" \" + drec(doc.rec))\n", lobsterString(r))
 		fmt.Fprintf(&b, "sweep_%s()\n", r)
 	}
 	return b.String()
@@ -244,7 +238,8 @@ func sweepManifest(t *testing.T) {
 		for _, name := range roots {
 			m := tabletext.NewModel(g.u)
 			inst := m.New(m.Lookup(name))
-			want, err := tablewire.Encode(m, inst)
+			want, err := m.Write(inst)
+			want = append(want, '\n')
 			if err != nil {
 				t.Fatalf("%s.%s: %v", unit.key, name, err)
 			}
@@ -254,18 +249,19 @@ func sweepManifest(t *testing.T) {
 			if got := out[at][len(name)+1:]; got != hex.EncodeToString(want) {
 				t.Fatalf("%s.%s: the text form saved %s, Go saved %x", unit.key, name, got, want)
 			}
-			wantReport, wantDump := goLoad(g.u, name, want)
+			dumper := &goDumper{labels: map[*tabletext.Instance]int{inst: 0}, next: 1}
+			wantReport, wantDump := "read", dumper.rec(inst)
 			if got := out[at+1][len(name)+1:]; got != wantReport {
-				t.Fatalf("%s.%s: re-load report %q, Go %q", unit.key, name, got, wantReport)
+				t.Fatalf("%s.%s: text verdict %q, Go %q", unit.key, name, got, wantReport)
 			}
 			if got := out[at+2][len(name)+1:]; got != wantDump {
-				t.Fatalf("%s.%s: re-loaded value is not Go's at byte %s", unit.key, name, divergence(got, wantDump))
+				t.Fatalf("%s.%s: decoded value is not Go's at byte %s", unit.key, name, divergence(got, wantDump))
 			}
 			at += 3
 			seen++
 		}
 	}
-	t.Logf("manifest sweep: %d units, %d carried, %d skipped for a kind a later card names; %d table roots read, saved and re-loaded as Go did", len(units), len(units)-skipped, skipped, seen)
+	t.Logf("manifest sweep: %d units, %d carried, %d skipped for a kind a later card names; %d table roots read and written as Go did", len(units), len(units)-skipped, skipped, seen)
 }
 
 func runText(t *testing.T, schema, input, editPath, editToken string) textRun {
@@ -341,7 +337,7 @@ func TestLobsterTextForm(t *testing.T) {
 		t.Fatalf("the leaf edit is not the one-token change: got %q want %q", got.edited, edited)
 	}
 	if got.dump != wantDump {
-		t.Fatalf("the re-loaded value is not Go's at byte %s", divergence(got.dump, wantDump))
+		t.Fatalf("the decoded value is not Go's at byte %s", divergence(got.dump, wantDump))
 	}
 	t.Logf("constructs: string(N) 1, int 1, bool 1, [..N]int 1; saved %d bytes as Go did, rewrite and one leaf edit green", len(want))
 
@@ -362,7 +358,7 @@ func TestLobsterTextForm(t *testing.T) {
 		t.Fatalf("the leaf edit is not the one-token change: got %q want %q", got2.edited, edited2)
 	}
 	if got2.dump != wantDump2 {
-		t.Fatalf("the re-loaded value is not Go's at byte %s", divergence(got2.dump, wantDump2))
+		t.Fatalf("the decoded value is not Go's at byte %s", divergence(got2.dump, wantDump2))
 	}
 	t.Logf("constructs: float32 1, float64 1, bytes(N) 1, ?int32 1, [N]int 1; saved %d bytes as Go did, rewrite and one leaf edit green", len(want2))
 
@@ -382,7 +378,7 @@ func TestLobsterTextForm(t *testing.T) {
 		t.Fatalf("the leaf edit is not the one-token change: got %q want %q", got3.edited, edited3)
 	}
 	if got3.dump != wantDump3 {
-		t.Fatalf("the re-loaded value is not Go's at byte %s", divergence(got3.dump, wantDump3))
+		t.Fatalf("the decoded value is not Go's at byte %s", divergence(got3.dump, wantDump3))
 	}
 	t.Logf("constructs: int128 1, uint128 1, fixed(16,16) 1, flags 1, keyed 1, union 1, [..N]Node 1, [..N]string 1, float32 1; saved %d bytes as Go did, rewrite and one leaf edit green", len(want3))
 

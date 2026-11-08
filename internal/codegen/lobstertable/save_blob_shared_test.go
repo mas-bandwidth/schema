@@ -11,9 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 )
 
-// blobSharedProgram loads one wire through the tolerant read and prints the
-// report's blob_shared counter, then what save_reasoned answers: the refusal's
-// name (or "ok") and the length it wrote.
+// Malformed wire must refuse. Writer refusal is checked with an invalid
+// graph built directly in memory, never recovered from damaged input.
 func blobSharedProgram(g *loadUnit, rootName string) string {
 	var b strings.Builder
 	for _, m := range g.mods {
@@ -22,13 +21,28 @@ func blobSharedProgram(g *loadUnit, rootName string) string {
 	b.WriteString("import .load\nimport .schema_save\n")
 	fmt.Fprintf(&b, `let data = read_file("w0")
 assert data
-let rep = schema_rt.LoadReport {}
-let rec = schema_rt.load_tolerant(%q, data, rep)
-assert rec
+let rejected = schema_rt.load(%q, data, schema_rt.LoadReport {})
+print("read " + (if rejected: "accepted" else: "refused"))
+schema_rt.release(rejected)
+let rec = schema_rt.new_record(schema_rt.table_of(%q))
+let shared = schema_rt.Node { kind: 3, rec: nil, blob: "abc" }
+for(rec.fields) sl:
+    if sl.fd.name == "thumb" or sl.fd.name == "alias":
+        sl.cell.blob = shared.blob
+        sl.cell.blob_node = shared
 let out, why = schema_rt.save_reasoned(rec)
-print("shared {rep.blob_shared}")
-print("save " + (if why == "": "ok" else: why) + " {length(out)}")
-`, rootName)
+print("save " + (if why == "": "accepted" else: "refused") + " {length(out)}")
+for(rec.fields) sl:
+    if sl.fd.name == "alias":
+        sl.cell.blob_node = schema_rt.Node { kind: 3, rec: nil, blob: "abc" }
+let separate, separate_reason = schema_rt.save_reasoned(rec)
+assert separate_reason == "" and length(separate) > 0
+let valid = schema_rt.load(%q, separate, schema_rt.LoadReport {})
+assert valid and schema_rt.save(valid) == separate
+schema_rt.release(valid)
+schema_rt.release(rec)
+print("independent blobs accepted")
+`, rootName, rootName, rootName)
 	return b.String()
 }
 
@@ -63,25 +77,19 @@ func runBlobShared(t *testing.T, patch func(src string) string) []string {
 		t.Fatal(err)
 	}
 	out := strings.Split(strings.TrimRight(string(lobsterrun.Run(t, g.dir, "main.lobster", map[string][]byte{"w0": wire})), "\n"), "\n")
-	if len(out) != 2 {
-		t.Fatalf("the program printed %d lines, want 2: %q", len(out), out)
+	if len(out) != 3 {
+		t.Fatalf("the program printed %d lines, want 3: %q", len(out), out)
 	}
 	return out
 }
 
-// TestLobsterTableSaveRefusesASharedBlob holds docs/SPEC-TABLES.md §2.5: the
-// TOLERANT read keeps a blob named from two slots as the ONE node it decoded
-// and counts the extra naming, and every writer REFUSES that graph by the
-// name blob_shared rather than write a copy per slot. The corpus's
-// blob_shared instance is the witness.
+// Both reads and writes refuse shared blobs. Equal, separately owned blobs
+// retain their values and canonical output.
 func TestLobsterTableSaveRefusesASharedBlob(t *testing.T) {
 	t.Parallel()
 	out := runBlobShared(t, nil)
-	if out[0] != "shared 1" {
-		t.Fatalf("the tolerant read did not count the shared blob once: %q", out[0])
-	}
-	if out[1] != "save blob_shared 0" {
-		t.Fatalf("the save did not refuse the shared blob by name: %q", out[1])
+	if out[0] != "read refused" || out[1] != "save refused 0" || out[2] != "independent blobs accepted" {
+		t.Fatalf("blob ownership contract: %q", out)
 	}
 }
 
@@ -98,7 +106,7 @@ func TestLobsterTableSaveRefusesASharedBlobNegativeControl(t *testing.T) {
 		}
 		return strings.Replace(src, anchor, "                g.blob_shared = false\n", 1)
 	})
-	if !strings.HasPrefix(out[1], "save ok ") || out[1] == "save ok 0" {
+	if !strings.HasPrefix(out[1], "save accepted ") || out[1] == "save accepted 0" {
 		t.Fatalf("the patched save still refuses: %q", out[1])
 	}
 	t.Logf("the refusal went under the patch: %s", out[1])

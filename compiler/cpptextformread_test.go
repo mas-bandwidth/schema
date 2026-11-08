@@ -16,9 +16,7 @@ import (
 // DOCUMENT read (docs/SPEC-TABLES.md §16.9.1 grammar and identity, §16.9.2
 // mapping field kind by field kind). The schema is the conformance corpus's
 // own contract (test/conformance/textform/contract.json) declared (§16.4 for
-// the aliased names), with only the timestamp row removed: the cpp target
-// still refuses that kind at compiler/generate.go:101, until its own card
-// cpp-carries-timestamp-on-the-binary-forms. Every expected value is the one Go pins in
+// the aliased names). Every expected value is the one Go pins in
 // internal/codegen/gotable/textform_test.go TestDocumentVectors for the same
 // schema text and the same input bytes (kinds.value.json). This port computes
 // no expectation of its own; the refusals assert §16.9.4's stable names
@@ -121,7 +119,6 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stripped := strings.ReplaceAll(string(kindsText), ` :time "2026-10-15T08:34:05-04:00"`, "")
 	kinds := cppDocumentDefaults()
 	kinds["schema"] = json.Number("2")
 	kinds["state"] = "done"
@@ -133,6 +130,7 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	kinds["unsigned"] = json.Number("340282366920938463463374607431768211455")
 	kinds["fraction"] = json.Number("0.0000152587890625")
 	kinds["float"] = json.Number("-0")
+	kinds["time"] = "2026-10-15T12:34:05Z"
 	kinds["flags"] = []any{"Fast", "Safe"}
 	kinds["keyed"] = map[string]any{"unknown": json.Number("4"), "done": json.Number("7")}
 	kinds["choice"] = map[string]any{"ping": nil}
@@ -161,7 +159,7 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		input string
 		want  map[string]any
 	}{
-		{"kinds", stripped, kinds},
+		{"kinds", string(kindsText), kinds},
 		{"roadmap", string(cppMustRead(t, "roadmap.input.sexp")), roadmap},
 		{"layout", string(cppMustRead(t, "layout.input.sexp")), layout},
 	} {
@@ -227,7 +225,7 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		input string
 		want  map[string]any
 	}{
-		{"variable/kinds", stripped, kinds},
+		{"variable/kinds", string(kindsText), kinds},
 		{"variable/roadmap", string(cppMustRead(t, "roadmap.input.sexp")), roadmap},
 		{"variable/layout", string(cppMustRead(t, "layout.input.sexp")), layout},
 	} {
@@ -258,13 +256,6 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if stem == "timestamp" {
-			t.Run(stem, func(t *testing.T) {
-				t.Parallel()
-				t.Skip("the cpp target refuses the timestamp kind at compiler/generate.go:101 until cpp-carries-timestamp-on-the-binary-forms lands")
-			})
-			continue
-		}
 		t.Run(stem, func(t *testing.T) {
 			t.Parallel()
 			main, bin := writeDriver(t, string(input), cppRefusalDriver)
@@ -275,9 +266,32 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		})
 		ran++
 	}
-	if ran < 21 {
+	if ran < 22 {
 		t.Fatalf("only %d Document refusal vectors ran", ran)
 	}
+	t.Run("timestamp-rfc3339-matrix", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name string
+			doc  string
+			want string
+		}{
+			{"bad-day", `(:time "2026-02-30T12:00:00Z")`, "text_timestamp"},
+			{"bad-offset-hour", `(:time "2026-10-17T12:34:05+24:00")`, "text_timestamp"},
+			{"comma-fraction", `(:time "2026-10-17T12:34:05,5Z")`, "text_timestamp"},
+			{"leap-second", `(:time "2016-12-31T23:59:60Z")`, "text_timestamp"},
+			{"missing-offset", `(:time "2026-10-17T12:34:05")`, "text_timestamp"},
+			{"non-string-token", `(:time 123)`, "text_kind_mismatch"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				main, bin := writeDriver(t, tc.doc, cppRefusalDriver)
+				compile(t, main, bin)
+				if got := run(t, bin); got != tc.want {
+					t.Fatalf("%s: got %q, want %q", tc.name, got, tc.want)
+				}
+			})
+		}
+	})
 }
 
 func cppMustRead(t *testing.T, name string) []byte {
@@ -309,6 +323,7 @@ func cppDocumentDefaults() map[string]any {
 		"unsigned": json.Number("0"),
 		"fraction": json.Number("0.0"),
 		"float":    json.Number("0"),
+		"time":     "1970-01-01T00:00:00Z",
 		"flags":    []any{},
 		"keyed":    map[string]any{"unknown": json.Number("0"), "done": json.Number("0")},
 		"choice":   map[string]any{},
@@ -326,9 +341,8 @@ func cppEscape(s string) string {
 
 func cppTextFormKindsSchema() string {
 	// test/conformance/textform/contract.json declared (§16.4 for the aliased
-	// names). The timestamp field is omitted: the cpp target refuses the kind
-	// at compiler/generate.go:101 until cpp-carries-timestamp lands. The
-	// 128-bit and fixed-point rows are carried; see the serialize stub above.
+	// names). The 128-bit and fixed-point rows are carried; see the serialize
+	// stub above.
 	return `package probe
 
 enum State { unknown, done }
@@ -366,6 +380,7 @@ fixed table Document
     high     uint128 | json = "unsigned"
     fraction fixed(16,16) | min = -32768, max = 32767
     real     float32 | json = "float"
+    time     timestamp
     flags    Features
     keyed    [State]int32
     choice   Choice

@@ -70,7 +70,8 @@ update-goldens-lobster: ;
 # port joins the builtins (compiler/target_lobster.go). A unit the target
 # refuses is recorded as its refusal line, never dropped in silence.
 LOBSTER_MANIFEST := testdata/conformance/tables/MANIFEST.txt
-build/conformance-lobster: $(LOBSTER_MANIFEST) make/lobster.mk
+build/conformance-lobster: $(LOBSTER_MANIFEST) make/lobster.mk $(GO_SOURCES) $(CONFORMANCE_UNIT_SCHEMAS) \
+	$(filter internal/codegen/lobster/% internal/codegen/lobstertable/%,$(EMBED_SOURCES))
 	@rm -rf $@ && mkdir -p $@
 	go build -o build/schema-lobster ./cmd/schema
 	@grep '^unit ' $(LOBSTER_MANIFEST) | while read -r _ key paths; do \
@@ -168,3 +169,9 @@ TOOLCHAIN_PINS_lobster := LOBSTER
 CONFORMANCE_LEGS  += $(call unless_skipped,lobster,build/conformance-lobster)
 BENCH_TABLES_LEGS += generated/bench/tables/lobster/.stamp
 GOLDENS_LEGS      += update-goldens-lobster
+
+# The complete reflection listing and its descriptor-ID negative control.
+# test-lobster already includes these tests through its package-wide command.
+.PHONY: tables-lobster-view
+tables-lobster-view: toolchain-lobster
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v

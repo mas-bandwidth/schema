@@ -122,8 +122,8 @@ func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
 	for _, tc := range cases {
 		t.Run("unregistered "+tc.name, func(t *testing.T) {
 			u := unitFromSource(t, tc.src)
-			if _, err := c.Generate(u, "c", Options{}); err == nil {
-				t.Fatalf("an unregistered target generated the %s; only squirrel carries it", tc.name)
+			if err := refuseTextForms(u, "unregistered"); err == nil {
+				t.Fatalf("an unregistered target generated the %s; only registered targets carry it", tc.name)
 			}
 		})
 	}

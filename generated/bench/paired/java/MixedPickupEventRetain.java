@@ -16,17 +16,20 @@ public final class MixedPickupEventRetain {
     // loss, never retained silently.
     public static MixedPickupEventVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return MixedPickupEventVariable.load(data, report);
         }
         int[] path = new int[128];
+        retain.used = 0;
+        retain.idUsed = 0;
+        retain.nodeKeys.clear();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
         }
-        retain.used = 0;
-        retain.idUsed = 0;
-        retain.nodeKeys.clear();
         MixedPickupEventVariable.Value v = new MixedPickupEventVariable.Value();
         report.rootTypeId = MixedPickupEventVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
@@ -63,6 +66,9 @@ public final class MixedPickupEventRetain {
         }
         readFieldsRetain(r, v, nt, retain, report, path, 0);
         if (report.refused) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
         TableVariable.Measure measure = new TableVariable.Measure();
@@ -71,15 +77,37 @@ public final class MixedPickupEventRetain {
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
             }
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
+        nt.from = 1;
         MixedPickupEventVariable.resolveNodes(v, nt, report);
         if (nt.recs != null && !nt.bad) {
-            for (TableVariable.NodeRecord rec : nt.recs) {
-                if (rec.table != null)
+            for (int i = 0; i < nt.recs.length; i++) {
+                TableVariable.NodeRecord rec = nt.recs[i];
+                if (rec.table != null) {
+                    nt.from = i + 2;
                     MixedPickupEventVariable.resolveNodePointers(
                             rec.table, rec.typeId, nt, v, MixedPickupEventVariable.TYPE_ID, report);
+                }
             }
+        }
+        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
+        if (report.malformed) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
+        }
+        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
+        if (TableVariable.cyclic(nt)) {
+            report.malformed = true;
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
         }
         return v;
     }
@@ -255,6 +283,10 @@ public final class MixedPickupEventRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.itemId & 0xffffffffL) > 1023L) {
+                        v.itemId = (int) 1023L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

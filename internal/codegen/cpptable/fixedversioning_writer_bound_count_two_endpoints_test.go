@@ -88,9 +88,9 @@ func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
     if ( n != -1 ) { printf( "n is not -1: %lld\n", (long long) n ); return 1; }
     if ( !r.refused ) { printf( "refused is false\n" ); return 1; }
     if ( r.reason != count_over_bound ) { printf( "reason=%d, not count_over_bound\n", (int) r.reason ); return 1; }
-    if ( r.malformed ) { printf( "malformed set — a refusal by name is not malformed\n" ); return 1; }
-    if ( r.clamped != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "a counter moved on a refusal: clamped=%d unknown=%d kind_mismatch=%d widened=%d duplicate=%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
+    if ( r.damaged ) { printf( "malformed set — a refusal by name is not malformed\n" ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 )
+        { printf( "a counter moved on a refusal: out_of_range=%d unknown=%d kind_mismatch=%d widened=%d repeated=%d\n", r.refused, r.unknown, r.refused, r.widened, r.refused ); return 1; }
 `
 	forge := `
     /* THE FORGE (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4): the OLD

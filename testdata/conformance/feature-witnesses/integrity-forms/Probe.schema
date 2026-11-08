@@ -1,0 +1,18 @@
+package probe
+ fixed table Reading | integrity="crc32c" {
+ x int32
+ y int16
+ label string(8)
+ }
+ fixed table PlainReading {
+ x int32
+ y int16
+ label string(8)
+ }
+ table Leaf | integrity="crc32c" { x int32 }
+ table Root | integrity="crc32c" { n int32
+ child *Leaf
+ }
+ table PlainRoot { n int32
+ child *Leaf
+ }

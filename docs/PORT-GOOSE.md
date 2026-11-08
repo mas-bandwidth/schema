@@ -122,11 +122,32 @@ ordinal, header kind (§3), its SHAPE (`ShapeBool … ShapeVoid` in
 (`elem`), the array kind and bounds, an enum's variant ids, the integer's
 kind width, signedness and clamp range (as Int128 lanes, one shape for every
 domain), a fixed field's (I, F), a compressed float's range, and the
-default. Unions get `<Name>Descriptor` of `schema_rt::UnionDesc` with their
-arms; a packet type a table reaches by value gets a descriptor too, because
-it rides as a table body. The helper globals a descriptor names
-(`_<Name>Fields`, `_<Name>_e<o>`, `_<Enum>Variants`) start with an
-underscore, which no schema name does.
+default; then the §8.1 columns: the declared type's spelling (`type_name`),
+a union arm's offset in the union's storage at the record layout
+(`arm_offset`, every arm at the one payload base), and what a person wrote,
+`doc` (the `///` block, verbatim; `schema_rt::TableDocNone`, the one empty
+doc, when there is none) and `num_tags` with `tags` (in declared order; 0
+and an empty list when there are none). A `TableDesc` carries the
+declaration's own `doc`, `num_tags` and `tags` the same way. Unions get
+`<Name>Descriptor` of `schema_rt::UnionDesc` with their arms; a packet type
+a table reaches by value gets a descriptor too, because it rides as a table
+body. The helper globals a descriptor names (`_<Name>Fields`,
+`_<Name>_e<o>`, `_<Enum>Variants`, and the tag lists `_<Name>Tags` and
+`_<Owner>_t<ordinal>`) start with an underscore, which no schema name does.
+
+**The view.** Every unit with a table gets `<Package>View.goose`
+(docs/SPEC-TABLES.md §8.5, `goosetable/view.go`), on the side: nothing else
+imports it. It declares the registry's types (`UnitViewInfo`, `ViewType`,
+`ViewVocabulary`, `ViewVariant`, `ViewConstant`, the C++ columns, with
+`ViewType`'s `type` spelled `descriptor` because `type` is a Goose keyword)
+and `UnitView()`, which returns a reference to the one registry global. The
+registry is data: a declaration's row names its `<Name>Descriptor`, a
+record-naming arm its payload's descriptor and a general arm its entry in
+`_<Union>Arms`. A type or union no table reaches gets its `<Name>Descriptor`
+here, with no table-wire identity (§8.2). The corpus gate
+(`TestGooseUnitViewCorpus`, `make tables-goose-view`) prints the registry
+from a Goose program (`test/tables/view_goose.goosetext`) and byte-compares
+it against `internal/viewlisting`.
 
 **How a walk reaches a field.** Goose has no reflection, no `offsetof` and
 no function pointers: function values are compile-time entities passed as
@@ -397,6 +418,32 @@ lowercase hex lines.**
   which builds `build/fixedform-corpus` and runs under
   `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to `list`
   and answers it there.
+- **JSON and wire conversion** uses the generated `<T>ToLoaded` and
+  `<T>FromLoaded` functions for roots that already carry the typed JSON API.
+  `ToLoaded(v, TableUnit, data, vals)` appends a value tree and its text bytes
+  to the caller's stores and returns its root index; failure returns -1 and
+  restores both store lengths. `FromLoaded(v, TableUnit, data, vals, root)`
+  reads a successful load's value tree into a fresh typed record, retaining
+  declared defaults for absent fields. It returns false for a missing root
+  or a different root type. Neither conversion parses JSON or wire bytes:
+  `FromJson`/`ToJson` and the shared `load_table`/`save_table` own those forms.
+  The conformance driver's `json-read` and `json-write` surfaces compare both
+  paths with committed fixtures.
+- **The variable class of the text form** (pointer graphs and `&node`,
+  blobs, lists, maps, text lists, unbounded and wide text, timestamps, the
+  128-bit and fixed-point kinds, unions in arrays) has no typed record that
+  owns its storage, so it reads and writes the same FLAT VALUE TABLE its wire
+  form loads into and saves from: `runtime/json_value.goose`,
+  `json_load_table(TableUnit, TextUnit, root, text, data, vals, nodes, report)`
+  and `json_save_table(TableUnit, TextUnit, root, data, vals, nodes, at, out)`,
+  the port of the compiler's own engine (`internal/tabletext`) as
+  `wire_load.goose` is of `internal/tablewire`. The read appends decoded
+  text and blob bytes to `data` and places nodes in `nodes`; `save_table`
+  renumbers them. `TextUnit` (`<package>_json.goose`, `json_form.go`) carries
+  what the descriptors do not: a flags field's names, a text list's fields,
+  a timestamp array's elements and the tables declared without the json form.
+  The driver answers every root without a typed record through it, on all
+  three text surfaces.
 - **The wire-fuzz pipe** (one process, little-endian frames, a reply flushed
   per mutant) is a `goose build -O2` executable per unit
   (`test/conformance/goose/wirefuzz.goose`, make/goose-fuzz.mk) writing with
@@ -515,12 +562,12 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 | schema-goose-vt-retain-unknown | retain-unknown on load and save | `goosetable/retain_unknown.go`, its runtime file |
 | schema-goose-vt-integrity-forms | the integrity trailer and the forms declaration | `goosetable/integrity_forms.go`, its runtime file, `compiler/carries_goose_integrity_forms.go` |
 | schema-goose-vt-strict-and-refusals | the strict read and every refusal by name (I6) | `goosetable/strict_and_refusals.go`, its runtime file |
-| schema-goose-vt-descriptors | reflection descriptors, doc comments, the unit registry and type views (J1) | `goosetable/descriptors.go`, its runtime file |
+| schema-goose-vt-descriptors | reflection descriptors, doc comments, the unit registry and type views (J1) | `goosetable/descriptors.go`, `goosetable/view.go`, its runtime file, `test/tables/view_goose.goosetext`, `make/goose-view.mk` |
 | schema-goose-fixed-form | the fixed form, form byte 3, against the byte oracle (M22) | `goosetable/fixedform.go`, `goosetable/runtime/fixed.goose` |
 | schema-goose-fixed-form-evolution | fixed tables: versioning, widening and every refusal by Go's name | `goosetable/fixedevolve.go`, its runtime file |
 | schema-goose-message-form | the message form, form byte 2, against its goldens | `goosetable/messageform.go`, `goosetable/runtime/message.goose` |
 | schema-goose-block-form | the block form: builder and reflective read (M7, I5) | `goosetable/block_form.go`, `goosetable/accel.go` (shared with the cook), `goosetable/runtime/block_form.goose`, `test/conformance/goose/accel.goose`, `make/goose-blockcook.mk` |
-| schema-goose-cook | the cooked form: Cook, CookMeasure and Open (M8) | `goosetable/cook_form.go`, `goosetable/cook_write.go`, `goosetable/runtime/cook_form.goose` |
+| schema-goose-cook | the cooked form: Cook, CookMeasure and Open (M8) | `goosetable/cook_form.go`, `goosetable/cook_write.go`, `goosetable/runtime/cook_form.goose`, `goosetable/runtime/cook_write.goose` (the region writer) |
 | schema-goose-json-form | the JSON text form and base64 text (I13) | `goosetable/json_form.go`, its runtime file, `compiler/carries_goose_json_form.go` |
 | schema-goose-text-form | the hand-editable text form (M9, M14) | `goosetable/text_form.go`, its runtime file |
 | schema-goose-conformance-leg | `main.goose`, `make conformance` and the hostile corpus (M4b, I2, I11, J2) | `test/conformance/goose/main.goose`, `make/goose-conformance.mk` |

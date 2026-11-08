@@ -663,6 +663,13 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 func (m *msgGen) emitBatch(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
 	row := st.Name + "Row"
+	measureExtra, savePrefix, saveEnd, loadPrefix := "", "", "2 + (w.bits / 8) as i64", ""
+	if st.Integrity == "crc32c" {
+		measureExtra = "4 + "
+		savePrefix = fmt.Sprintf("    let need = %s_measure_messages(values, report);\n    if need < 0 || buffer.len() < need as usize { return -1; }\n", snake)
+		saveEnd = "let end = 2 + (w.bits / 8) as usize;\n    let sum = table_integrity_checksum(&buffer[..end]);\n    buffer[end..end + 4].copy_from_slice(&sum.to_le_bytes());\n    (end + 4) as i64"
+		loadPrefix = fmt.Sprintf("    let data = if data.first() == Some(&TABLE_WIRE_MESSAGE_FORM) {\n        let Some(body) = table_integrity_body(data, 6) else {\n            report.malformed = true; report.reason = TableReason::IntegrityMismatch;\n            for value in values.iter_mut() { *value = %s_message_default(); }\n            return (0, false);\n        };\n        body\n    } else { data };\n", snake)
+	}
 	m.pf(`/// MeasureMessages (§3.3): the byte count SaveMessages writes for this batch,
 /// or -1. "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME".
 pub fn %[1]s_measure_messages(values: &[%[2]s], report: &mut TableReport) -> i64 {
@@ -680,14 +687,14 @@ pub fn %[1]s_measure_messages(values: &[%[2]s], report: &mut TableReport) -> i64
     if w.overflow {
         return -1;
     }
-    2 + (w.bits / 8) as i64
+    %[3]s2 + (w.bits / 8) as i64
 }
 
 /// SaveMessages (§3.3): the form byte, M - 1, then every body as one continuous
 /// bit stream padded to a byte once at its end. The byte count, or -1 for a
 /// refusal or a buffer too short.
 pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut TableReport) -> i64 {
-    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
+%[4]s    if values.is_empty() || values.len() > TABLE_MESSAGE_BATCH_MAX {
         report.refuse(TableReason::BatchTooLarge);
         return -1;
     }
@@ -706,7 +713,7 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
     if w.overflow {
         return -1;
     }
-    2 + (w.bits / 8) as i64
+    %[5]s
 }
 
 /// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
@@ -724,7 +731,7 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
-    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
+%[6]s    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };
     if count > values.len() {
@@ -754,7 +761,7 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
     (count, true)
 }
 
-`, snake, row)
+`, snake, row, measureExtra, savePrefix, saveEnd, loadPrefix)
 }
 
 // messageBatchRuntime is the batch's shared Rust runtime (§3.3): the bit
@@ -883,7 +890,7 @@ pub fn table_message_kind_width(kind: u8) -> u32 {
         1 | 2 | 6 | 20 | 25 => 1,
         3 | 7 | 21 | 26 => 2,
         4 | 8 | 10 | 22 | 27 => 4,
-        5 | 9 | 11 | 23 | 28 => 8,
+        5 | 9 | 11 | 23 | 28 | 36 => 8,
         18 | 19 | 24 | 29 => 16,
         _ => 0,
     }

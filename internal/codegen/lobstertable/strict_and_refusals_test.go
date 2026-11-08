@@ -2,6 +2,7 @@ package lobstertable_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,35 +14,39 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// strictDump is the strict read's half of the harness: the plain name
-// (schema_rt.load_strict) is the strict read and load_tolerant is the
-// tolerant walk under its own name (docs/SPEC-TABLES.md §6.5). It prints the
-// strict reason (or ok), the tolerant report line and THE VALUE DUMP, so the
-// three answers are held to the reference together.
+// The ordinary and diagnostic entry points must publish the same complete
+// value or both refuse. Diagnostics are checked for presence, not spelling.
 const strictDump = `
 def strictrun(root:string, file:string):
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
     let rec, reason = schema_rt.load_strict(root, data, rep)
-    let tol = schema_rt.LoadReport {}
-    let trec = schema_rt.load_tolerant(root, data, tol)
-    print(if reason == "": "ok" else: reason)
-    print(report_line(tol))
+    let plain_report = schema_rt.LoadReport {}
+    let plain = schema_rt.load(root, data, plain_report)
+    assert (rec != nil) == (plain != nil)
+    assert (reason == "") == (rec != nil)
+    print(if rec: "ok" else: "refused")
+    print(if plain: "read" else: "refused")
     labels = []
     var dump = "nil"
-    let shown = if trec: trec else: rec
-    if shown:
-        push(labels, shown)
-        dump = drec(shown)
+    if rec:
+        push(labels, rec)
+        dump = drec(rec)
+    if plain:
+        labels = [plain]
+        assert drec(plain) == dump
     let n = (length(dump) + 39999) / 40000
     print("{n}")
     var i = 0
     while i < n:
         print(substring(dump, i * 40000, min(40000, length(dump) - i * 40000)))
         i++
+    schema_rt.release(rec)
+    schema_rt.release(plain)
 `
 
 func strictProgram(g *loadUnit, roots []string) string {
@@ -60,39 +65,13 @@ func strictProgram(g *loadUnit, roots []string) string {
 	return b.String()
 }
 
-// goStrictReason is the Go reference's strict answer for one wire, in the
-// order TableReport.Err() applies (§6.5): a non-finite float first, a form
-// refusal as unknown_form, then missing_required, malformed, blob_shared,
-// clamped and kind_mismatch; unknown and widened alone are not a refusal.
-func goStrictReason(u *irUnit, rootName string, wire []byte) string {
-	m := tabletext.NewModel(u.u)
-	inst := m.New(m.Lookup(rootName))
-	var rep tabletext.Report
-	_, err := tablewire.Decode(m, inst, wire, &rep)
-	switch {
-	case strings.HasPrefix(rep.Reason, "non_finite: ") || strings.HasPrefix(rep.Reason, "non_finite_float: "):
-		// a non-finite float outranks every other verdict (§3.3); the
-		// engine on main spells it non_finite until the finite-tables
-		// oracle lands, and this port spells it non_finite_float already
-		return "non_finite_float"
-	case err != nil:
-		return "unknown_form"
-	case strings.HasPrefix(rep.Reason, "missing_required"):
-		return "missing_required"
-	case rep.Malformed:
-		return "malformed"
-	case rep.BlobShared > 0:
-		return "blob_shared"
-	case rep.Clamped > 0:
-		return "clamped"
-	case rep.KindMismatch > 0:
-		return "kind_mismatch"
+func goStrictReason(u *loadUnit, rootName string, wire []byte) string {
+	verdict, _ := goLoad(u.u, rootName, wire)
+	if verdict == "read" {
+		return "ok"
 	}
-	return "ok"
+	return "refused"
 }
-
-// irUnit is the thin alias that keeps goStrictReason's signature readable.
-type irUnit = loadUnit
 
 type strictResult struct {
 	reason []string
@@ -139,16 +118,8 @@ func runStrictRows(t *testing.T, g *loadUnit, rows []loadRow) strictResult {
 	return res
 }
 
-// TestLobsterStrictRead holds the strict read and every read-time refusal to
-// docs/SPEC-TABLES.md §6.5 and to Go's own answer on every manifest row: the
-// plain name is strict, the tolerant walk has its own name, unknown and
-// widened alone do not refuse, and malformed, clamped, kind_mismatch,
-// blob_shared, missing_required, non_finite_float and an unknown form each
-// refuse by Go's name. It
-// also runs load, save and re-load through the same unit and holds the bytes
-// and the report to the reference's, and it refuses the probe units' trailing
-// root bytes and negative id count by name. Every construct is named with its
-// count in the test log.
+// Manifest inputs are compared by acceptance, complete values and canonical
+// write-back. No diagnostic taxonomy is a conformance promise.
 func TestLobsterStrictRead(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
@@ -156,149 +127,133 @@ func TestLobsterStrictRead(t *testing.T) {
 	var order []string
 	for _, row := range loadRows(t) {
 		if _, ok := units[row.unit]; !ok {
-			t.Fatalf("row %s names unit %s, which the manifest does not declare", row.name, row.unit)
+			t.Fatalf("row %s names undeclared unit %s", row.name, row.unit)
 		}
 		if _, seen := byUnit[row.unit]; !seen {
 			order = append(order, row.unit)
 		}
 		byUnit[row.unit] = append(byUnit[row.unit], row)
 	}
-	counts := map[string]int{}
-	var refusedUnits []string
-	rowsRun := 0
+	accepted, refused := 0, 0
 	for _, key := range order {
 		paths, err := compiler.GatherPaths(prefix(units[key]))
 		if err != nil {
-			t.Fatalf("unit %s: %v", key, err)
+			t.Fatal(err)
 		}
 		g, err := generateLoadUnit(t, paths)
 		if err != nil {
-			refusedUnits = append(refusedUnits, key)
-			t.Logf("refused unit %s: %v", key, err)
-			continue
+			t.Fatalf("unit %s: %v", key, err)
 		}
-		res := runStrictRows(t, g, byUnit[key])
-		for i, row := range byUnit[key] {
+		rows := byUnit[key]
+		res := runStrictRows(t, g, rows)
+		var loadable []loadRow
+		for i, row := range rows {
 			wire := row.data
 			if wire == nil {
-				if wire, err = os.ReadFile(filepath.Join(root, row.wire)); err != nil {
-					t.Fatalf("%s: %v", row.name, err)
+				wire, err = os.ReadFile(filepath.Join(root, row.wire))
+				if err != nil {
+					t.Fatal(err)
 				}
 			}
-			want := goStrictReason(g, row.root, wire)
-			counts[want]++
-			rowsRun++
-			if res.reason[i] != want {
-				t.Errorf("%s %s: strict read = %s, want %s (docs/SPEC-TABLES.md §6.5)", row.kind, row.name, res.reason[i], want)
-			}
 			wantLine, wantDump := goLoad(g.u, row.root, wire)
-			if res.line[i] != wantLine {
-				t.Errorf("%s %s: tolerant report = %s, want %s", row.kind, row.name, res.line[i], wantLine)
+			wantReason := "refused"
+			if wantLine == "read" {
+				wantReason = "ok"
 			}
-			if !damaged(wantLine) && res.dump[i] != wantDump {
-				t.Errorf("%s %s: tolerant value is not the reference's at byte %s", row.kind, row.name, divergence(res.dump[i], wantDump))
+			if res.reason[i] != wantReason || res.line[i] != wantLine {
+				t.Errorf("%s: acceptance %s/%s, want %s/%s", row.name, res.reason[i], res.line[i], wantReason, wantLine)
 			}
-		}
-		// SAVE AND RE-LOAD: every row the strict read accepts is saved and
-		// re-loaded, and both are held to the Go engine byte for byte and
-		// report for report.
-		var loadable []loadRow
-		for i, row := range byUnit[key] {
-			if res.reason[i] == "ok" {
+			if res.dump[i] != wantDump {
+				t.Errorf("%s: value differs at %s", row.name, divergence(res.dump[i], wantDump))
+			}
+			if wantLine == "read" {
+				accepted++
 				loadable = append(loadable, row)
+			} else {
+				refused++
 			}
 		}
 		if len(loadable) == 0 {
 			continue
 		}
-		sav := runSaveRows(t, g, loadable)
+		saved := runSaveRows(t, g, loadable)
 		for i, row := range loadable {
 			wire := row.data
 			if wire == nil {
-				if wire, err = os.ReadFile(filepath.Join(root, row.wire)); err != nil {
-					t.Fatalf("%s: %v", row.name, err)
+				wire, err = os.ReadFile(filepath.Join(root, row.wire))
+				if err != nil {
+					t.Fatal(err)
 				}
 			}
 			want, err := goSave(g, row.root, wire)
 			if err != nil {
-				continue
+				t.Fatalf("accepted %s cannot save: %v", row.name, err)
 			}
-			if sav.saved[i] != fmt.Sprintf("%x", want) {
-				t.Errorf("%s %s: save is not the reference's", row.kind, row.name)
+			if saved.saved[i] != fmt.Sprintf("%x", want) {
+				t.Errorf("%s: canonical write-back differs", row.name)
 			}
-			_, wantReload := goLoad(g.u, row.root, want)
-			if sav.dump[i] != wantReload {
-				t.Errorf("%s %s: the re-load is not the reference's at byte %s", row.kind, row.name, divergence(sav.dump[i], wantReload))
+			verdict, wantDump := goLoad(g.u, row.root, want)
+			if verdict != "read" || saved.dump[i] != wantDump {
+				t.Errorf("%s: canonical reload differs at %s", row.name, divergence(saved.dump[i], wantDump))
 			}
 		}
 	}
-	if rowsRun == 0 {
-		t.Fatal("no manifest row was read: the comparison is vacuous")
+	if accepted == 0 || refused == 0 {
+		t.Fatalf("vacuous coverage: accepted=%d refused=%d", accepted, refused)
 	}
-	for _, name := range []string{"ok", "malformed", "clamped", "kind_mismatch", "blob_shared", "missing_required", "non_finite_float", "unknown_form"} {
-		t.Logf("strict construct %s: %d", name, counts[name])
-	}
-
-	// THE PROBE UNITS: a root with trailing bytes and a negative id count are
-	// refused by name, and a clean root is not (docs/SPEC-TABLES.md §3, §3.1).
 	g := probeUnit(t)
 	clean := probeWire(t, g)
-	trailing := append(bytes.Clone(clean), 0x00)
+	trailing := append(bytes.Clone(clean), 0)
 	negative := bytes.Clone(clean)
 	for i := len(negative) - 8; i < len(negative); i++ {
-		negative[i] = 0xff
+		negative[i] = 255
 	}
 	probes := []loadRow{
-		{kind: "probe", name: "clean", unit: "probe", root: "Root", data: clean},
-		{kind: "probe", name: "trailing", unit: "probe", root: "Root", data: trailing},
-		{kind: "probe", name: "negative-id-count", unit: "probe", root: "Root", data: negative},
+		{name: "clean", unit: "probe", root: "Root", data: clean},
+		{name: "trailing", unit: "probe", root: "Root", data: trailing},
+		{name: "negative-id-count", unit: "probe", root: "Root", data: negative},
 	}
-	pres := runStrictRows(t, g, probes)
+	result := runStrictRows(t, g, probes)
 	for i, row := range probes {
-		want := goStrictReason(g, row.root, row.data)
-		counts[want]++
-		if pres.reason[i] != want {
-			t.Errorf("%s %s: strict read = %s, want %s", row.kind, row.name, pres.reason[i], want)
+		expected := "refused"
+		if i == 0 {
+			expected = "ok"
+		}
+		if result.reason[i] != expected {
+			t.Errorf("%s: %s, want %s", row.name, result.reason[i], expected)
+		}
+		if i > 0 && result.dump[i] != "nil" {
+			t.Errorf("%s publishes partial data", row.name)
 		}
 	}
-	if counts["malformed"] == 0 {
-		t.Fatalf("no malformed refusal was exercised: the probe units do not reach the name")
-	}
-	t.Logf("probe refusals: trailing=%s negative-id-count=%s", pres.reason[1], pres.reason[2])
-	if len(refusedUnits) > 0 {
-		t.Logf("units the surface refused by name: %s", strings.Join(refusedUnits, ", "))
-	}
+	t.Logf("%d accepted complete values and canonical saves; %d whole refusals", accepted, refused)
 }
 
-// TestLobsterStrictReadNegativeControl breaks the malformed clause of the
-// emitted strict read and requires the strict comparison to go red.
+// Bypassing generic payload validation must expose an invalid unknown bool.
 func TestLobsterStrictReadNegativeControl(t *testing.T) {
 	t.Parallel()
 	g := probeUnit(t)
-	clean := probeWire(t, g)
-	trailing := append(bytes.Clone(clean), 0x00)
-	rows := []loadRow{{kind: "probe", name: "trailing", unit: "probe", root: "Root", data: trailing}}
-	want := goStrictReason(g, "Root", trailing)
-	if got := runStrictRows(t, g, rows).reason[0]; got != want {
-		t.Fatalf("the control, unpatched: strict read = %s, want %s", got, want)
+	wire := []byte{1, 1, 1, 2, 0}
+	wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId("future"))
+	wire = binary.LittleEndian.AppendUint64(wire, 1)
+	rows := []loadRow{{name: "unknown-bool", unit: "probe", root: "Root", data: wire}}
+	if result := runStrictRows(t, g, rows); result.reason[0] != "refused" || result.dump[0] != "nil" {
+		t.Fatalf("invalid bool accepted before mutation: %+v", result)
 	}
 	path := filepath.Join(g.dir, "load.lobster")
-	src, err := os.ReadFile(path)
+	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "    if rep.malformed:\n        return \"malformed\"\n"
-	if n := strings.Count(string(src), anchor); n != 1 {
-		t.Fatalf("the malformed anchor is in the emitted runtime %d times, want 1", n)
+	const guard = "    if not wire_check(st, first):"
+	if strings.Count(string(source), guard) != 1 {
+		t.Fatal("wire check guard not unique")
 	}
-	patched := strings.Replace(string(src), anchor, "    if rep.malformed:\n        return \"\"\n", 1)
-	if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Replace(string(source), guard, "    if false:", 1)), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if got := runStrictRows(t, g, rows).reason[0]; got == want {
-		t.Fatalf("the patched strict read still refuses by name: %s", got)
-	} else {
-		t.Logf("the strict comparison went red under the patch: got %s, want %s", got, want)
+	if result := runStrictRows(t, g, rows); result.reason[0] != "ok" {
+		t.Fatalf("mutation did not expose acceptance: %+v", result)
 	}
 }
 

@@ -8,9 +8,9 @@
 # required red on the named surface with its neighbours green. No tracked
 # file is written, so an interrupt leaves no sabotaged tree.
 #
-#   report  load.lua counts every unknown field twice: the two surfaces that
-#           print the load's report red (`lua / report`, and `lua / retain`,
-#           whose answer carries the same counters) and nothing else; `wire`,
+#   report  load.lua counts every unknown field twice: the three surfaces that
+#           print the load's counters red (`lua / report`, `lua / framing`,
+#           and `lua / retain`) and nothing else; `wire`,
 #           `json-read` and `retain-save` green (the sabotage moves no byte).
 #   walk    json.lua's field-key match never matches the first declared
 #           field: the text READER's two surfaces red (`lua / json-read`, and
@@ -22,8 +22,12 @@
 #           instead of being refused as malformed, so `lua / framing`
 #           (frame_entries_4097) goes red and nothing else; `wire` and
 #           `report` green.
+#   cycle   load.lua's cycle check is taken out: a cyclic wire loads instead
+#           of being refused as malformed, so `lua / framing`
+#           (node_cycle_self, node_cycle_to_root, node_cycle_mid) goes red and
+#           nothing else; `wire` and `report` green.
 #
-# usage: test/conformance/lua/negative-control <report|walk|framing>
+# usage: test/conformance/lua/negative-control <report|walk|framing|cycle>
 set -eu
 
 mode=$1
@@ -43,6 +47,10 @@ walk)
 framing)
     source=internal/codegen/luatable/runtime/descriptor.lua
     sed 's/^D.ID_TABLE_BOUND = 4096$/D.ID_TABLE_BOUND = math.maxinteger/' "$source" > "$out/runtime.lua"
+    ;;
+cycle)
+    source=internal/codegen/luatable/runtime/load.lua
+    sed 's/^  if not report.malformed and D.number_nodes(T, desc, root, false) == nil then$/  if false then/' "$source" > "$out/runtime.lua"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -77,9 +85,10 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *lua / [a-z-]+' "$out/log" | sed 's/^ *lua \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="report retain " ; green="wire json-read retain-save" ;;
+report) want="framing report retain " ; green="wire json-read retain-save" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
+cycle)  want="framing " ; green="wire report" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

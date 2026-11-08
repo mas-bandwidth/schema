@@ -20,6 +20,13 @@ func init() { Register("cook", emitCook) }
 // record and union as data, the per-table CookMeasure/Cook pair (§7.6), the
 // cooked record read (§7, Uncook) and Open's header match (§7, §7.1).
 func emitCook(g *lobster.Gen) error {
+	haveRoot := false
+	for _, st := range g.Unit.Tables {
+		haveRoot = haveRoot || !st.IsMapEntry() && st.CarriesForm("cook")
+	}
+	if !haveRoot {
+		return nil
+	}
 	emitted := false
 	// a packet type gets cooked storage only when a table reaches it: an
 	// unreached one has no descriptor for the cooked read to fill
@@ -43,12 +50,13 @@ func emitCook(g *lobster.Gen) error {
 	// the same module as their descriptors, so a walk resolves them by name.
 	layouts := map[string]bool{}
 	for _, st := range candidates {
-		if layouts[st.Name] || st.IsMapEntry() {
+		if layouts[st.Name] {
 			continue
 		}
 		layouts[st.Name] = true
-		if !st.CarriesForm("cook") {
+		if st.IsMapEntry() || !st.CarriesForm("cook") {
 			emitCookTable(g, st)
+			emitted = true
 		}
 	}
 	unions := append([]*ir.Union{}, g.File.TableUnions...)
@@ -64,6 +72,7 @@ func emitCook(g *lobster.Gen) error {
 		}
 		useen[un.Name] = true
 		emitCookUnion(g, un)
+		emitted = true
 	}
 	if emitted {
 		g.Import("cook")
@@ -79,7 +88,7 @@ func emitCookTable(g *lobster.Gen, st *ir.Struct) {
 	ml := ir.RecordLayout(u, st)
 	record := ml.Size
 	if recordHasExtent(u, st) {
-		record = alignUp(ml.Size, ir.RegionAlignFloor)
+		record = ir.CookExtentStart(u, st)
 	}
 	g.Pf("// %sCookTable — %s's cooked storage as data (docs/SPEC-TABLES.md §7.2):\n", st.Name, st.Name)
 	g.Pf("// each field's pieces and where a reference points, the same numbers\n")
@@ -87,8 +96,9 @@ func emitCookTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("let %sCookTable = %s.cook_table(%s.CookTable {\n", st.Name, rt, rt)
 	g.Pf("    name: %s,\n", lobster.StringLit([]byte(st.Name)))
 	g.Pf("    size: %d,\n", ml.Size)
-	g.Pf("    align: %d,\n", ml.Align)
+	g.Pf("    align: %d,\n", ir.CookNodeAlign(u, st))
 	g.Pf("    record: %d,\n", record)
+	g.Pf("    region_align: %d,\n", ir.TableRegionAlign(u))
 	g.Pf("    extent: %s,\n", boolLit(recordHasExtent(u, st)))
 	g.Pf("    build: %s,\n", buildLit(u))
 	g.Pf("    fields: [\n")
@@ -102,6 +112,11 @@ func emitCookTable(g *lobster.Gen, st *ir.Struct) {
 	}
 	g.Pf("    ]::%s.CookField\n", rt)
 	g.Pf("})\n\n")
+
+	// Closure-only records need layouts, but do not expose root entry points.
+	if st.IsMapEntry() || !st.CarriesForm("cook") {
+		return
+	}
 
 	g.Pf("// %sCookMeasure is the whole file's length: the header, the region and\n", st.Name)
 	g.Pf("// the directory, in int64 (docs/SPEC-TABLES.md §7.6).\n")
@@ -131,7 +146,7 @@ func emitCookTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("// aligned base the buffer sits, and nobuf is a NULL buffer.\n")
 	g.Pf("def %sOpenReason(data:string, lead:int, nobuf:bool) -> string:\n", st.Name)
 	g.Pf("    return %s.cook_open_reason(data, %s, %d, %d, lead, nobuf)\n\n",
-		rt, buildLit(u), ml.Align, ml.Size)
+		rt, buildLit(u), ir.CookNodeAlign(u, st), ml.Size)
 }
 
 // emitCookUnion writes <Name>CookUnion, a union's overlay as data: the tag's
@@ -236,7 +251,7 @@ func recordHasExtent(u *ir.Unit, st *ir.Struct) bool {
 		return false
 	}
 	for _, f := range st.Fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
@@ -265,7 +280,7 @@ func unionHasExtent(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
 		if v.F == nil {
 			continue
 		}
-		if v.F.IsMap() || v.F.IsList() {
+		if v.F.IsMap() || v.F.IsList() || v.F.Type.TextUnbounded() {
 			return true
 		}
 		if v.F.Type.Pointer || v.F.Type.Blob() || v.F.Type.Kind != ir.TNamed {

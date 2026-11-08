@@ -113,13 +113,15 @@ func ArchiveConfigSave(value *ArchiveConfig, buffer []byte) int64 {
 
 func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 	ArchiveConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -127,166 +129,106 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0xa354fd1ff0c467c5: // root
 			if kind != 13 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ArchiveConfig.root")
+				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			RootConfigLoadBody(&sub, &value.Root)
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			if !RootConfigLoadBody(&sub, &value.Root) {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
-				r.Report.Malformed = true
-				RootConfigReset(&value.Root)
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		case 0xb1e5e28e4479a274: // count
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
-						} else if v > 100 {
-							v = 100
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
+						if v < 0 || v > 100 {
+							r.Report.Refuse(TableRefuseOutOfRange, "ArchiveConfig.count")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Count = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ArchiveConfig.count")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
-				} else if v > 100 {
-					v = 100
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
+				if v < 0 || v > 100 {
+					r.Report.Refuse(TableRefuseOutOfRange, "ArchiveConfig.count")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Count = int32(v)
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// ArchiveConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. ArchiveConfigLoad is the strict read; call this one by name.
-func ArchiveConfigLoadTolerant(value *ArchiveConfig, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		ArchiveConfigReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !ArchiveConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			ArchiveConfigReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			ArchiveConfigReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		ArchiveConfigReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// ArchiveConfigLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever ArchiveConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. ArchiveConfigLoadTolerant keeps a recovered value.
+// ArchiveConfig also carries the FIXED form (form 3): ArchiveConfigFixedLoad reads that one and
+// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
+// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// ArchiveConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -294,24 +236,21 @@ func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) b
 	} else {
 		*read = TableReport{}
 	}
-	ok := ArchiveConfigLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !ArchiveConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		ArchiveConfigReset(value)
 		return false
 	}
 	return true
 }
 
-// ArchiveConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// ArchiveConfigReadStrict is ArchiveConfigLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func ArchiveConfigReadStrict(wire []byte) (*ArchiveConfig, error) {
 	value := &ArchiveConfig{}
 	var report TableReport
-	ok := ArchiveConfigLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !ArchiveConfigLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -425,6 +364,8 @@ func ArchiveConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ArchiveConfi
 
 func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) bool {
 	ArchiveConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -432,7 +373,7 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -440,90 +381,651 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0xa354fd1ff0c467c5: // root
 			if kind != 13 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ArchiveConfig.root")
+				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			sub.Path = r.Path.step(0, uint32(0))
-			RootConfigLoadBodyRetain(&sub, &value.Root)
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			if !RootConfigLoadBodyRetain(&sub, &value.Root) {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
-				r.Report.Malformed = true
-				RootConfigReset(&value.Root)
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		case 0xb1e5e28e4479a274: // count
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
-						} else if v > 100 {
-							v = 100
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
+						if v < 0 || v > 100 {
+							r.Report.Refuse(TableRefuseOutOfRange, "ArchiveConfig.count")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Count = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ArchiveConfig.count")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
-				} else if v > 100 {
-					v = 100
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
+				if v < 0 || v > 100 {
+					r.Report.Refuse(TableRefuseOutOfRange, "ArchiveConfig.count")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Count = int32(v)
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "ArchiveConfig") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
+}
+
+// ---- THE FIXED FORM, form byte 3 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4) ----
+//
+// A record is an eight-byte hash of the writer's layout and then the values
+// in declared order, every field at its declared storage width. The writer is
+// constant-offset stores; the reader is ONE loop over ONE plan.
+
+func ArchiveConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(ArchiveConfig{}.Root))
+		n += RootConfigFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	{
+		es := src + 1248
+		ed := dst + uint32(unsafe.Offsetof(ArchiveConfig{}.Count))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func ArchiveConfigFixedWriteBody(b []byte, value *ArchiveConfig) {
+	RootConfigFixedWriteBody(b[0:], &value.Root)
+	tableFixedPut32(b[1248:], uint32(value.Count))
+}
+
+// ArchiveConfig's read-side bounds: each value outside them counts one in over.
+func ArchiveConfigFixedBoundsBody(value *ArchiveConfig, over *int32) {
+	_, _ = value, over
+	RootConfigFixedBoundsBody(&value.Root, over)
+	if value.Count < 0 || value.Count > 100 {
+		(*over)++
+	}
+}
+
+// ArchiveConfigFixedFiniteBody is ArchiveConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func ArchiveConfigFixedFiniteBody(value *ArchiveConfig) string {
+	if why := RootConfigFixedFiniteBody(&value.Root); why != "" {
+		return why
+	}
+	return ""
+}
+
+// ArchiveConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func ArchiveConfigFixedCheckBody(value *ArchiveConfig) bool {
+	_ = value
+	if !RootConfigFixedCheckBody(&value.Root) {
+		return false
+	}
+	if value.Count < 0 || value.Count > 100 {
+		return false
+	}
+	return true
+}
+
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.6): a ranged scalar's declared min and max, and an ORDINAL's set — a
+// union tag past the arm count, an enum ordinal past the enum's top value.
+// Straight-line, after the copy, over STORAGE, so the identity plan and a
+// lineage plan are held by the same pass. A value outside them refuses the
+// load out_of_range; nothing is clamped. The pass walks LIVE elements only:
+// a counted array's live count, not its slack; an optional's payload only
+// when present; a union's set arm, not the others (tla/FixedLive.tla).
+func ArchiveConfigFixedBounds(value *ArchiveConfig) bool {
+	over := int32(0)
+	ArchiveConfigFixedBoundsBody(value, &over)
+	return over == 0
+}
+
+// ---- ArchiveConfig, the fixed form ----
+
+const ArchiveConfigFixedBodyBytes = 1252
+const ArchiveConfigFixedRecordBytes = 8 + ArchiveConfigFixedBodyBytes
+const ArchiveConfigFixedHash = 0x98b16f3242e9406b
+
+var ArchiveConfigFixedLayout = []byte{
+	0x4b, 0x00, 0x00, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf, 0x7b, 0x3e, 0x41, 0x0d, 0xe4, 0x04, 0x00,
+	0x00, 0x02, 0x00, 0x00, 0x00, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd, 0x54, 0xa3, 0x0d, 0xe0, 0x04,
+	0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x94, 0xd3, 0x46, 0x87, 0x72, 0xc9, 0x67, 0x8a, 0x0c, 0x14,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb6, 0xab, 0x7f, 0xb8, 0x01, 0xd9, 0xcb, 0x41, 0x0e,
+	0xb4, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63,
+	0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05,
+	0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30,
+	0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5,
+	0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e,
+	0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43,
+	0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc,
+	0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+	0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00,
+	0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x67, 0x67, 0x43, 0xc0, 0x1f, 0xe6, 0x81, 0x81, 0x0e, 0x18, 0x04, 0x00, 0x00,
+	0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x05, 0x01, 0x00,
+	0x00, 0x0d, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x24, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x14,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06,
+	0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab,
+	0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50,
+	0x1e, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82,
+	0x28, 0xb1, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33,
+	0x92, 0xdc, 0x5d, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x55, 0x09, 0xfe,
+	0x81, 0xa9, 0xbd, 0x10, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x3f, 0x93,
+	0xa8, 0x0d, 0xdb, 0x2c, 0x8c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x6b,
+	0x6e, 0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7,
+	0x05, 0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xf9, 0xb0, 0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x3c, 0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0d, 0x9a, 0x00, 0x00, 0x00,
+	0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00, 0x00,
+	0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9,
+	0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77,
+	0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde,
+	0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d,
+	0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25, 0xd7,
+	0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91,
+	0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00, 0x00,
+	0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06,
+	0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad,
+	0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1,
+	0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe,
+	0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a,
+	0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7,
+	0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+	0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xcc,
+	0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+	0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00,
+	0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a,
+	0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13,
+	0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13,
+	0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa,
+	0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
+	0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
+	0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
+	0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
+
+var ArchiveConfigFixedDst = []TableFixedDst{
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // ArchiveConfig
+	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // root
+	{Dst: uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), Counted: 0, Arg: 1, Meta: 1},                                 // version_note
+	{Dst: uint32(unsafe.Offsetof(RootConfig{}.Weapons)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), Counted: 1, Arg: 0, Meta: 0},      // weapons
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
+	{Dst: uint32(unsafe.Offsetof(RootConfig{}.Profiles)), Stride: uint32(unsafe.Sizeof(ProfileConfig{})), Aux: uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), Counted: 1, Arg: 0, Meta: 0},   // profiles
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.Name)), Counted: 0, Arg: 1, Meta: 1},                                         // name
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), Stride: 1, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), Counted: 1, Arg: 3, Meta: 3},                                         // icon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // u8
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Experience)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // experience
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Tilt)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // tilt
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Heading)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // heading
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // timestamp
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Badge)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // badge
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Port)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // port
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Epoch)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // epoch
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Precision)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // precision
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // ratings
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // has_loadout
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Loadout)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // loadout
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // grade
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), Counted: 1, Arg: 0, Meta: 0},        // grades
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                           // podium
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // perks
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // primary
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // backups
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                       // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), Stride: uint32(unsafe.Sizeof(AttachmentRow{})), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), Counted: 1, Arg: 0, Meta: 0}, // attachments
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                     // slot
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
+	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // count
+}
+
+var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 332)
+
+var ArchiveConfigFixedKnown = []TableFixedKnownLayout{
+	{
+		Hash:        0x98b16f3242e9406b,
+		LayoutBytes: 1279,
+		Record:      1260,
+		Layout: []byte{
+			0x4b, 0x00, 0x00, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf, 0x7b, 0x3e, 0x41, 0x0d, 0xe4, 0x04, 0x00,
+			0x00, 0x02, 0x00, 0x00, 0x00, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd, 0x54, 0xa3, 0x0d, 0xe0, 0x04,
+			0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x94, 0xd3, 0x46, 0x87, 0x72, 0xc9, 0x67, 0x8a, 0x0c, 0x14,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb6, 0xab, 0x7f, 0xb8, 0x01, 0xd9, 0xcb, 0x41, 0x0e,
+			0xb4, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63,
+			0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05,
+			0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30,
+			0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5,
+			0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e,
+			0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43,
+			0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc,
+			0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+			0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00,
+			0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x67, 0x67, 0x43, 0xc0, 0x1f, 0xe6, 0x81, 0x81, 0x0e, 0x18, 0x04, 0x00, 0x00,
+			0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x05, 0x01, 0x00,
+			0x00, 0x0d, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x24, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x14,
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06,
+			0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab,
+			0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50,
+			0x1e, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82,
+			0x28, 0xb1, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33,
+			0x92, 0xdc, 0x5d, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x55, 0x09, 0xfe,
+			0x81, 0xa9, 0xbd, 0x10, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x3f, 0x93,
+			0xa8, 0x0d, 0xdb, 0x2c, 0x8c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x6b,
+			0x6e, 0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7,
+			0x05, 0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0xf9, 0xb0, 0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x3c, 0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0d, 0x9a, 0x00, 0x00, 0x00,
+			0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00, 0x00,
+			0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9,
+			0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77,
+			0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde,
+			0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d,
+			0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25, 0xd7,
+			0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91,
+			0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00, 0x00,
+			0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad,
+			0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1,
+			0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe,
+			0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a,
+			0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7,
+			0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+			0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xcc,
+			0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+			0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00,
+			0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04,
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13,
+			0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13,
+			0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa,
+			0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
+			0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
+			0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
+			0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+}
+
+// The floor: below it a layout this build once served is retired, and
+// the answer is layout_unsupported rather than layout_unknown (§5.2).
+const ArchiveConfigFixedFloor = 0
+
+// One plan per lineage entry, laid down from THE LOCK's bytes: nothing
+// compiles on the load path (§5.8 row 3).
+var ArchiveConfigFixedLineagePlans = tableFixedLineagePlans(ArchiveConfigFixedKnown, ArchiveConfigFixedLayout, ArchiveConfigFixedDst, ArchiveConfigFixedHash)
+
+var ArchiveConfigFixedResetImage = func() []byte {
+	var def ArchiveConfig
+	ArchiveConfigReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var ArchiveConfigFixedHoles = tableFixedHoles(ArchiveConfigFixedPlan.Entries, ArchiveConfigFixedPlan.Count, uint32(len(ArchiveConfigFixedResetImage)))
+
+var ArchiveConfigFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(ArchiveConfigFixedLineagePlans))
+	for i := range ArchiveConfigFixedLineagePlans {
+		lane := &ArchiveConfigFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(ArchiveConfigFixedResetImage)))
+		}
+	}
+	return out
+}()
+
+// ArchiveConfigFixedPlanMax is the plan capacity every layout this build reads needs:
+// the largest entry count over the identity plan and every lineage plan
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
+// refuses plan_too_large for a layout the lineage holds.
+var ArchiveConfigFixedPlanMax = func() int32 {
+	m := ArchiveConfigFixedPlan.Count
+	for _, lane := range ArchiveConfigFixedLineagePlans {
+		if lane.Count > m {
+			m = lane.Count
+		}
+	}
+	return m
+}()
+
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
+func ArchiveConfigFixedMeasure(count int64) int64 {
+	return TableFixedHeaderBytes + 4 + int64(len(ArchiveConfigFixedLayout)) + count*ArchiveConfigFixedRecordBytes
+}
+
+// ArchiveConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
+// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+func ArchiveConfigFixedSave(values []ArchiveConfig, buffer []byte) int64 {
+	need := ArchiveConfigFixedMeasure(int64(len(values)))
+	if int64(len(buffer)) < need {
+		return -1
+	}
+	for k := range values {
+		if !ArchiveConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
+	}
+	clear(buffer[:TableFixedHeaderBytes])
+	buffer[0] = TableFixedForm
+	tableFixedPut64(buffer[TableFixedHashAt:], ArchiveConfigFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(ArchiveConfigFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], ArchiveConfigFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(ArchiveConfigFixedLayout):]
+	for k := range values {
+		tableFixedPut64(at, ArchiveConfigFixedHash)
+		clear(at[8 : 8+ArchiveConfigFixedBodyBytes])
+		ArchiveConfigFixedWriteBody(at[8:], &values[k])
+		at = at[ArchiveConfigFixedRecordBytes:]
+	}
+	return need
+}
+
+func ArchiveConfigFixedSaveReason(values []ArchiveConfig, buffer []byte) (int64, error) {
+	if n := ArchiveConfigFixedSave(values, buffer); n >= 0 {
+		return n, nil
+	}
+	if int64(len(buffer)) < ArchiveConfigFixedMeasure(int64(len(values))) {
+		return -1, TableRefuseTruncated
+	}
+	return -1, TableRefuseInvalidValue
+}
+
+// ArchiveConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
+// or -1 with every value it had written reset. A supplied report receives this read's report,
+// and report.Err() is the reason (tla/FixedLive.tla).
+func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	if report == nil {
+		var local TableReport
+		report = &local
+	}
+	*report = TableReport{}
+	if len(data) < 1 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	if data[0] != TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
+		}
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Refuse(TableRefuseWireDamaged, "")
+			report.Reason = TableRefuseReservedNotZero.Error()
+			return -1
+		}
+	}
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	hash := tableFixedGet64(data[TableFixedHashAt:])
+	pick := tableFixedSelect(ArchiveConfigFixedKnown, hash)
+	if pick < 0 {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
+	}
+	if pick < ArchiveConfigFixedFloor {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
+	}
+	known := &ArchiveConfigFixedKnown[pick]
+	if int(layoutBytes) != len(known.Layout) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	for i := range layout {
+		if layout[i] != known.Layout[i] {
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+		}
+	}
+	entries := ArchiveConfigFixedPlan.Entries
+	entryCount := ArchiveConfigFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
+	holes := ArchiveConfigFixedHoles
+	recordBytes := known.Record
+	censusUnknown := int32(0)
+	if hash != ArchiveConfigFixedHash {
+		lane := &ArchiveConfigFixedLineagePlans[pick]
+		if lane.Why != "" {
+			return tableFixedRefuse(report, lane.Why)
+		}
+		entries, entryCount = lane.Entries, lane.Count
+		holes = ArchiveConfigFixedLineageHoles[pick]
+		// THE UNKNOWN CENSUS IS ONCE PER ENDPOINT and lands only on a read that
+		// returns (§5.4); an unlawful entry has no plan and refused above.
+		censusUnknown = lane.Unknown
+	}
+	if int64(entryCount) > int64(len(plan)) {
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	if recordBytes <= 8 || rest%recordBytes != 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	n := rest / recordBytes
+	if n > int64(len(values)) {
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
+	}
+	defBytes := ArchiveConfigFixedResetImage
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+		if tableFixedGet64(scan) != hash {
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
+		}
+		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+	}
+	for k := range n {
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+		}
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		if why := ArchiveConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				ArchiveConfigReset(&values[j])
+			}
+			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
+			report.Field = why
+			return -1
+		}
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
+		if !ArchiveConfigFixedBounds(&values[k]) {
+			for j := range k + 1 {
+				ArchiveConfigReset(&values[j])
+			}
+			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+		}
+		at = at[recordBytes:]
+	}
+	report.Unknown += censusUnknown
+	return n
 }
 
 // ---- reflection descriptors (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
@@ -564,7 +1066,7 @@ func init() {
 		return ArchiveConfigSaveBodyRetain(w, (*ArchiveConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ArchiveConfigLoadBodyRetain(&r, (*ArchiveConfig)(p))
-	}, CookSize: 1488, CookAlign: 8}
+	}, CycleIndex: 1, CycleType: tableCycleType, CookSize: 1488, CookAlign: 8}
 }
 
 // ArchiveConfigTableType returns ArchiveConfig's reflection descriptor.

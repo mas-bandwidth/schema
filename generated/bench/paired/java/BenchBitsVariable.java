@@ -256,6 +256,10 @@ public final class BenchBitsVariable {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.b7 & 0xffffffffL) > 127L) {
+                        v.b7 = (int) 127L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -277,6 +281,10 @@ public final class BenchBitsVariable {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b13 & 0xffffffffL) > 8191L) {
+                        v.b13 = (int) 8191L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -308,6 +316,10 @@ public final class BenchBitsVariable {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.b23 & 0xffffffffL) > 8388607L) {
+                        v.b23 = (int) 8388607L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -321,6 +333,10 @@ public final class BenchBitsVariable {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b3 & 0xffffffffL) > 7L) {
+                        v.b3 = (int) 7L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -352,6 +368,10 @@ public final class BenchBitsVariable {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.b32 & 0xffffffffL) > 4294967295L) {
+                        v.b32 = (int) 4294967295L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -373,6 +393,10 @@ public final class BenchBitsVariable {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b11 & 0xffffffffL) > 2047L) {
+                        v.b11 = (int) 2047L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -403,6 +427,10 @@ public final class BenchBitsVariable {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b19 & 0xffffffffL) > 524287L) {
+                        v.b19 = (int) 524287L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -441,6 +469,10 @@ public final class BenchBitsVariable {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && Long.compareUnsigned(v.b48, 0xffffffffffffL) > 0) {
+                        v.b48 = 0xffffffffffffL;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -589,6 +621,9 @@ public final class BenchBitsVariable {
     }
 
     public static Value load(byte[] data, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
@@ -635,13 +670,25 @@ public final class BenchBitsVariable {
             }
             return null;
         }
+        nt.from = 1;
         resolveNodes(v, nt, v, TYPE_ID, report);
         if (nt.recs != null && !nt.bad) {
-            for (TableVariable.NodeRecord rec : nt.recs) {
+            for (int i = 0; i < nt.recs.length; i++) {
+                TableVariable.NodeRecord rec = nt.recs[i];
                 if (rec.table != null) {
+                    nt.from = i + 2;
                     resolveNodePointers(rec.table, rec.typeId, nt, v, TYPE_ID, report);
                 }
             }
+        }
+        // DAMAGE DISCARDS THE WHOLE LOAD (§4)
+        if (report.malformed) {
+            return null;
+        }
+        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
+        if (TableVariable.cyclic(nt)) {
+            report.malformed = true;
+            return null;
         }
         return v;
     }
@@ -773,10 +820,18 @@ public final class BenchBitsVariable {
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
         TableJson.In in = new TableJson.In(text, report);
+        in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v);
         if (in.bad) {
             report.malformed = true;
+        }
+        if (report.refused) {
+            return null;
+        }
+        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
+        if (report.malformed) {
+            return null;
         }
         return v;
     }
@@ -978,7 +1033,7 @@ public final class BenchBitsVariable {
             }
             if (c == '}') {
                 in.p++;
-                return;
+                break;
             }
             String key = in.scanString();
             if (in.bad) {
@@ -1172,7 +1227,7 @@ public final class BenchBitsVariable {
             }
             if (c == '}') {
                 in.p++;
-                return;
+                break;
             }
             in.bad = true;
             return;

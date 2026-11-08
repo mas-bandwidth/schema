@@ -1,0 +1,128 @@
+{
+  "ships": {
+    "": {
+      "name": "empty key",
+      "health": 2
+    },
+    "\u0001": {
+      "name": "control",
+      "health": 13
+    },
+    "Z": {
+      "name": "upper Z",
+      "health": 6
+    },
+    "a": {
+      "name": "a",
+      "health": 5
+    },
+    "a\"q\\": {
+      "name": "escapes",
+      "health": 11
+    },
+    "ab": {
+      "name": "ab",
+      "health": 4
+    },
+    "b": {
+      "name": "b",
+      "health": 3
+    },
+    "tab\t": {
+      "name": "tab",
+      "health": 12
+    },
+    "zz": {
+      "name": "last",
+      "health": 1
+    },
+    "~": {
+      "name": "tilde",
+      "health": 14
+    },
+    "": {
+      "name": "delete",
+      "health": 8
+    },
+    "é": {
+      "name": "e acute",
+      "health": 7
+    },
+    "｡": {
+      "name": "halfwidth stop",
+      "health": 9
+    },
+    "😀": {
+      "name": "astral",
+      "health": 10
+    }
+  },
+  "by_id": {
+    "0": {
+      "name": "zero",
+      "health": 0
+    },
+    "7": {
+      "name": "seven",
+      "health": 7
+    },
+    "10": {
+      "name": "ten",
+      "health": 10
+    },
+    "100": {
+      "name": "hundred",
+      "health": 100
+    },
+    "4294967295": {
+      "name": "max",
+      "health": -1
+    }
+  },
+  "flagship": null,
+  "loadouts": {
+    "Alpha": {
+      "1": {
+        "count": 5
+      }
+    },
+    "alpha": {},
+    "beta": {
+      "0": {
+        "count": 2
+      },
+      "9": {
+        "count": 4
+      },
+      "10": {
+        "count": 3
+      },
+      "255": {
+        "count": 1
+      }
+    }
+  },
+  "tiers": {
+    "-32768": {
+      "count": 3
+    },
+    "-3": {
+      "count": 2
+    },
+    "-1": {
+      "count": 5
+    },
+    "0": {
+      "count": 6
+    },
+    "2": {
+      "count": 1
+    },
+    "10": {
+      "count": 7
+    },
+    "32767": {
+      "count": 4
+    }
+  }
+}

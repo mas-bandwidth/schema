@@ -20,6 +20,9 @@
 # usage: cpp-clean-warnings.sh <ratchet-file> <census|check> <tree>...
 # env:   CLANGXX, SERIALIZE_DIR, JOBS, OUT (scratch dir)
 set -eu
+# Byte order for every sort and comm here: files.txt is compared with Go's
+# slices.Sort, and a locale such as en_US.UTF-8 collates Wides.h after WidesBlock.h.
+export LC_ALL=C
 ratchet=$1
 mode=$2
 shift 2

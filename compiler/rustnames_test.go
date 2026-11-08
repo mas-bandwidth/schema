@@ -31,6 +31,16 @@ var rustNameUnits = []struct{ crate, path string }{
 	{"backenddemo", "../tables/backend"},
 	{"tblfe1", "../test/tables/FE1.schema"},
 	{"tblv1", "../test/tables/V1.schema"},
+	{"integrityforms", "../testdata/conformance/feature-witnesses/integrity-forms/Probe.schema"},
+	{"formwitnesses", "../testdata/conformance/feature-witnesses/forms"},
+	{"textlists", "../testdata/conformance/feature-witnesses/text-lists/Probe.schema"},
+	{"textlisttotal", "../testdata/conformance/feature-witnesses/text-list-total/Probe.schema"},
+	{"unboundedtext", "../testdata/conformance/feature-witnesses/unbounded-text/complete/Probe.schema"},
+	{"unboundedcrossfile", "../testdata/conformance/feature-witnesses/unbounded-text/cross-file"},
+	{"requireddefaults", "../testdata/conformance/feature-witnesses/required/default-writers/Probe.schema"},
+	{"requiredranges", "../testdata/conformance/feature-witnesses/required/range-writers/Probe.schema"},
+	{"requiredcompressed", "../testdata/conformance/feature-witnesses/required/compressed-writers/Probe.schema"},
+	{"fullfeatures", "../testdata/conformance/feature-witnesses/full/Features.schema"},
 	{"widedemo", "../examples-wide/Caption.schema"},
 }
 

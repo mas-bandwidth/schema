@@ -66,13 +66,13 @@ public final class Driver {
   check(java.util.Arrays.equals(wire,RootVariable.save(v)),"JSON input");
   for(byte[] damage:new byte[][]{{1},{0,0},{0,(byte)0xd8},{0,(byte)0xdc}}) {
    report=new TableVariable.Report();v=RootVariable.load(frame(damage),report);
-   check(v!=null&&report.malformed&&!report.refused&&v.title.length==0&&v.tail==17,"damaged text and parent continuation");
+   check(v==null&&report.malformed&&!report.refused,"damaged text discards the whole load");
   }
   // Seven-unit bound cuts between the high and low surrogate at slots 6/7.
   report=new TableVariable.Report();v=RootVariable.load(frame(new byte[]{65,0,66,0,67,0,68,0,69,0,70,0,0,(byte)0xd8,0,(byte)0xdc}),report);
   check(v.title.length==6&&report.clamped==1&&!report.malformed&&v.tail==17,"surrogate boundary clamp");
   v.title=new char[]{0xd800};check(RootVariable.save(v)==null,"writer rejects unpaired surrogate");
-  System.out.println("wide reference wire/JSON, malformed defaults, parent continuation, pair clamp and writer validation pass");
+  System.out.println("wide reference wire/JSON, whole-load discard, pair clamp and writer validation pass");
  }
 }`
 	p := filepath.Join(dir, "Driver.java")

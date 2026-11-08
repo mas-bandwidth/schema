@@ -87,7 +87,9 @@ local leb = function(r) {
     }
     if ((x & 0x80) == 0) {
       if (i > 0 && x == 0) { r.bad = true; r.at = start; return 0; }
-      return v;
+      // the sentinel stands for every value at or past 2^62, so a cursor plus
+      // a length (`r.at + L > r.end`) is bounded and never wraps
+      return v >= 0x4000000000000000 ? 0x4000000000000000 : v;
     }
     shift += 7;
   }
@@ -707,11 +709,12 @@ readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, se
     local sub = newReader(r.b, r.at, r.at + L);
     local inst = tableDesc(T, fd.table).make();
     v[fd.member] = inst;
-    bodyRead(tableDesc(T, fd.table), sub, T, table, inst, report, st, true);
-    if (report.countRefusal) return false;
-    if (sub.at != sub.end) {
+    local ended = bodyRead(tableDesc(T, fd.table), sub, T, table, inst, report, st, true);
+    if (report.countRefusal || report.missingRequired) return false;
+    if (!ended || sub.at != sub.end) {
       report.malformed = true;
       v[fd.member] = tableDesc(T, fd.table).make();
+      if (selection != null) selection.selected = false;
     }
     r.at += L;
     if (fd.optional) v[fd.member + "Present"] = true;
@@ -791,7 +794,9 @@ local mapKeyScan = function(es, table, kd) {
     local kind = u8(scan);
     if (id == MAP_KEY_ID) {
       if (kind != kd.kind) {
-        if (widens(kind, kd.kind)) widened = true;
+        // a widening occurrence replaces the earlier key kind, as a matching
+        // one does
+        if (widens(kind, kd.kind)) { widened = true; bad = false; }
         else bad = true;
       } else {
         bad = false;
@@ -952,6 +957,20 @@ readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {
 
 // THE ELEMENTS of an array whose header (element kind, count) is read, out of
 // a reader bounded by the array's own body.
+// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the bytes the list's
+// elements hold so far, the last one just appended. An element that would carry
+// the sum past the total is removed and counted clamped, and the caller stops
+// reading, so the list keeps the longest prefix within the total.
+local textTotalKeeps = function(fd, out, spent, report) {
+  if (!("total" in fd)) return true;
+  local el = out[out.len() - 1];
+  local n = (fd.textlist == 2 && !el.ValuePresent) ? 0 : el.Value.len();
+  if (n <= fd.total - spent[0]) { spent[0] += n; return true; }
+  out.pop();
+  report.clamped = report.clamped + 1;
+  return false;
+};
+
 readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
   local want = fd.shape == "bytes" ? 6 : fd.elem.kind;
   if (ek != want) {
@@ -959,7 +978,9 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
       report.kindMismatch = report.kindMismatch + 1;
       return ARRAY_FOREIGN;
     }
-    report.widened = report.widened + 1;
+    // a list count past the int32 storage cap refuses the read before the
+    // widening counts: the refusal moves no counter (docs/SPEC-TABLES.md §2.9)
+    if (!(fd.list && count > 0x7fffffff)) report.widened = report.widened + 1;
   }
   local keep = count;
   if (fd.list) {
@@ -984,6 +1005,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
     // its own L and bytes, landed in the element record's one `value` string.
     local d = tableDesc(T, fd.elem.table);
     local out = [];
+    local spent = [0];
     for (local i = 0; i < keep; i++) {
       local L = leb(r);
       if (r.bad || r.at + L > r.end) { report.malformed = true; break; }
@@ -993,6 +1015,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
       inst.Value = dec.s;
       out.append(inst);
       r.at += L;
+      if (!textTotalKeeps(fd, out, spent, report)) break;
     }
     v[fd.member] = out;
     return ARRAY_SELECTED;
@@ -1035,8 +1058,10 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
     v[fd.member] = out;
     return ARRAY_SELECTED;
   }
+  local spent = [0];
   for (local i = 0; i < keep; i++) {
     local reached = r.at < r.end;
+    local placed = out.len();
     if (!readElement(fd, fd.elem, r, T, table, out, report, st, ek)) {
       // AN ELEMENT OF AN ARRAY OF UNIONS IS RESET THE MOMENT ITS ARM ID IS READ
       // (docs/SPEC-TABLES.md §4), before the kind and the arm length are
@@ -1048,6 +1073,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
         out.append(unionDesc(T, fd.elem.table).make());
       break;
     }
+    if (fd.textlist != 0 && out.len() > placed && !textTotalKeeps(fd, out, spent, report)) break;
   }
   if (!fd.list && !fd.counted) {
     // A FIXED [N] ARRAY KEEPS ITS N SLOTS (docs/SPEC-TABLES.md §2.9, §4): the
@@ -1246,7 +1272,58 @@ readArmPayload = function(arm, sub, lpos, wireKind, T, table, inst, report, st) 
     inst.Type = 0;
   }
   if (!ok || !selected.selected) inst.Type = 0;
-  return ok;
+  return !report.countRefusal && !report.missingRequired;
+};
+
+// A STRING BLOB'S IDENTITY (docs/SPEC-TABLES.md §2.5, §3.1). A Squirrel string
+// is a value: two string records of equal bytes are one string, so the string
+// alone cannot say whether two slots name ONE record (blob_shared, refused by
+// every writer) or two (two records, as written). The load keeps that fact on
+// the slot instead: each *string slot it fills is noted with its record's token,
+// keyed by a weak reference to the holder (the instance or array) and the
+// slot's member or index, so the note never keeps a value alive. A writer asks
+// stringIdentity for the slot: the token while the slot still holds the string
+// the load put there, and the string itself otherwise (an authored slot, or one
+// changed since), which is the value keying a *string has always had here.
+local stringOrigins = {};
+local stringOriginsSweep = 64;
+
+_M.noteStringOrigin <- function(holder, key, value, token) {
+  local w = holder.weakref();
+  local slots = (w in stringOrigins) ? stringOrigins[w] : null;
+  if (value == null || token == null) {
+    if (slots != null && (key in slots)) delete slots[key];
+    return;
+  }
+  if (slots == null) {
+    // holders the collector has released leave dead weak keys behind; they
+    // are swept whenever the registry doubles, so it stays bounded by the
+    // live holders. A weak reference read back out of a container is the
+    // object it names, so the live keys are copied while the iteration still
+    // holds them as references.
+    if (stringOrigins.len() >= stringOriginsSweep) {
+      local live = {};
+      foreach (k, v in stringOrigins) if (k.ref() != null) live[k] <- v;
+      stringOrigins = live;
+      stringOriginsSweep = live.len() * 2 > 64 ? live.len() * 2 : 64;
+    }
+    slots = {};
+    stringOrigins[w] <- slots;
+  }
+  slots[key] <- { v = value, token = token };
+};
+
+_M.stringIdentity <- function(holder, key, value) {
+  if (holder == null) return value;
+  local w = holder.weakref();
+  if (!(w in stringOrigins)) return value;
+  local slots = stringOrigins[w];
+  if (!(key in slots)) return value;
+  local o = slots[key];
+  if (o.v == value) return o.token;
+  // a changed slot no longer names the record the load placed
+  delete slots[key];
+  return value;
 };
 
 // RESOLUTION (docs/SPEC-TABLES.md §3.1): 0 is null, 1 is the root, k + 1 is
@@ -1256,6 +1333,7 @@ readArmPayload = function(arm, sub, lpos, wireKind, T, table, inst, report, st) 
 local resolve = function(st, root, report) {
   foreach (p in st.pending) {
     local value = null;
+    local token = null;
     if (st.good && p.index != 0) {
       if (p.index == 1) {
         if (p.fd.shape == "ptr" && p.target == root) value = st.root;
@@ -1274,6 +1352,7 @@ local resolve = function(st, root, report) {
                 n.named = true;
               }
               value = n.s;
+              token = n.token;
             } else report.kindMismatch = report.kindMismatch + 1;
           } else if (p.fd.shape == "bblob") {
             if (n.kind == "b") {
@@ -1298,7 +1377,223 @@ local resolve = function(st, root, report) {
       }
     }
     p.holder[p.key] = value;
+    if (p.fd.shape == "sblob") _M.noteStringOrigin(p.holder, p.key, value, token);
   }
+};
+
+local i32At = function(b, off) {
+  local u = u32le(b, off);
+  return (u & 0x80000000) != 0 ? u - 4294967296 : u;
+};
+
+local uAt = function(b, off, w) {
+  local v = 0;
+  for (local i = 0; i < w; i++) v = v | ((b[off + i] & 0xff) << (8 * i));
+  return v;
+};
+
+local fixedDamage = function(report, reason) {
+  report.malformed = true;
+  if ("stopped" in report) report.stopped = true;
+  if (report.getdelegate() == null) report.reason <- reason;
+  return null;
+};
+
+local fixedRefuse = function(report, reason) {
+  report.unknown = 0;
+  report.kindMismatch = 0;
+  report.widened = 0;
+  report.clamped = 0;
+  report.duplicate = 0;
+  report.malformed = false;
+  report.refused = true;
+  if ("stopped" in report) report.stopped = true;
+  if (report.getdelegate() == null) report.reason <- reason;
+  return null;
+};
+
+local fixedBody, fixedField, fixedPayload, fixedElement;
+
+fixedBody = function(T, c, v, bytes, off, report, st) {
+  foreach (fd in c.fields) {
+    if (!fd.deprecated) {
+      local why = fixedField(T, fd, v, bytes, off, report, st);
+      if (why != null) return why;
+    }
+    off += fd.fb;
+  }
+  return null;
+};
+
+fixedField = function(T, fd, v, bytes, off, report, st) {
+  if (fd.optional) {
+    local p = (bytes[off] & 0xff) != 0;
+    v[fd.member + "Present"] = p;
+    if (!p) return null;
+    return fixedPayload(T, fd, bytes, off + 1, report, st, function(x) { v[fd.member] = x; });
+  }
+  return fixedPayload(T, fd, bytes, off, report, st, function(x) { v[fd.member] = x; });
+};
+
+fixedPayload = function(T, fd, bytes, off, report, st, set) {
+  if (fd.shape == "arr") {
+    if (fd.counted) {
+      local count = i32At(bytes, off);
+      if (count < 0 || count > fd.bound) return "count_over_bound";
+      local arr = array(count);
+      for (local i = 0; i < count; i++) {
+        local idx = i;
+        local why = fixedElement(T, fd.elem, fd, bytes, off + 4 + i * fd.eb, true, report, st, function(x) { arr[idx] = x; });
+        if (why != null) return why;
+      }
+      set(arr);
+      return null;
+    }
+    local arr = array(fd.fcount);
+    for (local i = 0; i < fd.fcount; i++) {
+      local idx = i;
+      local why = fixedElement(T, fd.elem, fd, bytes, off + i * fd.eb, true, report, st, function(x) { arr[idx] = x; });
+      if (why != null) return why;
+    }
+    set(arr);
+    return null;
+  }
+  if (fd.shape == "str") {
+    local used = i32At(bytes, off);
+    if (used < 0 || used > fd.bound) return "length_over_bound";
+    local dec = utf8Decode(bytes, off + 4, used);
+    if (!dec.ok) return "text_ill_formed";
+    set(dec.s);
+    return null;
+  }
+  if (fd.shape == "bytes") {
+    local used = i32At(bytes, off);
+    if (used < 0 || used > fd.bound) return "length_over_bound";
+    set(blobOfRange(bytes, off + 4, used));
+    return null;
+  }
+  if (fd.shape == "wstr") {
+    local used = i32At(bytes, off);
+    if (used < 0 || used > fd.bound) return "length_over_bound";
+    local units = wideDecode(bytes, off + 4, 2 * used);
+    if (units == null) return "text_ill_formed";
+    set(units);
+    return null;
+  }
+  return fixedElement(T, fd, fd, bytes, off, false, report, st, set);
+};
+
+fixedElement = function(T, e, fd, bytes, off, isElement, report, st, set) {
+  if (e.shape == "tab") {
+    local td = tableDesc(T, e.table);
+    local sub = td.make();
+    local why = fixedBody(T, td, sub, bytes, off, report, st);
+    set(sub);
+    return why;
+  }
+  if (e.shape == "union") {
+    local ud = unionDesc(T, e.table);
+    local tag = uAt(bytes, off, ud.tagw);
+    local inst = ud.make();
+    set(inst);
+    if (tag == 0) return null;
+    if (tag < 0 || tag > ud.arms.len()) {
+      report.unknown = report.unknown + 1;
+      return null;
+    }
+    local arm = ud.arms[tag - 1]; inst.Type = arm.tag;
+    if (arm.payload == null) return null;
+    return fixedPayload(T, arm.payload, bytes, off + ud.tagw, report, st, function(x) { inst[arm.payload.member] = x; });
+  }
+  if (e.shape == "enum") {
+    local raw = uAt(bytes, off, e.sw);
+    if (raw < 0 || raw > e.variants.len()) {
+      set(null);
+      report.clamped = report.clamped + 1;
+      return null;
+    }
+    if (raw == 0) {
+      set(null);
+      return null;
+    }
+    local pair = e.variants[raw - 1];
+    if (pair.len() > 2 && pair[2]) {
+      set(isElement ? null : fd.def);
+      return null;
+    }
+    set(pair[0]);
+    return null;
+  }
+  if (e.shape == "flags") {
+    set(u64At(bytes, off));
+    return null;
+  }
+  if (e.shape == "bool") {
+    set((bytes[off] & 0xff) != 0);
+    return null;
+  }
+  local fk = e.kind;
+  if (e.bits != null && e.bits > 0) fk = e.sw == 8 ? 9 : 8;
+  local r = newReader(bytes, off, off + e.sw);
+  local x = readPrim(r, fk, report);
+  if (refuseNonFinite(e, x, st)) {
+    set(0.0);
+    return null;
+  }
+  x = clampScalar(e, fk, x, report);
+  set(x);
+  return null;
+};
+
+local loadFixed = function(T, c, bytes, report, trailerChecked) {
+  if (bytes == null || bytes.len() < 1) return fixedDamage(report, "truncated");
+  local form = bytes[0] & 0xff;
+  if (form == 1) return fixedRefuse(report, "previous_form");
+  if (form == 2) return fixedRefuse(report, "message_form_as_file");
+  if (form != 3) return fixedRefuse(report, "newer_form");
+  if (!c.femit) return fixedRefuse(report, "layout_unsupported");
+  if (!trailerChecked && ("integrity" in c) && c.integrity != null && c.integrity != "") {
+    local body = integrityOpen(bytes);
+    if (body == null) return fixedDamage(report, "integrity_mismatch");
+    bytes = body;
+  }
+  if (bytes.len() < 20) return fixedDamage(report, "truncated");
+  for (local i = 1; i < 8; i++) if ((bytes[i] & 0xff) != 0) return fixedDamage(report, "reserved_not_zero");
+  local L = u32le(bytes, 16);
+  if (L < 0 || L > bytes.len() - 20) return fixedRefuse(report, "layout_malformed");
+  if (u64At(bytes, 8) != c.lhash) return fixedRefuse(report, "layout_unknown");
+  if (L != c.layout.len()) return fixedRefuse(report, "layout_malformed");
+  for (local i = 0; i < L; i++) if ((bytes[20 + i] & 0xff) != (c.layout[i] & 0xff)) return fixedRefuse(report, "layout_malformed");
+  local record = 8 + c.fsize;
+  local rest = bytes.len() - 20 - L;
+  if (rest % record != 0 || rest == 0) return fixedDamage(report, "truncated");
+  if (rest != record) return fixedRefuse(report, "batch_too_large");
+  local at = 20 + L;
+  if (u64At(bytes, at) != c.lhash) return fixedRefuse(report, "layout_malformed");
+  local v = c.make();
+  local st = { nonFinite = null };
+  local why = fixedBody(T, c, v, bytes, at + 8, report, st);
+  if (st.nonFinite != null) {
+    report.unknown = 0;
+    report.kindMismatch = 0;
+    report.widened = 0;
+    report.clamped = 0;
+    report.duplicate = 0;
+    report.malformed = false;
+    if ("stopped" in report) report.stopped = true;
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.nonFiniteFloat = st.nonFinite;
+      report.reason <- "non_finite_float: " + st.nonFinite;
+      return null;
+    }
+    local strict = ::getstackinfos(3);
+    if (strict != null && ("_strictFrame" in strict.locals)) strict.locals.report.nonFiniteFloat <- st.nonFinite;
+    return null;
+  }
+  if (why != null) return fixedRefuse(report, why);
+  if ("stopped" in report) report.stopped = false;
+  return v;
 };
 
 // THE TOLERANT LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id
@@ -1316,14 +1611,17 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   if (report.getdelegate() == null) report.nonFiniteFloat <- null;
   if (report.malformed == null) report.malformed <- false;
   if (report.refused == null) report.refused <- false;
-  if (!report.rawin("countRefusal")) {
-    if (report.getdelegate() == null) report.countRefusal <- false;
-    else report.countRefusal = false;
-  }
+  // THIS READ'S OWN count refusal: one an earlier read left on a reused
+  // report does not refuse this one
+  if (report.getdelegate() == null) report.countRefusal <- false;
+  else if (!report.rawin("countRefusal")) report.countRefusal = false;
+  if (report.getdelegate() == null) report.missingRequired <- false;
+  else if (!report.rawin("missingRequired")) report.missingRequired = false;
 
+  local c = tableDesc(T, rootName);
+  if (c.fixed) return loadFixed(T, c, bytes, report, trailerChecked);
   if (bytes.len() < 1) { report.malformed = true; return null; }
   if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }
-  local c = tableDesc(T, rootName);
   // an integrity root's trailer is checked and stripped before any field is
   // decoded (docs/SPEC-TABLES.md §2.14): a mismatch is the whole-file damage,
   // and the rest reads as §3's file. ReadStrict has already opened it and
@@ -1381,7 +1679,7 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
       if (rec.tid == STRING_BLOB_ID) {
         local dec = utf8Decode(rec.b, rec.at, rec.end - rec.at);
         if (!dec.ok) { report.malformed = true; st.nodes.append(null); continue; }
-        st.nodes.append({ kind = "s", s = dec.s, named = false });
+        st.nodes.append({ kind = "s", s = dec.s, named = false, token = {} });
         continue;
       }
       if (rec.tid == BYTES_BLOB_ID) {
@@ -1405,8 +1703,32 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
       if (report.countRefusal) break;
     }
   }
-  local finished = bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);
+  local finished = report.countRefusal ? false : bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);
+  // A COUNT PAST THE INT32 STORAGE CAP REFUSES THE READ BY NAME
+  // (docs/SPEC-TABLES.md §2.9): the walk stopped at it, nothing is resolved,
+  // the partial value is discarded, and the report says refused with the
+  // reason count_over_extent_cap. It is not damage, so malformed stays unset
+  // and no counter moves for it. A non-finite float the walk met before it
+  // outranks it (§3.3). A strict caller (ReadStrict, refusal.nut) reads the
+  // refusal off its own report.
+  if (report.countRefusal && st.nonFinite == null) {
+    if ("stopped" in report) report.stopped = true;
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.reason <- "count_over_extent_cap";
+    }
+    return null;
+  }
   resolve(st, c, report);
+  // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph the load
+  // stored is checked once every index has resolved, over the root and every
+  // record the load placed, a cycle among records the root never reaches
+  // included (save.nut cyclic).
+  if (!report.malformed) {
+    local verts = [];
+    foreach (n in st.nodes) { if (n != null && n.kind == "t") verts.append({ d = n.d, v = n.v }); }
+    if (_require("schema_table_save").cyclic(T, rootName, v, verts)) report.malformed = true;
+  }
   // WHETHER THE ROOT BODY READ TO ITS OWN TERMINATOR (docs/SPEC-TABLES.md §4,
   // §4.2): a builder whose root body stopped holds a partial value, which a
   // builder caller discards. It is told only to a caller whose report

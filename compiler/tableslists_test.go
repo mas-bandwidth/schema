@@ -59,7 +59,7 @@ func TestListCarriers(t *testing.T) {
 		// the tagged leg (compiler/target_squirrel_lists.go) is a carrier too
 		want = append(want, "squirrel")
 	}
-	want = withGooseLeg(want)
+	want = withMooLeg(withGooseLeg(want))
 	if !slices.Equal(gooseLegOrdered(listTargets), want) {
 		t.Fatalf("listTargets = %v, want %v", listTargets, want)
 	}
@@ -108,7 +108,9 @@ func TestListRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseLists accepted a list-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a []T is " + englishList(listTargets) + " only today", "Save.placements", "--lang cpp"} {
+	carriers := slices.Clone(listTargets)
+	slices.Sort(carriers)
+	for _, want := range []string{"a []T is " + englishList(carriers) + " only today", "Save.placements", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

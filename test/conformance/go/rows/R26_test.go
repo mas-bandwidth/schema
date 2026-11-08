@@ -126,10 +126,7 @@ func TestRowR26(t *testing.T) {
 		if report.Reason != refusalName {
 			t.Fatalf("refusal %s: report.Reason = %q, want %q", refusalName, report.Reason, refusalName)
 		}
-		if report.Malformed {
-			t.Fatalf("refusal %s must NOT set Malformed = true", refusalName)
-		}
-		if report.Unknown != 0 || report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0 {
+		if report.Unknown != 0 || report.Widened != 0 {
 			t.Fatalf("refusal %s must move no counters: %+v", refusalName, report)
 		}
 		if values[0].A != 999.0 {

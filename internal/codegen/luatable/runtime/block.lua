@@ -144,8 +144,8 @@ end
 -- Layout derives one record's C ABI layout from the descriptors: a projection
 -- opens with the generated 24-byte prologue (§19.1), every row is the record
 -- its descriptor names. It is the §19.3 model, not the wire's packed one.
-function B.Layout(T, name, projection)
-  local d = T.Tables[name]
+function B.Layout(T, name, projection, d)
+  d = d or T.Tables[name]
   if d == nil then error("block: no descriptor for table " .. tostring(name), 0) end
   local offset = projection and PROLOGUE or 0
   local record_align = projection and 8 or 1
@@ -233,7 +233,7 @@ end
 function B.BlockOpen(T, name, bytes, build_version, base_offset)
   if type(bytes) ~= "string" then return nil, "truncated" end
   if build_version == nil then build_version = T.BuildVersion end
-  local layout = B.Layout(T, name, true)
+  local layout = B.Layout(T, name, true, T.Tables[name])
 
   -- the alignment clause is last, but a nil base is what a non-string is:
   -- there is no block to read and no offset to measure

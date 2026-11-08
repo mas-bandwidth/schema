@@ -32,6 +32,7 @@
 #include "TablesTable.h"
 #include "WideTable.h"
 #include "CaptionTable.h" // the WIDE TEXT unit (examples-wide): kind 33
+#include "FeaturesTable.h"
 #include "NestedTable.h"
 #include "KeyedTable.h"
 #include "PackTable.h"
@@ -222,13 +223,13 @@ template <typename T>
 static void copy_report( const T & from, Report * to )
 {
     to->unknown = from.unknown;
-    to->kind_mismatch = from.kind_mismatch;
+    to->kind_mismatch = 0; // retired as a counter: a kind mismatch is a refusal (refuse_reason)
     to->widened = from.widened;
-    to->clamped = from.clamped;
-    to->duplicate = from.duplicate;
-    to->malformed = from.malformed;
+    to->clamped = 0; // retired as a counter: an out-of-range value is a refusal (refuse_reason)
+    to->duplicate = 0; // retired: a repeated key or field is damage and refuses the whole load
+    to->malformed = from.damaged;
     to->refused = from.refused;
-    to->blob_shared = from.blob_shared;
+    to->blob_shared = ( (int) from.refuse_reason == 24 ) ? 1 : 0; // blob_shared is refusal reason 24 in the one vocabulary
 }
 
 template <typename T>
@@ -245,13 +246,13 @@ struct Erase
 
 // The surfaces ask what the TOLERANT read reports, so the codecs call the
 // named tolerant reads; the plain names are strict (docs/SPEC-TABLES.md
-// §16.11), as the Go driver's rows call ...Tolerant too.
+// §16.11), as the Go driver rows call the plain strict entries too.
 #define CODEC( unit_key, ns, type )                                                            \
     {                                                                                          \
         unit_key, #type,                                                                       \
         []( void * v, const uint8_t * b, int64_t n, Report * r ) {                             \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##LoadTolerant( *(ns::type *) v, b, n, &inner );                 \
+            bool ok = ns::type##Load( *(ns::type *) v, b, n, &inner );                 \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -261,7 +262,7 @@ struct Erase
         },                                                                                     \
         []( void * v, const char * t, int64_t n, Report * r ) {                                \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##FromJsonTolerant( *(ns::type *) v, t, n, &inner );             \
+            bool ok = ns::type##FromJson( *(ns::type *) v, t, n, &inner );             \
             copy_report( inner, r );                                                           \
             return ok;                                                                         \
         },                                                                                     \
@@ -354,7 +355,7 @@ struct VarCodec
             int64_t need = ns::type##LoadMeasure( b, n );                                       \
             region.assign( (size_t) need, 0 );                                                  \
             ns::TableReport inner;                                                              \
-            const ns::type * root = ns::type##LoadTolerant( region.data(), need, b, n, &inner ); \
+            const ns::type * root = ns::type##Load( region.data(), need, b, n, &inner ); \
             copy_report( inner, r );                                                            \
             return (const void *) root;                                                         \
         },                                                                                     \
@@ -371,7 +372,7 @@ struct VarCodec
         []( const char * t, int64_t n, Report * r, std::vector<uint8_t> & bytes ) {             \
             ns::type##Builder builder;                                                          \
             ns::TableReport inner;                                                              \
-            bool ok = ns::type##FromJsonTolerant( builder, t, n, &inner );                      \
+            bool ok = ns::type##FromJson( builder, t, n, &inner );                      \
             copy_report( inner, r );                                                            \
             if ( !ok ) return false;                                                            \
             int64_t size = ns::type##Measure( builder );                                        \
@@ -422,6 +423,8 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblg1", tblg1, Guarded ),
     VARCODEC( "tblw1", tblw1, Fleet ),
     VARCODEC( "tblw2", tblw2, Fleet ),
+    VARCODEC( "featurewitnesses", featurewitnesses, Root ),
+    VARCODEC( "featurewitnesses", featurewitnesses, ArrayRoot ),
 };
 
 // ---------------------------------------------------------------------------
@@ -1029,6 +1032,18 @@ static int surface_retain_save( const std::string & out )
     return 0;
 }
 
+// The §16 text of a by-value codec's value: the value half of a `report` and
+// `json-hostile` answer (test/conformance/README.md).
+static bool codec_text( const Codec * codec, void * value, std::vector<char> & text )
+{
+    int64_t size = codec->to_json_measure( value );
+    if ( size < 0 ) return false;
+    text.resize( (size_t) size + 1 );
+    if ( codec->to_json( value, text.data(), size ) != size ) return false;
+    text.resize( (size_t) size );
+    return true;
+}
+
 static int surface_report( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -1039,11 +1054,14 @@ static int surface_report( const std::string & out )
         if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
         Report report;
         bool ok = false;
+        std::vector<char> value_text;
         const VarCodec * variable = find_var_codec( f[2], f[3] );
         if ( variable != NULL )
         {
             std::vector<uint8_t> region;
-            ok = variable->load( region, wire.data(), (int64_t) wire.size(), &report ) != NULL;
+            const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
+            ok = root != NULL;
+            if ( ok && !report.refused && !report.malformed && !variable->to_json( root, value_text ) ) return 1;
         }
         else
         {
@@ -1052,16 +1070,20 @@ static int surface_report( const std::string & out )
             void * value = codec->make();
             codec->reset( value );
             ok = codec->load( value, wire.data(), (int64_t) wire.size(), &report );
+            if ( ok && !report.refused && !report.malformed && !codec_text( codec, value, value_text ) ) return 1;
         }
         // THE VERDICT RIDES BESIDE THE COUNTERS (docs/SPEC-TABLES.md §3): a
         // form byte this reader does not carry moves none of them and reports
-        // no damage, and a clean read prints the same five zeros.
+        // no damage, and a clean read prints the same five zeros. A read that
+        // reads is followed by the §16 text of the value it left.
         char text[128];
         int n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%d,%s,%s\n",
                           report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
                           ( report.malformed || ( !ok && !report.refused ) ) ? "true" : "false",
                           report.refused ? "refused" : "read" );
-        if ( !spill( out, f[1], text, (size_t) n ) ) return 1;
+        std::vector<char> answer( text, text + n );
+        answer.insert( answer.end(), value_text.begin(), value_text.end() );
+        if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
     }
     return 0;
 }
@@ -1203,6 +1225,52 @@ static int surface_json_write( const std::string & out )
     return 0;
 }
 
+// json-text: the nightly's CROSS-READ of a port's text (test/conformance/
+// README.md, "The nightly"; docs/SPEC-TABLES.md §16). The harness hands a
+// substituted manifest whose lines name a PORT's JSON text,
+//   json-text <case> <unit> <root> <text>
+// and the reference reads it, writes it back, and the text goes out as
+// <case>.json; the harness holds it to the port's bytes. It is not a matrix
+// surface and `list` does not name it: no leg but the reference answers it.
+static int surface_json_text( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "json-text" ) continue;
+        if ( f.size() < 5 ) { fprintf( stderr, "driver: a json-text line is <case> <unit> <root> <text>\n" ); return 1; }
+        std::vector<uint8_t> text;
+        if ( !slurp( f[4].c_str(), text ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            Report report;
+            std::vector<uint8_t> bytes;
+            if ( !variable->json_read( (const char *) text.data(), (int64_t) text.size(), &report, bytes ) ) return 1;
+            std::vector<uint8_t> region;
+            const void * root = variable->load( region, bytes.data(), (int64_t) bytes.size(), &report );
+            if ( root == NULL ) return 1;
+            std::vector<char> written;
+            if ( !variable->to_json( root, written ) ) return 1;
+            if ( !spill( out, f[1] + ".json", written.data(), written.size() ) ) return 1;
+            continue;
+        }
+        const Codec * codec = find_codec( f[2], f[3] );
+        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+
+        void * value = codec->make();
+        codec->reset( value );
+        Report report;
+        if ( !codec->from_json( value, (const char *) text.data(), (int64_t) text.size(), &report ) ) return 1;
+        int64_t size = codec->to_json_measure( value );
+        if ( size < 0 ) return 1;
+        std::vector<char> written( (size_t) size + 1 );
+        if ( codec->to_json( value, written.data(), size ) != size ) return 1;
+        if ( !spill( out, f[1] + ".json", written.data(), (size_t) size ) ) return 1;
+    }
+    return 0;
+}
+
 // cook-write: the runtime WRITES a cooked file and the bytes are the tool's
 // (docs/SPEC-TABLES.md §7.6), in BOTH byte orders. The instance arrives as the
 // wire — the format of record — so what this proves is the pair a cooked
@@ -1301,8 +1369,9 @@ static int surface_block( const std::string & out )
 }
 
 // json-hostile: one tree per rule the text form states (§16.2, §16.3, §17.5).
-// The answer is the REPORT the read produces, or `refused` — which is the same
-// two-valued verdict the engine's own gate holds, over the same data.
+// The answer is the REPORT the read produces, then the §16 text of the value it
+// left, or `refused` — the same verdict the engine's own gate holds, over the
+// same data, and the value the oracle's read leaves.
 static int surface_json_hostile( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -1316,11 +1385,21 @@ static int surface_json_hostile( const std::string & out )
 
         Report report;
         bool ok = false;
+        std::vector<char> value_text;
         const VarCodec * variable = find_var_codec( f[2], f[3] );
         if ( variable != NULL )
         {
+            // the builder's value reaches its text through its own saved bytes,
+            // which the region read takes back without an event
             std::vector<uint8_t> bytes;
             ok = variable->json_read( (const char *) text.data(), (int64_t) text.size(), &report, bytes );
+            if ( ok && !report.malformed )
+            {
+                std::vector<uint8_t> region;
+                Report again;
+                const void * root = variable->load( region, bytes.data(), (int64_t) bytes.size(), &again );
+                if ( root == NULL || !variable->to_json( root, value_text ) ) return 1;
+            }
         }
         else
         {
@@ -1329,6 +1408,7 @@ static int surface_json_hostile( const std::string & out )
             void * value = codec->make();
             codec->reset( value );
             ok = codec->from_json( value, (const char *) text.data(), (int64_t) text.size(), &report );
+            if ( ok && !report.malformed && !codec_text( codec, value, value_text ) ) return 1;
         }
         char verdict[128];
         int n;
@@ -1337,7 +1417,9 @@ static int surface_json_hostile( const std::string & out )
         else
             n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,%d,false,read\n",
                           report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate );
-        if ( !spill( out, f[1], verdict, (size_t) n ) ) return 1;
+        std::vector<char> answer( verdict, verdict + n );
+        if ( ok && !report.malformed ) answer.insert( answer.end(), value_text.begin(), value_text.end() );
+        if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
     }
     return 0;
 }
@@ -1418,7 +1500,7 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::allocation_failed: return "allocation_failed";
         case blockdemo::wire_damaged: return "wire_damaged";
         case blockdemo::malformed: return "malformed";
-        case blockdemo::clamped: return "clamped";
+        case blockdemo::out_of_range: return "out_of_range";
         case blockdemo::kind_mismatch: return "kind_mismatch";
         case blockdemo::base64_damaged: return "base64_damaged";
         case blockdemo::base64_not_canonical: return "base64_not_canonical";
@@ -1612,6 +1694,7 @@ int main( int argc, char ** argv )
     if ( surface == "retain-save" ) return surface_retain_save( out );
     if ( surface == "json-read" ) return surface_json_read( out );
     if ( surface == "json-write" ) return surface_json_write( out );
+    if ( surface == "json-text" ) return surface_json_text( out );
     if ( surface == "json-hostile" ) return surface_json_hostile( out );
     if ( surface == "cook-write" ) return surface_cook_write( out );
     if ( surface == "block" ) return surface_block( out );

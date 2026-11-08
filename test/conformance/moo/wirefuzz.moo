@@ -18,7 +18,7 @@
 --   <generated tree> the repo-relative tree make/moo-conformance.mk writes
 --
 -- THE ROSTER. A FORM-1 entry is driven through the unit's table_load.moo
--- (loadTolerant) and table_save.moo; with RETAIN set, through table_retain.moo
+-- (load) and table_save.moo; with RETAIN set, through table_retain.moo
 -- (LoadRetain, SaveRetain) over one store at the harness's two capacities. A
 -- FORM-2 entry is a MESSAGE batch, driven through table_message.moo
 -- (LoadMessages, SaveMessages) against the vocabulary the unit's own
@@ -53,7 +53,7 @@ local load = require :: any
 
 local KIND_STRING, KIND_TABLE, KIND_ARRAY, KIND_UNION, KIND_KEYED, KIND_POINTER = 12, 13, 14, 15, 16, 17
 
-type Ctx = { S: any, V: any, C: any, ids: { string }, at: number }
+type Ctx = { S: any, V: any, C: any, ids: { string }, at: number, align: number }
 
 local function newReader(b: buffer, at: number, e: number): any
 	return { b = b, at = at, e = e }
@@ -144,6 +144,19 @@ local function alignUp(n: number, a: number): number
 	return (n + a - 1) // a * a
 end
 
+-- one UNBOUNDED text's blob record in the extent (docs/SPEC-TABLES.md
+-- §2.13.1): eight-aligned, u32 length, u32 zero, the bytes and one zero byte,
+-- rounded to the region's alignment; an empty text is a null slot and takes
+-- none
+local function unboundedText(c: Ctx, n: number): boolean
+	if n == 0 then
+		return true
+	end
+	c.at = alignUp(c.at, 8)
+	c.at += alignUp(9 + n, c.align)
+	return true
+end
+
 local extentRecord: (c: Ctx, d: any, r: any) -> boolean
 local extentField: (c: Ctx, f: any, piece: any, r: any) -> boolean
 
@@ -202,6 +215,14 @@ extentRecord = function(c: Ctx, d: any, r: any): boolean
 			if not skip(c, r, kind) then
 				return true
 			end
+			continue
+		end
+		if kind == KIND_STRING and f.s == "text" and f.array == nil then
+			local payload = extentBody(c, r)
+			if payload == nil then
+				return true
+			end
+			unboundedText(c, payload.e - payload.at)
 			continue
 		end
 		if kind == KIND_UNION and f.array == nil and f.s == "union" then
@@ -264,6 +285,20 @@ extentField = function(c: Ctx, f: any, piece: any, r: any): boolean
 			end
 			c.at = alignUp(c.at, piece.ealign)
 			c.at += count * piece.elem
+		end
+		local el = f.e
+		if kind == KIND_STRING and el ~= nil and el.s == "str" and (el.bound or 0) == 0 then
+			-- an UNBOUNDED plain text list's elements, each a blob record
+			local i = 0
+			while i < count and has(r, 1) do
+				i += 1
+				local payload = extentBody(c, r)
+				if payload == nil then
+					return true
+				end
+				unboundedText(c, payload.e - payload.at)
+			end
+			return true
 		end
 		if kind ~= KIND_TABLE and kind ~= KIND_UNION then
 			return true
@@ -367,10 +402,21 @@ type Unit = { S: any, V: any, C: any, L: any, W: any, R: any, M: any, align: num
 
 -- regionMeasure answers the canonical region bytes for a whole form-1 wire,
 -- -1 for a framing that cannot be read (FileRegionMeasure's refusal and its
--- unread trailer alike).
+-- unread trailer alike). A sealed root's trailer is verified and taken off
+-- first (docs/SPEC-TABLES.md §2.14), as FileRegionMeasure does.
 local function regionMeasure(u: Unit, desc: any, data: buffer): number
+	if buffer.len(data) < 1 or buffer.readu8(data, 0) ~= 1 then
+		return -1
+	end
+	if desc.integrity ~= nil and desc.integrity ~= "" then
+		local opened = u.L.integrityOpen(data)
+		if opened == nil then
+			return -1
+		end
+		data = opened
+	end
 	local len = buffer.len(data)
-	if len < 9 or buffer.readu8(data, 0) ~= 1 then
+	if len < 9 then
 		return -1
 	end
 	local lo, hi = buffer.readu32(data, len - 8), buffer.readu32(data, len - 4)
@@ -392,7 +438,7 @@ local function regionMeasure(u: Unit, desc: any, data: buffer): number
 		seen[id] = true
 		ids[i + 1] = id
 	end
-	local c: Ctx = { S = u.S, V = u.V, C = u.C, ids = ids, at = 0 }
+	local c: Ctx = { S = u.S, V = u.V, C = u.C, ids = ids, at = 0, align = u.align }
 	local align = u.align
 	local function size(d: any, at: number, e: number): number?
 		c.at = 0
@@ -495,7 +541,7 @@ local function answer(e: Entry, wire: buffer): buffer
 				kept = u.R.newStore(RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
 				v = u.R.LoadRetain(root, wire, report, kept)
 			else
-				v = u.L.loadTolerant(root, wire, report)
+				v = u.L.load(root, wire, report)
 			end
 		end
 		-- A FIXED root always loads: a refused or damaged wire answers the
@@ -516,11 +562,11 @@ local function answer(e: Entry, wire: buffer): buffer
 	local b = buffer.create(n)
 	buffer.writeu8(b, 0, if v ~= nil then 1 else 0)
 	buffer.writei32(b, 1, count(report.unknown))
-	buffer.writei32(b, 5, count(report.kindMismatch))
+	buffer.writei32(b, 5, count(0))
 	buffer.writei32(b, 9, count(report.widened))
-	buffer.writei32(b, 13, count(report.clamped))
-	buffer.writei32(b, 17, count(report.duplicate))
-	buffer.writeu8(b, 21, if report.malformed then 1 else 0)
+	buffer.writei32(b, 13, count(0))
+	buffer.writei32(b, 17, count(0))
+	buffer.writeu8(b, 21, if v == nil or report.damaged then 1 else 0)
 	buffer.writeu8(b, 22, if refused then 1 else 0)
 	-- an i64 as two little-endian halves (a moo number is Q48.16)
 	if measure < 0 then
@@ -561,9 +607,11 @@ local function unit(key: string): Unit?
 				local mod = load(base .. name)
 				for k, d in mod do
 					if type(k) == "string" and string.sub(k, -10) == "Descriptor" and type(d) == "table" and d.fields ~= nil then
+						-- the region's alignment is ir.TableRegionAlign: the greatest
+						-- node alignment, a record's own or its extent's
 						local l = C.layout(d.name)
-						if l ~= nil and l.align > align then
-							align = l.align
+						if l ~= nil and l.nodeAlign > align then
+							align = l.nodeAlign
 						end
 					end
 				end

@@ -80,7 +80,7 @@ func cookWriteFieldsCarried(st *ir.Struct) bool {
 func cookWriteFieldCarried(f *ir.Field, seen map[*ir.Union]bool) bool {
 	switch {
 	case f.Type.TextUnbounded():
-		return false
+		return true
 	case f.IsMap():
 		return f.MapEntry != nil && cookWriteFieldsCarried(f.MapEntry)
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) && !f.Type.Pointer &&
@@ -187,6 +187,9 @@ func cookAt(base string, off int64) string {
 // <T>_cook_write per carried root. Everything is behind the `cook` feature,
 // as every other piece of the cooked form is.
 func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
+	if !anyCookForm(g.unit) {
+		return
+	}
 	cw := cookWriteSet(g.unit, g.vc)
 	any := false
 	for _, n := range names {
@@ -222,7 +225,7 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 	}
 	rootsAny := false
 	for _, n := range names {
-		if st := vStruct(g.unit, n); cw[n] && g.isVariableRoot(st) {
+		if st := vStruct(g.unit, n); cw[n] && g.isVariableRoot(st) && st.CarriesForm("cook") {
 			rootsAny = true
 		}
 	}
@@ -286,7 +289,7 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 	}
 	for _, n := range names {
 		st := vStruct(g.unit, n)
-		if cw[n] && g.isVariableRoot(st) {
+		if cw[n] && g.isVariableRoot(st) && st.CarriesForm("cook") {
 			g.emitCookRootWriter(b, st)
 		}
 	}
@@ -352,6 +355,7 @@ func (g *gen) emitCookUnionWriter(b *strings.Builder, un *ir.Union) {
 // internal/tablecook/region.go's field does: `x` is a place expression of the
 // field's storage type and the field begins at base + off.
 func (g *gen) emitCookField(b *strings.Builder, f *ir.Field, x, base string, off int64, ind string) {
+	textListStorageCheck(b, f, x, ind, "w.fail(); return;")
 	pieces := ir.FieldPieces(g.unit, f, off)
 	if len(pieces) == 0 {
 		return
@@ -382,6 +386,9 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 	pieces := ir.FieldPieces(g.unit, f, off)
 	value := pieces[0]
 	switch {
+	case f.Type.TextUnbounded():
+		fmt.Fprintf(b, "%sif %s.as_bytes().contains(&0) || %s.len() as u64 > 0xffffffff { w.fail(); }\n", ind, x, x)
+		return
 	case f.IsMap(), f.IsList():
 		// THE SLOT IS THE CARVE'S (docs/SPEC-TABLES.md §2.8, §2.9): its
 		// sixteen bytes point into the holder's node extent, which only the
@@ -512,6 +519,7 @@ func (g *gen) emitCookRootWriter(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("    if order != 1 && order != 2 {\n        return Err(String::from(\"invalid_value\"));\n    }\n")
 	b.WriteString("    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
+	b.WriteString("    if g.invalid_required { return Err(String::from(\"invalid_value: required range\")); }\n")
 	rb := cookRecordBytes(g.unit, st)
 	if cookHasExtent(st) {
 		fmt.Fprintf(b, "    let mut m = TableCarve { extent_at: 0, at: 0 };\n    %s(v, &mut m, None, 0);\n", fn(st.Name, "cook_carve"))
@@ -759,6 +767,9 @@ func cookWriteImports(u *ir.Unit, vc *variableClass, otherNames []string) []stri
 	for _, n := range otherNames {
 		if cw[n] {
 			out = append(out, fn(n, "cook_body"))
+			if cookHasExtent(vStruct(u, n)) {
+				out = append(out, fn(n, "cook_carve"))
+			}
 		}
 	}
 	return out

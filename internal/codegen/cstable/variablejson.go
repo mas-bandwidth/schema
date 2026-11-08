@@ -26,7 +26,12 @@ const tableVariableJsonSource = `
         if (f.BlobKind != 0) { return ReadBlob(text, ref input, owner, f, index); }
         if (input.Labels == null || depth + 1 > MaxDepth || Peek(text, ref input) != '{') { input.Bad = true; return false; }
         int start = input.Pos++;
-        if (Peek(text, ref input) == '}') { input.Pos++; f.SetChild(owner, index, f.Table.Create()); return true; }
+        if (Peek(text, ref input) == '}')
+        {
+            input.Pos = start;
+            object empty = f.Table.Create(); f.SetChild(owner, index, empty);
+            return ReadTable(text, ref input, empty, f.Table, depth + 1);
+        }
         Span<byte> key = stackalloc byte[MaxKey];
         if (!ScanString(text, ref input, key, true, out int used)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -50,7 +55,7 @@ const tableVariableJsonSource = `
             f.SetChild(owner, index, null);
             if (label.Type != null)
             {
-                if (label.Type.Id != f.PointerTypeId) { input.Report.KindMismatch++; }
+                if (label.Type.Id != f.PointerTypeId) { RefuseText(ref input, "kind_mismatch"); }
                 else { f.SetChild(owner, index, label.Value); }
             }
             return true;
@@ -66,12 +71,12 @@ const tableVariableJsonSource = `
         if (f.BlobKind == 12)
         {
             In probe = input;
-            if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+            if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true, stored: true)) { input = probe; return false; }
             byte[] data = new byte[size];
-            if (!ScanString(text, ref input, data, true, out _)) { return false; }
+            if (!ScanString(text, ref input, data, true, out _, stored: true)) { return false; }
             f.SetChild(owner, index, new TableBlob(data)); return true;
         }
-        if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+        if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
         int symbols = 0;
         int pad = 0;
         bool malformed = false;
@@ -92,7 +97,7 @@ const tableVariableJsonSource = `
                 malformed = true;
             }
         }
-        if (malformed) { input.Report.KindMismatch++; return true; }
+        if (malformed) { return RefuseText(ref input, "kind_mismatch"); }
         byte[] bytes = new byte[symbols * 6 / 8];
         int count = 0, held = 0;
         uint accumulator = 0;

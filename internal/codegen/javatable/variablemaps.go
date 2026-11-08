@@ -19,7 +19,7 @@ func variableStruct(st *ir.Struct) *ir.Struct {
 			continue
 		}
 		one := *f
-		one.Type = ir.FieldType{Kind: ir.TNamed, Name: f.MapEntry.Name, Ref: f.MapEntry}
+		one.Type = ir.FieldType{Kind: ir.TNamed, Name: f.MapEntry.Name, Ref: f.MapEntry, Optional: f.Type.Optional}
 		one.Array = ir.ArrayList
 		copy.Fields[i] = &one
 	}
@@ -50,12 +50,14 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "    static List<%s> order_%s(List<%s> entries) {\n", entry, m, entry)
 		fmt.Fprintf(b, "        java.util.TreeMap<%s,%s> ordered = new java.util.TreeMap<>(%sVariable::compare_%s);\n", entry, entry, st.Name, m)
 		fmt.Fprintf(b, "        for (%s entry : entries) ordered.put(entry,entry);\n        return new ArrayList<>(ordered.values());\n    }\n", entry)
-		fmt.Fprintf(b, "    static void jsonMapValue_%s(StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
-		writeJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
-		b.WriteString("    }\n")
-		fmt.Fprintf(b, "    static void readMapValue_%s(TableJson.In in, %s v) {\n", m, entry)
-		readJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
-		b.WriteString("    }\n")
+		if unitCarriesForm(u, "json") {
+			fmt.Fprintf(b, "    static void jsonMapValue_%s(StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
+			writeJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
+			b.WriteString("    }\n")
+			fmt.Fprintf(b, "    static void readMapValue_%s(TableJson.In in, %s v) {\n", m, entry)
+			readJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
+			b.WriteString("    }\n")
+		}
 
 		rawKey := *key
 		rawKey.HasIntRange = false
@@ -72,15 +74,12 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		var keyRead strings.Builder
 		writeFieldRead(&keyRead, u, f.MapEntry, &rawKey, false, 0, false)
 		kr := keyRead.String()
-		// A mis-read key marks report.kindMismatch; the LAST occurrence of the
-		// key decides the map reset (§2.8). An exact-kind key clears the mark, a
-		// wrong kind sets it, and a WIDENED key leaves it as it was — exactly as
-		// the oracle's mapKey leaves kindBad untouched on the widened branch
-		// (internal/tablewire/decode.go mapKey). The clearing is placed inside
-		// the exact-kind read only, never in a widened branch.
+		// The LAST occurrence decides the temporary key scan's mismatch flag:
+		// exact and compatible widened kinds clear an earlier incompatible kind.
+		// A final incompatible kind sets the flag for the caller's map reset.
 		kr = strings.Replace(kr,
 			"                } else { r.skip(kind); report.kindMismatch++; }",
-			"                } else { r.skip(kind); report.kindMismatch = 1; }", 1)
+			"                    report.kindMismatch = 0;\n                } else { r.skip(kind); report.kindMismatch = 1; }", 1)
 		kr = strings.Replace(kr,
 			"                else { r.skip(kind); report.kindMismatch++; }",
 			"                else { r.skip(kind); report.kindMismatch = 1; }", 1)
@@ -88,7 +87,11 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			fmt.Sprintf("if (kind == %d) {", variableWireKind(&rawKey)),
 			fmt.Sprintf("if (kind == %d) { report.kindMismatch = 0;", variableWireKind(&rawKey)), 1)
 		b.WriteString(kr)
-		b.WriteString("        }else{r.skip(kind);}if(r.fail)return;}\n    }\n")
+		// A KEY THE READ JUDGES MALFORMED ENDS THE SCAN (§2.8; the oracle's
+		// mapKey returns at the first key its string read refuses): the map is
+		// malformed, a damaged load, and no later occurrence of the key can
+		// turn it into a kind mismatch.
+		b.WriteString("        }else{r.skip(kind);}if(r.fail||report.malformed)return;}\n    }\n")
 	}
 }
 
@@ -123,7 +126,11 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} in.p++; v.%s.clear();\n", m)
 	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} String mapKey=in.scanStored(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
 	if key.Type.Kind == ir.TString {
-		fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.clamped++;}\n", key.Type.Size)
+		if key.Type.TextUnbounded() {
+			b.WriteString("                    entry.key=mapKey;\n")
+		} else {
+			fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.clamped++;}\n", key.Type.Size)
+		}
 	} else {
 		// A key is parsed at arbitrary precision before narrowing: unsigned 64-bit
 		// magnitudes must never pass through signed-long range checks (§16.1).
@@ -161,7 +168,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
-	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ek!=13?ar.count(r.limit):ar.leb();if(!ar.fail){if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL){report.refused=true;report.reason=\"count_refusal\";}else if(n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
+	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ek!=13?ar.count(r.limit):ar.leb();if(!ar.fail){if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else if(n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
 	if retain {
 		fmt.Fprintf(b, "                    retain.discardField(path,depth,%d);\n", ordinal)
 	}
@@ -178,7 +185,7 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	// retain_lost when its path names no body.
 	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m)
 	key := ir.MapKeyField(f)
-	if key.Type.Kind == ir.TString {
+	if key.Type.Kind == ir.TString && !key.Type.TextUnbounded() {
 		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)
 	}
 	fmt.Fprintf(b, "                    int order=v.%s.isEmpty()?-1:"+st.Name+"Variable.compare_%s(v.%s.get(v.%s.size()-1),keyValue);if(order>0){report.malformed=true;break;} %s decoded=new %s();int priorWidened=report.widened;\n", m, m, m, m, entry, entry)

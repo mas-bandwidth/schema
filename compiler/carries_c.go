@@ -1,5 +1,18 @@
 package compiler
 
 func init() {
-	registerCarries("c", carryOptionalVariableClosure)
+	registerCarries(
+		"c",
+		carryOptionalVariableClosure,
+		carryOneSidedRange,
+		carryOptionalMap,
+		carryArrayRoot,
+		carryTimestamp,
+		carryForms,
+		carryIntegrity,
+		carryRequired,
+		carryTextList,
+		carryTextListTotal,
+		carryUnboundedText,
+	)
 }

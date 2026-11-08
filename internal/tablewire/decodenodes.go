@@ -1,8 +1,9 @@
 // LOAD IS A SCAN, and that is the whole of its bound (docs/SPEC-TABLES.md §3.1).
 // Reading follows no reference: the records are walked once to learn what each
 // node IS, and once to decode each body into its own storage, so a forward
-// index resolves without scratch. Every record is visited a fixed number of
-// times, in index order, and each is consumed in full before the next begins.
+// index resolves without scratch. The pointer graph's own rules (an index past
+// the table, a cycle, an unreachable record, a shared blob) ran in the wire
+// check before this decode began (wirecheck.go).
 package tablewire
 
 import (
@@ -10,146 +11,108 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// decodeState is the save's numbering, resident: the node every index names,
-// and whether the table could be read whole at all. It is shared by every
-// sub-reader of one decode, because an index resolves against ONE numbering
-// however deep the field that carries it sits.
+// decodeState is the save's numbering, resident: the node every index names.
+// It is shared by every sub-reader of one decode, because an index resolves
+// against ONE numbering however deep the field that carries it sits.
 type decodeState struct {
 	root  *tabletext.Instance
 	nodes []Node // index i names node index i + 2 — the records; a zero Node is one this reader cannot name
-	// good is false when the node table could not be read whole. Numbering is
-	// positional across the concatenation, so a field that cannot be read
-	// cannot be dropped without renumbering every record after it: the whole
-	// table is malformed and EVERY POINTER IN THE SAVE READS NULL.
-	good bool
-	// named records the blob node indices a slot has already named, so a
-	// SECOND slot naming one blob is counted as BlobShared (docs/SPEC-TABLES.md
-	// §2.5). The tolerant read keeps the one node; only the counter moves.
-	named map[uint64]bool
 }
 
-// resolve places one node index in a pointer slot. Every failure is one of §4's
-// events and none is new; in every one of them the pointer stays null. A BYTE
-// BUFFER's slot resolves the same way, against its reserved type id (§2.5): a
-// table's record under a `*bytes` slot, a blob under a `*T` slot, or a
-// `*string` blob under a `*bytes` slot is a kind mismatch.
-func (r *wireReader) resolve(fv *tabletext.Field, index uint64) {
-	r.resolveCell(&fv.Cell, fv.Def, index)
-}
+// The three marks of the pointer graph's walk, one per node (wirecheck.go).
+const (
+	markUnvisited uint8 = iota
+	markOpen            // entered, its descent not finished
+	markClosed          // entered and finished: reaching it again is a share
+)
 
-// resolveCell resolves one pointer SLOT — a field's cell, or an element of an
-// array of pointers (§2.1) — against the numbering.
-func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64) {
+// resolveCell resolves one pointer SLOT — a field's cell, an element of an
+// array of pointers (§2.1) or an arm — against the numbering. A pointer to a
+// record of a type this reader CANNOT name reads null (evolution, §3.1, §6.5);
+// one to a record of a type it names that is not the type the slot requires
+// refuses, and so does a blob under a `*T` slot, a table under a `*bytes`
+// slot, or a `*string` blob under a `*bytes` slot (§2.5).
+func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64) bool {
 	cell.Node = nil
 	cell.Blob = nil
 	st := r.st
-	if st == nil || !st.good {
-		return // a numbering that failed resolves nothing
+	if index == ir.NodeWireIndexNull {
+		return true
+	}
+	if st == nil {
+		// a value-only root places no node: every index the wire check
+		// admitted reads null here, because no record has a type this root
+		// can name
+		return true
 	}
 	blob := f.Type.Blob()
 	target := f.Type.Name
+	wrong := func() bool {
+		return r.refuse(&Refusal{Reason: ReasonWireDamaged, Detail: "a pointer whose target is not the type its slot requires: " + FloatOwner(r.m, f)})
+	}
 	switch {
-	case index == ir.NodeWireIndexNull:
-		return
 	case index == ir.NodeWireIndexRoot:
-		// the root carries no record and therefore no wire type id, so the
-		// READER'S OWN root type is what the claim is checked against — and it
-		// is checked
-		if blob || st.root.Def.Name != target {
-			r.report.KindMismatch++
-			return
-		}
-		cell.Node = st.root
-	case index >= 2 && index-2 < uint64(len(st.nodes)):
+		// the wire check refuses every pointer to the root, because the root's
+		// descent is open for the whole walk: a pointer to it is a cycle
+		return r.damage("a pointer to the root")
+	case index-2 < uint64(len(st.nodes)):
 		node := st.nodes[index-2]
 		if node.Inst == nil && node.Blob == nil {
-			// a node whose type id this reader cannot name KEEPS ITS INDEX, and
-			// every pointer naming it reads null. The unknown was counted once,
-			// at the node, not once per pointer.
-			return
+			return true // a record of a type this reader cannot name reads null
 		}
 		if blob {
 			if node.Blob == nil || node.Kind != f.Type.Kind {
-				r.report.KindMismatch++
-				return
+				return wrong()
 			}
 			cell.Blob = node.Blob
-			// TWO SLOTS NAMING ONE BLOB (docs/SPEC-TABLES.md §2.5): the
-			// tolerant read keeps the one node and counts each extra naming;
-			// the strict read refuses it by name, and no writer emits it.
-			if st.named == nil {
-				st.named = map[uint64]bool{}
-			}
-			if st.named[index] {
-				r.report.BlobShared++
-			} else {
-				st.named[index] = true
-			}
-			return
+			return true
 		}
 		if node.Inst == nil || node.Inst.Def.Name != target {
-			r.report.KindMismatch++
-			return
+			return wrong()
 		}
 		cell.Node = node.Inst
-	default:
-		// an index above node_count + 1
-		r.report.Malformed = true
+		return true
 	}
+	return r.damage("a pointer index past the node table")
 }
 
-// decodeVariable reads a pointered root: the node table first, because a reader
-// has already read `head = 2` before it learns whether the table can be read at
-// all, then the records, then every body.
-func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
+// decodeValue reads the root body and, for a pointered root, the node table:
+// the numbering first, then every record, then the root. EVERY RECORD OF A
+// TYPE THIS READER NAMES IS DECODED and held to the declaration, whether or
+// not a slot the reader knows reaches it (§6.5).
+func decodeValue(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report, rt *retainState, order readOrder) error {
+	fail := &readFail{}
+	if !ir.VariableTables(m.Unit)[inst.Def.Name] {
+		// a value-only table places no node, and the node table (if a writer
+		// left one, which the wire check has judged) is stepped over by id
+		r := &wireReader{buf: data, report: report, m: m, ids: ids, rt: rt, fail: fail}
+		r.body(inst)
+		return fail.err
+	}
 	st := &decodeState{root: inst}
-	countRefusal := false
 
-	payload, present, framed := nodeTableBytes(data, ids, report)
-	records, scanned := []nodeRecord(nil), true
-	if framed && present {
-		records, scanned = scanNodeRecords(payload, ids)
-	}
-	switch {
-	case !framed && present:
-		report.Malformed = true
-	case !scanned:
-		report.Malformed = true
-	default:
-		st.good = true
-	}
-
-	// THE TYPE IDS THIS ROOT CAN PLACE, which is narrower than the unit's
-	// closure and is the set §3.1 means by "a type id this reader cannot
-	// name": a node record is a POINTER's pointee, so a table no pointer
-	// below this root targets is a node nothing here can name — it is skipped
-	// by its length and counted unknown, and it commands no region storage
-	// (§6.5). A file never carries one, because a writer writes only the ids
-	// its own body used; a MESSAGE can, because a connection's table
-	// announces every table's name id whether or not a pointer names it
-	// (§3.3). The two reserved blob ids sit beside them (§2.5).
-	//
-	// The PLACEABLE SET is named on its own line, before the id map is built
-	// from it, and messagedecode.go names its own the same way. The message
-	// reader's is the seam the node-type negative control replaces with the
-	// whole unit closure, because a FILE never carries the record this rule
-	// skips and no file vector can go red on it.
-	byTypeId := map[uint64]*ir.Struct{}
-	placeable := map[string]bool{}
-	for _, st := range ir.PointerReachable(inst.Def) {
-		placeable[st.Name] = true
-	}
-	for name := range placeable {
-		if sd := m.Lookup(name); sd != nil {
-			byTypeId[ir.TableWireId(sd.WireName())] = sd
+	var records []nodeRecord
+	if payload, present, framed := nodeTableBytes(data, ids); present {
+		var scanned bool
+		if framed {
+			records, scanned = scanNodeRecords(payload, ids)
+		}
+		if !framed || !scanned {
+			return &Refusal{Reason: ReasonWireDamaged, Detail: "the node table cannot be read whole"}
 		}
 	}
 
-	// AND THE TWO RESERVED BLOB IDS ARE ON THE SAME FOOTING (§2.5): a blob
-	// node is a pointer's pointee too, so a `*bytes` record under a root no
-	// `*bytes` edge sits below is a node this reader cannot name either. An id
-	// missing from this map falls through to the table lookup, which never
-	// holds it, and is counted unknown there.
+	// THE TYPE IDS THIS ROOT CAN PLACE, which is the set §3.1 means by "a type
+	// id this reader can name": a node record is a POINTER's pointee, so a
+	// table no pointer below this root targets is a node nothing here can
+	// name. The two reserved blob ids sit beside them (§2.5), each placeable
+	// only under a root a pointer of its kind sits below.
+	byTypeId := map[uint64]*ir.Struct{}
+	for _, sd := range ir.PointerReachable(inst.Def) {
+		if def := m.Lookup(sd.Name); def != nil {
+			byTypeId[ir.TableWireId(def.WireName())] = def
+		}
+	}
 	blobKind := map[uint64]ir.FieldTypeKind{}
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(inst.Def)
 	if bytesEdge {
@@ -160,30 +123,20 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	}
 
 	// PASS ONE: fill the numbering from the FRAMING, so that an index resolves
-	// whichever way it points. It reads no body — a blob's record IS its
-	// bytes, so its node is complete here, and the tolerant wire load copies
-	// them as it copies every node (§2.5).
+	// whichever way it points. A blob's record IS its bytes, so its node is
+	// complete here.
 	st.nodes = make([]Node, len(records))
 	for i, rec := range records {
 		if kind, ok := blobKind[rec.TypeId]; ok {
-			if kind == ir.TString && !textValid(rec.Body) {
-				// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS as a kind
-				// 12 payload (§3.1): the record is malformed, and every slot
-				// naming it reads null, which is what an empty node resolves to
-				report.Malformed = true
-				continue
-			}
 			st.nodes[i] = Node{Blob: &tabletext.Blob{Data: append([]byte(nil), rec.Body...)}, Kind: kind}
 			continue
 		}
 		sd := byTypeId[rec.TypeId]
 		if sd == nil {
-			report.Unknown++ // skipped by its length, and it keeps its index
+			report.Unknown++ // a record this reader cannot name keeps its index
 			if rt != nil {
 				// A NODE RECORD WHOSE TYPE ID THIS READER CANNOT NAME IS AN
-				// EXCLUDED CLASS (docs/SPEC-TABLES.md §6.6): it is a whole
-				// node, and putting one back means renumbering a graph the
-				// writer numbers from its own edges (§3.1).
+				// EXCLUDED CLASS (docs/SPEC-TABLES.md §6.6)
 				rt.lost(report)
 			}
 			continue
@@ -192,21 +145,25 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	}
 
 	// PASS TWO: decode each body into its own storage.
-	for i, rec := range records {
+	visit := make([]int, len(records))
+	for i := range visit {
+		visit[i] = i
+	}
+	if order.records != nil {
+		visit = order.records(len(records))
+	}
+	for _, i := range visit {
+		rec := records[i]
 		if st.nodes[i].Inst == nil {
 			continue
 		}
-		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st, rt: rt, countRefusal: &countRefusal, region: region}
-		sub.bodyAt(st.nodes[i].Inst, true)
-		if countRefusal {
-			return false, &CountRefusal{}
+		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st, rt: rt, fail: fail}
+		if !sub.bodyAt(st.nodes[i].Inst, true) {
+			return fail.err
 		}
 	}
 
-	r := &wireReader{buf: data, report: report, m: m, ids: ids, st: st, rt: rt, countRefusal: &countRefusal, region: region}
-	ok := r.body(inst)
-	if countRefusal {
-		return false, &CountRefusal{}
-	}
-	return ok, nil
+	r := &wireReader{buf: data, report: report, m: m, ids: ids, st: st, rt: rt, fail: fail}
+	r.body(inst)
+	return fail.err
 }

@@ -16,13 +16,24 @@ import (
 // loads the wire at the root through load.moo, saves the value through
 // save.moo and prints the saved bytes as one hex line, then the measure.
 func saveProbe(g *generatedUnit, rootName string) string {
-	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal save = require(\"./table_save\")\nlocal St = require(\"./schema_tables\")\n" +
+	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal save = require(\"./table_save\")\nlocal F = require(\"./table_fixed\")\nlocal St = require(\"./schema_tables\")\n" +
 		g.requireAll() + fmt.Sprintf(`local report = load.newReport()
-local v = load.loadTolerant(%q, inputs.wire, report)
-if v == nil or report.refused > 0 then print("REFUSED") return end
-local d = St.lookup(%q)
-local out, why = save.save(d, v)
-local measure = save.measure(d, v)
+local d = St.lookup(%[1]q)
+local out: buffer?
+local why: any
+local measure: number?
+if d.fixed then
+	local fixed = F.lookup(%[1]q) :: any
+	local values = F.load(d, fixed, inputs.wire, report)
+	if values == nil or #values ~= 1 or (report.outOfRange or 0) > 0 or (report.kindChanged or 0) > 0 then print("REFUSED") return end
+	out, why = F.save(d, fixed, values)
+	measure = F.measure(d, fixed, 1)
+else
+	local v = load.load(%[1]q, inputs.wire, report)
+	if v == nil or report.refused > 0 then print("REFUSED " .. tostring(report.reason)) return end
+	out, why = save.save(d, v)
+	measure = save.measure(d, v)
+end
 if out == nil or measure == nil then print("SAVENIL " .. (if why ~= nil then why.name .. " " .. tostring(why.field) else "")) return end
 local parts = table.create(buffer.len(out))
 for i = 0, buffer.len(out) - 1 do
@@ -30,7 +41,7 @@ for i = 0, buffer.len(out) - 1 do
 end
 print("x" .. table.concat(parts))
 print(measure)
-`, rootName, rootName)
+`, rootName)
 }
 
 // saveRoot loads one wire into a moo value and saves it, returning the saved
@@ -38,8 +49,8 @@ print(measure)
 func saveRoot(t *testing.T, g *generatedUnit, wire []byte, root string) ([]byte, int, error) {
 	t.Helper()
 	out := g.run(t, saveProbe(g, root), map[string][]byte{"wire": wire})
-	if out == "REFUSED" {
-		return nil, 0, fmt.Errorf("the load refused the wire")
+	if strings.HasPrefix(out, "REFUSED") {
+		return nil, 0, fmt.Errorf("the load refused the wire: %s", out)
 	}
 	if strings.HasPrefix(out, "SAVENIL") {
 		return nil, 0, fmt.Errorf("the save refused: %s", out)

@@ -6,15 +6,18 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | --- | --- | --- | --- |
 | `bench/` | C++ bench drivers | `make test` | `./build/schema_test_bench` |
 | `c/` | C packet tests | `make test-c` | `make test-c` |
+| `c-hostile/` | C hostile-corpus runner | `make schema-c-runs-hostile-corpus` | `make schema-c-runs-hostile-corpus` |
 | `c-ludicrous/` | C int128 tests | `make test-c` | `make test-c` |
 | `c-tables/` | C table tests | `make test-c` | `make test-c` |
 | `c-two-units/` | C two units in one TU | `make tables-c-two-units` | `make tables-c-two-units` |
 | `conformance/` | cross-language table matrix | `make conformance` | `make conformance` |
 | `cookgen/` | cook fixture generator | `make tables-cook-scale` | `go build -o build/cookgen ./test/cookgen` |
+| `cpp-hostile/` | C++ hostile-corpus runner | `make schema-cpp-runs-hostile-corpus` | `make schema-cpp-runs-hostile-corpus` |
 | `cpp-tables/` | C++ table runtime-home digest | `make tables-cpp-runtime-home` | `make tables-cpp-runtime-home` |
 | `cs/` | C# packet tests | `make test-cs` | `make test-cs` |
 | `cs-block/` | C# block tests | `make test-cs` | `make test-cs` |
 | `cs-cook/` | C# cook tests | `make test-cs` | `make test-cs` |
+| `cs-hostile/` | C# hostile-corpus runner | `make schema-cs-runs-hostile-corpus` | `make schema-cs-runs-hostile-corpus` |
 | `cs-ludicrous/` | C# int128 tests | `make test-cs` | `make test-cs` |
 | `cs-tables/` | C# table tests | `make test-cs` | `make test-cs` |
 | `cs-view/` | C# view tests | `make test-cs` | `make test-cs` |
@@ -34,6 +37,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `elixir-warning-control/` | Elixir warning-control tests | `make test-elixir` | `make test-elixir` |
 | `generated-tree/` | committed generated/ verify | `test/generated-tree/verify` | `make generated-current` |
 | `go/` | Go packet tests | `make test-go` | `make test-go` |
+| `go-hostile/` | generated Go hostile-corpus runner | `make schema-go-runs-hostile-corpus` | `make schema-go-runs-hostile-corpus` |
 | `go-ludicrous/` | Go int128 tests | `make test-go` | `make test-go` |
 | `go-tables/` | Go table tests | `make test-go` | `make test-go` |
 | `goose/` | Goose packet tests | `make test-goose` | `make test-goose` |
@@ -47,6 +51,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `java-tables/` | Java table tests | `make test-java` | `make test-java` |
 | `java-view/` | Java unit-view listing | `make tables-java-view` | `make tables-java-view` |
 | `js/` | JS packet tests | `make test-js` | `make test-js` |
+| `js-hostile/` | JS hostile-corpus runner | `make schema-js-runs-hostile-corpus` | `make schema-js-runs-hostile-corpus` |
 | `js-ludicrous/` | JS int128 tests | `make test-js` | `make test-js` |
 | `js-tables/` | JS table tests | `make test-js` | `make test-js` |
 | `js-view/` | JS view listing program | `make tables-js-view` | `make tables-js-view` |
@@ -60,12 +65,13 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
 | `packet-wide/` | packet wide-text gates | `make test` | `make test` |
-| `py-packet/` | python packet rows | `make tables-py-packet` | `make tables-py-packet` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-agree/` | Rust accessor/descriptor agreement gate | `make tables-rust-accessor-descriptor-agreement` | `make tables-rust-accessor-descriptor-agreement` |
 | `rust-alloc/` | Rust allocation gate, per read path | `make tables-rust-alloc` | `make tables-rust-alloc` |
+| `rust-cookmap/` | Rust cook of every map and list instance | `make tables-rust-cook-map` | `make tables-rust-cook-map` |
 | `rust-fixedform/` | Rust fixed-form tests | `make test-rust` | `make test-rust` |
 | `rust-fuzz/` | Rust fuzz driver | `make test-rust` | `make test-rust` |
+| `rust-hostile/` | Rust hostile-corpus runner | `make schema-rust-runs-hostile-corpus` | `make schema-rust-runs-hostile-corpus` |
 | `rust-ludicrous/` | Rust int128 tests | `make test-rust` | `make test-rust` |
 | `rust-soak/` | Rust tables soak, allocator call count | `make tables-rust-soak` | `make tables-rust-soak` |
 | `rust-view/` | Rust unit-view listing driver | `make tables-rust-view` | `make tables-rust-view` |

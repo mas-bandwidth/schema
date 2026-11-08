@@ -1,0 +1,207 @@
+{
+  "language": "java",
+  "tested_revision": "68d1eaf82e176197e0b97570b595360903ba1a09",
+  "host": "studio",
+  "command": "JAVA=java JAVAC=javac python3 test/conformance/nightly-readiness java",
+  "finished_utc": "2026-11-03T00:44:58Z",
+  "result": "NIGHTLY_READINESS_PASS language=java phases=23",
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 3
+  },
+  "native_table_events": {
+    "pass": 547,
+    "fail": 0,
+    "skip": 0
+  },
+  "plain": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 218,
+    "roots": 64,
+    "enumerated_per_seed": 162042,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "retaining": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 95,
+    "roots": 28,
+    "enumerated_per_seed": 91395,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 1.932767208,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 6.6881215,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 0.34470466600000016,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 3.1218281670000003,
+      "errors": []
+    },
+    {
+      "phase": "native-list-java",
+      "exit": 0,
+      "seconds": 0.2718804170000002,
+      "errors": []
+    },
+    {
+      "phase": "native-java",
+      "exit": 0,
+      "seconds": 0.6768324999999997,
+      "errors": []
+    },
+    {
+      "phase": "native-list-javatable",
+      "exit": 0,
+      "seconds": 0.3307766660000002,
+      "errors": []
+    },
+    {
+      "phase": "native-javatable",
+      "exit": 0,
+      "seconds": 268.43761008399997,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 1.7570912500000304,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-0",
+      "exit": 0,
+      "seconds": 0.09332562500003405,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-1",
+      "exit": 0,
+      "seconds": 0.09043116600003032,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-0",
+      "exit": 0,
+      "seconds": 0.036027957999976934,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-1",
+      "exit": 0,
+      "seconds": 0.03655066599998236,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 5.7252648749999935,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 12.862537207999992,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 7.398814791000007,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 17.772074792000012,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 17.942615415999967,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 17.906272833000003,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 17.074816166999994,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 16.99280666599998,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 17.191472791999956,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 52.484766041,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "external-table-gates.log": "acba49f6f3e087a23b04d200fecb62ee9311513e703826c35a9d07b208223033",
+    "implementation.log": "5337cdee350ad036f8cc015924e4cef5e0d17ca96f4d172b567874be022b829e",
+    "native-java.log": "d9d5dfc7b43ed5fccda41178937b57263b6f0b79f81d004e63b50b90c3356cbc",
+    "native-javatable.log": "a5ad3903252f776b75326fe74a4e1ce158192ed51e71eb6c394d4ca5172be131",
+    "native-list-java.log": "e15ef3ba47a673fc171dbb080f7c13008afc88e6a37990654c7108124b0b24e7",
+    "native-list-javatable.log": "6a0ceceaf68a45b49cd97e301dbf9f0afcda1e2b6ee17e62555b76159353b1a8",
+    "native-list-lockfile.log": "7d52561d316e278ff44c406dfdc9671cae112912548568cf3cf2625e406677d0",
+    "native-lockfile.log": "7890182ba510ea4bd3427fffdafb9a84043b1ef933f844d477c80a53aee50103",
+    "packet-build.log": "57ca05f783172ed4df3ad5f024a819d8c5f48b08b7dde883afbab857d7a8af1b",
+    "packet-features.log": "d29644e293344380bee08ee30acb0c7b0da75bd2b5e05530dbad60cff997cea7",
+    "packet-ludicrous-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-ludicrous-1.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-1.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "prerequisites.log": "1c80daf1bde07b458e436493ebb86e1f928c552f9df37629ec9e9e28b9d69fab",
+    "wire-driver-build.log": "7bfe3e832810d61a57c328e17811e1655e877d4f6af2d1ff41967247eee8ee34",
+    "wire-plain-1.log": "3bc53e1e6786199589a19a966512e03bbeca2a228b18dba00e48beab12130420",
+    "wire-plain-2.log": "7f2326cd46f46c56bbd0acca2ec3b62986d7285831cdc691d25811ce16b79e70",
+    "wire-plain-3.log": "c80ac5ff0ab13f53fbec8525d231d9195410e2d7d040e5fe1a5d5c5443980ba1",
+    "wire-retain-1.log": "b3475227262ff74af17a65ec9fa2aff15473f7b61db9d3bc21a4ab793f993ad8",
+    "wire-retain-2.log": "99bea9f3b0fca2ca0516efe943adb22fed2506b1dd728db96798d1b2676e8cea",
+    "wire-retain-3.log": "071008d4abab4124fe9c8cd2e0ad83e5d64eccd8d8daf2ebe640667b0037d197",
+    "wire-retain-controls.log": "a5cd0ad517e3017e62023155d5066171173fa61792c777534a9d9bda3cc611be",
+    "results.json": "1db81016b6ce266bb994380a0f556021480a65b7aea4d38fa61554d5532cc5a8"
+  }
+}

@@ -815,6 +815,9 @@ int fixedTableFixedLoad(
       report,
     );
     if (runWhy != TableFixedRefusal.none) {
+      for (var j = 0; j < k; j++) {
+        initFixedTable(values[j]);
+      }
       report.refused = runWhy;
       return -1;
     }
@@ -840,6 +843,9 @@ int fixedTableFixedLoad(
   report.kindMismatch += censusKind;
   return n;
 }
+
+const String fixedTableLoadRetainMessages = "FixedTable: retention requires a variable root and its region directory; the message form is fixed";
+const String fixedTableSaveRetainMessages = "FixedTable: retention requires a variable root and its region directory; the message form is fixed";
 
 // ---- FixedTable, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----
 /// MeasureMessages sizes the buffer for a batch of FixedTable bodies, or -1 with
@@ -898,13 +904,17 @@ int fixedTableLoadMessages(
   }
   for (var i = 0; i < count; i++) {
     if (!fixedTableLoadMessageBody(r, values[i])) {
-      if (report.nonFiniteFloat.isEmpty) return i;
       for (var j = 0; j <= i; j++) {
         initFixedTable(values[j]);
       }
       return 0;
     }
   }
-  if (!tableMessageBatchClose(r)) return count;
+  if (!tableMessageBatchClose(r)) {
+    for (var j = 0; j < count; j++) {
+      initFixedTable(values[j]);
+    }
+    return 0;
+  }
   return count;
 }

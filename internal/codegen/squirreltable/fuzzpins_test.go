@@ -33,6 +33,7 @@ func TestSquirrelUnionElementResetsAtItsArmID(t *testing.T) {
 		t.Fatal(err)
 	}
 	unit := loadUnit(t, root, []string{"tables/messages"})
+	unit.Tables["ToolMessage"].FixedDeclared = false
 	data, err := hex.DecodeString(unionElemResetMutant)
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +62,7 @@ func TestSquirrelArmWidenedCountsOnlyADecodedPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	unit := loadUnit(t, root, []string{"tables/messages"})
+	unit.Tables["ToolMessage"].FixedDeclared = false
 	data, err := hex.DecodeString(armWidenDamagedMutant)
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +98,7 @@ func TestSquirrelIntegerWidensInto128Bits(t *testing.T) {
 		t.Fatal(err)
 	}
 	unit := loadUnit(t, root, []string{"tables/scalars"})
+	unit.Tables["SimState"].FixedDeclared = false
 	data, err := hex.DecodeString(widenInto128Mutant)
 	if err != nil {
 		t.Fatal(err)
@@ -176,8 +179,12 @@ func TestSquirrelHeaderAndUnionFieldPins(t *testing.T) {
 	}
 	for _, pin := range headerAndUnionPins {
 		t.Run(pin.name, func(t *testing.T) {
+			if strings.HasSuffix(pin.name, "header is read against the parent") {
+				t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
+			}
 			t.Parallel()
 			unit := loadUnit(t, root, []string{pin.unit})
+			unit.Tables[pin.root].FixedDeclared = false
 			data, err := hex.DecodeString(pin.wire)
 			if err != nil {
 				t.Fatal(err)

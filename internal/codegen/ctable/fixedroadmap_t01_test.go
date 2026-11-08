@@ -45,12 +45,12 @@ const cT01Macros = `
 #define EXPECT_REFUSED( WHO, REASON, HASH ) do { TableReport e_; \
     memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; e_.reason = (REASON); e_.layout_hash = (HASH); \
     if ( n != -1 ) { printf( "%s: n=%lld, not -1\n", (WHO), (long long) n ); return 1; } \
-    if ( r.malformed ) { printf( "%s: malformed set beside a refusal by name\n", (WHO) ); return 1; } \
+    if ( r.refused ) { printf( "%s: malformed set beside a refusal by name\n", (WHO) ); return 1; } \
     if ( r.refused != 1 || r.reason != (REASON) ) { printf( "%s: refused=%d reason=%d, not reason %d\n", (WHO), r.refused, r.reason, (int) (REASON) ); return 1; } \
     if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly refused+reason(+layout_hash): u=%d km=%d c=%d d=%d w=%d layout_hash=%llx\n", (WHO), r.unknown, r.kind_mismatch, r.clamped, r.duplicate, r.widened, (unsigned long long) r.layout_hash ); return 1; } \
     CHECK_POISON( WHO ); } while ( 0 )
 #define EXPECT_MALFORMED( WHO ) do { TableReport e_; \
-    memset( &e_, 0, sizeof( e_ ) ); e_.malformed = 1; \
+    memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; \
     if ( n != -1 ) { printf( "%s: n=%lld, not -1\n", (WHO), (long long) n ); return 1; } \
     if ( r.refused || r.reason != 0 ) { printf( "%s: refused=%d reason=%d beside malformed\n", (WHO), r.refused, r.reason ); return 1; } \
     if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly malformed\n", (WHO) ); return 1; } \
@@ -61,7 +61,7 @@ const cT01Macros = `
 func cT01Body(t *testing.T, reader, body string) string {
 	t.Helper()
 	snake := ir.RustSnake(cFixedRootName(t, cUnitOf(t, reader)))
-	return strings.NewReplacer("@LOAD@", snake+"_fixed_load_tolerant", "@SNAKE@", snake).Replace(cT01Macros + body)
+	return strings.NewReplacer("@LOAD@", snake+"_fixed_load", "@SNAKE@", snake).Replace(cT01Macros + body)
 }
 
 // cT01Forge writes a forged file and returns its path.
@@ -150,7 +150,7 @@ func cT01BatchTooLarge(t *testing.T, corpus string) {
         }
         RESET_BACK();
         n = @LOAD@( back, count, data, len, plan, 4096, NULL, &r );
-        if ( n != count || r.refused || r.malformed || r.reason != 0 ) { printf( "capacity == count must read: n=%lld refused=%d reason=%d\n", (long long) n, r.refused, r.reason ); return 1; }
+        if ( n != count || r.refused || r.refused || r.reason != 0 ) { printf( "capacity == count must read: n=%lld refused=%d reason=%d\n", (long long) n, r.refused, r.reason ); return 1; }
     }
 `
 	for _, lane := range []struct{ name, file string }{
@@ -287,14 +287,14 @@ func cT01IdentityLane(t *testing.T, corpus string) {
 	t.Run("own_hash_takes_the_identity_lane", func(t *testing.T) {
 		t.Parallel()
 		cT01Probe(t, newer, []string{older}, 0, newFile, `
-    if ( n != 1 || r.refused || r.malformed ) { printf( "own file: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( n != 1 || r.refused || r.refused ) { printf( "own file: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
     if ( @SNAKE@_fixed_lineage_ready != SCHEMA_TABLE_FIXED_ONCE_UNBUILT ) { printf( "the identity lane built the lineage: the entry was not recognised as this build's own\n" ); return 1; }
 `)
 	})
 	t.Run("equal_bytes_older_hash_takes_the_entrys_lane", func(t *testing.T) {
 		t.Parallel()
 		cT01Probe(t, newer, []string{older}, 0, oldFile, `
-    if ( n != 1 || r.refused || r.malformed ) { printf( "older file: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.malformed ); return 1; }
+    if ( n != 1 || r.refused || r.refused ) { printf( "older file: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
     if ( @SNAKE@_fixed_lineage_ready == SCHEMA_TABLE_FIXED_ONCE_UNBUILT || @SNAKE@_fixed_lineage[0].entries == NULL )
         { printf( "equal layout bytes under a different hash took the identity lane: the reader matched itself by its bytes\n" ); return 1; }
 `)

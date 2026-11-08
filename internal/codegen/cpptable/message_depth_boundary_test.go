@@ -254,19 +254,19 @@ static void check_case(const char * name, const TableVocabulary & vocab, const u
     memset(&rep, 0, sizeof(rep));
     bool ok = RootLoadMessages(values, &count, vocab, wire, len, &rep);
     if (expect_ok) {
-        if (ok && count == 2 && !rep.malformed && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
+        if (ok && count == 2 && !rep.damaged && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
             printf("PASS %s\n", name);
         } else {
             printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d unknown=%d a0=%d a1=%d\n",
-                name, (int)ok, (long long)count, (int)rep.malformed, (int)rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
+                name, (int)ok, (long long)count, (int)rep.damaged, (int)rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
             failed = true;
         }
     } else {
-        if (!ok && count == 0 && rep.malformed && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {
+        if (!ok && count == 0 && rep.damaged && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {
             printf("PASS %s\n", name);
         } else {
             printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d a0=%d a1=%d\n",
-                name, (int)ok, (long long)count, (int)rep.malformed, (int)rep.refused, (int)values[0].a, (int)values[1].a);
+                name, (int)ok, (long long)count, (int)rep.damaged, (int)rep.refused, (int)values[0].a, (int)values[1].a);
             failed = true;
         }
     }

@@ -460,7 +460,7 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        return kind <= 33;
+        return kind <= 33 || kind == 36;
     }
 
     static int kindWidth(int kind) {
@@ -531,6 +531,10 @@ public final class TableVocabulary {
     static Shape shapeRead(Reader r, int kind) {
         Shape s = new Shape();
         s.kind = kind;
+        if (kind == 36) {
+            s.bits = 64;
+            return s;
+        }
         if ((kind >= 2 && kind <= 10) || (kind >= 18 && kind <= 29)) {
             if (!r.has(1)) {
                 return null;
@@ -923,7 +927,7 @@ public final class TableMessage {
         switch (s.kind) {
             case 0: case 32: return 0L;
             case 1: return 1L;
-            case 11: return 64L;
+            case 11: case 36: return 64L;
             case 30: return 16L;
         }
         if ((s.kind >= 2 && s.kind <= 10) || (s.kind >= 18 && s.kind <= 29)) {
@@ -960,7 +964,7 @@ public final class TableMessage {
                 return !r.err;
             case 1:
                 return r.skipBits(1L);
-            case 11:
+            case 11: case 36:
                 return r.skipBits(64L);
             case 30: {
                 long ref = r.get(r.vocab.refBits);
@@ -1270,6 +1274,42 @@ public final class TableMessage {
             if (buf[i] != want[i]) { return false; }
         }
         return true;
+    }
+
+    public static int crc32c(byte[] data, int len) {
+        int crc = 0xffffffff;
+        for (int i = 0; i < len; i++) {
+            crc ^= data[i] & 0xff;
+            for (int k = 0; k < 8; k++) {
+                crc = (crc >>> 1) ^ ((crc & 1) != 0 ? 0x82f63b78 : 0);
+            }
+        }
+        return ~crc;
+    }
+
+    public static boolean integrityHolds(byte[] data) {
+        if (data == null || data.length < 6) {
+            return false;
+        }
+        int n = data.length - 4;
+        int want =
+                (data[n] & 0xff)
+                        | ((data[n + 1] & 0xff) << 8)
+                        | ((data[n + 2] & 0xff) << 16)
+                        | ((data[n + 3] & 0xff) << 24);
+        return want == crc32c(data, n);
+    }
+
+    public static int integritySeal(byte[] buffer, int n) {
+        if (buffer == null || n < 0 || buffer.length < 4 || n > buffer.length - 4) {
+            return -1;
+        }
+        int crc = crc32c(buffer, n);
+        buffer[n] = (byte) crc;
+        buffer[n + 1] = (byte) (crc >>> 8);
+        buffer[n + 2] = (byte) (crc >>> 16);
+        buffer[n + 3] = (byte) (crc >>> 24);
+        return n + 4;
     }
 }
 `
@@ -2384,7 +2424,6 @@ func (g *messageGen) emitLoadUnion(un *ir.Union, expr string, indent int) {
 // ---- root batch entry points ----------------------------------------------
 
 func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
-	_ = st
 	g.pf("    public static int measureMessages(%s[] values, TableVocabulary.Report report) {\n", valType)
 	g.pf("        return measureMessages(values, values == null ? 0 : values.length, report);\n")
 	g.pf("    }\n\n")
@@ -2405,7 +2444,12 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        }\n")
 	g.pf("        w.align();\n")
 	g.pf("        if (w.overflow) { return -1; }\n")
-	g.pf("        return w.bytesWritten();\n")
+	if st.Integrity != "" {
+		g.pf("        int n = w.bytesWritten();\n")
+		g.pf("        return n > Integer.MAX_VALUE - 4 ? -1 : n + 4;\n")
+	} else {
+		g.pf("        return w.bytesWritten();\n")
+	}
 	g.pf("    }\n\n")
 
 	g.pf("    public static int saveMessages(%s[] values, byte[] buffer, TableVocabulary.Report report) {\n", valType)
@@ -2421,13 +2465,21 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            }\n")
 	g.pf("            return -1;\n")
 	g.pf("        }\n")
-	g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 2) { return -1; }\n")
+	if st.Integrity != "" {
+		g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 6) { return -1; }\n")
+	} else {
+		g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 2) { return -1; }\n")
+	}
 	g.pf("        TableMessage.Writer mw = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(mw, values[i])) { return -1; }\n")
 	g.pf("        }\n")
 	g.pf("        mw.align();\n")
-	g.pf("        if (mw.overflow || buffer.length < mw.bytesWritten()) { return -1; }\n")
+	if st.Integrity != "" {
+		g.pf("        if (mw.overflow || buffer.length < 4 || mw.bytesWritten() > buffer.length - 4) { return -1; }\n")
+	} else {
+		g.pf("        if (mw.overflow || buffer.length < mw.bytesWritten()) { return -1; }\n")
+	}
 	g.pf("        buffer[0] = TableMessage.form;\n")
 	g.pf("        buffer[1] = (byte) (count - 1);\n")
 	g.pf("        TableMessage.Writer w = new TableMessage.Writer(buffer, 2, false);\n")
@@ -2436,7 +2488,11 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        }\n")
 	g.pf("        w.align();\n")
 	g.pf("        if (w.overflow) { return -1; }\n")
-	g.pf("        return w.bytesWritten();\n")
+	if st.Integrity != "" {
+		g.pf("        return TableMessage.integritySeal(buffer, w.bytesWritten());\n")
+	} else {
+		g.pf("        return w.bytesWritten();\n")
+	}
 	g.pf("    }\n\n")
 
 	g.pf("    public static int loadMessages(%s[] values, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
@@ -2451,6 +2507,14 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            report.reason = \"newer_form\";\n")
 	g.pf("            return 0;\n")
 	g.pf("        }\n")
+	if st.Integrity != "" {
+		g.pf("        if (!TableMessage.integrityHolds(data)) {\n")
+		g.pf("            report.malformed = true;\n")
+		g.pf("            report.reason = \"integrity_mismatch\";\n")
+		g.pf("            return 0;\n")
+		g.pf("        }\n")
+		g.pf("        data = java.util.Arrays.copyOf(data, data.length - 4);\n")
+	}
 	g.pf("        if (vocab == null || !vocab.announced) {\n")
 	g.pf("            report.refused = true;\n")
 	g.pf("            report.reason = \"no_vocabulary\";\n")
@@ -2475,11 +2539,19 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
 	g.pf("                return 0;\n")
 	g.pf("            }\n")
-	g.pf("            if (!read) { return i; }\n")
+	// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): a body that
+	// does not read, or a batch whose bits do not end where the last body
+	// does, delivers zero bodies, every body read so far reset.
+	g.pf("            if (!read || report.malformed) {\n")
+	g.pf("                report.malformed = true;\n")
+	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
+	g.pf("                return 0;\n")
+	g.pf("            }\n")
 	g.pf("        }\n")
 	g.pf("        if (!r.align() || r.at != r.totalBits) {\n")
 	g.pf("            report.malformed = true;\n")
-	g.pf("            return count;\n")
+	g.pf("            for (int j = 0; j < count; j++) { reset(values[j]); }\n")
+	g.pf("            return 0;\n")
 	g.pf("        }\n")
 	g.pf("        return count;\n")
 	g.pf("    }\n")

@@ -122,7 +122,7 @@ func TestCppNoPlanClamps(t *testing.T) {
 	if strings.Contains(src, "kTableFixedClamp") {
 		t.Error("no plan op clamps: the clamp op must not exist")
 	}
-	if !strings.Contains(src, "kTableFixedWidenF  = 6") {
+	if !strings.Contains(strings.Join(strings.Fields(src), " "), "kTableFixedWidenF = 6") {
 		t.Error("the op set is the seven, and widenf is the last of them")
 	}
 	if !strings.Contains(src, "CfgFixedClampBody") {

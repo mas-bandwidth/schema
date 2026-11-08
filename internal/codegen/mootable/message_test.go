@@ -2,10 +2,8 @@ package mootable_test
 
 import (
 	"bufio"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"hash/crc32"
 	"math"
 	"os"
 	"path/filepath"
@@ -94,7 +92,7 @@ local vocabulary = MS.NewVocabulary()
 local report: any = {}
 if not MS.AnnounceRead(vocabulary, inputs.conn, report) then print("ANNOUNCE " .. tostring(report.reason)) return end
 local n, values = MS.LoadMessages(vocabulary, %q, inputs.message, 256, report)
-print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
+print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, 0, report.widened, 0, 0, tostring(report.damaged)))
 if n < 1 then print("LOAD " .. tostring(report.reason)) return end
 local size = MS.MeasureMessages(%q, values, report)
 local out = MS.SaveMessages(%q, values, report)
@@ -192,7 +190,7 @@ func TestMooMessageFormMatchesTheManifest(t *testing.T) {
 		if err != nil {
 			t.Fatalf("message %s: the Go engine refuses the batch: %v", row.name, err)
 		}
-		want := fmt.Sprintf("%d %d,%d,%d,%d,%d,%v", n, drep.Unknown, drep.KindMismatch, drep.Widened, drep.Clamped, drep.Duplicate, drep.Malformed)
+		want := fmt.Sprintf("%d %d,%d,%d,%d,%d,%v", n, drep.Unknown, 0, drep.Widened, 0, 0, drep.Refused)
 		if out["load"] != want {
 			t.Errorf("message %s: moo load %q, the Go engine %q", row.name, out["load"], want)
 			continue
@@ -267,7 +265,7 @@ print("one " .. hex(out))
 local vocabulary = MS.NewVocabulary()
 if not MS.AnnounceRead(vocabulary, T.TableMessageAnnouncement, report) then print("ANNOUNCE " .. tostring(report.reason)) return end
 local n, values = MS.LoadMessages(vocabulary, %q, inputs.message, 256, report)
-print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
+print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, 0, report.widened, 0, 0, tostring(report.damaged)))
 if n ~= 1 then return end
 local file = save.save(St.lookup(%q), values[1])
 if file == nil then print("FILESAVE") return end
@@ -275,94 +273,152 @@ print("file " .. hex(file))
 `, rootName, rootName, rootName, rootName)
 }
 
+// messageFixedCases restate, in the fixed class, what the message form
+// carries of the constructCases the fixed class refuses as written (§2.2,
+// §3.3): a list of tables held at a bound instead of an unbounded array root,
+// an optional table whose text is bounded instead of a blob, and unions,
+// keyed arrays and enum lists at a bound instead of beside a map. Text lists,
+// maps, pointers and blobs have no fixed restatement: they are the variable
+// class's alone.
+var messageFixedCases = []constructCase{
+	{"bounded_table_lists", "§2.9 bounded arrays of tables", "package probe\ntable Goal\n{\n    x int32\n    tag string(4)\n}\ntable GoalList\n{\n    goals [..4]Goal\n    pair [2]Goal\n    none [..3]Goal\n}\n",
+		"GoalList", `{"goals":[{"x":1,"tag":"a"},{"x":-2}],"pair":[{"x":3},{"x":4,"tag":"dd"}],"none":[]}`},
+	{"optional_fixed", "§2.7 optional tables", "package probe\ntable Inner\n{\n    text string(8)\n    n int32\n}\ntable Outer\n{\n    inner ?Inner\n    gone ?Inner\n    tail int32\n}\n",
+		"Outer", `{"inner":{"text":"hi","n":4},"tail":5}`},
+	{"unions_keyed_enums", "§2.6 §3.2 unions, keyed arrays, enums", "package probe\nenum Slot { head, body, feet }\ntable Item\n{\n    w uint16\n}\nunion Pick\n{\n    item Item\n    count uint32\n    label string(8)\n    empty\n}\ntable Kit\n{\n    gear [Slot]Item\n    pick Pick\n    picks [..4]Pick\n    trio [3]Pick\n    slots [..3]Slot\n    flags_ok bool\n}\n",
+		"Kit", `{"gear":{"head":{"w":1},"feet":{"w":3}},"pick":{"label":"x"},"picks":[{"count":4},{"empty":null},{"item":{"w":2}}],"trio":[{"label":"abcdefgh"},{},{"count":4294967295}],"slots":["feet","head"],"flags_ok":true}`},
+}
+
 // TestMooMessageFormMatchesTheGoEngine is the message form's differential
 // against the Go reference engine over every construct the variable wire's
-// gate carries (construct_test.go's cases): the Go engine writes the value's
-// file form (tablewire.Encode) and its message form (tablewire.EncodeMessages);
-// moo saves the file form as the same message, and loads the message clean
-// into the same file form. A unit whose announcement the Go engine itself
-// refuses (a kind the message form does not spell) is named and skipped.
+// gate carries (construct_test.go's cases) and the fixed restatements above:
+// the Go engine writes the value's file form (tablewire.Encode) and its
+// message form (tablewire.EncodeMessages); moo saves the file form as the
+// same message, and loads the message clean into the same file form. THE
+// MESSAGE FORM IS FIXED TABLES ONLY (§3.3): each construct is declared fixed,
+// and the compiler's fixed-class refusal (§2.2, §11) is the one reason a
+// construct is not compared; every other construct is.
 func TestMooMessageFormMatchesTheGoEngine(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
-	compared := 0
-	for _, c := range constructCases {
-		// THE MESSAGE FORM IS FIXED TABLES ONLY (§3.3): each construct is
-		// declared fixed, and one the fixed class cannot hold is not compared
-		u, err := compiler.New().Load([]string{writeSchema(t, fixedTables.ReplaceAllString(c.schema, "fixed table "))})
-		if err != nil {
-			t.Logf("%s: not a fixed table (%v): no message form", c.name, err)
-			continue
+	cases := append(append([]constructCase(nil), constructCases...), messageFixedCases...)
+	compared, variable := 0, 0
+	for _, c := range cases {
+		switch variableClass, problem := messageDiffers(t, c, nil); {
+		case variableClass:
+			t.Logf("%s: a variable-class construct, refused fixed: no message form", c.name)
+			variable++
+		case problem != "":
+			t.Errorf("%s: %s", c.name, problem)
+		default:
+			compared++
 		}
-		var vocab tablewire.Vocabulary
-		var rep tabletext.Report
-		if err := vocab.AnnounceRead(ir.TableAnnouncement(u), &rep); err != nil || !vocab.Announced() {
-			t.Logf("%s: the Go engine refuses the unit's own announcement (%v %+v): no message form", c.name, err, rep)
-			continue
-		}
-		file := goOracleWire(t, u, c.root, c.json)
-		sealed := u.Tables[c.root].Integrity == "crc32c"
-		bare := file
-		if sealed {
-			bare = file[:len(file)-4] // the engine's Decode reads no trailer (§2.14)
-		}
-		m := tabletext.NewModel(u)
-		inst := m.New(u.Tables[c.root])
-		var r2 tabletext.Report
-		if ok, err := tablewire.Decode(m, inst, bare, &r2); !ok || err != nil {
-			t.Fatalf("%s: the Go engine does not read its own wire: %v", c.name, err)
-		}
-		msg, err := tablewire.EncodeMessages(m, []*tabletext.Instance{inst})
-		if err != nil {
-			t.Logf("%s: the Go engine writes no message form: %v", c.name, err)
-			continue
-		}
-		if holdsTextList(u.Tables[c.root]) {
-			// A TEXT LIST ON THE MESSAGE FORM: the Go engine announces one
-			// (SPEC-TABLES §3.3) and writes its count, but writes no element
-			// payload where its own skip reads a length and bytes; moo refuses
-			// the save as invalid_value. The two do not agree on a contract,
-			// so the unit is named and not compared.
-			t.Logf("%s: a text list on the message form, which the Go engine writes without element payloads and moo refuses: not compared", c.name)
-			continue
-		}
-		// what the message form carries back: the Go engine's own read of its
-		// batch, in the file form (a message elides an empty string or bytes
-		// whatever its default, so the trip is not always the original value)
-		back := m.New(u.Tables[c.root])
-		var r3 tabletext.Report
-		if _, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{back}, msg, &vocab, &r3); err != nil {
-			t.Fatalf("%s: the Go engine does not read its own batch: %v", c.name, err)
-		}
-		backFile, err := tablewire.Encode(m, back)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if sealed {
-			// THE TRAILER (§2.14, §3.3) is the emitted writers', on both forms
-			msg = binary.LittleEndian.AppendUint32(msg, crc32.Checksum(msg, crc32.MakeTable(crc32.Castagnoli)))
-			backFile = binary.LittleEndian.AppendUint32(backFile, crc32.Checksum(backFile, crc32.MakeTable(crc32.Castagnoli)))
-		}
-		files, err := generate(u)
-		if err != nil {
-			t.Fatal(err)
-		}
-		g := writeUnit(t, u, files)
-		out := parseProbe(g.run(t, messageDiffProbe(g, tableModuleOf(g, c.root), c.root), map[string][]byte{"file": file, "message": msg}))
-		if out["one"] != hex.EncodeToString(msg) {
-			t.Errorf("%s: moo's message is not the Go engine's:\nmoo: %v\ngo:  %x", c.name, out, msg)
-			continue
-		}
-		if out["load"] != "1 0,0,0,0,0,false" || out["file"] != hex.EncodeToString(backFile) {
-			t.Errorf("%s: moo does not load the Go engine's message into the Go engine's file form:\nmoo:  %v\nfile: %x", c.name, out, backFile)
-			continue
-		}
-		compared++
 	}
-	if compared == 0 {
-		t.Fatal("no construct compared")
+	if compared == 0 || compared+variable != len(cases) {
+		t.Fatalf("%d of %d constructs compared, %d refused fixed: every fixed-class construct is compared", compared, len(cases), variable)
 	}
-	t.Logf("%d of %d constructs compared both ways", compared, len(constructCases))
+	t.Logf("%d of %d constructs compared both ways; the other %d are the variable class's (no message form)", compared, len(cases), variable)
+}
+
+// messageDiffers runs one construct's differential, the emitted sources
+// first passed through patch when it is not nil. It answers whether the
+// compiler refuses the construct in the fixed class (and so it has no message
+// form), and otherwise what disagrees with the Go engine, or "".
+func messageDiffers(t *testing.T, c constructCase, patch func(files map[string][]byte)) (variableClass bool, problem string) {
+	t.Helper()
+	u, err := compiler.New().Load([]string{writeSchema(t, fixedTables.ReplaceAllString(c.schema, "fixed table "))})
+	if err != nil {
+		if !fixedClassRefusal.MatchString(err.Error()) {
+			return false, fmt.Sprintf("the fixed declaration is refused for a reason other than the fixed class: %v", err)
+		}
+		return true, ""
+	}
+	var vocab tablewire.Vocabulary
+	var rep tabletext.Report
+	if err := vocab.AnnounceRead(ir.TableAnnouncement(u), &rep); err != nil || !vocab.Announced() {
+		return false, fmt.Sprintf("the Go engine refuses the unit's own announcement (%v %+v)", err, rep)
+	}
+	// a sealed root's trailer (§2.14, §3.3) is the Go engine's own, on both
+	// forms: Encode and EncodeMessages write it, Decode and DecodeMessages
+	// check it
+	file := goOracleWire(t, u, c.root, c.json)
+	m := tabletext.NewModel(u)
+	inst := m.New(u.Tables[c.root])
+	var r2 tabletext.Report
+	if ok, err := tablewire.Decode(m, inst, file, &r2); !ok || err != nil {
+		t.Fatalf("%s: the Go engine does not read its own wire: %v", c.name, err)
+	}
+	msg, err := tablewire.EncodeMessages(m, []*tabletext.Instance{inst})
+	if err != nil {
+		return false, fmt.Sprintf("the Go engine writes no message form for a fixed root: %v", err)
+	}
+	// what the message form carries back: the Go engine's own read of its
+	// batch, in the file form (a message elides an empty string or bytes
+	// whatever its default, so the trip is not always the original value)
+	back := m.New(u.Tables[c.root])
+	var r3 tabletext.Report
+	if _, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{back}, msg, &vocab, &r3); err != nil {
+		t.Fatalf("%s: the Go engine does not read its own batch: %v", c.name, err)
+	}
+	backFile, err := tablewire.Encode(m, back)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patch != nil {
+		patch(files)
+	}
+	g := writeUnit(t, u, files)
+	out := parseProbe(g.run(t, messageDiffProbe(g, tableModuleOf(g, c.root), c.root), map[string][]byte{"file": file, "message": msg}))
+	if out["one"] != hex.EncodeToString(msg) {
+		return false, fmt.Sprintf("moo's message is not the Go engine's:\nmoo: %v\ngo:  %x", out, msg)
+	}
+	if out["load"] != "1 0,0,0,0,0,false" || out["file"] != hex.EncodeToString(backFile) {
+		return false, fmt.Sprintf("moo does not load the Go engine's message into the Go engine's file form:\nmoo:  %v\nfile: %x", out, backFile)
+	}
+	return false, ""
+}
+
+// TestMooMessageFormFixedCasesNegativeControl plants, for each fixed
+// restatement, one fault in the emitted table_message.moo's writer on the path
+// that case alone was added to reach, and requires that case's differential
+// to go red: an absent optional table written and a present one elided, a
+// counted list's last element dropped, and a keyed array's present count one
+// short.
+func TestMooMessageFormFixedCasesNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
+	t.Parallel()
+	plants := map[string][2]string{
+		"optional_fixed":      {"\t\tif not v[fd.present] then\n\t\t\treturn true\n", "\t\tif v[fd.present] then\n\t\t\treturn true\n"},
+		"bounded_table_lists": {"\t\t\twref(c, entry.slot)\n\t\t\treturn encodeArray(c, fd, entry, v, val, n)\n", "\t\t\twref(c, entry.slot)\n\t\t\treturn encodeArray(c, fd, entry, v, val, n - 1)\n"},
+		"unions_keyed_enums":  {"\tput(c.w, #present, bitsReq(0, shape.max))\n", "\tput(c.w, #present - 1, bitsReq(0, shape.max))\n"},
+	}
+	if len(plants) != len(messageFixedCases) {
+		t.Fatalf("%d plants for %d fixed restatements", len(plants), len(messageFixedCases))
+	}
+	for _, c := range messageFixedCases {
+		plant, ok := plants[c.name]
+		if !ok {
+			t.Fatalf("%s: no plant", c.name)
+		}
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			variableClass, problem := messageDiffers(t, c, func(files map[string][]byte) {
+				src := string(files["table_message.moo"])
+				if strings.Count(src, plant[0]) != 1 {
+					t.Fatalf("the %s anchor is not in table_message.moo exactly once", c.name)
+				}
+				files["table_message.moo"] = []byte(strings.Replace(src, plant[0], plant[1], 1))
+			})
+			if variableClass || problem == "" {
+				t.Fatalf("the planted fault still agrees with the Go engine (variable class %v)", variableClass)
+			}
+			t.Logf("red as required: %s", strings.SplitN(problem, "\n", 2)[0])
+		})
+	}
 }
 
 // quantSchema is a compressed float on two ranges (docs/SPEC-TABLES.md §3.3,
@@ -514,7 +570,7 @@ func TestMooMessageFormEvolvesAsTheGoEngine(t *testing.T) {
 			ma := tabletext.NewModel(ua)
 			ia := ma.New(ua.Tables[c.root])
 			var ra tabletext.Report
-			if !ma.Read(ia, []byte(c.json), &ra) || ra.Malformed {
+			if !ma.Read(ia, []byte(c.json), &ra) || ra.Refused {
 				t.Fatalf("the Go engine does not read the writer's JSON: %+v", ra)
 			}
 			msg, err := tablewire.EncodeMessages(ma, []*tabletext.Instance{ia})
@@ -538,7 +594,7 @@ func TestMooMessageFormEvolvesAsTheGoEngine(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := fmt.Sprintf("load %d %d,%d,%d,%d,%d,%v\nfile %x", n, rb.Unknown, rb.KindMismatch, rb.Widened, rb.Clamped, rb.Duplicate, rb.Malformed, fileB)
+			want := fmt.Sprintf("load %d %d,%d,%d,%d,%d,%v\nfile %x", n, rb.Unknown, 0, rb.Widened, 0, 0, rb.Refused, fileB)
 			files, err := generate(ub)
 			if err != nil {
 				t.Fatal(err)
@@ -560,7 +616,7 @@ func runEvolve(t *testing.T, ub *ir.Unit, files map[string][]byte, rootName stri
 local report: any = {}
 if not MS.AnnounceRead(vocabulary, inputs.ann, report) then print("ANNOUNCE " .. tostring(report.reason)) return end
 local n, values = MS.LoadMessages(vocabulary, %q, inputs.message, 256, report)
-print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
+print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, 0, report.widened, 0, 0, tostring(report.damaged)))
 local out = save.save(St.lookup(%q), values[1])
 if out == nil then print("FILESAVE") return end
 local p = {}
@@ -593,7 +649,7 @@ func TestMooMessageFormEvolvesNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "\t\t\tt.report.kindMismatch += 1\n\t\t\tif not skipEntry(t, entry.kind, entry.shape) then\n\t\t\t\treturn dmal(t)\n"
+	const anchor = "\t\t\tt.report.kindChanged += 1\n\t\t\tif not skipEntry(t, entry.kind, entry.shape) then\n\t\t\t\treturn dmal(t)\n"
 	src := string(files["table_message.moo"])
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the body's kind-mismatch anchor is not in table_message.moo exactly once")
@@ -609,6 +665,11 @@ func TestMooMessageFormEvolvesNegativeControl(t *testing.T) {
 // `fixed table` instead.
 var fixedTables = regexp.MustCompile(`(?m)^table `)
 
+// fixedClassRefusal is the compiler's refusal of a variable-class construct
+// in a fixed table (docs/SPEC-TABLES.md §2.2, §11), whose first line names
+// `fixed` as what to drop.
+var fixedClassRefusal = regexp.MustCompile(`(?s)^[^\n]*(drop .fixed.|VARIABLE-table)`)
+
 // writeSchema writes one schema source to a fresh file and answers its path.
 func writeSchema(t *testing.T, src string) string {
 	t.Helper()
@@ -617,14 +678,4 @@ func writeSchema(t *testing.T, src string) string {
 		t.Fatal(err)
 	}
 	return p
-}
-
-// holdsTextList says whether a table declares a text list (SPEC-TABLES §2.13).
-func holdsTextList(tb *ir.Struct) bool {
-	for _, f := range tb.Fields {
-		if f.IsTextList() {
-			return true
-		}
-	}
-	return false
 }

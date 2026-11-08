@@ -20,7 +20,7 @@
 // What DOES carry over is the content rule, and it is the whole point of the
 // file: an unpaired surrogate and a zero code unit are refused on both wires,
 // and only the SHAPE of the refusal differs — terminal there, one `malformed`
-// and the declared default here (SPEC.md §4.12, §3, §4).
+// and whole-load discard to declared defaults here (SPEC.md §4.12, §3, §4).
 
 #include <cstdio>
 #include <cstdlib>
@@ -184,9 +184,9 @@ static const Vector vectors[] = {
     { "wstring-table-accept-length-at-the-bound",           units_seven,      7, units_seven,    7, 0, 0 },
 
     // THE CONTENT RULE (§3, §4), every shape the corpus refuses on the packet
-    // wire: here each is framing-class damage, so the field reads its declared
-    // default — empty, wide text taking no specified default — ONE malformed
-    // counts, and the parent reads on past L.
+    // wire: here each is framing-class damage. The walk reads on past L for
+    // diagnostics, but the whole load fails and resets to declared defaults
+    // (empty for wide text), with malformed set.
     { "wstring-table-refuse-first-high-surrogate-alone",    units_high_alone, 1, units_empty, 0, 1, 0 },
     { "wstring-table-refuse-high-surrogate-followed-by-a-non-surrogate", units_high_first, 2, units_empty, 0, 1, 0 },
     { "wstring-table-refuse-high-surrogate-as-the-final-group", units_high_last, 2, units_empty, 0, 1, 0 },
@@ -239,7 +239,7 @@ static int field_vectors()
         TableReport report;
         const Bytes wire = frame( id_title, 33, wide_field( v.units, v.count ) );
         const bool ok = CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report );
-        check_vector( ok, v.name );
+        check_vector( ok == ( v.malformed == 0 ), v.name );
         check_vector( !report.refused, v.name );
         check_vector( report.malformed == ( v.malformed != 0 ), v.name );
         check_vector( report.clamped == v.clamped, v.name );
@@ -267,7 +267,7 @@ static void odd_length()
     Bytes payload = wide_payload( one, 1, 3 ); // L = 3 over two payload bytes
     payload.push_back( 0x00 );                 // the third byte L claims
     const Bytes wire = frame( id_title, 33, payload );
-    check( CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report ) );
+    check( !CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report ) );
     check( report.malformed );
     check( report.clamped == 0 );
     check( out.title_length == 0 ); // the declared default
@@ -352,8 +352,8 @@ static void nested_type_site()
     check( !report.malformed );
     check( units_equal( out.line.text, out.line.text_length, good, 2 ) );
 
-    // the same nesting with an unpaired surrogate: the FIELD reads its
-    // declared default, one malformed counts, and the parent reads on past L
+    // The same nesting with an unpaired surrogate: the parent can scan past
+    // L, but damage discards the whole load and resets its declared defaults.
     Caption bad_out;
     TableReport bad_report;
     Bytes bad_inner;
@@ -372,7 +372,7 @@ static void nested_type_site()
     put_u64( bad_wire, id_line );
     put_u64( bad_wire, id_text );
     put_u64( bad_wire, 2 );
-    check( CaptionLoadTolerant( bad_out, bad_wire.data(), (int64_t) bad_wire.size(), &bad_report ) );
+    check( !CaptionLoadTolerant( bad_out, bad_wire.data(), (int64_t) bad_wire.size(), &bad_report ) );
     check( bad_report.malformed );
     check( bad_out.line.text_length == 0 );
     check( bad_out.line.text[0] == 0 );
@@ -407,7 +407,7 @@ static void arm_site()
 
         Caption out;
         TableReport report;
-        check( CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report ) );
+        check( CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report ) == ( bad_row == 0 ) );
         if ( bad_row )
         {
             // ILL-FORMED TEXT AT AN ARM: the union reads None (§3, §4)
@@ -458,8 +458,8 @@ static void element_site()
 
         Caption out;
         TableReport report;
-        check( CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report ) );
-        check( out.lines_count == 1 );
+        check( CaptionLoadTolerant( out, wire.data(), (int64_t) wire.size(), &report ) == ( bad_row == 0 ) );
+        check( out.lines_count == ( bad_row ? 0 : 1 ) );
         if ( bad_row )
         {
             check( report.malformed );
@@ -476,9 +476,9 @@ static void element_site()
 // ---------------------------------------------------------------------------
 // THE TEXT FORM's wide rows (§16.2, §16.5): the same text transcoded at the
 // boundary, a clamp at N code units that never splits a pair, storage BUILT IN
-// CODE holding an unpaired surrogate written as U+FFFD, and one holding a zero
-// unit written as \u0000. The two storage rows are built in code deliberately:
-// no wire can deliver either.
+// CODE holding an unpaired surrogate, which the write refuses, and one
+// holding a zero unit written as \u0000. The two storage rows are built in
+// code deliberately: no wire can deliver either.
 
 static void text_form()
 {
@@ -527,8 +527,8 @@ static void text_form()
     }
 
     // §16.3's two rows, BUILT IN CODE: an unpaired surrogate is not a code
-    // point at all and writes one U+FFFD, and a zero unit is U+0000, which
-    // JSON has an escape for, and writes \u0000
+    // point at all, so measure and write alike refuse (§16.14 W0), and a zero
+    // unit is U+0000, which JSON has an escape for, and writes \u0000
     {
         Caption value;
         value.title[0] = (char16_t) 0x0041;
@@ -536,10 +536,8 @@ static void text_form()
         value.title[2] = 0;
         value.title_length = 2;
         char out[512];
-        const int64_t written = CaptionToJson( value, out, (int64_t) sizeof( out ) );
-        check( written > 0 );
-        out[written] = 0;
-        check( strstr( out, "\"A\xef\xbf\xbd\"" ) != NULL );
+        check( CaptionToJsonMeasure( value ) == -1 );
+        check( CaptionToJson( value, out, (int64_t) sizeof( out ) ) == -1 );
     }
     {
         Caption value;
