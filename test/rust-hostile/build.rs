@@ -117,12 +117,20 @@ fn main() {
         let msg = ["_load_messages", "_measure_messages", "_save_messages", "_message_default", "_fixed_write_body"]
             .iter()
             .all(|n| unit.fns.contains(&format!("{s}{n}")));
+        // A ROOT DECLARED `fixed table` reads a form-3 file through its fixed
+        // codec: <stem>_fixed_load and _fixed_save into <Table>Row.
+        let fixed = ["_fixed_load", "_fixed_save"].iter().all(|n| unit.fns.contains(&format!("{s}{n}")));
         let k = &unit.krate;
         let _ = writeln!(
             out,
-            "        ({schema:?}, {table:?}) => Some(table_ops!({k}, {s}_load, {s}_load_retain, {s}_save_checked, {s}_save_retain, {s}_load_measure, {s}_to_json_checked, {s}_from_json_bytes, {msg_arm})),",
+            "        ({schema:?}, {table:?}) => Some(table_ops!({k}, {s}_load, {s}_load_retain, {s}_save_checked, {s}_save_retain, {s}_load_measure, {s}_to_json_checked, {s}_from_json_bytes, {msg_arm}, {fixed_arm})),",
             msg_arm = if msg {
                 format!("Some(message_ops!({k}, {s}_load_messages, {s}_measure_messages, {s}_save_messages, {s}_message_default, {s}_fixed_write_body, {s}_from_json_bytes, {s}_to_json_checked))")
+            } else {
+                "None".to_string()
+            },
+            fixed_arm = if fixed {
+                format!("Some(fixed_ops!({k}, {s}_fixed_load, {s}_fixed_save, {table}Row))")
             } else {
                 "None".to_string()
             }

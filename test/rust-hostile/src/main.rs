@@ -63,6 +63,7 @@ pub struct TableOps {
     pub wire: fn(&[u8], bool) -> String,
     pub text: fn(&[u8]) -> String,
     pub message: Option<fn(&[u8], bool) -> String>,
+    pub fixed: Option<fn(&[u8]) -> String>,
 }
 
 pub struct VocabularyOps {
@@ -78,11 +79,16 @@ fn accept(digest: &str) -> String {
 }
 
 fn refuse(reason: &str) -> String {
-    // The corpus names the storage-cap refusal across ports.
-    let reason = if reason == "count_over_extent_cap" {
-        "count_refusal"
-    } else {
-        reason
+    // STRICT-ONLY (docs/plans/strict-only.md): why a read refused is this
+    // port's diagnostic and never compared. The corpus names only the
+    // refusals that are verdicts of their own (a form, a vocabulary, a batch,
+    // a storage cap, a non-finite float); every other refusal is `damaged`,
+    // as the C++ runner reads it.
+    let reason = match reason {
+        "count_over_extent_cap" => "count_refusal",
+        "newer_form" | "message_form_as_file" | "no_vocabulary" | "second_announcement" | "vocabulary_too_large"
+        | "batch_too_large" | "count_refusal" | "non_finite_float" | "damaged" | "packet_refused" => reason,
+        _ => "damaged",
     };
     format!("refuse {reason}")
 }
@@ -111,7 +117,7 @@ fn refusal(refused: bool, damaged: bool, reason: &str, landed: bool) -> Option<S
 #[allow(unused_macros)]
 macro_rules! table_ops {
     ($k:ident, $load:ident, $load_retain:ident, $save_checked:ident, $save_retain:ident,
-     $load_measure:ident, $to_json:ident, $from_json:ident, $message:expr) => {
+     $load_measure:ident, $to_json:ident, $from_json:ident, $message:expr, $fixed:expr) => {
         $crate::TableOps {
             wire: |input, retaining| {
                 let mut report = $k::TableReport::default();
@@ -154,6 +160,39 @@ macro_rules! table_ops {
                 verdict
             },
             message: $message,
+            fixed: $fixed,
+        }
+    };
+}
+
+// A FIXED ROOT's form-3 file (docs/SPEC-TABLES.md §3.4), read through its
+// fixed codec by the form byte, as the C++ runner does. The Rust leg's fixed
+// row has no text form and no bridge to the variable value, so an accepted
+// file is checked by writing it back (the canonical bytes) and its text
+// digest is owed: the answer names that, and known-findings.tsv carries it.
+#[allow(unused_macros)]
+macro_rules! fixed_ops {
+    ($k:ident, $load:ident, $save:ident, $row:ident) => {
+        |input: &[u8]| -> String {
+            let mut values = vec![$k::$row::default(); 1];
+            let mut plan = vec![$k::TableFixedEntry::default(); 1 << 14];
+            let mut remap = vec![0u16; 1 << 14];
+            let mut report = $k::TableFixedReport::default();
+            let read = $k::$load(&mut values, input, &mut plan, &mut remap, &mut report);
+            if report.refused {
+                return $crate::refuse(report.reason.name());
+            }
+            if report.damaged || read != Some(1) {
+                return $crate::refuse("damaged");
+            }
+            let mut buffer = vec![0u8; input.len() + 4096];
+            match $k::$save(&values, &mut buffer) {
+                Some(n) if &buffer[..n] == input => {
+                    "accept-unverified: the fixed row wrote the input back byte for byte; its text digest is owed (no row-to-value bridge)".to_string()
+                }
+                Some(_) => "error: the fixed row did not write the input back".to_string(),
+                None => "error: the fixed save refused the decoded row".to_string(),
+            }
         }
     };
 }
@@ -278,6 +317,7 @@ fn run_case(carrier: &str, schema: &str, table: &str, input: &[u8]) -> String {
                 return format!("runner error: no Rust table binding for {schema} {table}");
             };
             match carrier {
+                "wire" | "wire_retain" if input.first() == Some(&3) && ops.fixed.is_some() => (ops.fixed.expect("fixed"))(input),
                 "wire" => (ops.wire)(input, false),
                 "wire_retain" => (ops.wire)(input, true),
                 "text" => (ops.text)(input),

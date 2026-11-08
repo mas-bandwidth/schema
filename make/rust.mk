@@ -376,7 +376,7 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus/.stamp
 	@mkdir -p build/rust-fixedform/src
 	@cp test/rust-fixedform/Cargo.toml build/rust-fixedform/Cargo.toml
-	@sed -e 's/\.kind_mismatch/.mismatch/g' -e 's/\.clamped/.oor/g' -e 's/\.malformed/.damaged/g' test/rust-fixedform/src/main.rs > build/rust-fixedform/src/main.rs
+	@cp test/rust-fixedform/src/main.rs build/rust-fixedform/src/main.rs
 	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
 	cd build/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
 
