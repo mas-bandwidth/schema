@@ -22,11 +22,11 @@ var (
 // luaEvidenceStrings returns the quoted strings of the :evidence list of one
 // overlay entry (the text between :evidence and the next keyword).
 func luaEvidenceStrings(entry string) []string {
-	at := strings.Index(entry, ":evidence")
-	if at < 0 {
+	_, after, ok := strings.Cut(entry, ":evidence")
+	if !ok {
 		return nil
 	}
-	rest := entry[at+len(":evidence"):]
+	rest := after
 	open := strings.Index(rest, "(")
 	if open < 0 {
 		return nil
@@ -49,7 +49,7 @@ func luaEvidenceStrings(entry string) []string {
 func validateLuaEvidenceOverlay(root, overlay string, tasks map[string]bool) error {
 	var ids []string
 	seen := map[string]bool{}
-	for _, line := range strings.Split(overlay, "\n") {
+	for line := range strings.SplitSeq(overlay, "\n") {
 		entry := strings.TrimSpace(line)
 		if entry == "" || strings.HasPrefix(entry, ";") {
 			continue

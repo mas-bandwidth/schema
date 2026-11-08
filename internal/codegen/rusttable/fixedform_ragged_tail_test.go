@@ -64,7 +64,7 @@ fn v_fixed_form_ragged_tail() {
         ));
         assert!(n >= 1, "the full file lands at least one record, not {n}");
         assert!(
-            !report.refused && report.reason == TableFixedReason::None && !report.malformed,
+            !report.refused && report.reason == TableFixedReason::None && !report.damaged,
             "the full file is neither a refusal nor damage: {:?}", report
         );
         assert!(values[0].w == 777, "the full file lost its value: w={}", values[0].w);
@@ -91,14 +91,14 @@ fn v_fixed_form_ragged_tail() {
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, &ragged, &mut plan, &mut remap, &mut report);
         assert!(n.is_none(), "a {extra}-byte ragged tail is malformed, never read: {:?} {:?}", n, report);
-        assert!(report.malformed, "a {extra}-byte ragged tail sets malformed: {:?}", report);
+        assert!(report.damaged, "a {extra}-byte ragged tail sets damaged: {:?}", report);
         assert!(!report.refused, "a ragged tail is the RESIDUE, never a refusal by name: {:?}", report);
         assert_eq!(
             report.reason, TableFixedReason::None,
-            "a ragged tail leaves reason UNTOUCHED, never layout_malformed: {:?}", report.reason
+            "a ragged tail leaves reason UNTOUCHED, never layout_damaged: {:?}", report.reason
         );
         assert!(
-            report.widened == 0 && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0,
+            report.widened == 0 && report.unknown == 0,
             "a ragged tail moves no counter: {:?}", report
         );
         // VNEW_field_append.schema declares x/y/z=0 and w=77.
@@ -124,7 +124,7 @@ fn v_fixed_form_ragged_tail() {
             "extra == record_bytes is one more whole record, owed batch_too_large, not {:?}", report.reason
         );
         assert!(report.refused, "extra == record_bytes sets refused: {:?}", report);
-        assert!(!report.malformed, "a refusal by name never sets malformed too: {:?}", report);
+        assert!(!report.damaged, "a refusal by name never sets malformed too: {:?}", report);
     }
 }
 `, filepath.Join(corpus, "new_field_append.bin"))

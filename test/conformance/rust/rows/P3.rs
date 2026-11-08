@@ -154,9 +154,9 @@ fn p3_every_single_bit_mutation_gets_one_of_three_answers_never_a_fourth() {
             let named = n.is_none()
                 && report.refused
                 && report.reason != TableFixedReason::None
-                && !report.malformed;
-            let hurt = report.malformed && !report.refused;
-            let clean = n.is_some() && !report.refused && !report.malformed;
+                && !report.damaged;
+            let hurt = report.damaged && !report.refused;
+            let clean = n.is_some() && !report.refused && !report.damaged;
             if named {
                 refused += 1;
             } else if hurt {
@@ -169,7 +169,7 @@ fn p3_every_single_bit_mutation_gets_one_of_three_answers_never_a_fourth() {
                      a refusal, a malformed read or a read that lands values, never a fourth",
                     report.refused,
                     report.reason.name(),
-                    report.malformed
+                    report.damaged
                 ));
             }
         }
@@ -203,11 +203,11 @@ fn p3_all_three_answers_fire() {
             let mut hit = file.clone();
             hit[at] ^= 1u8 << bit;
             let (n, _, report) = load(&hit);
-            if n.is_none() && report.refused && report.reason != TableFixedReason::None && !report.malformed {
+            if n.is_none() && report.refused && report.reason != TableFixedReason::None && !report.damaged {
                 refused += 1;
-            } else if report.malformed && !report.refused {
+            } else if report.damaged && !report.refused {
                 damaged += 1;
-            } else if n.is_some() && !report.refused && !report.malformed {
+            } else if n.is_some() && !report.refused && !report.damaged {
                 landed += 1;
             }
         }
@@ -231,7 +231,7 @@ fn p3_a_one_byte_short_file_is_damage() {
     short.pop();
     let (n, _, report) = load(&short);
     assert_eq!(n, None, "the short file does not land: {report:?}");
-    assert!(report.malformed, "one byte off the end is malformed: {report:?}");
+    assert!(report.damaged, "one byte off the end is malformed: {report:?}");
     assert!(
         !report.refused,
         "a ragged tail is damage, not a refusal: {report:?}"

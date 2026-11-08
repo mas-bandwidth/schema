@@ -133,17 +133,17 @@ pub fn fixed_table_save_message_body(w: &mut TableBitWriter, value: &FixedTableR
 pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut FixedTableRow) -> bool {
     *value = fixed_table_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.malformed = true; return false; };
+        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.malformed = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.malformed = true; return false; }
+        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
+        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
         match entry.id {
             0x7ce4fd9430e80cea => {
                 let mut widened = false;
                 'f2: {
                     if entry.kind != 13 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f2;
                     }
                     if !bench_mixed_load_message_body(r, v, report, &mut value.value) { return false; }
@@ -152,7 +152,7 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
             }
             _ => {
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -219,6 +219,7 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
 pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
+    report.damaged = false;
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };
@@ -227,7 +228,7 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
     }
     let mut r = TableBitReader::new(&data[2..]);
     for i in 0..count {
-        if !fixed_table_load_message_body(&mut r, vocabulary, report, &mut values[i]) || !report.non_finite_float.is_empty() {
+        if !fixed_table_load_message_body(&mut r, vocabulary, report, &mut values[i]) || report.damaged || !report.non_finite_float.is_empty() {
             if !report.non_finite_float.is_empty() {
                 for value in values.iter_mut().take(i + 1) {
                     *value = fixed_table_message_default();

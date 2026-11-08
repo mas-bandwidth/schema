@@ -107,7 +107,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     let mut r = TableReport::default();
     match root_load(&FIXED, &mut r) {
         Some(v) => bad.push(format!("root: load handed back a value on damage: a={} b={}", v.a, v.b)),
-        None if !r.malformed => bad.push("root: the report does not say malformed".to_string()),
+        None if !r.damaged => bad.push("root: the report does not say malformed".to_string()),
         None => {}
     }
 
@@ -115,7 +115,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     let mut r = TableReport::default();
     match graph_load(&VARIABLE, &mut r) {
         Some(v) => bad.push(format!("graph: load handed back a value on damage: a={} b={}", v.a, v.b)),
-        None if !r.malformed => bad.push("graph: the report does not say malformed".to_string()),
+        None if !r.damaged => bad.push("graph: the report does not say malformed".to_string()),
         None => {}
     }
 
@@ -125,7 +125,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
         let mut r = TableReport::default();
         let got = if name == "root" { root_load_retain(wire, &mut store, &mut r).is_some() } else { graph_load_retain(wire, &mut store, &mut r).is_some() };
         if got { bad.push(format!("{name} retain: load_retain handed back a value on damage")); }
-        if !r.malformed { bad.push(format!("{name} retain: the report does not say malformed")); }
+        if !r.damaged { bad.push(format!("{name} retain: the report does not say malformed")); }
         if !store.bytes.is_empty() || !store.ids.is_empty() {
             bad.push(format!("{name} retain: the store kept {} bytes and {} ids", store.bytes.len(), store.ids.len()));
         }
@@ -164,7 +164,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     let mut remap = [0u16; 64];
     let mut r = TableFixedReport::default();
     if root_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut r).is_some() { bad.push("fixed: fixed_load answered records on damage".to_string()); }
-    if !r.malformed { bad.push("fixed: the report does not say malformed".to_string()); }
+    if !r.damaged { bad.push("fixed: the report does not say malformed".to_string()); }
     if values.iter().any(|v| v.a != 0 || v.b != 0 || v.inner.n != 0 || v.inner.ok) {
         bad.push(format!("fixed: a damaged load left a caller record holding a={} b={} n={}", values[0].a, values[0].b, values[0].inner.n));
     }
@@ -196,7 +196,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     let mut r = TableReport::default();
     let (count, ok) = root_load_messages(&mut values, &vocab, &batch, &mut r);
     if ok || count != 0 { bad.push(format!("message: load_messages answered ok={ok} count={count} on damage")); }
-    if !r.malformed { bad.push("message: the report does not say malformed".to_string()); }
+    if !r.damaged { bad.push("message: the report does not say malformed".to_string()); }
     if values[..2].iter().any(|v| v.a != 0 || v.b != 0 || v.inner.n != 0) {
         bad.push(format!("message: a damaged batch left a body holding a={} b={}", values[0].a, values[0].b));
     }
@@ -204,7 +204,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     // the text read: a document cut short
     let mut r = TableReport::default();
     if graph_from_json("{\"a\":5,\"inner\":{\"n\":3},\"b\":", &mut r).is_some() { bad.push("text: from_json handed back a value on damage".to_string()); }
-    if !r.malformed { bad.push("text: the report does not say malformed".to_string()); }
+    if !r.damaged { bad.push("text: the report does not say malformed".to_string()); }
 
     if bad.is_empty() { println!("DISCARD ok"); } else { for b in &bad { println!("DISCARD BAD {b}"); } std::process::exit(1); }
 `, len(fixed), rustBytes(fixed), len(variable), rustBytes(variable), len(announce), rustBytes(announce))
