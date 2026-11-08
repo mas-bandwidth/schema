@@ -64,6 +64,11 @@ typedef struct ConformanceCodec
        node, the in-memory sharing a cook packs as it finds it and no wire read
        delivers (docs/SPEC-TABLES.md §2.5). NULL for a root with no node slots. */
     int ( *share )( void * value, const char * source, const char * alias );
+    /* THE VARIABLE-FORM WRITE beside load_variable, so the soak still drives the
+       variable writer whose byte order the two endian controls sabotage. NULL:
+       `measure` / `save`. */
+    int64_t ( *measure_variable )( const void * value );
+    int64_t ( *save_variable )( const void * value, uint8_t * buffer, int64_t capacity );
 } ConformanceCodec;
 
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing
