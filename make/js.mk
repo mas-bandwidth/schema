@@ -1768,6 +1768,17 @@ conformance-negative-control-js-text-boundary: conformance-js-text-boundary
 
 test-js: conformance-js-text-boundary
 
+# The text writer's two refusals of a wrong text (§16.2, §16.14 W0): a float32
+# judged by one correctly-rounded read, an unpaired surrogate refused. Each
+# rule taken back out turns its json-write row RED.
+.PHONY: conformance-negative-control-js-text-writer-float conformance-negative-control-js-text-writer-surrogate
+conformance-negative-control-js-text-writer-float: build/conformance-harness build/tables-generated-js/.stamp
+	NODE=$(NODE) sh test/conformance/js/negative-control-text-writer float
+conformance-negative-control-js-text-writer-surrogate: build/conformance-harness build/tables-generated-js/.stamp
+	NODE=$(NODE) sh test/conformance/js/negative-control-text-writer surrogate
+
+test-js: conformance-negative-control-js-text-writer-float conformance-negative-control-js-text-writer-surrogate
+
 
 .PHONY: tables-js-blob-shared-report
 tables-js-blob-shared-report: toolchain-js

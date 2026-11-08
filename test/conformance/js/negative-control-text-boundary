@@ -57,12 +57,20 @@ if [ "$mode" = positive ]; then
     echo 'JavaScript strict UTF-8 boundary: all text claims pass'
     exit 0
 fi
-[ "$rc" -ne 0 ] || { cat "$out/log"; echo 'negative control left replacement decoding green' >&2; exit 1; }
-grep -q 'js / json-hostile: str-illformed-at-bound:' "$out/log" || { cat "$out/log"; echo 'negative control missed the invalid UTF-8 row' >&2; exit 1; }
+# Under the one strict read the corpus row str-illformed-at-bound is refused
+# with or without replacement (U+FFFD is three bytes, which carries the string
+# past its bound), so the row the replacement owns is one whose 0xFF sits well
+# inside the bound: a strict boundary refuses it, a replacing one reads it.
+mkdir -p "$out/inbound/text" "$out/inbound/strict" "$out/inbound/replaced"
+printf '{ "version_note": "a\377b" }\n' > "$out/inbound/text/RootConfig.json"
+printf 'json-hostile illformed-in-bound tabledemo RootConfig %s/inbound/text refused\n' "$out" > "$out/inbound/manifest"
+"${NODE:-node}" "$source" "$out/inbound/manifest" json-hostile "$out/inbound/strict"
+"${NODE:-node}" "$main" "$out/inbound/manifest" json-hostile "$out/inbound/replaced"
+[ "$(head -n 1 "$out/inbound/strict/illformed-in-bound")" = refused ] || { echo 'the strict boundary read an ill-formed byte' >&2; exit 1; }
+[ "$(head -n 1 "$out/inbound/replaced/illformed-in-bound")" = read ] || { echo 'negative control left replacement decoding refusing the in-bound row' >&2; exit 1; }
 if grep '^  js / ' "$out/log" | grep -v 'js / json-hostile: str-illformed-at-bound:'; then
     cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
 fi
 grep -Eq '^json-read +pass ' "$out/log"
 grep -Eq '^json-write +pass ' "$out/log"
-grep 'js / json-hostile: str-illformed-at-bound:' "$out/log"
-echo 'JavaScript text boundary negative control: replacement decoding fails only the invalid UTF-8 row; text read/write remain green'
+echo 'JavaScript text boundary negative control: replacement decoding reads an ill-formed byte the strict boundary refuses; text read/write remain green'

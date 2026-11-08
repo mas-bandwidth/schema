@@ -1006,6 +1006,8 @@
         "tables-js-release-negative-control",
         "conformance-negative-control-js-absent",
         "conformance-negative-control-js-fixed",
+        "conformance-negative-control-js-text-writer-float",
+        "conformance-negative-control-js-text-writer-surrogate",
         "tables-js-cook-map-unsorted-negative-control",
         "tables-js-cook-map-unaligned-negative-control",
         "tables-js-cook-map-extent-start-negative-control",

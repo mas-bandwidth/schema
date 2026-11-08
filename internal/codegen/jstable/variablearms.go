@@ -756,7 +756,9 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
   for (let i = 0; i < ents.length; i++) {
     if (fd.ks && fd.kb < 0 && !TableVariableUnboundedTextValid(ents[i].key)) { return false; }
     if (i > 0) { out.push(","); }
-    out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
+    const k = TableVariableJsonString(String(ents[i].key));
+    if (k === null) { return false; }
+    out.push(ind + k + ": ");
     if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }
   }
   out.push("\n" + "  ".repeat(depth) + "}");
