@@ -199,7 +199,7 @@ func (g *wireGen) emitWidenedElems(f *ir.Field, ek int, out, p, ind string) {
 	g.pf("%s%s.report.widened++;\n", ind, p)
 	g.pf("%sfinal w = _kindWidth(elemKind);\n", ind)
 	g.pf("%sfor (var i = 0; i < keep; i++) {\n", ind)
-	g.pf("%s\tif (!%s.has(w)) { %s.report.malformed = true; break; }\n", ind, p, p)
+	g.pf("%s\tif (!%s.has(w)) { %s.report.refuse('wire_damaged'); break; }\n", ind, p, p)
 	if ek == wireKindF64 {
 		// a widened float32 element is refused on its raw bits as any float
 		// read is (docs/SPEC-TABLES.md §3.3)
@@ -274,9 +274,9 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	g.pf("bool %s(TableWireReader p, %s v, int elemKind, int count%s) {\n", arrayHelper(st, f, "Fixed"), st.Name, hadParam(f))
 	wc := widenCond(ek)
 	if wc == "" || f.Type.Pointer {
-		g.pf("\tif (elemKind != %d) { p.report.kindMismatch++;%s return true; }\n", ek, g.absentOnMismatch(f))
+		g.pf("\tif (elemKind != %d) { p.report.refuse('kind_mismatch');%s return true; }\n", ek, g.absentOnMismatch(f))
 	} else {
-		g.pf("\tif (elemKind != %d && !(%s)) { p.report.kindMismatch++;%s return true; }\n", ek, wc, g.absentOnMismatch(f))
+		g.pf("\tif (elemKind != %d && !(%s)) { p.report.refuse('kind_mismatch');%s return true; }\n", ek, wc, g.absentOnMismatch(f))
 	}
 	// A compatible positional occurrence supersedes the earlier retention
 	// even when only a prefix of known slots is updated (§6.6).
@@ -287,7 +287,7 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	// a count past the declared slots keeps them and counts one clamp; the
 	// excess skips via the length (§4, internal/tablewire arrayBody)
 	g.pf("\tvar keep = count;\n")
-	g.pf("\tif (keep > %d || keep < 0) { keep = %d; p.report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+	g.pf("\tif (keep > %d || keep < 0) { p.report.refuse('count_over_bound'); keep = 0; }\n", f.ArrayBound)
 	if wc != "" && !f.Type.Pointer {
 		// WIDENED at an element kind (§4): every element decodes at the wire
 		// kind's width, and ONE `widened` counts for the field
@@ -295,7 +295,7 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 		g.emitWidenedElems(f, ek, "out", "p", "\t\t")
 		g.pf("\t} else {\n")
 		g.pf("\t\tfor (var i = 0; i < keep; i++) {\n")
-		g.emitGetElemBad(f, ek, "out", "p", "\t\t\t", "{ p.report.malformed = true; break; }")
+		g.emitGetElemBad(f, ek, "out", "p", "\t\t\t", "{ p.report.refuse('wire_damaged'); break; }")
 		g.pf("\t\t}\n")
 		g.pf("\t}\n")
 	} else {
@@ -307,7 +307,7 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 			// standing: the last occurrence wins whole, damaged or not (§3, §4).
 			g.pf("\t\tif (p.has(1)) v.%s[i] = %s();\n", fieldMember(f), f.Type.Name)
 		}
-		g.emitGetElemBad(f, ek, "out", "p", "\t\t", "{ p.report.malformed = true; break; }")
+		g.emitGetElemBad(f, ek, "out", "p", "\t\t", "{ p.report.refuse('wire_damaged'); break; }")
 		g.pf("\t}\n")
 	}
 	// The decoded prefix lands in the field's own slots (internal/tablewire
@@ -339,11 +339,11 @@ func (g *wireGen) emitKeyedHelper(st *ir.Struct, f *ir.Field) {
 	// every slot read at the wire kind's width
 	if wc := widenCond(ek); wc != "" {
 		g.pf("\tif (elemKind != %d) {\n", ek)
-		g.pf("\t\tif (!(%s)) { p.report.kindMismatch++;%s return true; }\n", wc, g.absentOnMismatch(f))
+		g.pf("\t\tif (!(%s)) { p.report.refuse('kind_mismatch');%s return true; }\n", wc, g.absentOnMismatch(f))
 		g.pf("\t\tp.report.widened++;\n")
 		g.pf("\t}\n")
 	} else {
-		g.pf("\tif (elemKind != %d) { p.report.kindMismatch++;%s return true; }\n", ek, g.absentOnMismatch(f))
+		g.pf("\tif (elemKind != %d) { p.report.refuse('kind_mismatch');%s return true; }\n", ek, g.absentOnMismatch(f))
 	}
 	// The triples land in the field's own slots, in place (internal/tablewire
 	// keyed): a slot the body never sends keeps what it held, damage inside the
@@ -352,11 +352,11 @@ func (g *wireGen) emitKeyedHelper(st *ir.Struct, f *ir.Field) {
 	g.pf("\tfinal slots = v.%s;\n", fieldMember(f))
 	g.pf("\tfor (var k = 0; k < pairs || pairs < 0; k++) {\n")
 	g.pf("\t\tfinal keyRef = p.readLeb();\n")
-	g.pf("\t\tif (keyRef == null || keyRef == 0) { p.report.malformed = true; break; }\n")
+	g.pf("\t\tif (keyRef == null || keyRef == 0) { p.report.refuse('wire_damaged'); break; }\n")
 	g.pf("\t\tfinal vid = p.refToId[keyRef];\n")
-	g.pf("\t\tif (vid == null) { p.report.malformed = true; break; }\n")
+	g.pf("\t\tif (vid == null) { p.report.refuse('wire_damaged'); break; }\n")
 	g.pf("\t\tfinal n = p.readLeb();\n")
-	g.pf("\t\tif (n == null || n < 0 || !p.has(n)) { p.report.malformed = true; break; }\n")
+	g.pf("\t\tif (n == null || n < 0 || !p.has(n)) { p.report.refuse('wire_damaged'); break; }\n")
 	g.pf("\t\tfinal slot = switch (vid) {")
 	for i := range e.Variants {
 		g.pf(" %s => %d,", dartU64Literal(ir.TableWireId(e.VariantWireName(i))), i)
@@ -381,10 +381,10 @@ func (g *wireGen) emitLoadArray(st *ir.Struct, f *ir.Field, ind string) {
 	if isKeyed(f) {
 		kind, helper = wireKindKeyed, arrayHelper(st, f, "Keyed")
 	}
-	g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, kind)
+	g.pf("%s\tif (kind != %d) { r.report.refuse('kind_mismatch'); return; }\n", ind, kind)
 	g.pf("%s\t{\n", ind)
 	g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
+	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }\n", ind)
 	g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 	g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 	// Both arrays read their header against the parent: a count past the
@@ -396,7 +396,7 @@ func (g *wireGen) emitLoadArray(st *ir.Struct, f *ir.Field, ind string) {
 	// past it.
 	g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
 	g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
-	g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+	g.pf("%s\t\tif (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }\n", ind)
 	g.pf("%s\t\t%s(TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end), v, elemKind, count%s);\n", ind, helper, g.hadArg())
 	g.pf("%s\t\tr.pos = end;\n", ind)
 	g.pf("%s\t}\n", ind)

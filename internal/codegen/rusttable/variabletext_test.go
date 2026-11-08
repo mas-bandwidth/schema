@@ -122,14 +122,12 @@ fn main() {
         panic!("out-of-range enum was not counted: {}", r4.unknown);
     }
 
-    // §16.2: a string longer than N is clamped to N and counted, never cut
-    // through a character.
+    // STRICT-ONLY (docs/plans/strict-only.md): a string longer than N refuses
+    // the whole read; nothing is clamped.
     let mut r5 = TableReport::default();
     let long_id = "x".repeat(100);
-    let v5 = card_from_json(&format!("{{\"id\": {:?}}}\n", long_id), &mut r5).expect("clamp");
-    assert_eq!(v5.id.len(), 64);
-    if r5.clamped < 1 {
-        panic!("over-bound string was not clamped: {}", r5.clamped);
+    if card_from_json(&format!("{{\"id\": {:?}}}\n", long_id), &mut r5).is_some() || !r5.damaged {
+        panic!("over-bound string was not refused: {:?}", r5);
     }
 
     println!("REFUSALS OK");

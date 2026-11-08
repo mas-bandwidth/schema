@@ -112,14 +112,14 @@ _M.SaveText <- function(T, rootName, value) {
 // set, or a CR or LF present — and every other base64 failure is
 // base64_damaged (§16.8). A decoded wire then goes through ReadStrict (§6.5),
 // so a refusal carries the binary reader's name and field; unknown, widened and
-// duplicate alone do not refuse.
+// repeated alone do not refuse.
 _M.LoadText <- function(T, rootName, text, report) {
   if (!("unknown" in report)) report.unknown <- 0;
-  if (!("kindMismatch" in report)) report.kindMismatch <- 0;
+  if (!("mismatch" in report)) report.mismatch <- 0;
   if (!("widened" in report)) report.widened <- 0;
-  if (!("clamped" in report)) report.clamped <- 0;
-  if (!("duplicate" in report)) report.duplicate <- 0;
-  if (!("malformed" in report)) report.malformed <- false;
+  if (!("oor" in report)) report.oor <- 0;
+  if (!("repeated" in report)) report.repeated <- 0;
+  if (!("bodyDamaged" in report)) report.bodyDamaged <- false;
   if (!("refused" in report)) report.refused <- false;
   report.reason <- null;
   report.field <- null;

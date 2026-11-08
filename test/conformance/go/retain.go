@@ -55,13 +55,21 @@ func retainSurface(lines []line, out string, saves bool) error {
 		}
 		root := tblrt1.NodeLoadRetain(region, wire, &store, &report)
 		if root == nil || report.Refused() {
-			return fmt.Errorf("%s load failed: %+v", f[1], report)
+			// THE ONE READ'S VERDICT is the answer (test/conformance/README.md):
+			// a refused retaining read owes the refusal alone, and no bytes
+			if saves {
+				continue
+			}
+			if err := spill(out, f[1], []byte("refused\n")); err != nil {
+				return err
+			}
+			continue
 		}
-		retained, lost, unknown := report.Retained, report.RetainLost, report.Unknown
 		n = tblrt1.NodeMeasureRetain(root, &store)
 		if n < 0 {
 			return fmt.Errorf("%s retaining measure refused", f[1])
 		}
+		lost := report.RetainLost
 		wireOut := make([]byte, n)
 		if tblrt1.NodeSaveRetain(root, &store, wireOut, &report) != n {
 			return fmt.Errorf("%s retaining save refused", f[1])
@@ -73,7 +81,18 @@ func retainSurface(lines []line, out string, saves bool) error {
 			return fmt.Errorf("%s save is not repeatable", f[1])
 		}
 		if !saves {
-			wireOut = []byte(fmt.Sprintf("%d,%d,%d %d\n", retained, lost, unknown, saveLost))
+			// the verdict, then the §16 text of the known value the read left:
+			// retention keeps the unknown records for the save and never
+			// changes the value a reader of this build sees
+			size := tblrt1.NodeToJSONMeasure(root)
+			if size < 0 {
+				return fmt.Errorf("%s: ToJSONMeasure refused the value", f[1])
+			}
+			text := make([]byte, size)
+			if tblrt1.NodeToJSON(root, text) != size {
+				return fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", f[1])
+			}
+			wireOut = append([]byte("read\n"), text...)
 		}
 		if err := spill(out, f[1], wireOut); err != nil {
 			return err

@@ -155,7 +155,7 @@ fn r28_guard_chain_outer_tag_guards_inner_entries() {
         "guard chain GREEN: tail 7 lands unguarded",
     );
     check(
-        !report.malformed && !report.refused,
+        !report.damaged && !report.refused,
         "guard chain GREEN: no damage or refusal",
     );
 

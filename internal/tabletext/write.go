@@ -625,7 +625,7 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 func writeString(w *writer, s []byte) {
 	const hex = "0123456789abcdef"
 	w.put('"')
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		c := s[i]
 		switch c {
 		case '"':

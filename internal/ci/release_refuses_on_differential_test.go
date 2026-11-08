@@ -48,7 +48,7 @@ func TestReleaseRefusesOnDifferentialReachesDifferential(t *testing.T) {
 	}
 	const recipe = "\t$(MAKE) --no-print-directory release-differential"
 	count := 0
-	for _, line := range strings.Split(makefile, "\n") {
+	for line := range strings.SplitSeq(makefile, "\n") {
 		if line == recipe {
 			count++
 		}

@@ -9,7 +9,7 @@
 //   _M.ToJson(T, root, value)        the text (a string) or null: refused (§16.3)
 //   _M.ToJsonMeasure(T, root, value) its byte length, or -1 for the same refusals
 //   _M.FromJson(T, root, text, report)  a fresh root instance holding what the
-//       text placed (§16.1); report.malformed says the text was not read whole
+//       text placed (§16.1); report.bodyDamaged says the text was not read whole
 //
 // T is a unit's table module; root is the root table's schema name; text is
 // a string or a blob; report is the caller's §4 report, filled in place.
@@ -233,7 +233,10 @@ local floatText = function(v, single) {
     if (digits >= high) return text;
     local back = tokenFloat(text);
     if (single) {
-      if (widenF32(narrowF32(back, 0)[0]) == v) return text;
+      // read back as a float32 READER reads it, rounded ONCE (parseF32): a
+      // decimal through a double and then to float32 can land on the other
+      // side of a float32 midpoint (text_float32_double_round)
+      if (parseF32(text)[0] == v) return text;
     } else if (back == v) {
       return text;
     }
@@ -659,7 +662,7 @@ local mapKeyNumber = function(tok) {
 };
 
 // THE KEY'S DOMAIN (§2.8): a key that does not fit its kind drops its WHOLE
-// entry as kind_mismatch; it never clamps, because a clamped key merges two
+// entry as kind_mismatch; it never clamps, because a oor key merges two
 // identities into one.
 local mapKeyInDomain = function(kd, num) {
   if (num.saturated || num.fractional) return [false, 0];
@@ -1378,7 +1381,14 @@ local scanUnit = function(r) {
           if (low >= 0xdc00 && low <= 0xdfff) code = 0x10000 + ((high - 0xd800) << 10) + (low - 0xdc00);
           else r.p = mark;
         }
-        if (code >= 0xd800 && code <= 0xdfff) code = 0xfffd;
+        // A LONE OR OUT-OF-ORDER SURROGATE ESCAPE REFUSES (docs/plans/strict-only.md
+        // decision 9, §16.3): it names no code point, and a U+FFFD would make
+        // two texts one value
+        if (code >= 0xd800 && code <= 0xdfff) {
+          if (!("reason" in r.report) || r.report.reason == null) r.report.reason <- "malformed";
+          r.bad = true;
+          return null;
+        }
         return encodeUTF8(code);
       }
     }
@@ -1404,23 +1414,23 @@ local scanUnit = function(r) {
   return unit;
 };
 
-// one JSON string as bytes, clamped at a code point boundary (read.go
-// scanString): capacity < 0 is unbounded. Answers [bytes, clamped] or null.
+// one JSON string as bytes, oor at a code point boundary (read.go
+// scanString): capacity < 0 is unbounded. Answers [bytes, oor] or null.
 local scanBytes = function(r, capacity) {
   if (peek(r) != '"') { r.bad = true; return null; }
   r.p++;
   local out = [];
-  local clamped = false;
+  local oor = false;
   for (;;) {
     local u = scanUnit(r);
     if (u == null) return null;
     if (u == "done") break;
     // A CLAMP IS A PREFIX: once one code point does not fit, nothing after it
     // is placed
-    if (clamped || (capacity >= 0 && out.len() + u.len() > capacity)) { clamped = true; continue; }
+    if (oor || (capacity >= 0 && out.len() + u.len() > capacity)) { oor = true; continue; }
     out.extend(u);
   }
-  return [out, clamped];
+  return [out, oor];
 };
 
 // a key, compared as a string
@@ -1450,7 +1460,7 @@ local textZero = function(r, name) {
 // text refuses by name before anything is placed; a zero refuses the read as
 // text_holds_zero for `where`; then the code points are TRANSCODED to UTF-16
 // code units, and a value longer than `bound` units is CLAMPED as a prefix of
-// whole code points, so a pair is never split. Answers [units, clamped], or
+// whole code points, so a pair is never split. Answers [units, oor], or
 // null when the read refused.
 local scanWide = function(r, bound, where) {
   local s = scanBytes(r, -1);
@@ -1458,7 +1468,7 @@ local scanWide = function(r, bound, where) {
   local b = s[0];
   if (hasZero(b)) { textZero(r, where); return null; }
   local units = [];
-  local clamped = false;
+  local oor = false;
   local i = 0, n = b.len();
   while (i < n) {
     local c = b[i] & 0xff;
@@ -1470,7 +1480,7 @@ local scanWide = function(r, bound, where) {
     for (local k = 1; k < want; k++) code = (code << 6) | (b[i + k] & 0x3f);
     i += want;
     local need = code >= 0x10000 ? 2 : 1;
-    if (units.len() + need > bound) { clamped = true; break; }
+    if (units.len() + need > bound) { oor = true; break; }
     if (need == 1) units.append(code);
     else {
       code -= 0x10000;
@@ -1478,7 +1488,7 @@ local scanWide = function(r, bound, where) {
       units.append(0xDC00 + (code & 0x3ff));
     }
   }
-  return [units, clamped];
+  return [units, oor];
 };
 
 // ONE RFC 8259 number (read.go walkNumber, scanNumber): [token, integral] or
@@ -1563,6 +1573,7 @@ skipContainer = function(r, close, depth) {
   if (depth > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local first = true;
+  local keys = null;
   for (;;) {
     local c = peek(r);
     if (c == close) { r.p++; return true; }
@@ -1572,6 +1583,11 @@ skipContainer = function(r, close, depth) {
       if (key == null) return false;
       if (peek(r) != ':') { r.bad = true; return false; }
       r.p++;
+      // A REPEATED KEY IS DAMAGE IN EVERY OBJECT OF THE TEXT, a skipped one
+      // included (decision 5, §16.2, §16.12; read.go skipContainer)
+      if (keys == null) keys = {};
+      if (key in keys) { r.bad = true; return false; }
+      keys[key] <- true;
       if (key.len() > 0 && key[0] == '&' && r.graph != null) {
         if (!first || !skippedAmpersand(r, key)) { r.bad = true; return false; }
         first = false;
@@ -1621,6 +1637,7 @@ readTable = function(T, c, r, v, depth) {
 // its reader scanned to see whether it was "&node".
 readKeys = function(T, c, r, v, depth, firstKey) {
   local seen = {};
+  local keysSeen = {};
   for (;;) {
     local key;
     if (firstKey != null) {
@@ -1638,12 +1655,15 @@ readKeys = function(T, c, r, v, depth, firstKey) {
     // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (§16.7): malformed among
     // the keys a reader places, never unknown
     if (key.len() > 0 && key[0] == '&') { r.bad = true; return false; }
+    // A REPEATED KEY, known or not, IS DAMAGE (decision 5, §16.2): no writer
+    // produces it, so the whole text refuses
+    if (key in keysSeen) { r.bad = true; return false; }
+    keysSeen[key] <- true;
     if (!(key in c.byKey)) {
       r.report.unknown++;
       if (!skipValue(r, depth + 1)) return false;
     } else {
       local fd = c.byKey[key];
-      if (fd.name in seen) r.report.duplicate++;
       seen[fd.name] <- true;
       local shape = valueShape(r);
       if (shape == 'z' && takesNull(fd)) {
@@ -1654,7 +1674,7 @@ readKeys = function(T, c, r, v, depth, firstKey) {
         if (fd.optional) v[fd.member + "Present"] = false;
       } else {
         if (shape != shapeOf(T, fd)) {
-          r.report.kindMismatch++;
+          r.report.mismatch++;
           if (!skipValue(r, depth + 1)) return false;
         } else if (!readField(T, c, fd, r, v, depth)) {
           return false;
@@ -1673,7 +1693,7 @@ readKeys = function(T, c, r, v, depth, firstKey) {
 
 // a bytes(N) or *bytes body six bits at a time (read.go readBase64): '='
 // anywhere is padding, a byte outside the alphabet makes the body the wrong
-// shape (one kind mismatch), and past the bound the excess is clamped.
+// shape (one kind mismatch), and past the bound the excess is oor.
 // Answers [blob or null when not base64] or null where the text is not JSON.
 local b64val = function(c) {
   if (c >= 'A' && c <= 'Z') return c - 'A';
@@ -1687,7 +1707,7 @@ local readBase64 = function(r, bound) {
   if (peek(r) != '"') { r.bad = true; return null; }
   r.p++;
   local out = [];
-  local acc = 0, held = 0, clamped = false, bad = false;
+  local acc = 0, held = 0, oor = false, bad = false;
   for (;;) {
     if (r.p >= r.n) { r.bad = true; return null; }
     local c = r.t[r.p];
@@ -1701,11 +1721,11 @@ local readBase64 = function(r, bound) {
     if (held >= 8) {
       held -= 8;
       if (bound < 0 || out.len() < bound) out.append((acc >> held) & 0xff);
-      else clamped = true;
+      else oor = true;
     }
   }
-  if (bad) { r.report.kindMismatch++; return [null]; }
-  if (clamped) r.report.clamped++;
+  if (bad) { r.report.mismatch++; return [null]; }
+  if (oor) r.report.oor++;
   return [bytesToBlob(out)];
 };
 
@@ -1731,14 +1751,14 @@ readField = function(T, c, fd, r, v, depth) {
       local s = scanBytes(r, fd.bound > 0 ? fd.bound : -1);
       if (s == null) return false;
       if (hasZero(s[0])) return textZero(r, c.name + "." + fd.name);
-      if (s[1]) r.report.clamped++;
+      if (s[1]) r.report.oor++;
       v[fd.member] = bytesToString(s[0]);
       return true;
     }
     case "wstr": {
       local w = scanWide(r, fd.bound, c.name + "." + fd.name);
       if (w == null) return false;
-      if (w[1]) r.report.clamped++;
+      if (w[1]) r.report.oor++;
       v[fd.member] = w[0];
       return true;
     }
@@ -1763,7 +1783,7 @@ readField = function(T, c, fd, r, v, depth) {
 
 // an array re-established before placing (read.go readArray, readTextList):
 // a fixed array keeps its bound and its tail's zeros, a bounded one counts
-// the excess clamped, a listed one reads every element; a null element of
+// the excess oor, a listed one reads every element; a null element of
 // an array of pointers is a null slot
 readArray = function(T, c, fd, r, v, depth) {
   if (peek(r) != '[') { r.bad = true; return false; }
@@ -1787,14 +1807,14 @@ readArray = function(T, c, fd, r, v, depth) {
     if (!fixed && placed == out.len() && placed < bound) out.append(elemZero(T, e));
     local vs = valueShape(r);
     if (placed >= bound) {
-      r.report.clamped++;
+      r.report.oor++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (vs == 'z' && (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob")) {
       if (!literal(r, "null")) return false;
       out[placed] = null;
       placed++;
     } else if (vs != shape) {
-      r.report.kindMismatch++;
+      r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
       placed++;
     } else if (text) {
@@ -1806,7 +1826,7 @@ readArray = function(T, c, fd, r, v, depth) {
         local s = scanBytes(r, e.shape == "str" && e.bound > 0 ? e.bound : -1);
         if (s == null) return false;
         if (hasZero(s[0])) return textZero(r, c.name + "." + fd.name);
-        if (s[1]) r.report.clamped++;
+        if (s[1]) r.report.oor++;
         out[placed] = bytesToString(s[0]);
       }
       placed++;
@@ -1836,7 +1856,7 @@ readTextArray = function(T, c, fd, r, v, depth) {
   local vf = ed.fields[0];
   local capacity = (!vf.unbounded && vf.bound > 0) ? vf.bound : -1;
   // A TEXT LIST'S TOTAL (§2.13): the longest prefix whose bytes fit is kept;
-  // the element that would cross it and every later one are dropped, clamped
+  // the element that would cross it and every later one are dropped, oor
   // counted once, and an element past [..N] is counted as well.
   local total = ("total" in fd) ? fd.total : -1;
   local spent = 0, full = false, seen = 0;
@@ -1849,24 +1869,24 @@ readTextArray = function(T, c, fd, r, v, depth) {
     local before = out.len();
     seen++;
     if (full) {
-      if (seen > bound) r.report.clamped++;
+      if (seen > bound) r.report.oor++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (out.len() >= bound) {
-      r.report.clamped++;
+      r.report.oor++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (fd.textlist == 2 && vs == 'z') {
       if (!literal(r, "null")) return false;
       rec.ValuePresent = false;
       out.append(rec);
     } else if (vs != 's') {
-      r.report.kindMismatch++;
+      r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
       out.append(rec);
     } else {
       local s = scanBytes(r, capacity);
       if (s == null) return false;
       if (hasZero(s[0])) return textZero(r, c.name + "." + fd.name);
-      if (s[1]) r.report.clamped++;
+      if (s[1]) r.report.oor++;
       rec.Value = bytesToString(s[0]);
       if (fd.textlist == 2) rec.ValuePresent = true;
       out.append(rec);
@@ -1878,7 +1898,7 @@ readTextArray = function(T, c, fd, r, v, depth) {
         spent += n;
       } else {
         out.pop();
-        r.report.clamped++;
+        r.report.oor++;
         full = true;
       }
     }
@@ -1894,8 +1914,8 @@ readTextArray = function(T, c, fd, r, v, depth) {
 
 // an enum-keyed array: an OBJECT keyed by VARIANT NAME (read.go readKeyed).
 // Every slot back to its zero once; an absent key keeps it; a key that names
-// no slot, "None" included, is unknown each time and never a duplicate; a
-// repeated slot is a duplicate, counted before the shape check.
+// no slot, "None" included, is unknown each time and never a repeated; a
+// repeated slot is a repeated, counted before the shape check.
 readKeyed = function(T, c, fd, r, v, depth) {
   if (peek(r) != '{') { r.bad = true; return false; }
   r.p++;
@@ -1905,6 +1925,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
   v[fd.member] = out;
   local shape = elemShapeOf(T, e);
   local seen = {};
+  local seenKeys = {};
   for (;;) {
     local ch = peek(r);
     if (ch == '}') { r.p++; break; }
@@ -1919,15 +1940,18 @@ readKeyed = function(T, c, fd, r, v, depth) {
         if (fd.keyvariants[k][0] == key) { slot = k; break; }
       }
     }
+    // A REPEATED SLOT OR KEY IS DAMAGE (decision 5, §16.2)
+    if (key in seenKeys) { r.bad = true; return false; }
+    seenKeys[key] <- true;
     if (slot >= 0) {
-      if (slot in seen) r.report.duplicate++;
+      if (slot in seen) { r.bad = true; return false; }
       seen[slot] <- true;
     }
     if (slot < 0) {
       r.report.unknown++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (valueShape(r) != shape) {
-      r.report.kindMismatch++;
+      r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (!readScalar(T, e, r, out, slot, depth + 1, c.name + "." + fd.name)) {
       return false;
@@ -1946,7 +1970,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
 // bytes; an integer key is its decimal spelling read by the integer rule
 // alone. A key that is not a JSON number stops the read as malformed; a
 // fractional or out-of-domain key drops the entry as kind_mismatch; a key past
-// its storage drops it as clamped, because keys never clamp; a repeated key is
+// its storage drops it as oor, because keys never clamp; a repeated key is
 // last-wins and counted. The entries are sorted into ASCENDING KEY ORDER, the
 // order the wire and the writer hold (§2.8).
 readMap = function(T, c, fd, r, v, depth) {
@@ -1960,7 +1984,7 @@ readMap = function(T, c, fd, r, v, depth) {
     if (ch == '}') { r.p++; break; }
     if (ch == 0) { r.bad = true; return false; }
     // A STRING KEY IS READ AT ITS OWN DECLARATION'S BOUND (§2.8): a key past
-    // its bound drops its entry as clamped, never as a shorter key. An
+    // its bound drops its entry as oor, never as a shorter key. An
     // integer key's token is bounded by the number walk's own
     // tableJsonMaxNumber, and a token past it is the wrong shape.
     local kb = scanBytes(r, kd.shape == "str" ? -1 : MAX_NUMBER);
@@ -1972,22 +1996,22 @@ readMap = function(T, c, fd, r, v, depth) {
     local placed = false;
     if (kb[1]) {
       // A KEY THE SCAN COULD NOT HOLD WHOLE IS NOT A SHORTER KEY (§2.8)
-      if (kd.shape == "str") r.report.clamped++;
-      else r.report.kindMismatch++;
+      if (kd.shape == "str") r.report.oor++;
+      else r.report.mismatch++;
     } else if (kd.shape == "str") {
       if (hasZero(kb[0])) return textZero(r, c.name + "." + fd.name);
-      if (kd.bound > 0 && key.len() > kd.bound) r.report.clamped++;
+      if (kd.bound > 0 && key.len() > kd.bound) r.report.oor++;
       else { ent[kd.member] = key; placed = true; }
     } else {
       local num = mapKeyNumber(key);
       if (num == null) {
         // a token the number rule calls malformed stops the read (§16.1)
-        r.report.malformed = true;
+        r.report.bodyDamaged = true;
         r.bad = true;
         return false;
       }
       local dom = mapKeyInDomain(kd, num);
-      if (!dom[0]) r.report.kindMismatch++;
+      if (!dom[0]) r.report.mismatch++;
       else { ent[kd.member] = dom[1]; placed = true; }
     }
     local valueOk = false;
@@ -2003,7 +2027,7 @@ readMap = function(T, c, fd, r, v, depth) {
         if (vd.optional) ent[vd.member + "Present"] = false;
         valueOk = true;
       } else if (shape != shapeOf(T, vd)) {
-        r.report.kindMismatch++;
+        r.report.mismatch++;
         if (!skipValue(r, depth + 1)) return false;
       } else if (!readField(T, ed, vd, r, ent, depth)) {
         return false;
@@ -2017,8 +2041,10 @@ readMap = function(T, c, fd, r, v, depth) {
       for (local i = 0; i < out.len(); i++) {
         if (mapKeyOrder(kd, out[i][kd.member], ent[kd.member]) == 0) { at = i; break; }
       }
-      if (at >= 0) { r.report.duplicate++; out[at] = ent; }
-      else out.append(ent);
+      // A REPEATED MAP KEY, judged as the reader decodes it, IS DAMAGE
+      // (decisions 5 and 11, §2.8)
+      if (at >= 0) { r.bad = true; return false; }
+      out.append(ent);
     }
     ch = peek(r);
     if (ch == ',') { r.p++; continue; }
@@ -2075,7 +2101,7 @@ readPointerCell = function(T, c, r, holder, key, depth) {
     if (entry.open) { r.bad = true; return false; }
     holder[key] = null;
     if (entry.c == null) return true;
-    if (entry.c != c) { r.report.kindMismatch++; return true; }
+    if (entry.c != c) { r.report.mismatch++; return true; }
     holder[key] = entry.node;
     return true;
   }
@@ -2134,8 +2160,8 @@ local integerOf = function(bound) {
 local placeInteger = function(d, tok, integral, report) {
   local signed = d.kind >= 2 && d.kind <= 5;
   local num = interpretInteger(tok, integral);
-  if (!num.finite || num.fractional) { report.kindMismatch++; return null; }
-  if (num.saturated) report.clamped++;
+  if (!num.finite || num.fractional) { report.mismatch++; return null; }
+  if (num.saturated) report.oor++;
   local mag = num.mag, neg = num.neg;
   local lo = null, hi = null;
   if (d.lo != null && typeof d.lo == "integer") {
@@ -2150,7 +2176,7 @@ local placeInteger = function(d, tok, integral, report) {
     local b = null;
     if (scale < lo) b = integerOf(lo);
     else if (scale > hi) b = integerOf(hi);
-    if (b != null) { mag = b.mag; neg = b.neg; report.clamped++; }
+    if (b != null) { mag = b.mag; neg = b.neg; report.oor++; }
   }
   local bytes = d.width;
   if (d.bits != null && d.bits > 0) bytes = d.bits <= 32 ? 4 : 8;
@@ -2158,16 +2184,16 @@ local placeInteger = function(d, tok, integral, report) {
     local high = bytes < 8 ? (1 << (bytes * 8 - 1)) - 1 : 0x7fffffffffffffff;
     if (neg) {
       local low = high + 1;
-      if (ult(low, mag)) { mag = low; report.clamped++; }
+      if (ult(low, mag)) { mag = low; report.oor++; }
       return -mag;
     }
-    if (ult(high, mag)) { mag = high; report.clamped++; }
+    if (ult(high, mag)) { mag = high; report.oor++; }
     return mag;
   }
   // A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO
-  if (neg) { report.clamped++; return 0; }
+  if (neg) { report.oor++; return 0; }
   local high = bytes < 8 ? (1 << (bytes * 8)) - 1 : MAXU;
-  if (ult(high, mag)) { mag = high; report.clamped++; }
+  if (ult(high, mag)) { mag = high; report.oor++; }
   return mag;
 };
 
@@ -2182,16 +2208,16 @@ local placeFloat = function(d, tok, report) {
   } else {
     value = tokenFloat(tok);
   }
-  if (!isFinite(value)) { report.kindMismatch++; return null; }
+  if (!isFinite(value)) { report.mismatch++; return null; }
   if (has(d, "fmin")) {
-    if (value < d.fmin) { value = d.fmin; report.clamped++; }
-    else if (value > d.fmax) { value = d.fmax; report.clamped++; }
+    if (value < d.fmin) { value = d.fmin; report.oor++; }
+    else if (value > d.fmax) { value = d.fmax; report.oor++; }
     else if (value == 0.0) value = 0.0;
   }
   if (d.f32) {
     local nb = narrowF32(value, 0)[0];
     local back = widenF32(nb);
-    if (!isFinite(back)) { report.kindMismatch++; return null; }
+    if (!isFinite(back)) { report.mismatch++; return null; }
     value = back;
   }
   return value;
@@ -2202,14 +2228,14 @@ local placeFloat = function(d, tok, report) {
 // clamps after it
 local placeWide = function(d, tok, report) {
   local pw = parseWide(tok, d.kind, has(d, "frac") ? d.frac : 0);
-  if (!pw[1]) { report.kindMismatch++; return null; }
-  if (pw[2]) report.clamped++;
+  if (!pw[1]) { report.mismatch++; return null; }
+  if (pw[2]) report.oor++;
   local v = pw[0];
   if (d.lo != null) {
     local lo = typeof d.lo == "array" ? svFromPair(d.lo, d.signed) : svFromInt(d.lo, d.signed);
     local hi = typeof d.hi == "array" ? svFromPair(d.hi, d.signed) : svFromInt(d.hi, d.signed);
-    if (svCmp(v, lo) < 0) { v = lo; report.clamped++; }
-    else if (svCmp(v, hi) > 0) { v = hi; report.clamped++; }
+    if (svCmp(v, lo) < 0) { v = lo; report.oor++; }
+    else if (svCmp(v, hi) > 0) { v = hi; report.oor++; }
   }
   return wideStore(d, v);
 };
@@ -2224,7 +2250,7 @@ local readFlags = function(d, r, depth) {
     if (ch == ']') { r.p++; break; }
     if (ch == 0) { r.bad = true; return null; }
     if (ch != '"') {
-      r.report.kindMismatch++;
+      r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return null;
     } else {
       local name = scanKey(r);
@@ -2283,14 +2309,14 @@ readScalar = function(T, d, r, holder, key, depth, where) {
       local s = scanBytes(r, d.bound > 0 ? d.bound : -1);
       if (s == null) return false;
       if (hasZero(s[0])) return textZero(r, where);
-      if (s[1]) r.report.clamped++;
+      if (s[1]) r.report.oor++;
       holder[key] = bytesToString(s[0]);
       return true;
     }
     case "wstr": {
       local w = scanWide(r, d.bound, where);
       if (w == null) return false;
-      if (w[1]) r.report.clamped++;
+      if (w[1]) r.report.oor++;
       holder[key] = w[0];
       return true;
     }
@@ -2349,7 +2375,7 @@ readUnion = function(T, u, r, holder, key, depth) {
   } else if (arm.payload == null) {
     // A PAYLOAD-FREE ARM'S VALUE IS null: the name selects it
     if (valueShape(r) != 'z') {
-      r.report.kindMismatch++;
+      r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else {
       if (!literal(r, "null")) return false;
@@ -2358,7 +2384,7 @@ readUnion = function(T, u, r, holder, key, depth) {
   } else if (arm.payload.shape == "tab") {
     local p = arm.payload;
     if (valueShape(r) != 'o') {
-      r.report.kindMismatch++;
+      r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else {
       local pc = tableDesc(T, p.table);
@@ -2378,7 +2404,7 @@ readUnion = function(T, u, r, holder, key, depth) {
       inst.Type = arm.tag;
       inst[p.member] = fresh[p.member];
     } else if (shape != shapeOf(T, p)) {
-      r.report.kindMismatch++;
+      r.report.mismatch++;
       if (!skipValue(r, depth + 1)) return false;
     } else {
       if (!readField(T, u, p, r, fresh, depth + 1)) return false;
@@ -2398,13 +2424,32 @@ readUnion = function(T, u, r, holder, key, depth) {
 // instance holds what was placed before any stop; a text that is not JSON,
 // or whose labels do not resolve, is malformed. A VARIABLE root reads with
 // the label map; a fixed root has none, which is what makes "&node" a
-// refusal there (§16.7). This is the TOLERANT read: it keeps the recovered
-// value and its counters; the plain FromJson is the strict read (§6.5).
-_M.FromJsonTolerant <- function(T, rootName, text, report) {
-  foreach (k in ["unknown", "kindMismatch", "widened", "clamped", "duplicate"]) {
+// refusal there (§16.7). It keeps the walked value and its counters for the
+// strict FromJson below, which is the only read a caller is handed (§6.5).
+//
+// THE STACK IS GROWN ONCE BEFORE THE FIRST WALK. A text at the depth cap
+// (graph_chain_text, 128 levels) reads each byte through the blob's native
+// _get, and the interpreter cannot resize its stack while inside a
+// metamethod: a fresh VM whose stack has not yet grown that deep stops with
+// "stack overflow". One recursion as deep as the walk's, with no metamethod
+// in it, grows the stack first; it never shrinks, so later reads pay nothing.
+local stackGrown = false;
+local growStack;
+growStack = function(n) {
+  local a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0, a7 = 0;
+  local b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, b7 = 0;
+  local c0 = 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0, c5 = 0, c6 = 0, c7 = 0;
+  if (n > 0) growStack(n - 1);
+};
+_M.fromJsonWalk <- function(T, rootName, text, report) {
+  if (!stackGrown) {
+    growStack(MAX_DEPTH * 4);
+    stackGrown = true;
+  }
+  foreach (k in ["unknown", "mismatch", "widened", "oor", "repeated"]) {
     if (!(k in report)) report[k] <- 0;
   }
-  if (!("malformed" in report)) report.malformed <- false;
+  if (!("bodyDamaged" in report)) report.bodyDamaged <- false;
   if (!("refused" in report)) report.refused <- false;
   local c = tableDesc(T, rootName);
   local r = newIn(text, report, c.variable ? {} : null);
@@ -2414,18 +2459,18 @@ _M.FromJsonTolerant <- function(T, rootName, text, report) {
     space(r);
     if (r.p != r.n) r.bad = true; // trailing rubbish is not one text
   }
-  if (r.bad || !ok) report.malformed = true;
+  if (r.bad || !ok) report.bodyDamaged = true;
   return v;
 };
 
 // THE STRICT FromJson (docs/SPEC-TABLES.md §6.5): the plain name is the strict
-// read. It runs the tolerant read and refuses whatever ReadStrict refuses,
+// read. It runs the walk read and refuses whatever ReadStrict refuses,
 // leaving the reason and the field in the report and answering null. A
 // missing | required field is named as ReadStrict names it: missing_required,
 // with the first missing field in report.field (§2.3, §16.2).
 _M.FromJson <- function(T, rootName, text, report) {
   if (report == null) report = {};
-  local v = _M.FromJsonTolerant(T, rootName, text, report);
+  local v = _M.fromJsonWalk(T, rootName, text, report);
   local reason = ("reason" in report) ? report.reason : null;
   local field = null;
   if (reason != null) {
@@ -2437,9 +2482,9 @@ _M.FromJson <- function(T, rootName, text, report) {
       reason = "missing_required";
     }
   }
-  if (reason == null && report.malformed) reason = "malformed";
-  if (reason == null && report.clamped > 0) reason = "clamped";
-  if (reason == null && report.kindMismatch > 0) reason = "kind_mismatch";
+  if (reason == null && report.bodyDamaged) reason = "malformed";
+  if (reason == null && report.oor > 0) reason = "out_of_range";
+  if (reason == null && report.mismatch > 0) reason = "kind_mismatch";
   if (reason != null) {
     report.reason <- reason;
     report.field <- field;

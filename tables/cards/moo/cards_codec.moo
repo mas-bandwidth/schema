@@ -71,11 +71,12 @@ local function toStorage(src: any): any
   return encode(T.CardDescriptor, src, {})
 end
 function M.NewCard(): any return fromStorage(T.NewCard()) end
+-- NewReport is the runtime's report at rest, the moo spelling of a zero Go
+-- TableReport.
+function M.NewReport(): any return L.newReport() end
 function M.Load(wire: string, report: any): any
   if type(wire) ~= "string" then return nil end
-  local value = L.load("Card", buffer.fromstring(wire), report)
-  if value == nil then return nil end
-  return fromStorage(value)
+  return fromStorage(L.ReadStrict("Card", buffer.fromstring(wire), report))
 end
 function M.FromJSON(text: string, report: any): any
   local value = T.NewCard()

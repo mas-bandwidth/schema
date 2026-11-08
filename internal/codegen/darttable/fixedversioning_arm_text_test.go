@@ -28,10 +28,9 @@ func TestFixedVersioningSecondArmText(t *testing.T) {
 			body := `
   final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == 3 && report.refused == 0 && !report.malformed,
+  check(n == 3 && report.refused == 0,
       'three independent records: n=$n ' + why(report));
-  check(report.unknown == 0 && report.kindMismatch == 0 &&
-      report.clamped == 0 && report.duplicate == 0 &&
+  check(report.unknown == 0 &&
       report.widened == WIDENED, 'exact report ' + why(report));
   check(values[0].flag && values[0].notePresent && values[0].note == 44 &&
       values[0].tail == 11, 'first record scalar/optional neighbours');
@@ -81,7 +80,7 @@ func TestFixedVersioningSecondArmText(t *testing.T) {
   final brokenReport = t.TableFixedReport();
   final brokenN = LOAD(broken, broken.length, data, data.length,
       t.fuRootFixedNewPlan(), brokenReport);
-  check(brokenN == 3 && brokenReport.refused == 0 && !brokenReport.malformed,
+  check(brokenN == 3 && brokenReport.refused == 0,
       'wrong guard stays silently readable');
   check(broken[0].pick.type == 2 &&
       broken[0].pick.labelled.labelLength == 0,

@@ -60,11 +60,11 @@ func TestDartWireLengthOverflow(t *testing.T) {
 			b.WriteString(`
 for(var repeat=0;repeat<2;repeat++){
  final r=w.TableWireReport();w.sceneWireLoad(data,r);
- check(r.malformed,'plain damaged length');
+ check(r.refused,'plain damaged length');
  final rr=w.TableWireReport();
  final store=w.TableRetain(4096,List.filled(32,0));
  w.sceneWireLoadRetain(data,store,rr);
- check(rr.malformed,'retaining damaged length');
+ check(rr.refused,'retaining damaged length');
  final measure=w.sceneWireMeasure(data);
 `)
 			if tc.node {

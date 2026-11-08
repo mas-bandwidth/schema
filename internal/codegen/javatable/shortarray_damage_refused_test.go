@@ -17,7 +17,8 @@ import (
 
 // A bytes(N) array body whose L is one byte short of its declared count is
 // damage, and DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
-// Java leg owes the refusal, malformed, and nothing it decoded is compared.
+// Java leg owes the refusal (no value, the report refused or damaged), and
+// nothing it decoded is compared.
 // The minimal mutant is a backenddemo.LoginRequest whose session_token
 // (bytes(32)) declares 32 bytes inside a body that carries 31.
 func TestJavaFixShortArrayDamageRefused(t *testing.T) {
@@ -42,7 +43,7 @@ func TestJavaFixShortArrayDamageRefused(t *testing.T) {
 		t.Fatalf("oracle refused the mutant's form: %v", err)
 	}
 	if !report.Refused {
-		t.Fatalf("oracle report %+v: the short body is not malformed", report)
+		t.Fatalf("oracle report %+v: the short body is not refused", report)
 	}
 
 	files, err := Generate(u)
@@ -90,11 +91,11 @@ func TestJavaFixShortArrayDamageRefused(t *testing.T) {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	var malformed int
-	if _, err := fmt.Sscanf(lines[len(lines)-1], "%d", &malformed); err != nil {
+	var refused int
+	if _, err := fmt.Sscanf(lines[len(lines)-1], "%d", &refused); err != nil {
 		t.Fatalf("driver output %q: %v", out, err)
 	}
-	if malformed != 1 {
+	if refused != 1 {
 		t.Fatalf("Java LoginRequest did not refuse a damaged load: %q", out)
 	}
 }
@@ -109,8 +110,8 @@ public final class ShortArrayDriver {
     public static void main(String[] args) throws Exception {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         ` + pkg + `.TableVariable.Report report = new ` + pkg + `.TableVariable.Report();
-        ` + pkg + `.LoginRequestVariable.load(wire, report);
-        System.out.println(report.malformed ? 1 : 0);
+        Object v = ` + pkg + `.LoginRequestVariable.load(wire, report);
+        System.out.println(v == null && (report.damaged || report.refused) ? 1 : 0);
     }
 }
 `

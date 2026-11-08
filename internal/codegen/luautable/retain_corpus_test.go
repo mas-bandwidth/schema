@@ -33,11 +33,13 @@ import (
 )
 
 type retainRow struct {
-	name, root, wire, capacity, ids, counters, save string
+	name, root, wire, capacity, ids, save string
 }
 
 // retainRows reads the manifest's tblrt1 `retain` rows, each
-// `retain <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save|->`.
+// `retain <case> <unit> <root> <wire> <capacity> <ids> <save|->`. The retain
+// counters are per-language diagnostics and are not pinned (strict-only,
+// layer 3: read, then write).
 func retainRows(t *testing.T) []retainRow {
 	t.Helper()
 	f, err := os.Open(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
@@ -49,10 +51,10 @@ func retainRows(t *testing.T) []retainRow {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		x := strings.Fields(sc.Text())
-		if len(x) < 10 || x[0] != "retain" || x[2] != "tblrt1" {
+		if len(x) < 8 || x[0] != "retain" || x[2] != "tblrt1" {
 			continue
 		}
-		rows = append(rows, retainRow{name: x[1], root: x[3], wire: x[4], capacity: x[5], ids: x[6], counters: x[7] + " " + x[8], save: x[9]})
+		rows = append(rows, retainRow{name: x[1], root: x[3], wire: x[4], capacity: x[5], ids: x[6], save: x[7]})
 	}
 	if err := sc.Err(); err != nil {
 		t.Fatal(err)
@@ -120,10 +122,9 @@ end
 local r = report()
 local v, store = R.LoadRetain(%q, inputs.wire, r, capacity, %s)
 assert(v ~= nil and not r.malformed, "the retained load refused")
-local lost = r.retainLost
 local out = R.SaveRetain(%q, v, store, r)
 assert(out ~= nil, "the retaining save refused")
-print(string.format("%%d,%%d,%%d %%d", r.retained, lost, r.unknown, r.retainLost - lost))
+print("read")
 print(hex(out :: buffer))
 `, row.capacity, row.root, ids, row.root, ids, row.root)
 		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(probe), 0o644); err != nil {
@@ -133,8 +134,8 @@ print(hex(out :: buffer))
 		if len(lines) != 2 {
 			t.Fatalf("%s: the probe printed %d lines, want 2", row.name, len(lines))
 		}
-		if lines[0] != row.counters {
-			t.Errorf("%s: counters %q, the manifest's %q", row.name, lines[0], row.counters)
+		if lines[0] != "read" {
+			t.Errorf("%s: the retained load answered %q, want read", row.name, lines[0])
 		}
 		if row.save == "-" {
 			continue

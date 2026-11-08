@@ -19,7 +19,7 @@ name: schema Lua generated luacheck gate
 # the pinned checker.
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:

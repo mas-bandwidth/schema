@@ -551,8 +551,8 @@ public final class KeyedWireDriver {
             Object back = r.fresh();
             TableVocabulary.Report rep = new TableVocabulary.Report();
             boolean ok = (Boolean) r.load.invoke(null, new TableMessage.Reader(m, 0, vocab, rep), back);
-            return ok && !rep.malformed && !rep.refused && rep.unknown == 0 && rep.kindMismatch == 0 &&
-                rep.widened == 0 && rep.clamped == 0 && dump(back).equals(dump(v));
+            return ok && !rep.damaged && !rep.refused && rep.unknown == 0 &&
+                rep.widened == 0 && dump(back).equals(dump(v));
         } catch (Throwable e) {
             return false;
         }
@@ -599,9 +599,9 @@ public final class KeyedWireDriver {
                     Class<?> var = Class.forName(PKG + "." + p[1] + "Variable");
                     TableVariable.Report rep = new TableVariable.Report();
                     Object v = var.getMethod("fromJson", byte[].class, TableVariable.Report.class).invoke(null, unhex(p[3]), rep);
-                    if (v == null || rep.malformed || rep.refused || rep.unknown != 0 || rep.clamped != 0 || rep.duplicate != 0) {
-                        out = "fromJson malformed=" + rep.malformed + " refused=" + rep.refused + " unknown=" + rep.unknown +
-                            " clamped=" + rep.clamped + " duplicate=" + rep.duplicate + " value=" + (v != null);
+                    if (v == null || rep.damaged || rep.refused || rep.unknown != 0) {
+                        out = "fromJson damaged=" + rep.damaged + " refused=" + rep.refused + " unknown=" + rep.unknown +
+                            " value=" + (v != null);
                     } else {
                         Class<?> c = Class.forName(PKG + "." + p[1] + "Variable$Value");
                         out = hex((byte[]) var.getMethod("save", c).invoke(null, v));
@@ -661,8 +661,8 @@ public final class KeyedWireDriver {
                     Object back = r.fresh();
                     TableVocabulary.Report rep = new TableVocabulary.Report();
                     boolean ok = (Boolean) r.load.invoke(null, new TableMessage.Reader(m, 0, vocab, rep), back);
-                    System.out.println("MSG " + tag + "load=" + ok + " malformed=" + rep.malformed + " unknown=" + rep.unknown +
-                        " kindMismatch=" + rep.kindMismatch + " " + dump(back));
+                    System.out.println("MSG " + tag + "load=" + ok + " damaged=" + rep.damaged + " unknown=" + rep.unknown +
+                        " refused=" + rep.refused + " " + dump(back));
                     byte[] whole = wholeMessage(r, v);
                     System.out.println("WIRE " + tag + (whole == null ? "refused" : hex(whole)));
                 } catch (Throwable e) {
@@ -961,7 +961,7 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 						}
 					}
 				case "MSG":
-					if strings.HasPrefix(kv, "load=true malformed=false") {
+					if strings.HasPrefix(kv, "load=true damaged=false") {
 						messages++
 					}
 				}
@@ -985,6 +985,16 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 				t.Fatalf("%s: the Go oracle refused the unkeyed announcement: %v", rel, err)
 			}
 			rb := newKeyedRebind(t, unkeyedUnit, keyedUnit)
+			// The variable codec writes form 1 for every root, a fixed-declared
+			// one included; the Go encoder writes form 3 for a fixed-declared
+			// root. The variable wire is held to the Go encoding of the same
+			// declarations without the fixed keyword (as the C++ discard gate
+			// does), the value carried across by its text.
+			formOne := unitFromDir(t, dir)
+			for _, st := range formOne.Tables {
+				st.FixedDeclared = false
+			}
+			fm := tabletext.NewModel(formOne)
 			var vjson strings.Builder
 			wantVariable := map[string]string{}
 			oracled := 0
@@ -1033,7 +1043,16 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 				if err != nil {
 					t.Fatalf("%s %s: the Go oracle does not write the keyed value's text: %v", rel, rest, err)
 				}
-				vwire, err := tablewire.Encode(km, inst)
+				fst := fm.Lookup(root)
+				if fst == nil {
+					t.Fatalf("%s: the form 1 oracle has no root %s", rel, root)
+				}
+				finst := fm.New(fst)
+				var frep tabletext.Report
+				if !fm.Read(finst, text, &frep) {
+					t.Fatalf("%s %s: the form 1 oracle refuses the keyed value's text: %+v", rel, rest, frep)
+				}
+				vwire, err := tablewire.Encode(fm, finst)
 				if err != nil {
 					t.Fatalf("%s %s: the Go oracle does not encode the keyed variable wire: %v", rel, rest, err)
 				}

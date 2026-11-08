@@ -53,9 +53,9 @@ func TestCyclicWireIsDamageRustNegativeControl(t *testing.T) {
 		}
 		t.Skipf("rustc is not on PATH: %v", err)
 	}
-	const sig = "if report.cycle_on_save { report.malformed = true; return None; }"
+	const sig = "if report.cycle_on_save { report.damaged = true; return None; }"
 	out, err := runRustCycleProbe(t, func(src string) string {
-		return strings.ReplaceAll(src, sig, "if false && report.cycle_on_save { report.malformed = true; return None; } // SABOTAGED")
+		return strings.ReplaceAll(src, sig, "if false && report.cycle_on_save { report.damaged = true; return None; } // SABOTAGED")
 	})
 	if err == nil {
 		t.Fatalf("the probe stayed green with cycle refusal disabled: the gate is blind\n%s", out)
@@ -131,27 +131,27 @@ func runRustCycleProbe(t *testing.T, edit func(string) string) (string, error) {
     ] {
         let mut r = TableReport::default();
         let v = list_node_load(wire, &mut r);
-        check(r.malformed && r.cycle_on_save && v.is_none(), &format!("{row}: load did not refuse cycle as damage"));
+        check(r.damaged && r.cycle_on_save && v.is_none(), &format!("{row}: load did not refuse cycle as damage"));
         let v_after = list_node_load(&CHAIN_TWO_WIRE, &mut r);
         check(
-            r.malformed && r.cycle_on_save && v_after.as_ref().is_some_and(|n| n.next.is_some()),
+            r.damaged && r.cycle_on_save && v_after.as_ref().is_some_and(|n| n.next.is_some()),
             &format!("{row}: reused report after cycle refusal poisoned subsequent valid CHAIN_TWO_WIRE load"),
         );
         let mut r_clean = TableReport { cycle_on_save: true, ..TableReport::default() };
         let v_clean = list_node_load(&CHAIN_TWO_WIRE, &mut r_clean);
         check(
-            !r_clean.malformed && r_clean.cycle_on_save && v_clean.as_ref().is_some_and(|n| n.next.is_some()),
+            !r_clean.damaged && r_clean.cycle_on_save && v_clean.as_ref().is_some_and(|n| n.next.is_some()),
             &format!("{row}: prior cycle_on_save with malformed=false poisoned subsequent valid CHAIN_TWO_WIRE load"),
         );
 
         let mut rr = TableReport::default();
         let mut store = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(1024) };
         let rv = list_node_load_retain(wire, &mut store, &mut rr);
-        check(rr.malformed && rr.cycle_on_save && rv.is_none(), &format!("{row}: retaining load did not refuse cycle as damage"));
+        check(rr.damaged && rr.cycle_on_save && rv.is_none(), &format!("{row}: retaining load did not refuse cycle as damage"));
         check(store.bytes.is_empty() && store.ids.is_empty(), &format!("{row}: retaining store was not cleared on cycle refusal"));
         let rv_after = list_node_load_retain(&CHAIN_TWO_WIRE, &mut store, &mut rr);
         check(
-            rr.malformed && rr.cycle_on_save && rv_after.as_ref().is_some_and(|n| n.next.is_some()),
+            rr.damaged && rr.cycle_on_save && rv_after.as_ref().is_some_and(|n| n.next.is_some()),
             &format!("{row}: reused report after retaining cycle refusal poisoned subsequent valid CHAIN_TWO_WIRE load"),
         );
     }
@@ -159,24 +159,24 @@ func runRustCycleProbe(t *testing.T, edit func(string) string) (string, error) {
     {
         let mut r = TableReport::default();
         let v = list_node_load(&OVERWRITTEN_WIRE, &mut r);
-        check(!r.malformed && v.as_ref().is_some_and(|n| n.next.is_none()), "overwritten_self_cycle: overwritten self-edge should load clean");
+        check(!r.damaged && v.as_ref().is_some_and(|n| n.next.is_none()), "overwritten_self_cycle: overwritten self-edge should load clean");
     }
 
     {
         let mut r = TableReport::default();
         let v = list_node_load(&CHAIN_TWO_WIRE, &mut r);
-        check(!r.malformed && v.as_ref().is_some_and(|n| n.next.is_some()), "node_chain_two: plain load failed");
+        check(!r.damaged && v.as_ref().is_some_and(|n| n.next.is_some()), "node_chain_two: plain load failed");
         let mut rr = TableReport::default();
         let mut store = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(1024) };
         let rv = list_node_load_retain(&CHAIN_TWO_WIRE, &mut store, &mut rr);
-        check(!rr.malformed && rv.as_ref().is_some_and(|n| n.next.is_some()), "node_chain_two: retaining load failed");
+        check(!rr.damaged && rv.as_ref().is_some_and(|n| n.next.is_some()), "node_chain_two: retaining load failed");
     }
 
     {
         let start = std::time::Instant::now();
         let mut r = TableReport::default();
         let v = scene_load(&DIAMOND_WIRE, &mut r);
-        check(!r.malformed && v.is_some(), "node_diamond_chain: diamond chain reported damage");
+        check(!r.damaged && v.is_some(), "node_diamond_chain: diamond chain reported damage");
         check(start.elapsed().as_millis() < 10_000, "node_diamond_chain: exceeded 10s linear deadline");
     }
 
@@ -359,12 +359,12 @@ func runRustCycleSlotKindsProbe(t *testing.T) {
         let mut r = TableReport::default();
         let v = node_load(wire, &mut r);
         if want_load {
-            if r.malformed || v.as_ref().is_none_or(|n| n.left.is_none()) {
-                eprintln!("FAIL: {name} did not load (malformed={})", r.malformed);
+            if r.damaged || v.as_ref().is_none_or(|n| n.left.is_none()) {
+                eprintln!("FAIL: {name} did not load (malformed={})", r.damaged);
                 std::process::exit(1);
             }
-        } else if !r.malformed || v.is_some() {
-            eprintln!("FAIL: {name} loaded (malformed={})", r.malformed);
+        } else if !r.damaged || v.is_some() {
+            eprintln!("FAIL: {name} loaded (malformed={})", r.damaged);
             std::process::exit(1);
         }
     }

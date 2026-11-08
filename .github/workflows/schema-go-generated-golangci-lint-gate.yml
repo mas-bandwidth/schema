@@ -7,7 +7,7 @@ name: schema Go generated golangci-lint gate
 # make/checks/schema-go-generated-golangci-lint-gate.ratchet.tsv.
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
   pull_request:
     branches: [ main, fixed-table-form, sprint/schema-go ]
   schedule:

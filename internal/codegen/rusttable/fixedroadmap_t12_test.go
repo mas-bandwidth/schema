@@ -85,7 +85,7 @@ func t12RequireRustToolchain(t *testing.T) {
 func t12F4(t *testing.T, corpus string) {
 	out := t12ProbeRun(t, corpus)
 	if line := t12Line(out, "F4"); line != "T12 F4 ok" {
-		t.Fatalf("rust/F4: truncated layout was not refused as layout_malformed: %s", line)
+		t.Fatalf("rust/F4: truncated layout was not refused as layout_damaged: %s", line)
 	}
 }
 
@@ -564,7 +564,7 @@ fn check_f4() -> Result<(), String> {
     if lineage_fixed_load(&mut clean, &good, &mut plan, &mut remap, &mut report) != Some(1) {
         return Err("positive control failed to load new_field_append.bin".into());
     }
-    if report.refused || report.malformed || report.reason != TableFixedReason::None {
+    if report.refused || report.damaged || report.reason != TableFixedReason::None {
         return Err("positive control set refused/malformed".into());
     }
 
@@ -579,16 +579,16 @@ fn check_f4() -> Result<(), String> {
         if got.is_some() {
             return Err(format!("cut={cut}: truncated layout loaded {:?}", got));
         }
-        if !r.refused || r.malformed || r.reason != TableFixedReason::LayoutMalformed {
+        if !r.refused || r.damaged || r.reason != TableFixedReason::LayoutMalformed {
             return Err(format!(
                 "cut={cut}: want refused LayoutMalformed, got refused={} malformed={} reason={}",
-                r.refused, r.malformed, r.reason.name()
+                r.refused, r.damaged, r.reason.name()
             ));
         }
         if r.reason.name() != "layout_malformed" || r.layout_hash != 0 {
             return Err(format!("cut={cut}: reason={} hash=0x{:x}", r.reason.name(), r.layout_hash));
         }
-        if r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.widened != 0 {
+        if r.unknown != 0 || r.widened != 0 {
             return Err(format!("cut={cut}: non-zero counters on layout_malformed"));
         }
         if !is_all_poison(&dst[0]) {
@@ -606,7 +606,7 @@ fn check_f4() -> Result<(), String> {
         if lineage_fixed_load(&mut dst, &forged, &mut plan, &mut remap, &mut r).is_some() {
             return Err(format!("bad_l={bad_l}: forged L loaded"));
         }
-        if !r.refused || r.malformed || r.reason != TableFixedReason::LayoutMalformed || r.layout_hash != 0 {
+        if !r.refused || r.damaged || r.reason != TableFixedReason::LayoutMalformed || r.layout_hash != 0 {
             return Err(format!("bad_l={bad_l}: wrong refusal {:?}", r.reason.name()));
         }
         if !is_all_poison(&dst[0]) {
@@ -777,7 +777,7 @@ fn check_p4() -> Result<(), String> {
     if widen_old::int_widen_fixed_load(&mut dst, &new_widen, &mut plan, &mut remap, &mut rep).is_some() {
         return Err("VOLD_int_widen accepted new_int_widen.bin instead of refusing layout_newer".into());
     }
-    if !rep.refused || rep.malformed || rep.reason != TableFixedReason::LayoutNewer || rep.layout_hash != new_hash {
+    if !rep.refused || rep.damaged || rep.reason != TableFixedReason::LayoutNewer || rep.layout_hash != new_hash {
         return Err("VOLD_int_widen did not report LayoutNewer with the file's hash".into());
     }
     if !is_all_poison(&dst[0]) {

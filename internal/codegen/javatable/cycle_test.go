@@ -148,8 +148,9 @@ func javaCycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
 }
 
 // javaCycleOverwritten builds a wire where the root body writes `left = 1`
-// (self-edge) followed by `left = 0` (null), so the final stored slot is
-// acyclic (SPEC-TABLES §3.1: the check is over the loaded graph).
+// (self-edge) followed by `left = 0` (null). Last-wins is retired: the same
+// field id twice in one body refuses the whole load (docs/plans/strict-only.md,
+// framing R5), whatever the final slot would have held.
 func javaCycleOverwritten(t *testing.T, m *tabletext.Model) []byte {
 	t.Helper()
 	wire := javaCycleEncode(t, m, 2, nil, 0, []javaCycleLink{{0, "left", 1}, {0, "right", 1}})
@@ -167,14 +168,14 @@ func javaCycleOverwritten(t *testing.T, m *tabletext.Model) []byte {
 	wire[second-1] = leftIdx
 	wire[second+1] = 0
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), wire, &r); !ok || err != nil {
-		t.Fatalf("engine refused overwritten self-edge: ok=%v err=%v %+v", ok, err, r)
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), wire, &r); ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("engine read a repeated pointer field: ok=%v err=%v %+v", ok, err, r)
 	}
 	return wire
 }
 
 func TestJavaCyclicWireIsDamage(t *testing.T) {
-	t.Skip("layer 4 (java): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
+	t.Skip("generator gap, re-pinned and red: a repeated field id is damage (strict-only decision 5, the overwritten row); the Java wire readFields has no repeated-id check, so it keeps a value the oracle refuses")
 	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java cycle gate)")
 	t.Parallel()
 	u, m := javaCycleModel(t, javaCycleSchema)
@@ -252,7 +253,7 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 		{"list_cycle", listCycle, false},
 		{"map_twin", mapTwin, true},
 		{"map_cycle", mapCycle, false},
-		{"overwritten", overwritten, true},
+		{"overwritten", overwritten, false},
 		{"diamond", diamond, true},
 	}
 
@@ -269,7 +270,7 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 		{"no_cycle_check", "NodeVariable.java", "if (TableVariable.cyclic(nt))", "if (false && TableVariable.cyclic(nt))", "FAILED: mid (load)"},
 		{"no_list_cycle", "NodeVariable.java", "for (Long idx : v.itemsIdx) {", "for (Long idx : java.util.Collections.<Long>emptyList()) {", "FAILED: list_cycle (load)"},
 		{"no_map_cycle", "NodeVariable.java", "for (NodeLookupEntryVariable.Value elem : v.lookup) {", "for (NodeLookupEntryVariable.Value elem : java.util.Collections.<NodeLookupEntryVariable.Value>emptyList()) {", "FAILED: map_cycle (load)"},
-		{"no_retain_clear", "NodeRetain.java", "if (TableVariable.cyclic(nt)) {", "if (TableVariable.cyclic(nt)) { if (true) { report.malformed = true; return null; }", "FAILED: mid (retain not cleared)"},
+		{"no_retain_clear", "NodeRetain.java", "if (TableVariable.cyclic(nt)) {", "if (TableVariable.cyclic(nt)) { if (true) { report.damaged = true; return null; }", "FAILED: mid (retain not cleared)"},
 		{"closed_as_open", "TableVariable.java", "if (state[t] == 1) {", "if (state[t] != 0) {", "FAILED: diamond (load)"},
 	}
 
@@ -324,11 +325,11 @@ public final class CycleDriver {
         TableVariable.Report r = new TableVariable.Report();
         NodeVariable.Value v = NodeVariable.load(wire, r);
         if (wantOk) {
-            if (v == null || r.malformed || r.refused) {
+            if (v == null || r.damaged || r.refused) {
                 fail(name + " (load)");
             }
         } else {
-            if (v != null || !r.malformed) {
+            if (v != null || !(r.damaged || r.refused)) {
                 fail(name + " (load)");
             }
         }
@@ -337,11 +338,11 @@ public final class CycleDriver {
         TableVariable.Report rr = new TableVariable.Report();
         NodeVariable.Value rv = NodeRetain.loadRetain(wire, retain, rr);
         if (wantOk) {
-            if (rv == null || rr.malformed || rr.refused) {
+            if (rv == null || rr.damaged || rr.refused) {
                 fail(name + " (retain)");
             }
         } else {
-            if (rv != null || !rr.malformed) {
+            if (rv != null || !(rr.damaged || rr.refused)) {
                 fail(name + " (retain)");
             }
             if (retain.used != 0 || retain.idUsed != 0) {

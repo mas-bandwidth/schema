@@ -1145,16 +1145,143 @@ fn no_text(f: &[String]) -> bool {
     f.len() > 5 && f[5] == "no-text"
 }
 
+// THE FIXED FORM (docs/SPEC-TABLES.md §3.4): a file's FORM BYTE says which
+// codec reads it, and it is read first, exactly as the generated readers read
+// it. A form 3 file is read and written by the root's generated
+// <root>_fixed_load / <root>_fixed_save over <Root>Row records; those records
+// carry no text form and are not the form 1 value the cook is fed, so the text
+// and cook surfaces answer ABSENT by name for such a row (the Java leg's
+// FixedCodec, 2f4aa1aeb, routes the same rows the same way).
+const TABLE_FIXED_FORM_BYTE: u8 = 3;
+const FIXED_NO_TEXT: &str = "fixed table: the fixed form carries no text form in this leg";
+const FIXED_NO_COOK: &str = "fixed table: the cook is fed a form 1 value, which a form 3 file does not give";
+// room the read is handed: records, and the plan's capacity declaration
+const FIXED_RECORDS: usize = 64;
+const FIXED_PLAN: usize = 1 << 14;
+
+fn is_fixed_form(data: &[u8]) -> bool {
+    data.first() == Some(&TABLE_FIXED_FORM_BYTE)
+}
+
+// One read through the fixed form: the two counters strict-only keeps, the
+// verdict, and on a read the canonical write-back the root's fixed writer makes
+// of the records read (None when that writer refused them).
+struct FixedRead {
+    unknown: u32,
+    widened: u32,
+    read: bool,
+    save: Option<Vec<u8>>,
+}
+
+impl FixedRead {
+    fn line(&self) -> String {
+        let verdict = if self.read { "read" } else { "refused" };
+        format!("{},0,{},0,0,false,{verdict}\n", self.unknown, self.widened)
+    }
+}
+
+macro_rules! fixed_read {
+    ($krate:ident, $load:ident, $save:ident, $measure:ident, $row:ident, $data:expr) => {{
+        let mut values = vec![$krate::$row::default(); FIXED_RECORDS];
+        let mut plan = vec![$krate::TableFixedEntry::default(); FIXED_PLAN];
+        let mut remap = vec![0u16; FIXED_PLAN];
+        let mut report = $krate::TableFixedReport::default();
+        let read = $krate::$load(&mut values, $data, &mut plan, &mut remap, &mut report);
+        let read = read.filter(|_| !report.refused && !report.damaged);
+        let save = read.and_then(|n| {
+            let mut buffer = vec![0u8; $krate::$measure(n)];
+            $krate::$save(&values[..n], &mut buffer).map(|written| {
+                buffer.truncate(written);
+                buffer
+            })
+        });
+        FixedRead { unknown: report.unknown, widened: report.widened, read: read.is_some(), save }
+    }};
+}
+
+// fixed_read reads `data` through the (unit, root) fixed codec; None when this
+// leg reaches no fixed codec for the root.
+fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
+    Some(match (unit, root) {
+        ("backenddemo", "LoginRequest") => fixed_read!(backenddemo, login_request_fixed_load, login_request_fixed_save, login_request_fixed_measure, LoginRequestRow, data),
+        ("backenddemo", "MatchResult") => fixed_read!(backenddemo, match_result_fixed_load, match_result_fixed_save, match_result_fixed_measure, MatchResultRow, data),
+        ("backenddemo", "StorePurchase") => fixed_read!(backenddemo, store_purchase_fixed_load, store_purchase_fixed_save, store_purchase_fixed_measure, StorePurchaseRow, data),
+        ("messagedemo", "ToolMessage") => fixed_read!(messagedemo, tool_message_fixed_load, tool_message_fixed_save, tool_message_fixed_measure, ToolMessageRow, data),
+        ("scalars", "SimState") => fixed_read!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
+        ("tabledemo", "ArchiveConfig") => fixed_read!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, data),
+        ("tabledemo", "KeyedConfig") => fixed_read!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, data),
+        ("tabledemo", "LoadoutConfig") => fixed_read!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, data),
+        ("tabledemo", "ProfileConfig") => fixed_read!(tabledemo, profile_config_fixed_load, profile_config_fixed_save, profile_config_fixed_measure, ProfileConfigRow, data),
+        ("tabledemo", "RootConfig") => fixed_read!(tabledemo, root_config_fixed_load, root_config_fixed_save, root_config_fixed_measure, RootConfigRow, data),
+        ("tblm1", "Msg") => fixed_read!(tblm1, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, data),
+        ("tblm2", "Msg") => fixed_read!(tblm2, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, data),
+        ("tblp1", "Chain") => fixed_read!(tblp1, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, data),
+        ("tblp3", "Chain") => fixed_read!(tblp3, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, data),
+        ("tblr1", "Cfg") => fixed_read!(tblr1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, data),
+        ("tblr2", "Cfg") => fixed_read!(tblr2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, data),
+        ("tblv1", "Cfg") => fixed_read!(tblv1, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, data),
+        ("tblv2", "Cfg") => fixed_read!(tblv2, cfg_fixed_load, cfg_fixed_save, cfg_fixed_measure, CfgRow, data),
+        ("vocabdemo", "Wide00") => fixed_read!(vocabdemo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, data),
+        ("vocabdemo", "Wide09") => fixed_read!(vocabdemo, wide09_fixed_load, wide09_fixed_save, wide09_fixed_measure, Wide09Row, data),
+        ("vocab9demo", "Wide00") => fixed_read!(vocab9demo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, data),
+        ("vocab9demo", "Wide19") => fixed_read!(vocab9demo, wide19_fixed_load, wide19_fixed_save, wide19_fixed_measure, Wide19Row, data),
+        ("widedemo", "Caption") => fixed_read!(widedemo, caption_fixed_load, caption_fixed_save, caption_fixed_measure, CaptionRow, data),
+        ("widedemo", "Stamp") => fixed_read!(widedemo, stamp_fixed_load, stamp_fixed_save, stamp_fixed_measure, StampRow, data),
+        _ => return None,
+    })
+}
+
+// fixed_answer is a report or framing row read through the fixed form: the
+// verdict line on a refusal; on a read, the canonical write-back as
+// `<case>.wire` and the value text ABSENT by name, because the fixed records
+// carry no text form.
+fn fixed_answer(out: &str, f: &[String], data: &[u8]) -> bool {
+    let Some(r) = fixed_read(&f[2], &f[3], data) else {
+        return false;
+    };
+    if !r.read {
+        spill(out, &f[1], r.line().as_bytes());
+        return true;
+    }
+    match &r.save {
+        Some(bytes) => spill(out, &format!("{}.wire", f[1]), bytes),
+        None => fail(&format!("{}: the fixed save refused the value", f[1])),
+    }
+    spill(out, &format!("{}.absent", f[1]), FIXED_NO_TEXT.as_bytes());
+    true
+}
+
+// instance_is_fixed: the instance row's wire is a form 3 file.
+fn instance_is_fixed(f: &[String]) -> bool {
+    is_fixed_form(&slurp(&f[4]))
+}
+
 fn surface_wire(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("instance") {
         let data = slurp(&f[4]);
+        if is_fixed_form(&data) {
+            match fixed_read(&f[2], &f[3], &data) {
+                Some(FixedRead { read: true, save: Some(bytes), .. }) => spill(out, &f[1], &bytes),
+                Some(FixedRead { read: true, save: None, .. }) => fail(&format!("{}: the fixed save refused the value", f[1])),
+                Some(_) => fail(&format!("{}: fixed load refused {}", f[1], f[4])),
+                None => spill_absent(out, &f[1]),
+            }
+            continue;
+        }
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, save, _to, _from| {
             let mut report = Default::default();
             match load(&data, &mut report) {
                 // the writer's NAMED refusal (docs/SPEC-TABLES.md §2.5, §3): a
                 // blob two slots name, and nothing else, answers absent by name
                 Some(v) => save(&v),
-                None => fail(&format!("{}: load refused {}", f[1], f[4])),
+                // STRICT-ONLY: this leg's READ refuses a blob two slots name
+                // (§2.5) as damage, so the row answers ABSENT naming the
+                // refusal; the harness scores that as the wire refusal a
+                // `wire-refused` row owes, and as a missing case anywhere else
+                None => Err(format!(
+                    "load refused: {}",
+                    if report.damaged { "malformed" } else { report.reason.name() }
+                )),
             }
         });
         match answer {
@@ -1168,21 +1295,38 @@ fn surface_wire(manifest: &Manifest, out: &str) {
 fn surface_report(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("report") {
         let data = slurp(&f[4]);
+        // A ROOT DECLARED `fixed table` READS FORM 3 ALONE and refuses a form
+        // 1 file as previous_form (docs/rulings.json fixed-root-refuses-form1),
+        // so a report row at such a root is read by the root's fixed reader
+        // whatever its form byte, as the oracle reads it and as the Java leg
+        // routes it. The roots fixed_read names are exactly the roots whose
+        // committed instances are form 3 files, which only a declared fixed
+        // root writes. (Framing rows stay on the variable read: the battery
+        // pins the variable form's rules, test/conformance/harness/generate.go
+        // framingVariableUnit.)
+        if fixed_answer(out, f, &data) {
+            continue;
+        }
         // the report line, then the §16 text of the value the read left when
         // the read reads (test/conformance/README.md)
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
+        // STRICT-ONLY (docs/plans/strict-only.md layer 3, READ, THEN WRITE):
+        // the line carries the verdict and the two surviving counters in the
+        // shape every leg prints; an accepted read writes its value back as
+        // `<case>.wire`, which the harness holds to the canonical bytes.
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, save, to_json, _from| {
             let mut report = Default::default();
             let value = load(&data, &mut report);
-            let malformed = report.malformed || (value.is_none() && !report.refused);
-            let verdict = if report.refused { "refused" } else { "read" };
-            let mut text = format!(
-                "{},{},{},{},{},{},{}\n",
-                report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate, malformed, verdict
-            );
-            if let (Some(v), false, false) = (value, report.refused, malformed) {
+            let malformed = report.damaged || (value.is_none() && !report.refused);
+            let verdict = if report.refused || malformed { "refused" } else { "read" };
+            let mut text = format!("{},0,{},0,0,false,{}\n", report.unknown, report.widened, verdict);
+            if let (Some(v), "read") = (value, verdict) {
                 match to_json(&v) {
                     Some(body) => text.push_str(&body),
                     None => fail(&format!("{}: ToJson refused the value", f[1])),
+                }
+                match save(&v) {
+                    Ok(bytes) => spill(out, &format!("{}.wire", f[1]), &bytes),
+                    Err(why) => fail(&format!("{}: save refused the value: {why}", f[1])),
                 }
             }
             text
@@ -1204,19 +1348,27 @@ fn surface_framing(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("framing") {
         let data = slurp(&f[4]);
         let no_value = f.len() > 5 && f[5] == "no-value";
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
+        if is_fixed_form(&data) && fixed_answer(out, f, &data) {
+            continue;
+        }
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, save, to_json, _from| {
             let mut report = Default::default();
             let value = load(&data, &mut report);
-            let malformed = report.malformed || (value.is_none() && !report.refused);
-            let verdict = if report.refused { "refused" } else { "read" };
-            let mut text = format!(
-                "{},{},{},{},{},{},{}\n",
-                report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate, malformed, verdict
-            );
-            if let (Some(v), false, false, false) = (value, report.refused, malformed, no_value) {
-                match to_json(&v) {
-                    Some(body) => text.push_str(&body),
-                    None => fail(&format!("{}: ToJson refused the value", f[1])),
+            let malformed = report.damaged || (value.is_none() && !report.refused);
+            let verdict = if report.refused || malformed { "refused" } else { "read" };
+            let mut text = format!("{},0,{},0,0,false,{}\n", report.unknown, report.widened, verdict);
+            if let (Some(v), "read") = (value, verdict) {
+                // the write-back is owed on every accepted read, `no-value`
+                // rows included: the row drops the text, never the bytes
+                match save(&v) {
+                    Ok(bytes) => spill(out, &format!("{}.wire", f[1]), &bytes),
+                    Err(why) => fail(&format!("{}: save refused the value: {why}", f[1])),
+                }
+                if !no_value {
+                    match to_json(&v) {
+                        Some(body) => text.push_str(&body),
+                        None => fail(&format!("{}: ToJson refused the value", f[1])),
+                    }
                 }
             }
             text
@@ -1257,10 +1409,10 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
         let mut report = TableReport::default();
         let value = node_load_retain(&wire, &mut store, &mut report)
             .unwrap_or_else(|| fail(&format!("{}: retaining load refused", f[1])));
-        if report.malformed { fail(&format!("{}: retaining load malformed", f[1])); }
-        let retained = report.retained;
+        if report.damaged { fail(&format!("{}: retaining load malformed", f[1])); }
         let lost = report.retain_lost;
         let unknown = report.unknown;
+        let widened = report.widened;
         let saved = node_save_retain(&value, &mut store, &mut report);
         let save_lost = report.retain_lost - lost;
         let mut second = TableReport::default();
@@ -1271,7 +1423,15 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
         if saves {
             spill(out, &f[1], &saved);
         } else {
-            spill(out, &f[1], format!("{retained},{lost},{unknown} {save_lost}\n").as_bytes());
+            // STRICT-ONLY (test/conformance/README.md, `retain`): the read
+            // line, then the complete known value; how much unknown data the
+            // caller's store kept is not compared, the saved bytes are
+            let mut answer = format!("{unknown},0,{widened},0,0,false,read\n");
+            match tblrt1::node_to_json_checked(&value) {
+                Some(body) => answer.push_str(&body),
+                None => fail(&format!("{}: ToJson refused the value", f[1])),
+            }
+            spill(out, &f[1], answer.as_bytes());
         }
     }
 }
@@ -1279,6 +1439,10 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
 fn surface_json_read(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("instance") {
         if no_text(f) {
+            continue;
+        }
+        if instance_is_fixed(f) && fixed_read(&f[2], &f[3], &[]).is_some() {
+            spill(out, &format!("{}.absent", f[1]), FIXED_NO_TEXT.as_bytes());
             continue;
         }
         let path = format!("testdata/conformance/tables/json/{}.json", f[1]);
@@ -1306,6 +1470,10 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
             continue;
         }
         let data = slurp(&f[4]);
+        if is_fixed_form(&data) && fixed_read(&f[2], &f[3], &[]).is_some() {
+            spill(out, &format!("{}.json.absent", f[1]), FIXED_NO_TEXT.as_bytes());
+            continue;
+        }
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
             match load(&data, &mut report) {
@@ -1328,6 +1496,10 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     // that is measure and write at once, so one call answers for both.
     for f in manifest.of_kind("json-write-refusal") {
         let data = slurp(&f[4]);
+        if is_fixed_form(&data) && fixed_read(&f[2], &f[3], &[]).is_some() {
+            spill(out, &format!("{}.json.absent", f[1]), FIXED_NO_TEXT.as_bytes());
+            continue;
+        }
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
             let Some(mut v) = load(&data, &mut report) else {
@@ -1385,13 +1557,13 @@ fn damage_text(value: &mut dyn std::any::Any, damage: &str) -> Damage {
 
 // JSON-HOSTILE (docs/SPEC-TABLES.md §16.2, §16.3; FORMAT.md): one tree per
 // rule the text form states, and the verdict is `refused` or the §4 report the
-// read produces, `u,k,w,c,d,false,read`, then the §16 text of the value it left. The tree is what `schema pack` reads,
+// read produces, `u,0,w,0,0,false,read` (strict-only: only unknown and widened survive), then the §16 text of the value it left. The tree is what `schema pack` reads,
 // so the text is <tree>/<root>.json (§17). A root this leg's text form does not
 // carry answers ABSENT, one row at a time, exactly as json-read does.
 fn surface_json_hostile(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("json-hostile") {
         let path = format!("{}/{}.json", f[4], f[3]);
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, to_json, from_json| {
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, save, to_json, from_json| {
             let text = match fs::read(&path) {
                 Ok(t) => t,
                 Err(e) => fail(&format!("cannot read {path}: {e}")),
@@ -1402,11 +1574,14 @@ fn surface_json_hostile(manifest: &Manifest, out: &str) {
             let value = from_json(&text, &mut report);
             let r = &report;
             match value {
-                Some(v) if !r.malformed && !r.refused => {
-                    let mut answer = format!(
-                        "{},{},{},{},{},false,read\n",
-                        r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
-                    );
+                Some(v) if !r.damaged && !r.refused => {
+                    let mut answer = format!("{},0,{},0,0,false,read\n", r.unknown, r.widened);
+                    // the accepted value's canonical write-back, held to the
+                    // bytes the reference writes
+                    match save(&v) {
+                        Ok(bytes) => spill(out, &format!("{}.wire", f[1]), &bytes),
+                        Err(why) => fail(&format!("{}: save refused the value: {why}", f[1])),
+                    }
                     match to_json(&v) {
                         Some(body) => answer.push_str(&body),
                         None => fail(&format!("{}: ToJson refused the value", f[1])),
@@ -1480,19 +1655,34 @@ fn surface_cook_write(manifest: &Manifest, out: &str) {
             fail(&format!("cook-write {} names no instance", f[1]));
         };
         let data = slurp(&inst[4]);
+        if is_fixed_form(&data) && fixed_read(&inst[2], &inst[3], &[]).is_some() {
+            spill(out, &format!("{}.absent", f[1]), FIXED_NO_COOK.as_bytes());
+            spill(out, &format!("{}-be.absent", f[1]), FIXED_NO_COOK.as_bytes());
+            continue;
+        }
         let answer = with_cook_root!(inst[2].as_str(), inst[3].as_str(), |load, cook| {
             let mut report = Default::default();
-            let Some(v) = load(&data, &mut report) else {
-                fail(&format!("{}: load refused {}", f[1], inst[4]));
-            };
-            let little = cook(&v, 1).unwrap_or_else(|why| fail(&format!("{}: the cook refused: {why}", f[1])));
-            let big = cook(&v, 2).unwrap_or_else(|why| fail(&format!("{}: the big-endian cook refused: {why}", f[1])));
-            (little, big)
+            // the cook's input is the instance's form 1 read; where this
+            // leg's strict read refuses it (a blob two slots name, §2.5), the
+            // row answers ABSENT naming the refusal rather than ending the run
+            match load(&data, &mut report) {
+                Some(v) => {
+                    let little = cook(&v, 1).unwrap_or_else(|why| fail(&format!("{}: the cook refused: {why}", f[1])));
+                    let big = cook(&v, 2).unwrap_or_else(|why| fail(&format!("{}: the big-endian cook refused: {why}", f[1])));
+                    Ok((little, big))
+                }
+                None => Err(if report.damaged { "malformed" } else { report.reason.name() }),
+            }
         });
         match answer {
-            Some((little, big)) => {
+            Some(Ok((little, big))) => {
                 spill(out, &f[1], &little);
                 spill(out, &format!("{}-be", f[1]), &big);
+            }
+            Some(Err(why)) => {
+                let why = format!("cook input refused by the strict read: {why}");
+                spill(out, &format!("{}.absent", f[1]), why.as_bytes());
+                spill(out, &format!("{}-be.absent", f[1]), why.as_bytes());
             }
             None => {
                 spill_absent(out, &f[1]);

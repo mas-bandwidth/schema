@@ -263,11 +263,10 @@ public final class VD_signed_integers {
                 TableFixed.plan(1024), new short[1024], RangedSignedFixed.image(), rep);
         check("ranged: load answers 1", n == 1);
         check("ranged: a clean read is not refused and not malformed",
-                !rep.refused && !rep.malformed);
+                !rep.refused && !rep.damaged);
         check("ranged: a value inside every declared range moves no counter"
                         + " (clamped/unknown/kindMismatch/widened all 0)",
-                rep.clamped == 0 && rep.unknown == 0
-                        && rep.kindMismatch == 0 && rep.widened == 0);
+                rep.unknown == 0 && rep.widened == 0);
 
         final RangedSignedFixed.Value got = out[0];
         check("ranged: int8 edges round-trip exactly (span/low/high/inside)",
@@ -357,10 +356,9 @@ public final class VD_signed_integers {
                 TableFixed.plan(1024), new short[1024], ProfileConfigFixed.image(), rep);
         check("bare: load answers 2", n == 2);
         check("bare: a clean read is not refused and not malformed",
-                !rep.refused && !rep.malformed);
+                !rep.refused && !rep.damaged);
         check("bare: bare fields carry no range to clamp — every counter 0",
-                rep.clamped == 0 && rep.unknown == 0
-                        && rep.kindMismatch == 0 && rep.widened == 0);
+                rep.unknown == 0 && rep.widened == 0);
         check("bare: int8/int16/int64 minimums round-trip exactly",
                 out[0].tilt == Byte.MIN_VALUE
                         && out[0].heading == Short.MIN_VALUE

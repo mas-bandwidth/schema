@@ -92,8 +92,8 @@ func parseOverlayRows(t *testing.T, src string) []overlayRow {
 			id:   overlayRowRe.FindStringSubmatch(seg)[1],
 			done: strings.Contains(seg, ":state :done"),
 		}
-		if ei := strings.Index(seg, ":evidence ("); ei >= 0 {
-			body := seg[ei+len(":evidence ("):]
+		if _, after, ok := strings.Cut(seg, ":evidence ("); ok {
+			body := after
 			if ci := strings.IndexByte(body, ')'); ci >= 0 {
 				body = body[:ci]
 			}
@@ -118,12 +118,12 @@ func evidenceFile(ev string) string {
 }
 
 func testNamesFromEvidence(ev string) []string {
-	i := strings.Index(ev, ".go:")
-	if i < 0 {
+	_, after, ok := strings.Cut(ev, ".go:")
+	if !ok {
 		return nil
 	}
 	var out []string
-	for _, tok := range testTokenRe.FindAllString(ev[i+4:], -1) {
+	for _, tok := range testTokenRe.FindAllString(after, -1) {
 		if j := strings.IndexByte(tok, '/'); j >= 0 {
 			tok = tok[:j]
 		}

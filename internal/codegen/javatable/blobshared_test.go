@@ -12,12 +12,11 @@ import (
 )
 
 // TestJavaWritersRefuseASharedBlob holds §2.5 on the Java leg: a blob is owned
-// by one slot. The tolerant load of testdata/wire/tables/blob_shared.bin and
-// testdata/wire/tables/blob_shared_string.bin keeps the value in both slots
-// and marks the second slot as shared (cleared by Descriptor.reset()), so a
-// later save, saveRetain, measureRetain and toJson of that loaded value
-// refuse; a fresh value whose two *bytes slots hold one byte[] is refused the
-// same way, while two equal but distinct byte[] arrays are two records and
+// by one slot. The strict load of testdata/wire/tables/blob_shared.bin and
+// testdata/wire/tables/blob_shared_string.bin refuses the whole load, on load
+// and loadRetain (docs/plans/strict-only.md); a fresh value whose two *bytes
+// slots hold one byte[] is refused by save, saveRetain, measureRetain and
+// toJson and saves after Descriptor.reset(), while two equal but distinct byte[] arrays are two records and
 // save. On *string slots, caller-built equal strings — including one interned
 // literal in two *string fields, union arms or map values — number each slot
 // by value as its own blob record on save, saveRetain, measureRetain, toJson
@@ -65,39 +64,39 @@ public final class BlobSharedDriver {
     public static void main(String[] args) throws Exception {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         byte[] swire = Files.readAllBytes(Paths.get(args[1]));
+        // §2.5 on the read: a blob owned by two slots refuses the whole load
+        // (docs/plans/strict-only.md), on load and on loadRetain, for *bytes
+        // and *string slots alike, and the retaining load keeps no tail.
         blobdemo.TableVariable.Report report = new blobdemo.TableVariable.Report();
         blobdemo.CatalogVariable.Value loaded = blobdemo.CatalogVariable.load(wire, report);
-        System.out.println("loaded " + (loaded != null && report.blobShared == 1) + " one-node " + (loaded != null && loaded.thumb == loaded.alias));
-        System.out.println("loaded-save " + (blobdemo.CatalogVariable.save(loaded) == null ? "refused" : "written"));
-        System.out.println("loaded-json " + (blobdemo.CatalogVariable.toJson(loaded) == null ? "refused" : "written"));
-
+        System.out.println("loaded " + (loaded == null && report.refused ? "refused" : "read"));
         blobdemo.TableRetain retain = new blobdemo.TableRetain(1 << 20, 1024);
         blobdemo.TableVariable.Report rreport = new blobdemo.TableVariable.Report();
         blobdemo.CatalogVariable.Value rloaded = blobdemo.CatalogRetain.loadRetain(wire, retain, rreport);
-        System.out.println("loaded-retain-save " + (rreport.blobShared == 1 && blobdemo.CatalogRetain.saveRetain(rloaded, retain, rreport) == null ? "refused" : "written"));
-        System.out.println("loaded-retain-measure " + (blobdemo.CatalogRetain.measureRetain(rloaded, retain) < 0 ? "refused" : "written"));
-
-        blobdemo.CatalogDescriptor.tableType().reset.accept(loaded);
-        System.out.println("reset-bytes-save " + (blobdemo.CatalogVariable.save(loaded) == null ? "refused" : "written"));
-
+        System.out.println("loaded-retain " + (rloaded == null && rreport.refused && retain.used == 0 ? "refused" : "read"));
         mapdemo.TableVariable.Report sreport = new mapdemo.TableVariable.Report();
         mapdemo.DocsVariable.Value sloaded = mapdemo.DocsVariable.load(swire, sreport);
-        System.out.println("str-loaded " + (sloaded != null && sreport.blobShared == 1)
-                + " save " + (mapdemo.DocsVariable.save(sloaded) == null ? "refused" : "written")
-                + " json " + (mapdemo.DocsVariable.toJson(sloaded) == null ? "refused" : "written"));
+        System.out.println("str-loaded " + (sloaded == null && sreport.refused ? "refused" : "read"));
         mapdemo.TableRetain sretain = new mapdemo.TableRetain(1 << 20, 1024);
-        mapdemo.DocsVariable.Value srloaded = mapdemo.DocsRetain.loadRetain(swire, sretain, sreport);
-        System.out.println("str-retain-save " + (mapdemo.DocsRetain.saveRetain(srloaded, sretain, sreport) == null ? "refused" : "written")
-                + " measure " + (mapdemo.DocsRetain.measureRetain(srloaded, sretain) < 0 ? "refused" : "written"));
-        long scookLen = mapdemo.DocsCook.cookMeasure(sloaded);
-        System.out.println("str-loaded-cook " + (scookLen > 0 ? "packed" : "refused"));
-        mapdemo.DocsDescriptor.tableType().reset.accept(sloaded);
-        System.out.println("str-reset-save " + (mapdemo.DocsVariable.save(sloaded) == null ? "refused" : "written"));
+        mapdemo.TableVariable.Report srreport = new mapdemo.TableVariable.Report();
+        mapdemo.DocsVariable.Value srloaded = mapdemo.DocsRetain.loadRetain(swire, sretain, srreport);
+        System.out.println("str-loaded-retain " + (srloaded == null && srreport.refused && sretain.used == 0 ? "refused" : "read"));
 
+        // §2.5 on the write: a value whose two *bytes slots hold one byte[]
+        // is refused by save, toJson, saveRetain and measureRetain; after
+        // Descriptor.reset() it saves.
         blobdemo.CatalogVariable.Value fresh = new blobdemo.CatalogVariable.Value();
         fresh.thumb = new byte[] {1, 2, 3};
         fresh.alias = fresh.thumb;
         System.out.println("fresh-save " + (blobdemo.CatalogVariable.save(fresh) == null ? "refused" : "written"));
+        System.out.println("fresh-json " + (blobdemo.CatalogVariable.toJson(fresh) == null ? "refused" : "written"));
+        blobdemo.TableRetain fretain = new blobdemo.TableRetain(1 << 20, 1024);
+        blobdemo.TableVariable.Report freport = new blobdemo.TableVariable.Report();
+        System.out.println("fresh-retain-save " + (blobdemo.CatalogRetain.saveRetain(fresh, fretain, freport) == null ? "refused" : "written"));
+        System.out.println("fresh-retain-measure " + (blobdemo.CatalogRetain.measureRetain(fresh, fretain) < 0 ? "refused" : "written"));
+        blobdemo.CatalogDescriptor.tableType().reset.accept(fresh);
+        System.out.println("reset-bytes-save " + (blobdemo.CatalogVariable.save(fresh) == null ? "refused" : "written"));
+        fresh.thumb = new byte[] {1, 2, 3};
         fresh.alias = new byte[] {1, 2, 3};
         System.out.println("equal-save " + (blobdemo.CatalogVariable.save(fresh) == null ? "refused" : "written"));
 
@@ -154,7 +153,18 @@ public final class BlobSharedDriver {
             mapdemo.DocsVariable.loadMeasure(docsWire, dm);
         }
         long docsCookLen = mapdemo.DocsCook.cookMeasure(docs);
-        System.out.println("map-literal-two-nodes " + (docsWire != null && dm.nodeRecords == 2 && docsCookLen > scookLen));
+        // the same two keys with one *string node cook shorter: the literal
+        // in two slots cooks as two nodes, never one shared record
+        mapdemo.DocsVariable.Value oneNode = new mapdemo.DocsVariable.Value();
+        mapdemo.DocsPagesEntryVariable.Value o1 = new mapdemo.DocsPagesEntryVariable.Value();
+        o1.key = "a";
+        o1.value = "the same literal";
+        mapdemo.DocsPagesEntryVariable.Value o2 = new mapdemo.DocsPagesEntryVariable.Value();
+        o2.key = "b";
+        oneNode.pages.add(o1);
+        oneNode.pages.add(o2);
+        long oneNodeCookLen = mapdemo.DocsCook.cookMeasure(oneNode);
+        System.out.println("map-literal-two-nodes " + (docsWire != null && dm.nodeRecords == 2 && oneNodeCookLen > 0 && docsCookLen > oneNodeCookLen));
 
         // Large populated map (2,000 entries) where every entry's *string slot
         // holds the same String literal: each slot gets its own cooked node via
@@ -219,17 +229,15 @@ public final class BlobSharedDriver {
 	}
 	got := strings.TrimSpace(string(out))
 	want := strings.Join([]string{
-		"loaded true one-node true",
-		"loaded-save refused",
-		"loaded-json refused",
-		"loaded-retain-save refused",
-		"loaded-retain-measure refused",
-		"reset-bytes-save written",
-		"str-loaded true save refused json refused",
-		"str-retain-save refused measure refused",
-		"str-loaded-cook packed",
-		"str-reset-save written",
+		"loaded refused",
+		"loaded-retain refused",
+		"str-loaded refused",
+		"str-loaded-retain refused",
 		"fresh-save refused",
+		"fresh-json refused",
+		"fresh-retain-save refused",
+		"fresh-retain-measure refused",
+		"reset-bytes-save written",
 		"equal-save written",
 		"literal-save written",
 		"distinct-save written",
