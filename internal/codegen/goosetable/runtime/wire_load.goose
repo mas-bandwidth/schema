@@ -1,11 +1,11 @@
 // wire_load.goose — the Goose port's VARIABLE TABLE WIRE LOAD (docs/SPEC-TABLES.md
-// §3, §3.1, §3.2, §4; docs/PORT-GOOSE.md, THE LOADED VALUE): the tolerant read
+// §3, §3.1, §3.2, §4; docs/PORT-GOOSE.md, THE LOADED VALUE): the strict read
 // of form 1, ported decision for decision from the Go reference engine
 // (internal/tablewire decode.go, decodenodes.go, nodetable.go). Any reader
 // reads any data and the differences are REPORTED, never fatal: unknown ids
 // are skipped by their length and counted, a kind that grew is widened and
 // counted, out-of-range values clamp and count, a repeated map key counts
-// duplicate, and a form byte this reader does not carry is refused. Damage
+// repeated, and a form byte this reader does not carry is refused. Damage
 // anywhere discards the whole load; no partial root is returned (§4).
 //
 // The walk is driven by THE LOAD DISPATCH TABLE (schema_tables.goose,
@@ -56,11 +56,11 @@ let StringTypeId: u64 = 0x704be0d8faaffc58; // FNV-1a 64 of "string"
 // count_refused is §2.9's storage refusal on the builder path.
 struct LoadReport {
     unknown: i64,
-    kind_mismatch: i64,
+    mismatch: i64,
     widened: i64,
-    clamped: i64,
-    duplicate: i64,
-    malformed: bool,
+    oor: i64,
+    repeated: i64,
+    body_damaged: bool,
     refused: bool,
     blob_shared: i64,
     count_refused: bool,
@@ -82,7 +82,7 @@ let LoadRefuseUnknownForm: i64 = 9;
 let LoadRefuseCountOverExtentCap: i64 = 11;
 let LoadRefuseWireDamaged: i64 = 16;
 let LoadRefuseMalformed: i64 = 17;
-let LoadRefuseClamped: i64 = 18;
+let LoadRefuseOutOfRange: i64 = 18;
 let LoadRefuseKindMismatch: i64 = 19;
 let LoadRefuseIntegrityMismatch: i64 = 22;
 let LoadRefuseNonFiniteFloat: i64 = 23;
@@ -97,7 +97,7 @@ fn load_refusal_name(code: i64) -> const u8[:] {
         LoadRefuseCountOverExtentCap => "count_over_extent_cap",
         LoadRefuseWireDamaged => "wire_damaged",
         LoadRefuseMalformed => "malformed",
-        LoadRefuseClamped => "clamped",
+        LoadRefuseOutOfRange => "out_of_range",
         LoadRefuseKindMismatch => "kind_mismatch",
         LoadRefuseIntegrityMismatch => "integrity_mismatch",
         LoadRefuseNonFiniteFloat => "non_finite_float",
@@ -115,21 +115,21 @@ fn load_refusal_name(code: i64) -> const u8[:] {
 // names which), a failed integrity trailer, damage the verdict names
 // (wire_damaged) apart from a malformed body (malformed), then a builder's
 // count past the int32 storage cap (count_over_extent_cap, §2.9), then
-// blob_shared, clamped and kind_mismatch. A load that read nothing whole (no
+// blob_shared, oor and kind_mismatch. A load that read nothing whole (no
 // root, or a walk that stopped) and whose report names none of them is
 // wire_damaged, as ReadStrict answers it. It is
 // 0 for a load the strict read keeps: a clean one, or one whose only events
-// are unknown, widened, duplicate or retained.
+// are unknown, widened, repeated or retained.
 fn load_error(report: const LoadReport&, root: i64) -> i64 {
     if report.non_finite { return LoadRefuseNonFiniteFloat; }
     if report.reason == LoadRefuseNewerForm || report.reason == LoadRefuseMessageFormAsFile { return LoadRefuseUnknownForm; }
     if report.reason == LoadRefuseIntegrityMismatch { return LoadRefuseIntegrityMismatch; }
     if report.damaged { return LoadRefuseWireDamaged; }
-    if report.malformed { return LoadRefuseMalformed; }
+    if report.body_damaged { return LoadRefuseMalformed; }
     if report.count_refused { return LoadRefuseCountOverExtentCap; }
     if report.blob_shared > 0 { return LoadRefuseBlobShared; }
-    if report.clamped > 0 { return LoadRefuseClamped; }
-    if report.kind_mismatch > 0 { return LoadRefuseKindMismatch; }
+    if report.oor > 0 { return LoadRefuseOutOfRange; }
+    if report.mismatch > 0 { return LoadRefuseKindMismatch; }
     if root < 0 || report.stopped { return LoadRefuseWireDamaged; }
     return LoadRefuseOk;
 }
@@ -579,7 +579,7 @@ fn field_kind(d: FieldDesc) -> u8 {
 // collection_cap is §2.9's int32 storage cap: a builder refuses its partial
 // value; a reader with no builder reports damage and resumes after L.
 fn collection_cap(c: LoadCtx&) -> bool {
-    if !c.cap { c.report.malformed = true; return true; }
+    if !c.cap { c.report.body_damaged = true; return true; }
     c.report.count_refused = true;
     return false;
 }
@@ -592,11 +592,11 @@ fn collection_cap(c: LoadCtx&) -> bool {
 // the load's report, or a throwaway one for the map key scan.
 fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc, declared: u8, kind: u8) -> bool {
     let width = kind_width(kind);
-    if !has(r, width) { rep.malformed = true; return false; }
+    if !has(r, width) { rep.body_damaged = true; return false; }
     out.state = ValPresent;
     if kind == KindBool {
         let b = rd_u8(c, r);
-        if b > 1 { rep.malformed = true; }
+        if b > 1 { rep.body_damaged = true; }
         out.bits = Int128 { lo: if b != 0 { 1 } else { 0 }, hi: 0 };
         return true;
     }
@@ -620,8 +620,8 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
         var keep: u32 = bits;
         if d.frange {
             let v = f32_value(bits);
-            if v < d.flo { keep = f32_bits(d.flo as f32); rep.clamped += 1; }
-            else if v > d.fhi { keep = f32_bits(d.fhi as f32); rep.clamped += 1; }
+            if v < d.flo { keep = f32_bits(d.flo as f32); rep.oor += 1; }
+            else if v > d.fhi { keep = f32_bits(d.fhi as f32); rep.oor += 1; }
             else if v == 0.0 { keep = 0; } // a -0 lands as +0, uncounted (§3.3)
         }
         out.bits = Int128 { lo: keep, hi: 0 };
@@ -679,17 +679,17 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
         let lo = d.lo.lo as! i64;
         let hi = d.hi.lo as! i64;
         if signed {
-            if value < lo { value = lo; rep.clamped += 1; }
-            else if value > hi { value = hi; rep.clamped += 1; }
+            if value < lo { value = lo; rep.oor += 1; }
+            else if value > hi { value = hi; rep.oor += 1; }
         } else {
-            if uraw < (lo as! u64) { uraw = lo as! u64; rep.clamped += 1; }
-            else if uraw > (hi as! u64) { uraw = hi as! u64; rep.clamped += 1; }
+            if uraw < (lo as! u64) { uraw = lo as! u64; rep.oor += 1; }
+            else if uraw > (hi as! u64) { uraw = hi as! u64; rep.oor += 1; }
             value = uraw as! i64;
         }
     }
     if d.bits > 0 && d.bits < width * 8 {
         let max = ((1 as u64) << (d.bits as! u64)) - 1;
-        if (value as! u64) > max { value = max as! i64; rep.clamped += 1; }
+        if (value as! u64) > max { value = max as! i64; rep.oor += 1; }
     }
     out.bits = i128_of(value);
     return true;
@@ -705,8 +705,8 @@ fn clamp_wide(rep: LoadReport&, raw: Int128, raw_signed: bool, d: FieldDesc) -> 
         lo = shl128(lo, d.fbits);
         hi = shl128(hi, d.fbits);
     }
-    if cmp128(raw, raw_signed, lo, d.signed) < 0 { rep.clamped += 1; return lo; }
-    if cmp128(raw, raw_signed, hi, d.signed) > 0 { rep.clamped += 1; return hi; }
+    if cmp128(raw, raw_signed, lo, d.signed) < 0 { rep.oor += 1; return lo; }
+    if cmp128(raw, raw_signed, hi, d.signed) > 0 { rep.oor += 1; return hi; }
     return raw;
 }
 
@@ -722,24 +722,24 @@ fn resolve(c: LoadCtx&, v: i64, d: FieldDesc, index: u64) {
     if index == 0 { return; }
     if index == 1 {
         // the root carries no record: the reader's own root type is checked
-        if blob || c.unit.tables[c.root_tab].name != d.ref { c.report.kind_mismatch += 1; return; }
+        if blob || c.unit.tables[c.root_tab].name != d.ref { c.report.mismatch += 1; return; }
         c.vals[v].state = ValPresent;
         c.vals[v].bits = Int128 { lo: 1, hi: 0 };
         return;
     }
-    if index - 2 >= c.node_n as! u64 { c.report.malformed = true; return; }
+    if index - 2 >= c.node_n as! u64 { c.report.body_damaged = true; return; }
     let n = (index - 2) as! i64;
     if c.nodes[n].tab < 0 && c.nodes[n].blob == 0 { return; }
     if blob {
         let want = if d.shape == ShapeSBlob { KindString } else { KindArray };
-        if c.nodes[n].blob != want { c.report.kind_mismatch += 1; return; }
+        if c.nodes[n].blob != want { c.report.mismatch += 1; return; }
         c.vals[v].state = ValPresent;
         c.vals[v].bits = Int128 { lo: index, hi: 0 };
         if c.nodes[n].named { c.report.blob_shared += 1; } else { c.nodes[n].named = true; }
         return;
     }
     if c.nodes[n].tab < 0 || c.unit.tables[c.nodes[n].tab].name != d.ref {
-        c.report.kind_mismatch += 1;
+        c.report.mismatch += 1;
         return;
     }
     c.vals[v].state = ValPresent;
@@ -755,20 +755,20 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
     loop {
         if c.report.count_refused { return false; }
         let ref, ok = leb(c, r);
-        if !ok { c.report.malformed = true; return false; }
+        if !ok { c.report.body_damaged = true; return false; }
         if ref == 0 { return true; } // the body ends at its own zero reference
         let id, named = idof(c, ref);
-        if !named { c.report.malformed = true; return false; }
-        if !has(r, 1) { c.report.malformed = true; return false; }
+        if !named { c.report.body_damaged = true; return false; }
+        if !has(r, 1) { c.report.body_damaged = true; return false; }
         let kind = rd_u8(c, r);
         if id == BuildVersionWireId || id == VocabularyWireId {
-            c.report.malformed = true; // reserved ids ride the announcement only (§3.3)
+            c.report.body_damaged = true; // reserved ids ride the announcement only (§3.3)
             return false;
         }
         if id == NodeWireId {
-            if nested { c.report.malformed = true; return false; }
+            if nested { c.report.body_damaged = true; return false; }
             if c.numbered && c.unit.tables[tab].variable {
-                if !skip(c, r, kind) { c.report.malformed = true; return false; }
+                if !skip(c, r, kind) { c.report.body_damaged = true; return false; }
                 continue;
             }
         }
@@ -779,7 +779,7 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
         if i < 0 {
             c.report.unknown += 1; // skipped by its length (§4)
             let from = r.off;
-            if !skip(c, r, kind) { c.report.malformed = true; return false; }
+            if !skip(c, r, kind) { c.report.body_damaged = true; return false; }
             if c.retaining { capture(c, rec, id, kind, from, r.off); }
             continue;
         }
@@ -793,8 +793,8 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
                 if !entry || i != 0 { c.report.widened += 1; }
                 continue;
             }
-            c.report.kind_mismatch += 1;
-            if !skip(c, r, kind) { c.report.malformed = true; return false; }
+            c.report.mismatch += 1;
+            if !skip(c, r, kind) { c.report.body_damaged = true; return false; }
             continue;
         }
         if !load_shape(c, r, slot, d, tab) { return false; }
@@ -862,7 +862,7 @@ fn load_field(k: Loader.Void, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owne
 // load_pointer: kind 17's payload is a NODE INDEX (§3.1).
 fn load_pointer(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
     let index, ok = leb(c, r);
-    if !ok { c.report.malformed = true; return false; }
+    if !ok { c.report.body_damaged = true; return false; }
     resolve(c, slot, d, index);
     return true;
 }
@@ -871,10 +871,10 @@ fn load_pointer(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
 // malformed; a clamp cuts at a code point boundary and counts.
 fn load_text(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
     let n, ok = leb(c, r);
-    if !ok || !fits(r, n) { c.report.malformed = true; return false; }
+    if !ok || !fits(r, n) { c.report.body_damaged = true; return false; }
     let len = n as! i64;
     if !text_valid(c.data, r.off, len) {
-        c.report.malformed = true;
+        c.report.body_damaged = true;
         c.vals[slot].state = ValAbsent;
         r.off += len;
         return true;
@@ -882,7 +882,7 @@ fn load_text(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
     var keep = len;
     if d.shape == ShapeStr && keep > d.bound {
         keep = text_boundary(c.data, r.off, len, d.bound);
-        c.report.clamped += 1;
+        c.report.oor += 1;
     }
     c.vals[slot].state = ValPresent;
     c.vals[slot].off = r.off;
@@ -894,19 +894,19 @@ fn load_text(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
 // load_wide: kind 33 (§3): an odd L or ill-formed units read the default.
 fn load_wide(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
     let n, ok = leb(c, r);
-    if !ok || !fits(r, n) { c.report.malformed = true; return false; }
+    if !ok || !fits(r, n) { c.report.body_damaged = true; return false; }
     let len = n as! i64;
     let at = r.off;
     r.off += len;
     if (len & 1) != 0 || !wide_valid(c.data, at, len / 2) {
-        c.report.malformed = true;
+        c.report.body_damaged = true;
         c.vals[slot].state = ValAbsent;
         return true;
     }
     var keep = len / 2;
     if keep > d.bound {
         keep = wide_boundary(c.data, at, len / 2, d.bound);
-        c.report.clamped += 1;
+        c.report.oor += 1;
     }
     c.vals[slot].state = ValPresent;
     c.vals[slot].off = at;
@@ -921,11 +921,11 @@ fn load_wide(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
 // ELEMENT's default, None — the Go reference's enumCell.
 fn load_enum(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, element: bool) -> bool {
     let ref, ok = leb(c, r);
-    if !ok { c.report.malformed = true; return false; }
+    if !ok { c.report.body_damaged = true; return false; }
     c.vals[slot].bits = Int128 { lo: 0, hi: 0 };
     if ref == 0 { c.vals[slot].state = ValEmpty; return true; }
     let id, named = idof(c, ref);
-    if !named { c.report.malformed = true; return false; }
+    if !named { c.report.body_damaged = true; return false; }
     var v: u64 = 0;
     for vd, i in d.variants {
         if vd.id == id { v = (i + 1) as! u64; break; }
@@ -963,7 +963,7 @@ fn variant_deprecated(c: LoadCtx&, name: const u8[:], id: u64) -> bool {
 // terminator is not the last byte of its L is damage and reads its defaults.
 fn load_body(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bool {
     let n, ok = leb(c, r);
-    if !ok || !fits(r, n) { c.report.malformed = true; return false; }
+    if !ok || !fits(r, n) { c.report.body_damaged = true; return false; }
     let len = n as! i64;
     let t = table_index(c, name);
     var sub = Rd { off: r.off, end: r.off + len };
@@ -972,7 +972,7 @@ fn load_body(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bool {
     body_at(c, sub, t, slot, true, false);
     if c.report.count_refused { return false; }
     if sub.off != sub.end {
-        c.report.malformed = true;
+        c.report.body_damaged = true;
         clear_fields(c, slot);
     }
     r.off += len;
@@ -990,24 +990,24 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
     var body_len = framed;
     if framed < 0 {
         let n, good = leb(c, r);
-        if !good || !fits(r, n) { c.report.malformed = true; return false, false; }
+        if !good || !fits(r, n) { c.report.body_damaged = true; return false, false; }
         body_len = n as! i64;
     }
-    if !has(r, body_len) { c.report.malformed = true; return false, false; }
+    if !has(r, body_len) { c.report.body_damaged = true; return false, false; }
     let end = r.off + body_len;
     if body_len >= 2 {
         var decoded: i64 = 0;
         let ek = rd_u8(c, r);
         let count, good = leb(c, r);
         if !good {
-            c.report.malformed = true;
+            c.report.body_damaged = true;
             r.off = end;
             if d.optional { ride(c, slot); }
             return true, false;
         }
         let want = if bytes { 6 } else { d.ek };
         if ek != want && !widens(ek, want) {
-            c.report.kind_mismatch += 1;
+            c.report.mismatch += 1;
             r.off = end;
             return true, false;
         }
@@ -1024,7 +1024,7 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             }
         } else if count > d.bound as! u64 {
             keep = d.bound as! u64;
-            c.report.clamped += 1;
+            c.report.oor += 1;
         }
         if widened { c.report.widened += 1; }
         var sub = Rd { off: r.off, end: if end < r.off { r.off } else { end } };
@@ -1032,7 +1032,7 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             let at = sub.off;
             var i: u64 = 0;
             while i < keep {
-                if !has(sub, 1) { c.report.malformed = true; break; }
+                if !has(sub, 1) { c.report.body_damaged = true; break; }
                 sub.off += 1;
                 decoded += 1;
                 i += 1;
@@ -1061,7 +1061,7 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             }
             // a text list's total keeps the longest prefix within it: the
             // element that would carry the sum past it drops with every
-            // element after it, clamped counted once (§2.13)
+            // element after it, oor counted once (§2.13)
             var spent: i64 = 0;
             var i: i64 = 0;
             while (i as! u64) < keep && i < c.vals[slot].count {
@@ -1072,7 +1072,7 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
                     if n > d.text_total - spent {
                         if c.retaining { forget_rec(c, es); }
                         c.vals[es] = LoadVal { shape: eshape, .. };
-                        c.report.clamped += 1;
+                        c.report.oor += 1;
                         break;
                     }
                     spent += n;
@@ -1125,7 +1125,7 @@ fn load_item(k: Loader.Scalar, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&
 }
 fn load_item(k: Loader.Pointer, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
     let index, ok = leb(c, r);
-    if !ok { c.report.malformed = true; return false; }
+    if !ok { c.report.body_damaged = true; return false; }
     resolve(c, es, e, index);
     return true;
 }
@@ -1157,7 +1157,7 @@ fn load_item(k: Loader.Map, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, d
     return scalar_at(c, c.report, r, c.vals[es], e, declared, ek); // no element is a map
 }
 fn load_item(k: Loader.Union, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
-    if !has(r, 1) { c.report.malformed = true; return false; }
+    if !has(r, 1) { c.report.body_damaged = true; return false; }
     c.vals[es] = LoadVal { shape: ShapeUnion, .. };
     return load_union(c, r, es, e.ref);
 }
@@ -1168,13 +1168,13 @@ fn load_item(k: Loader.Void, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, 
 // item_text: a plain text list's element: its own L, then the text (§2.13).
 fn item_text(c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&) -> bool {
     let n, ok = leb(c, r);
-    if !ok || !fits(r, n) { c.report.malformed = true; return false; }
+    if !ok || !fits(r, n) { c.report.body_damaged = true; return false; }
     let len = n as! i64;
-    if !text_valid(c.data, r.off, len) { c.report.malformed = true; return false; }
+    if !text_valid(c.data, r.off, len) { c.report.body_damaged = true; return false; }
     var keep = len;
     if e.shape == ShapeStr && keep > e.bound {
         keep = text_boundary(c.data, r.off, len, e.bound);
-        c.report.clamped += 1;
+        c.report.oor += 1;
     }
     c.vals[es].state = ValPresent;
     c.vals[es].off = r.off;
@@ -1196,15 +1196,15 @@ fn key_variants(c: LoadCtx&, owner: i64, d: FieldDesc) -> const VariantDesc[:] {
 // key this reader cannot name counts unknown; a key reference of 0 is damage.
 fn load_keyed(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
     let n, ok = leb(c, r);
-    if !ok || !fits(r, n) { c.report.malformed = true; return false; }
+    if !ok || !fits(r, n) { c.report.body_damaged = true; return false; }
     let len = n as! i64;
     let end = r.off + len;
     if len < 2 { r.off = end; return true; }
     let ek = rd_u8(c, r);
     let count, good = leb(c, r);
-    if !good { c.report.malformed = true; r.off = end; return true; }
+    if !good { c.report.body_damaged = true; r.off = end; return true; }
     if ek != d.ek {
-        if !widens(ek, d.ek) { c.report.kind_mismatch += 1; r.off = end; return true; }
+        if !widens(ek, d.ek) { c.report.mismatch += 1; r.off = end; return true; }
         c.report.widened += 1;
     }
     let e = d.elem;
@@ -1218,12 +1218,12 @@ fn load_keyed(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool 
     while k < count {
         k += 1;
         let key, kg = leb(c, sub);
-        if !kg { c.report.malformed = true; break; }
-        if key == 0 { c.report.malformed = true; break; }
+        if !kg { c.report.body_damaged = true; break; }
+        if key == 0 { c.report.body_damaged = true; break; }
         let key_id, named = idof(c, key);
-        if !named { c.report.malformed = true; break; }
+        if !named { c.report.body_damaged = true; break; }
         let el, lg = leb(c, sub);
-        if !lg || !fits(sub, el) { c.report.malformed = true; break; }
+        if !lg || !fits(sub, el) { c.report.body_damaged = true; break; }
         let elen = el as! i64;
         var at: i64 = -1;
         for kv, i in keys {
@@ -1245,7 +1245,7 @@ fn load_keyed(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool 
             c.vals[es].state = ValPresent;
             body_at(c, elem, t, es, true, false);
             if c.report.count_refused { return false; }
-            if elem.off != elem.end { c.report.malformed = true; clear_fields(c, es); }
+            if elem.off != elem.end { c.report.body_damaged = true; clear_fields(c, es); }
         } else {
             scalar_at(c, c.report, elem, c.vals[es], e, d.ek, ek);
         }
@@ -1324,18 +1324,18 @@ fn key_order(c: LoadCtx&, kd: FieldDesc, a: LoadVal, b: LoadVal) -> i64 {
 }
 
 // load_map decodes one map (docs/SPEC-TABLES.md §2.8): ascending keys, a
-// repeated key last-wins and counts duplicate, a descending key stops the map
-// as malformed, a key past the bound drops its entry and counts clamped, a
+// repeated key last-wins and counts repeated, a descending key stops the map
+// as malformed, a key past the bound drops its entry and counts oor, a
 // key of another kind empties the map for one kind_mismatch.
 fn load_map(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
     let n, ok = leb(c, r);
-    if !ok || !fits(r, n) { c.report.malformed = true; return false; }
+    if !ok || !fits(r, n) { c.report.body_damaged = true; return false; }
     let end = r.off + (n as! i64);
     if (n as! i64) >= 2 {
         let ek = rd_u8(c, r);
         let count, good = leb(c, r);
-        if !good { c.report.malformed = true; r.off = end; return true; }
-        if ek != KindTable { c.report.kind_mismatch += 1; r.off = end; return true; }
+        if !good { c.report.body_damaged = true; r.off = end; return true; }
+        if ek != KindTable { c.report.mismatch += 1; r.off = end; return true; }
         if count > 0x7FFFFFFF { r.off = end; return collection_cap(c); }
         var sub = Rd { off: r.off, end: if end < r.off { r.off } else { end } };
         // the entry table is <Owner><Slot>Entry (docs/PORT-GOOSE.md, THE TYPE MAPPING)
@@ -1358,7 +1358,7 @@ fn load_map(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
         while k < count {
             k += 1;
             let el, g = leb(c, sub);
-            if !g || !fits(sub, el) { c.report.malformed = true; break; }
+            if !g || !fits(sub, el) { c.report.body_damaged = true; break; }
             let body = Rd { off: sub.off, end: sub.off + (el as! i64) };
             sub.off = body.end;
             var key = LoadVal { .. };
@@ -1366,10 +1366,10 @@ fn load_map(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
             var entry_widened = false;
             let key_ok = map_key_scan(c, body, kd, key, kind_bad, entry_widened);
             if entry_widened && !widened { widened = true; c.report.widened += 1; }
-            if kind_bad { c.report.kind_mismatch += 1; landed = 0; break; }
-            if !key_ok { c.report.malformed = true; break; }
+            if kind_bad { c.report.mismatch += 1; landed = 0; break; }
+            if !key_ok { c.report.body_damaged = true; break; }
             if (kd.shape == ShapeStr) && key.len > kd.bound {
-                c.report.clamped += 1; // keys never clamp: the entry drops whole
+                c.report.oor += 1; // keys never clamp: the entry drops whole
                 continue;
             }
             var order: i64 = -1;
@@ -1378,18 +1378,18 @@ fn load_map(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
                 let lk = c.vals[last.first];
                 order = key_order(c, kd, lk, key);
             }
-            if order > 0 { c.report.malformed = true; break; } // descending
+            if order > 0 { c.report.body_damaged = true; break; } // descending
             // the entry's body is read WHOLE now the key has chosen its place
             let at = if order == 0 { first + landed - 1 } else { first + landed };
-            if at >= first + cap { c.report.malformed = true; break; }
-            if c.retaining && c.vals[at].made { forget_rec(c, at); } // a duplicate key's earlier entry
+            if at >= first + cap { c.report.body_damaged = true; break; }
+            if c.retaining && c.vals[at].made { forget_rec(c, at); } // a repeated key's earlier entry
             c.vals[at] = LoadVal { shape: ShapeTab, .. };
             make_record(c, at, et);
             c.vals[at].state = ValPresent;
             var whole = body;
             body_at(c, whole, et, at, true, true);
             if c.report.count_refused { return false; }
-            if order == 0 { c.report.duplicate += 1; continue; } // last wins whole
+            if order == 0 { c.report.repeated += 1; continue; } // last wins whole
             landed += 1;
         }
         c.vals[slot].len = landed;
@@ -1427,7 +1427,7 @@ recursive fn load_union(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bo
     if c.retaining && c.vals[slot].made && c.vals[slot].first >= 0 { forget_rec(c, c.vals[slot].first); }
     c.vals[slot].tab = u;
     let ref, ok = leb(c, r);
-    if !ok { c.report.malformed = true; return false; }
+    if !ok { c.report.body_damaged = true; return false; }
     if ref == 0 {
         c.vals[slot].bits = Int128 { lo: 0, hi: 0 };
         c.vals[slot].count = 0;
@@ -1438,11 +1438,11 @@ recursive fn load_union(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bo
     // damage stops here and leaves what an earlier occurrence placed
     // (tablewire unionCell)
     let arm_id, named = idof(c, ref);
-    if !named { c.report.malformed = true; return false; }
-    if !has(r, 1) { c.report.malformed = true; return false; }
+    if !named { c.report.body_damaged = true; return false; }
+    if !has(r, 1) { c.report.body_damaged = true; return false; }
     let kind = rd_u8(c, r);
     let n, good = leb(c, r);
-    if !good || !fits(r, n) { c.report.malformed = true; return false; }
+    if !good || !fits(r, n) { c.report.body_damaged = true; return false; }
     let len = n as! i64;
     var sub = Rd { off: r.off, end: r.off + len };
     c.vals[slot].bits = Int128 { lo: 0, hi: 0 };
@@ -1462,7 +1462,7 @@ recursive fn load_union(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bo
             if widens(kind, want) {
                 // WIDENED AT AN ARM (§4): decoded at its own width
                 if len != kind_width(kind) {
-                    c.report.malformed = true;
+                    c.report.body_damaged = true;
                 } else {
                     let p = reserve(c, 1);
                     c.vals[p].shape = arm.shape;
@@ -1472,7 +1472,7 @@ recursive fn load_union(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bo
                     }
                 }
             } else {
-                c.report.kind_mismatch += 1;
+                c.report.mismatch += 1;
             }
         } else {
             load_arm(c, sub, slot, arm, tag, len);
@@ -1505,7 +1505,7 @@ fn arm_fixed_width(a: FieldDesc) -> i64 {
 // reads on past L.
 fn load_arm(c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
     let w = arm_fixed_width(a);
-    if w > 0 && n != w { c.report.malformed = true; return false; }
+    if w > 0 && n != w { c.report.body_damaged = true; return false; }
     return load_payload(loader_of(a), c, r, slot, a, tag, n);
 }
 
@@ -1531,17 +1531,17 @@ fn load_payload(k: Loader.Scalar, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, 
 fn load_payload(k: Loader.Pointer, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
     let p = arm_value(c, a);
     let index, good = leb(c, r);
-    if !good || r.off != r.end { c.report.malformed = true; return false; }
+    if !good || r.off != r.end { c.report.body_damaged = true; return false; }
     resolve(c, p, a, index);
     return arm_placed(c, slot, tag, p, true);
 }
 fn load_payload(k: Loader.Text, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
     let p = arm_value(c, a);
-    if !text_valid(c.data, r.off, n) { c.report.malformed = true; return false; }
+    if !text_valid(c.data, r.off, n) { c.report.body_damaged = true; return false; }
     var keep = n;
     if a.shape == ShapeStr && keep > a.bound {
         keep = text_boundary(c.data, r.off, n, a.bound);
-        c.report.clamped += 1;
+        c.report.oor += 1;
     }
     c.vals[p].state = ValPresent;
     c.vals[p].off = r.off;
@@ -1551,11 +1551,11 @@ fn load_payload(k: Loader.Text, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, ta
 }
 fn load_payload(k: Loader.Wide, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
     let p = arm_value(c, a);
-    if (n & 1) != 0 || !wide_valid(c.data, r.off, n / 2) { c.report.malformed = true; return false; }
+    if (n & 1) != 0 || !wide_valid(c.data, r.off, n / 2) { c.report.body_damaged = true; return false; }
     var keep = n / 2;
     if keep > a.bound {
         keep = wide_boundary(c.data, r.off, n / 2, a.bound);
-        c.report.clamped += 1;
+        c.report.oor += 1;
     }
     c.vals[p].state = ValPresent;
     c.vals[p].off = r.off;
@@ -1566,7 +1566,7 @@ fn load_payload(k: Loader.Wide, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, ta
 fn load_payload(k: Loader.Enum, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
     let p = arm_value(c, a);
     let ok = load_enum(c, r, p, a, false);
-    if ok && r.off != r.end { c.report.malformed = true; return false; }
+    if ok && r.off != r.end { c.report.body_damaged = true; return false; }
     return arm_placed(c, slot, tag, p, ok);
 }
 fn load_payload(k: Loader.Body, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
@@ -1576,7 +1576,7 @@ fn load_payload(k: Loader.Body, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, ta
     c.vals[p].state = ValPresent;
     body_at(c, r, t, p, true, false);
     if c.report.count_refused { return false; }
-    if r.off != r.end { c.report.malformed = true; return false; } // the union reads None (§3)
+    if r.off != r.end { c.report.body_damaged = true; return false; } // the union reads None (§3)
     return arm_placed(c, slot, tag, p, true);
 }
 fn load_payload(k: Loader.Array, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
@@ -1600,7 +1600,7 @@ fn load_payload(k: Loader.Union, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, t
     return arm_placed(c, slot, tag, p, load_union(c, r, p, a.ref));
 }
 fn load_payload(k: Loader.Void, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
-    if n != 0 { c.report.malformed = true; return false; }
+    if n != 0 { c.report.body_damaged = true; return false; }
     set_union(c, slot, tag, -1);
     return true;
 }
@@ -1637,7 +1637,7 @@ fn node_table_bytes(c: LoadCtx&, body: Rd) -> Rd, bool, bool {
         if id == NodeWireId {
             present = true;
             if kind != KindString {
-                c.report.malformed = true;
+                c.report.body_damaged = true;
                 return Rd { off: 0, end: 0 }, present, false;
             }
             let n, good = leb(c, r);
@@ -1688,8 +1688,8 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
         scanned = scan_nodes(c, payload);
         if scanned { c.node_n = c.nodes.len; }
     }
-    if !framed && present { c.report.malformed = true; }
-    else if !scanned { c.report.malformed = true; }
+    if !framed && present { c.report.body_damaged = true; }
+    else if !scanned { c.report.body_damaged = true; }
     else { c.good = true; }
     // PASS ONE: what each record IS, from the framing — the types this root
     // can place, and the two blob ids where an edge below it names them
@@ -1699,7 +1699,7 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
         c.nodes[k].val = -1;
         if c.unit.tables[root].place_str && type_id == StringTypeId {
             if !text_valid(c.data, c.nodes[k].off, c.nodes[k].len) {
-                c.report.malformed = true;
+                c.report.body_damaged = true;
                 continue;
             }
             c.nodes[k].blob = KindString;
@@ -1736,7 +1736,7 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
     if c.report.count_refused { return false; }
     // A CYCLIC WIRE IS DAMAGE (§3.1): the graph the load stored is checked
     // once every index has resolved
-    if c.good && !c.report.malformed && !acyclic(c) { c.report.malformed = true; }
+    if c.good && !c.report.body_damaged && !acyclic(c) { c.report.body_damaged = true; }
     return ok;
 }
 
@@ -1920,7 +1920,7 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     var c = LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: report, ids_at: 0, ids_n: 0, numbered: false, good: false, root_tab: -1, root_val: -1, cap: false, node_n: 0, retain: store, retaining: retaining };
     // THE FORM BYTE IS READ FIRST (§3): form 2 is a stream form and never a
     // file's own, and any form but 1 is refused with no damage reported
-    if data.len < 1 { report.malformed = true; report.damaged = true; return -1; }
+    if data.len < 1 { report.body_damaged = true; report.damaged = true; return -1; }
     if data[0] != 1 {
         report.refused = true;
         report.reason = if data[0] == 2 { LoadRefuseMessageFormAsFile } else { LoadRefuseNewerForm };
@@ -1931,7 +1931,7 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     var file = data;
     if unit.tables[t].integrity {
         if !integrity_holds(data, 1) {
-            report.malformed = true;
+            report.body_damaged = true;
             report.damaged = true;
             report.reason = LoadRefuseIntegrityMismatch;
             return -1;
@@ -1941,32 +1941,32 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     }
     // THE ID TABLE, from the end (§3): the count, then 8 x count entries.
     // Damage here and an early end below are the verdict's damage (§4)
-    if file.len < 9 { report.malformed = true; report.damaged = true; return -1; }
+    if file.len < 9 { report.body_damaged = true; report.damaged = true; return -1; }
     let count = le_at(file, file.len - 8, 8);
-    if count > (file.len / 8) as! u64 { report.malformed = true; report.damaged = true; return -1; }
+    if count > (file.len / 8) as! u64 { report.body_damaged = true; report.damaged = true; return -1; }
     let span = (count as! i64) * 8 + 8;
-    if span + 1 > file.len { report.malformed = true; report.damaged = true; return -1; }
+    if span + 1 > file.len { report.body_damaged = true; report.damaged = true; return -1; }
     // THE BOUNDED-WORK CONTRACT (§3): a table that claims more than
     // IdTableBound entries is malformed, whatever the buffer would hold
-    if count > IdTableBound as! u64 { report.malformed = true; report.damaged = true; return -1; }
+    if count > IdTableBound as! u64 { report.body_damaged = true; report.damaged = true; return -1; }
     let first = file.len - span;
     // ONE ID IN TWO ENTRIES: the whole wire is malformed (§3)
-    if !ids_distinct(file, first, count as! i64) { report.malformed = true; report.damaged = true; return -1; }
+    if !ids_distinct(file, first, count as! i64) { report.body_damaged = true; report.damaged = true; return -1; }
     c.ids_at = first;
     c.ids_n = count as! i64;
     let body = Rd { off: 1, end: first };
     let end, terminated = body_extent(c, body);
-    if terminated && end != first { report.malformed = true; report.damaged = true; return -1; }
+    if terminated && end != first { report.body_damaged = true; report.damaged = true; return -1; }
     c.root_tab = t;
     c.root_val = fresh_record(c, t);
     c.vals[c.root_val].state = ValPresent;
     if !unit.tables[t].variable {
         // a value-only table has no node table (§3). Damage its walk read
         // past is the verdict's; damage that stopped the walk is a malformed
-        // body (gotable's <T>LoadTolerant)
+        // body (gotable's <T>LoadStrict)
         var r = body;
         if !body_at(c, r, t, c.root_val, false, false) { report.stopped = true; }
-        else if report.malformed { report.damaged = true; }
+        else if report.body_damaged { report.damaged = true; }
     } else if !load_variable(c, body) {
         report.stopped = true;
     }
@@ -1974,7 +1974,7 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     // other verdict, and the caller discards the partial value
     if report.non_finite { report.reason = LoadRefuseNonFiniteFloat; return -1; }
     // §4: damage in any body invalidates the whole plain or retaining load.
-    if report.malformed { return -1; }
+    if report.body_damaged { return -1; }
     return c.root_val;
 }
 

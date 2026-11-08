@@ -305,7 +305,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		e.emitWriterClamps(st, olds[i].Ranges)
 	}
 	e.p("        }\n")
-	e.p("        report.clamped += _%sFixedClamp(values[k]);\n", n)
+	e.p("        report.oor += _%sFixedClamp(values[k]);\n", n)
 	e.p("        k += 1;\n")
 	e.p("    }\n")
 	// THE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, ON A READ THAT RETURNS
@@ -321,7 +321,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 			e.p("        report.unknown += %d;\n", plan.unknown)
 		}
 		if plan.kindMismatch > 0 {
-			e.p("        report.kind_mismatch += %d;\n", plan.kindMismatch)
+			e.p("        report.mismatch += %d;\n", plan.kindMismatch)
 		}
 		e.p("    }\n")
 	}
@@ -351,13 +351,13 @@ func (e *fixedEvolveEmit) emitWriterClamps(st *ir.Struct, ranges []ir.TableFixed
 				e.p("            while %s < %d {\n", i, f.ArrayBound)
 				val = val + "[" + i + "]"
 				for _, b := range bounds {
-					e.p("                if %s { %s = %s; report.clamped += 1; }\n", b.over(val), val, b.land)
+					e.p("                if %s { %s = %s; report.oor += 1; }\n", b.over(val), val, b.land)
 				}
 				e.p("                %s += 1;\n            }\n", i)
 				break
 			}
 			for _, b := range bounds {
-				e.p("            if %s { %s = %s; report.clamped += 1; }\n", b.over(val), val, b.land)
+				e.p("            if %s { %s = %s; report.oor += 1; }\n", b.over(val), val, b.land)
 			}
 			break
 		}
@@ -468,7 +468,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 					e.p("            if or%d == %d { ov%d = %d; }\n", v, raw, v, n.remap[raw])
 				}
 			}
-			e.p("            if or%d > %d { report.clamped += 1; }\n", v, n.count)
+			e.p("            if or%d > %d { report.oor += 1; }\n", v, n.count)
 			for b := int64(0); b < n.size; b++ {
 				e.p("            img[%s] = ((ov%d >> %d) & 255) as! u8;\n", addExpr(curBase, fmt.Sprintf("%d", n.curOff+b)), v, 8*b)
 			}
@@ -479,7 +479,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			v := *seq
 			*seq = *seq + 1
 			e.p("            let ft%d: u64 = schema_rt::fixed_evolve_read_u(data, %s, %d);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.tagWidth)
-			e.p("            if ft%d > %d { report.clamped += 1; }\n", v, n.count)
+			e.p("            if ft%d > %d { report.oor += 1; }\n", v, n.count)
 		case nodeLoop:
 			v := *seq
 			*seq = *seq + 1
