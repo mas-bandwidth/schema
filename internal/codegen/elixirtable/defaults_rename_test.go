@@ -61,6 +61,33 @@ func TestDefaultsAndTableRenameElixir(t *testing.T) {
 		{"tblr2", "test/tables/R2.schema"},
 	}
 
+	// R1 and R2 declare Cfg `fixed`, and a fixed root's file is form 3 only
+	// (docs/SPEC-TABLES.md §3.4): its historical form-1 bytes under
+	// testdata/wire/tables are previous_form refusal vectors now. The `was`
+	// rows this test pins live in the VARIABLE form's descriptors, so the two
+	// units are read through the same declarations without the fixed keyword
+	// (as b64ea4816 did for the other variable-form unit tests), and the
+	// form-1 bytes are read by a variable root. The fixed form's own `was`
+	// rows are pinned by fixedclass_test.go.
+	variableDir := t.TempDir()
+	for i, u := range units {
+		if u.name != "tblr1" && u.name != "tblr2" {
+			continue
+		}
+		src, err := os.ReadFile(filepath.Join(root, u.schema))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(src), "fixed table Cfg") {
+			t.Fatalf("%s no longer declares `fixed table Cfg`: revisit this rewrite", u.schema)
+		}
+		path := filepath.Join(variableDir, filepath.Base(u.schema))
+		if err := os.WriteFile(path, []byte(strings.ReplaceAll(string(src), "fixed table Cfg", "table Cfg")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		units[i].schema = path
+	}
+
 	// Generate every unit through the COMPILER path (`schema generate --lang
 	// elixir`), so a target refusal the backend never sees fails here rather
 	// than passing by bypassing the target.
@@ -70,7 +97,11 @@ func TestDefaultsAndTableRenameElixir(t *testing.T) {
 	var builds, rest []string
 	for _, uu := range units {
 		u := uu
-		paths, err := compiler.GatherPaths([]string{filepath.Join(root, u.schema)})
+		schema := u.schema
+		if !filepath.IsAbs(schema) {
+			schema = filepath.Join(root, schema)
+		}
+		paths, err := compiler.GatherPaths([]string{schema})
 		if err != nil {
 			t.Fatalf("schema generate %s: %v", u.schema, err)
 		}

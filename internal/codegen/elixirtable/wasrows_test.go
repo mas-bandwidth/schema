@@ -18,7 +18,9 @@ import (
 // The renamed unit: one enum variant, one packet-union arm and one type field
 // each carry a `was` alias (docs/SPEC-TABLES.md §5). The variable form's
 // descriptors hash each under its old name, so a writer from before the rename
-// still reads as the new name.
+// still reads as the new name. Cfg is a VARIABLE root: a fixed root's writer
+// writes form 3 only (docs/SPEC-TABLES.md §3.4), and this test pins the
+// variable form's rows (the fixed form's are fixedclass_test.go's).
 const wasRowsRenamedSchema = `package wrows
 
 enum Grade
@@ -45,7 +47,7 @@ union Effect
     tally int32
 }
 
-fixed table Cfg
+table Cfg
 {
     grade Grade
     effect Effect
@@ -79,7 +81,7 @@ union Effect
     tally int32
 }
 
-fixed table Cfg
+table Cfg
 {
     grade Grade
     effect Effect
