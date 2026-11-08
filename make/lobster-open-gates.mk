@@ -78,7 +78,8 @@ tables-lobster-json-differential-negative-control: lobster-dist-present
 # modules (schema_tables.lobster, load.lobster, ...) beside the unit's
 # <Base>Table.lobster modules, named by no schema file, so a schema file that
 # sorts earlier relocates nothing: every runtime module keeps its name and its
-# bytes, and the set of table modules is unchanged, across the two trees.
+# bytes, and the base's table modules are unchanged beside the new file's own
+# AaaTable.lobster, across the two trees.
 # test/lobster-runtime-home/check is the comparison; the gate runs it with
 # bin/schema.
 .PHONY: tables-lobster-runtime-home tables-lobster-runtime-home-negative-control
@@ -92,7 +93,7 @@ tables-lobster-runtime-home: bin/schema
 # that has never gone red is watching nothing.
 tables-lobster-runtime-home-negative-control: tables-lobster-runtime-home
 	@mkdir -p build
-	@sed 's|^	maps.Copy(out, Runtime())$$|	for name, data := range Runtime() { if name == RuntimeModule+".lobster" { name = u.Files[0].Base + "_tables.lobster" }; out[name] = data }; _ = maps.Keys[map[string][]byte] // SABOTAGED: the file order|' \
+	@sed 's|^	maps.Copy(out, runtimeForUnit(u))$$|	for name, data := range runtimeForUnit(u) { if name == RuntimeModule+".lobster" { name = u.Files[0].Base + "_tables.lobster" }; out[name] = data }; _ = maps.Keys[map[string][]byte] // SABOTAGED: the file order|' \
 		internal/codegen/lobstertable/lobstertable.go > build/lobster-runtime-home-fileorder.gotext
 	@grep -q SABOTAGED build/lobster-runtime-home-fileorder.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
