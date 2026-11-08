@@ -199,3 +199,20 @@ paths test/bench/fixedform_wires.cpp 1 the same file: its path names a benchmark
 # Generated-tree exclusion uses wall-clock deadlines, not schema measurements.
 timing tools/treelock/main.go 2 Bounded lock-owner diagnostic retry; no benchmark or schema-shape timing.
 timing tools/treelock/treelock_test.go 7 Bounded subprocess readiness/release and contention controls; no benchmark measurement.
+
+# Registered 2026-11-07 when sprint/schema-100 landed on main (#2879) and the
+# gate went red on them. Deadlines and wall bounds first, then three
+# hand-written measurements that are DEBT, listed so they are not silent; each
+# is owed a ruling (keep beside the leg, or move into the data-driven bench).
+timing internal/codegen/darttable/cycle_test.go 1 the generated Dart cycle check's linear deadline (a Stopwatch bounds a diamond-chain load at 10 s); a correctness bound, no rate reported
+timing internal/codegen/elixirtable/cycle_test.go 2 the generated Elixir cycle check's linear deadline (System.monotonic_time bounds a diamond-chain load); a correctness bound, no rate reported
+timing internal/codegen/rusttable/cycle_test.go 1 the generated Rust cycle check's linear deadline (Instant::now bounds a diamond-chain load at 10 s); a correctness bound, no rate reported
+timing test/rust-hostile/src/main.rs 1 the hostile runner's per-case subprocess budget: Instant::now bounds how long a child may run before it is killed; no shape measured
+timing tools/pgroup/pgroup_test.go 1 pgroup's wall test: the time a 1 s wall takes to stop a process group, bounded at 30 s; no benchmark
+paths test/conformance/harness/wirefuzz_profile_test.go 1 "profile" is the wire fuzzer's roster profile (which vectors it mutates), not a performance profile; no timing
+timing internal/codegen/luatable/l4_bench_test.go 8 DEBT: the Lua L4 variable-load/cook and block Go benchmarks (testing.B, os.clock in the driven Lua); every subprocess first checks bytes against the Go engine. Owed a ruling: move into the data-driven bench or keep
+paths internal/codegen/luatable/l4_bench_test.go 1 DEBT: the same file
+timing internal/codegen/luautable/fixed_hotpath_bench_test.go 2 DEBT: the Luau fixed hot-path evidence (os.clock in the driven Luau), the committed form of a card's before/after numbers. Owed a ruling: move into the data-driven bench or keep
+paths internal/codegen/luautable/fixed_hotpath_bench_test.go 1 DEBT: the same file
+timing internal/tablewire/engine_bench_test.go 5 DEBT: the Go engine's STEP 5 harness for bench/results/2026-11-05-strict-engine-go-engine.md (testing.B over the engine's wire decode/encode and text read, not a generated leg). Owed a ruling: move into the data-driven bench or keep
+paths internal/tablewire/engine_bench_test.go 1 DEBT: the same file
