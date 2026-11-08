@@ -317,10 +317,10 @@ func gooseMsgProbe(t *testing.T, c gooseMsgCase) gooseMsgResult {
 		} else {
 			fmt.Fprintf(&b, "    let announced = schema_rt::announce_read(voc, %s::%sAnnounce, vrep);\n", ns, c.root)
 		}
-		b.WriteString("    print(\"announced \", (if announced { 1 } else { 0 }), \" \", schema_rt::msg_reason_name(vrep.reason), \" \", (if vrep.malformed { 1 } else { 0 }), \" \", vrep.unknown);\n")
+		b.WriteString("    print(\"announced \", (if announced { 1 } else { 0 }), \" \", schema_rt::msg_reason_name(vrep.reason), \" \", (if vrep.damaged { 1 } else { 0 }), \" \", vrep.unknown);\n")
 		b.WriteString("    var lrep = schema_rt::MsgReport { .. };\n")
 		fmt.Fprintf(&b, "    let n = %s::%sLoadMessages(back[0..%d], voc, data, lrep);\n", ns, c.root, c.capacity)
-		b.WriteString("    print(\"load \", n, \" \", schema_rt::msg_reason_name(lrep.reason), \" \", (if lrep.malformed { 1 } else { 0 }), \" \", lrep.clamped, \" \", lrep.count, \" \", lrep.unknown, \" \", lrep.kind_mismatch, \" \", lrep.widened);\n")
+		b.WriteString("    print(\"load \", n, \" \", schema_rt::msg_reason_name(lrep.reason), \" \", (if lrep.damaged { 1 } else { 0 }), \" \", lrep.oor, \" \", lrep.count, \" \", lrep.unknown, \" \", lrep.mismatch, \" \", lrep.widened);\n")
 		b.WriteString("    var k: i64 = 0;\n    while k < n {\n        print(\"got\");\n        image(back[k]);\n        print(\"want\");\n        image(vals[k]);\n        k += 1;\n    }\n")
 		fmt.Fprintf(&b, "    var slotk: i64 = 0;\n    while slotk < %d {\n        print(\"slot\");\n        image(back[slotk]);\n        slotk += 1;\n    }\n", c.capacity)
 		fmt.Fprintf(&b, "    let freshv: %s = %s { .. };\n    print(\"fresh\");\n    image(freshv);\n", root, root)

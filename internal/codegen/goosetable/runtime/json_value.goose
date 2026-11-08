@@ -18,7 +18,7 @@
 // is raised by the same rule.
 //
 //   json_load_table(unit, text_unit, root, text, data, vals, nodes, report) -> i64
-//       the tolerant read: the root's slot in vals, or -1 when the text is
+//       the strict read: the root's slot in vals, or -1 when the text is
 //       not JSON, a value is refused by name, or the root carries no text
 //       form; the report is §4's. The decoded text and blob bytes are
 //       appended to data, where the slots' views point.
@@ -1489,7 +1489,7 @@ recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:
         } else {
             if index < 512 {
                 let bit = (1 as u64) << ((index & 63) as! u64);
-                if (seen[index >> 6] & bit) != 0 { c.jr.rep.duplicate += 1; }
+                if (seen[index >> 6] & bit) != 0 { c.jr.rep.repeated += 1; }
                 seen[index >> 6] |= bit;
             }
             let d = fields[index];
@@ -1501,7 +1501,7 @@ recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:
                 jr_reset(c, s, d);
             } else {
                 if got != jr_shape(c, d, name, index as! i32, false) {
-                    c.jr.rep.kind_mismatch += 1;
+                    c.jr.rep.mismatch += 1;
                     if !jr_skip(c, depth + 1) { return false; }
                 } else if !jr_field(c, s, d, name, index as! i32, depth) {
                     if c.jr.zero && c.jr.rep.reason == 0 { c.jr.rep.reason = JsonReasonHoldsZero; }
@@ -1548,36 +1548,36 @@ recursive fn jr_field(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     return jr_value(c, s, d, owner, ord, false, depth);
 }
 
-// jr_text appends one string's bytes to data, clamped at bound bytes on a
+// jr_text appends one string's bytes to data, oor at bound bytes on a
 // code point boundary and counted; a U+0000 refuses (§16.2, §16.3).
 fn jr_text(c: JvIn&, bound: i64) -> bool {
     var placed: i64 = 0;
-    var clamped = false;
+    var was_oor = false;
     let ok = json_scan(c.jr, true) { unit, n =>
-        if !clamped && (bound < 0 || placed + n <= bound) {
+        if !was_oor && (bound < 0 || placed + n <= bound) {
             for k in n { c.data.push(unit[k]); }
             placed += n;
         } else {
-            clamped = true;
+            was_oor = true;
         }
     };
     if !ok { return false; }
-    if clamped { c.jr.rep.clamped += 1; }
+    if was_oor { c.jr.rep.oor += 1; }
     return true;
 }
 
-// jr_units appends one string's UTF-16LE code units to data, clamped at
+// jr_units appends one string's UTF-16LE code units to data, oor at
 // bound units with a pair never split (the wstring row, §16.2).
 fn jr_units(c: JvIn&, bound: i64) -> bool {
     var placed: i64 = 0;
-    var clamped = false;
+    var was_oor = false;
     let ok = json_scan(c.jr, true) { unit, n =>
         var code: i64 = unit[0];
         if n == 2 { code = ((unit[0] & 0x1F) as i64) * 64 + (unit[1] & 0x3F) as i64; }
         if n == 3 { code = ((unit[0] & 0x0F) as i64) * 4096 + ((unit[1] & 0x3F) as i64) * 64 + (unit[2] & 0x3F) as i64; }
         if n == 4 { code = ((unit[0] & 0x07) as i64) * 262144 + ((unit[1] & 0x3F) as i64) * 4096 + ((unit[2] & 0x3F) as i64) * 64 + (unit[3] & 0x3F) as i64; }
         let need: i64 = if code >= 0x10000 { 2 } else { 1 };
-        if !clamped && (bound < 0 || placed + need <= bound) {
+        if !was_oor && (bound < 0 || placed + need <= bound) {
             if need == 2 {
                 let v = code - 0x10000;
                 let hi = 0xD800 + (v >> 10);
@@ -1592,11 +1592,11 @@ fn jr_units(c: JvIn&, bound: i64) -> bool {
             }
             placed += need;
         } else {
-            clamped = true;
+            was_oor = true;
         }
     };
     if !ok { return false; }
-    if clamped { c.jr.rep.clamped += 1; }
+    if was_oor { c.jr.rep.oor += 1; }
     return true;
 }
 
@@ -1631,7 +1631,7 @@ fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
         }
     }
     if bad {
-        c.jr.rep.kind_mismatch += 1;
+        c.jr.rep.mismatch += 1;
         return true, false;
     }
     let end = c.jr.pos;
@@ -1639,7 +1639,7 @@ fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
     var placed: i64 = 0;
     var acc: u64 = 0;
     var held: u64 = 0;
-    var clamped = false;
+    var was_oor = false;
     var done = false;
     let again = json_scan(c.jr, false) { unit, n =>
         for k in n {
@@ -1654,7 +1654,7 @@ fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
                         c.data.push(((acc >> held) & 0xFF) as! u8);
                         placed += 1;
                     } else {
-                        clamped = true;
+                        was_oor = true;
                     }
                 }
             }
@@ -1662,7 +1662,7 @@ fn jr_base64(c: JvIn&, bound: i64) -> bool, bool {
     };
     if !again { return false, false; }
     c.jr.pos = end;
-    if clamped { c.jr.rep.clamped += 1; }
+    if was_oor { c.jr.rep.oor += 1; }
     return true, true;
 }
 
@@ -1731,7 +1731,7 @@ recursive fn jr_pointer(c: JvIn&, s: i64, ref: const u8[:], depth: i64) -> bool 
         jr_null(c, s);
         if l.wire == 0 { return true; }
         if l.tab != tab {
-            c.jr.rep.kind_mismatch += 1;
+            c.jr.rep.mismatch += 1;
             return true;
         }
         jr_point(c, s, l.wire);
@@ -1774,14 +1774,14 @@ recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         }
         let got = json_shape(c.jr);
         if placed >= bound {
-            c.jr.rep.clamped += 1;
+            c.jr.rep.oor += 1;
             if !jr_skip(c, depth + 1) { ok = false; break; }
         } else if e.shape == ShapePtr && got == 'z' {
             if !json_literal(c.jr, "null") { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else if got != shape {
-            c.jr.rep.kind_mismatch += 1;
+            c.jr.rep.mismatch += 1;
             if !jr_skip(c, depth + 1) { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
@@ -1804,7 +1804,7 @@ recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
 // jr_text_list places a TEXT LIST (readTextList): strings, `null` for an
 // absent `?string(M)` element; an element past M clamps, past N drops. A
 // total keeps the longest prefix whose bytes are within it: the element that
-// would carry the sum past it and every element after it drop, clamped
+// would carry the sum past it and every element after it drop, oor
 // counted once (§2.13).
 fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) -> bool {
     let total = d.text_total;
@@ -1836,17 +1836,17 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
             // the total dropped this element; one past [..N] is counted as
             // well, as the wire counts its count clamp (§2.13)
             seen += 1;
-            if seen > bound { c.jr.rep.clamped += 1; }
+            if seen > bound { c.jr.rep.oor += 1; }
             if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
         } else if placed >= bound {
-            c.jr.rep.clamped += 1;
+            c.jr.rep.oor += 1;
             if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
         } else if fd.optional && got == 'z' {
             if !json_literal(c.jr, "null") { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else if got != 's' {
-            c.jr.rep.kind_mismatch += 1;
+            c.jr.rep.mismatch += 1;
             if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
@@ -1859,8 +1859,8 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
             jr_place_view(c, fs, off);
             let n = c.data.len - off;
             if total > 0 && n > total - spent {
-                c.jr.rep.clamped += 1;
-                json_clamped(c.jr.rep, owner, d.name);
+                c.jr.rep.oor += 1;
+                json_oor(c.jr.rep, owner, d.name);
                 full = true;
                 seen = placed + 1;
             } else {
@@ -1889,10 +1889,14 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     let shape = jr_shape(c, e, owner, ord, true);
     jr_collection(c, s, d, c.scratch.len, 0);
     var seen: u64[8] = [0; 8];
+    var seen_unk: u64[64] = [0; 64];
+    var seen_unk_n: i64 = 0;
+    var dup_unk = false;
     loop {
         let ch = json_peek(c.jr);
         if ch == '}' {
             c.jr.pos += 1;
+            if dup_unk && c.jr.rep.repeated == 0 { return json_fail(c.jr); }
             return true;
         }
         if ch == 0 { return json_fail(c.jr); }
@@ -1908,21 +1912,39 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         }
         if slot >= 0 && slot < 512 {
             let bit = (1 as u64) << ((slot & 63) as! u64);
-            if (seen[slot >> 6] & bit) != 0 { c.jr.rep.duplicate += 1; }
+            if (seen[slot >> 6] & bit) != 0 { c.jr.rep.repeated += 1; }
             seen[slot >> 6] |= bit;
         }
         if slot < 0 {
+            var kh: u64 = 0xcbf29ce484222325;
+            var ki: i64 = 0;
+            while ki < n {
+                let kb: u64 = key[ki]; kh = (kh ^ kb) * 0x100000001b3;
+                ki += 1;
+            }
+            var ui: i64 = 0;
+            while ui < seen_unk_n {
+                if seen_unk[ui] == kh { dup_unk = true; }
+                ui += 1;
+            }
+            if seen_unk_n < 64 {
+                seen_unk[seen_unk_n] = kh;
+                seen_unk_n += 1;
+            }
             c.jr.rep.unknown += 1;
             if !jr_skip(c, depth + 1) { return false; }
         } else if json_shape(c.jr) != shape {
-            c.jr.rep.kind_mismatch += 1;
+            c.jr.rep.mismatch += 1;
             if !jr_skip(c, depth + 1) { return false; }
         } else if !jr_value(c, c.vals[s].first + slot, e, owner, ord, true, depth + 1) {
             return false;
         }
         let r = jr_after(c, '}');
         if r < 0 { return false; }
-        if r == 0 { return true; }
+        if r == 0 {
+            if dup_unk && c.jr.rep.repeated == 0 { return json_fail(c.jr); }
+            return true;
+        }
     }
 }
 
@@ -1980,7 +2002,7 @@ fn jr_key_cmp(c: JvIn&, kd: FieldDesc, a: i64, b: i64) -> i64 {
 }
 
 // jr_map places a MAP from an object keyed by the KEY (readMap): a string key
-// past its bound drops its entry, counted clamped; an integer key is read by
+// past its bound drops its entry, counted oor; an integer key is read by
 // the integer rule and nothing else; a repeated key is last-wins and counted;
 // the entries land in ASCENDING key order (§2.8, §16.2).
 recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) -> bool {
@@ -2011,10 +2033,10 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
         let ks = c.vals[entry].first;
         var drop = false;
         if kd.shape == ShapeStr && (klen > JsonMaxKey || klen > kd.bound) {
-            c.jr.rep.clamped += 1;
+            c.jr.rep.oor += 1;
             drop = true;
         } else if kd.shape != ShapeStr && kd.shape != ShapeText && klen > JsonMaxKey {
-            c.jr.rep.kind_mismatch += 1;
+            c.jr.rep.mismatch += 1;
             drop = true;
         } else {
             let placed_key = jr_map_key(c, ks, kd, off);
@@ -2023,7 +2045,7 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
                 break;
             }
             if placed_key == 1 {
-                c.jr.rep.kind_mismatch += 1;
+                c.jr.rep.mismatch += 1;
                 drop = true;
             }
         }
@@ -2038,7 +2060,7 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
                 if !json_literal(c.jr, "null") { ok = false; break; }
                 jr_reset(c, vs, vd);
             } else if got != jr_shape(c, vd, ename, 1, false) {
-                c.jr.rep.kind_mismatch += 1;
+                c.jr.rep.mismatch += 1;
                 if !jr_skip(c, depth + 1) { ok = false; break; }
                 if vd.optional { jr_present(c, vs, vd); }
             } else {
@@ -2050,7 +2072,7 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
                 if jr_key_cmp(c, kd, c.scratch[mark + k], entry) == 0 { dup = k; }
             }
             if dup >= 0 {
-                c.jr.rep.duplicate += 1;
+                c.jr.rep.repeated += 1;
                 c.scratch[mark + dup] = entry;
             } else {
                 c.scratch.push(entry);
@@ -2130,17 +2152,17 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         jr_place(c, s, Int128 { lo: if b { 1 } else { 0 }, hi: 0 });
         return true;
     }
-    let mismatch = c.jr.rep.kind_mismatch;
+    let mismatch = c.jr.rep.mismatch;
     if d.shape == ShapeFloat {
         if d.is_f32 {
             var x: f32 = 0.0;
             if !json_read_float(c.jr, x, d) { return false; }
-            if c.jr.rep.kind_mismatch == mismatch { jr_place(c, s, Int128 { lo: fixed_f32_bits(x), hi: 0 }); }
+            if c.jr.rep.mismatch == mismatch { jr_place(c, s, Int128 { lo: fixed_f32_bits(x), hi: 0 }); }
             return true;
         }
         var y: f64 = 0.0;
         if !json_read_float(c.jr, y, d) { return false; }
-        if c.jr.rep.kind_mismatch == mismatch { jr_place(c, s, Int128 { lo: fixed_f64_bits(y), hi: 0 }); }
+        if c.jr.rep.mismatch == mismatch { jr_place(c, s, Int128 { lo: fixed_f64_bits(y), hi: 0 }); }
         return true;
     }
     if jv_wide(d) {
@@ -2148,19 +2170,19 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         if !ok { return false; }
         let v, exact, sat = jv_parse_wide(c.jr.text[start..end], d.signed, d.fbits);
         if !exact {
-            c.jr.rep.kind_mismatch += 1;
+            c.jr.rep.mismatch += 1;
             return true;
         }
-        if sat { c.jr.rep.clamped += 1; }
+        if sat { c.jr.rep.oor += 1; }
         var x = v;
         if d.ranged {
             let lo, hi = jv_raw_range(d);
             if cmp128(x, d.signed, lo, d.signed) < 0 {
                 x = lo;
-                c.jr.rep.clamped += 1;
+                c.jr.rep.oor += 1;
             } else if cmp128(x, d.signed, hi, d.signed) > 0 {
                 x = hi;
-                c.jr.rep.clamped += 1;
+                c.jr.rep.oor += 1;
             }
         }
         jr_place(c, s, x);
@@ -2169,12 +2191,12 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     if d.signed {
         var v: i64 = 0;
         if !json_read_int(c.jr, v, d) { return false; }
-        if c.jr.rep.kind_mismatch == mismatch { jr_place(c, s, Int128 { lo: v as! u64, hi: if v < 0 { 0xFFFFFFFFFFFFFFFF } else { 0 } }); }
+        if c.jr.rep.mismatch == mismatch { jr_place(c, s, Int128 { lo: v as! u64, hi: if v < 0 { 0xFFFFFFFFFFFFFFFF } else { 0 } }); }
         return true;
     }
     var u: u64 = 0;
     if !json_read_int(c.jr, u, d) { return false; }
-    if c.jr.rep.kind_mismatch == mismatch { jr_place(c, s, Int128 { lo: u, hi: 0 }); }
+    if c.jr.rep.mismatch == mismatch { jr_place(c, s, Int128 { lo: u, hi: 0 }); }
     return true;
 }
 
@@ -2209,7 +2231,7 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
         let arm = arms[tag - 1];
         if arm.shape == ShapeVoid {
             if got != 'z' {
-                c.jr.rep.kind_mismatch += 1;
+                c.jr.rep.mismatch += 1;
                 if !jr_skip(c, depth + 1) { return false; }
             } else {
                 if !json_literal(c.jr, "null") { return false; }
@@ -2220,7 +2242,7 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
             if at < 0 { return json_fail(c.jr); }
             let want: u8 = if c.unit.tables[at].json_array { 'a' } else { 'o' };
             if got != want {
-                c.jr.rep.kind_mismatch += 1;
+                c.jr.rep.mismatch += 1;
                 if !jr_skip(c, depth + 1) { return false; }
             } else {
                 let p = jr_new_record(c, at);
@@ -2235,7 +2257,7 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
                 if !json_literal(c.jr, "null") { return false; }
                 jr_arm(c, s, tag, p);
             } else if got != jr_shape(c, arm, uname, tag as! i32, false) {
-                c.jr.rep.kind_mismatch += 1;
+                c.jr.rep.mismatch += 1;
                 if !jr_skip(c, depth + 1) { return false; }
             } else {
                 if !jr_field(c, p, arm, uname, tag as! i32, depth + 1) { return false; }
@@ -2264,14 +2286,14 @@ fn jr_arm(c: JvIn&, s: i64, tag: i64, p: i64) {
 }
 
 // json_load_table reads one text as root `root` into the flat value table,
-// tolerantly (§16.1): the root's slot, or -1 — the text is not JSON, a value
-// is refused by name (report.malformed, report.reason), or the root has no
+// strictly (§16.1): the root's slot, or -1 — the text is not JSON, a value
+// is refused by name (report.damaged, report.reason), or the root has no
 // text form. The caller discards what a refused read placed (§4).
 fn json_load_table(unit: LoadUnit, text_unit: JsonUnit, root: const u8[:], text: const u8[:], data: u8[>..]&, vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: JsonReport&) -> i64 {
     report = json_report();
     let t = jv_table(unit, root);
     if t < 0 || !jv_has_text(text_unit, root) {
-        report.malformed = true;
+        report.damaged = true;
         return -1;
     }
     var jr = json_in(text);

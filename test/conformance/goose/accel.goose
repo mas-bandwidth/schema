@@ -538,7 +538,7 @@ fn surface_cook_write(lines: const u8[:][:], unit: const u8[:]) {
             var nodes: schema_rt::LoadNode[>..] = [];
             var report = schema_rt::LoadReport { .. };
             let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
-            if root < 0 || report.malformed || report.refused {
+            if root < 0 || report.body_damaged || report.refused {
                 write_stderr(str("driver: ", c[1], ": the cook input does not load\n"));
                 exit(1);
             }

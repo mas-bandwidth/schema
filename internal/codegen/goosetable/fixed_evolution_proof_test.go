@@ -86,25 +86,25 @@ fixed table Point {
 
     var dst: probe::Point[2] = [probe::Point { X: 77, Y: 88 }; 2];
     var rep = schema_rt::FixedReport { .. };
-    let n1a = probe::PointFixedLoadTolerant(dst, f1a, rep);
+    let n1a = probe::PointFixedLoad(dst, f1a, rep);
     let r1a = schema_rt::fixed_refusal_name(rep.reason);
-    let n1b = probe::PointFixedLoadTolerant(dst, f1b, rep);
+    let n1b = probe::PointFixedLoad(dst, f1b, rep);
     let r1b = schema_rt::fixed_refusal_name(rep.reason);
-    let n2 = probe::PointFixedLoadTolerant(dst, f2, rep);
+    let n2 = probe::PointFixedLoad(dst, f2, rep);
     let r2 = schema_rt::fixed_refusal_name(rep.reason);
-    let n3a = probe::PointFixedLoadTolerant(dst, f3a, rep);
+    let n3a = probe::PointFixedLoad(dst, f3a, rep);
     let r3a = schema_rt::fixed_refusal_name(rep.reason);
-    let n3b = probe::PointFixedLoadTolerant(dst, f3b, rep);
+    let n3b = probe::PointFixedLoad(dst, f3b, rep);
     let r3b = schema_rt::fixed_refusal_name(rep.reason);
-    let n4 = probe::PointFixedLoadTolerant(dst, f4, rep);
+    let n4 = probe::PointFixedLoad(dst, f4, rep);
     let r4 = schema_rt::fixed_refusal_name(rep.reason);
-    let n7 = probe::PointFixedLoadTolerant(dst, f7, rep);
+    let n7 = probe::PointFixedLoad(dst, f7, rep);
     let r7 = schema_rt::fixed_refusal_name(rep.reason);
-    let n8 = probe::PointFixedLoadTolerant(dst, f8, rep);
+    let n8 = probe::PointFixedLoad(dst, f8, rep);
     let r8 = schema_rt::fixed_refusal_name(rep.reason);
-    let n12a = probe::PointFixedLoadTolerant(dst, f12a, rep);
+    let n12a = probe::PointFixedLoad(dst, f12a, rep);
     let r12a = schema_rt::fixed_refusal_name(rep.reason);
-    let n12b = probe::PointFixedLoadTolerant(dst, f12b, rep);
+    let n12b = probe::PointFixedLoad(dst, f12b, rep);
     let r12b = schema_rt::fixed_refusal_name(rep.reason);
     let untouched = dst[0].X == 77 && dst[0].Y == 88 && dst[1].X == 77 && dst[1].Y == 88;
     print("F1 ", n1a, " ", r1a, " ", n1b, " ", r1b);
@@ -147,7 +147,7 @@ fixed table Point {
     let _ = probe::PointFixedSave([v, v, v], clean);
     var dst: probe::Point[2] = [probe::Point { X: 77, Y: 88 }; 2];
     var rep = schema_rt::FixedReport { .. };
-    let n = probe::PointFixedLoadTolerant(dst, clean, rep);
+    let n = probe::PointFixedLoad(dst, clean, rep);
     var er = schema_rt::FixedEvolveReport { .. };
     let en = probe::PointFixedEvolveLoad(dst, clean, er);
     print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", en, " ", schema_rt::fixed_evolve_refusal_name(er.reason), " ", dst[0].X == 77 && dst[1].Y == 88);
@@ -382,13 +382,13 @@ fixed table T {
 
     var dst: probe::T[1] = [probe::T { .. }; 1];
     var rep = schema_rt::FixedReport { .. };
-    let n1 = probe::TFixedLoadTolerant(dst, overLen, rep);
+    let n1 = probe::TFixedLoad(dst, overLen, rep);
     let r1 = schema_rt::fixed_refusal_name(rep.reason);
-    let n2 = probe::TFixedLoadTolerant(dst, badUtf8, rep);
+    let n2 = probe::TFixedLoad(dst, badUtf8, rep);
     let r2 = schema_rt::fixed_refusal_name(rep.reason);
-    let n3 = probe::TFixedLoadTolerant(dst, slackBytes, rep);
+    let n3 = probe::TFixedLoad(dst, slackBytes, rep);
     let r3 = schema_rt::fixed_refusal_name(rep.reason);
-    let n4 = probe::TFixedLoadTolerant(dst, badUtf16, rep);
+    let n4 = probe::TFixedLoad(dst, badUtf16, rep);
     let r4 = schema_rt::fixed_refusal_name(rep.reason);
     print(n1, " ", r1, " ", n2, " ", r2, " ", n3, " ", r3, " ", n4, " ", r4);
 }
@@ -447,8 +447,8 @@ fixed table Lineage {
     if !read_file("in.bin", data) { return; }
     var dst: probe::Lineage[1] = [probe::Lineage { .. }; 1];
     var rep = schema_rt::FixedReport { .. };
-    let n = probe::LineageFixedLoadTolerant(dst, data, rep);
-    print(n, " ", rep.clamped, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
+    let n = probe::LineageFixedLoad(dst, data, rep);
+    print(n, " ", rep.oor, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
 }
 `, map[string][]byte{"in.bin": file})
 
@@ -458,7 +458,7 @@ fixed table Lineage {
     var dst: probe::Lineage[1] = [probe::Lineage { .. }; 1];
     var rep = schema_rt::FixedEvolveReport { .. };
     let n = probe::LineageFixedEvolveLoad(dst, data, rep);
-    print(n, " ", rep.clamped, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
+    print(n, " ", rep.oor, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
 }
 `, map[string][]byte{"in.bin": file})
 
@@ -491,7 +491,7 @@ fixed table T {
     var dst: probe::T[1] = [probe::T { .. }; 1];
     var rep = schema_rt::FixedReport { .. };
     let n = probe::TFixedLoad(dst, data, rep);
-    print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.clamped, " ", dst[0].Flag, " ", dst[0].OptPresent, " ", dst[0].Opt);
+    print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].Flag, " ", dst[0].OptPresent, " ", dst[0].Opt);
 }
 `, nil)
 	if got != "1 ok 0 true true 42" {
@@ -527,7 +527,7 @@ fixed table T {
     var dst: probe::T[1] = [probe::T { .. }; 1];
     var rep = schema_rt::FixedReport { .. };
     let n = probe::TFixedLoad(dst, data, rep);
-    print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.clamped, " ", dst[0].ArrCount, " ", dst[0].Arr[0] as u64, " ", !dst[0].OptPresent, " ", dst[0].Tail);
+    print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].ArrCount, " ", dst[0].Arr[0] as u64, " ", !dst[0].OptPresent, " ", dst[0].Tail);
 }
 `, nil)
 	if got != "1 ok 0 1 1 true 77" {
@@ -644,7 +644,7 @@ fixed table T {
     let n = probe::TFixedEvolveLoad(dst, data, rep);
     let ok0 = dst[0].Outer.Type == 1 && dst[0].Outer.Inner.Type == 1 && dst[0].Outer.Inner.X == -7 && dst[0].Tail == 100;
     let ok1 = dst[1].Outer.Type == 2 && dst[1].Outer.Plain == 0x01020308 && dst[1].Tail == 200;
-    print(n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", rep.widened, " ", rep.clamped, " ", ok0 && ok1);
+    print(n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", rep.widened, " ", rep.oor, " ", ok0 && ok1);
 }
 `, map[string][]byte{"in.bin": file})
 	if got != "2 ok 1 0 true" {
@@ -656,7 +656,7 @@ fixed table T {
 func TestGooseFixedProofPlanExecution(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
-	// W6 & P1: reading a file on the identity path (FixedLoadTolerant) and through
+	// W6 & P1: reading a file on the identity path (FixedLoad) and through
 	// the compiled plan for the same layout (FixedEvolveLoad with the unit's own
 	// layout handed in as a lineage entry) yields identical record images and reports.
 	const schema = `package probe
@@ -703,7 +703,7 @@ fixed table T {
 
     var idOut: probe::T[1] = [probe::T { .. }; 1];
     var idRep = schema_rt::FixedReport { .. };
-    let n1 = probe::TFixedLoadTolerant(idOut, idBytes, idRep);
+    let n1 = probe::TFixedLoad(idOut, idBytes, idRep);
 
     var planOut: probe::T[1] = [probe::T { .. }; 1];
     var planRep = schema_rt::FixedEvolveReport { .. };
@@ -719,7 +719,7 @@ fixed table T {
         if img1[i] != img2[i] { eq = false; }
         i += 1;
     }
-    print(n1 == 1 && n2 == 1, " ", idRep.clamped == planRep.clamped, " ", eq);
+    print(n1 == 1 && n2 == 1, " ", idRep.oor == planRep.oor, " ", eq);
 }
 `, nil)
 	if got != "true true true" {

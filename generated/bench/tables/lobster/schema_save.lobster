@@ -791,7 +791,8 @@ def encode_node_table(e:SaveEncoder, w:SaveOut, g:SaveGraph) -> void:
     so_leb(w, payload.n)
     so_bytes(w, so_take(payload))
 
-// save writes a form-1 wire from a Record (docs/SPEC-TABLES.md §3): the FORM
+// save dispatches declared fixed roots to their native form-3 codec. Other
+// roots write a form-1 wire from a Record (docs/SPEC-TABLES.md §3): the FORM
 // BYTE, the ROOT BODY, the ID TABLE, in that order. A data cycle is refused
 // as the reference refuses it (§3.1), and so is one blob named from two slots
 // (§2.5: every writer refuses that graph rather than write a copy per slot)
@@ -804,6 +805,8 @@ def save(rec:Record) -> string:
 // "blob_shared", "non_finite_float" (Go's TableRefuseReason spellings), or ""
 // when it wrote.
 def save_reasoned(rec:Record) -> string, string:
+    if rec.d.fixed:
+        return fixed_record_codec(rec.d.name).write_fixed(rec)
     let g = SaveGraph {}
     push(g.nodes, SaveNode { kind: 1, rec: rec, tid: rec.d.id, open: true })
     push(g.recs, rec)
