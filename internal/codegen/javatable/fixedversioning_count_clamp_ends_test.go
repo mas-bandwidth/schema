@@ -7,10 +7,10 @@ package javatable
 // but neither negative nor past the READER's own 8, so it exercises neither
 // end. On 2026-09-19 the negative arm was measured deleted from five legs'
 // runtime (c, cs, dart, elixir, js) with not one of their landed tests red:
-// it is guarded by nothing, and this row is the guard. `clamped` is asserted
-// EXACTLY == 1 and never >= 1, because a leg that also counts inside the
-// bounds pass lands 2. C2's landed count of 4 is the WRITER's bound carried by
-// the plan, never the reader's own 8 and never the forged 9.
+// it is guarded by nothing, and this row is the guard. Under the strict read
+// (docs/plans/strict-only.md, ALG §4.5) BOTH ends REFUSE the whole load as
+// countOverBound, n = -1, no counter moved; C2's bound is the WRITER's 4
+// carried by the plan, never the reader's own 8.
 import (
 	"bytes"
 	"os"
@@ -62,56 +62,20 @@ func TestFixedVersioningCountClampEnds(t *testing.T) {
 		{key: "refuses", schema: "VOLD_array_bounded_grow.schema"},
 	})
 
-	// PROBE C1 — the negative count clamps to ZERO, never -1, never 4, never 8.
-	r := runProbe(t, classes, "Probe_reads", negFile)
-	if r.n != 1 {
-		t.Errorf("n=%d, want 1", r.n)
-	}
-	if r.refused || r.malformed {
-		t.Errorf("a clean hostile read refused: refused=%v reason=%s malformed=%v", r.refused, r.reason, r.malformed)
-	}
-	if got := r.value["lead"]; got != "-1431655766" {
-		t.Errorf("lead=%s, want 0xAAAAAAAA", got)
-	}
-	if got := r.value["trail"]; got != "-1145324613" {
-		t.Errorf("trail=%s, want 0xBBBBBBBB", got)
-	}
-	if got := r.value["valsCount"]; got != "0" {
-		t.Errorf("valsCount=%s, want 0 — a negative count clamps to ZERO, never -1, never the writer's 4, never the reader's 8", got)
-	}
-	if r.clamped != 1 {
-		t.Errorf("clamped=%d, want 1 exactly — the negative arm fires once per record and never double-counts (§5.4)", r.clamped)
-	}
-	if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 {
-		t.Errorf("counters moved on a clean hostile read: unknown=%d kindMismatch=%d widened=%d, want all 0",
-			r.unknown, r.kindMismatch, r.widened)
-	}
+	// PROBE C1 — a negative count refuses the whole load as countOverBound: never
+	// a clamp to zero, never -1 landed, never the writer's 4 or the reader's 8.
+	requireNamedRefusal(t, "C1 count -1", runProbe(t, classes, "Probe_reads", negFile), "countOverBound")
 
-	// PROBE C2 — the count past the reader's own bound clamps to the WRITER's 4.
-	r = runProbe(t, classes, "Probe_reads", overFile)
-	if r.n != 1 {
-		t.Errorf("n=%d, want 1", r.n)
-	}
-	if r.refused || r.malformed {
-		t.Errorf("a clean hostile read refused: refused=%v reason=%s malformed=%v", r.refused, r.reason, r.malformed)
-	}
-	if got := r.value["lead"]; got != "-1431655766" {
-		t.Errorf("lead=%s, want 0xAAAAAAAA", got)
-	}
-	if got := r.value["trail"]; got != "-1145324613" {
-		t.Errorf("trail=%s, want 0xBBBBBBBB", got)
+	// PROBE C2 — a count past the WRITER's bound (the plan's 4) refuses the whole
+	// load as countOverBound; it never lands 4, the reader's own 8 or the forged 9.
+	requireNamedRefusal(t, "C2 count 9", runProbe(t, classes, "Probe_reads", overFile), "countOverBound")
+
+	// The unforged file still reads: each refusal above is a refusal OF A FORGE.
+	r := runProbe(t, classes, "Probe_reads", oldFile)
+	if r.n != 1 || r.refused || r.damaged {
+		t.Errorf("the unforged file does not read: n=%d refused=%v reason=%s damaged=%v", r.n, r.refused, r.reason, r.damaged)
 	}
 	if got := r.value["valsCount"]; got != "4" {
-		t.Errorf("valsCount=%s, want the WRITER's 4 — never the reader's own 8 and never the forged 9", got)
-	}
-	if got := r.value["vals"]; got != "list:1000,1001,1002,1003,0,0,0,0" {
-		t.Errorf("vals=%s, want list:1000,1001,1002,1003 then the reader's declared default 0 in the grown slots", got)
-	}
-	if r.clamped != 1 {
-		t.Errorf("clamped=%d, want 1 exactly — the high arm fires once per record and never double-counts (§5.4)", r.clamped)
-	}
-	if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 {
-		t.Errorf("counters moved on a clean hostile read: unknown=%d kindMismatch=%d widened=%d, want all 0",
-			r.unknown, r.kindMismatch, r.widened)
+		t.Errorf("valsCount=%s, want the writer's 4 on the unforged file", got)
 	}
 }

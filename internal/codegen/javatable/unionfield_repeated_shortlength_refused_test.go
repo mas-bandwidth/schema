@@ -81,9 +81,9 @@ public final class Driver {
         byte[] data=hex(args[0]);
         %s.TableVariable.Report report=new %s.TableVariable.Report();
         %s.%sVariable.Value v=%s.%sVariable.load(data,report);
-        if(v==null){System.out.println("null "+report.malformed);return;}
+        if(v==null){System.out.println("null "+(report.damaged||report.refused));return;}
         byte[] saved=%s.%sVariable.save(v);
-        System.out.println(report.malformed+" "+hexstr(saved));
+        System.out.println("value "+hexstr(saved));
     }
 }`, pkg, pkg, pkg, root, pkg, root, pkg, root)
 	if err := os.WriteFile(driver, []byte(dsrc), 0o644); err != nil {
@@ -112,7 +112,7 @@ public final class Driver {
 	if len(fields) != 2 {
 		t.Fatalf("driver output: %q", line)
 	}
-	if javaMalformed := fields[0] == "true" || fields[0] == "null" && fields[1] == "true"; !javaMalformed {
+	if refused := fields[0] == "null" && fields[1] == "true"; !refused {
 		t.Errorf("Java did not refuse a damaged load: %q", line)
 	}
 }

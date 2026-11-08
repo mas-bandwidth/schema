@@ -1197,13 +1197,13 @@ local read = function(T, rootName, src, limits) {
 // between the two and is never accepted silently.
 local land = function(T, rootName, js) {
   local report = {};
-  local v = _json.FromJsonTolerant(T, rootName, js, report);
+  local v = _json.fromJsonWalk(T, rootName, js, report);
   local name = null;
-  if (report.clamped > 0) name = BOUND;
+  if (report.oor > 0) name = BOUND;
   else if (report.unknown > 0) name = UNKNOWN_KEY;
-  else if (report.duplicate > 0) name = DUPLICATE_KEY;
-  else if (report.malformed || report.refused) name = SYNTAX;
-  else if (report.kindMismatch > 0 || report.widened > 0) name = KIND_MISMATCH;
+  else if (report.repeated > 0) name = DUPLICATE_KEY;
+  else if (report.bodyDamaged || report.refused) name = SYNTAX;
+  else if (report.mismatch > 0 || report.widened > 0) name = KIND_MISMATCH;
   return name == null ? [v, null] : [null, name];
 };
 

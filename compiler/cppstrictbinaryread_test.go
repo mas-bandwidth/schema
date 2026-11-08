@@ -1,13 +1,14 @@
-// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS OWN
-// (docs/SPEC-TABLES.md §6.5) on the C++ leg. The answer key is Go's
-// internal/codegen/gotable/strictdefault_test.go TestGoDefaultReadIsStrict:
-// its "fixed" and "variable" subtests pin, for the same schema text and the
-// same forged wires, that the plain Load/LoadBuilder refuse a clamped value,
-// a kind mismatch and a truncated body, that ReadStrict refuses them with ONE
-// typed reason, and that the tolerant twins keep the recovered value with the
-// same report. Every expectation below is that test's, transcribed: fixed
-// strictDefaultFixedProbe (clamped, kind_mismatch, truncated) and variable
-// strictDefaultVariableProbe (clamped, kind_mismatch, truncated).
+// THE PLAIN NAME IS THE STRICT READ, AND THE ONLY READ (docs/SPEC-TABLES.md
+// §6.5, docs/plans/strict-only.md) on the C++ leg: no tolerant twin exists.
+// The answer key is Go's internal/codegen/gotable/strictdefault_test.go
+// TestGoDefaultReadIsStrict: its "fixed" and "variable" subtests pin, for the
+// same schema text and the same forged wires, that the plain Load/LoadBuilder
+// refuse an out-of-range value, a kind mismatch and a truncated body, and
+// that ReadStrict refuses them with ONE typed reason. Every expectation below
+// is that test's, transcribed: fixed strictDefaultFixedProbe (out_of_range,
+// kind_mismatch, truncated) and variable strictDefaultVariableProbe
+// (out_of_range, kind_mismatch, truncated). A refused value is the
+// declaration's defaults, never the value clamped into range.
 package compiler
 
 import (
@@ -65,36 +66,29 @@ int main()
         Fix value; FixReset( value ); TableReport r{};
         CHECK( FixLoad( value, clean, fix_clean_n, &r ) );
         CHECK( value.n == 3 && value.m == 4 );
-        CHECK( r.refuse_reason == ok && !r.malformed );
+        CHECK( r.refuse_reason == ok && !r.damaged && !r.refused );
     }
     {
         const int64_t n = fix_wire( 4, 100, wire );
         Fix value; FixReset( value ); value.n = 9; value.m = 9;
         TableReport r{}; r.unknown = 5;
         CHECK( !FixLoad( value, wire, n, &r ) );
-        CHECK( r.unknown == 0 && r.clamped == 1 && r.refuse_reason == clamped );
-        CHECK( value.n == 1 && value.m == 2 ); // the declared defaults
-        TableReport tr{};
-        CHECK( FixLoadTolerant( value, wire, n, &tr ) );
-        CHECK( value.n == 10 && tr.clamped == 1 );
+        CHECK( r.unknown == 0 && !r.damaged && r.refuse_reason == out_of_range );
+        CHECK( value.n == 1 && value.m == 2 ); // the declared defaults, never n clamped to 10
     }
     {
         const int64_t n = fix_wire( 9, 1, wire );
         Fix value; FixReset( value ); TableReport r{};
+        value.n = 9; value.m = 9;
         CHECK( !FixLoad( value, wire, n, &r ) );
-        CHECK( r.kind_mismatch == 1 && r.refuse_reason == kind_mismatch );
-        TableReport tr{};
-        CHECK( FixLoadTolerant( value, wire, n, &tr ) );
-        CHECK( tr.kind_mismatch == 1 );
+        CHECK( !r.damaged && r.refuse_reason == kind_mismatch );
+        CHECK( value.n == 1 && value.m == 2 ); // the declared defaults: nothing of the load lands
     }
     {
         const int64_t n = fix_clean_n - 1;
         Fix value; FixReset( value ); TableReport r{};
         CHECK( !FixLoad( value, clean, n, &r ) );
-        CHECK( r.malformed && r.refuse_reason == wire_damaged );
-        TableReport tr{};
-        CHECK( !FixLoadTolerant( value, clean, n, &tr ) );
-        CHECK( tr.malformed );
+        CHECK( r.damaged && r.refuse_reason == wire_damaged );
     }
 
     const int64_t clean_n = var_wire( 4, 3, clean );
@@ -106,7 +100,7 @@ int main()
         TableReport r{};
         const Var * root = VarLoad( region, (int64_t) sizeof region, clean, clean_n, &r );
         CHECK( root != NULL && root->n == 3 && root->req == 4 );
-        CHECK( r.refuse_reason == ok && !r.malformed && r.clamped == 0 && r.kind_mismatch == 0 );
+        CHECK( r.refuse_reason == ok && !r.damaged && !r.refused && r.unknown == 0 && r.widened == 0 );
     }
     {
         VarBuilder b; TableReport r{};
@@ -115,65 +109,47 @@ int main()
         CHECK( r.refuse_reason == ok );
     }
     {
-        TableRefuseReason why = clamped;
+        TableRefuseReason why = out_of_range;
         const Var * root = VarReadStrict( clean, clean_n, &why );
         CHECK( root != NULL && root->n == 3 && root->req == 4 && why == ok );
     }
 
-    // clamped: the plain reads refuse with clamped, the tolerant twins keep
-    // n = 10 (strictDefaultVariableProbe, the "clamped" case).
+    // out of range: every read refuses with out_of_range, and nothing keeps
+    // n clamped to 10 (strictDefaultVariableProbe, the "clamped" case).
     {
         const int64_t n = var_wire( 4, 100, wire );
         TableReport r{}; r.unknown = 5;
         CHECK( VarLoad( region, (int64_t) sizeof region, wire, n, &r ) == NULL );
-        CHECK( r.unknown == 0 && r.clamped == 1 && !r.malformed && r.refuse_reason == clamped );
-        TableReport tr{};
-        const Var * root = VarLoadTolerant( region, (int64_t) sizeof region, wire, n, &tr );
-        CHECK( root != NULL && root->n == 10 && root->req == 4 && tr.clamped == 1 );
+        CHECK( r.unknown == 0 && !r.damaged && r.refuse_reason == out_of_range );
         VarBuilder b; TableReport br{};
         CHECK( !VarLoadBuilder( b, wire, n, &br ) );
-        CHECK( br.refuse_reason == clamped );
-        VarBuilder tb; TableReport tbr{};
-        CHECK( VarLoadBuilderTolerant( tb, wire, n, &tbr ) );
-        CHECK( tb.GetRoot() != NULL && tb.GetRoot()->n == 10 && tbr.clamped == 1 );
+        CHECK( br.refuse_reason == out_of_range );
         TableRefuseReason why = ok;
-        CHECK( VarReadStrict( wire, n, &why ) == NULL && why == clamped );
+        CHECK( VarReadStrict( wire, n, &why ) == NULL && why == out_of_range );
     }
-    // kind mismatch: the plain reads refuse with kind_mismatch, the tolerant
-    // twins count it (strictDefaultVariableProbe, the "kind_mismatch" case).
+    // kind mismatch: every read refuses with kind_mismatch
+    // (strictDefaultVariableProbe, the "kind_mismatch" case).
     {
         const int64_t n = var_wire( 9, 1, wire );
         TableReport r{};
         CHECK( VarLoad( region, (int64_t) sizeof region, wire, n, &r ) == NULL );
-        CHECK( r.kind_mismatch == 1 && r.refuse_reason == kind_mismatch );
-        TableReport tr{};
-        const Var * root = VarLoadTolerant( region, (int64_t) sizeof region, wire, n, &tr );
-        CHECK( root != NULL && tr.kind_mismatch == 1 );
+        CHECK( !r.damaged && r.refuse_reason == kind_mismatch );
         VarBuilder b; TableReport br{};
         CHECK( !VarLoadBuilder( b, wire, n, &br ) );
         CHECK( br.refuse_reason == kind_mismatch );
-        VarBuilder tb; TableReport tbr{};
-        CHECK( VarLoadBuilderTolerant( tb, wire, n, &tbr ) );
-        CHECK( tb.GetRoot() != NULL && tbr.kind_mismatch == 1 );
         TableRefuseReason why = ok;
         CHECK( VarReadStrict( wire, n, &why ) == NULL && why == kind_mismatch );
     }
-    // truncated: framing damage is wire_damaged for the strict read, and the
-    // tolerant reads do not take it either (strictDefaultVariableProbe, the
-    // "truncated" case).
+    // truncated: framing damage is wire_damaged for every read
+    // (strictDefaultVariableProbe, the "truncated" case).
     {
         const int64_t n = clean_n - 1;
         TableReport r{};
         CHECK( VarLoad( region, (int64_t) sizeof region, clean, n, &r ) == NULL );
-        CHECK( r.malformed && r.refuse_reason == wire_damaged );
-        TableReport tr{};
-        CHECK( VarLoadTolerant( region, (int64_t) sizeof region, clean, n, &tr ) == NULL );
-        CHECK( tr.malformed );
+        CHECK( r.damaged && r.refuse_reason == wire_damaged );
         VarBuilder b; TableReport br{};
         CHECK( !VarLoadBuilder( b, clean, n, &br ) );
-        VarBuilder tb; TableReport tbr{};
-        CHECK( !VarLoadBuilderTolerant( tb, clean, n, &tbr ) );
-        CHECK( tbr.malformed );
+        CHECK( br.damaged && br.refuse_reason == wire_damaged );
         TableRefuseReason why = ok;
         CHECK( VarReadStrict( clean, n, &why ) == NULL && why == wire_damaged );
     }

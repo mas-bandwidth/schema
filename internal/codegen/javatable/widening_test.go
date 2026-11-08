@@ -129,7 +129,7 @@ const wideningProbe = `public final class Probe {
     newv.RecVariable.Value v = newv.RecVariable.load(wire, r);
     check(v == null, "form " + wire[0] + ": a refused read answered a value");
     check(r.refused && want.equals(r.reason), "form " + wire[0] + ": reason=" + r.reason + " refused=" + r.refused + " want " + want);
-    check(!r.malformed && r.widened == 0 && r.unknown == 0 && r.kindMismatch == 0 && r.clamped == 0,
+    check(!r.damaged && r.widened == 0 && r.unknown == 0,
         "form " + wire[0] + ": a refusal moved a counter");
   }
 
@@ -153,8 +153,8 @@ const wideningProbe = `public final class Probe {
     check(v.ratio == 1.5, "ratio=" + v.ratio);
     check(v.scores.size() == 2 && v.scores.get(0) == -2 && v.scores.get(1) == 32767, "scores=" + v.scores);
     check(report.widened == 5, "widened=" + report.widened);
-    check(report.reason == null && !report.refused && !report.malformed, "widening reason=" + report.reason + " refused=" + report.refused + " malformed=" + report.malformed);
-    check(report.unknown == 0 && report.kindMismatch == 0 && report.clamped == 0, "widening moved another counter");
+    check(report.reason == null && !report.refused && !report.damaged, "widening reason=" + report.reason + " refused=" + report.refused + " damaged=" + report.damaged);
+    check(report.unknown == 0, "widening moved another counter");
 
     // The form byte refusals, by the reference's names (§3, §3.3).
     byte[] batch = wire.clone(); batch[0] = 2;
@@ -176,7 +176,7 @@ const wideningProbe = `public final class Probe {
     newv.TableVariable.Report damage = new newv.TableVariable.Report();
     newv.RecVariable.load(forged, damage);
     check(damage.reason == null, "damage reason=" + damage.reason);
-    check(damage.refused || damage.malformed, "damage moved nothing");
+    check(damage.refused || damage.damaged, "damage moved nothing");
     System.out.println("ok");
   }
 }

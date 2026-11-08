@@ -41,7 +41,7 @@ local St = require("./schema_tables")
 require("./ProbeTable")
 
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.loadTolerant("OneSided", inputs.wire, report)
+local v = load.loadWalk("OneSided", inputs.wire, report)
 print("accepted " .. tostring(v ~= nil and not report.malformed and report.refused == 0))
 print("clamped " .. tostring(report.clamped))
 print("a " .. tostring(v.A))

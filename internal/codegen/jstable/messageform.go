@@ -325,27 +325,27 @@ function TableAnnounceRead(v, data, report) {
       if (data.length > 0 && data[0] === 2) { reason = "message_form_as_file"; }
       return TableMessageRefuse(report, reason);
     }
-    report.Malformed = true;
+    report.Damaged = true;
     return false;
   }
   let versionCount = 0, wordsCount = 0, words = null;
   for (;;) {
     const [ref, ok] = r.Leb();
-    if (!ok) { report.Malformed = true; return false; }
+    if (!ok) { report.Damaged = true; return false; }
     if (ref === 0n) { break; }
     const [id, rok] = r.Resolve(ref);
-    if (!rok || !r.Has(1)) { report.Malformed = true; return false; }
+    if (!rok || !r.Has(1)) { report.Damaged = true; return false; }
     const kind = r.Get8();
     if (id === TableMessageVersionId) {
-      if (kind !== 9 || !r.Has(8)) { report.Malformed = true; return false; }
+      if (kind !== 9 || !r.Has(8)) { report.Damaged = true; return false; }
       v.BuildVersion = r.Get64();
       versionCount++;
     } else if (id === TableMessageVocabularyId) {
-      if (kind !== 14) { report.Malformed = true; return false; }
+      if (kind !== 14) { report.Damaged = true; return false; }
       const [sub, bok] = r.Body();
-      if (!bok || !sub.Has(1) || sub.Get8() !== 6) { report.Malformed = true; return false; }
+      if (!bok || !sub.Has(1) || sub.Get8() !== 6) { report.Damaged = true; return false; }
       const [n, nok] = sub.Leb();
-      if (!nok || n > BigInt(sub.Buffer.length) || n !== BigInt(sub.Buffer.length - sub.Offset)) { report.Malformed = true; return false; }
+      if (!nok || n > BigInt(sub.Buffer.length) || n !== BigInt(sub.Buffer.length - sub.Offset)) { report.Damaged = true; return false; }
       let limit = v.MaxBytes;
       if (!limit) { limit = 64 * 1024; }
       if (n > BigInt(limit)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
@@ -353,10 +353,10 @@ function TableAnnounceRead(v, data, report) {
       wordsCount++;
     } else {
       report.Unknown++;
-      if (!r.Skip(kind)) { report.Malformed = true; return false; }
+      if (!r.Skip(kind)) { report.Damaged = true; return false; }
     }
   }
-  if (versionCount !== 1 || wordsCount !== 1) { report.Malformed = true; return false; }
+  if (versionCount !== 1 || wordsCount !== 1) { report.Damaged = true; return false; }
   if (v.Strict && v.BuildVersion !== v.BuildVersionOwn) {
     report.BuildVersionRemote = v.BuildVersion;
     report.BuildVersionOwn = v.BuildVersionOwn;
@@ -369,14 +369,14 @@ function TableAnnounceRead(v, data, report) {
     const began = src.Offset;
     const [e, eok] = TableMessageEntryRead(src);
     if (!eok || e.Id === TableMessageVocabularyId || e.Id === TableMessageVersionId || (e.Id === TableMessageNodeId && nodeSeen)) {
-      report.Malformed = true;
+      report.Damaged = true;
       return false;
     }
     if (e.Id === TableMessageNodeId) { nodeSeen = true; }
     e.Shape.Min = began;
     e.Shape.Max = src.Offset;
     for (let i = 0; i < count; i++) {
-      if (TableMessageEntryEqual(words, v.Entries[i], e)) { report.Malformed = true; return false; }
+      if (TableMessageEntryEqual(words, v.Entries[i], e)) { report.Damaged = true; return false; }
     }
     v.Entries[count] = e;
     count++;

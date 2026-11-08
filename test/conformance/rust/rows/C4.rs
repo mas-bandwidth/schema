@@ -110,13 +110,13 @@ fn c4_lawful_text_reads_clean() {
     let (n, values, report) = load(&record_with_label(b"abc"));
     checkf!(n == Some(1), "lawful text: the record reads one record: {report:?}");
     checkf!(
-        !report.refused && !report.malformed,
+        !report.refused && !report.damaged,
         "lawful text: no refusal, no damage: {report:?}"
     );
     checkf!(
-        report.clamped == 0
+        report.oor == 0
             && report.unknown == 0
-            && report.kind_mismatch == 0
+            && report.mismatch == 0
             && report.widened == 0,
         "lawful text: no counter moved: {report:?}"
     );
@@ -157,13 +157,13 @@ fn c4_ill_formed_used_bytes_refuse_by_name() {
         "ill-formed used bytes: nothing is decoded, the load returns none"
     );
     checkf!(
-        !report.malformed,
+        !report.damaged,
         "ill-formed used bytes: a refusal is not `malformed`, the flag stays down: {report:?}"
     );
     checkf!(
-        report.clamped == 0
+        report.oor == 0
             && report.unknown == 0
-            && report.kind_mismatch == 0
+            && report.mismatch == 0
             && report.widened == 0,
         "ill-formed used bytes: no counter moves on a refusal: {report:?}"
     );
@@ -191,7 +191,7 @@ fn c4_zero_byte_in_used_bytes_refuses_under_the_same_name() {
         report.reason.name()
     );
     checkf!(
-        n.is_none() && !report.malformed && report.clamped == 0,
+        n.is_none() && !report.damaged && report.oor == 0,
         "zero among used bytes: nothing decoded, no flag, no counter: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
@@ -213,13 +213,13 @@ fn c4_ill_formed_slack_is_not_judged() {
     let (n, values, report) = load(&file);
     checkf!(n == Some(1), "slack garbage: the record reads on: {report:?}");
     checkf!(
-        !report.refused && !report.malformed,
+        !report.refused && !report.damaged,
         "slack garbage: no refusal, no damage: {report:?}"
     );
     checkf!(
-        report.clamped == 0
+        report.oor == 0
             && report.unknown == 0
-            && report.kind_mismatch == 0
+            && report.mismatch == 0
             && report.widened == 0,
         "slack garbage: no counter moved: {report:?}"
     );

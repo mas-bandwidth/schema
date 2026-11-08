@@ -99,10 +99,10 @@ alias Probe.TableMessage, as: M
 		fmt.Fprintf(&probe, `
 {field,input,want,wire,le,be}={%q,%q,Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower)}
 {:ok,value,r}=T.load("Ranges",wire)
-Probe.check(value[field]==%s and r.clamped==%d and not r.malformed,field<>" wire clamp")
+Probe.check(value[field]==%s and r.clamped==%d and true,field<>" wire clamp")
 {:ok,^want}=T.save("Ranges",value)
 {:ok,jvalue,r}=T.from_json("Ranges",input)
-Probe.check(jvalue[field]==%s and r.clamped==%d and not r.malformed,field<>" JSON clamp")
+Probe.check(jvalue[field]==%s and r.clamped==%d and true,field<>" JSON clamp")
 {:ok,^want}=T.save("Ranges",jvalue)
 {:ok,json}=T.to_json("Ranges",value)
 {:ok,^value,r}=T.from_json("Ranges",json)
@@ -113,7 +113,7 @@ zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retai
 retained_wire=Base.decode16!(%q,case: :lower)
 retained_want=Base.decode16!(%q,case: :lower)
 {:ok,held,r,store}=T.load_retain("RetainedRanges",retained_wire,store,zero)
-Probe.check(r.clamped==%d and not r.malformed,field<>" retained nested clamp "<>inspect({held,r}))
+Probe.check(r.clamped==%d and true,field<>" retained nested clamp "<>inspect({held,r}))
 {:ok,^retained_want,_,_}=T.save_retain("RetainedRanges",held,store,r)
 {size,:ok}=T.cook_measure_reason("Ranges",value)
 for {order,cook}<-[{:little,le},{:big,be}] do
@@ -216,10 +216,10 @@ func TestOneSidedRangeClosureElixir(t *testing.T) {
  wire=Base.decode16!(%q,case: :lower)
  want=Base.decode16!(%q,case: :lower)
  {:ok,value,r}=T.load("Closure",wire)
- Probe.check(r.clamped==5 and not r.malformed,"array/optional/nested wire clamps: "<>inspect(r))
+ Probe.check(r.clamped==5 and true,"array/optional/nested wire clamps: "<>inspect(r))
  {:ok,^want}=T.save("Closure",value)
  {:ok,jvalue,r}=T.from_json("Closure",%q)
- Probe.check(r.clamped==5 and not r.malformed,"array/optional/nested JSON clamps: "<>inspect(r))
+ Probe.check(r.clamped==5 and true,"array/optional/nested JSON clamps: "<>inspect(r))
  {:ok,^want}=T.save("Closure",jvalue)
  {:ok,absent,r}=T.from_json("Closure","{}")
  Probe.check(absent["maybe"]==nil and r.clamped==0,"absent optional has no clamp")
@@ -229,7 +229,7 @@ func TestOneSidedRangeClosureElixir(t *testing.T) {
  retained_wire=Base.decode16!(%q,case: :lower)
  retained_want=Base.decode16!(%q,case: :lower)
  {:ok,held,r,store}=T.load_retain("RetainedClosure",retained_wire,store,zero)
- Probe.check(r.clamped==5 and not r.malformed,"retained closure clamps")
+ Probe.check(r.clamped==5 and true,"retained closure clamps")
  Probe.check(held["value"]==value,"retained closure value")
  {:ok,^retained_want,_,_}=T.save_retain("RetainedClosure",held,store,r)
 

@@ -37,9 +37,9 @@ func init() {
 // Writer is the writer's own root when the build holds its declaration — the
 // unit's own entry, or an older unit a test locks — and nil for an entry read
 // from a lock, whose digest names no field. A read through an entry with a
-// Writer clamps each ranged integer field to the WRITER's declared range for
-// that entry (docs/FIXED-FORM-ALGORITHM.md §4.5), as the C++ reference's known
-// ranges do.
+// Writer holds each ranged integer field to the WRITER's declared range for
+// that entry, refusing a value outside it out_of_range
+// (docs/FIXED-FORM-ALGORITHM.md §4.6), as the C++ reference's known ranges do.
 type FixedLineageEntry struct {
 	Wire    uint64
 	Layout  []byte

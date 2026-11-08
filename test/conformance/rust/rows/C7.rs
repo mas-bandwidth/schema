@@ -78,7 +78,7 @@ fn c7_out_of_range_clamps_to_bounds() {
     check(n == Some(1), "C7: the record reads on the identity plan");
     check(values[0].renamed == 1000, "C7: a value past max lands at max");
     check(values[0].gone == 0, "C7: a value under min lands at min");
-    check(report.clamped == 2, "C7: two clamps, counted");
+    check(report.oor == 2, "C7: two clamps, counted");
     check(
         values[0].nested.a == 111 && values[0].nested.b == 222,
         "C7: an in-range neighbour is untouched",
@@ -112,7 +112,7 @@ fn c7_plan_run_alone_leaves_out_of_range_standing() {
         "C7: the plan run alone leaves renamed=5000 standing",
     );
     check(loose.gone == -7, "C7: the plan run alone leaves gone=-7 standing");
-    check(report.clamped == 0, "C7: the plan run alone counts nothing");
+    check(report.oor == 0, "C7: the plan run alone counts nothing");
 }
 
 // AN IN-RANGE VALUE IS UNTOUCHED, proving the clamp pass only fires for
@@ -137,7 +137,7 @@ fn c7_in_range_value_is_untouched() {
     check(n == Some(1), "C7: the in-range record reads");
     check(values[0].renamed == 500, "C7: in-range renamed survives");
     check(values[0].gone == 500, "C7: in-range gone survives");
-    check(report.clamped == 0, "C7: in-range clamps nothing");
+    check(report.oor == 0, "C7: in-range clamps nothing");
 }
 
 fn main() {

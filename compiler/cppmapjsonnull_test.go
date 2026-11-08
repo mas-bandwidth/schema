@@ -5,15 +5,19 @@
 //	{"id":1,"tags":{"1":{"marker":5},"2":{"marker":6}},"tags":null}
 //
 // must leave `tags` absent and empty, write the same bytes as a value that
-// never had the key, and leave the fields after the slot alone. The value table
+// never had the key, and leave the fields after the slot alone. The C++ read
+// is strict-only (docs/plans/strict-only.md): a repeated key REFUSES the whole
+// load, so the two repeated-key texts now pin the refusal's reset (the root at
+// its declared defaults, the map slot empty), and {"id":1,"tags":null} pins
+// the null itself on an accepted read. The value table
 // V declares `marker int32 = 7`, so the entry's reset writes non-zero bytes:
 // with the map branch reverted to `f->table->reset(...)`, the entry reset reads
 // the slot as an entry and leaves the two live entries' count in it.
 //
 // The oracle is internal/codegen/gotable/mappresence_test.go: its
 // TestGoMapPresence case "a repeated key whose last value is null leaves the
-// map absent and empty" (report.Duplicate == 1, describe() == "absent") and
-// its "null does not write the absent wire" assertion. The JSON text and the
+// map absent and empty" (describe() == "absent") and its "null does not write
+// the absent wire" assertion. The JSON text and the
 // wire are the same bytes that case pins for `?map[string(8)]int32`; this
 // probe transcribes the answer, never a value the C++ port computed for itself.
 package compiler
@@ -52,23 +56,26 @@ using namespace probe;
 
 static int reset_case( const char * text, bool repeated )
 {
-    const char * fresh = "{\"id\":1}";
+    // a refused read leaves the declared defaults, which is the value "{}"
+    // reads to; an accepted one is the value that never had the key
+    const char * fresh = repeated ? "{}" : "{\"id\":1}";
     MBuilder b;
     TableReport report = {};
-    if ( !MFromJson( b, text, (int64_t) strlen( text ), &report ) )
+    const bool accepted = MFromJson( b, text, (int64_t) strlen( text ), &report );
+    if ( accepted == repeated )
     {
-        fprintf( stderr, "tags: FromJson refused\n" );
+        fprintf( stderr, "tags: FromJson %s, want %s\n", accepted ? "accepted" : "refused", repeated ? "refused" : "accepted" );
         return 1;
     }
-    if ( report.malformed || report.refused || report.kind_mismatch != 0 || report.unknown != 0 )
+    if ( repeated && report.refuse_reason == ok )
     {
-        fprintf( stderr, "tags: FromJson report malformed=%d refused=%d kind_mismatch=%d unknown=%d\n",
-                 (int) report.malformed, (int) report.refused, (int) report.kind_mismatch, (int) report.unknown );
+        fprintf( stderr, "tags: the repeated key's refusal names no reason\n" );
         return 1;
     }
-    if ( report.duplicate != ( repeated ? 1 : 0 ) )
+    if ( !repeated && ( report.damaged || report.refused || report.refuse_reason != ok || report.unknown != 0 ) )
     {
-        fprintf( stderr, "tags: duplicate %d\n", (int) report.duplicate );
+        fprintf( stderr, "tags: FromJson report damaged=%d refused=%d reason=%d unknown=%d\n",
+                 (int) report.damaged, (int) report.refused, (int) report.refuse_reason, (int) report.unknown );
         return 1;
     }
     const M * v = b.GetRoot();
@@ -98,7 +105,7 @@ static int reset_case( const char * text, bool repeated )
     const M * f = fb.GetRoot();
     // THE BYTES AFTER THE SLOT are untouched: the field that follows it keeps
     // its declared default, and the presence companion stays absent.
-    if ( v->tags_present != f->tags_present || v->tail != f->tail )
+    if ( v->tags_present != f->tags_present || v->tail != f->tail || v->id != f->id )
     {
         fprintf( stderr, "tags: the bytes after the map slot moved\n" );
         return 1;

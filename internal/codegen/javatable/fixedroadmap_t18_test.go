@@ -366,11 +366,9 @@ public final class @CLASS@ {
         out.append("REPORT n=").append(n)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" malformed=").append(report.malformed)
+           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
-           .append(" kindMismatch=").append(report.kindMismatch)
            .append(" widened=").append(report.widened)
-           .append(" clamped=").append(report.clamped)
            .append(" nonFiniteFloat=").append(report.nonFiniteFloat)
            .append('\n');
         for (int i = 0; i < n; i++) { walk("r" + i, vals[i]); }
@@ -692,9 +690,9 @@ func t18Bound(reader *ir.Unit, root, path, value string) (string, bool) {
 // value against the manifest: a forged file (hostile_*, past_*) against its
 // forged values, every other file against `values=`. A value past the
 // READER's own declared bound (a forged past_ value, and the two fixed-point rows
-// the reference writes outside their declared range) lands clamped to that
-// bound, counts exactly one, and is asserted so (the bound read off the
-// reader's schema). A row the Java
+// the reference writes outside their declared range) REFUSES the whole load
+// under the strict read (the bound read off the reader's schema), and is
+// asserted so. A row the Java
 // target refuses (a union closure, compiler/target_java.go refuseTableArms) or
 // a root the leg emits no fixed form for is named and not loaded.
 func t18R27(t *testing.T) {
@@ -766,7 +764,7 @@ func t18R27(t *testing.T) {
 
 	_, javaBin := javaTools(t)
 	nonFinite := manifestNonFinite(t, corpus)
-	var loaded, clampedKeys []string
+	var loaded, pastKeys []string
 	values := 0
 	for _, tk := range tasks {
 		m := tk.r.m
@@ -787,18 +785,15 @@ func t18R27(t *testing.T) {
 			refused = append(refused, m.File+" (a non-finite "+leaf+", refused by name as nonFiniteFloat: owed finite by tables-finite/cpp)")
 			continue
 		}
-		if l.n != int(m.Records) || l.refused || l.malformed {
-			t.Errorf("R27: %s: the load answered n=%d refused=%v reason=%s malformed=%v, the manifest holds %d records", m.File, l.n, l.refused, l.reason, l.malformed, m.Records)
-			continue
-		}
 		want := t18Expect(m)
-		wantClamped := 0
+		pastBound := 0
 		if len(m.Expect) != 0 {
 			// A shared cross-version vector states its own answer: what the
-			// reference's reader landed and counted from these bytes.
+			// reference's reader landed from these bytes, and how many values
+			// it found past the bound (`clamped=`).
 			for k, v := range m.Expect {
 				if k == "clamped" {
-					wantClamped, _ = strconv.Atoi(v)
+					pastBound, _ = strconv.Atoi(v)
 					continue
 				}
 				want[k] = v
@@ -811,17 +806,28 @@ func t18R27(t *testing.T) {
 			}
 			sort.Strings(keys)
 			for _, k := range keys {
-				if bound, past := t18Bound(reader, m.Root, k, want[k]); past {
-					clampedKeys = append(clampedKeys, m.File+":"+k+"="+want[k])
-					want[k] = bound
-					wantClamped++
+				if _, past := t18Bound(reader, m.Root, k, want[k]); past {
+					pastKeys = append(pastKeys, m.File+":"+k+"="+want[k])
+					pastBound++
 				}
 			}
 		}
-		if l.clamped != wantClamped {
-			t.Errorf("R27: %s: clamped=%d, want exactly %d (a forged value past the reader's own bound counts one; every other value lands whole)", m.File, l.clamped, wantClamped)
+		if pastBound > 0 {
+			// THE STRICT READ (docs/plans/strict-only.md): a value past the
+			// bound refuses the whole load; nothing lands to compare.
+			if l.n != -1 || !l.refused || l.damaged || (l.reason != "outOfRange" && l.reason != "countOverBound" && l.reason != "lengthOverBound") {
+				t.Errorf("R27: %s: %d value(s) past the bound did not refuse the load: n=%d refused=%v reason=%s damaged=%v", m.File, pastBound, l.n, l.refused, l.reason, l.damaged)
+			}
+			if l.unknown != 0 || l.widened != 0 {
+				t.Errorf("R27: %s: a refusal moved a counter: %+v", m.File, l.probeRun)
+			}
+			continue
 		}
-		if m.Side != "hostile" && m.Side != "past" && (l.unknown != 0 || l.kindMismatch != 0 || l.widened != 0) {
+		if l.n != int(m.Records) || l.refused || l.damaged {
+			t.Errorf("R27: %s: the load answered n=%d refused=%v reason=%s damaged=%v, the manifest holds %d records", m.File, l.n, l.refused, l.reason, l.damaged, m.Records)
+			continue
+		}
+		if m.Side != "hostile" && m.Side != "past" && (l.unknown != 0 || l.widened != 0) {
 			t.Errorf("R27: %s: a read under the file's own layout moved a counter: %+v", m.File, l.probeRun)
 		}
 		n, bad := t18Compare(l, want)
@@ -835,7 +841,7 @@ func t18R27(t *testing.T) {
 		loaded = append(loaded, m.File)
 	}
 	t.Logf("R27: compared %d rows value for value against the manifest (%d values): %s", len(loaded), values, strings.Join(loaded, " "))
-	t.Logf("R27: %d manifest values are past the reader's own declared bound and land clamped to it, counted once each: %s", len(clampedKeys), strings.Join(clampedKeys, " "))
+	t.Logf("R27: %d manifest values are past the reader's own declared bound and refuse their load: %s", len(pastKeys), strings.Join(pastKeys, " "))
 	t.Logf("R27: %d rows refused or not emitted, named and not loaded: %s", len(refused), strings.Join(refused, "; "))
 }
 
@@ -940,7 +946,7 @@ public final class Probe_p3 {
                     final TFixed.Value[] vals = { new TFixed.Value() };
                     final TableFixed.Report r = new TableFixed.Report();
                     final int n = TFixed.load(vals, 1, f, plan, remap, TFixed.image(), r);
-                    if (r.refused && r.malformed) {
+                    if (r.refused && r.damaged) {
                         bad++;
                         System.out.println("P3-FAIL byte " + off + " bit " + bit + ": refused AND malformed, two answers at once");
                     } else if (r.refused) {
@@ -950,7 +956,7 @@ public final class Probe_p3 {
                             bad++;
                             System.out.println("P3-FAIL byte " + off + " bit " + bit + ": refused " + r.reason + " with n=" + n);
                         }
-                    } else if (r.malformed) {
+                    } else if (r.damaged) {
                         malformed++;
                     } else if (n >= 1) {
                         landed++;

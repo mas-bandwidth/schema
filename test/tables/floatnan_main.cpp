@@ -124,25 +124,13 @@ static void test_pin_refused()
         static tblf1::Floats value;
         new ( &value ) tblf1::Floats();
         tblf1::TableReport report;
-        const bool loaded = tblf1::FloatsLoadTolerant( value, pinned_bytes, pinned, &report );
-        if ( loaded || !refused_non_finite( report ) )
+        if ( tblf1::FloatsLoad( value, pinned_bytes, pinned, &report ) || !refused_non_finite( report ) )
         {
-            printf( "FAIL floats_nan was not refused as non_finite_float by the TOLERANT read\n" );
+            printf( "FAIL floats_nan was not refused as non_finite_float by the read\n" );
             failures++;
         }
         CHECK( at_defaults( value ) ); // nothing lands, the field after the floats included
-        CHECK( !report.malformed && report.clamped == 0 && report.kind_mismatch == 0 );
-    }
-    {
-        static tblf1::Floats value;
-        new ( &value ) tblf1::Floats();
-        tblf1::TableReport report;
-        if ( tblf1::FloatsLoad( value, pinned_bytes, pinned, &report ) || !refused_non_finite( report ) )
-        {
-            printf( "FAIL floats_nan was not refused as non_finite_float by the STRICT read\n" );
-            failures++;
-        }
-        CHECK( at_defaults( value ) );
+        CHECK( !report.damaged );      // a non-finite float is a refusal, never damage
     }
     {
         // THE FLOAT RUNG: three float32 fields read into float64 ones, where
@@ -150,7 +138,7 @@ static void test_pin_refused()
         static tblf2::Floats wider;
         new ( &wider ) tblf2::Floats();
         tblf2::TableReport report;
-        if ( tblf2::FloatsLoadTolerant( wider, pinned_bytes, pinned, &report ) || !refused_non_finite_f2( report ) )
+        if ( tblf2::FloatsLoad( wider, pinned_bytes, pinned, &report ) || !refused_non_finite_f2( report ) )
         {
             printf( "FAIL floats_nan was not refused as non_finite_float through the widened rung\n" );
             failures++;
@@ -279,7 +267,7 @@ static void test_fixed_refused()
         build_finite( back[0] );
         std::vector<tblf1::TableFixedEntry> plan( 1024 );
         tblf1::TableReport report;
-        const int64_t n = tblf1::FloatsFixedLoadTolerant( back, 1, buffer, wrote, plan.data(), 1024, NULL, &report );
+        const int64_t n = tblf1::FloatsFixedLoad( back, 1, buffer, wrote, plan.data(), 1024, NULL, &report );
         if ( n != -1 || !refused_non_finite( report ) )
         {
             printf( "FAIL a fixed record carrying 0x%08x was not refused as non_finite_float\n", kNarrow[k] );

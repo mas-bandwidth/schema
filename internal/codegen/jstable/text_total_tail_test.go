@@ -103,7 +103,7 @@ import{readFileSync}from"node:fs";import{pathToFileURL}from"node:url";
 const spec=JSON.parse(readFileSync(process.argv[2],"utf8")),m=await import(pathToFileURL(process.argv[3]).href);
 for(const c of spec){for(const mode of ["wire","json"]){
  const r=new m.TableVariableReport(),v=mode==="wire"?m.TotalsLoad(new Uint8Array(Buffer.from(c.Wire,"hex")),r):m.TotalsFromJson(c.Input,r);
- if(v===null||r.malformed||r.clamped!==(mode==="wire"?c.Clamped:c.JSONClamped)||m.TotalsToJson(v).trim()!==c.Text.trim())throw new Error(mode+" tail "+JSON.stringify(r));
+ if(v===null||r.damaged||r.oor!==(mode==="wire"?c.Clamped:c.JSONClamped)||m.TotalsToJson(v).trim()!==c.Text.trim())throw new Error(mode+" tail "+JSON.stringify(r));
 }}
 console.log("TOTAL TAIL OK");
 `

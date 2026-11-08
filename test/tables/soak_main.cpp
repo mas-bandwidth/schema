@@ -386,7 +386,7 @@ struct Codec
     static bool load( const uint8_t * wire, int64_t bytes )
     {
         Report report{};
-        return Load( value, wire, bytes, &report ) && report.malformed == 0;
+        return Load( value, wire, bytes, &report ) && !report.damaged && (int) report.refuse_reason == 0;
     }
     static uint64_t read() { return Read( value ); }
     static int64_t measure() { return Measure( value ); }
@@ -396,7 +396,7 @@ struct Codec
     static bool from_text( const char * json, int64_t bytes )
     {
         Report report{};
-        return FromText( value, json, bytes, &report ) && report.malformed == 0;
+        return FromText( value, json, bytes, &report ) && !report.damaged && (int) report.refuse_reason == 0;
     }
     static constexpr Ops ops = { load, read, measure, save, text_measure, text, from_text };
 };
@@ -412,8 +412,12 @@ template <typename T, typename Report,
 T Codec<T, Report, Load, Read, Measure, Save, TextMeasure, Text, FromText>::value;
 
 #define SOAK_CODEC( ns, Root, read )                                                         \
-    &Codec<ns::Root, ns::TableReport, ns::Root##LoadTolerant, read, ns::Root##Measure, ns::Root##Save, \
+    &Codec<ns::Root, ns::TableReport, ns::Root##Load, read, ns::Root##Measure, ns::Root##Save, \
            ns::Root##ToJsonMeasure, ns::Root##ToJson, ns::Root##FromJson>::ops
+
+static constexpr int kSeam = 0;
+static constexpr int kExact = 1;
+static constexpr int kRefused = 2;
 
 struct Case
 {
@@ -422,8 +426,11 @@ struct Case
     const char * wire;
     // an EXACT case re-saves to the bytes it was loaded from; an EVOLUTION
     // SEAM is read by a type that did not write it, so what comes back out is
-    // this reader's own encoding
-    bool exact;
+    // this reader's own encoding; a REFUSED seam is one the strict read refuses
+    // whole (a narrowing past the bound, a kind that changed), and the soak
+    // still loops its refusal, because a refusal path that allocated per call
+    // is as much a leak as an accepting one
+    int shape;
     const Ops * ops;
 };
 
@@ -445,10 +452,12 @@ static const Case cases[] = {
     { "tblp1", "Chain", "testdata/wire/tables/chain_value.bin", true, SOAK_CODEC( tblp1, Chain, read_p1 ) },
     { "tblp3", "Chain", "testdata/wire/tables/chain_optional.bin", true, SOAK_CODEC( tblp3, Chain, read_p3 ) },
     // the EVOLUTION SEAMS: bytes read by a type that did not write them
-    { "tblv2", "Cfg", "testdata/wire/tables/v1_cfg.bin", false, SOAK_CODEC( tblv2, Cfg, read_v2 ) },
-    { "tblv1", "Cfg", "testdata/wire/tables/v2_seams.bin", false, SOAK_CODEC( tblv1, Cfg, read_v1 ) },
-    { "tblp3", "Chain", "testdata/wire/tables/chain_value.bin", false, SOAK_CODEC( tblp3, Chain, read_p3 ) },
-    { "tblp1", "Chain", "testdata/wire/tables/chain_optional.bin", false, SOAK_CODEC( tblp1, Chain, read_p1 ) },
+    // v1 -> v2 narrows a value past v2's bound (out_of_range) and v2 -> v1
+    // meets a field whose kind changed (kind_mismatch): both refuse whole
+    { "tblv2", "Cfg", "testdata/wire/tables/v1_cfg.bin", kRefused, SOAK_CODEC( tblv2, Cfg, read_v2 ) },
+    { "tblv1", "Cfg", "testdata/wire/tables/v2_seams.bin", kRefused, SOAK_CODEC( tblv1, Cfg, read_v1 ) },
+    { "tblp3", "Chain", "testdata/wire/tables/chain_value.bin", kSeam, SOAK_CODEC( tblp3, Chain, read_p3 ) },
+    { "tblp1", "Chain", "testdata/wire/tables/chain_optional.bin", kSeam, SOAK_CODEC( tblp1, Chain, read_p1 ) },
 };
 
 static constexpr size_t kCases = sizeof( cases ) / sizeof( cases[0] );
@@ -491,6 +500,11 @@ static int pass( const char ** why )
     {
         const Ops & ops = *cases[i].ops;
         Loaded & l = loaded[i];
+        if ( cases[i].shape == kRefused )
+        {
+            if ( ops.load( wires[i], l.wire_bytes ) ) { *why = "was accepted where the strict read refuses"; return (int) i; }
+            continue;
+        }
         if ( !ops.load( wires[i], l.wire_bytes ) ) { *why = "did not load"; return (int) i; }
         if ( ops.read() != l.checksum ) { *why = "read back a different checksum"; return (int) i; }
         if ( ops.measure() != l.save_bytes ) { *why = "measured a different size"; return (int) i; }
@@ -535,6 +549,15 @@ int main( int argc, char ** argv )
             fprintf( stderr, "c++ tables soak: cannot read %s\n", c.wire );
             return 1;
         }
+        if ( c.shape == kRefused )
+        {
+            if ( c.ops->load( wires[i], l.wire_bytes ) )
+            {
+                fprintf( stderr, "c++ tables soak: %s.%s accepts %s, which the strict read refuses\n", c.unit, c.root, c.wire );
+                return 1;
+            }
+            continue;
+        }
         if ( !c.ops->load( wires[i], l.wire_bytes ) )
         {
             fprintf( stderr, "c++ tables soak: %s.%s does not load %s\n", c.unit, c.root, c.wire );
@@ -550,7 +573,7 @@ int main( int argc, char ** argv )
         }
         // THE GOLDEN GATE: an exact case comes back byte for byte, so the loop
         // below is soaking a codec that reproduces the corpus
-        if ( c.exact && ( l.save_bytes != l.wire_bytes || memcmp( saved[i], wires[i], (size_t) l.wire_bytes ) != 0 ) )
+        if ( c.shape == kExact && ( l.save_bytes != l.wire_bytes || memcmp( saved[i], wires[i], (size_t) l.wire_bytes ) != 0 ) )
         {
             fprintf( stderr, "c++ tables soak: %s does not re-save to its own bytes — refusing to soak a codec "
                              "that does not reproduce the corpus\n", c.wire );

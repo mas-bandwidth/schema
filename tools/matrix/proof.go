@@ -46,7 +46,7 @@ const (
 	portingPath             = "docs/PORTING.md"
 	controlsPath            = "make/negative-controls.json"
 	rulingsPath             = "docs/rulings.json"
-	proofPath               = "docs/proof.json"
+	proofPath               = "test/proof/proof.json"
 	// referenceLang is the conformance reference leg (test/conformance/harness).
 	referenceLang = "cpp"
 )
@@ -786,21 +786,17 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-// LoadProof reads the committed snapshot, docs/proof.json. A tree with no
-// snapshot renders no proof section.
-func LoadProof(root string) (*Proof, error) {
+// LoadProof reads the committed snapshot, test/proof/proof.json.
+func LoadProof(root string) (Proof, error) {
 	data, err := os.ReadFile(filepath.Join(root, proofPath))
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
 	if err != nil {
-		return nil, err
+		return Proof{}, err
 	}
 	var p Proof
 	if err := json.Unmarshal(data, &p); err != nil {
-		return nil, fmt.Errorf("%s: %w", proofPath, err)
+		return Proof{}, fmt.Errorf("%s: %w", proofPath, err)
 	}
-	return &p, nil
+	return p, nil
 }
 
 // MarshalProof is the snapshot's bytes: indented, with a trailing newline.
@@ -810,40 +806,6 @@ func MarshalProof(p Proof) []byte {
 		panic(err)
 	}
 	return append(data, '\n')
-}
-
-// RenderProof is the page's proof section.
-func RenderProof(p Proof) string {
-	var b strings.Builder
-	b.WriteString("\n## Proof: the 3.0.0 gate\n\n")
-	b.WriteString("Generated from the conformance harness's per-case results, the porting register's 3.0.0 correctness rows, `make/negative-controls.json` and `docs/rulings.json` (`go run ./tools/matrix proof -write`); `docs/proof.json` carries every cell's gate, CI job and negative control, or why it is red. ✅ proven: a passing gate, the CI job that runs it, and its negative control. **n/a**: not applicable by design, under a ruling that quotes Glenn verbatim, or, for a register cell marked `—`, by the clause of `docs/PORTING.md` or `docs/SPEC-TABLES.md` it quotes, found in that file. ❌ red. `make release` refuses a commit whose proof is not green at that commit.\n\n")
-	red := len(p.Red())
-	fmt.Fprintf(&b, "%d of %d cells red.\n\n", red, len(p.Cells))
-	b.WriteString("| row")
-	for _, l := range p.Langs {
-		b.WriteString(" | " + l)
-	}
-	b.WriteString(" |\n|---|")
-	for range p.Langs {
-		b.WriteString(":---:|")
-	}
-	b.WriteString("\n")
-	for _, row := range p.Rows {
-		b.WriteString("| " + row)
-		for _, l := range p.Langs {
-			c, _ := p.Cell(row, l)
-			switch c.Status {
-			case StatusProven:
-				b.WriteString(" | ✅")
-			case StatusNA:
-				b.WriteString(" | n/a")
-			default:
-				b.WriteString(" | ❌")
-			}
-		}
-		b.WriteString(" |\n")
-	}
-	return b.String()
 }
 
 // RedList prints the red cells, one per line: the checklist parity owes.

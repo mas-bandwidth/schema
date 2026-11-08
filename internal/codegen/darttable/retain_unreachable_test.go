@@ -42,23 +42,40 @@ table Root { child *Child }
 		v := m.New(u.Tables["Root"])
 		var r tabletext.Report
 		store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
-		if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Unknown != 1 || r.Retained != 1 || r.RetainLost != 0 {
-			t.Fatalf("neutral read %+v %v", r, err)
-		}
 		var sr tabletext.Report
-		saved, err := tablewire.EncodeRetain(m, v, store, &sr)
-		if err != nil || sr.RetainLost != lost {
-			t.Fatalf("neutral save %+v %v", sr, err)
+		var saved []byte
+		var err error
+		readCheck := ""
+		if reachable {
+			if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Unknown != 1 || r.Retained != 1 || r.RetainLost != 0 {
+				t.Fatalf("neutral read %+v %v", r, err)
+			}
+			saved, err = tablewire.EncodeRetain(m, v, store, &sr)
+			if err != nil || sr.RetainLost != lost {
+				t.Fatalf("neutral save %+v %v", sr, err)
+			}
+			readCheck = "check(!r.refused&&r.unknown==1&&r.retained==1&&r.retainLost==0,'retained node read');"
+		} else {
+			// STRICT VERDICT: a node record no pointer reaches is damage;
+			// the whole load refuses and nothing is retained.
+			if ok, _ := tablewire.DecodeRetain(m, v, wire, store, &r); ok || !r.Refused {
+				t.Fatalf("neutral read must refuse: %+v", r)
+			}
+			saved, err = tablewire.EncodeRetain(m, v, store, &sr)
+			if err != nil || sr.RetainLost != 0 {
+				t.Fatalf("neutral save %+v %v", sr, err)
+			}
+			readCheck = "check(r.refused&&r.reason=='wire_damaged'&&store.used==0,'unreached node refusal: ${r.reason}');"
 		}
 		fmt.Fprintf(&b, `{final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();
  final v=w.rootWireLoadRetain(data,store,r);
- check(!r.malformed&&!r.refused&&r.unknown==1&&r.retained==1&&r.retainLost==0,'retained node read');
+ %s
  for(var repeat=0;repeat<3;repeat++){
  final sr=w.TableWireReport();final saved=w.rootWireSaveRetain(v,store,sr);
  check(sr.retainLost==%d&&hex(saved)==%q,'unreachable retained node loss');
  check(w.rootWireMeasureRetain(v,store)==saved.length,'repeat retained measure');
  }
-`, hex.EncodeToString(wire), lost, hex.EncodeToString(saved))
+`, hex.EncodeToString(wire), readCheck, map[bool]int{true: lost, false: 0}[reachable], hex.EncodeToString(saved))
 		if reachable {
 			v.Fields[0].Cell.Node = nil
 			sr = tabletext.Report{}

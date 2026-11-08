@@ -72,8 +72,8 @@ int main( int argc, char ** argv )
         bench::BenchMixed decoded;
         bench::BenchMixedReset( decoded );
         bench::TableReport report;
-        if ( !bench::BenchMixedLoad( decoded, wire, size, &report ) || report.malformed ||
-             report.unknown || report.kind_mismatch || report.clamped || report.duplicate )
+        if ( !bench::BenchMixedLoad( decoded, wire, size, &report ) || report.damaged ||
+             report.unknown || report.widened || (int) report.refuse_reason != 0 )
         {
             std::fprintf( stderr, "table record %zu failed clean load\n", k );
             return 1;
@@ -119,8 +119,8 @@ int main( int argc, char ** argv )
         bench::TableReport report;
         const int64_t got = bench::FixedTableFixedLoad( back.data(), (int64_t) Count, file.data(), (int64_t) file.size(),
                                                         plan.data(), (int32_t) plan.size(), NULL, &report );
-        if ( got != (int64_t) Count || report.malformed || report.refused || report.unknown ||
-             report.kind_mismatch || report.widened || report.clamped )
+        if ( got != (int64_t) Count || report.damaged || report.refused || report.unknown ||
+             report.widened || (int) report.refuse_reason != 0 )
         {
             std::fprintf( stderr, "fixed form: the corpus did not load clean\n" );
             return 1;

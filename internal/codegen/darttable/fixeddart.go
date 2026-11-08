@@ -919,12 +919,8 @@ func (g *fixedGen) emitDecodeValue(f *ir.Field, base string, at int64, expr, ind
 // this is the pass both paths share, and it runs only for the LIVE element
 // decode already selected. Slack never.
 func (g *fixedGen) emitTextLengthClamp(expr string, cap int64, ind string) {
-	g.pf("%sif (%s < 0) {\n", ind, expr)
-	g.pf("%s  %s = 0;\n", ind, expr)
-	g.pf("%s  report.clamped++;\n", ind)
-	g.pf("%s} else if (%s > %d) {\n", ind, expr, cap)
-	g.pf("%s  %s = %d;\n", ind, expr, cap)
-	g.pf("%s  report.clamped++;\n", ind)
+	g.pf("%sif (%s < 0 || %s > %d) {\n", ind, expr, expr, cap)
+	g.pf("%s  report.refused = TableFixedRefusal.lengthOverBound;\n", ind)
 	g.pf("%s}\n", ind)
 }
 
@@ -993,7 +989,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// path and a stranger's plan agree about a hostile tag.
 			g.pf("%s  default:\n", ind)
 			g.pf("%s    %s.type = %s;\n", ind, expr, tagNone)
-			g.pf("%s    report.clamped++;\n", ind)
+			g.pf("%s    report.unknown++;\n", ind)
 			g.pf("%s    break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
@@ -1014,7 +1010,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			if n := len(r.Variants); n > 0 {
 				g.pf("%sif (%s > %d) {\n", ind, expr, n)
 				g.pf("%s  %s = %s.none;\n", ind, expr, r.Name)
-				g.pf("%s  report.clamped++;\n", ind)
+				g.pf("%s  report.unknown++;\n", ind)
 				g.pf("%s}\n", ind)
 			}
 			return
@@ -1195,10 +1191,10 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		}
 		g.pf("%sif (%s < %s) {\n", ind, expr, lo)
 		g.pf("%s  %s = %s;\n", ind, expr, lo)
-		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
 		g.pf("%s} else if (%s > %s) {\n", ind, expr, hi)
 		g.pf("%s  %s = %s;\n", ind, expr, hi)
-		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
 		g.pf("%s} else if (%s == 0) {\n", ind, expr)
 		g.pf("%s  %s = 0.0;\n", ind, expr)
 		g.pf("%s}\n", ind)
@@ -1212,7 +1208,7 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		lhs, cmp, assign := g.fixedClampTerms(f.Type, expr, rlo)
 		g.pf("%s%s (%s < %s) {\n", ind, lead, lhs, cmp)
 		g.pf("%s  %s = %s;\n", ind, expr, assign)
-		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
 		g.pf("%s}", ind)
 		lead = " else if"
 	}
@@ -1223,7 +1219,7 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		}
 		g.pf("%s (%s > %s) {\n", lead, lhs, cmp)
 		g.pf("%s  %s = %s;\n", ind, expr, assign)
-		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
 		g.pf("%s}", ind)
 	}
 	if low || high {
@@ -1234,7 +1230,7 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		g.pf("%sif (%s > %s) {\n", ind, lhs, cmp)
 		g.pf("%s  // the bits(%d) WIDTH clamp\n", ind, f.Type.Width)
 		g.pf("%s  %s = %s;\n", ind, expr, assign)
-		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
 		g.pf("%s}\n", ind)
 	}
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — the variable form's tolerant load and canonical save for table MixedHitEvent
+// package bench — the variable form's strict load and canonical save for table MixedHitEvent
 // (docs/SPEC-TABLES.md §3, §4)
 
 package bench;
@@ -234,7 +234,7 @@ public final class MixedHitEventVariable {
                 return false;
             }
             if (!r.has(1)) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             int kind = r.get8();
@@ -244,7 +244,7 @@ public final class MixedHitEventVariable {
                         if (r.has(2)) {
                             v.targetId = r.get16();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -252,17 +252,17 @@ public final class MixedHitEventVariable {
                             v.targetId = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.targetId & 0xffffffffL) > 4095L) {
                         v.targetId = (int) 4095L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_damage) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -270,7 +270,7 @@ public final class MixedHitEventVariable {
                         if (r.has(4)) {
                             v.damage = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -278,7 +278,7 @@ public final class MixedHitEventVariable {
                             v.damage = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -286,7 +286,7 @@ public final class MixedHitEventVariable {
                             v.damage = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -296,11 +296,11 @@ public final class MixedHitEventVariable {
                         } else {
                             v.damage = 4095;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_hitKind) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -308,7 +308,7 @@ public final class MixedHitEventVariable {
                         if (r.has(4)) {
                             v.hitKind = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -316,7 +316,7 @@ public final class MixedHitEventVariable {
                             v.hitKind = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -324,7 +324,7 @@ public final class MixedHitEventVariable {
                             v.hitKind = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -334,37 +334,37 @@ public final class MixedHitEventVariable {
                         } else {
                             v.hitKind = 7;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_crit) {
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
                         if (bv > 1) {
-                            report.malformed = true;
+                            report.damaged = true;
                         }
                         v.crit = bv != 0;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
                     r.skip(kind);
                 } else {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             } else {
                 r.skip(kind);
@@ -493,7 +493,7 @@ public final class MixedHitEventVariable {
             for (TableVariable.NodeRecord rec : nt.recs) {
                 if (rec.typeId == TableVariable.STRING_ID) {
                     if (!TableVariable.textValid(rec.body, 0, rec.body.length)) {
-                        report.malformed = true;
+                        report.damaged = true;
                         rec.typeId = 0;
                     } else {
                         rec.value = new String(rec.body, StandardCharsets.UTF_8);
@@ -540,18 +540,18 @@ public final class MixedHitEventVariable {
             }
         }
         // DAMAGE DISCARDS THE WHOLE LOAD (§4)
-        if (report.malformed) {
+        if (report.damaged) {
             return null;
         }
         // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
         if (TableVariable.cyclic(nt)) {
-            report.malformed = true;
+            report.damaged = true;
             return null;
         }
         return v;
     }
 
-    // loadMeasure sizes the region a tolerant load would need (docs/SPEC-TABLES.md §6.5).
+    // loadMeasure sizes the region a strict load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 16;
 
@@ -682,13 +682,13 @@ public final class MixedHitEventVariable {
         Value v = new Value();
         jsonReadFields(in, v);
         if (in.bad) {
-            report.malformed = true;
+            report.damaged = true;
         }
         if (report.refused) {
             return null;
         }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
-        if (report.malformed) {
+        if (report.damaged) {
             return null;
         }
         return v;
@@ -744,6 +744,10 @@ public final class MixedHitEventVariable {
             b.append("null");
             return;
         }
+        // a null nests nothing: the cap counts table values (docs/SPEC-TABLES.md §16.14 W2)
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused("a table value past the depth cap");
+        }
         if (graph.useCount(child) <= 1) {
             jsonFields(b, graph, child, depth);
             return;
@@ -774,7 +778,7 @@ public final class MixedHitEventVariable {
         }
         if (in.peek() != '{') {
             in.skipValue();
-            in.rep.kindMismatch++;
+            in.rep.refuse("kind_mismatch");
             return null;
         }
         int start = in.p;
@@ -813,7 +817,7 @@ public final class MixedHitEventVariable {
                 return null;
             }
             if (entry.typeId != targetTypeId) {
-                in.rep.kindMismatch++;
+                in.rep.refuse("kind_mismatch");
                 return null;
             }
             return (Value) entry.value;
@@ -877,13 +881,13 @@ public final class MixedHitEventVariable {
             if ("target_id".equals(key)) {
                 boolean repeated = seenField[0];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[0] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(false, 0L, 0xfffL);
@@ -892,19 +896,19 @@ public final class MixedHitEventVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("damage".equals(key)) {
                 boolean repeated = seenField[1];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[1] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(true, 0, 4095);
@@ -913,19 +917,19 @@ public final class MixedHitEventVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("hit_kind".equals(key)) {
                 boolean repeated = seenField[2];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[2] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(true, 0, 7);
@@ -934,18 +938,18 @@ public final class MixedHitEventVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("crit".equals(key)) {
                 boolean repeated = seenField[3];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[3] = true;
                 if (in.peek() != 'n' && !((in.peek() == 't' || in.peek() == 'f'))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == 't') {
                         in.lit("true");
@@ -955,7 +959,7 @@ public final class MixedHitEventVariable {
                         v.crit = false;
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else {

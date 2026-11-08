@@ -84,7 +84,7 @@ fn c10_a_lawful_ordinal_lands_and_counts_nothing() {
     assert_eq!(n, Some(1), "a lawful record reads one record: {report:?}");
     assert_eq!(values[0].grade, 3, "Gold lands Gold, not None");
     assert_eq!(values[0].tail, 55, "the field after the enum lands");
-    assert_eq!(report.clamped, 0, "a lawful ordinal clamps nothing: {report:?}");
+    assert_eq!(report.oor, 0, "a lawful ordinal clamps nothing: {report:?}");
 }
 
 // THE CELL: one past the top variant remaps to `None` and counts EXACTLY one.
@@ -94,7 +94,7 @@ fn c10_ordinal_one_past_top_lands_none() {
     let (n, values, report) = load(&forged(4));
     assert_eq!(n, Some(1), "the record still reads: {report:?}");
     assert_eq!(values[0].grade, 0, "an ordinal past the top variant lands None");
-    assert_eq!(report.clamped, 1, "and counts ONE clamped, never twice: {report:?}");
+    assert_eq!(report.oor, 1, "and counts ONE clamped, never twice: {report:?}");
 }
 
 // The extreme byte is the same law, not a second one.
@@ -104,7 +104,7 @@ fn c10_ordinal_byte_max_lands_none() {
     let (n, values, report) = load(&forged(255));
     assert_eq!(n, Some(1), "the record still reads: {report:?}");
     assert_eq!(values[0].grade, 0, "255 is past the top variant and lands None");
-    assert_eq!(report.clamped, 1, "and counts ONE clamped: {report:?}");
+    assert_eq!(report.oor, 1, "and counts ONE clamped: {report:?}");
 }
 
 // An out-of-range ordinal is NOT damage and NOT a refusal (§4.2): the read
@@ -114,11 +114,11 @@ fn c10_forged_ordinal_is_not_damage() {
     println!("C10: a forged ordinal is neither malformed nor refused");
     let (n, _, report) = load(&forged(4));
     assert_eq!(n, Some(1), "the read returns: {report:?}");
-    assert!(!report.malformed, "an out-of-range ordinal is not damage: {report:?}");
+    assert!(!report.damaged, "an out-of-range ordinal is not damage: {report:?}");
     assert!(!report.refused, "an out-of-range ordinal is not a refusal: {report:?}");
     assert_eq!(report.reason, TableFixedReason::None, "no refusal name: {report:?}");
     assert_eq!(report.unknown, 0, "unknown stays zero: {report:?}");
-    assert_eq!(report.kind_mismatch, 0, "kind_mismatch stays zero: {report:?}");
+    assert_eq!(report.mismatch, 0, "kind_mismatch stays zero: {report:?}");
     assert_eq!(report.widened, 0, "widened stays zero: {report:?}");
 }
 

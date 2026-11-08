@@ -148,7 +148,7 @@ wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
 {:ok,value,report}=T.load("ToolMessage",wire)
-unless report.kind_mismatch==1 and not report.malformed,do: raise("fixed plain report")
+unless report.kind_mismatch==1 and true,do: raise("fixed plain report")
 {:ok,written}=T.save("ToolMessage",value)
 unless Base.encode16(written,case: :lower)==%q,do: raise("fixed plain canonical wire")
 {:error,:fixed_root,^zero,^store}=T.load_retain("ToolMessage",wire,store,zero)

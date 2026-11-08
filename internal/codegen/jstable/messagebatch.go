@@ -106,13 +106,13 @@ export class TableMessageBatchReader {
   }
 }
 export function TableMessageResetReport(report) {
-  report.Malformed = false;
+  report.Damaged = false;
   report.Verdict = 0;
   report.Reason = "";
   report.NonFiniteFloat = "";
   report.Unknown = 0;
-  report.Clamped = 0;
-  report.KindMismatch = 0;
+  report.Oor = 0;
+  report.Mismatch = 0;
   report.Widened = 0;
 }
 function tableMessageCountBits(s) {
@@ -266,14 +266,14 @@ export function tableMessageWriteScalar(w, s, lo, hi) {
   if (s.Bits > 64) { w.Put(hi, s.Bits - 64); }
 }
 export function tableMessageBatchOpen(v, data, report) {
-  if (data.length === 0) { report.Malformed = true; return [null, -1]; }
+  if (data.length === 0) { report.Damaged = true; return [null, -1]; }
   if (data[0] !== 2) { TableMessageRefuse(report, "newer_form"); return [null, -1]; }
   if (v === null || v === undefined || !v.Announced) { TableMessageRefuse(report, "no_vocabulary"); return [null, -1]; }
-  if (data.length < 2) { report.Malformed = true; return [null, -1]; }
+  if (data.length < 2) { report.Damaged = true; return [null, -1]; }
   return [new TableMessageBatchReader(data.subarray(2), v, report), data[1] + 1];
 }
 export function tableMessageBatchClose(r) {
-  if (!r.Bits.Align() || r.Bits.Offset !== r.Bits.Buffer.length * 8) { r.Report.Malformed = true; return false; }
+  if (!r.Bits.Align() || r.Bits.Offset !== r.Bits.Buffer.length * 8) { r.Report.Damaged = true; return false; }
   return true;
 }
 export function TableMessageFloat32Bits(v) { TableMessageFloat[0] = v; return BigInt(TableMessageWords[0] >>> 0); }
@@ -633,10 +633,10 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("  Init%s(value);\n", st.Name)
 	g.pf("  for (;;) {\n")
 	g.pf("    const [ref, ok] = r.Bits.Get(r.RefBits);\n")
-	g.pf("    if (!ok) { r.Report.Malformed = true; return false; }\n")
+	g.pf("    if (!ok) { r.Report.Damaged = true; return false; }\n")
 	g.pf("    if (ref === 0n) { return true; }\n")
 	g.pf("    const entry = tableMessageEntry(r.Vocabulary, ref);\n")
-	g.pf("    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }\n")
+	g.pf("    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Damaged = true; return false; }\n")
 	g.pf("    switch (entry.Id) {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -644,13 +644,13 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 		g.emitMessageReadField(f, mine, "        ")
 		g.pf("        break;\n      }\n")
 	}
-	g.pf("      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } }\n")
+	g.pf("      default: { r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }\n")
 	g.pf("    }\n  }\n}\n\n")
 }
 
 func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyEntry, ind string) {
 	mem := "value." + js.MemberName(f.Name)
-	g.pf("%sif (entry.Shape.Kind !== %d) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }\n", ind, mine.Kind)
+	g.pf("%sif (entry.Shape.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind)
 	g.emitMessageReadValue(f, mem, ind, "entry.Shape")
 	if f.Type.Optional {
 		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))
@@ -664,40 +664,40 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) {
 	switch {
 	case f.Type.Kind == ir.TString:
-		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Malformed = true; return false; }\n", ind, shape)
+		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
 		g.pf("%s  const start = r.Bits.Offset >> 3;\n", ind)
-		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s  const rawLen = Number(n);\n", ind)
-		g.pf("%s  if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s  if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s  let kept = rawLen;\n", ind)
-		g.pf("%s  if (kept > %d) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, %d); r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  if (kept > %d) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, %d); r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Malformed = true; return false; }\n", ind, shape)
+		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
 		g.pf("%s  const start = r.Bits.Offset >> 3;\n", ind)
-		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s  let kept = Number(n);\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || Number(n) * 16 > r.Bits.Buffer.length * 8 - r.Bits.Offset) { r.Report.Malformed = true; return false; }\n", ind, shape)
+		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || Number(n) * 16 > r.Bits.Buffer.length * 8 - r.Bits.Offset) { r.Report.Damaged = true; return false; }\n", ind, shape)
 		g.pf("%s  const rawLen = Number(n);\n", ind)
 		g.pf("%s  let kept = rawLen;\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  let high = false;\n", ind)
 		g.pf("%s  for (let i = 0; i < rawLen; i++) {\n", ind)
 		g.pf("%s    const [u, uok] = r.Bits.Get(16);\n", ind)
 		g.pf("%s    const unit = Number(u);\n", ind)
-		g.pf("%s    if (!uok || unit === 0 || (unit >= 0xdc00 && unit <= 0xdfff && !high) || (high && (unit < 0xdc00 || unit > 0xdfff))) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s    if (!uok || unit === 0 || (unit >= 0xdc00 && unit <= 0xdfff && !high) || (high && (unit < 0xdc00 || unit > 0xdfff))) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s    high = unit >= 0xd800 && unit <= 0xdbff;\n", ind)
 		g.pf("%s    if (i < kept) { %s[i] = unit; }\n", ind, mem)
 		g.pf("%s  }\n", ind)
-		g.pf("%s  if (high) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s  if (high) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s  if (kept > 0 && %s[kept - 1] >= 0xd800 && %s[kept - 1] <= 0xdbff) { kept--; %s[kept] = 0; }\n", ind, mem, mem, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
@@ -714,7 +714,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 }
 
 func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
-	bad := "r.Report.Malformed = true; return false"
+	bad := "r.Report.Damaged = true; return false"
 	bound := f.ArrayBound
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
 	companion := mem + "Count"
@@ -727,7 +727,7 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
 		g.pf("%s  if (entry.Element.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, bad)
 	}
 	g.pf("%s  let keep = Number(n);\n", ind)
-	g.pf("%s  if (keep > %d) { keep = %d; r.Report.Clamped++; }\n", ind, bound, bound)
+	g.pf("%s  if (keep > %d) { keep = %d; r.Report.Oor++; }\n", ind, bound, bound)
 	e := messageElementField(f)
 	if f.KeyEnum != "" {
 		g.pf("%s  for (let i = 0n; i < n; i++) {\n", ind)
@@ -784,7 +784,7 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 	width := f.Type.Width
 	switch f.Type.Kind {
 	case ir.TBool:
-		g.pf("%s{ const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Malformed = true; return false; } %s = v !== 0n; }\n", ind, mem)
+		g.pf("%s{ const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Damaged = true; return false; } %s = v !== 0n; }\n", ind, mem)
 		return
 	case ir.TFloat32, ir.TFloat64:
 		// A compressed float reconstructs by the packet wire's rule, two
@@ -797,11 +797,11 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 		// is finite by construction, so only the raw shape is tested.
 		refuse := fmt.Sprintf("{ if (!r.Report.NonFiniteFloat) { r.Report.NonFiniteFloat = %s; } return false; }", jsStr(jsFloatOwner(g.unit, f)))
 		if f.Type.Kind == ir.TFloat32 {
-			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } const b = Number(v[0] & 0xffffffffn);\n", ind, shape)
+			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } const b = Number(v[0] & 0xffffffffn);\n", ind, shape)
 			g.pf("%s  if (%s.Packing !== 2 && (b & 0x7f800000) === 0x7f800000) %s\n", ind, shape, refuse)
 			g.pf("%s  let x = TableMessageFloat32FromBits(b);\n", ind)
 		} else {
-			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; }\n", ind, shape)
+			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; }\n", ind, shape)
 			g.pf("%s  if ((v[0] & 0x7ff0000000000000n) === 0x7ff0000000000000n) %s\n", ind, refuse)
 			g.pf("%s  let x = TableMessageFloat64FromBits(v[0]);\n", ind)
 		}
@@ -809,13 +809,13 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 		g.pf("%s  %s = x;\n%s}\n", ind, mem, ind)
 		return
 	case ir.TBits:
-		g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];\n", ind, shape)
+		g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];\n", ind, shape)
 		g.pf("%s  x = BigInt.asUintN(%d, x);\n", ind, width)
-		g.pf("%s  if (x > %dn) { x = %dn; r.Report.Clamped++; }\n", ind, (uint64(1)<<uint(f.Type.Width))-1, (uint64(1)<<uint(f.Type.Width))-1)
+		g.pf("%s  if (x > %dn) { x = %dn; r.Report.Oor++; }\n", ind, (uint64(1)<<uint(f.Type.Width))-1, (uint64(1)<<uint(f.Type.Width))-1)
 		g.pf("%s  %s = %s;\n%s}\n", ind, mem, numOrBig("x", big), ind)
 		return
 	}
-	g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } let x = v[0];\n", ind, shape)
+	g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];\n", ind, shape)
 	if width == 128 {
 		g.pf("%s  x = x | (v[1] << 64n);\n", ind)
 	}
@@ -845,7 +845,7 @@ func (g *fixedModule) emitMessageIntClamp(f *ir.Field, x, ind string) {
 	}
 	asBig := fixedIsBig(f.Type)
 	lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
-	g.pf("%sif (%s < %s) { %s = %s; r.Report.Clamped++; } else if (%s > %s) { %s = %s; r.Report.Clamped++; }\n", ind, x, lo, x, lo, x, hi, x, hi)
+	g.pf("%sif (%s < %s) { %s = %s; r.Report.Oor++; } else if (%s > %s) { %s = %s; r.Report.Oor++; }\n", ind, x, lo, x, lo, x, hi, x, hi)
 }
 
 func (g *fixedModule) emitMessageFloatClamp(f *ir.Field, x, ind string) {
@@ -853,16 +853,16 @@ func (g *fixedModule) emitMessageFloatClamp(f *ir.Field, x, ind string) {
 	if !ok {
 		return
 	}
-	g.pf("%sif (%s < %s) { %s = %s; r.Report.Clamped++; } else if (%s > %s) { %s = %s; r.Report.Clamped++; }\n", ind, x, lo, x, lo, x, hi, x, hi)
+	g.pf("%sif (%s < %s) { %s = %s; r.Report.Oor++; } else if (%s > %s) { %s = %s; r.Report.Oor++; }\n", ind, x, lo, x, lo, x, hi, x, hi)
 }
 
 func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string) {
 	e := enumRefOf(f)
-	g.pf("%s{ const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Malformed = true; return false; }\n", ind)
+	g.pf("%s{ const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Damaged = true; return false; }\n", ind)
 	g.pf("%s  if (ref === 0n) { %s = 0; }\n", ind, mem)
 	g.pf("%s  else {\n", ind)
 	g.pf("%s    const en = tableMessageEntry(r.Vocabulary, ref);\n", ind)
-	g.pf("%s    if (en === null || en.Shape.Kind !== 0 || en.Id >= 0xfffffffffffffffdn) { r.Report.Malformed = true; return false; }\n", ind)
+	g.pf("%s    if (en === null || en.Shape.Kind !== 0 || en.Id >= 0xfffffffffffffffdn) { r.Report.Damaged = true; return false; }\n", ind)
 	g.pf("%s    switch (en.Id) {\n", ind)
 	for i := range e.Variants {
 		g.pf("%s      case 0x%016xn: %s = %d; break;\n", ind, ir.TableWireId(e.VariantWireName(i)), mem, i+1)
@@ -874,11 +874,11 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string) {
 
 func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 	un := f.Type.Ref.(*ir.Union)
-	g.pf("%s{ const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Malformed = true; return false; }\n", ind)
+	g.pf("%s{ const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Damaged = true; return false; }\n", ind)
 	g.pf("%s  if (ref === 0n) { %s.type = 0; }\n", ind, mem)
 	g.pf("%s  else {\n", ind)
 	g.pf("%s    const arm = tableMessageEntry(r.Vocabulary, ref);\n", ind)
-	g.pf("%s    if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { r.Report.Malformed = true; return false; }\n", ind)
+	g.pf("%s    if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { r.Report.Damaged = true; return false; }\n", ind)
 	g.pf("%s    switch (arm.Id) {\n", ind)
 	for i, v := range un.Variants {
 		arm := ir.TableArmEntry(v)
@@ -889,7 +889,7 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 		}
 		g.pf("%s        break;\n%s      }\n", ind, ind)
 	}
-	g.pf("%s      default: { %s.type = 0; r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Malformed = true; return false; } }\n", ind, mem)
+	g.pf("%s      default: { %s.type = 0; r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } }\n", ind, mem)
 	g.pf("%s    }\n", ind)
 	g.pf("%s  }\n%s}\n", ind, ind)
 }
@@ -950,7 +950,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  TableMessageResetReport(report);\n")
 	if st.Integrity != "" {
 		g.pf("  if (data.length > 0 && data[0] === 2) {\n")
-		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Malformed = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return -1; }\n")
+		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return -1; }\n")
 		g.pf("    data = data.subarray(0, data.length - 4);\n  }\n")
 	}
 	g.pf("  const [r, count] = tableMessageBatchOpen(vocabulary, data, report);\n")
@@ -959,7 +959,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  for (let i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", n)
 	g.pf("      // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md\n")
-	g.pf("      // §3.3), the tolerant read included: no body of it is delivered.\n")
+	g.pf("      // §3.3), the strict read included: no body of it is delivered.\n")
 	g.pf("      if (report.NonFiniteFloat) {\n")
 	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
 	g.pf("        TableMessageRefuse(report, \"non_finite_float: \" + report.NonFiniteFloat);\n")

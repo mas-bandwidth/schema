@@ -20,8 +20,9 @@ import (
 )
 
 // The 49 contract-independent rows this suite names, by their roadmap ids
-// (docs/roadmap.sexp). The eight rows the strict-only cut rewrites are owed to
-// the strict-only leg and are not run here.
+// (docs/roadmap.sexp). The eight rows the strict-only cut rewrites are not run
+// here: they are proved under the strict read by fixed_evolution_proof_test.go
+// and fixed_evolution_proof2_test.go.
 //
 //	port/squirrel/fixed/file-envelope
 //	port/squirrel/fixed/batch-capacity

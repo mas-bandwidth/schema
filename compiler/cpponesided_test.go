@@ -2,7 +2,7 @@
 // SPEC §4.6): `| min = A` alone means `| min = A, max = <the type's maximum>`
 // and `| max = B` alone means `| min = <the type's minimum>, max = B` — the
 // one-sided spelling IS the two-sided declaration. The C++ table emitter
-// carries it: the descriptor, the fixed-form clamp and the JSON read all take
+// carries it: the descriptor, the fixed-form clamp and the JSON read's refusal all take
 // the filled side exactly as Go does (internal/check/onesided_test.go
 // TestOneSidedIntegerRange pins the same filled ranges for the same schema
 // text). This test transcribes those Go-pinned ranges into the generated C++
@@ -82,39 +82,72 @@ int main(){
     CHECK(info->fields[1].range_uint_max == 9ull);
     CHECK(info->fields[2].range_int_min == -3ll);
     CHECK(info->fields[2].range_int_max == 127ll);
-    // ---- JSON READ clamps to the filled bounds ----
+    // ---- JSON READ holds the filled bounds ----
+    // The read is strict-only (docs/plans/strict-only.md): a value past a
+    // filled side REFUSES the whole load and leaves the declared defaults; a
+    // value AT the filled side reads exactly. Both halves together pin the
+    // filled bound, not merely "some" bound.
+    FixedOneSided defaults;
+    FixedOneSidedReset( defaults );
     FixedOneSided v;
     TableReport report = {0};
     const char * text = "{\"a\":-5,\"b\":20,\"c\":-100}";
-    CHECK(FixedOneSidedFromJsonTolerant( v, text, (int64_t) strlen(text), &report ));
-    CHECK(v.a == 0);   // filled min 0 (declared min = 0)
-    CHECK(v.b == 9);   // declared max 9
-    CHECK(v.c == -3);  // declared min -3
-    CHECK(report.clamped >= 3);
-    // {c:200} clamps to the FILLED max 127, one clamp
+    CHECK(!FixedOneSidedFromJson( v, text, (int64_t) strlen(text), &report ));
+    CHECK(report.refused && report.refuse_reason == out_of_range);
+    CHECK(v.a == defaults.a && v.b == defaults.b && v.c == defaults.c);
+    // the filled sides themselves read exactly: a min 0, b max 9, c min -3
+    FixedOneSided edge;
+    TableReport re = {0};
+    const char * at = "{\"a\":0,\"b\":9,\"c\":-3}";
+    CHECK(FixedOneSidedFromJson( edge, at, (int64_t) strlen(at), &re ));
+    CHECK(edge.a == 0 && edge.b == 9 && edge.c == -3);
+    CHECK(!re.refused && re.refuse_reason == ok);
+    // {c:127} is the FILLED max of c (int8 max) and reads exactly
+    FixedOneSided top;
+    TableReport rt = {0};
+    const char * filled = "{\"c\":127}";
+    CHECK(FixedOneSidedFromJson( top, filled, (int64_t) strlen(filled), &rt ));
+    CHECK(top.c == 127 && rt.refuse_reason == ok);
+    // {c:200} is past the FILLED max 127: refused, nothing lands
     FixedOneSided upper;
     TableReport r3 = {0};
     const char * high = "{\"c\":200}";
-    CHECK(FixedOneSidedFromJsonTolerant( upper, high, (int64_t) strlen(high), &r3 ));
-    CHECK(upper.c == 127);
-    CHECK(r3.clamped == 1);
-    // {b:-1} clamps to the FILLED min 0, one clamp
+    CHECK(!FixedOneSidedFromJson( upper, high, (int64_t) strlen(high), &r3 ));
+    CHECK(upper.c == defaults.c);
+    CHECK(r3.refused && r3.refuse_reason == out_of_range);
+    // {b:-1} is past the FILLED min 0: refused, nothing lands
     FixedOneSided lower;
     TableReport r4 = {0};
     const char * low = "{\"b\":-1}";
-    CHECK(FixedOneSidedFromJsonTolerant( lower, low, (int64_t) strlen(low), &r4 ));
-    CHECK(lower.b == 0);
-    CHECK(r4.clamped == 1);
-    // ---- FIXED-FORM CLAMP holds the filled bounds ----
+    CHECK(!FixedOneSidedFromJson( lower, low, (int64_t) strlen(low), &r4 ));
+    CHECK(lower.b == defaults.b);
+    CHECK(r4.refused && r4.refuse_reason == out_of_range);
+    // ---- FIXED-FORM BOUNDS hold the filled sides ----
+    // The fixed read refuses a record past a bound (out_of_range), so what is
+    // pinned is the bound itself: the range check fails just past each filled
+    // side, passes at it, and the read-side pass names the refusal.
     FixedOneSided w;
     FixedOneSidedReset( w );
     w.a = -12345; w.b = 999; w.c = -128;
+    CHECK(!FixedOneSidedFixedInRange( w ));
     TableReport r2 = {0};
     CHECK(FixedOneSidedFixedClamp( w, &r2 ));
-    CHECK(w.a == 0);
-    CHECK(w.b == 9);
-    CHECK(w.c == -3);
-    CHECK(!r2.refused);
+    CHECK(r2.refused && r2.refuse_reason == out_of_range);
+    FixedOneSided in;
+    FixedOneSidedReset( in );
+    in.a = 0; in.b = 9; in.c = -3;
+    CHECK(FixedOneSidedFixedInRange( in ));
+    in.a = 9223372036854775807ll; in.c = 127; // the filled maxima of a and c
+    CHECK(FixedOneSidedFixedInRange( in ));
+    TableReport r5 = {0};
+    CHECK(FixedOneSidedFixedClamp( in, &r5 ));
+    CHECK(!r5.refused && r5.refuse_reason == ok);
+    in.a = -1;
+    CHECK(!FixedOneSidedFixedInRange( in ));
+    in.a = 0; in.b = 10;
+    CHECK(!FixedOneSidedFixedInRange( in ));
+    in.b = 9; in.c = -4;
+    CHECK(!FixedOneSidedFixedInRange( in ));
     return 0;
 }
 `)

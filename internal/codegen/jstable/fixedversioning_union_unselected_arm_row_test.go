@@ -33,10 +33,10 @@ if (n !== 1) { fail("the file carries one record, not " + n + " " + reason(r)); 
 if (back[0].pick.type !== 1) { fail("pick.type is the writer's alpha arm (1), not " + back[0].pick.type); }
 if (back[0].pick.alpha.m !== 7) { fail("pick.alpha.m is the writer's 7, not " + back[0].pick.alpha.m); }
 if (back[0].seq !== 15) { fail("seq is the writer's 15, not " + back[0].seq); }
-if (r.clamped !== 0 || r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0 || r.duplicate !== 0) {
+if (r.oor !== 0 || r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
   fail("a clean read moved a counter: " + reason(r));
 }
-if (r.malformed) { fail("a clean backward read is not malformed: " + reason(r)); }
+if (r.damaged) { fail("a clean backward read is not malformed: " + reason(r)); }
 if (r.refused !== 0) { fail("a clean backward read is not a refusal: " + reason(r)); }
 `
 

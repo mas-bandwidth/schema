@@ -61,7 +61,6 @@ var nodeRefCases = []malformedOverflagCase{
 // flag, the same refusal verdict and the same unknown counter. Every subtest
 // opens with t.Parallel().
 func TestMessageMalformedOverflagDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	for _, c := range malformedOverflagCases {
 		t.Run(c.name, func(t *testing.T) {
@@ -141,9 +140,11 @@ func agreeOnMessageMutant(t *testing.T, unitPath, root string, mutant []byte) {
 	}
 	var rep tabletext.Report
 	countGo, ok, derr := tablewire.DecodeMessages(m, batch, mutant, vocab, &rep)
-	refused := tablewire.Refused(derr)
-	if derr != nil && !refused {
-		t.Fatalf("the oracle refused the root itself: %v", derr)
+	// STRICT VERDICT: any oracle error on these mutants is a whole-load
+	// refusal; the Dart load must answer the same verdict.
+	refused := derr != nil || tablewire.Refused(derr)
+	if countGo < 0 {
+		countGo = 0
 	}
 	malformedGo := rep.Refused || (!ok && !refused)
 
@@ -155,7 +156,7 @@ func agreeOnMessageMutant(t *testing.T, unitPath, root string, mutant []byte) {
   final count = r.%sLoadMessages(values, Uint8List.fromList(%s), vocab, rep);
   check(count == %d, 'count: got $count want %d');
   check(rep.refused == %v, 'refused: got ${rep.refused} want %v');
-  check(rep.malformed == %v, 'malformed: got ${rep.malformed} want %v');
+  check(rep.refused == %v, 'refused: got ${rep.refused} want %v');
   check(rep.unknown == %d, 'unknown: got ${rep.unknown} want %d');
 `, root, root, lowerFirst(root), dartBytes(mutant),
 		countGo, countGo, refused, refused, malformedGo, malformedGo, rep.Unknown, rep.Unknown)

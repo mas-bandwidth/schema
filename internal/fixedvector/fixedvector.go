@@ -2,9 +2,11 @@
 // of the C++ reference's corpus manifest, so every leg asserts the answer the
 // reference landed and none restates it by hand.
 //
-// A vector is a forged corpus file whose manifest line carries `expect=`: the
-// values the reference's NEW reader landed from those bytes and the `clamped`
-// count its report held (test/tables/fixedform_dump.cpp).
+// A vector is a forged corpus file. Under the one read (docs/plans/strict-only.md)
+// the reference's NEW reader REFUSES each writer's-range vector whole, so its
+// manifest line carries no `expect=` and Read answers Refused
+// (docs/FIXED-FORM-VERSIONING-TESTS.md, test/tables/fixedform_dump.cpp). A line
+// that does carry `expect=` is the values the reference landed.
 package fixedvector
 
 import (
@@ -19,23 +21,22 @@ import (
 // RangeWidenHostile is the file of the writer's-range vector
 // (docs/FIXED-FORM-ALGORITHM.md §4.5): old_range_widen.bin with `v` forged to
 // 150, outside the OLD writer's | 0..100 and inside the NEW reader's | 0..200.
-// The NEW reader, VNEW_range_widen with VOLD_range_widen in its lineage, lands
-// the WRITER's max 100 and counts `clamped` exactly once.
+// The NEW reader, VNEW_range_widen with VOLD_range_widen in its lineage,
+// refuses the whole load.
 const RangeWidenHostile = "hostile_range_widen.bin"
 
 // RangeWidenArrayHostile is the writer's-range vector for a ranged FIXED
 // ARRAY: old_range_widen.bin (`vals [4]int32 | 0..100`) with `vals[2]` forged
 // to 150, inside the NEW reader's | 0..200. Every element is held to the writer's
-// range the same as a scalar, so the NEW reader lands 100 in that slot, the
-// other three as written, and counts `clamped` exactly once.
+// range the same as a scalar, so the NEW reader refuses the whole load.
 const RangeWidenArrayHostile = "hostile_range_widen_array.bin"
 
 // RangeWidenU64Hostile is the writer's-range vector for an UNSIGNED 64-bit
 // field: old_range_widen.bin (`u uint64 | 10..1000`) with `u` forged to
 // 2^63 + 7.
 // The comparison is in the field's own type, unsigned, so the NEW reader
-// (| 0..2000) lands the writer's MAX 1000 and counts `clamped` exactly once; a
-// signed comparison reads a negative number and lands the min.
+// (| 0..2000) refuses the whole load; a signed comparison reads a negative
+// number, inside the range, and lands it.
 const RangeWidenU64Hostile = "hostile_range_widen_u64.bin"
 
 // Vector names one writer's-range vector: its corpus file, a Name that tells
@@ -54,11 +55,14 @@ var WriterRange = []Vector{
 	{File: RangeWidenU64Hostile, Name: "range_widen_u64", Row: "range_widen", Root: "RangeWiden"},
 }
 
-// Expect is one vector's answer: the landed integer values by manifest path
-// (`r0.v`, `r0.vals[2]`), the paths in the manifest's order, and the
-// `clamped` count.
+// Expect is one vector's answer: Refused when the reference refused the whole
+// load (the line carries no `expect=`), else the landed integer values by
+// manifest path (`r0.v`, `r0.vals[2]`) in the manifest's order. Clamped is
+// the retired clamp's count, zero on every line the one read dumps; it stays
+// only until every leg's range-widen test asserts Refused.
 type Expect struct {
 	File    string
+	Refused bool
 	Values  map[string]int64
 	Paths   []string
 	Clamped int64
@@ -112,7 +116,8 @@ func (e Expect) Int(path string) (int64, error) {
 	return v, nil
 }
 
-// Read returns the `expect=` field of file's line in corpus/manifest.txt.
+// Read returns file's answer from its line in corpus/manifest.txt: Refused
+// when the line carries no `expect=`, else the `expect=` values.
 func Read(corpus, file string) (Expect, error) {
 	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
 	if err != nil {
@@ -141,13 +146,14 @@ func Read(corpus, file string) (Expect, error) {
 		if !named {
 			continue
 		}
-		if expect == "" {
-			return Expect{}, fmt.Errorf("fixedvector: %s's manifest line carries no expect=", file)
+		e := Expect{File: file, Refused: true, Values: map[string]int64{}}
+		if expect != "" {
+			var err error
+			if e, err = parse(file, expect); err != nil {
+				return Expect{}, err
+			}
 		}
-		e, err := parse(file, expect)
-		if err != nil {
-			return Expect{}, err
-		}
+		var err error
 		if e.ForgedPath, e.ForgedAt, err = parseForged(file, forged); err != nil {
 			return Expect{}, err
 		}
@@ -160,7 +166,7 @@ func Read(corpus, file string) (Expect, error) {
 }
 
 func parse(file, expect string) (Expect, error) {
-	e := Expect{File: file, Values: map[string]int64{}, Clamped: -1}
+	e := Expect{File: file, Values: map[string]int64{}}
 	for pair := range strings.SplitSeq(expect, ",") {
 		k, v, ok := strings.Cut(pair, "=")
 		if !ok {
@@ -176,9 +182,6 @@ func parse(file, expect string) (Expect, error) {
 		}
 		e.Values[k] = n
 		e.Paths = append(e.Paths, k)
-	}
-	if e.Clamped < 0 {
-		return Expect{}, fmt.Errorf("fixedvector: %s's expect= carries no clamped", file)
 	}
 	return e, nil
 }

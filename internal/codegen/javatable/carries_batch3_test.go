@@ -72,19 +72,19 @@ public final class Main {
         // Clean load, loadMeasure, loadRetain, measureRetain, saveRetain
         TableVariable.Report rep = new TableVariable.Report();
         LedgerVariable.Value lLoaded = LedgerVariable.load(lWire, rep);
-        check(lLoaded != null && !rep.malformed && !rep.refused && lLoaded.n == 1000L && "ok".equals(lLoaded.label) && lLoaded.count == 7, "Ledger load");
+        check(lLoaded != null && !rep.damaged && !rep.refused && lLoaded.n == 1000L && "ok".equals(lLoaded.label) && lLoaded.count == 7, "Ledger load");
         check(LedgerVariable.loadMeasure(lWire) > 0, "Ledger loadMeasure");
 
         TableRetain ret = new TableRetain(1 << 16, 1 << 10);
         rep.reset();
         LedgerVariable.Value lrLoaded = LedgerRetain.loadRetain(lWire, ret, rep);
-        check(lrLoaded != null && !rep.malformed && !rep.refused, "Ledger loadRetain");
+        check(lrLoaded != null && !rep.damaged && !rep.refused, "Ledger loadRetain");
         long mr = LedgerRetain.measureRetain(lrLoaded, ret);
         rep.reset();
         byte[] sr = LedgerRetain.saveRetain(lrLoaded, ret, rep);
         check(sr != null && sr.length == mr && Arrays.equals(lWire, sr), "Ledger saveRetain/measureRetain");
 
-        // Every byte flip of lWire: byte 0 is direction refusal (message_form_as_file or newer_form), bytes 1..end are malformed integrity_mismatch
+        // Every byte flip of lWire: byte 0 is direction refusal (message_form_as_file or newer_form), bytes 1..end are damaged integrity_mismatch
         for (int i = 0; i < lWire.length; i++) {
             for (int bit : new int[]{1, 2, 4, 8, 16, 32, 64, 128, 255}) {
                 byte[] bad = Arrays.copyOf(lWire, lWire.length);
@@ -94,9 +94,9 @@ public final class Main {
                 check(got == null, "Ledger load accepted flipped byte " + i);
                 if (i == 0) {
                     String want = (bad[0] & 0xff) == 2 ? "message_form_as_file" : "newer_form";
-                    check(rep.refused && !rep.malformed && want.equals(rep.reason), "byte 0 flip reason: " + rep.reason);
+                    check(rep.refused && !rep.damaged && want.equals(rep.reason), "byte 0 flip reason: " + rep.reason);
                 } else {
-                    check(rep.malformed && !rep.refused && "integrity_mismatch".equals(rep.reason), "byte " + i + " flip reason: " + rep.reason);
+                    check(rep.damaged && !rep.refused && "integrity_mismatch".equals(rep.reason), "byte " + i + " flip reason: " + rep.reason);
                 }
                 TableVariable.Measure m = new TableVariable.Measure();
                 check(LedgerVariable.loadMeasure(bad, m) < 0, "Ledger loadMeasure accepted flipped byte " + i);
@@ -118,11 +118,11 @@ public final class Main {
         check(flvWire.length == fpvWire.length + 4, "FixedLedgerVariable save has 4-byte CRC trailer");
         rep.reset();
         FixedLedgerVariable.Value flvLoaded = FixedLedgerVariable.load(flvWire, rep);
-        check(flvLoaded != null && !rep.malformed && !rep.refused && flvLoaded.n == 1000 && flvLoaded.count == 7, "FixedLedgerVariable load");
+        check(flvLoaded != null && !rep.damaged && !rep.refused && flvLoaded.n == 1000 && flvLoaded.count == 7, "FixedLedgerVariable load");
         byte[] flvCorrupt = Arrays.copyOf(flvWire, flvWire.length);
         flvCorrupt[flvCorrupt.length - 1] ^= 1;
         rep.reset();
-        check(FixedLedgerVariable.load(flvCorrupt, rep) == null && rep.malformed && "integrity_mismatch".equals(rep.reason), "FixedLedgerVariable corrupt CRC");
+        check(FixedLedgerVariable.load(flvCorrupt, rep) == null && rep.damaged && "integrity_mismatch".equals(rep.reason), "FixedLedgerVariable corrupt CRC");
 
         // (b) Fixed form 3: FixedLedgerFixed has +4 bytes and checks CRC after form byte
         FixedLedgerFixed.Value flf = new FixedLedgerFixed.Value();
@@ -137,16 +137,16 @@ public final class Main {
         FixedLedgerFixed.Value[] fBack = {new FixedLedgerFixed.Value()};
         TableFixed.Report fRep = new TableFixed.Report();
         check(FixedLedgerFixed.load(fBack, 1, fWire, TableFixed.plan(1 << 14), new short[1 << 14], FixedLedgerFixed.image(), fRep) == 1, "FixedLedgerFixed.load");
-        check(!fRep.malformed && !fRep.refused && fBack[0].n == 1000 && fBack[0].count == 7, "FixedLedgerFixed values");
+        check(!fRep.damaged && !fRep.refused && fBack[0].n == 1000 && fBack[0].count == 7, "FixedLedgerFixed values");
         for (int i = 0; i < fWire.length; i++) {
             byte[] bad = Arrays.copyOf(fWire, fWire.length);
             bad[i] ^= 1;
             fRep.reset();
             check(FixedLedgerFixed.load(fBack, 1, bad, TableFixed.plan(1 << 14), new short[1 << 14], FixedLedgerFixed.image(), fRep) == -1, "FixedLedgerFixed flip " + i);
             if (i == 0) {
-                check(fRep.refused && !fRep.malformed, "FixedLedgerFixed byte 0 flip is refused");
+                check(fRep.refused && !fRep.damaged, "FixedLedgerFixed byte 0 flip is refused");
             } else {
-                check(fRep.malformed && !fRep.refused, "FixedLedgerFixed byte " + i + " flip is malformed");
+                check(fRep.damaged && !fRep.refused, "FixedLedgerFixed byte " + i + " flip is damaged");
             }
         }
 
@@ -166,7 +166,7 @@ public final class Main {
         check("0200813e00002007000078f2be34".equals(toHex(mWire)), "FixedLedgerMessage golden: " + toHex(mWire));
         FixedLedgerFixed.Value[] mBack = {new FixedLedgerFixed.Value()};
         mRep.zero();
-        check(FixedLedgerMessage.loadMessages(mBack, 1, vocab, mWire, mRep) == 1 && !mRep.malformed && !mRep.refused && mBack[0].n == 1000 && mBack[0].count == 7, "FixedLedgerMessage.loadMessages");
+        check(FixedLedgerMessage.loadMessages(mBack, 1, vocab, mWire, mRep) == 1 && !mRep.damaged && !mRep.refused && mBack[0].n == 1000 && mBack[0].count == 7, "FixedLedgerMessage.loadMessages");
         for (int i = 0; i < mWire.length; i++) {
             byte[] bad = Arrays.copyOf(mWire, mWire.length);
             bad[i] ^= 1;
@@ -175,7 +175,7 @@ public final class Main {
             if (i == 0) {
                 check(mRep.refused && "newer_form".equals(mRep.reason), "FixedLedgerMessage byte 0 flip");
             } else {
-                check(mRep.malformed && "integrity_mismatch".equals(mRep.reason), "FixedLedgerMessage byte " + i + " flip");
+                check(mRep.damaged && "integrity_mismatch".equals(mRep.reason), "FixedLedgerMessage byte " + i + " flip");
             }
         }
 

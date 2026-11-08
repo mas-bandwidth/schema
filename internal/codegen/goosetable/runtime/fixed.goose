@@ -31,7 +31,7 @@ let FixedRefuseOk: i64 = 0;
 let FixedRefuseReservedNotZero: i64 = 4;
 let FixedRefuseTruncated: i64 = 6;
 let FixedRefuseInvalidValue: i64 = 14;
-let FixedRefuseClamped: i64 = 18;
+let FixedRefuseOutOfRange: i64 = 18;
 let FixedRefuseIntegrityMismatch: i64 = 22;
 let FixedRefusePreviousForm: i64 = 25;
 let FixedRefuseNewerForm: i64 = 26;
@@ -59,7 +59,7 @@ fn fixed_refusal_name(code: i64) -> const u8[:] {
         4 => "reserved_not_zero",
         6 => "truncated",
         14 => "invalid_value",
-        18 => "clamped",
+        18 => "out_of_range",
         22 => "integrity_mismatch",
         25 => "previous_form",
         26 => "newer_form",
@@ -86,9 +86,9 @@ fn fixed_refusal_name(code: i64) -> const u8[:] {
 }
 
 // FixedReport is one load's report (docs/FIXED-FORM-ALGORITHM.md §5.4): the
-// clamped counter the bounds pass moves, whether the framing was damaged, the
+// oor counter the bounds pass moves, whether the framing was damaged, the
 // refusal's code (0 for none), and the file's hash when the hash refused.
-struct FixedReport { clamped: i64, malformed: bool, reason: i64, hash: u64 }
+struct FixedReport { oor: i64, damaged: bool, reason: i64, hash: u64 }
 
 // fixed_u32 / fixed_u64 / fixed_get read one little-endian word at an offset
 // (docs/PORT-GOOSE.md, BYTE BUFFERS: assembled with shifts, never a host-order
@@ -374,9 +374,9 @@ fn fixed_scan_text(b: const u8[:], at: i64, cap: i64, flavour: i64) -> i64 {
 
 // fixed_refuse records a refusal by name; the framing-damage ones also set
 // malformed (docs/FIXED-FORM-ALGORITHM.md §2, §5.3).
-fn fixed_refuse(report: FixedReport&, code: i64, malformed: bool) -> i64 {
+fn fixed_refuse(report: FixedReport&, code: i64, damaged: bool) -> i64 {
     report.reason = code;
-    report.malformed = malformed;
+    report.damaged = damaged;
     return -1;
 }
 

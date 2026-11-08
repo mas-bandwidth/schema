@@ -353,7 +353,6 @@ func t02R25(t *testing.T) {
   check(n == -1, 'R25 the caller capacity is the bound: owes -1, got $n: ${why(rep)}');
   check(rep.refused == t.TableFixedRefusal.planTooLarge,
       'R25 owes plan_too_large, got ${name(rep.refused)}: ${why(rep)}');
-  check(!rep.malformed, 'R25 a refusal by name never sets malformed: ${why(rep)}');
 `
 	out, err := runVersionProbe(t, dartBin, "VNEW_field_append", []string{"VOLD_field_append"}, 0, "", body)
 	if err != nil {
@@ -382,9 +381,8 @@ func t02R26(t *testing.T) {
   final rep = t.TableFixedReport();
   final n = LOAD(values, values.length, file, file.length, plan, rep);
   check(n == -1, 'R26 an entry that would not build owes -1, got $n: ${why(rep)}');
-  check(rep.refused == t.TableFixedRefusal.layoutMalformed,
-      'R26 owes the entry own name layout_malformed, got ${name(rep.refused)}: ${why(rep)}');
-  check(!rep.malformed, 'R26 a lane refusal is by name, never malformed: ${why(rep)}');
+  check(rep.refused == t.TableFixedRefusal.layoutDamaged,
+      'R26 owes the entry own name layout_damaged, got ${name(rep.refused)}: ${why(rep)}');
 `
 	out, err := runVersionProbe(t, dartBin, "VNEW_field_append", []string{"VOLD_field_append"}, 0, "", body)
 	if err != nil {

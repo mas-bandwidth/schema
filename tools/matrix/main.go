@@ -1,3 +1,6 @@
+// Package main is the 3.0.0 proof gate (proof.go): an internal check over the
+// conformance results and the committed snapshot, test/proof/proof.json, and
+// the release lock that reads its report. It renders no page.
 package main
 
 import (
@@ -11,18 +14,15 @@ import (
 
 const usage = `usage: go run ./tools/matrix <command>
 
-  page     print the generated page to stdout
-  write    write docs/MATRIX.md from docs/matrix.json
-  check    exit nonzero when the committed page differs from the manifest
-  states   print the state line per language, in manifest order (release notes)
-  proof    compute the 3.0.0 proof table from conformance results:
+  proof    compute the 3.0.0 proof table from conformance results and check it
+           against the committed snapshot, test/proof/proof.json:
              -results <file|dir>  the harness's --results file, or a directory of per-leg files
-             -write               rewrite docs/proof.json and docs/MATRIX.md from it
+             -write               rewrite test/proof/proof.json from the results
              -report <file>       write the release report (the commit, the red cells)
              -commit <sha>        the commit the report is for
              -cell <row/lang>     print one cell and exit 0 only if it is proven
-           without -write it fails when docs/proof.json is stale or any cell is red,
-           printing the red list
+           without -write it fails when test/proof/proof.json is stale or any cell
+           is red, printing the red list
   release-check -report <file> -commit <sha>
            the release lock: refuse unless the report is green at that exact commit
 `
@@ -41,31 +41,6 @@ func main() {
 		os.Exit(proofCommand(root, os.Args[2:]))
 	case "release-check":
 		os.Exit(releaseCheckCommand(os.Args[2:]))
-	}
-	m, err := LoadManifest(root)
-	if err != nil {
-		fail(err)
-	}
-	switch os.Args[1] {
-	case "page":
-		fmt.Print(page(root, m))
-	case "write":
-		if err := os.WriteFile(filepath.Join(root, pagePath), []byte(page(root, m)), 0o644); err != nil {
-			fail(err)
-		}
-		fmt.Printf("wrote %s from %s\n", pagePath, manifestPath)
-	case "check":
-		want := page(root, m)
-		got, err := os.ReadFile(filepath.Join(root, pagePath))
-		if err != nil {
-			fail(fmt.Errorf("%s is missing; run `go run ./tools/matrix write`: %w", pagePath, err))
-		}
-		if string(got) != want {
-			fail(fmt.Errorf("%s is stale; run `go run ./tools/matrix write`", pagePath))
-		}
-		fmt.Printf("%s is in step with %s\n", pagePath, manifestPath)
-	case "states":
-		fmt.Print(StateLines(m))
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
@@ -94,20 +69,10 @@ func fail(err error) {
 	os.Exit(1)
 }
 
-// page is the whole generated page: the manifest's tables and, when the tree
-// carries the snapshot, the proof section from docs/proof.json.
-func page(root string, m Manifest) string {
-	p, err := LoadProof(root)
-	if err != nil {
-		fail(err)
-	}
-	return RenderPage(m, p)
-}
-
 func proofCommand(root string, args []string) int {
 	fs := flag.NewFlagSet("proof", flag.ExitOnError)
 	results := fs.String("results", "build/conformance/results.json", "the harness's --results file, or a directory of per-leg files")
-	write := fs.Bool("write", false, "rewrite docs/proof.json and docs/MATRIX.md")
+	write := fs.Bool("write", false, "rewrite test/proof/proof.json")
 	report := fs.String("report", "", "write the release report here")
 	commit := fs.String("commit", "", "the commit the report is for")
 	cell := fs.String("cell", "", "print one cell, row/lang, and exit 0 only if it is proven")
@@ -140,14 +105,7 @@ func proofCommand(root string, args []string) int {
 		if err := os.WriteFile(filepath.Join(root, proofPath), MarshalProof(p), 0o644); err != nil {
 			fail(err)
 		}
-		m, err := LoadManifest(root)
-		if err != nil {
-			fail(err)
-		}
-		if err := os.WriteFile(filepath.Join(root, pagePath), []byte(RenderPage(m, &p)), 0o644); err != nil {
-			fail(err)
-		}
-		fmt.Printf("wrote %s and %s: %d of %d cells red\n", proofPath, pagePath, len(p.Red()), len(p.Cells))
+		fmt.Printf("wrote %s: %d of %d cells red\n", proofPath, len(p.Red()), len(p.Cells))
 		return 0
 	}
 	stale := ""

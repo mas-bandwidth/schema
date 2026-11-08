@@ -18,9 +18,10 @@ import (
 // TestJavaFixKeyedCountExtreme pins the wire-fuzzer cause C5: a keyed body
 // whose element count is 2^64-1. The count rides as an unsigned LEB128
 // (docs/SPEC-TABLES.md §3.2, §2.4), so the Go oracle iterates and reads past
-// the short body, reporting malformed; the Java leg's signed long loop bound
-// turns the count negative and skips the body entirely, reporting clean. The
-// Java loop must compare the count unsigned to agree with the oracle.
+// the short body and refuses the load; the Java leg's signed long loop bound
+// turned the count negative and skipped the body entirely, reporting clean.
+// The Java loop must compare the count unsigned and refuse the whole load
+// (damaged or refused, no value) to agree with the oracle.
 func TestJavaFixKeyedCountExtreme(t *testing.T) {
 	t.Parallel()
 	const wireHex = "0101102b0dffffffffffffffffff01020d030408000000040c0372656400050f030402000000040c05677265656e000610480d02073b080a00007a43090a000060400a102b0d020b0b0c0a000020420d0d0100000e1a0c0a0000a0400f0a000010410d0d0a100a0000403f1101010000001207090a0000404100130d1214100e040202040a00000005041e00000000006dfaa8a548b0aeba7c1bacfe19def19f74b65dd6e299eccecf0ca0c7b1daa0bc1c3f95d58fd700cfffd89456c2c30ace1fbc0d42e1244d33cfa98b28b5d4697fb10a7bcea257371f8c6083c20b26f8847c762e3bbede5458c07fb38abe08637faa44cdc048b6db407652ffa8ae16dc04483d345369be2cdc6a64012266a35ab7bcb002469a71bfa6db230ed0a321236cb20f40270b6b980160160e9a73ad0ff11400000000000000"
@@ -31,17 +32,17 @@ func TestJavaFixKeyedCountExtreme(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	u := unitFromDir(t, filepath.Join(repo, "tables", "examples"))
 
-	oracleMalformed := goOracleKeyedMalformed(t, u, wire)
-	if !oracleMalformed {
-		t.Fatalf("oracle did not report malformed; this mutant does not pin the cause")
+	oracleRefuses := goOracleKeyedRefuses(t, u, wire)
+	if !oracleRefuses {
+		t.Fatalf("oracle did not refuse the load; this mutant does not pin the cause")
 	}
 
-	if javaKeyedMalformed(t, u, "KeyedConfig", wire) != oracleMalformed {
+	if javaKeyedRefuses(t, u, "KeyedConfig", wire) != oracleRefuses {
 		t.Fatalf("Java keyed count 2^64-1 diverges from the oracle")
 	}
 }
 
-func goOracleKeyedMalformed(t *testing.T, u *ir.Unit, wire []byte) bool {
+func goOracleKeyedRefuses(t *testing.T, u *ir.Unit, wire []byte) bool {
 	t.Helper()
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["KeyedConfig"])
@@ -53,7 +54,7 @@ func goOracleKeyedMalformed(t *testing.T, u *ir.Unit, wire []byte) bool {
 	return !ok || report.Refused
 }
 
-func javaKeyedMalformed(t *testing.T, u *ir.Unit, root string, wire []byte) bool {
+func javaKeyedRefuses(t *testing.T, u *ir.Unit, root string, wire []byte) bool {
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
@@ -93,8 +94,9 @@ public final class Driver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         %s.TableVariable.Report report = new %s.TableVariable.Report();
         %s.%sVariable.Value v = %s.%sVariable.load(wire, report);
-        System.out.println("malformed=" + report.malformed + " unknown=" + report.unknown +
-            " kindMismatch=" + report.kindMismatch + " widened=" + report.widened);
+        System.out.println("refuses=" + (v == null && (report.damaged || report.refused)) +
+            " damaged=" + report.damaged + " refused=" + report.refused + " unknown=" + report.unknown +
+            " widened=" + report.widened);
     }
 }`, pkg, pkg, pkg, root, pkg, root)
 	dp := filepath.Join(dir, "Driver.java")
@@ -116,10 +118,10 @@ public final class Driver {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	for line := range strings.SplitSeq(string(out), "\n") {
-		if strings.HasPrefix(line, "malformed=") {
-			return strings.Contains(line, "malformed=true")
+		if strings.HasPrefix(line, "refuses=") {
+			return strings.HasPrefix(line, "refuses=true")
 		}
 	}
-	t.Fatalf("driver output has no malformed line:\n%s", out)
+	t.Fatalf("driver output has no refuses line:\n%s", out)
 	return false
 }

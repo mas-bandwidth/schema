@@ -134,7 +134,7 @@ func saveFitsBody(cls, id string, announce, msg []byte) string {
             final boolean same = java.util.Arrays.equals(bufExact, msg);
             final byte[] bufShort = new byte[Math.max(0, measured - 1)];
             final int wroteShort = %sMessage.saveMessages(values, count, bufShort, new TableVocabulary.Report());
-            say(%q, announced && !lrep.malformed && !lrep.refused && count == 1 && wroteExact == measured && same && wroteShort == -1,
+            say(%q, announced && !lrep.damaged && !lrep.refused && count == 1 && wroteExact == measured && same && wroteShort == -1,
                 "announced=" + announced + " measured=" + measured + " wroteExact=" + wroteExact + " wroteShort=" + wroteShort + " same=" + same);
         }
 `, hexOf(announce), hexOf(msg), cls, cls, cls, cls, cls, cls, cls, id)

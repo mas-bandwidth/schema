@@ -99,11 +99,29 @@ def surface_wire(text:string):
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load(f[3], fixture(f[4]), rep)
         if not rec:
-            say(f[1], "refused\n")
+            // a wire-refused instance (blob_shared, §2.5) owes the refusal
+            // alone: no bytes, an absence naming the reason
+            print(f[1] + " absent " + schema_rt.strict_reason(rep))
             continue
         let out, why = schema_rt.save_reasoned(rec)
-        assert why == ""
-        say(f[1], out)
+        if why != "":
+            // a value the writer refuses by name (blob_shared, §2.5): the
+            // answer is the refusal, never bytes
+            print(f[1] + " absent " + why)
+        else:
+            say(f[1], out)
+
+// read_answer is an accepted read's whole answer (test/conformance/README.md):
+// `read`, the §16 text of the value, and beside it, as <case>.wire, the
+// canonical write-back wire, so a leg that decodes the right value but saves
+// other bytes has not returned it
+def read_answer(name:string, rec:schema_rt.Record):
+    let js, why = schema_rt.json_write(rec)
+    assert why == ""
+    say(name, "read\n" + js)
+    let out, swhy = schema_rt.save_reasoned(rec)
+    assert swhy == ""
+    say(name + ".wire", out)
 
 // REPORT and FRAMING return one verdict and the complete canonical value
 // after acceptance. A refusal has no value payload; diagnostics stay local.
@@ -113,20 +131,25 @@ def surface_report(text:string):
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load(f[3], fixture(f[4]), rep)
         if rec:
-            let js, why = schema_rt.json_write(rec)
-            assert why == ""
-            say(f[1], "read\n" + js)
+            read_answer(f[1], rec)
         else:
             say(f[1], "refused\n")
 
+// The framing vectors are form-1 files pinning the variable form's rules
+// (docs/LAYERS/1-framing.md). A root declared `fixed table` is read through
+// the same declaration with its class variable, as the oracle reads it
+// (test/conformance/harness/generate.go, framingVariableUnit), then restored,
+// so the write-back is the root's own form as the oracle saves it.
 def surface_framing(text:string):
     for(rows(text, "framing")) f:
+        let d = schema_rt.table_of(f[3])
+        let was_fixed = d.fixed
+        d.fixed = false
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load(f[3], fixture(f[4]), rep)
+        d.fixed = was_fixed
         if rec:
-            let js, why = schema_rt.json_write(rec)
-            assert why == ""
-            say(f[1], "read\n" + js)
+            read_answer(f[1], rec)
         else:
             say(f[1], "refused\n")
 
@@ -378,6 +401,30 @@ def surface_json_write(text:string):
             let out, why = schema_rt.json_write(rec)
             assert why == ""
             say(f[1] + ".json", out)
+    // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
+    // wire, then the line's damage put into storage in code, then ToJson,
+    // which must refuse. A line is
+    // `json-write-refusal <case> <unit> <root> <wire> <damage>`.
+    for(rows(text, "json-write-refusal")) f:
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
+        assert rec
+        if f[5] != "none":
+            let damage = tokenize(f[5], ":", "")
+            var hit = false
+            for(rec.fields) sl:
+                if sl.fd.name == damage[1]:
+                    hit = true
+                    if damage[0] == "narrow":
+                        sl.cell.s = "a\xffb"
+                    else:
+                        sl.cell.units = [0x61, 0xd800, 0x62]
+            assert hit
+        let out, why = schema_rt.json_write(rec)
+        if why != "":
+            say(f[1] + ".json", "refused\n")
+        else:
+            say(f[1] + ".json", out)
 
 // JSON-HOSTILE: FromJson <tree>/<root>.json, `refused` or `read` followed
 // by the complete canonical value. A line is
@@ -387,9 +434,7 @@ def surface_json_hostile(text:string):
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.json_read(f[3], fixture(f[4] + "/" + f[3] + ".json"), rep)
         if rec:
-            let js, why = schema_rt.json_write(rec)
-            assert why == ""
-            say(f[1], "read\n" + js)
+            read_answer(f[1], rec)
         else:
             say(f[1], "refused\n")
 

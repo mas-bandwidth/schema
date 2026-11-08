@@ -211,7 +211,7 @@ func TestOneVerdictNegativeControl(t *testing.T) {
 }
 
 func appendU64(b []byte, v uint64) []byte {
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		b = append(b, byte(v>>(8*i)))
 	}
 	return b

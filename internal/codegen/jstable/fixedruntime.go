@@ -25,7 +25,7 @@ package jstable
 // shift loop: the layout hash (hashLo/hashHi), and the ORDINAL of an enum or a
 // union tag declared eight bytes wide — read lo/hi, written lo/hi. A remap table
 // is never longer than 65535 entries and no declared extent reaches 2^32, so a
-// nonzero high lane names no variant: it lands None and counts one `clamped`,
+// nonzero high lane names no variant: it lands None and counts one `oor`,
 // which is what a forged ordinal of any width is owed (§5.4).
 //
 // NOTHING HERE ALLOCATES ON THE READ PATH. The plan's storage is the caller's,
@@ -184,13 +184,13 @@ export function TableFixedRefusalName(r) {
 // it and the codec never makes one.
 export class TableFixedReport {
   constructor() {
-    this.malformed = false;
+    this.damaged = false;
     this.refused = 0;
     this.unknown = 0;
-    this.kindMismatch = 0;
-    this.clamped = 0;
+    this.mismatch = 0;
+    this.oor = 0;
     this.widened = 0;
-    this.duplicate = 0;
+    this.repeated = 0;
     // THE FILE'S HASH, AND IT IS SET BY TWO REFUSALS AND NOTHING ELSE:
     // layout_newer reports it "AND NOTHING ELSE" (§5.3), and
     // layout_unsupported reports it too — the operator's other answer (§5.9
@@ -206,13 +206,13 @@ export class TableFixedReport {
 }
 
 export function TableFixedResetReport(report) {
-  report.malformed = false;
+  report.damaged = false;
   report.refused = 0;
   report.unknown = 0;
-  report.kindMismatch = 0;
-  report.clamped = 0;
+  report.mismatch = 0;
+  report.oor = 0;
   report.widened = 0;
-  report.duplicate = 0;
+  report.repeated = 0;
   report.layoutHash = 0n;
   return report;
 }
@@ -261,7 +261,7 @@ export class TableFixedPlan {
     this.split = 0;
     this.pass = 0;
     this.unknown = 0;
-    this.kindMismatch = 0;
+    this.mismatch = 0;
     this.why = 0;
     this.stage = new TableFixedReport();
   }
@@ -455,8 +455,8 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       }
       case TableFixedOpCount: {
         let v = TableFixedGetU32(src, s) | 0;
-        if (v < 0) { v = 0; report.clamped++; }
-        else if (v > size) { v = size; report.clamped++; }
+        if (v < 0) { v = 0; report.oor++; }
+        else if (v > size) { v = size; report.oor++; }
         dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
         dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
         break;
@@ -470,8 +470,8 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         const unit = e[b + TableFixedLaneMeta] === TableFixedTextWide ? 2 : 1;
         const cap = (size / unit) | 0;
         let v = TableFixedGetU32(src, s) | 0;
-        if (v < 0) { v = 0; report.clamped++; }
-        else if (v > cap) { v = cap; report.clamped++; }
+        if (v < 0) { v = 0; report.oor++; }
+        else if (v > cap) { v = cap; report.oor++; }
         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE (§4.5 fix
         // 11): UTF-8 validity over v bytes, never over N; wide code units over
         // v, never 2N. A violation REFUSES BY NAME with nothing decoded past it.
@@ -504,13 +504,13 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         let v = 0;
         if (hi !== 0 || lo > extent) {
           // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT OF RANGE, as a
-          // count past its bound is: it lands None AND COUNTS ONE clamped, on
+          // count past its bound is: it lands None AND COUNTS ONE oor, on
           // THIS plan exactly as the identity plan's projection counts it
           // (§5.4, §4.6, and §5.8 row 12 — the reference counts on neither
           // compiled path). A variant the writer DOES carry and this reader
           // cannot name is a different thing: it resolves to None through the
           // table and counts nothing, because nothing was out of range.
-          report.clamped++;
+          report.oor++;
         } else if (lo !== 0) {
           v = remap[table + lo];
         }
@@ -552,7 +552,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // A None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
         // that set lands None (already written just above) and COUNTS, so the
         // compiled plan counts it exactly as the identity plan's decode bound
-        // does and the SAME forged bytes land the SAME clamped == 1 on either
+        // does and the SAME forged bytes land the SAME oor == 1 on either
         // plan (schema#1254, §5.4, §5.8 row 12). The source read is bounded
         // here rather than at the push: TableFixedPush on this leg takes no
         // record bound at all, so the entry that reads a record byte carries
@@ -561,7 +561,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         if (v === 0 && arms !== 0 && s + size <= src.length) {
           let raw = 0;
           for (let k = 0; k < size; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
-          if (raw > arms) { report.clamped++; }
+          if (raw > arms) { report.oor++; }
         }
         break;
       }
@@ -1048,7 +1048,7 @@ function TableFixedRemapRoom(n) {
   return TableFixedRemapScratch;
 }
 
-// THE ONE DEAD REPORT. The census — unknown and kindMismatch — is once per
+// THE ONE DEAD REPORT. The census — unknown and mismatch — is once per
 // field PER ENDPOINT and never per array element or per keyed slot (§5.4, §5.8 row
 // 11, §5.9 #43). The entries still have to be laid down for every element, so
 // the repeats walk the same pairs into a report NOBODY READS. It is module-level
@@ -1123,7 +1123,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       return;
     }
     // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-    report.kindMismatch++;
+    report.mismatch++;
     return;
   }
   switch (myKind) {
@@ -1300,7 +1300,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       } else if (theirSize < mySize && mySize <= 8) {
         TableFixedPush(plan, TableFixedOpWiden, theirAt, at, theirSize, 0, guard, arg, mySize & 0xff);
       } else {
-        report.kindMismatch++;
+        report.mismatch++;
       }
       break;
     }
@@ -1449,7 +1449,7 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
       // the load carries it onto the report ONCE, AFTER the record loop, on a
       // read that RETURNS (§5.4, §5.9 #6).
       plan.unknown = census.unknown;
-      plan.kindMismatch = census.kindMismatch;
+      plan.mismatch = census.mismatch;
       plan.ready = true;
       lane = plan;
       break;

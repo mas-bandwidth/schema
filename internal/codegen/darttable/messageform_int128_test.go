@@ -170,8 +170,8 @@ void main() {
   final values = <h.@CLASS@>[value];
   final loadRep = h.TableReport();
   final count = r.@LOWER@LoadMessages(values, Uint8List.fromList(@MSG@), vocab, loadRep);
-  check(count == 1 && !loadRep.refused && !loadRep.malformed,
-      'LoadMessages count=$count refused=${loadRep.refused} malformed=${loadRep.malformed}');
+  check(count == 1 && !loadRep.refused,
+      'LoadMessages count=$count refused=${loadRep.refused} reason=${loadRep.reason}');
   check(values[0].id == value.id && values[0].val == value.val && values[0].rnd == value.rnd,
       'round-trip values differ');
   final measureRep = h.TableReport();

@@ -126,7 +126,7 @@ static partial class Program
         using(var builder=new L.SaveBuilder())
         {
             var report=new L.TableReport();
-            Check(!L.Schema.SaveLoadBuilder(builder,shortList,report) && report.Malformed && !report.Refused && report.Clamped==0,"builder refuses a short list as damage");
+            Check(!L.Schema.SaveLoadBuilder(builder,shortList,report) && report.Damaged && !report.Refused,"builder refuses a short list as damage");
             var list=builder.CreateWorker().List<int>(ref builder.GetRoot()->Scores,L.Schema.SaveTableType().Fields[2]);
             Check(list.Count==0,"builder discards the whole damaged load");
         }
@@ -134,19 +134,19 @@ static partial class Program
         using(var builder=new L.SaveBuilder())
         {
             var report=new L.TableReport();
-            Check(!L.Schema.SaveLoadBuilder(builder,cappedList,report) && report.Unknown==1 && report.KindMismatch==0 && report.Widened==0 && report.Duplicate==0 && !report.Malformed && !report.Refused && report.Clamped==0,"builder count-cap refusal preserves exactly the preceding report");
+            Check(!L.Schema.SaveLoadBuilder(builder,cappedList,report) && report.Refused && !report.Damaged && report.Unknown==1 && report.Widened==0,"builder count-cap refuses the load and keeps exactly the preceding report");
         }
         byte[] cappedMap=Fixture(Join(new byte[] {1,6,5,2,14,6,13},Var((ulong)int.MaxValue+1),new byte[] {3,6,7,0}),"before","tiers","after");
         using(var builder=new M.FleetBuilder())
         {
             var report=new M.TableReport();
-            Check(!M.Schema.FleetLoadBuilder(builder,cappedMap,report) && report.Unknown==1 && report.KindMismatch==0 && report.Widened==0 && report.Duplicate==0 && !report.Malformed && !report.Refused && report.Clamped==0,"builder map count-cap refusal preserves exactly the preceding report");
+            Check(!M.Schema.FleetLoadBuilder(builder,cappedMap,report) && report.Refused && !report.Damaged && report.Unknown==1 && report.Widened==0,"builder map count-cap refuses the load and keeps exactly the preceding report");
         }
         byte[] shortMap=Fixture(Join(new byte[] {1,14,6,13},Var(int.MaxValue),new byte[] {0}),"tiers");
         using(var builder=new M.FleetBuilder())
         {
             var report=new M.TableReport();
-            Check(!M.Schema.FleetLoadBuilder(builder,shortMap,report) && report.Malformed && !report.Refused && report.Clamped==0 && builder.GetRoot()->Tiers.Count==0,"builder map at the count cap is damage and discards the whole load");
+            Check(!M.Schema.FleetLoadBuilder(builder,shortMap,report) && report.Damaged && !report.Refused && builder.GetRoot()->Tiers.Count==0,"builder map at the count cap is damage and discards the whole load");
         }
         byte[] loaded=ReadGolden("list_scalars"); long size=L.Schema.SaveLoadMeasure(loaded);
         byte* source=(byte*)NativeMemory.AlignedAlloc((nuint)(size+64),64);

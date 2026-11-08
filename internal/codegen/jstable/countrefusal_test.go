@@ -55,15 +55,15 @@ for (let i = 0; i < 3; i++) {
   const value = retaining ? m.RootLoadRetain(wire("cap" + i + ".bin"), keep, r)
                           : m.RootLoad(wire("cap" + i + ".bin"), r);
   if (value !== null || !r.refused || r.reason !== "count_over_extent_cap" ||
-      r.malformed || r.unknown !== 4 || keep.used !== 0 || keep.count !== 0) {
+      r.damaged || r.unknown !== 4 || keep.used !== 0 || keep.count !== 0) {
    fail("count-cap must refuse without damage, later counters, or retained output: " + JSON.stringify(r));
   }
   const clean = m.RootLoad(wire("clean.bin"), r);
-  if (clean === null || r.refused || r.malformed) fail("prior count refusal poisoned a clean load");
+  if (clean === null || r.refused || r.damaged) fail("prior count refusal poisoned a clean load");
  }
 }
 const short = new m.TableVariableReport();
-if (m.RootLoad(wire("short.bin"), short) !== null || !short.malformed || short.refused)
+if (m.RootLoad(wire("short.bin"), short) !== null || !short.damaged || short.refused)
  fail("INT32_MAX with insufficient body must remain damage, not storage-cap refusal");
 `)
 }

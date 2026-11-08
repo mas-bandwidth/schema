@@ -97,15 +97,18 @@ int main( int argc, char ** argv )
 
     SaveBuilder builder;
     TableReport report;
-    if ( !SaveLoadBuilderTolerant( builder, wire_bytes, wire, &report ) )
+    if ( !SaveLoadBuilder( builder, wire_bytes, wire, &report ) )
     {
         printf( "FAIL the reference refused the wire the tool wrote\n" );
         return 1;
     }
-    if ( report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 || report.malformed )
+    // the plain read is strict, so acceptance already rules out a kind
+    // mismatch, an out-of-range value and broken framing; what is left to
+    // pin is that the tool wrote nothing this reader does not name
+    if ( report.unknown != 0 || report.damaged || report.refuse_reason != ok )
     {
-        printf( "FAIL the wire did not read clean (unknown %d, kind_mismatch %d, clamped %d, malformed %d)\n",
-                report.unknown, report.kind_mismatch, report.clamped, (int) report.malformed );
+        printf( "FAIL the wire did not read clean (unknown %d, damaged %d, refuse_reason %d)\n",
+                report.unknown, (int) report.damaged, (int) report.refuse_reason );
         return 1;
     }
 

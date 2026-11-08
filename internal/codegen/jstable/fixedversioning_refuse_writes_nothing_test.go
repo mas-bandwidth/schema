@@ -38,8 +38,8 @@ if (n !== -1) { fail("a record whose hash names no held layout must refuse: n=" 
 if (r.refused !== TableFixedRefusal.NoLayout) {
   fail("the refusal is no_layout, not " + TableFixedRefusalName(r.refused) + ": " + reason(r));
 }
-if (r.malformed) { fail("a refusal by name never sets malformed too (§5.3): " + reason(r)); }
-if (r.unknown !== 0 || r.kindMismatch !== 0 || r.clamped !== 0 || r.widened !== 0 || r.duplicate !== 0) {
+if (r.damaged) { fail("a refusal by name never sets malformed too (§5.3): " + reason(r)); }
+if (r.unknown !== 0 || r.mismatch !== 0 || r.oor !== 0 || r.widened !== 0 || r.repeated !== 0) {
   fail("REFUSE is total: no counter moves: " + reason(r));
 }
 for (let i = 0; i < plan.image.length; i++) {

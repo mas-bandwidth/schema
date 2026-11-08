@@ -163,8 +163,8 @@ func checkSquirrelEvidenceCitation(root, id, ev string) error {
 			mkFile = strings.TrimSpace(rest[openIdx+1 : len(rest)-1])
 			rest = strings.TrimSpace(rest[:openIdx])
 		}
-		targets := strings.Split(rest, ",")
-		for _, rawTarget := range targets {
+		targets := strings.SplitSeq(rest, ",")
+		for rawTarget := range targets {
 			target := strings.TrimSpace(rawTarget)
 			if target == "" {
 				return fmt.Errorf("%s: empty make target in %q", id, ev)
@@ -188,7 +188,7 @@ func checkSquirrelEvidenceCitation(root, id, ev string) error {
 	for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(src), -1) {
 		defined[m[1]] = true
 	}
-	for _, token := range strings.Split(testsPart, ",") {
+	for token := range strings.SplitSeq(testsPart, ",") {
 		name := strings.TrimSpace(token)
 		if slash := strings.Index(name, "/"); slash >= 0 {
 			name = name[:slash]

@@ -251,7 +251,7 @@ const n = HostFixedLoad(values, 1, file, file.length, HostFixedNewPlan(4096, 409
 if (n !== -1 || report.refused !== TableFixedRefusal.LayoutRecordTooLarge) {
   fail("R14: the load owes -1 layout_record_too_large, got " + n + " " + TableFixedRefusalName(report.refused));
 }
-if (report.unknown !== 0 || report.kindMismatch !== 0 || report.clamped !== 0 || report.widened !== 0 || report.malformed) {
+if (report.unknown !== 0 || report.mismatch !== 0 || report.oor !== 0 || report.widened !== 0 || report.damaged) {
   fail("R14: the refusal sets nothing and counts nothing");
 }
 

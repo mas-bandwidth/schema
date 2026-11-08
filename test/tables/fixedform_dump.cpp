@@ -934,17 +934,17 @@ static bool versioning_numbers_files( const char * dir )
     // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5, bill
     // §12.5). hostile_range_widen.bin is old_range_widen's bytes with `v`
     // forged to 150: outside the OLD writer's | 0..100, INSIDE the NEW reader's
-    // | 0..200, so only damage can put it there. The NEW reader clamps it to the
-    // WRITER's max 100 and counts `clamped` exactly once; a reader that clamps
-    // to its own range lands 150 uncounted. The lock refuses a narrowed range,
+    // | 0..200, so only damage can put it there. The NEW reader REFUSES THE WHOLE
+    // LOAD out_of_range (docs/FIXED-FORM-VERSIONING-TESTS.md); a reader that
+    // holds its own range lands 150. The lock refuses a narrowed range,
     // so the writer's range always lies inside the reader's and this is the one
     // place the two readings part. Unlike a compressed float (the cfloat rows
     // above), an integer range is carried in the plan, so the writer's bound
     // survives the resolve.
     //
-    // `values=` is what the OLD writer wrote, before the forge; `expect=` is
-    // what this reference's own NEW reader landed from the forged bytes, and
-    // the dump refuses to write the row unless that is 100, counted once.
+    // `values=` is what the OLD writer wrote, before the forge. The line carries
+    // no `expect=`: the reference's own NEW reader refuses the bytes, and the
+    // dump refuses to write the row unless it does.
     {
         std::vector<vold_range_widen::RangeWiden> v( 1 );
         vold_range_widen::RangeWidenReset( v[0] );
@@ -966,20 +966,18 @@ static bool versioning_numbers_files( const char * dir )
         vnew_range_widen::RangeWidenReset( back );
         vnew_range_widen::TableReport r;
         std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, out.data(), (int64_t) out.size(),
-                                                                         plan.data(), 4096, NULL, &r );
-        if ( n != 1 || back.v != 100 || r.clamped != 1 || back.lead != 1 || back.trail != 2 )
+        const int64_t n = vnew_range_widen::RangeWidenFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                                  plan.data(), 4096, NULL, &r );
+        if ( n != -1 || r.refuse_reason != vnew_range_widen::out_of_range )
         {
-            std::fprintf( stderr, "hostile_range_widen.bin: the reference's NEW reader landed n=%lld v=%d clamped=%lld, want 1 record, v == 100 (the WRITER's max), clamped == 1\n",
-                          (long long) n, (int) back.v, (long long) r.clamped );
+            std::fprintf( stderr, "hostile_range_widen.bin: the reference's NEW reader answered n=%lld reason=%d, want the whole load refused out_of_range\n",
+                          (long long) n, (int) r.refuse_reason );
             g_values.clear();
             return false;
         }
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.v@%lld=%s", (long long) v_at, man_text( forged ).c_str() );
         g_forged = forge;
-        g_expect = "r0.lead=" + man_text( back.lead ) + ",r0.v=" + man_text( back.v )
-                 + ",r0.trail=" + man_text( back.trail ) + ",clamped=" + man_text( (long long) r.clamped );
         man_finish( "hostile_range_widen.bin", "RangeWiden", 1 );
         if ( !spill( dir, "hostile_range_widen.bin", out ) ) { return false; }
     }
@@ -988,10 +986,8 @@ static bool versioning_numbers_files( const char * dir )
     // a scalar (docs/FIXED-FORM-ALGORITHM.md §4.5). hostile_range_widen_array.bin
     // is old_range_widen's bytes (`vals [4]int32 | 0..100`) with `vals[2]`
     // forged to 150: outside the writer's range, inside the NEW reader's
-    // `| 0..200`. The NEW reader lands the WRITER's max 100 in that slot, leaves
-    // the other three where the writer put them, and counts `clamped` exactly
-    // once. A reader that holds only scalars, or only the first slot, lands 150
-    // uncounted.
+    // `| 0..200`. The NEW reader refuses the whole load out_of_range: no element
+    // lands. A reader that holds only scalars, or only the first slot, lands 150.
     {
         std::vector<vold_range_widen::RangeWiden> v( 1 );
         vold_range_widen::RangeWidenReset( v[0] );
@@ -1025,26 +1021,18 @@ static bool versioning_numbers_files( const char * dir )
         vnew_range_widen::RangeWidenReset( back );
         vnew_range_widen::TableReport r;
         std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, out.data(), (int64_t) out.size(),
-                                                                         plan.data(), 4096, NULL, &r );
-        if ( n != 1 || back.vals[0] != 10 || back.vals[1] != 20 || back.vals[2] != 100 || back.vals[3] != 40
-             || r.clamped != 1 || back.lead != 1 || back.v != 100 || back.u != 500u || back.trail != 2 )
+        const int64_t n = vnew_range_widen::RangeWidenFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                                  plan.data(), 4096, NULL, &r );
+        if ( n != -1 || r.refuse_reason != vnew_range_widen::out_of_range )
         {
-            std::fprintf( stderr, "hostile_range_widen_array.bin: the reference's NEW reader landed n=%lld vals=%d,%d,%d,%d clamped=%lld, want 1 record, vals == 10,20,100,40 (the WRITER's max in slot 2), clamped == 1\n",
-                          (long long) n, (int) back.vals[0], (int) back.vals[1], (int) back.vals[2], (int) back.vals[3], (long long) r.clamped );
+            std::fprintf( stderr, "hostile_range_widen_array.bin: the reference's NEW reader answered n=%lld reason=%d, want the whole load refused out_of_range\n",
+                          (long long) n, (int) r.refuse_reason );
             g_values.clear();
             return false;
         }
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.vals[2]@%lld=%s", (long long) vals2_at, man_text( forged ).c_str() );
         g_forged = forge;
-        g_expect = "r0.lead=" + man_text( back.lead ) + ",r0.v=" + man_text( back.v );
-        for ( int i = 0; i < 4; ++i )
-        {
-            g_expect += ",r0.vals[" + std::to_string( i ) + "]=" + man_text( back.vals[i] );
-        }
-        g_expect += ",r0.u=" + man_text( (unsigned long long) back.u ) + ",r0.trail=" + man_text( back.trail )
-                  + ",clamped=" + man_text( (long long) r.clamped );
         g_row = "range_widen";
         man_finish( "hostile_range_widen_array.bin", "RangeWiden", 1 );
         if ( !spill( dir, "hostile_range_widen_array.bin", out ) ) { return false; }
@@ -1054,8 +1042,8 @@ static bool versioning_numbers_files( const char * dir )
     // hostile_range_widen_u64.bin is old_range_widen's bytes (`u uint64 |
     // 10..1000`) with `u` forged to 2^63 + 7: past the writer's max as a uint64,
     // and a NEGATIVE number to a reader that compares it as an int64. The NEW
-    // reader (`| 0..2000`) lands the WRITER's max 1000 and counts `clamped`
-    // exactly once; a signed comparison lands the writer's min 10 instead.
+    // reader (`| 0..2000`) refuses the whole load out_of_range, comparing in the
+    // field's own type; a signed comparison reads a negative number instead.
     {
         std::vector<vold_range_widen::RangeWiden> v( 1 );
         vold_range_widen::RangeWidenReset( v[0] );
@@ -1085,21 +1073,18 @@ static bool versioning_numbers_files( const char * dir )
         vnew_range_widen::RangeWidenReset( back );
         vnew_range_widen::TableReport r;
         std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, out.data(), (int64_t) out.size(),
-                                                                         plan.data(), 4096, NULL, &r );
-        if ( n != 1 || back.u != 1000u || r.clamped != 1 || back.lead != 1 || back.v != 100 || back.trail != 2 )
+        const int64_t n = vnew_range_widen::RangeWidenFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                                  plan.data(), 4096, NULL, &r );
+        if ( n != -1 || r.refuse_reason != vnew_range_widen::out_of_range )
         {
-            std::fprintf( stderr, "hostile_range_widen_u64.bin: the reference's NEW reader landed n=%lld u=%llu clamped=%lld, want 1 record, u == 1000 (the WRITER's max), clamped == 1\n",
-                          (long long) n, (unsigned long long) back.u, (long long) r.clamped );
+            std::fprintf( stderr, "hostile_range_widen_u64.bin: the reference's NEW reader answered n=%lld reason=%d, want the whole load refused out_of_range\n",
+                          (long long) n, (int) r.refuse_reason );
             g_values.clear();
             return false;
         }
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.u@%lld=%s", (long long) u_at, man_text( (unsigned long long) forged ).c_str() );
         g_forged = forge;
-        g_expect = "r0.lead=" + man_text( back.lead ) + ",r0.v=" + man_text( back.v )
-                 + ",r0.u=" + man_text( (unsigned long long) back.u ) + ",r0.trail=" + man_text( back.trail )
-                 + ",clamped=" + man_text( (long long) r.clamped );
         g_row = "range_widen";
         man_finish( "hostile_range_widen_u64.bin", "RangeWiden", 1 );
         if ( !spill( dir, "hostile_range_widen_u64.bin", out ) ) { return false; }

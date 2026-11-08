@@ -189,11 +189,14 @@ table LiveNested
 	}
 
 	item := dumpFn(t, src, "void itemFixedDecode(")
-	if !strings.Contains(item, "if (value.labelLength < 0)") {
-		t.Fatalf("decode must clamp a live string length, slack never:\n%s", item)
+	if !strings.Contains(item, "if (value.labelLength < 0 || value.labelLength >") {
+		t.Fatalf("decode must refuse a live string length past its bound, slack never:\n%s", item)
 	}
-	if !strings.Contains(item, "if (value.wideLength < 0)") {
-		t.Fatalf("decode must clamp a live wstring length, slack never:\n%s", item)
+	if !strings.Contains(item, "if (value.wideLength < 0 || value.wideLength >") {
+		t.Fatalf("decode must refuse a live wstring length past its bound, slack never:\n%s", item)
+	}
+	if !strings.Contains(item, "report.refused = TableFixedRefusal.lengthOverBound;") {
+		t.Fatalf("decode must refuse by name on a length past its bound:\n%s", item)
 	}
 	if !strings.Contains(fixedRuntime, "SAME-SIZE TEXT IS A COPY") {
 		t.Fatal("compiled same-size string/wstring must COPY, or slack lengths count on that path")

@@ -24,7 +24,7 @@ name: Squirrel all-port differential
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-squirrel-all-port-differential.mk'
       - '.github/workflows/schema-squirrel-all-port-differential.yml'

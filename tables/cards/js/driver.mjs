@@ -49,10 +49,10 @@ function reportText(report) {
     `RetainLost=${report.retainLost}\n` +
     `Widened=${report.widened}\n` +
     `Unknown=${report.unknown}\n` +
-    `KindMismatch=${report.kindMismatch}\n` +
-    `Clamped=${report.clamped}\n` +
-    `Duplicate=${report.duplicate}\n` +
-    `Malformed=${report.malformed}\n`
+    `KindMismatch=${report.mismatch}\n` +
+    `Clamped=${report.oor}\n` +
+    `Duplicate=${report.repeated}\n` +
+    `Malformed=${report.damaged}\n`
   );
 }
 

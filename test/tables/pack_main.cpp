@@ -7,10 +7,13 @@
 //
 // Three gates, in order:
 //
-//   1. `schema pack` bytes == PackConfigSave of the hand-built instance.
-//   2. PackConfigLoad of pack's bytes reports ALL ZERO — the wire the Go
-//      engine wrote is one this build reads with nothing skipped, nothing
-//      renamed and nothing cut down.
+//   1. `schema pack` bytes == PackConfigFixedSave of the hand-built instance:
+//      both roots are FIXED, and a fixed root's file is form 3
+//      (docs/SPEC-TABLES.md §3.4), the form `schema pack` writes for it.
+//   2. PackConfigFixedLoad of pack's bytes ACCEPTS (the read is strict, so a
+//      kind mismatch, an out-of-range value or broken framing refuses it) and
+//      reports nothing unknown, nothing widened and no damage — the wire the
+//      Go engine wrote is one this build reads with nothing skipped.
 //   3. The instance that comes back equals the one built by hand, field for
 //      field, so a byte match cannot be a coincidence of two identical bugs.
 //   4. §17.1's THIRD golden: the text `schema unpack --one-file` wrote for that
@@ -326,6 +329,24 @@ static void compare_text( const char * what, const T & value, const char * path,
     free( expected );
 }
 
+// ONE RECORD of a fixed root, through the strict fixed-form read: true only
+// when the read accepted exactly that record, and the report says nothing
+// was skipped, widened or damaged on the way
+template <typename T, typename Load>
+static bool load_clean( T & value, const uint8_t * packed, long packed_size, Load load )
+{
+    static TableFixedEntry plan[1024];
+    TableReport report;
+    const int64_t n = load( &value, 1, packed, (int64_t) packed_size, plan, 1024, NULL, &report );
+    if ( n != 1 || report.unknown != 0 || report.widened != 0 || report.damaged || report.refuse_reason != ok )
+    {
+        printf( "FAIL: the fixed load of pack's bytes was not clean (records %lld, unknown %d, widened %d, damaged %d, refuse_reason %d)\n",
+                (long long) n, report.unknown, report.widened, (int) report.damaged, (int) report.refuse_reason );
+        return false;
+    }
+    return true;
+}
+
 static void root_golden( const char * path, const char * text_path )
 {
     long packed_size = 0;
@@ -338,27 +359,21 @@ static void root_golden( const char * path, const char * text_path )
     }
     RootConfig root;
     build_root( root );
-    int64_t size = RootConfigMeasure( root );
+    int64_t size = RootConfigFixedMeasure( 1 );
     CHECK( size > 0 );
     uint8_t * saved = (uint8_t *) malloc( (size_t) size );
-    CHECK( RootConfigSave( root, saved, size ) == size );
+    CHECK( RootConfigFixedSave( &root, 1, saved, size ) == size );
     compare_bytes( "RootConfig", packed, packed_size, saved, size );
 
     RootConfig loaded;
-    TableReport report;
-    CHECK( RootConfigLoadTolerant( loaded, packed, packed_size, &report ) );
-    CHECK( report.unknown == 0 );
-    CHECK( report.kind_mismatch == 0 );
-    CHECK( report.clamped == 0 );
-    CHECK( report.duplicate == 0 );
-    CHECK( !report.malformed );
+    CHECK( load_clean( loaded, packed, packed_size, RootConfigFixedLoad ) );
 
     // the value that comes back saves to the same bytes, which is the whole
     // of "the instance survived the trip" without a hand-written comparator
-    int64_t again = RootConfigMeasure( loaded );
+    int64_t again = RootConfigFixedMeasure( 1 );
     CHECK( again == size );
     uint8_t * resaved = (uint8_t *) malloc( (size_t) again );
-    CHECK( RootConfigSave( loaded, resaved, again ) == again );
+    CHECK( RootConfigFixedSave( &loaded, 1, resaved, again ) == again );
     compare_bytes( "RootConfig reload", packed, packed_size, resaved, again );
 
     compare_text<RootConfig>( "RootConfig text", loaded, text_path,
@@ -388,22 +403,16 @@ int main( int argc, char ** argv )
     build( config );
 
     // 1. the same instance, saved by the generated codec
-    int64_t size = PackConfigMeasure( config );
+    int64_t size = PackConfigFixedMeasure( 1 );
     CHECK( size > 0 );
     uint8_t * saved = (uint8_t *) malloc( (size_t) size );
-    CHECK( PackConfigSave( config, saved, size ) == size );
+    CHECK( PackConfigFixedSave( &config, 1, saved, size ) == size );
 
     compare_bytes( "PackConfig", packed, packed_size, saved, size );
 
     // 2. this build reads what the Go engine wrote, with nothing to report
     PackConfig loaded;
-    TableReport report;
-    CHECK( PackConfigLoadTolerant( loaded, packed, packed_size, &report ) );
-    CHECK( report.unknown == 0 );
-    CHECK( report.kind_mismatch == 0 );
-    CHECK( report.clamped == 0 );
-    CHECK( report.duplicate == 0 );
-    CHECK( !report.malformed );
+    CHECK( load_clean( loaded, packed, packed_size, PackConfigFixedLoad ) );
 
     // 3. and the value that comes back is the one that went in
     CHECK( same_config( config, loaded ) );

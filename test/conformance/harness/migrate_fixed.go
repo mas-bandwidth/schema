@@ -252,7 +252,7 @@ func mergeLedger(path string, moves []string) []string {
 	}
 	var out []string
 	if body, err := os.ReadFile(path); err == nil {
-		for _, row := range strings.Split(string(body), "\n") {
+		for row := range strings.SplitSeq(string(body), "\n") {
 			n := name(row)
 			if !strings.HasPrefix(row, "| ") || n == "Instance" || strings.HasPrefix(row, "| ---") {
 				continue

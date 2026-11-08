@@ -6,7 +6,9 @@
 // THE ANSWERS ARE THE GO ORACLE'S. Every value below is the one
 // internal/codegen/gotable/exactrange_test.go's TestGoExactIntegerRangeBounds
 // asserts for this same schema text and these same input bytes — the `fixed
-// table Big` with n, m, u and w, and the clamp at each exact edge:
+// table Big` with n, m, u and w, and the bound at each exact edge (the C++
+// read is strict-only, so one past an edge refuses where Go's oracle shows the
+// clamp target; the edge is the same number):
 //
 //   - n's max 9007199254740993 (2^53 + 1) is exact on the descriptor, and the
 //     text's 9007199254740994 clamps to it;
@@ -19,7 +21,7 @@
 // The w row is held to the emitted descriptor's text because compiling an
 // int128 storage needs the serialize sibling runtime, which this unit test
 // does not fetch (the runtime is a make-target prerequisite, not a test
-// dependency). The n/m/u clamp probe is compiled and run against the exact
+// dependency). The n/m/u bound probe is compiled and run against the exact
 // same declarations and input bytes the Go test uses.
 package compiler
 
@@ -114,15 +116,32 @@ int main( void )
     if ( info->fields[2].range_uint_max != 18446744073709551614ULL )
     { printf( "u range_uint_max = %llu\n", (unsigned long long) info->fields[2].range_uint_max ); return 3; }
 
-    // the JSON clamp reads the exact columns
+    // the JSON read holds the exact columns. It is strict-only
+    // (docs/plans/strict-only.md): each exact edge reads exactly, and one past
+    // each edge REFUSES the load as out_of_range. A bound degraded through a
+    // double moves one of the two answers.
     Big v;
     TableReport r{};
-    const char * text = "{\"n\":9007199254740994,\"m\":-9223372036854775808,\"u\":18446744073709551615}";
-    if ( !BigFromJsonTolerant( v, text, (int64_t) strlen( text ), &r ) )
-    { printf( "FromJson failed\n" ); return 5; }
+    const char * text = "{\"n\":9007199254740993,\"m\":-9223372036854775807,\"u\":18446744073709551614}";
+    if ( !BigFromJson( v, text, (int64_t) strlen( text ), &r ) || r.refuse_reason != ok )
+    { printf( "FromJson refused the exact edges\n" ); return 5; }
     if ( v.n != 9007199254740993LL || v.m != -9223372036854775807LL || v.u != 18446744073709551614ULL )
-    { printf( "clamp read n=%lld m=%lld u=%llu\n",
+    { printf( "edge read n=%lld m=%lld u=%llu\n",
              (long long) v.n, (long long) v.m, (unsigned long long) v.u ); return 6; }
+    const char * past[] = {
+        "{\"n\":9007199254740994}",
+        "{\"m\":-9223372036854775808}",
+        "{\"u\":18446744073709551615}",
+    };
+    for ( int i = 0; i < 3; ++i )
+    {
+        Big p;
+        TableReport pr{};
+        if ( BigFromJson( p, past[i], (int64_t) strlen( past[i] ), &pr ) )
+        { printf( "FromJson accepted one past an exact edge: %s\n", past[i] ); return 7; }
+        if ( !pr.refused || pr.refuse_reason != out_of_range )
+        { printf( "%s refused as %d, want out_of_range\n", past[i], (int) pr.refuse_reason ); return 8; }
+    }
 
     return 0;
 }

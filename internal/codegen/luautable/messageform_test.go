@@ -129,7 +129,7 @@ func refusalProbe(mods []string, rootName string) string {
 	fmt.Fprintf(&b, `local v = M.NewVocabulary()
 local verbs = {
 	{ "LoadMessages", function() return M.LoadMessages(v, %[1]q, buffer.create(2), 256, {}) end },
-	{ "LoadMessagesTolerant", function() return M.LoadMessagesTolerant(v, %[1]q, buffer.create(2), 256, {}) end },
+	{ "loadMessagesWalk", function() return M.loadMessagesWalk(v, %[1]q, buffer.create(2), 256, {}) end },
 	{ "MeasureMessages", function() return M.MeasureMessages(v, %[1]q, { {} }, {}) end },
 	{ "SaveMessages", function() return M.SaveMessages(v, %[1]q, { {} }, {}) end },
 }
@@ -166,7 +166,7 @@ func messageMain(t *testing.T, dir string, mods []string, rootName string, ann, 
 }
 
 // messageMainWith runs the probe through one named batch read: the plain
-// LoadMessages (strict) or LoadMessagesTolerant (docs/SPEC-TABLES.md §6.5).
+// LoadMessages (strict) or loadMessagesWalk (docs/SPEC-TABLES.md §6.5).
 func messageMainWith(t *testing.T, dir string, mods []string, rootName, load string, ann, batch []byte) string {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(messageProbe(mods, rootName, load)), 0o644); err != nil {
@@ -299,7 +299,7 @@ func TestLuauMessageFormDamageRefusesTheBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir, mods, _ := buildMessageUnit(t, units[conn.unit])
-	out := messageMainWith(t, dir, mods, "LoginRequest", "LoadMessagesTolerant", ann, batch)
+	out := messageMainWith(t, dir, mods, "LoginRequest", "loadMessagesWalk", ann, batch)
 	if !strings.HasPrefix(out, "count 0 malformed true") {
 		t.Fatalf("the tolerant batch read did not refuse a damaged batch: %q", out)
 	}

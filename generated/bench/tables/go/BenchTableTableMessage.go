@@ -13,6 +13,7 @@ package benchtable
 import (
 	"encoding/binary"
 	"math"
+	"slices"
 	"unsafe"
 )
 
@@ -950,11 +951,9 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -1592,11 +1591,9 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -2110,11 +2107,9 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -2500,7 +2495,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
 						return false
 					}
-					for i := uint64(0); i < n; i++ {
+					for i := range n {
 						p := &base[i]
 						if !TableEntityLoadMessageBody(r, &(*p)) {
 							return false
@@ -2540,7 +2535,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.stats")
 						return false
 					}
-					for i := uint64(0); i < n; i++ {
+					for i := range n {
 						p := &base[i]
 						if !TableStatLoadMessageBody(r, &(*p)) {
 							return false
@@ -2695,7 +2690,7 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.loadout")
 						return false
 					}
-					for i := uint64(0); i < n; i++ {
+					for i := range n {
 						p := &base[i]
 						{
 							var raw [16]byte
@@ -3373,11 +3368,9 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -3573,11 +3566,9 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -3702,11 +3693,9 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {

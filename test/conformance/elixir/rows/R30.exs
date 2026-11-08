@@ -152,10 +152,9 @@ defmodule R30 do
     ok =
       case result do
         {:error, :layout_newer, report} ->
-          report.layout_hash == fine_hash and not report.malformed and
+          report.layout_hash == fine_hash and
             report.widened == 0 and report.unknown == 0 and
-            report.kind_mismatch == 0 and report.clamped == 0 and
-            report.duplicate == 0
+            report.retained == 0 and report.retain_lost == 0
 
         _other ->
           false

@@ -1175,7 +1175,7 @@ tables-js-wire-fuzz-negative-control: build/conformance-harness build/tables-gen
 	@rm -rf build/js-wire-fuzz-sabotage && mkdir -p build/js-wire-fuzz-sabotage
 	@cp -R build/tables-generated-js build/js-wire-fuzz-sabotage/generated
 	@for f in build/js-wire-fuzz-sabotage/generated/*/*Variable.js; do \
-		sed 's|if (ref > table.length) { report.malformed = true; return undefined; }|/* SABOTAGED enum reference range */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed 's|if (ref > table.length) { report.damaged = true; return undefined; }|/* SABOTAGED enum reference range */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED enum reference range' build/js-wire-fuzz-sabotage/generated/examples/TabledemoVariable.js || \
 		{ echo 'NEGATIVE CONTROL FAILED: the enum reference range sabotage patched nothing'; exit 1; }

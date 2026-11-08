@@ -7,9 +7,7 @@
 
 ![Schema — architectural pieces sharing one design](images/schema.png)
 
-Schema is a data language where you define your constants, enums, flags, types and tables for your game. 
-
-From this one definition, schema generates code in multiple languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript, Lua and Rust.
+Schema is a data language where you define your constants, enums, flags, types and tables for your game, then from this one definition, it generates code in multiple languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript, Lua and Rust.
 
 Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
 
@@ -21,6 +19,7 @@ Schema is designed to support the following use-cases in game development:
 
 * Packets sent between a client and server.
 * Messages sent between your server and backend.
+* Asset file formats and recursive data structures.
 * Save game files that must load in a future game build.
 * Game assets cooked to an efficient runtime binary format.
 * Render data written in one language and read in another - sixty times per-second.
@@ -67,8 +66,6 @@ type ShipState
 }
 ```
 
-Write your data types once and generate bit-packed serialization code to read and write them. Best for client/server messages and state where the client speaks the same binary protocol as the server or won't be allowed to connect.
-
 ## Performance
 
 Cost to serialize a representative game packet, relative to generated C++ at 100%. Lower is faster.
@@ -103,7 +100,6 @@ sandboxed build and an editor integration all work.
 | Document | What's in it |
 |---|---|
 | **[ROADMAP.md](ROADMAP.md)** | Where schema stands, feature by feature and language by language, what we are building next, and how to support the work. |
-| **[MATRIX.md](docs/MATRIX.md)** | The published matrix: the feature-by-language cells and one maturity state per language, generated from `docs/matrix.json` and printed with each release. |
 | **[TUTORIAL.md](docs/TUTORIAL.md)** | Fourteen parts, from an empty directory to a program that uses every feature. Start here. |
 | **[USAGE.md](docs/USAGE.md)** | Every language feature, with the code it generates. |
 | **[SPEC.md](docs/SPEC.md)** | The normative reference for the type wire: grammar, wire law, every edge case. |

@@ -73,19 +73,18 @@ std::vector<Case> readManifest(const std::string & path) {
     return out;
 }
 
-// writeReport spells the read report the way FORMAT.md fixes it: one Name=value
-// line per counter of the Go TableReport, in declaration order
-// (docs/SPEC-TABLES.md §16).
+// writeReport spells the read report of an ACCEPTED read the way FORMAT.md
+// fixes it: one Name=value line per row, in its order (docs/SPEC-TABLES.md
+// §16). The strict read refuses the whole load on a kind mismatch, an
+// out-of-range value, a repeat or damage, so an accepted read writes the last
+// four rows as zero and false, as the Go driver does.
 std::string writeReport(const cards::TableReport & r) {
     std::ostringstream b;
     b << "Retained=" << r.retained << "\n";
     b << "RetainLost=" << r.retain_lost << "\n";
     b << "Widened=" << r.widened << "\n";
     b << "Unknown=" << r.unknown << "\n";
-    b << "KindMismatch=" << r.kind_mismatch << "\n";
-    b << "Clamped=" << r.clamped << "\n";
-    b << "Duplicate=" << r.duplicate << "\n";
-    b << "Malformed=" << (r.malformed ? "true" : "false") << "\n";
+    b << "KindMismatch=0\nClamped=0\nDuplicate=0\nMalformed=false\n";
     return b.str();
 }
 

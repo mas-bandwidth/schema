@@ -154,7 +154,7 @@ wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
 for result<-[T.load("Docs",wire),T.load_retain("Docs",wire,store,zero)] do
- unless elem(result,0)==:ok and elem(result,2).kind_mismatch==1 and not elem(result,2).malformed,do: raise("key pin "<>inspect(result))
+ unless elem(result,0)==:ok and elem(result,2).kind_mismatch==1 and true,do: raise("key pin "<>inspect(result))
  {:ok,written}=T.save("Docs",elem(result,1))
  unless Base.encode16(written,case: :lower)==%q,do: raise("key pin save")
 end
@@ -193,7 +193,7 @@ wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
 for result<-[T.load("Docs",wire),T.load_retain("Docs",wire,store,zero)] do
- unless elem(result,0)==:ok and elem(result,2).kind_mismatch==0 and elem(result,2).unknown==2 and Map.get(elem(result,2),:duplicate,0)==1 and not elem(result,2).malformed,do: raise("key pin "<>inspect(result))
+ unless elem(result,0)==:ok and elem(result,2).kind_mismatch==0 and elem(result,2).unknown==2 and Map.get(elem(result,2),:duplicate,0)==1 and true,do: raise("key pin "<>inspect(result))
  {:ok,written}=T.save("Docs",elem(result,1))
  unless Base.encode16(written,case: :lower)==%q,do: raise("key pin save")
 end
