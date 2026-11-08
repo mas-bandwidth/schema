@@ -66,7 +66,7 @@ const bytes = new Uint8Array(hex.length / 2);
 for (let i = 0; i < bytes.length; i++) { bytes[i] = parseInt(hex.substr(i * 2, 2), 16); }
 const report = new TableVariableReport();
 const v = SimStateLoad(bytes, report);
-console.log(JSON.stringify({ malformed: report.malformed, loaded: !!v }));
+console.log(JSON.stringify({ malformed: report.damaged, loaded: !!v }));
 `, mutantHex)
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)

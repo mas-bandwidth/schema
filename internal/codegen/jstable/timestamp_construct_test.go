@@ -103,13 +103,13 @@ for(const c of cases){
  try{
  const r=new m.TableVariableReport();const v=m.ClockFromJson(c.input,r);
  const ok=v!==null;
- if(ok!==c.ok || r.kindMismatch!==c.mismatch || (c.reason && r.reason!==c.reason)){
+ if(ok!==c.ok || r.mismatch!==c.mismatch || (c.reason && r.reason!==c.reason)){
    throw new Error("JSON verdict "+JSON.stringify({ok,r,want:c}));
  }
  if(ok){
    if(hex(m.ClockSave(v))!==c.wire || m.ClockToJson(v)!==c.text){throw new Error("JSON/wire value mismatch");}
    const wr=new m.TableVariableReport();const back=m.ClockLoad(new Uint8Array(Buffer.from(c.wire,"hex")),wr);
-   if(back===null || wr.malformed || wr.kindMismatch!==0 || hex(m.ClockSave(back))!==c.wire){throw new Error("kind36 wire read mismatch");}
+   if(back===null || wr.damaged || wr.mismatch!==0 || hex(m.ClockSave(back))!==c.wire){throw new Error("kind36 wire read mismatch");}
    const n=m.ClockCookMeasure(v);const buf=new Uint8Array(n>0?n:0);
    if(n<=0 || !m.ClockCookFrom(v,buf,1) || hex(buf)!==c.cook){throw new Error("timestamp cook mismatch");}
  }
@@ -123,7 +123,7 @@ if(stamp===undefined){throw new Error("no active kind36 witness");}
 for(const kind of [5,9]){
  const bytes=new Uint8Array(Buffer.from(stamp.wire,"hex"));bytes[2]=kind;
  const report=new m.TableVariableReport();const back=m.ClockLoad(bytes,report);
- if(back===null || report.malformed || report.kindMismatch!==1 || back.at!==0n){failed=true;console.log("integer-to-timestamp mismatch");}
+ if(back===null || report.damaged || report.mismatch!==1 || back.at!==0n){failed=true;console.log("integer-to-timestamp mismatch");}
 }
 if(failed){process.exit(1);}
 `
@@ -142,7 +142,7 @@ for(const stamp of [0n,1n,-1n,-9223372036854775808n,9223372036854775807n]){
  if(TSave([value],1,wire)!==wire.length){fail("fixed timestamp write");continue;}
  const back=[new T()];InitT(back[0]);const report=new TableFixedReport();
  const count=TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report);
- if(count!==1 || report.malformed || report.refused!==0 || report.clamped!==0 || back[0].at!==stamp){fail("fixed timestamp roundtrip "+show(back)+" "+reason(report));}
+ if(count!==1 || report.damaged || report.refused!==0 || report.oor!==0 || back[0].at!==stamp){fail("fixed timestamp roundtrip "+show(back)+" "+reason(report));}
 }
 `
 	if out, err := jsRunVersionProbe(t, jsNode(t), src, nil, 0, "T", script); err != nil {

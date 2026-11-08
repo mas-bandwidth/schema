@@ -135,7 +135,7 @@ const first = {};
 if (!AnnounceRead(v, data, first)) { fail("first announcement: " + JSON.stringify(first)); }
 const before = v.Count;
 const second = {};
-if (AnnounceRead(v, data, second) || second.Verdict !== 1 || second.Reason !== "second_announcement" || second.Malformed) {
+if (AnnounceRead(v, data, second) || second.Verdict !== 1 || second.Reason !== "second_announcement" || second.Damaged) {
   fail("a second announcement was not refused by name: " + JSON.stringify(second));
 }
 if (v.Count !== before) { fail("a second announcement replaced the vocabulary"); }
@@ -169,14 +169,14 @@ const data = new Uint8Array(readFileSync("./ann.bin"));
 const entries = new TableVocabulary();
 entries.Init(new Array(1));
 const report = {};
-if (AnnounceRead(entries, data, report) || report.Verdict !== 1 || report.Reason !== "vocabulary_too_large" || report.Malformed || entries.Announced) {
+if (AnnounceRead(entries, data, report) || report.Verdict !== 1 || report.Reason !== "vocabulary_too_large" || report.Damaged || entries.Announced) {
   fail("entry count bound: " + JSON.stringify(report));
 }
 const bytes = new TableVocabulary();
 bytes.Init(new Array(64));
 bytes.MaxBytes = 4;
 const byteReport = {};
-if (AnnounceRead(bytes, data, byteReport) || byteReport.Verdict !== 1 || byteReport.Reason !== "vocabulary_too_large" || byteReport.Malformed || bytes.Announced) {
+if (AnnounceRead(bytes, data, byteReport) || byteReport.Verdict !== 1 || byteReport.Reason !== "vocabulary_too_large" || byteReport.Damaged || bytes.Announced) {
   fail("vocabulary byte bound: " + JSON.stringify(byteReport));
 }
 `
@@ -226,14 +226,14 @@ for (const [name, path] of cases) {
   const v = new TableVocabulary();
   v.Init(new Array(8));
   const report = {};
-  if (AnnounceRead(v, new Uint8Array(readFileSync("./" + path)), report) || !report.Malformed || report.Verdict === 1 || v.Announced) {
+  if (AnnounceRead(v, new Uint8Array(readFileSync("./" + path)), report) || !report.Damaged || report.Verdict === 1 || v.Announced) {
     fail(name + ": want malformed and not a refusal, got " + JSON.stringify(report));
   }
 }
 const keep = new TableVocabulary();
 keep.Init(new Array(8));
 const keepReport = {};
-if (AnnounceRead(keep, new Uint8Array(readFileSync("./keep.bin")), keepReport) || !keepReport.Malformed ||
+if (AnnounceRead(keep, new Uint8Array(readFileSync("./keep.bin")), keepReport) || !keepReport.Damaged ||
     keep.BuildVersion !== BigInt("0x%[2]s") || keep.Announced) {
   fail("the refused announcement did not keep the build version: " + JSON.stringify(keepReport) + " version=0x" + keep.BuildVersion.toString(16));
 }

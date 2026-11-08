@@ -167,7 +167,7 @@ func runJSTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte, 
 	if err != nil {
 		return out, fmt.Errorf("the node probe did not run: %w", err)
 	}
-	m := tabletext.NewModel(u)
+	m := jsVariableModel(u)
 	msgs, compared, err := compareJSTextDifferential(m, dir, jsTextDifferentialN)
 	if err != nil {
 		return out, err

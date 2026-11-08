@@ -267,6 +267,7 @@ func init() {
 		Name{Name: "TableIntegritySum", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableIntegrityTable", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableNodeTableId", What: "the JavaScript variable-form runtime module"},
+		Name{Name: "TableRefuseReason", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableRetainKnown", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableStringBlobId", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableArmPayload", What: "the JavaScript variable-form runtime module"},
