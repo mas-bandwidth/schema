@@ -83,10 +83,7 @@ func shortReadOracle(t *testing.T, u *ir.Unit, root string, announce, wire []byt
 		batch[i] = m.New(def)
 	}
 	report := tabletext.Report{}
-	_, _, err := tablewire.DecodeMessages(m, batch, wire, vocab, &report)
-	if err != nil {
-		t.Fatalf("Go decode refused %s: %v", root, err)
-	}
+	_, _, _ = tablewire.DecodeMessages(m, batch, wire, vocab, &report)
 	saved, err := tablewire.EncodeMessage(m, batch[0])
 	if err != nil {
 		t.Fatalf("Go encode %s: %v", root, err)
@@ -112,16 +109,15 @@ func shortReadProbeBody(root string, ann, wire []byte, bodies int) string {
   final buf = Uint8List(m);
   final saveRep = h.TableReport();
   final wrote = r.%sSaveMessages(first, buf, saveRep);
-  print('dart report unknown=${loadRep.unknown} kind=${loadRep.kindMismatch} '
-      'widened=${loadRep.widened} clamped=${loadRep.clamped} '
-      'duplicate=${loadRep.duplicate} malformed=${loadRep.malformed ? 1 : 0} '
+  print('dart report unknown=${loadRep.unknown} '
+      'widened=${loadRep.widened} '
       'refused=${loadRep.refused ? 1 : 0} count=$count saved=$wrote hex=' +
       buf.map((x) => x.toRadixString(16).padLeft(2, '0')).join());
 `, dartBytes(ann), dartBytes(wire), root, bodies, root, root, lower, root, lower, lower)
 }
 
 type shortReadDartReport struct {
-	unknown, kind, widened, clamped, duplicate, malformed, refused, count int
+	unknown, widened, refused, count int
 }
 
 // shortReadDart is the one machine-readable line the probe prints after the
@@ -160,19 +156,14 @@ func parseShortReadDart(t *testing.T, out string) shortReadDart {
 		fields[key] = n
 	}
 	return shortReadDart{report: shortReadDartReport{
-		unknown:   fields["unknown"],
-		kind:      fields["kind"],
-		widened:   fields["widened"],
-		clamped:   fields["clamped"],
-		duplicate: fields["duplicate"],
-		malformed: fields["malformed"],
-		refused:   fields["refused"],
-		count:     fields["count"],
+		unknown: fields["unknown"],
+		widened: fields["widened"],
+		refused: fields["refused"],
+		count:   fields["count"],
 	}, hex: hexStr}
 }
 
 func TestMessageShortReadRefusedDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	for _, c := range shortReadCases {
 		t.Run(c.root, func(t *testing.T) {
@@ -193,7 +184,7 @@ func TestMessageShortReadRefusedDart(t *testing.T) {
 			if err != nil {
 				t.Fatalf("dart probe: %v\n%s", err, out)
 			}
-			if got := parseShortReadDart(t, out); got.report.malformed != 1 {
+			if got := parseShortReadDart(t, out); got.report.refused != 1 {
 				t.Fatalf("%s: the Dart batch load did not refuse a damaged batch: %+v\n%s", c.root, got.report, out)
 			}
 		})

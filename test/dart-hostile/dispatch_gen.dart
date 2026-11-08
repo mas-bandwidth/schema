@@ -16,6 +16,7 @@ import 'dart:io';
 // the table units, by the schema path the manifest names them with
 const Map<String, String> tableUnits = <String, String>{
   'tables/examples': 'tabledemo',
+  'tables/examples/Guarded.schema': 'tabledemo',
   'tables/messages': 'messagedemo',
   'tables/blobs': 'blobdemo',
   'tables/pointers': 'graphdemo',
@@ -90,13 +91,14 @@ void main(List<String> args) {
       if (!has('${t}ToJson') || !has('${t}WireSave') || !has('${t}WireMeasure')) continue;
       if (carrier == 'text' && has('${t}FromJson')) {
         text.writeln('    case $key:');
-        text.writeln('      final v = $p.${t}FromJson(text, $p.TableTextReport());');
-        text.writeln('      return Loaded(false, false, \'\', () => $p.${t}ToJson(v), () => $p.${t}WireMeasure($p.${t}WireSave(v)));');
+        text.writeln('      final r = $p.TableTextReport();');
+        text.writeln('      final v = $p.${t}FromJson(text, r);');
+        text.writeln('      return Loaded(r.refused, r.reason, () => $p.${t}ToJson(v), () => $p.${t}WireMeasure($p.${t}WireSave(v)));');
       } else if (carrier == 'wire' && has('${t}WireLoad')) {
         wire.writeln('    case $key:');
         wire.writeln('      final r = $p.TableWireReport();');
         wire.writeln('      final v = $p.${t}WireLoad(data, r);');
-        wire.writeln('      return Loaded(r.refused, r.malformed, r.reason, () => $p.${t}ToJson(v), () {');
+        wire.writeln('      return Loaded(r.refused, r.reason, () => $p.${t}ToJson(v), () {');
         wire.writeln('        $p.${t}WireMeasure(data);');
         wire.writeln('        $p.${t}WireMeasure($p.${t}WireSave(v));');
         wire.writeln('      });');
@@ -105,7 +107,7 @@ void main(List<String> args) {
         retain.writeln('      final r = $p.TableWireReport();');
         retain.writeln('      final keep = $p.TableRetain(retainBytes, List<int>.filled(retainBytes ~/ 8, 0));');
         retain.writeln('      final v = $p.${t}WireLoadRetain(data, keep, r);');
-        retain.writeln('      return Loaded(r.refused, r.malformed, r.reason, () => $p.${t}ToJson(v), () {');
+        retain.writeln('      return Loaded(r.refused, r.reason, () => $p.${t}ToJson(v), () {');
         retain.writeln('        $p.${t}WireMeasureRetain(v, keep);');
         retain.writeln('        $p.${t}WireSaveRetain(v, keep, $p.TableWireReport());');
         retain.writeln('      });');
@@ -151,11 +153,10 @@ void main(List<String> args) {
     ..writeln('// Measure and Save the runner runs after an accept.')
     ..writeln('final class Loaded {')
     ..writeln('  final bool refused;')
-    ..writeln('  final bool malformed;')
     ..writeln('  final String reason;')
     ..writeln('  final String Function() written;')
     ..writeln('  final void Function() exercise;')
-    ..writeln('  const Loaded(this.refused, this.malformed, this.reason, this.written, this.exercise);')
+    ..writeln('  const Loaded(this.refused, this.reason, this.written, this.exercise);')
     ..writeln('}')
     ..writeln()
     ..writeln('// null: no case binds this (schema, table)')

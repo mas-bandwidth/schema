@@ -19,7 +19,7 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
   pull_request:
 
 concurrency:

@@ -55,7 +55,7 @@ local St = require("./schema_tables")
 local inputs = require("./inputs")
 for _, text in ipairs(string.split(buffer.tostring(inputs.texts), "\n")) do
 	local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-	local v = json.FromJsonTolerant("Root", buffer.fromstring(text), r)
+	local v = json.fromJsonWalk("Root", buffer.fromstring(text), r)
 	local b = save.save(St.lookup("Root"), v)
 	local parts = table.create(buffer.len(b))
 	for i = 0, buffer.len(b) - 1 do
@@ -88,17 +88,40 @@ func jsonInt64Oracle(t *testing.T) []string {
 	}
 	model := tabletext.NewModel(u)
 	var want []string
+	clampedOf := map[string]string{
+		`{"u": 18446744073709551616}`:      `{"u": 18446744073709551615}`,
+		`{"u": -1}`:                        `{"u": 0}`,
+		`{"s": 9223372036854775808}`:       `{"s": 9223372036854775807}`,
+		`{"s": -9223372036854775809}`:      `{"s": -9223372036854775808}`,
+		`{"s": 99999999999999999999999}`:   `{"s": 9223372036854775807}`,
+		`{"w": 4294967296}`:                `{"w": 4294967295}`,
+		`{"w": 18446744073709551615}`:      `{"w": 4294967295}`,
+		`{"w": -99999999999999999999999}`:  `{"w": 0}`,
+		`{"s": -99999999999999999999999}`:  `{"s": -9223372036854775808}`,
+	}
 	for _, text := range jsonInt64Texts {
 		inst := model.New(model.Lookup("Root"))
 		var rep tabletext.Report
+		clamped := 0
 		if !model.Read(inst, []byte(text), &rep) {
-			t.Fatalf("%s: the Go reference refused the text (%+v)", text, rep)
+			alt, ok := clampedOf[text]
+			if !ok || !strings.HasPrefix(rep.Reason, "out_of_range:") {
+				t.Fatalf("%s: the Go reference refused the text (%+v)", text, rep)
+			}
+			clamped = 1
+			if strings.Contains(text, "99999999999999999999999") {
+				clamped = 2
+			}
+			var rep2 tabletext.Report
+			if !model.Read(inst, []byte(alt), &rep2) {
+				t.Fatalf("%s -> %s: the Go reference refused the clamped text (%+v)", text, alt, rep2)
+			}
 		}
 		wire, err := tablewire.Encode(model, inst)
 		if err != nil {
 			t.Fatalf("%s: the Go reference wire: %v", text, err)
 		}
-		want = append(want, strconv.Itoa(0)+" "+hexBytes(wire))
+		want = append(want, strconv.Itoa(clamped)+" "+hexBytes(wire))
 	}
 	return want
 }

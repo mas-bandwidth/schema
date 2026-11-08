@@ -18,7 +18,7 @@ name: schema moo generated analyze strict gate
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-moo-generated-analyze-strict-gate.mk'
       - 'make/moo.mk'

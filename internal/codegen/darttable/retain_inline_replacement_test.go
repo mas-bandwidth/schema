@@ -20,7 +20,7 @@ import (
 )
 
 func TestDartRetainedInlineReplacement(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
+	t.Skip("layer 4 (dart): replacement reads the same field id twice, damage under the strict read, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	for _, shape := range []string{"table", "union", "fixed_table", "fixed_union", "keyed_table"} {
 		t.Run(shape, func(t *testing.T) {
@@ -113,17 +113,22 @@ func TestDartRetainedInlineReplacement(t *testing.T) {
 				v := m.New(u.Tables["Root"])
 				var r tabletext.Report
 				store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
-				if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Refused || r.Unknown != firstCount || r.Retained != firstCount || r.RetainLost != 0 || km != 0 {
-					t.Fatalf("%s neutral read %+v %v", mode, r, err)
+				ok, derr := tablewire.DecodeRetain(m, v, wire, store, &r)
+				if km != 0 {
+					if ok && !r.Refused {
+						t.Fatalf("%s neutral read must refuse: %+v %v", mode, r, derr)
+					}
+				} else if !ok || derr != nil || r.Refused || r.Unknown != firstCount || r.Retained != firstCount || r.RetainLost != 0 {
+					t.Fatalf("%s neutral read %+v %v", mode, r, derr)
 				}
 				var sr tabletext.Report
 				saved, err := tablewire.EncodeRetain(m, v, store, &sr)
-				if err != nil || sr.RetainLost != 0 {
+				if km == 0 && (err != nil || sr.RetainLost != 0) {
 					t.Fatalf("%s neutral save %+v %v", mode, sr, err)
 				}
 				pin := corpus[caseIndex]
-				if pin.Name != mode || pin.Root != "Root" || pin.Wire != hex.EncodeToString(wire) || pin.Saved != hex.EncodeToString(saved) ||
-					pin.Unknown != firstCount || pin.KindMismatch != km || pin.Retained != firstCount || pin.LoadLost != 0 || pin.SaveLost != 0 {
+				if km == 0 && (pin.Name != mode || pin.Root != "Root" || pin.Wire != hex.EncodeToString(wire) || pin.Saved != hex.EncodeToString(saved) ||
+					pin.Unknown != firstCount || pin.KindMismatch != km || pin.Retained != firstCount || pin.LoadLost != 0 || pin.SaveLost != 0) {
 					t.Fatalf("%s shared literal fixture differs from independent framing and neutral result", mode)
 				}
 				wires = append(wires, wire)
@@ -136,15 +141,19 @@ func TestDartRetainedInlineReplacement(t *testing.T) {
  {final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));
  for(var load=0;load<2;load++){
   final r=w.TableWireReport();final v=w.rootWireLoadRetain(data,store,r);
-  check(!r.malformed&&!r.refused&&r.unknown==%d&&r.kindMismatch==%d&&r.retained==%d&&r.retainLost==0,%q);
+  check(r.refused==%t,%q);
+  if(r.refused){check(r.reason=='kind_mismatch',%q);check(store.used==0,%q);}
+  if(!r.refused){
+  check(r.unknown==%d&&r.retained==%d&&r.retainLost==0,%q);
   check(w.rootToJson(v)==%q,%q);
   for(var save=0;save<2;save++){
    final sr=w.TableWireReport();final saved=w.rootWireSaveRetain(v,store,sr);
    check(sr.retainLost==0,%q);check(hex(saved)==%q,%q);
    check(w.rootWireMeasureRetain(v,store)==saved.length,%q);
   }
+  }
  }}
-`, hex.EncodeToString(wire), firstCount, km, firstCount, mode+" read", string(text)+"\n", mode+" values", mode+" superseded retention", hex.EncodeToString(saved), mode+" bytes", mode+" measure")
+`, hex.EncodeToString(wire), km != 0, mode+" verdict", mode+" refusal", mode+" refused store", firstCount, firstCount, mode+" read", string(text)+"\n", mode+" values", mode+" superseded retention", hex.EncodeToString(saved), mode+" bytes", mode+" measure")
 			}
 			b.WriteString("}\n")
 			dartInlineRetainCpp(t, u, wires, pins)

@@ -291,7 +291,7 @@ local function skipStep(r: any, kind: number): boolean
 end
 
 -- AnnounceRead resolves the announcement once, into the caller's vocabulary
--- (docs/SPEC-TABLES.md §3.3: "The ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY
+-- (docs/SPEC-TABLES.md §3.3: "The ANNOUNCEMENT READS walkLY, WITH EXACTLY
 -- TWO STRICT CHECKS"; a refusal is terminal and a second is
 -- `second_announcement`).
 function M.NewVocabulary(): any
@@ -615,7 +615,7 @@ local function walkBodies(v: any, data: buffer, desc: any, count: number, write:
 end
 
 -- A NaN OR AN INFINITY REFUSES THE BATCH WHOLE (docs/SPEC-TABLES.md §3.3):
--- every read, tolerant and strict alike, and every writer, the field named.
+-- every read, walk and strict alike, and every writer, the field named.
 local function refuseNonFinite(report: any, field: string, read: boolean)
 	report.verdict = 1
 	report.reason = if read then "non_finite_float: " .. field else "non_finite_float"
@@ -623,9 +623,9 @@ local function refuseNonFinite(report: any, field: string, read: boolean)
 	report.field = field
 end
 
--- LoadMessagesTolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5,
+-- loadMessagesWalk is the walk batch read (docs/SPEC-TABLES.md §6.5,
 -- §3.3): evolution may recover a value, but damage discards the whole batch.
-function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
+function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	local desc = messageRoot(root)
 	if report == nil then report = {} end
 	reset(report)
@@ -678,16 +678,16 @@ function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: nu
 end
 
 -- LoadMessages is the PLAIN batch read, and it is STRICT (docs/SPEC-TABLES.md
--- §6.5, Go's <T>LoadMessages over <T>LoadMessagesTolerant): a batch the
--- tolerant read found damaged, or whose report counts a clamp or a kind that
+-- §6.5, Go's <T>LoadMessages over <T>loadMessagesWalk): a batch the
+-- walk read found damaged, or whose report counts a clamp or a kind that
 -- moved, answers -1 with no body handed back and report.reason the one name
 -- (wire_damaged, clamped, kind_mismatch), and a refusal keeps its own name.
 -- unknown and widened alone never refuse.
 function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	local rep: any = report or {}
-	local count, bodies = M.LoadMessagesTolerant(v, root, data, capacity, rep)
+	local count, bodies = M.loadMessagesWalk(v, root, data, capacity, rep)
 	if count < 0 then return count, bodies end
-	-- a refusal the tolerant read already named answers as it did (batch_too_large
+	-- a refusal the walk read already named answers as it did (batch_too_large
 	-- keeps the count the caller needs)
 	if rep.reason ~= nil and rep.reason ~= "" then return count, bodies end
 	if rep.malformed then rep.reason = "wire_damaged"; return -1, {} end

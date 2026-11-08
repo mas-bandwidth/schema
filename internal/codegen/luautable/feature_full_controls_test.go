@@ -184,11 +184,11 @@ func featureJsonRed(t *testing.T, name string, planted *generatedUnit) {
 	}
 }
 
-// textTotalPastValue reads the text-total-past hostile row tolerantly and
+// textTotalAtValue reads the text-total-at hostile row through the walk and
 // writes the value it left: a text list whose elements came from the text.
-func textTotalPastValue(t *testing.T, g *generatedUnit) string {
+func textTotalAtValue(t *testing.T, g *generatedUnit) string {
 	t.Helper()
-	text, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json-hostile", "text-total-past", "Root.json"))
+	text, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json-hostile", "text-total-at", "Root.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func textTotalPastValue(t *testing.T, g *generatedUnit) string {
 json.SetFlags(SCHEMA_JSON_FLAGS)
 local inputs = require("./inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = json.FromJsonTolerant("Root", inputs.text, report)
+local v = json.fromJsonWalk("Root", inputs.text, report)
 local w = { reason = "" }
 local out = v and json.ToJson("Root", v, w)
 if out == nil then print("REFUSED " .. tostring(w.reason)) else print(buffer.tostring(out)) end
@@ -206,16 +206,17 @@ if out == nil then print("REFUSED " .. tostring(w.reason)) else print(buffer.tos
 
 // TestLuauTextListElementsFromTheTextWriteBack holds a text list read from
 // the text to its elements' own lengths (docs/SPEC-TABLES.md §2.13): the value
-// text-total-past leaves writes back as the manifest's value text.
+// text-total-at reads (a total exactly at its bound; text-total-past now
+// refuses, strict-only) writes back as the manifest's value text.
 func TestLuauTextListElementsFromTheTextWriteBack(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
-	want, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json-hostile", "text-total-past.value.json"))
+	want, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json-hostile", "text-total-at.value.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := textTotalPastValue(t, generateUnit(t, units, "featurewitnesses")); got != strings.TrimRight(string(want), "\n") {
-		t.Fatalf("text-total-past wrote back\n%s\nwant\n%s", got, want)
+	if got := textTotalAtValue(t, generateUnit(t, units, "featurewitnesses")); got != strings.TrimRight(string(want), "\n") {
+		t.Fatalf("text-total-at wrote back\n%s\nwant\n%s", got, want)
 	}
 }
 
@@ -227,11 +228,11 @@ func TestLuauTextListElementsFromTheTextNegativeControl(t *testing.T) {
 		"      if e.shape == \"string\" and not e.wide then\n        -- a text list element",
 		"      if false then\n        -- a text list element",
 	}})
-	want, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json-hostile", "text-total-past.value.json"))
+	want, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json-hostile", "text-total-at.value.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := textTotalPastValue(t, planted); got == strings.TrimRight(string(want), "\n") {
+	if got := textTotalAtValue(t, planted); got == strings.TrimRight(string(want), "\n") {
 		t.Fatal("elements padded to their bound still wrote the value text back")
 	}
 }

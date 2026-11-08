@@ -297,8 +297,8 @@ void main() {
   h.initWide(got);
   final loadRep = h.TableReport();
   final count = r.wideLoadMessages(<h.Wide>[got], msg, vocab, loadRep);
-  check(count == 1 && !loadRep.refused && !loadRep.malformed,
-      'LoadMessages count=$count refused=${loadRep.refused} malformed=${loadRep.malformed} reason=${loadRep.reason}');
+  check(count == 1 && !loadRep.refused,
+      'LoadMessages count=$count refused=${loadRep.refused} reason=${loadRep.reason}');
 %s  check(got.tag == -7, 'tag: ${got.tag}');
   // (4) SaveMessages and MeasureMessages reproduce the reference's bytes.
   final want = h.Wide();

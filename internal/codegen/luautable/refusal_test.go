@@ -76,30 +76,25 @@ type refusalCase struct {
 	field  string // "" for any field; "-" for none
 }
 
-// strictName is the one name §6.5 gives a pinned report (u,k,w,c,d,m,verdict
-// of testdata/conformance/tables/reports.txt) under ReadStrict's order, Go's
-// TableReport.Err(): malformed, then clamped, then kind_mismatch. A malformed
-// report the reference did not read is the file's own framing, wire_damaged.
-// unknown, widened and duplicate alone are not refusals (§6.5). "ok" is a
-// clean read.
+// strictName is a pinned report row's verdict (testdata/conformance/tables/
+// reports.txt: read or refused) as this test's want: "ok" for a read and
+// anyRefusal for a refusal. Why a read refused is per-language diagnostic
+// detail and is never compared across languages (docs/plans/strict-only.md,
+// decision 3), so a report row holds the verdict only.
 func strictName(t *testing.T, row, pinned string) string {
 	t.Helper()
-	f := strings.Split(pinned, ",")
-	if len(f) != 7 {
-		t.Fatalf("%s: pinned report %q is not u,k,w,c,d,m,verdict", row, pinned)
+	switch pinned {
+	case "read":
+		return "ok"
+	case "refused":
+		return anyRefusal
 	}
-	switch {
-	case f[5] == "true" && f[6] == "read":
-		return "malformed"
-	case f[5] == "true":
-		return "wire_damaged"
-	case f[3] != "0":
-		return "clamped"
-	case f[1] != "0":
-		return "kind_mismatch"
-	}
-	return "ok"
+	t.Fatalf("%s: pinned report %q is not read or refused", row, pinned)
+	return ""
 }
+
+// anyRefusal is the want of a report row the engine refuses: any name.
+const anyRefusal = "*"
 
 // formName is ReadStrict's form-byte refusal for a file whose first byte is b
 // at a root, or "" when the root reads the form (docs/SPEC-TABLES.md, The
@@ -223,22 +218,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 
 	var cases []refusalCase
 	movedBy := map[string]int{}
-	// the first field the walk saw, pinned for EVERY counter row: the field
-	// (or union arm, the innermost holder) the row's schema pair moves, and a
-	// new counter row fails until its field is pinned here
-	pinnedFields := map[string]string{
-		"p1_as_p2":                 "link",
-		"p3_as_p2":                 "link",
-		"parts_elem_kind":          "parts",
-		"text_total_and_count":     "labels",
-		"parts_count_past_bound":   "parts",
-		"parts_index_out_of_range": "parts",
-		// mutant 235: the root's first field reference 1 (one) bumped to 11
-		// (past): a table body under past's int32 id is past's kind_mismatch
-		"map_depth_root_kind": "past",
-	}
 	compared := 0
-	pinUsed := map[string]bool{}
 	for _, r := range rows {
 		if r.kind != "report" {
 			continue
@@ -263,23 +243,14 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		}
 		put(r.unit, r.caseName, data)
 		want := strictName(t, r.caseName, p)
-		field := pinnedFields[r.caseName]
+		field := "-"
 		switch {
 		case len(data) == 0:
 			want = "wire_damaged"
 		case formName(data[0], er.fixed) != "":
-			want, field = formName(data[0], er.fixed), "-"
-		case data[0] == 3:
-			t.Fatalf("%s: a form-3 report row; the fixed reader's name is not derived here", r.caseName)
+			want = formName(data[0], er.fixed)
 		default:
 			movedBy[want]++
-			pinUsed[r.caseName] = true
-			if want != "ok" && field == "" {
-				t.Errorf("%s refuses as %s and its field is not pinned: pin it in pinnedFields", r.caseName, want)
-			}
-		}
-		if want == "ok" || want == "wire_damaged" {
-			field = "-"
 		}
 		cases = append(cases, refusalCase{key: r.caseName, unit: r.unit, root: r.root, input: r.caseName, form: -1, want: want, field: field})
 		compared++
@@ -287,17 +258,10 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 	if compared == 0 {
 		t.Fatal("no report row reached a generated unit")
 	}
-	// a pin no counter row reads is stale: its row now answers a form byte
-	// (a declared fixed root's form-1 file is previous_form) or reads clean
-	for k := range pinnedFields {
-		if !pinUsed[k] {
-			t.Errorf("pinnedFields[%q] is read by no counter row: drop it", k)
-		}
-	}
-	// every counter §6.5 refuses on does so on at least one pinned row
-	for _, name := range []string{"kind_mismatch", "clamped", "malformed"} {
+	// the report rows reach both verdicts
+	for _, name := range []string{anyRefusal, "ok"} {
 		if movedBy[name] == 0 {
-			t.Errorf("no generated report row refuses as %s", name)
+			t.Errorf("no generated report row answers %s", name)
 		}
 	}
 
@@ -517,6 +481,16 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 				t.Fatalf("probe line %q is not case %s's input, reason and field", lines[i], c.key)
 			}
 			reason, field := parts[1], parts[2]
+			if c.want == anyRefusal {
+				_, carried := luauReportCarried[c.key]
+				switch {
+				case reason == "ok" && !carried:
+					t.Errorf("%s: the strict read reads a row the engine refuses (%s)", c.key, lines[i])
+				case reason != "ok" && carried:
+					t.Errorf("%s is carried in luauReportCarried but now refuses: drop it", c.key)
+				}
+				continue
+			}
 			if reason != c.want {
 				t.Errorf("%s: strict read answers %q, want %q (%s)", c.key, reason, c.want, lines[i])
 				continue
@@ -543,7 +517,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
+	for _, name := range []string{"wire_damaged",
 		"message_form_as_file", "newer_form", "previous_form", "unknown_form", "integrity_mismatch", "layout_malformed", "layout_unknown", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
