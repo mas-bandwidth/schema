@@ -597,11 +597,11 @@ static partial class Program
         byte[] spliced = SharedVocabSplice(a, b);
         Demo.RootConfig got = new Demo.RootConfig();
         Demo.TableReport report = new Demo.TableReport();
-        Check(Demo.Schema.RootConfigLoad(got, spliced, report) && !report.Damaged, "counted tail: load two occurrences");
-        Check(got.WeaponsCount == 1, "counted tail: later count wins");
-        Check(got.Weapons[0].Damage == 5.0f, "counted tail: live prefix kept");
-        Check(got.Weapons[1].Damage == 21.0f, "counted tail: slot 1 restored to default");
-        Check(got.Weapons[2].Damage == 21.0f, "counted tail: slot 2 restored to default");
+        // THE SAME FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §6.5):
+        // the spliced file refuses whole, and nothing of either occurrence lands.
+        Check(!Demo.Schema.RootConfigLoad(got, spliced, report) && report.Damaged, "counted tail: two occurrences refuse the load");
+        Check(got.WeaponsCount == new Demo.RootConfig().WeaponsCount && got.Weapons[0].Damage == 21.0f, "counted tail: the refused load leaves the declared defaults");
+        Check(Demo.Schema.RootConfigLoad(got, b, report) && got.WeaponsCount == 1 && got.Weapons[0].Damage == 5.0f, "counted tail: either file alone loads");
     }
 
     // ---- all-default: everything elides, decode restores every default ----
@@ -874,10 +874,10 @@ static partial class Program
             4,30,6,0                      // same enum, an unknown variant
         }, "effect", "ward", "charge", "grade", "Gold", "unknown");
         V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
-        Check(V1.Schema.CfgLoad(value, wire, report), "repeated variant: load");
-        Check(!report.Damaged && report.Unknown == 2, "repeated variant: two unknown names");
+        // a repeated field id is damage (docs/SPEC-TABLES.md §6.5): the whole load refuses
+        Check(!V1.Schema.CfgLoad(value, wire, report) && report.Damaged, "repeated variant: the repeated ids refuse the load");
         Check(value.Effect.Type == V1.EffectType.None && value.Grade == V1.Grade.None,
-            "repeated variant: last occurrence replaces earlier value");
+            "repeated variant: nothing of either occurrence lands");
     }
 
     // ---- an array's BOUND is not wire identity ----
