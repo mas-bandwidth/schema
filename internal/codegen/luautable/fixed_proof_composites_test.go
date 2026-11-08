@@ -59,14 +59,14 @@ func groupCFixedTests(t *testing.T, tc fixedproof.RowCase, cpp []byte, mutate bo
 		t.Fatal(e)
 	}
 	out := string(luaurun.Run(t, d, "main.luau", map[string][]byte{"cpp": cpp}))
-	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
-		if strings.HasPrefix(l, "LOAD ") {
-			loaded, e = hex.DecodeString(strings.TrimPrefix(l, "LOAD "))
+	for l := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		if after, ok := strings.CutPrefix(l, "LOAD "); ok {
+			loaded, e = hex.DecodeString(after)
 			if e != nil {
 				t.Fatal(e)
 			}
-		} else if strings.HasPrefix(l, "SAVE ") {
-			saved, e = hex.DecodeString(strings.TrimPrefix(l, "SAVE "))
+		} else if after, ok := strings.CutPrefix(l, "SAVE "); ok {
+			saved, e = hex.DecodeString(after)
 			if e != nil {
 				t.Fatal(e)
 			}

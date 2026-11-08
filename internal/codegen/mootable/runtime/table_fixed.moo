@@ -10,7 +10,12 @@
 -- against the lineage and its layout bytes are COMPARED to the lineage
 -- entry's, never parsed (§5.3); every refusal is TOTAL (no counter moves, no
 -- value lands); a non-finite float is refused on write and on read
--- (non_finite_float, SPEC-TABLES §3.3).
+-- (non_finite_float, SPEC-TABLES §3.3). THE ONE READ (docs/plans/strict-only.md):
+-- a value lands as written or the whole load refuses. A bool or present byte other
+-- than 0 or 1 refuses wire_damaged; a ranged value, a bits(N) past its
+-- ceiling, an enum ordinal or a union tag past the writer's set refuses
+-- out_of_range; a count or length past its bound refuses by its name (§4.5,
+-- §4.6).
 --
 -- THE PLAN (§4). moo's storage is not the wire's (a string(N) is a moo
 -- string, a union a table with a Type), so the plan is the RECORD-IMAGE shape
@@ -20,9 +25,11 @@
 -- this reader's or to nothing, with the op the pair calls for: a landing at
 -- equal width, a WIDEN (counted per entry per record), f32 into f64, an
 -- enum ordinal or union tag REMAPPED by variant id, a count or length held to
--- the WRITER's bound. Every evolution decision is made at compile, the
--- `unknown` and `kind_mismatch` census included, and lands once per read that
--- returns (§5.4). A reader field the writer never wrote keeps the declared
+-- the WRITER's bound. Every evolution decision is made at compile, and an
+-- UNLAWFUL pair (a writer field, variant, arm or slot this reader cannot name,
+-- a kind off every ladder, a narrowed bound) refuses the entry
+-- layout_malformed instead of being counted (§5.4, §5.9 #30): the one counter
+-- a fixed read moves is `widened`. A reader field the writer never wrote keeps the declared
 -- default its constructor gave it: that is the prefill (§4.3).
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
@@ -275,15 +282,22 @@ local compileValue: (f: any, n: Node, census: any) -> boolean
 
 -- the remap of a writer enum's ordinals onto this reader's variants, by
 -- variant id (§5.4 `ordinal`): writer ordinal k (its k-th variant child) to
--- this reader's ordinal, 0 where the reader has no variant of that id
-local function enumRemap(vs: { any }, n: Node): { [number]: number }
+-- this reader's ordinal. A writer variant this reader has no variant of is
+-- UNLAWFUL (§5.1: variants append, never go), counted into the census that
+-- refuses the entry
+local function enumRemap(vs: { any }, n: Node, census: any): { [number]: number }
 	local mine: { [string]: number } = {}
 	for i, v in vs do
 		mine[v[2]] = i
 	end
 	local out: { [number]: number } = {}
 	for k, c in n.children do
-		out[k] = mine[c.id] or 0
+		local m = mine[c.id]
+		if m == nil then
+			census.unlawful += 1
+			m = 0
+		end
+		out[k] = m
 	end
 	return out
 end
@@ -310,12 +324,16 @@ compileValue = function(f: any, n: Node, census: any): boolean
 		if k ~= KIND_ENUM then
 			return false
 		end
-		n.remap = enumRemap(f.vs, n)
+		n.remap = enumRemap(f.vs, n, census)
 		return true
 	elseif s == "str" then
+		-- a bound never narrows (§5.1): the writer's capacity fits this reader's
+		local unit = if f.wide then 2 else 1
 		return k == (if f.wide then KIND_WSTRING else KIND_STRING)
+			and (f.bound == nil or f.bound <= 0 or (n.size - COUNT) // unit <= f.bound)
 	elseif s == "bytes" then
 		return k == KIND_ARRAY and n.children[1].kind == 6 and n.children[1].size == 1
+			and (f.bound == nil or n.size - COUNT <= f.bound)
 	elseif s == "tab" then
 		if k ~= KIND_TABLE then
 			return false
@@ -335,17 +353,17 @@ compileValue = function(f: any, n: Node, census: any): boolean
 		for wk, c in n.children do
 			local a = byId[c.id]
 			if a == nil then
-				census.unknown += 1
+				census.unlawful += 1
 			elseif a.s == "void" then
 				if c.kind == KIND_NOPAYLOAD then
 					arms[wk] = { arm = a }
 				else
-					census.kindChanged += 1
+					census.unlawful += 1
 				end
 			elseif compileValue(a, c, census) then
 				arms[wk] = { arm = a, node = c }
 			else
-				census.kindChanged += 1
+				census.unlawful += 1
 			end
 		end
 		n.arms = arms
@@ -362,7 +380,12 @@ compileValue = function(f: any, n: Node, census: any): boolean
 			end
 			local remap: { [number]: number } = {}
 			for wk, c in key.children do
-				remap[wk] = mine[c.id] or 0
+				local m = mine[c.id]
+				if m == nil or m > f.bound then
+					census.unlawful += 1
+					m = 0
+				end
+				remap[wk] = m
 			end
 			n.remap = remap
 			return compileValue(f.e, n.children[2], census)
@@ -370,7 +393,13 @@ compileValue = function(f: any, n: Node, census: any): boolean
 		if k ~= KIND_ARRAY then
 			return false
 		end
-		return compileValue(f.e, n.children[1], census)
+		-- the writer's element count never exceeds this reader's bound (§5.1)
+		local c = n.children[1]
+		local slots = if f.array == "counted" then (n.size - COUNT) // c.size else n.size // c.size
+		if slots > f.bound then
+			return false
+		end
+		return compileValue(f.e, c, census)
 	end
 	return false
 end
@@ -384,9 +413,9 @@ compileStruct = function(d: any, n: Node, census: any)
 	for _, c in n.children do
 		local f = byId[c.id]
 		if f == nil then
-			-- a writer field no reader field names: stepped over, counted once
-			-- per peer at compile (§5.4 MATCH)
-			census.unknown += 1
+			-- a writer field no reader field names: UNLAWFUL (§5.4 MATCH, §5.9
+			-- #30), the entry refused layout_malformed
+			census.unlawful += 1
 		else
 			local node = c
 			local ok = true
@@ -405,18 +434,25 @@ compileStruct = function(d: any, n: Node, census: any)
 			if ok and compileValue(f, node, census) then
 				table.insert(pairs, { f = f, n = c, v = node, always = always })
 			else
-				census.kindChanged += 1
+				census.unlawful += 1
 			end
 		end
 	end
 	n.pairs = pairs
 end
 
--- a plan: the writer's tree with its pairs, and the census it owes
+-- a plan: the writer's tree with its pairs, or the refusal of an UNLAWFUL entry
 local function compilePlan(d: any, layout: string, recordBytes: number, ranges: any?): any
 	local root = parseLayout(layout, recordBytes)
-	local census = { unknown = 0, kindChanged = 0 }
+	local census = { unlawful = 0 }
 	compileStruct(d, root, census)
+	-- AN UNLAWFUL ENTRY IS REFUSED, NEVER COUNTED (§5.4, §5.9 #30): a writer
+	-- field, variant, arm or slot this reader cannot name, a kind off every
+	-- ladder or a narrowed bound. A lawful lineage never raises one, so no
+	-- plan is laid for it and a file under its hash refuses layout_malformed
+	if census.unlawful > 0 then
+		refuse("layout_malformed")
+	end
 	-- the writer's ranges this entry carries land on the writer's nodes, so
 	-- the bounds pass holds the plan's own (§4.5): a scalar's own node, or a
 	-- fixed array's element node, which every element is read through, so
@@ -437,7 +473,7 @@ local function compilePlan(d: any, layout: string, recordBytes: number, ranges: 
 			end
 		end
 	end
-	return { root = root, census = census, recordBytes = recordBytes }
+	return { root = root, recordBytes = recordBytes }
 end
 
 -- ---------------------------------------------------------------------------
@@ -496,7 +532,13 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 	local k = n.kind
 	local off = n.off + dx
 	if f.s == "bool" then
-		return buffer.readu8(rec, off) ~= 0
+		-- a byte of 0 or 1 lands; any other refuses wire_damaged (§4.5): no
+		-- writer emits one, and it is neither stored nor normalized
+		local b = buffer.readu8(rec, off)
+		if b > 1 then
+			refuse("wire_damaged", true, fieldName(named))
+		end
+		return b == 1
 	end
 	if k == 10 then
 		local bits = u32(rec, off)
@@ -510,12 +552,8 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 		end
 		if f.flo ~= nil then
 			local lo, hi = V.f32to64(bits)
-			if V.cmp64(lo, hi, f.flo[1], f.flo[2]) < 0 then
-				rep.outOfRange += 1
-				return f.flo32
-			elseif V.cmp64(lo, hi, f.fhi[1], f.fhi[2]) > 0 then
-				rep.outOfRange += 1
-				return f.fhi32
+			if V.cmp64(lo, hi, f.flo[1], f.flo[2]) < 0 or V.cmp64(lo, hi, f.fhi[1], f.fhi[2]) > 0 then
+				refuse("out_of_range", false, fieldName(named))
 			end
 		end
 		return bits
@@ -537,31 +575,16 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 		x = V.widen(x, kw, signed)
 	end
 	-- the bounds pass holds the WRITER's range for the entry being read
-	-- (§4.5); the reader's own, which contains it, follows
-	if n.wlo ~= nil then
-		if V.rawCmp(x, n.wlo, kw, signed) < 0 then
-			x = n.wlo
-			rep.outOfRange += 1
-		elseif V.rawCmp(x, n.whi, kw, signed) > 0 then
-			x = n.whi
-			rep.outOfRange += 1
-		end
+	-- (§4.6); the reader's own, which contains it, follows. It REFUSES
+	-- out_of_range, the whole load
+	if n.wlo ~= nil and (V.rawCmp(x, n.wlo, kw, signed) < 0 or V.rawCmp(x, n.whi, kw, signed) > 0) then
+		refuse("out_of_range", false, fieldName(named))
 	end
-	if f.lo ~= nil then
-		if V.rawCmp(x, f.lo, kw, signed) < 0 then
-			x = f.lo
-			rep.outOfRange += 1
-		elseif V.rawCmp(x, f.hi, kw, signed) > 0 then
-			x = f.hi
-			rep.outOfRange += 1
-		end
+	if f.lo ~= nil and (V.rawCmp(x, f.lo, kw, signed) < 0 or V.rawCmp(x, f.hi, kw, signed) > 0) then
+		refuse("out_of_range", false, fieldName(named))
 	end
-	if f.bits ~= nil and f.bits < kw * 8 then
-		local cap = V.bitsCap(f.bits, kw)
-		if V.rawCmp(x, cap, kw, false) > 0 then
-			x = cap
-			rep.outOfRange += 1
-		end
+	if f.bits ~= nil and f.bits < kw * 8 and V.rawCmp(x, V.bitsCap(f.bits, kw), kw, false) > 0 then
+		refuse("out_of_range", false, fieldName(named))
 	end
 	return V.toStorage(f, x)
 end
@@ -617,7 +640,15 @@ local function readStruct(d: any, n: Node, dx: number, rec: buffer, rep: any): a
 	for _, p in n.pairs :: { any } do
 		local f = p.f
 		if f.present ~= nil then
-			local present = p.always or buffer.readu8(rec, p.n.off + dx) ~= 0
+			local present = true
+			if not p.always then
+				-- a present byte other than 0 or 1 refuses wire_damaged (§4.5)
+				local b = buffer.readu8(rec, p.n.off + dx)
+				if b > 1 then
+					refuse("wire_damaged", true, fieldName(f))
+				end
+				present = b == 1
+			end
 			v[f.present] = present
 			if not present then
 				continue
@@ -670,10 +701,12 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 			refuse("length_over_bound")
 		end
 		local bound = f.bound or length
-		local keep = math.min(length, bound)
+		if length > bound then
+			refuse("length_over_bound")
+		end
 		local b = buffer.create(bound)
-		buffer.copy(b, 0, rec, off + COUNT, keep)
-		return b, keep, nil
+		buffer.copy(b, 0, rec, off + COUNT, length)
+		return b, length, nil
 	elseif s == "tab" then
 		return readStruct(S.lookup(f.t), n, dx, rec, rep), nil, nil
 	elseif s == "enum" then
@@ -686,10 +719,10 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 			return 0, nil, nil
 		end
 		local v = (n.remap :: { [number]: number })[raw]
-		if v == nil or v == 0 then
-			-- an ordinal past the writer's variants, or one this reader has
-			-- no variant for, lands None, counted by the bounds pass (§4.6)
-			rep.outOfRange += 1
+		if v == nil then
+			-- an ordinal past the writer's variants names no value the writer
+			-- wrote: the bounds pass refuses it out_of_range (§4.6)
+			refuse("out_of_range", false, fieldName(named))
 			return 0, nil, nil
 		end
 		local pair = f.vs[v]
@@ -706,9 +739,10 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 		end
 		local hit = (n.arms :: { [number]: any })[tag]
 		if hit == nil then
-			if tag > #n.children then
-				rep.outOfRange += 1
-			end
+			-- a tag past the writer's arms refuses out_of_range (§4.6); every
+			-- arm inside the writer's set is paired at compile, or the entry is
+			-- UNLAWFUL and no plan exists for it
+			refuse("out_of_range", false, fieldName(named))
 			return u, nil, nil
 		end
 		local a = hit.arm
@@ -1041,6 +1075,8 @@ function F.save(d: any, fixed: Fixed, values: { any }): (buffer?, any?)
 	error(r, 0)
 end
 
+-- the report's shape is the variable read's (table_load.moo); a fixed read
+-- moves only `widened`, and every other counter stays zero
 local function resetReport(report: any)
 	report.damaged = false
 	report.refused = 0
@@ -1049,7 +1085,7 @@ local function resetReport(report: any)
 	report.outOfRange = 0
 	report.widened = 0
 	report.repeatedKey = 0
-		report.reason = nil
+	report.reason = nil
 	report.field = nil
 	report.layoutHash = nil
 end
@@ -1138,16 +1174,13 @@ local function loadAll(d: any, fixed: Fixed, file: buffer, report: any, capacity
 			refuse("no_layout")
 		end
 	end
-	local rep = { outOfRange = 0, widened = 0 }
+	local rep = { widened = 0 }
 	local out = table.create(count)
 	local rec = buffer.create(entry.recordBytes)
 	for i = 0, count - 1 do
 		buffer.copy(rec, 0, file, at + i * stride + 8, entry.recordBytes)
 		out[i + 1] = readStruct(d, plan.root, 0, rec, rep)
 	end
-	report.unknown += plan.census.unknown
-	report.kindChanged += plan.census.kindChanged
-	report.outOfRange += rep.outOfRange
 	report.widened += rep.widened
 	return out
 end
@@ -1157,7 +1190,8 @@ end
 -- report.reason the refusal's name (and report.damaged for the framing
 -- damage §5.3 names: truncated, reserved_not_zero), report.layoutHash the
 -- file's hash for layout_unknown and layout_unsupported, report.field the
--- field a non_finite_float names. A refusal is TOTAL: no counter moves.
+-- field a non_finite_float, out_of_range or wire_damaged names. A refusal is
+-- TOTAL: no counter moves.
 -- capacity, when given, is the most records the caller takes: a file holding
 -- more is refused batch_too_large (§5.3 step 10).
 function F.load(d: any, fixed: Fixed, file: buffer?, report: any?, capacity: number?): { any }?
@@ -1208,7 +1242,7 @@ F.Names = table.freeze({
 	newer_form = true, ["layout_malformed"] = true, layout_unknown = true, layout_unsupported = true,
 	layout_record_too_large = true, plan_too_large = true, no_layout = true, count_over_bound = true,
 	length_over_bound = true, text_ill_formed = true, integrity_mismatch = true, non_finite_float = true,
-	invalid_value = true, batch_too_large = true,
+	invalid_value = true, batch_too_large = true, out_of_range = true, wire_damaged = true,
 })
 
 return table.freeze(F)

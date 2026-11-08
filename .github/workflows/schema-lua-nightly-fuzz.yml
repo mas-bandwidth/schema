@@ -33,7 +33,7 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-lua-nightly-fuzz.mk'
       - 'internal/ci/schema_lua_nightly_fuzz_test.go'

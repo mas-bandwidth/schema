@@ -93,7 +93,7 @@ fixed table BoundsT
 	if clamp == "" {
 		t.Fatal("C7: bounds_t_fixed_clamp_body is not emitted for a ranged scalar")
 	}
-	t06Has(t, clamp, "*clamped += ((value.x < -5_i32) | (value.x > 5_i32)) as i32;",
+	t06Has(t, clamp, "*oor += ((value.x < -5_i32) | (value.x > 5_i32)) as i32;",
 		"C7 the ranged scalar's two declared ends, counted ONCE as one bitwise OR")
 	t06Has(t, clamp, "value.x = value.x.clamp(-5_i32, 5_i32);",
 		"C7 the value takes the declared min and max")
@@ -213,8 +213,8 @@ fixed table T
 	}
 	t06Has(t, scatter, "if tag_raw > 2 {",
 		"C9 a tag past the arm count is compared against this build's arm count")
-	t06Has(t, scatter, "report.clamped += 1;",
-		"C9 a tag past the arm count counts one clamped")
+	t06Has(t, scatter, "report.held += 1;",
+		"C9 a tag past the arm count is held for the load's out_of_range refusal")
 	t06Has(t, scatter, "*value = PickRow::default();",
 		"C9 an out-of-range tag lands None: the empty union first")
 }
@@ -243,8 +243,8 @@ fixed table T
 	}
 	t06Has(t, scatter, "if raw > 3 {",
 		"C10 an ordinal past the enum's top wire value is out of range")
-	t06Has(t, scatter, "report.clamped += 1;",
-		"C10 an out-of-range ordinal counts one clamped")
+	t06Has(t, scatter, "report.held += 1;",
+		"C10 an out-of-range ordinal is held for the load's out_of_range refusal")
 	t06Has(t, scatter, "value.tier = 0;",
 		"C10 an out-of-range ordinal lands None, which is the zero image")
 }
@@ -313,7 +313,7 @@ func t06R17(t *testing.T) {
 			t.Fatalf("R17 %s: t_fixed_scatter is not emitted", tc.name)
 		}
 		t06Has(t, scatter, tc.want, "R17 the byte normalises through `!= 0`")
-		if strings.Contains(scatter, "report.clamped") {
+		if strings.Contains(scatter, "report.held") {
 			t.Errorf("R17 %s: a non-0/1 byte COUNTED; normalising a bool or present byte counts nothing:\n%s", tc.name, scatter)
 		}
 	}
@@ -418,7 +418,7 @@ func t06C1(t *testing.T) {
 	t06Has(t, runtime, "let held = raw.clamp(0, p.size as i32);",
 		"C1 a count below zero clamps to zero")
 	t06Has(t, runtime, "if held != raw {", "C1 the clamp counts only when it fires")
-	t06Has(t, runtime, "report.clamped += 1;", "C1 the count op counts one clamped")
+	t06Has(t, runtime, "report.held += 1;", "C1 the count op holds an out-of-range count for the load's refusal")
 }
 
 // ---- rust/C2 -----------------------------------------------------------------

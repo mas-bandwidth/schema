@@ -30,15 +30,15 @@ var luauModuleKeys = map[string][]string{
 	"schema_blockread.luau": {"BlockOpen", "NonFiniteFloat", "Read"},
 	"schema_cook.luau":      {"BuildVersion", "Cook", "CookMeasure"},
 	"schema_cookread.luau":  {"Check", "CheckWhole", "layout", "open"},
-	"schema_fixed.luau":     {"check", "fixed_layout", "load", "loadTolerant", "read", "save"},
-	"schema_json.luau":      {"FromJson", "FromJsonTolerant", "SetFlags", "ToJson"},
-	"schema_load.luau":      {"ReadStrict", "load", "loadTolerant", "resetReport"},
+	"schema_fixed.luau":     {"check", "fixed_layout", "load", "loadWalk", "read", "save"},
+	"schema_json.luau":      {"FromJson", "fromJsonWalk", "SetFlags", "ToJson"},
+	"schema_load.luau":      {"ReadStrict", "load", "loadWalk", "resetReport"},
 	"schema_message.luau": {
-		"AnnounceRead", "LoadMessages", "LoadMessagesTolerant", "MeasureMessages", "NewVocabulary", "SaveMessages",
+		"AnnounceRead", "LoadMessages", "loadMessagesWalk", "MeasureMessages", "NewVocabulary", "SaveMessages",
 		"announceRead",
 	},
 	"schema_refusal.luau":  {"ReadStrict", "ReadStrictNames"},
-	"schema_retain.luau":   {"LoadRetain", "LoadRetainTolerant", "SaveRetain"},
+	"schema_retain.luau":   {"LoadRetain", "loadRetainWalk", "SaveRetain"},
 	"schema_save.luau":     {"measure", "save"},
 	"schema_tables.luau":   {"keyed", "knownId", "lookup", "lookupTypeId", "table", "union", "wireIds"},
 	"schema_text.luau":     {"LoadText", "SaveText"},
@@ -69,7 +69,7 @@ func LuauModuleKeys() []string {
 
 func init() {
 	define(Luau,
-		Name{Name: "ReadStrict", What: "refusal.luau's strict read over the tolerant load, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
+		Name{Name: "ReadStrict", What: "refusal.luau's strict read over the underlying walk, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
 		Name{Name: "ReadStrictNames", What: "refusal.luau's strict-read refusal vocabulary, by name (§11, §6.5)", Scoped: true},
 	)
 }

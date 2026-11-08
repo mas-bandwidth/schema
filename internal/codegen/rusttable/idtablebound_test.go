@@ -322,8 +322,8 @@ func TestRustIdTableReaderContract(t *testing.T) {
 	// check fails as expected.
 	negDir := t.TempDir()
 	sabotaged := strings.ReplaceAll(src,
-		"if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }",
-		"if false && count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }",
+		"if count > ID_TABLE_PROBE_BOUND as u64 { report.damaged = true; return None; }",
+		"if false && count > ID_TABLE_PROBE_BOUND as u64 { report.damaged = true; return None; }",
 	)
 	sabotaged = strings.ReplaceAll(sabotaged,
 		"if count > ID_TABLE_PROBE_BOUND as u64 { return -1; }",
@@ -377,21 +377,19 @@ use variable_runtime::*;
 use table_enums::*;
 
 fn assert_clean_report(rep: &TableReport, want_unknown: u64) {
-    assert!(!rep.malformed, "unexpected malformed: {:?}", rep);
+    assert!(!rep.damaged, "unexpected damaged: {:?}", rep);
     assert!(!rep.refused, "unexpected refused: {:?}", rep);
     assert_eq!(rep.unknown, want_unknown, "unknown mismatch: {:?}", rep);
-    assert_eq!(rep.kind_mismatch, 0, "kind_mismatch: {:?}", rep);
-    assert_eq!(rep.clamped, 0, "clamped: {:?}", rep);
     assert_eq!(rep.widened, 0, "widened: {:?}", rep);
 }
 
 fn main() {
-    // (a) 4097 distinct ids: refused with report.malformed == true and measure == -1.
+    // (a) 4097 distinct ids: refused with report.damaged == true and measure == -1.
     let w4097 = std::fs::read("w4097.wire").expect("read w4097.wire");
     let mut rep4097 = TableReport::default();
     let got4097 = packet_load(&w4097, &mut rep4097);
     assert!(got4097.is_none(), "4097-id wire must be refused");
-    assert!(rep4097.malformed, "4097-id wire must set report.malformed");
+    assert!(rep4097.damaged, "4097-id wire must set report.damaged");
     assert_eq!(packet_load_measure(&w4097), -1, "4097-id wire measure must be -1");
 
     // (b) 4096 distinct unknown ids: accepted and matches Go oracle.
@@ -407,7 +405,7 @@ fn main() {
         let wdup = std::fs::read(path).expect("read dup wire");
         let mut rep_dup = TableReport::default();
         assert!(packet_load(&wdup, &mut rep_dup).is_none(), "{path} must be refused");
-        assert!(rep_dup.malformed, "{path} must set report.malformed");
+        assert!(rep_dup.damaged, "{path} must set report.damaged");
         assert_eq!(packet_load_measure(&wdup), -1, "{path} measure must be -1");
     }
 

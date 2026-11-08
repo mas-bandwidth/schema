@@ -123,16 +123,16 @@ func TestSquirrelFixedLayoutEntryExtentChecked(t *testing.T) {
 // past its end.
 func checkFixedEntryExtentGuard(t *testing.T, module, src string) {
 	t.Helper()
-	read := strings.Index(src, "b[20 + 4 + 8]")
-	if read < 0 {
+	before, _, ok := strings.Cut(src, "b[20 + 4 + 8]")
+	if !ok {
 		// the hash-selecting loader (every build since strict-only) reads the
 		// layout only to hold it to the selected entry's bytes
-		read = strings.Index(src, "b[20 + i] != e.layout[i]")
+		before, _, ok = strings.Cut(src, "b[20 + i] != e.layout[i]")
 	}
-	if read < 0 {
+	if !ok {
 		t.Fatalf("%s.nut reads no entry metadata; the fixed loader shape changed", module)
 	}
-	head := src[:read]
+	head := before
 	if !strings.Contains(head, "layout_malformed") {
 		t.Fatalf("%s.nut reads entry metadata with no preceding layout_malformed refusal", module)
 	}

@@ -64,12 +64,12 @@ table Root {
 			t.Fatal(err)
 		}
 		fmt.Fprintf(&b, `{final r=w.TableTextReport();final v=w.rootFromJson(%q,r);
-check(r.kindMismatch==%d&&r.clamped==%d&&r.duplicate==%d,'JSON report%d');
+check(!r.refused,'JSON report%d');
 check(w.rootToJson(v)==%q,'JSON%d');
 final wire=w.rootWireSave(v);check(hex(wire)==%q,'wire%d');
 final wr=w.TableWireReport();final back=w.rootWireLoad(wire,wr);
-check(!wr.malformed&&!wr.refused&&wr.kindMismatch==0&&w.rootToJson(back)==w.rootToJson(v),'read%d');
-`, input, 0, 0, 0, i, string(canonical)+"\n", i, hex.EncodeToString(wire), i, i)
+check(!wr.refused&&w.rootToJson(back)==w.rootToJson(v),'read%d');
+`, input, i, string(canonical)+"\n", i, hex.EncodeToString(wire), i, i)
 		for _, big := range []bool{false, true} {
 			cooked, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if err != nil {
@@ -124,19 +124,14 @@ for(final order in [Endian.little,Endian.big]){
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(&b, "{final wire=Uint8List.fromList([%s]);final r=w.TableWireReport();final v=w.rootWireLoad(wire,r);check(!r.malformed&&!r.refused&&r.kindMismatch==1&&v.hasTags==%v&&v.tags.isEmpty,'map mismatch presence %s');}\n", strings.Trim(strings.ReplaceAll(fmt.Sprint(wire), " ", ","), "[]"), decl == "map[int32]int32", decl)
+		fmt.Fprintf(&b, "{final wire=Uint8List.fromList([%s]);final r=w.TableWireReport();final v=w.rootWireLoad(wire,r);check(r.refused,'map mismatch presence %s');}\n", strings.Trim(strings.ReplaceAll(fmt.Sprint(wire), " ", ","), "[]"), decl)
 	}
 	b.WriteString(`{
 final r=w.TableTextReport();final v=w.rootFromJson('{"values":{"a":"bad","b":null,"c":7,"c":false}}',r);
-check(r.kindMismatch==2&&r.duplicate==1,'map value shape counters');
-check(v.hasValues&&v.values.length==3,'outer optional map present');
-check(v.values[0].hasValue&&v.values[0].value==0,'nonnull wrong shape is present default');
-check(!v.values[1].hasValue,'null alone is absent');
-check(v.values[2].hasValue&&v.values[2].value==0,'last duplicate replaces whole entry');
-final wr=w.TableWireReport();final back=w.rootWireLoad(w.rootWireSave(v),wr);
-check(!wr.malformed&&!wr.refused&&back.values[0].hasValue&&!back.values[1].hasValue&&back.values[2].hasValue,'value presence wire');
+check(r.refused,'map value shapes and a repeated key refuse');
+check(!v.hasValues&&v.values.isEmpty,'a refused text read lands defaults');
 final plainReport=w.TableTextReport();final plain=w.rootFromJson('{"plain":{"a":null,"b":"bad"}}',plainReport);
-check(plainReport.kindMismatch==2&&plain.plain.length==2&&plain.plain.every((e)=>e.value==0),'plain malformed shapes default and count');
+check(plainReport.refused&&plain.plain.isEmpty,'plain wrong shapes refuse');
 }
 `)
 	b.WriteString("}\n")
@@ -179,8 +174,8 @@ func TestDartOptionalMapSharedPins(t *testing.T) {
 			t.Fatal(err)
 		}
 		fmt.Fprintf(&b, `{final v=w.mFromJson(%q);final wire=w.mWireSave(v);check(hex(wire)==%q,%q);
-final r=w.TableWireReport();final back=w.mWireLoad(wire,r);check(!r.malformed&&!r.refused&&back.hasTags==v.hasTags&&w.mToJson(back)==w.mToJson(v),'shared pin read');
-for(var n=0;n<wire.length;n++){final r=w.TableWireReport();w.mWireLoad(Uint8List.sublistView(wire,0,n),r);check(r.malformed||r.refused,'truncated map must refuse');}
+final r=w.TableWireReport();final back=w.mWireLoad(wire,r);check(!r.refused&&back.hasTags==v.hasTags&&w.mToJson(back)==w.mToJson(v),'shared pin read');
+for(var n=0;n<wire.length;n++){final r=w.TableWireReport();w.mWireLoad(Uint8List.sublistView(wire,0,n),r);check(r.refused,'truncated map must refuse');}
 }
 `, string(input), hex.EncodeToString(wire), name)
 	}

@@ -681,7 +681,7 @@ func (g *fixedGen) emitLines(lines []string) {
 //
 // THE PROJECTION IS ONE MATCH AND ONE PASS. A type's `_fixed_decode(image, c, m)`
 // matches its whole image in one head, holds every ranged value to the READER's
-// own bounds as it lands, and answers `{value, c, m}` where `c` is the `clamped`
+// own bounds as it lands, and answers `{value, c, m}` where `c` is the `out_of_range`
 // count that came in plus every bound the record crossed and `m` is the
 // CONTENT-RULE flag riding beside it. The count rides as a plain integer
 // accumulator: a run of elements is a recursive walk with the count beside the
@@ -813,8 +813,8 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	case f.Array == ir.ArrayFixed:
 		g.readElements(out, f, v, rawf("%d", f.ArrayBound))
 	case f.Array == ir.ArrayCounted:
-		// THE COUNT IS CLAMPED HERE, to this reader's own bound, counting one
-		// `clamped` if it moved (§4), and ONLY THE LIVE ELEMENTS ARE WALKED.
+		// THE COUNT IS HELD HERE, to this reader's own bound, counting one
+		// `out_of_range` if it moved (§4), and ONLY THE LIVE ELEMENTS ARE WALKED.
 		seg := "n_" + v + "::little-signed-32"
 		out.match = append(out.match, seg)
 		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.ArrayBound))
@@ -839,7 +839,7 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	}
 }
 
-// readText is a string(N) or wstring(N): the length is clamped to this
+// readText is a string(N) or wstring(N): the length is held to this
 // reader's bound, the used units are held to the CONTENT rule, and a payload
 // that is not the text its kind says it is REFUSES BY NAME (`text_ill_formed`,
 // §4.5 fix 11). bytes(N) does not come here.
@@ -987,7 +987,7 @@ func (g *fixedGen) decodeName(st *ir.Struct) string {
 //
 // A RANGED INTEGER CLAMPS HERE, against the READER's own bounds and nothing
 // else — the bounds do not ride on this form (§3.4). AN ENUM ORDINAL PAST THE
-// LAST VARIANT IS NOT A VARIANT: it lands None (0) and counts one `clamped`,
+// LAST VARIANT IS NOT A VARIANT: it lands None (0) and counts one `unknown`,
 // which is the same answer §3 gives a value outside its range.
 //
 // A FLOAT IS MATCHED AS ITS BITS AND NEVER AS A FLOAT, because `::float-32`
@@ -1088,7 +1088,7 @@ func (g *fixedGen) typeHelpers(st *ir.Struct) {
 	g.pf("  end\n\n")
 
 	g.pf("  # %s's projection: ONE binary pattern match over its %d bytes of record\n", st.Name, size)
-	g.pf("  # image, the struct it makes, the `clamped` it moved and the content flag.\n")
+	g.pf("  # image, the struct it makes, the refusal it moved and the content flag.\n")
 	g.leafLists = nil
 	r := g.readType(st, "")
 	g.pf("  def %s_fixed_decode(bin, c, m \\\\ false)\n\n", snake)
@@ -1179,7 +1179,7 @@ func (g *fixedGen) emitUnrolledFlatList(st *ir.Struct, snake string, r rseg, k i
 		names[i] = fmt.Sprintf("v%d", i)
 		// THE COUNT THREADS THROUGH THE k ELEMENTS IN ORDER, which is the
 		// order the one-element clause would have visited them in, so the
-		// unroll cannot change what `clamped` reports.
+		// unroll cannot change what `out_of_range` reports.
 		for _, p := range el.post {
 			g.emitLines(g.assign(p.name, p.val, 4))
 		}
@@ -1203,7 +1203,7 @@ func (g *fixedGen) emitUnrolledLeafList(l leafList, k int) {
 	for i := range k {
 		// THE COUNT THREADS THROUGH THE k ELEMENTS IN ORDER, which is the order
 		// the one-element clause would have visited them in, so the unroll
-		// cannot change what `clamped` reports. Each element's term is BOUND
+		// cannot change what `out_of_range` reports. Each element's term is BOUND
 		// rather than written into the cons, which keeps the tail one line.
 		suf := strconv.Itoa(i)
 		g.emitLines(g.assign("c", raw(suffixIdent(l.count.flat(), suf)), 4))
@@ -1273,7 +1273,7 @@ func (g *fixedGen) emitShortDef(head, body string) {
 	g.pf("  %s,\n    do: %s\n\n", head, body)
 }
 
-// triple is `{a, b, c}` — the projection's `{value, clamped, malformed}`.
+// triple is `{a, b, c}` — the projection's `{value, range, damage}`.
 func triple(a, b, c node) node {
 	return tripleNode{a: a, b: b, c: c}
 }
@@ -1451,7 +1451,7 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	}
 
 	g.pf("  # union %s's projection: the tag, then the arm it names and no other. A TAG\n", u.Name)
-	g.pf("  # BEYOND THE DECLARED ARMS lands None and counts one `clamped`.\n")
+	g.pf("  # BEYOND THE DECLARED ARMS lands None and counts one `unknown`.\n")
 	armVar := "arm"
 	if !hasPayload {
 		armVar = "_arm"
@@ -1829,7 +1829,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 		g.pf("    with {:ok, body} <- R.integrity_open(data, 3) do\n")
 		g.pf("      %s_fixed_load_raw(body, opts)\n", snake)
 		g.pf("    else\n      {:error, :integrity_mismatch} ->\n")
-		g.pf("        report = %%{R.report() | malformed: true}\n")
+		g.pf("        report = R.report()\n")
 		g.pf("        {:error, :integrity_mismatch, Map.put(report, :reason, \"integrity_mismatch\")}\n")
 		g.pf("    end\n  end\n\n")
 		g.pf("  defp %s_fixed_load_raw(data, opts) do\n", snake)
@@ -1844,7 +1844,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("      {:error, :malformed} ->\n")
 	g.pf("        # STEP 1: a file shorter than a header is the RESIDUE and not a bucket\n")
 	g.pf("        # a named rule falls into — `malformed`, and no reason (§5.3).\n")
-	g.pf("        {:error, :malformed, %%{report | malformed: true}}\n\n")
+	g.pf("        {:error, :malformed, report}\n\n")
 	g.pf("      {:error, why} ->\n")
 	g.pf("        {:error, why, report}\n")
 	g.pf("    end\n")
@@ -1942,10 +1942,10 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 		// ranges on the image, then the projection's clamp.
 		g.pf("            {image, w} = R.writer_bounds(image, bounds)\n")
 		g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
-		g.pf("            {value, R.damaged(R.clamped(report, c + w), m)}\n")
+		g.pf("            {value, R.damage_check(R.range_check(report, c + w), m)}\n")
 	} else {
 		g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
-		g.pf("            {value, R.damaged(R.clamped(report, c), m)}\n")
+		g.pf("            {value, R.damage_check(R.range_check(report, c), m)}\n")
 	}
 	g.pf("          end)\n\n")
 	g.pf("        # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that\n")
@@ -1953,7 +1953,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("        # refusal that came after would have moved a counter.\n")
 	g.pf("        {:ok, values, R.census(report, census_u, census_k)}\n")
 	g.pf("      else\n")
-	g.pf("        {:error, :malformed} -> {:error, :malformed, %%{report | malformed: true}}\n")
+	g.pf("        {:error, :malformed} -> {:error, :malformed, report}\n")
 	g.pf("        {:error, why} -> {:error, why, report}\n")
 	g.pf("      end\n")
 	g.pf("    catch\n")

@@ -66,7 +66,7 @@ table VariableRoot {
 	sort.Strings(names)
 	for _, name := range names {
 		var codeLines []string
-		for _, line := range strings.Split(string(files[name]), "\n") {
+		for line := range strings.SplitSeq(string(files[name]), "\n") {
 			trimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmed, "//") {
 				continue

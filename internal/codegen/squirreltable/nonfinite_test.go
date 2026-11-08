@@ -463,14 +463,13 @@ func nfVectors(t *testing.T) (u *ir.Unit, loads, retains []string, saveRows [][3
 		var rep tabletext.Report
 		_, derr := tablewire.DecodeRetain(model, model.New(st), wire, &tablewire.Retain{Capacity: 1 << 20, IdCapacity: 1024}, &rep)
 		name := fmt.Sprintf("Root.0x%016x", zID)
-		var refusal *tablewire.NonFiniteRefusal
 		if c.finite {
 			if derr != nil {
 				t.Fatalf("%s: the oracle refused a finite retained float: %v", key, derr)
 			}
 			wants[key] = []string{"retain=some refused=false reason=-"}
 		} else {
-			if !errors.As(derr, &refusal) {
+			if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](derr); !ok {
 				t.Fatalf("%s: the oracle's retaining reader answered %v, want non_finite_float: %s", key, derr, name)
 			}
 			wants[key] = []string{"retain=nil refused=true reason=non_finite_float: " + name}

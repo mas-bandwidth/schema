@@ -21,6 +21,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -128,11 +129,19 @@ void main(List<String> args) {
 			if dartMeasure != got {
 				t.Fatalf("Dart WireMeasure=%d, Go FileRegionMeasure=%d: a clean Go read must not be refused and must measure the same bytes", dartMeasure, got)
 			}
-			// The oracle reads the mutant cleanly, so the Dart load must too:
-			// the fuzz driver loads only when the measure is not -1 (§6.2),
-			// and the load itself must not refuse.
-			if lines[1] != "loaded" {
-				t.Fatalf("Dart WireLoad %s the mutant the oracle reads cleanly", lines[1])
+			// The load verdict is the strict contract: Dart refuses exactly
+			// when the Go engine's Decode refuses (the measure above is the
+			// byte-count agreement, §6.2).
+			m := tabletext.NewModel(u)
+			var drep tabletext.Report
+			dok, _ := tablewire.Decode(m, m.New(m.Lookup(tc.root)), data, &drep)
+			oracleRefused := !dok || drep.Refused
+			wantLoad := "loaded"
+			if oracleRefused {
+				wantLoad = "refused"
+			}
+			if lines[1] != wantLoad {
+				t.Fatalf("Dart WireLoad %s the mutant, the Go oracle refused=%v", lines[1], oracleRefused)
 			}
 		})
 	}

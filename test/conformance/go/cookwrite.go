@@ -31,14 +31,34 @@ func surfaceCookWrite(lines []line, out string) error {
 			}
 			continue
 		}
-		wire, err := os.ReadFile(instance[4])
-		if err != nil {
-			return err
-		}
+		// THE CONSTRUCTION RECIPE (test/conformance/harness/cookinput.go): the
+		// value is read from the line's text input, or from the instance's wire
+		// where the line names none, and a `share` pair then points the alias
+		// slot at the source slot's blob. The cook accepts a shared blob in
+		// memory (§7.6) though neither the wire nor the text can spell one.
 		value := c.fresh()
 		var r report
-		if !c.load(value, wire, &r) || r.refused {
-			return fmt.Errorf("%s: cook input did not load", f[1])
+		if len(f) > 2 && f[2] != "-" {
+			text, err := os.ReadFile(f[2])
+			if err != nil {
+				return err
+			}
+			if c.fromJson == nil || !c.fromJson(value, text, &r) || r.refused {
+				return fmt.Errorf("%s: cook input text did not read", f[1])
+			}
+		} else {
+			wire, err := os.ReadFile(instance[4])
+			if err != nil {
+				return err
+			}
+			if !c.load(value, wire, &r) || r.refused {
+				return fmt.Errorf("%s: cook input did not load", f[1])
+			}
+		}
+		if len(f) > 4 && f[3] != "-" {
+			if c.share == nil || !c.share(value, f[3], f[4]) {
+				return fmt.Errorf("%s: the share recipe %s:%s did not apply", f[1], f[3], f[4])
+			}
 		}
 		size := c.cookMeasure(value)
 		if size < 1 {

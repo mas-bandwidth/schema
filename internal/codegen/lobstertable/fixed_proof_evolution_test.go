@@ -133,8 +133,8 @@ else:
 	fields := map[string]string{}
 	count, reason := -1, ""
 	var counters fixedproof.LoadCounters
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(strings.TrimSpace(out), "\n")
+	for line := range lines {
 		if after, ok := strings.CutPrefix(line, "COUNTERS "); ok {
 			parts := strings.Fields(after)
 			if len(parts) == 5 {

@@ -42,7 +42,7 @@ func luauDamageRead(t *testing.T, file, sabotage string) string {
 	}
 	b.WriteString(`for _, retain in {false, true} do
  local report = {malformed=false, refused=0, unknown=0, kindMismatch=0, clamped=0, widened=0, duplicate=0}
- local value = if retain then R.LoadRetainTolerant("Cfg", inputs.wire, report) else L.loadTolerant("Cfg", inputs.wire, report)
+ local value = if retain then R.loadRetainWalk("Cfg", inputs.wire, report) else L.loadWalk("Cfg", inputs.wire, report)
  print(tostring(value == nil) .. " " .. tostring(report.malformed))
 end
 `)
@@ -93,7 +93,7 @@ func TestLuauDamageDiscardNegativeControls(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		probe := strings.Replace(messageProbe(mods, "LoginRequest", "LoadMessagesTolerant"), "if count < 0 then return end", "if report.malformed then print(\"bodies \" .. tostring(#bodies)) return end\nif count < 0 then return end", 1)
+		probe := strings.Replace(messageProbe(mods, "LoginRequest", "loadMessagesWalk"), "if count < 0 then return end", "if report.malformed then print(\"bodies \" .. tostring(#bodies)) return end\nif count < 0 then return end", 1)
 		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(probe), 0644); err != nil {
 			t.Fatal(err)
 		}
