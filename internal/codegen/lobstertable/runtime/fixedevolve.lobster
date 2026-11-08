@@ -1174,8 +1174,10 @@ def fixed_value_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:
                 for(p.size) k:
                     if not fixed_dead_at(dead, p.src + k):
                         let v = read_uint8_le(src, src_base + p.src + k)
+                        // a bool or present byte other than 0 or 1 is
+                        // wire damage (SPEC-TABLES §6.5; Go's tableFixedBool)
                         if v > 1:
-                            return TableRefuseInvalidValue
+                            return "wire_damaged"
                         if p.meta == tableFixedPresent and v == 0:
                             push(dead, TableFixedHole { off: p.src + 1, size: p.aux })
             elif p.op == tableFixedTag:

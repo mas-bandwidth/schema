@@ -52,7 +52,7 @@ fn probe(name: const u8[:], root: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var rep = schema_rt::LoadReport { .. };
     let plain = schema_rt::load_table(conformance_unit(), root, data, vals, nodes, rep);
-    print(name, " plain ", (if plain >= 0 { 1 } else { 0 }), " ", (if rep.malformed { 1 } else { 0 }), " ",
+    print(name, " plain ", (if plain >= 0 { 1 } else { 0 }), " ", (if rep.body_damaged { 1 } else { 0 }), " ",
         rep.unknown, " ", schema_rt::load_refusal_name(schema_rt::load_error(rep, plain)), "_");
     var rv: schema_rt::LoadVal[>..] = [];
     var rn: schema_rt::LoadNode[>..] = [];
@@ -62,7 +62,7 @@ fn probe(name: const u8[:], root: const u8[:]) {
     var ids: u64[>..<] = [];
     var store = schema_rt::RetainStore { capacity: -1, id_capacity: -1, used: 0, bytes: bytes, recs: recs, ids: ids };
     let retained = schema_rt::load_table_retain(conformance_unit(), root, data, rv, rn, rr, store);
-    print(name, " retain ", (if retained >= 0 { 1 } else { 0 }), " ", (if rr.malformed { 1 } else { 0 }), " ",
+    print(name, " retain ", (if retained >= 0 { 1 } else { 0 }), " ", (if rr.body_damaged { 1 } else { 0 }), " ",
         rr.unknown, " ", schema_rt::load_refusal_name(schema_rt::load_error(rr, retained)), "_");
 }
 `
