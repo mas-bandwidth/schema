@@ -74,7 +74,7 @@ func blockClauseGate(t *testing.T, mutate func(*testing.T, map[string][]byte)) m
 		t.Fatal(err)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(luaurun.Run(t, dir, "main.luau", map[string][]byte{"block": img}))), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(luaurun.Run(t, dir, "main.luau", map[string][]byte{"block": img}))), "\n") {
 		name, verdict, _ := strings.Cut(line, " ")
 		got[name] = verdict
 	}

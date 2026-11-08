@@ -44,13 +44,15 @@ pub enum TableReason {
     AllocationFailed,
     WireDamaged,
     /// A FLOAT WHOSE BITS ARE A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3,
-    /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the tolerant read included, and every writer
+    /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the strict read included, and every writer
     /// refuses to emit one. The report names the field in non_finite_float.
     NonFiniteFloat,
     JsonRootNotArray,
     TimestampNotRfc3339,
     IntegrityMismatch,
     MissingRequired,
+    OutOfRange,
+    KindMismatch,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -90,45 +92,42 @@ impl TableReason {
             TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
             TableReason::IntegrityMismatch => "integrity_mismatch",
             TableReason::MissingRequired => "missing_required",
+            TableReason::OutOfRange => "out_of_range",
+            TableReason::KindMismatch => "kind_mismatch",
         }
     }
 }
 
 /// THE ONE READ REPORT (docs/SPEC-TABLES.md §4, §5, §3.3): the variable form's
-/// tolerant read and the message form's batch fill the same type, so a crate
+/// strict read and the message form's batch fill the same type, so a crate
 /// carrying both forms exports one TableReport and never two.
 ///
-/// A field this build cannot name is skipped and counted, a field it can name
-/// but that arrives at another kind is a kind mismatch, and an absent field
-/// reads its default. widened counts a kind that GREW since the writer (§4),
-/// clamped a value clamped into a narrower declaration, duplicate a repeated
-/// id (zero on the card's wire: no maps), and refused is a verdict, not one of
-/// §4's events: the form byte this reader does not carry (§3), or one of the
-/// message form's refusals BY NAME, whose reason the message form records
-/// (nothing is decoded, no counter moves, and malformed does not fire, §3.3).
+/// STRICT-ONLY (docs/plans/strict-only.md): a read returns the whole value or
+/// refuses the whole load. A field this build cannot name is skipped and
+/// counted unknown, a kind that GREW since the writer decodes exactly and
+/// counts widened (§4), and an absent field reads its default. A kind
+/// mismatch, a value out of range, a count or length past its bound, a
+/// repeated key or id and a shared blob each refuse the load as damaged.
+/// refused is a verdict by name: the form byte this reader does not carry
+/// (§3), or one of the message form's refusals, whose reason it records.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
     pub unknown: u64,
-    pub kind_mismatch: u64,
     pub widened: u64,
-    pub clamped: u64,
-    pub clamped_field: &'static str,
-    pub duplicate: u64,
-    pub malformed: bool,
+    /// The first field a read met out of its declared range or bound, a
+    /// diagnostic beside the refusal, never compared (§6.5).
+    pub oor_field: &'static str,
+    pub damaged: bool,
     pub refused: bool,
     /// The read met a pointer naming an OPEN node, a cycle no writer produces
     /// (§3.1): the load refuses whole, and a builder save refuses it as data_cycle.
     pub cycle_on_save: bool,
-    /// A BLOB NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5): the tolerant
-    /// read keeps the one node and counts each extra naming here; every writer
-    /// refuses that graph by name, blob_shared.
-    pub blob_shared: u64,
     /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
     /// counts the unknown fields whose bytes were kept, retain_lost counts
     /// every unknown this load or save could not keep (capacity, an excluded
     /// class, or a damaged resolving walk). Both are zero in every read that
     /// did not opt in, and both ride the one report type for the reason
-    /// duplicate does (§4).
+    /// repeated does (§4).
     pub retained: u64,
     pub retain_lost: u64,
     /// The message form's refusal by name and the two build versions its
@@ -138,7 +137,7 @@ pub struct TableReport {
     pub build_version_own: u64,
     /// THE FIRST NON-FINITE FLOAT A READ MET (docs/SPEC-TABLES.md §3.3): its
     /// <Table>.<field>, and "" when there was none. A read that names one
-    /// refuses as non_finite_float and lands nothing, the tolerant read
+    /// refuses as non_finite_float and lands nothing, the strict read
     /// included. For a RETAINED UNKNOWN float (§6.6) it is the body's table
     /// and non_finite_float_id is the id the reader cannot name.
     pub non_finite_float: &'static str,
@@ -157,8 +156,34 @@ impl TableReport {
         else { Some(format!("missing_required: {}", self.missing_required_fields)) }
     }
 
+    pub fn err(&self) -> Option<TableRefuseReason> {
+        match self.reason {
+            TableReason::NewerForm | TableReason::MessageFormAsFile | TableReason::UnknownForm => {
+                return Some(TableReason::UnknownForm);
+            }
+            TableReason::IntegrityMismatch => return Some(TableReason::IntegrityMismatch),
+            _ => {}
+        }
+        if !self.non_finite_float.is_empty() {
+            return Some(TableReason::NonFiniteFloat);
+        }
+        if self.damaged || self.cycle_on_save {
+            return Some(TableReason::WireDamaged);
+        }
+        if self.missing_required > 0 {
+            return Some(TableReason::MissingRequired);
+        }
+        if self.refused {
+            return Some(match self.reason {
+                TableReason::None | TableReason::Ok => TableReason::UnknownForm,
+                named => named,
+            });
+        }
+        None
+    }
+
     pub fn refuse(&mut self, reason: TableReason) -> bool {
-        self.malformed = false;
+        self.damaged = false;
         self.refused = true;
         self.reason = reason;
         false
@@ -386,7 +411,7 @@ pub struct TableNodeGraph {
     blobs: HashMap<usize, u64>,
     /// A blob two slots name (docs/SPEC-TABLES.md §2.5): the walk met its Rc
     /// a second time, so every writer refuses the graph by name, blob_shared.
-    pub blob_shared: bool,
+    pub shared_blob: bool,
 }
 
 impl TableNodeGraph {
@@ -413,7 +438,7 @@ impl TableNodeGraph {
         if self.blobs.contains_key(&key) {
             // A BLOB IS OWNED BY ONE SLOT (§2.5): the second naming is the
             // writer's refusal, never a second record or a copy per slot
-            self.blob_shared = true;
+            self.shared_blob = true;
             return;
         }
         self.records.push(TableNodeRecord::Blob(type_id, bytes.to_vec()));
@@ -434,7 +459,7 @@ impl TableNodeGraph {
 /// One record's state in a LOAD's numbering (docs/SPEC-TABLES.md §3.1).
 pub enum TableNodeSlot {
     /// a record this root cannot place (counted unknown once, at the record) or
-    /// a text blob refused as malformed: every slot naming it reads null
+    /// a text blob refused as damaged: every slot naming it reads null
     Null,
     /// a *bytes blob record (§2.5), materialized ONCE and shared by every
     /// slot that names it
@@ -467,7 +492,7 @@ pub struct TableNodeReader {
     pub recs: Vec<(u64, usize, usize)>,
     pub slots: Vec<TableNodeSlot>,
     /// which blob records a slot has already named (§2.5): each later naming
-    /// of the same record counts blob_shared on the tolerant read
+    /// of the same record counts blob_shared on the strict read
     pub blob_named: Vec<bool>,
     /// the ROOT's descent is open while its body decodes and closed after:
     /// a slot naming the root while it is open is a cycle (§3.1)
@@ -490,7 +515,7 @@ impl TableNodeReader {
     /// damage on the root body ends the gathering scan with what it found and
     /// is counted by the body read, not here. A node table under a kind other than 12, a record
     /// that runs past its field, bytes left over, or a node_count the scan
-    /// does not match make the TABLE malformed: good is false, one malformed
+    /// does not match make the TABLE damaged: good is false, one damaged
     /// counts, and nothing in it is counted unknown, because the numbering it
     /// belonged to does not exist. A record whose type id this root cannot
     /// place keeps its index and counts unknown once; a *string blob that is
@@ -514,15 +539,15 @@ impl TableNodeReader {
                 continue;
             }
             if kind != 12 {
-                report.malformed = true;
+                report.damaged = true;
                 reader.good = false;
                 reader.recs.clear();
                 break;
             }
             // A truncated node-table length cannot borrow trailer bytes. The
             // root body still decodes its preceding fields with null nodes.
-            let Some(l) = leb_read(&wire[..end], &mut off) else { report.malformed = true; reader.good = false; reader.recs.clear(); break; };
-            if off > end || l > (end - off) as u64 { report.malformed = true; reader.good = false; reader.recs.clear(); break; }
+            let Some(l) = leb_read(&wire[..end], &mut off) else { report.damaged = true; reader.good = false; reader.recs.clear(); break; };
+            if off > end || l > (end - off) as u64 { report.damaged = true; reader.good = false; reader.recs.clear(); break; }
             let sub = off + l as usize;
             let mut recs = Vec::new();
             let mut scan_ok = true;
@@ -558,7 +583,7 @@ impl TableNodeReader {
                     if text_valid(bytes) {
                         reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         reader.slots.push(TableNodeSlot::Null);
                     }
                 } else if placeable.contains(&tid) {
@@ -572,7 +597,7 @@ impl TableNodeReader {
                 }
             }
         } else {
-            report.malformed = true;
+            report.damaged = true;
             reader.recs.clear();
         }
         Some(reader)
@@ -680,22 +705,22 @@ impl TableNodeReader {
             return None;
         }
         if index == 1 {
-            if want != self.root_type { report.kind_mismatch += 1; return None; }
+            if want != self.root_type { report.damaged = true; return None; }
             return Some(0);
         }
         let k = (index - 2) as usize;
         if index - 2 >= self.slots.len() as u64 {
-            report.malformed = true;
+            report.damaged = true;
             return None;
         }
         match &self.slots[k] {
             TableNodeSlot::Null => None,
-            TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.kind_mismatch += 1; None }
+            TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.damaged = true; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
-                if *t == want { Some(k + 1) } else { report.kind_mismatch += 1; None }
+                if *t == want { Some(k + 1) } else { report.damaged = true; None }
             }
             TableNodeSlot::Building => {
-                if self.recs[k].0 == want { Some(k + 1) } else { report.kind_mismatch += 1; None }
+                if self.recs[k].0 == want { Some(k + 1) } else { report.damaged = true; None }
             }
         }
     }
@@ -708,17 +733,17 @@ impl TableNodeReader {
             return None;
         }
         if index == 1 {
-            report.kind_mismatch += 1;
+            report.damaged = true;
             return None;
         }
         if index - 2 >= self.slots.len() as u64 {
-            report.malformed = true;
+            report.damaged = true;
             return None;
         }
         Some(&self.slots[(index - 2) as usize])
     }
 
-    /// Count a blob record's naming (§2.5): the tolerant read keeps the ONE
+    /// Count a blob record's naming (§2.5): the strict read keeps the ONE
     /// node every slot names and counts each naming after the first in the
     /// report's blob_shared counter.
     fn name_blob(&mut self, index: u64, report: &mut TableReport) {
@@ -727,7 +752,7 @@ impl TableNodeReader {
             self.blob_named.resize(self.slots.len(), false);
         }
         if self.blob_named[k] {
-            report.blob_shared += 1;
+            report.damaged = true;
         } else {
             self.blob_named[k] = true;
         }
@@ -739,7 +764,7 @@ impl TableNodeReader {
         let b = match self.blob_record(index, report)? {
             TableNodeSlot::Null => return None,
             TableNodeSlot::Bytes(b) => b.clone(),
-            _ => { report.kind_mismatch += 1; return None; }
+            _ => { report.damaged = true; return None; }
         };
         self.name_blob(index, report);
         Some(b)
@@ -750,7 +775,7 @@ impl TableNodeReader {
         let s = match self.blob_record(index, report)? {
             TableNodeSlot::Null => return None,
             TableNodeSlot::Text(s) => s.clone(),
-            _ => { report.kind_mismatch += 1; return None; }
+            _ => { report.damaged = true; return None; }
         };
         self.name_blob(index, report);
         Some(s)
@@ -1671,10 +1696,10 @@ pub fn json_escape(s: &str, out: &mut String) {
 }
 
 /// Clamp a string to n bytes at a code point boundary (docs/SPEC-TABLES.md
-/// §16.2): longer than n is clamped, counted, never cut through a multibyte
+/// §16.2): longer than n is held, counted, never cut through a multibyte
 /// character.
 #[allow(dead_code)]
-pub fn json_clamp(s: String, n: usize, clamped: &mut u64) -> String {
+pub fn json_bound(s: String, n: usize, damaged: &mut bool) -> String {
     if s.len() <= n {
         return s;
     }
@@ -1682,22 +1707,22 @@ pub fn json_clamp(s: String, n: usize, clamped: &mut u64) -> String {
     while end > 0 && !s.is_char_boundary(end) {
         end -= 1;
     }
-    *clamped += 1;
+    *damaged = true;
     s[..end].to_string()
 }
 
 /// A JSON string as wstring(N) code units (docs/SPEC-TABLES.md §16.2's wstring
-/// row): transcoded at the boundary, and clamped at N CODE UNITS with a pair
+/// row): transcoded at the boundary, and held at N CODE UNITS with a pair
 /// never split; once a character does not fit nothing after it is kept, and
 /// the clamp counts once (the oracle's tabletext scanWString).
 #[allow(dead_code)]
-pub fn json_wide_clamp(s: &str, n: usize, clamped: &mut u64) -> Vec<u16> {
+pub fn json_wide_bound(s: &str, n: usize, damaged: &mut bool) -> Vec<u16> {
     let mut out: Vec<u16> = Vec::new();
     let mut buf = [0u16; 2];
     for c in s.chars() {
         let units = c.encode_utf16(&mut buf);
         if out.len() + units.len() > n {
-            *clamped += 1;
+            *damaged = true;
             break;
         }
         out.extend_from_slice(units);
@@ -1874,7 +1899,7 @@ pub enum JsonLabel {
     Dropped,
 }
 
-/// The tolerant JSON cursor (docs/SPEC-TABLES.md §16.2): it skips whitespace,
+/// The strict JSON cursor (docs/SPEC-TABLES.md §16.2): it skips whitespace,
 /// reads a string, a null and a number token, and skips a whole value it
 /// cannot place. Its counters fold into the caller's report.
 #[allow(dead_code)]
@@ -1883,11 +1908,8 @@ pub struct Jr<'a> {
     pub p: usize,
     pub depth: usize,
     pub unknown: u64,
-    pub kind_mismatch: u64,
-    pub clamped: u64,
-    pub clamped_field: &'static str,
-    pub duplicate: u64,
-    pub malformed: bool,
+    pub oor_field: &'static str,
+    pub damaged: bool,
     /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
     pub zero: bool,
     pub reason: TableReason,
@@ -1901,7 +1923,7 @@ pub struct Jr<'a> {
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, clamped_field: "", duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -1925,13 +1947,13 @@ impl<'a> Jr<'a> {
                         self.p += 1;
                     }
                     if !closed {
-                        self.malformed = true;
+                        self.damaged = true;
                         self.p = self.b.len();
                         return;
                     }
                 }
                 b'/' => {
-                    self.malformed = true;
+                    self.damaged = true;
                     return;
                 }
                 _ => break,
@@ -1967,14 +1989,14 @@ impl<'a> Jr<'a> {
     pub fn read_string(&mut self) -> Option<String> {
         self.space();
         if self.p >= self.b.len() || self.b[self.p] != b'"' {
-            self.malformed = true;
+            self.damaged = true;
             return None;
         }
         self.p += 1;
         let mut out: Vec<u8> = Vec::new();
         loop {
             if self.p >= self.b.len() {
-                self.malformed = true;
+                self.damaged = true;
                 return None;
             }
             let c = self.b[self.p];
@@ -1983,13 +2005,13 @@ impl<'a> Jr<'a> {
                 break;
             }
             if c < 0x20 {
-                self.malformed = true;
+                self.damaged = true;
                 return None;
             }
             if c == b'\\' {
                 self.p += 1;
                 if self.p >= self.b.len() {
-                    self.malformed = true;
+                    self.damaged = true;
                     return None;
                 }
                 let e = self.b[self.p];
@@ -2006,7 +2028,7 @@ impl<'a> Jr<'a> {
                     b'u' => {
                         let v = self.hex4();
                         if v < 0 {
-                            self.malformed = true;
+                            self.damaged = true;
                             return None;
                         }
                         let mut cp = v as u32;
@@ -2021,18 +2043,22 @@ impl<'a> Jr<'a> {
                             if (0xdc00..0xe000).contains(&lo) {
                                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo as u32 - 0xdc00);
                             } else {
-                                // A lone surrogate currently normalizes to U+FFFD.
-                                // Strict refusal is deferred by SPEC-TABLES §16.3.
                                 self.p = mark;
                             }
                         }
                         self.zero |= cp == 0;
-                        let ch = char::from_u32(cp).unwrap_or('\u{fffd}');
+                        // A LONE SURROGATE spells no code point: the read refuses
+                        // it (string_lone_surrogate, SPEC-TABLES §16.3), never U+FFFD.
+                        let Some(ch) = char::from_u32(cp) else {
+                            self.damaged = true;
+                            self.text_error = "string_lone_surrogate";
+                            return None;
+                        };
                         let mut buf = [0u8; 4];
                         out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
                     }
                     _ => {
-                        self.malformed = true;
+                        self.damaged = true;
                         return None;
                     }
                 }
@@ -2047,7 +2073,7 @@ impl<'a> Jr<'a> {
         match String::from_utf8(out) {
             Ok(s) => Some(s),
             Err(_) => {
-                self.malformed = true;
+                self.damaged = true;
                 None
             }
         }
@@ -2059,7 +2085,7 @@ impl<'a> Jr<'a> {
         self.zero = false;
         let s = self.read_string()?;
         if self.zero {
-            self.malformed = true;
+            self.damaged = true;
             return None;
         }
         Some(s)
@@ -2070,7 +2096,7 @@ impl<'a> Jr<'a> {
             self.p += 4;
             true
         } else {
-            self.malformed = true;
+            self.damaged = true;
             false
         }
     }
@@ -2086,7 +2112,7 @@ impl<'a> Jr<'a> {
             p += 1;
         }
         if !digit(p) {
-            self.malformed = true;
+            self.damaged = true;
             return None;
         }
         if b[p] == b'0' {
@@ -2099,7 +2125,7 @@ impl<'a> Jr<'a> {
         if p < b.len() && b[p] == b'.' {
             p += 1;
             if !digit(p) {
-                self.malformed = true;
+                self.damaged = true;
                 return None;
             }
             while digit(p) {
@@ -2112,7 +2138,7 @@ impl<'a> Jr<'a> {
                 p += 1;
             }
             if !digit(p) {
-                self.malformed = true;
+                self.damaged = true;
                 return None;
             }
             while digit(p) {
@@ -2120,7 +2146,7 @@ impl<'a> Jr<'a> {
             }
         }
         if p < b.len() && !matches!(b[p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}' | b']' | b'/') {
-            self.malformed = true;
+            self.damaged = true;
             return None;
         }
         self.p = p;
@@ -2133,7 +2159,7 @@ impl<'a> Jr<'a> {
     pub fn read_int(&mut self) -> Option<i128> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.kind_mismatch += 1;
+            self.damaged = true;
             self.skip_value();
             return None;
         }
@@ -2146,7 +2172,7 @@ impl<'a> Jr<'a> {
                 let d = (b - b'0') as u64;
                 if mag > (u64::MAX - d) / 10 {
                     mag = u64::MAX;
-                    self.clamped += 1;
+                    self.damaged = true;
                     break;
                 }
                 mag = mag * 10 + d;
@@ -2158,13 +2184,13 @@ impl<'a> Jr<'a> {
         }
         let f: f64 = t.parse().ok()?;
         if !f.is_finite() || f.fract() != 0.0 {
-            self.kind_mismatch += 1;
+            self.damaged = true;
             return None;
         }
         let neg = f.is_sign_negative();
         let whole = f.abs();
         let mag = if whole >= 18446744073709551616.0 {
-            self.clamped += 1;
+            self.damaged = true;
             u64::MAX
         } else {
             whole as u64
@@ -2179,13 +2205,13 @@ impl<'a> Jr<'a> {
     /// value the Q I.F grid holds — `2`, `2.0` and `20e-1` are one value —
     /// with no binary float between, as two's complement in a u128. A digit
     /// the grid cannot hold is kind_mismatch, the wrong shape, never rounded;
-    /// a magnitude past 128 bits saturates and counts clamped; a value of
+    /// a magnitude past 128 bits saturates and counts held; a value of
     /// another JSON type is kind_mismatch, skipped. The caller clamps to the
     /// field's raw range.
     pub fn read_wide(&mut self, signed: bool, frac: u32) -> Option<u128> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.kind_mismatch += 1;
+            self.damaged = true;
             self.skip_value();
             return None;
         }
@@ -2251,7 +2277,7 @@ impl<'a> Jr<'a> {
                 (true, false) => 0,
             };
         } else if point < -40 {
-            self.kind_mismatch += 1;
+            self.damaged = true;
             return None;
         } else {
             // the decimal fraction, at most 128 places: Q I.F holds I + F <= 128
@@ -2262,7 +2288,7 @@ impl<'a> Jr<'a> {
             while k < end {
                 if n >= 128 {
                     if digit(k) != b'0' {
-                        self.kind_mismatch += 1;
+                        self.damaged = true;
                         return None;
                     }
                 } else {
@@ -2282,7 +2308,7 @@ impl<'a> Jr<'a> {
                 fraction = (fraction << 1) | u128::from(carry);
             }
             if fd[..n].iter().any(|&d| d != 0) {
-                self.kind_mismatch += 1;
+                self.damaged = true;
                 return None;
             }
             let mut whole = 0u128;
@@ -2324,7 +2350,7 @@ impl<'a> Jr<'a> {
             }
         }
         if saturated {
-            self.clamped += 1;
+            self.damaged = true;
         }
         Some(raw)
     }
@@ -2332,7 +2358,7 @@ impl<'a> Jr<'a> {
     pub fn read_float(&mut self) -> Option<f64> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.kind_mismatch += 1;
+            self.damaged = true;
             self.skip_value();
             return None;
         }
@@ -2343,7 +2369,7 @@ impl<'a> Jr<'a> {
     pub fn read_f32(&mut self) -> Option<f32> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.kind_mismatch += 1;
+            self.damaged = true;
             self.skip_value();
             return None;
         }
@@ -2379,7 +2405,7 @@ impl<'a> Jr<'a> {
             Some(JsonLabel::Node(n)) => match n.clone().downcast::<T>() {
                 Ok(t) => Some(t),
                 Err(_) => {
-                    self.kind_mismatch += 1;
+                    self.damaged = true;
                     None
                 }
             },
@@ -2387,7 +2413,7 @@ impl<'a> Jr<'a> {
             // past what dropping it already counted (§16.7)
             Some(JsonLabel::Dropped) => None,
             _ => {
-                self.malformed = true;
+                self.damaged = true;
                 None
             }
         }
@@ -2395,7 +2421,7 @@ impl<'a> Jr<'a> {
     pub fn skip_value(&mut self) {
         self.space();
         if self.p >= self.b.len() {
-            self.malformed = true;
+            self.damaged = true;
             return;
         }
         match self.b[self.p] {
@@ -2404,7 +2430,7 @@ impl<'a> Jr<'a> {
             }
             b'{' => {
                 if self.depth > JSON_DEPTH_CAP {
-                    self.malformed = true;
+                    self.damaged = true;
                     return;
                 }
                 self.p += 1;
@@ -2412,7 +2438,7 @@ impl<'a> Jr<'a> {
                 loop {
                     self.space();
                     if self.p >= self.b.len() {
-                        self.malformed = true;
+                        self.damaged = true;
                         self.depth -= 1;
                         return;
                     }
@@ -2422,7 +2448,7 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     let key = self.read_string();
-                    if self.malformed {
+                    if self.damaged {
                         self.depth -= 1;
                         return;
                     }
@@ -2447,7 +2473,7 @@ impl<'a> Jr<'a> {
                     if !labelled {
                         self.skip_value();
                     }
-                    if self.malformed {
+                    if self.damaged {
                         self.depth -= 1;
                         return;
                     }
@@ -2459,7 +2485,7 @@ impl<'a> Jr<'a> {
             }
             b'[' => {
                 if self.depth > JSON_DEPTH_CAP {
-                    self.malformed = true;
+                    self.damaged = true;
                     return;
                 }
                 self.p += 1;
@@ -2467,7 +2493,7 @@ impl<'a> Jr<'a> {
                 loop {
                     self.space();
                     if self.p >= self.b.len() {
-                        self.malformed = true;
+                        self.damaged = true;
                         self.depth -= 1;
                         return;
                     }
@@ -2477,7 +2503,7 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     self.skip_value();
-                    if self.malformed {
+                    if self.damaged {
                         self.depth -= 1;
                         return;
                     }
@@ -2491,14 +2517,14 @@ impl<'a> Jr<'a> {
                 if self.b[self.p..].starts_with(b"true") {
                     self.p += 4;
                 } else {
-                    self.malformed = true;
+                    self.damaged = true;
                 }
             }
             b'f' => {
                 if self.b[self.p..].starts_with(b"false") {
                     self.p += 5;
                 } else {
-                    self.malformed = true;
+                    self.damaged = true;
                 }
             }
             b'n' => {

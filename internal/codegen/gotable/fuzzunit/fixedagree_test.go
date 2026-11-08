@@ -63,7 +63,7 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 			go func(ti int, image []byte) {
 				defer wg.Done()
 				rng := rand.New(rand.NewSource(int64(ti + 99)))
-				for i := 0; i < 6000; i++ {
+				for i := range 6000 {
 					b := image
 					if i > 0 {
 						b = mutate(rng, image)

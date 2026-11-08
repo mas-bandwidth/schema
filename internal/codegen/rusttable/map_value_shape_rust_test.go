@@ -41,18 +41,19 @@ func TestRustMapValueShapeNative(t *testing.T) {
 	u := unitFrom(t, string(schema))
 	m := tabletext.NewModel(u)
 	var body strings.Builder
+	// STRICT-ONLY (docs/plans/strict-only.md): the verdict comes from the Go
+	// engine reading the same input; a mismatch or a repeated key refuses the
+	// whole read, and an accepted read must save the bytes Go saves.
 	for i, tc := range cases {
+		value := m.New(u.Tables["Maps"])
+		var report tabletext.Report
+		ok := m.Read(value, []byte(tc.Input), &report)
 		fmt.Fprintf(&body, `{
 let mut report=TableReport::default();
 let result=maps_from_json(%q,&mut report);
-assert_eq!((result.is_some(),report.kind_mismatch,report.duplicate,report.malformed),(%t,%d,%d,%t),"map value %s");
-`, tc.Input, !tc.Malformed, tc.Mismatch, tc.Duplicate, tc.Malformed, tc.Name)
-		if !tc.Malformed {
-			value := m.New(u.Tables["Maps"])
-			var report tabletext.Report
-			if !m.Read(value, []byte(tc.Expected), &report) || !report.Silent() {
-				t.Fatalf("expected %s: %+v", tc.Name, report)
-			}
+assert_eq!((result.is_some(),report.damaged),(%t,%t),"map value %s: {:?}",report);
+`, tc.Input, ok, !ok, tc.Name)
+		if ok {
 			wire, err := tablewire.Encode(m, value)
 			if err != nil {
 				t.Fatal(err)

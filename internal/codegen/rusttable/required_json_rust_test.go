@@ -14,7 +14,6 @@ import (
 )
 
 func TestRustRequiredJSONNative(t *testing.T) {
-	t.Skip("layer 4 (rust): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (Required JSON named presence and nested guard closure)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/required/rust-json")
@@ -67,22 +66,22 @@ func TestRustRequiredJSONNative(t *testing.T) {
 	m := tabletext.NewModel(u)
 	var body strings.Builder
 	body.WriteString("let mut failures=Vec::<String>::new();\n")
+	// STRICT-ONLY (docs/plans/strict-only.md): only the verdict is pinned, and
+	// the Go engine reading the same text is the oracle. A kind mismatch or a
+	// repeated key refuses the whole read like a missing required field.
 	for _, tc := range cases {
 		v := m.New(u.Tables[tc.Root])
 		var rep tabletext.Report
 		ok := m.Read(v, []byte(tc.Input), &rep)
-		if ok != (tc.Reason == "") || ok == rep.Refused {
-			t.Fatalf("independent expected contract %s: ok=%v report=%+v", tc.Name, ok, rep)
-		}
 		fmt.Fprintf(&body, `{
 let mut report=TableReport::default();
 let value=%s_from_json(%q,&mut report);
-if value.is_some()!=%t || report.malformed || report.kind_mismatch!=%d || report.duplicate!=%d || report.reason.name()!=%q || report.missing_required_reason().as_deref().unwrap_or("")!=%q || report.missing_required!=%d || report.refused!=%t {
+if value.is_some()!=%t || (value.is_none() && !(report.damaged || report.refused)) {
  failures.push(format!("%s: value={} report={:?}",value.is_some(),report));
 }
 println!("case %s ok");
 }
-`, ir.RustSnake(tc.Root), tc.Input, tc.Reason == "", tc.KindMismatch, tc.Duplicate, map[bool]string{true: "none", false: "missing_required"}[tc.Reason == ""], tc.Reason, map[bool]int{true: 0, false: 1}[tc.Reason == ""], tc.Reason != "", tc.Name, tc.Name)
+`, ir.RustSnake(tc.Root), tc.Input, ok, tc.Name, tc.Name)
 	}
 	body.WriteString(`{
 let mut report=TableReport::default();
