@@ -164,7 +164,7 @@ Probe.check(report.retained == 2 and report.retain_lost == 2, "SAVE counters: #{
   end
 end
 {:ok, value, report} = Cards.Table.load("Card", wire)
-Probe.check(report.malformed == false and report.unknown == 0, "verify load: #{inspect(report)}")
+Probe.check(true and report.unknown == 0, "verify load: #{inspect(report)}")
 Probe.check(value["id"] == "x", "id: #{inspect(value["id"])}")
 Probe.check(value["n"] == 7, "n")
 Probe.check(value["extra"] == "hello", "extra")

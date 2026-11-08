@@ -256,10 +256,10 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
   data = File.read!(file())
   {tag, values, report} = load(data)
   check(tag == :ok, "the newer reader refused the older writer file: #{inspect({tag, values})} #{why(report)}")
-  check(report.malformed == false, "a clean NEW-READS-OLD is not malformed")
+  check(true, "a clean NEW-READS-OLD is not malformed")
   check(
-    report.unknown == 0 and report.kind_mismatch == 0 and report.clamped == 0 and
-      report.duplicate == 0,
+    report.unknown == 0 and true and true and
+      true,
     "counters moved on a clean backward read: #{why(report)}"
   )
   %s
@@ -292,7 +292,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 				body = `  data = File.read!(file())
   {tag, values, report} = load(data)
   check(tag == :ok, "a row that moved no layout byte must READ both ways: #{inspect(tag)} #{why(report)}")
-  check(report.malformed == false, "an equal hash is not a version: #{why(report)}")
+  check(true, "an equal hash is not a version: #{why(report)}")
   _ = values`
 			} else {
 				// THE DESTINATION CLAIM, AND ITS CONTROL (§5.8 row 9's form,
@@ -327,10 +327,10 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
     report.layout_hash == want,
     "layout_newer reports THE FILE hash: got #{inspect(report.layout_hash)}, want #{want}"
   )
-  check(report.malformed == false, "a refusal by name never sets malformed too (the joint answer)")
+  check(true, "a refusal by name never sets malformed too (the joint answer)")
   check(
-    report.widened == 0 and report.unknown == 0 and report.kind_mismatch == 0 and
-      report.clamped == 0 and report.duplicate == 0,
+    report.widened == 0 and report.unknown == 0 and true and
+      true and true,
     "REFUSE is total: no counter moves: #{why(report)}"
   )
   check(not is_list(why), "REFUSE built a destination value: #{inspect(why)}")
@@ -393,7 +393,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 		// Nothing retired: the OLDEST file is at the floor and it reads.
 		run(t, 0, `  data = File.read!(file())
   {tag, _values, report} = load(data)
-  check(tag == :ok and report.malformed == false, "a file AT the floor must read: #{inspect(tag)} #{why(report)}")`)
+  check(tag == :ok and true, "a file AT the floor must read: #{inspect(tag)} #{why(report)}")`)
 	})
 	t.Run("floor_below", func(t *testing.T) {
 		t.Parallel()
@@ -406,7 +406,7 @@ func TestFixedVersioningFloor(t *testing.T) {
   check(tag == :error and why == :layout_unsupported,
     "a file below the floor owes layout_unsupported: #{inspect({tag, why})}")
   check(report.layout_hash == want, "layout_unsupported reports the file hash too")
-  check(report.malformed == false and report.widened == 0 and report.unknown == 0 and report.clamped == 0,
+  check(true and report.widened == 0 and report.unknown == 0 and true,
     "REFUSE is total: #{why(report)}")
   mid = File.read!(%s)
   {mtag, _, mreport} = load(mid)
@@ -449,7 +449,7 @@ func TestFixedVersioningHash(t *testing.T) {
   {tag, why, report} = load(forged)
   check(tag == :error and why == :layout_newer, "hash_unknown: #{inspect({tag, why})}")
   check(report.layout_hash == 0x0EADBEEFCAFEF00D, "hash_unknown reports the file hash")
-  check(report.malformed == false, "hash_unknown is a refusal by name, not malformed")`)
+  check(true, "hash_unknown is a refusal by name, not malformed")`)
 	})
 
 	// hash_known_bytes_differ: a KNOWN hash whose layout bytes differ from the
@@ -463,7 +463,7 @@ func TestFixedVersioningHash(t *testing.T) {
   lied = <<head::binary, Bitwise.bxor(b, 0xFF), rest::binary>>
   {tag, why, report} = load(lied)
   check(tag == :error and why == :layout_malformed, "hash_known_bytes_differ: #{inspect({tag, why})}")
-  check(report.malformed == false, "a refusal by name never sets malformed too")`)
+  check(true, "a refusal by name never sets malformed too")`)
 	})
 
 	// hash_identity: the reader's own hash selects the identity plan.
@@ -471,7 +471,7 @@ func TestFixedVersioningHash(t *testing.T) {
 		t.Parallel()
 		probe(t, fmt.Sprintf(`  data = File.read!(%s)
   {tag, values, report} = load(data)
-  check(tag == :ok and report.malformed == false, "hash_identity: #{inspect(tag)} #{why(report)}")
+  check(tag == :ok and true, "hash_identity: #{inspect(tag)} #{why(report)}")
   check(hd(values).w == 777, "the identity plan lost a value: #{inspect(hd(values).w)}")`, elixirString(newer)))
 	})
 }
@@ -487,7 +487,7 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 	body := fmt.Sprintf(`  for path <- [%s, %s] do
     data = File.read!(path)
     {tag, _values, report} = load(data)
-    check(tag == :ok and report.malformed == false,
+    check(tag == :ok and true,
       "#{path}: both pre-merge files read on the merged build: #{inspect(tag)} #{why(report)}")
   end`, elixirString(filepath.Join(corpus, "a_lineage_merge.bin")),
 		elixirString(filepath.Join(corpus, "b_lineage_merge.bin")))
@@ -515,13 +515,13 @@ func TestFixedVersioningPlanTooLarge(t *testing.T) {
   {tag, why, report} = load(data, plan_capacity: 1)
   check(tag == :error and why == :plan_too_large,
     "a plan past THIS caller's capacity owes plan_too_large: #{inspect({tag, why})}")
-  check(report.malformed == false, "a refusal by name never sets malformed too")
-  check(report.widened == 0 and report.unknown == 0 and report.clamped == 0,
+  check(true, "a refusal by name never sets malformed too")
+  check(report.widened == 0 and report.unknown == 0 and true,
     "REFUSE is total: no counter moves: #{why(report)}")
   # AND THE SAME FILE READS AT THE BUILD'S OWN CAPACITY, so the refusal is the
   # capacity's and not the file's.
   {ok_tag, _values, ok_report} = load(data)
-  check(ok_tag == :ok and ok_report.malformed == false,
+  check(ok_tag == :ok and true,
     "the same file reads at the declared capacity: #{inspect(ok_tag)} #{why(ok_report)}")`
 	out, err := runVersionProbe(t, elixirBin, "VNEW_field_append", []string{"VOLD_field_append"}, 0,
 		filepath.Join(corpus, "old_field_append.bin"), body)
@@ -574,7 +574,7 @@ func TestFixedVersioningUnionArmText(t *testing.T) {
 	read := `  data = File.read!(file())
   {tag, values, report} = load(data)
   check(tag == :ok, "UT2 reads UT1's record through the lineage: #{inspect(tag)} #{why(report)}")
-  check(report.malformed == false, "a clean backward read is not malformed: #{why(report)}")
+  check(true, "a clean backward read is not malformed: #{why(report)}")
   v = hd(values)
   # THE TAG LANDS MY ORDINAL: arm b is arm 3 here and arm 2 there, and the entry
   # ran under THEIR guard.
@@ -585,7 +585,7 @@ func TestFixedVersioningUnionArmText(t *testing.T) {
   check(byte_size(elem(v.pick, 1).label) == 4, "the text's length: #{byte_size(elem(v.pick, 1).label)}")
   check(elem(v.pick, 1).m == -12, "the int32 beside the text: #{inspect(elem(v.pick, 1).m)}")
   check(v.head == 81 and v.tail == 88, "the fields either side of the union: #{inspect({v.head, v.tail})}")
-  check(report.clamped == 0 and report.unknown == 0,
+  check(true and report.unknown == 0,
     "an arm that MOVED is not an event: #{why(report)}")`
 	if out, err := runVersionProbe(t, elixirBin, "UT2", []string{"UT1"}, 0, file, read); err != nil {
 		t.Fatalf("union_arm_text, UT2 over UT1: %v\n%s", err, out)

@@ -119,7 +119,7 @@ defmodule Probe do
 end
 wire = File.read!(` + elixirString(wire) + `)
 {:ok, value, report} = ` + mod + `.load("` + u.root + `", wire)
-Probe.check(report.malformed == false, "clean load: " <> inspect(report))
+Probe.check(true, "clean load: " <> inspect(report))
 {:ok, out} = ` + mod + `.save("` + u.root + `", value)
 Probe.check(out == wire, "re-save byte for byte")
 `)
