@@ -110,7 +110,7 @@ func TestLuaVersionDifferentialWorkflowIsSplitByCost(t *testing.T) {
 		"make schema-lua-version-differential\n",
 		"make schema-lua-version-differential-negative-control",
 		"github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
-		"github.event_name == 'push' || github.event_name == 'pull_request'",
+		"github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("schema-lua-version-differential.yml does not carry %q", want)
