@@ -109,3 +109,13 @@ tables-moo-arms-negative-control:
 	SCHEMA_SLOW=1 go test ./internal/codegen/mootable/ -run '^TestMooArmFieldLineNegativeControl$$' -count=1
 
 test-moo: tables-moo-arms tables-moo-arms-negative-control
+
+# I3, block arm only: direct production Open, compiler-derived extent oracle,
+# every projection/row byte touched, then the reflective read. Cook is pending.
+.PHONY: tables-moo-block-forgery-fuzz tables-moo-block-forgery-fuzz-negative-control
+tables-moo-block-forgery-fuzz: toolchain-moo
+	SCHEMA_SLOW=1 go test ./internal/codegen/mootable -run '^TestMooBlockForgeryFuzz$$' -count=1 -v -timeout 600s
+tables-moo-block-forgery-fuzz-negative-control: tables-moo-block-forgery-fuzz
+	SCHEMA_SLOW=1 go test ./internal/codegen/mootable -run '^TestMooBlockForgeryFuzzNegativeControl$$' -count=1 -v -timeout 600s
+
+test-moo: tables-moo-block-forgery-fuzz
