@@ -433,7 +433,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_block_bytes( const benchtab
    nothing to validate and nothing to fix up. On any failure it returns 0
    and points at nothing.
 
-   There is ONE entry point, and no tolerant twin: the block form is same-build
+   There is ONE entry point, and no strict twin: the block form is same-build
    by construction — both sides are generated from one declaration at one build
    and ship together — so a consumer older than its producer is not a case. A
    mismatch is a refusal; regenerate both sides. Data that must outlive the
@@ -607,7 +607,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_block_bytes( const benchtable
    nothing to validate and nothing to fix up. On any failure it returns 0
    and points at nothing.
 
-   There is ONE entry point, and no tolerant twin: the block form is same-build
+   There is ONE entry point, and no strict twin: the block form is same-build
    by construction — both sides are generated from one declaration at one build
    and ship together — so a consumer older than its producer is not a case. A
    mismatch is a refusal; regenerate both sides. Data that must outlive the

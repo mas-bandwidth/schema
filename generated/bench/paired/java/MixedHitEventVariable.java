@@ -744,6 +744,10 @@ public final class MixedHitEventVariable {
             b.append("null");
             return;
         }
+        // a null nests nothing: the cap counts table values (docs/SPEC-TABLES.md §16.14 W2)
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            throw new TableJson.Refused("a table value past the depth cap");
+        }
         if (graph.useCount(child) <= 1) {
             jsonFields(b, graph, child, depth);
             return;

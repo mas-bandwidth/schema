@@ -275,8 +275,8 @@ public final class TableJson {
 
     // esc writes one string as a JSON string, escaping the code points JSON
     // requires and passing every other code point through raw (§16.2). A
-    // control character becomes an escape; a lone surrogate is a replacement
-    // character (§16.3).
+    // control character becomes an escape; a lone surrogate is not text and
+    // refuses the write (invalid_value, §16.3, §16.14 W0), nothing replaced.
     public static void esc(StringBuilder b, String s) {
         b.append('"');
         for (int i = 0; i < s.length(); i++) {
@@ -311,7 +311,7 @@ public final class TableJson {
                                 || i + 1 >= s.length()
                                 || s.charAt(i + 1) < 0xdc00
                                 || s.charAt(i + 1) > 0xdfff) {
-                            b.append('\ufffd');
+                            throw new Refused("invalid_value: an unpaired surrogate is not text");
                         } else {
                             b.append(c).append(s.charAt(i + 1));
                             i++;
@@ -339,8 +339,9 @@ public final class TableJson {
     // at the FEWEST significant digits, from the kind's floor (six for a
     // float32, fifteen for a float64) up, that read back to the same value,
     // and at the kind's ceiling (nine, seventeen) when none below it does. The
-    // read-back test is the engine's own (internal/tabletext writeFloat): the
-    // text parsed to a double, narrowed to a float for a float32. It is NOT
+    // read-back test is the engine's own (internal/tabletext writeFloat,
+    // §16.14 W12): ONE correctly rounded conversion at the field's width,
+    // Float.parseFloat for a float32, never a double narrowed. It is NOT
     // Float.toString or Double.toString, whose shortest spelling is Java's own
     // ("1.0E10", "0.0") and whose digits can differ from C's on a tie.
     public static void writeFloat(StringBuilder b, double value, boolean single) {
@@ -359,8 +360,10 @@ public final class TableJson {
                 b.append(text);
                 return;
             }
-            double back = Double.parseDouble(text);
-            if (single ? (double) (float) back == value : back == value) {
+            boolean same = single
+                    ? (double) Float.parseFloat(text) == value
+                    : Double.parseDouble(text) == value;
+            if (same) {
                 b.append(text);
                 return;
             }

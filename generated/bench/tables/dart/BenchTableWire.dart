@@ -4939,7 +4939,8 @@ const String _jsonHex = '0123456789abcdef';
 
 // _jsonString renders one Dart string as one JSON string (§16.3): the escapes
 // JSON names and every other code point whole, so a multi-byte character rides
-// as itself.
+// as itself. A string holding an unpaired surrogate is not text: the write
+// refuses (invalid_value, §16.14 W0) and nothing is replaced.
 String _jsonString(String s) {
   final b = StringBuffer();
   b.write('"');
@@ -4963,7 +4964,10 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune >> 4]);
       b.write(_jsonHex[rune & 0xF]);
     } else {
-      b.write(String.fromCharCode(rune >= 0xD800 && rune <= 0xDFFF ? 0xFFFD : rune));
+      if (rune >= 0xD800 && rune <= 0xDFFF) {
+        throw StateError('invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
+      }
+      b.write(String.fromCharCode(rune));
     }
   }
   b.write('"');
@@ -5079,9 +5083,9 @@ final _jsonU64Max = _jsonU64Span - BigInt.one;
 final _jsonI64Min = -(BigInt.one << 63);
 final _jsonI64Max = (BigInt.one << 63) - BigInt.one;
 
-// _jsonFloat spells a float at the shortest precision that reads back the same
-// value AT ITS OWN WIDTH (§16.2): a float32 from six significant digits up to
-// nine, a float64 from fifteen up to seventeen, each candidate C's %.*g
+// _jsonFloat spells a float at the first precision that reads back the same
+// value AT ITS OWN WIDTH (§16.14, W12): a float32 from six significant digits
+// up to nine, a float64 from fifteen up to seventeen, each candidate C's %.*g
 // (_formatG). single is a float32 field.
 // A non-finite float has no JSON spelling and the writer refuses it.
 String _jsonFloat(double v, bool single) {
@@ -5096,7 +5100,10 @@ String _jsonFloat(double v, bool single) {
     final back = double.tryParse(text);
     if (back == null) continue;
     if (single) {
-      if (_f32Bits(back) == _f32Bits(v)) return text;
+      // ONE correctly rounded conversion, as the reader lands it (§16.14,
+      // W12): the double narrowed alone rounds twice
+      final narrowed = _narrowF32(back, text);
+      if (narrowed != null && _f32Bits(narrowed) == _f32Bits(v)) return text;
     } else if (back == v) {
       return text;
     }
@@ -5230,6 +5237,7 @@ void _writePtr(_JOut out, Object? node, int depth, _Share sh, void Function(int?
     out.raw('null');
     return;
   }
+  _jsonDepth(depth);
   if ((sh.count[node] ?? 0) <= 1) {
     body(null);
     return;
@@ -5245,6 +5253,14 @@ void _writePtr(_JOut out, Object? node, int depth, _Share sh, void Function(int?
     return;
   }
   body(sh.define(node));
+}
+
+// _jsonDepth is the depth cap (§16.14 W2): a table value written past depth
+// 128 refuses the write; a scalar, a string or a null nests nothing.
+void _jsonDepth(int depth) {
+  if (depth > 128) {
+    throw StateError('invalid_value: a table value past the depth cap of 128 (docs/SPEC-TABLES.md §16.14 W2)');
+  }
 }
 
 Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() make, void Function(Object obj, List<MapEntry<String, dynamic>> m) fill, [Object? def]) {
@@ -5449,8 +5465,10 @@ String _jsonPrepare(String text, TableTextReport r) {
       stripped.add(0x20);
       continue;
     }
+    // the root container is the first: one at count 130 sits at depth 129,
+    // past the cap (§16.14 W2)
     if (c == 0x7b || c == 0x5b) {
-      if (++depth > 128) throw const FormatException('JSON nesting past 128');
+      if (++depth > 129) throw const FormatException('JSON nesting past 128');
     } else if (c == 0x7d || c == 0x5d) {
       depth--;
     }
@@ -5568,10 +5586,12 @@ final class _JParse {
     i++;
   }
 
+  // the depth cap counts containers (§16.14 W2): a scalar, a string or a
+  // null at depth 129 nests nothing
   dynamic value(int depth) {
-    if (depth > 128) throw const FormatException('nested past the depth cap of 128');
     if (i >= s.length) throw const FormatException('unexpected end of text');
     final c = s.codeUnitAt(i);
+    if ((c == 0x7B || c == 0x5B) && depth > 128) throw const FormatException('nested past the depth cap of 128');
     if (c == 0x7B) {
       i++;
       final m = _JObj();
@@ -6285,6 +6305,7 @@ void tableEntityCount(_Share sh, TableEntity v) {
 }
 
 void tableEntityToJsonBody(_JOut out, TableEntity v, int depth, _Share sh, [int? label]) {
+  _jsonDepth(depth);
   out.raw('{');
   var comma = false;
   if (label != null) {
@@ -6458,6 +6479,7 @@ void tableStatCount(_Share sh, TableStat v) {
 }
 
 void tableStatToJsonBody(_JOut out, TableStat v, int depth, _Share sh, [int? label]) {
+  _jsonDepth(depth);
   out.raw('{');
   var comma = false;
   if (label != null) {
@@ -6511,6 +6533,7 @@ void tableHitEventCount(_Share sh, TableHitEvent v) {
 }
 
 void tableHitEventToJsonBody(_JOut out, TableHitEvent v, int depth, _Share sh, [int? label]) {
+  _jsonDepth(depth);
   out.raw('{');
   var comma = false;
   if (label != null) {
@@ -6584,6 +6607,7 @@ void tableChatEventCount(_Share sh, TableChatEvent v) {
 }
 
 void tableChatEventToJsonBody(_JOut out, TableChatEvent v, int depth, _Share sh, [int? label]) {
+  _jsonDepth(depth);
   out.raw('{');
   var comma = false;
   if (label != null) {
@@ -6637,6 +6661,7 @@ void tablePickupEventCount(_Share sh, TablePickupEvent v) {
 }
 
 void tablePickupEventToJsonBody(_JOut out, TablePickupEvent v, int depth, _Share sh, [int? label]) {
+  _jsonDepth(depth);
   out.raw('{');
   var comma = false;
   if (label != null) {
@@ -6693,6 +6718,7 @@ void tableMixedCount(_Share sh, TableMixed v) {
 }
 
 void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? label]) {
+  _jsonDepth(depth);
   out.raw('{');
   var comma = false;
   if (label != null) {

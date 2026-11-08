@@ -560,7 +560,7 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
-// tableRefuseReasonLaterValues are the thirty-one values Go appended to the one
+// tableRefuseReasonLaterValues are the thirty-two values Go appended to the one
 // refusal vocabulary after data_cycle (docs/SPEC-TABLES.md §6.5, §11). They
 // are APPENDED and never renumbered, so every value before them keeps its
 // number and the two targets answer the same value for the same bytes. No
@@ -602,7 +602,8 @@ const tableRefuseReasonLaterValues = `
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    missing_required = 255   // a record that lacks a | required field: Go's TableRefuseMissingRequired, pinned at 255 there
 `
 
 // tableRefuseReason is the ONE refusal vocabulary (docs/SPEC-TABLES.md §6.5,
@@ -642,6 +643,9 @@ func tableMessageReasonMembers(refuseReason, pkg string) string {
 			line = line[:i]
 		}
 		name := strings.TrimSuffix(strings.TrimSpace(line), ",")
+		if eq := strings.IndexByte(name, '='); eq >= 0 {
+			name = strings.TrimSpace(name[:eq])
+		}
 		if name == "" {
 			continue
 		}
