@@ -79,7 +79,7 @@ defmodule Bench.BenchFixed do
   end
 
   # union MixedEvent's projection: the tag, then the arm it names and no other. A TAG
-  # BEYOND THE DECLARED ARMS lands None and counts one `clamped`.
+  # BEYOND THE DECLARED ARMS lands None and counts one `unknown`.
   def mixed_event_fixed_decode(<<tag::little-unsigned-8, arm::binary>>, c, m \\ false) do
     case tag do
       1 ->
@@ -153,7 +153,7 @@ defmodule Bench.BenchFixed do
   end
 
   # MixedEntity's projection: ONE binary pattern match over its 51 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def mixed_entity_fixed_decode(bin, c, m \\ false)
 
   def mixed_entity_fixed_decode(
@@ -257,7 +257,7 @@ defmodule Bench.BenchFixed do
   end
 
   # MixedStat's projection: ONE binary pattern match over its 8 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def mixed_stat_fixed_decode(bin, c, m \\ false)
 
   def mixed_stat_fixed_decode(
@@ -343,7 +343,7 @@ defmodule Bench.BenchFixed do
   end
 
   # MixedHitEvent's projection: ONE binary pattern match over its 13 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def mixed_hit_event_fixed_decode(bin, c, m \\ false)
 
   def mixed_hit_event_fixed_decode(
@@ -470,7 +470,7 @@ defmodule Bench.BenchFixed do
   end
 
   # MixedChatEvent's projection: ONE binary pattern match over its 8 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def mixed_chat_event_fixed_decode(bin, c, m \\ false)
 
   def mixed_chat_event_fixed_decode(
@@ -555,7 +555,7 @@ defmodule Bench.BenchFixed do
   end
 
   # MixedPickupEvent's projection: ONE binary pattern match over its 8 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def mixed_pickup_event_fixed_decode(bin, c, m \\ false)
 
   def mixed_pickup_event_fixed_decode(
@@ -706,7 +706,7 @@ defmodule Bench.BenchFixed do
   end
 
   # BenchMixed's projection: ONE binary pattern match over its 1236 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def bench_mixed_fixed_decode(bin, c, m \\ false)
 
   def bench_mixed_fixed_decode(

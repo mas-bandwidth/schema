@@ -23,9 +23,9 @@ local MAX_KEY = 255
 local MAX_NUMBER = 511
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
--- A float32's shortest round-trip text is C's %.*g at the fewest digits from
--- 6 up to this cap that read back to the same float32; 9 always does
--- (docs/SPEC-TABLES.md §16.1; internal/tabletext/write.go's writeFloat).
+-- A float32's text is C's %.*g at the fewest digits from 6 up to this cap that
+-- read back to the same float32; 9 always does (docs/SPEC-TABLES.md §16.14,
+-- W12; internal/tabletext/write.go's writeFloat).
 local FLOAT32_DIGITS = 9
 
 -- Luau has no bitwise operators; bit32 is enough for every value below it (a
@@ -188,7 +188,9 @@ local function scan_unit(inp: Input): (string?, boolean, boolean)
           inp.p = mark
         end
       end
-      if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
+      -- a lone or out-of-order surrogate escape is not text: the read
+      -- refuses it (docs/plans/strict-only.md decision 9), never U+FFFD
+      if code >= 0xd800 and code <= 0xdfff then inp.bad = true; return nil, false, false end
       unit = utf8_encode(code)
     else
       inp.bad = true
@@ -1368,6 +1370,8 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
   local out = {}
   for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
   local seen = {}
+  local seen_unknown: { [string]: boolean } = {}
+  local dup_unknown = false
   local eshape = shape_of(T, fd.elem)
   while true do
     local c = peek(inp)
@@ -1382,6 +1386,8 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
     local slot = nil
     for i, v in ipairs(fd.keyed) do if v[1] == name then slot = i; break end end
     if slot == nil then
+      if seen_unknown[name] then dup_unknown = true end
+      seen_unknown[name] = true
       report.unknown = report.unknown + 1
       if not skip_value(inp, depth + 1, graph) then return false end
     else
@@ -1406,6 +1412,10 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
       inp.bad = true
       return false
     end
+  end
+  if dup_unknown and next(seen) == nil then
+    inp.bad = true
+    return false
   end
   holder[key] = out
   return true
@@ -1839,7 +1849,10 @@ end
 -- the write walk (§16.1, §16.3, §16.7)
 ----------------------------------------------------------------------------
 
-local function W(): any return { parts = {} } end
+-- w.invalid is storage that is not text (ill-formed UTF-8 in a narrow string,
+-- an unpaired surrogate in a wide one), which refuses the whole write,
+-- invalid_value (docs/SPEC-TABLES.md §16.3, §16.14 W0)
+local function W(): any return { parts = {}, invalid = false } end
 local function raw(w: any, s: string) w.parts[#w.parts + 1] = s end
 local function put(w: any, c: string) w.parts[#w.parts + 1] = c end
 local function line(w: any, depth: number)
@@ -1853,7 +1866,7 @@ end
 -- for the same value (§16.3, the write refuses what the strict read refuses).
 local refuse_reason: string = ""
 local function narrow_text_ok(s: string, bound: number): boolean
-  if bound >= 0 and #s > bound then refuse_reason = "clamped"; return false end
+  if bound >= 0 and #s > bound then refuse_reason = "out_of_range"; return false end
   local i = 1
   while i <= #s do
     local c = s:byte(i)
@@ -1862,7 +1875,7 @@ local function narrow_text_ok(s: string, bound: number): boolean
       i = i + 1
     else
       local width = utf8_seq(s, i)
-      if width < 0 then refuse_reason = "string_not_utf8"; return false end
+      if width < 0 then refuse_reason = "invalid_value"; return false end
       i = i + width
     end
   end
@@ -1872,17 +1885,17 @@ end
 -- §16.3's write-side rule for a wide text: no zero unit and no lone surrogate
 -- (the units the wire's kind 33 and the strict reader refuse).
 local function wide_text_ok(units: { number }, bound: number): boolean
-  if bound >= 0 and #units > bound then refuse_reason = "clamped"; return false end
+  if bound >= 0 and #units > bound then refuse_reason = "out_of_range"; return false end
   local i = 1
   while i <= #units do
     local u = units[i]
     if u == 0 then refuse_reason = "text_holds_zero"; return false end
     if u >= 0xd800 and u <= 0xdbff then
       local low = units[i + 1]
-      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "string_not_utf8"; return false end
+      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "invalid_value"; return false end
       i = i + 2
     elseif u >= 0xdc00 and u <= 0xdfff then
-      refuse_reason = "string_not_utf8"; return false
+      refuse_reason = "invalid_value"; return false
     else
       i = i + 1
     end
@@ -1912,12 +1925,12 @@ local function int_ok(fd: any, v: any): boolean
     if fd.lo ~= nil and fd.hi ~= nil then
       local cmp = fd.signed ~= false and int128_cmp or wide_ucmp
       local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
-      if cmp(v, lo) < 0 or cmp(v, hi) > 0 then refuse_reason = "clamped"; return false end
+      if cmp(v, lo) < 0 or cmp(v, hi) > 0 then refuse_reason = "out_of_range"; return false end
     end
     if fd.bits ~= nil and fd.bits > 0 and fd.bits < 128 then
-      if v.hi ~= 0i then refuse_reason = "clamped"; return false end
+      if v.hi ~= 0i then refuse_reason = "out_of_range"; return false end
       local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
-      if integer.gt(v.lo, bmax) then refuse_reason = "clamped"; return false end
+      if integer.gt(v.lo, bmax) then refuse_reason = "out_of_range"; return false end
     end
     return true
   end
@@ -1926,14 +1939,14 @@ local function int_ok(fd: any, v: any): boolean
       local cmp = fd.signed ~= false and int128_cmp or wide_ucmp
       local raw = wide_of(fd, v)
       local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
-      if cmp(raw, lo) < 0 or cmp(raw, hi) > 0 then refuse_reason = "clamped"; return false end
+      if cmp(raw, lo) < 0 or cmp(raw, hi) > 0 then refuse_reason = "out_of_range"; return false end
     else
-      if int_cmp(v, fd.lo) < 0 or int_cmp(v, fd.hi) > 0 then refuse_reason = "clamped"; return false end
+      if int_cmp(v, fd.lo) < 0 or int_cmp(v, fd.hi) > 0 then refuse_reason = "out_of_range"; return false end
     end
   end
   if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
     local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
-    if n < 0 or n > 2 ^ fd.bits - 1 then refuse_reason = "clamped"; return false end
+    if n < 0 or n > 2 ^ fd.bits - 1 then refuse_reason = "out_of_range"; return false end
   end
   local width = fd.width or 8
   if width < 8 then
@@ -1941,16 +1954,16 @@ local function int_ok(fd: any, v: any): boolean
     local bits = width * 8
     if fd.signed ~= false then
       local lim = 2 ^ (bits - 1)
-      if n < -lim or n > lim - 1 then refuse_reason = "clamped"; return false end
+      if n < -lim or n > lim - 1 then refuse_reason = "out_of_range"; return false end
     elseif n < 0 or n > 2 ^ bits - 1 then
-      refuse_reason = "clamped"; return false
+      refuse_reason = "out_of_range"; return false
     end
   elseif fd.dom == "number" then
     local n: number = if typeof(v) == "integer" then integer.tonumber(v) else (v :: number)
     if fd.signed ~= false then
-      if n < -(2 ^ 63) or n > 2 ^ 63 - 1 then refuse_reason = "clamped"; return false end
+      if n < -(2 ^ 63) or n > 2 ^ 63 - 1 then refuse_reason = "out_of_range"; return false end
     elseif n < 0 or n > 2 ^ 64 - 1 then
-      refuse_reason = "clamped"; return false
+      refuse_reason = "out_of_range"; return false
     end
   end
   return true
@@ -1965,7 +1978,7 @@ local function float_ok(fd: any, v: number): boolean
   local x = v
   if fd.f32 and x == x then buffer.writef32(narrowScratch, 0, x); x = buffer.readf32(narrowScratch, 0) end
   if x ~= x or x == math.huge or x == -math.huge then refuse_reason = "non_finite_float"; return false end
-  if fd.lo ~= nil and (v < fd.lo or v > fd.hi) then refuse_reason = "clamped"; return false end
+  if fd.lo ~= nil and (v < fd.lo or v > fd.hi) then refuse_reason = "out_of_range"; return false end
   return true
 end
 
@@ -1990,7 +2003,7 @@ local function write_string(w: any, s: string)
       i = i + 1
     else
       local width = utf8_seq(s, i)
-      if width < 0 then raw(w, utf8_encode(0xfffd)); i = i + 1
+      if width < 0 then w.invalid = true; i = i + 1 -- not text: the write refuses (§16.14 W0)
       else raw(w, s:sub(i, i + width - 1)); i = i + width end
     end
   end
@@ -2010,8 +2023,9 @@ local function write_wstring(w: any, units: { number })
         i = i + 1
       end
     end
-    if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
-    if code == 34 then raw(w, '\\"')
+    -- an unpaired surrogate is not text: the write refuses (§16.14 W0)
+    if code >= 0xd800 and code <= 0xdfff then w.invalid = true
+    elseif code == 34 then raw(w, '\\"')
     elseif code == 92 then raw(w, '\\\\')
     elseif code == 8 then raw(w, '\\b')
     elseif code == 12 then raw(w, '\\f')
@@ -2203,8 +2217,11 @@ local function float_text(v: number, single: boolean): string?
     local back = tonumber(text)
     if back ~= nil then
       if single then
+        -- ONE correctly rounded conversion, as the reader lands it (§16.14,
+        -- W12): the double narrowed alone rounds twice
         local narrow = string.unpack("<f", string.pack("<f", back))
-        if narrow == v then return text end
+        local tie = f32_tie(back, text)
+        if (if tie ~= nil then tie else narrow) == v then return text end
       elseif back == v then
         return text
       end
@@ -2427,7 +2444,7 @@ write_array = function(T: any, fd: any, val: any, depth: number, g: any, w: any)
   -- §2.9, §5: a counted array past its bound is a value the strict reader
   -- clamps, so the writer refuses it instead of writing the first bound.
   if not fd.fixed and fd.keyed == nil and not fd.list and #val > (fd.bound or 0) then
-    refuse_reason = "clamped"
+    refuse_reason = "out_of_range"
     return false
   end
   local n = count_of(fd, val)
@@ -2517,7 +2534,7 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     return true
   elseif s == "bytes" then
     local data = val or ""
-    if d.bound ~= nil and d.bound >= 0 and #data > d.bound then refuse_reason = "clamped"; return false end
+    if d.bound ~= nil and d.bound >= 0 and #data > d.bound then refuse_reason = "out_of_range"; return false end
     write_base64(w, data)
     return true
   elseif s == "string_blob" or s == "bytes_blob" then
@@ -2612,6 +2629,7 @@ local function core_to(T: any, name: string, v: any): string?
   if g == nil then return nil end
   local w = W()
   if not write_table(T, desc, v, 0, g, w) then return nil end
+  if w.invalid then refuse_reason = "invalid_value"; return nil end
   -- every root's text ends in one newline, the array root's too (§16.10)
   w.parts[#w.parts + 1] = "\n"
   return table.concat(w.parts)
@@ -2981,8 +2999,8 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     if n == nil then n = #x end
     -- a count outside 0..bound is one the strict reader clamps (§2.9, §5), so
     -- the walk records the value as unwritable rather than truncating it here
-    if n < 0 then memo.invalid = true; refuse_reason = "clamped"; n = 0 end
-    if (fd.bound or 0) > 0 and n > fd.bound then memo.invalid = true; refuse_reason = "clamped"; n = fd.bound end
+    if n < 0 then memo.invalid = true; refuse_reason = "out_of_range"; n = 0 end
+    if (fd.bound or 0) > 0 and n > fd.bound then memo.invalid = true; refuse_reason = "out_of_range"; n = fd.bound end
     if fd.elem.shape == "pointer" then
       -- a null element is nil in the Luau storage and false in the walk's
       -- array, so a null past the last live one still counts (§2.5, §16.2)
@@ -3114,12 +3132,12 @@ local function adapted(root: string): (any, any, any)
   return desc, A, t
 end
 
--- FromJsonTolerant is the TOLERANT text read (docs/SPEC-TABLES.md §6.5, §16):
+-- fromJsonWalk is the walk text read (docs/SPEC-TABLES.md §6.5, §16):
 -- it keeps the recovered value with the counters counted onto the report, and
 -- answers no value only where the text does not say what the instance holds:
 -- a malformed text, a zero or ill-formed string placed in text (§16.3) and a
 -- missing required field (§2.3), each with the count and its reason.
-function J.FromJsonTolerant(root: string, text: buffer, report: any): any
+function J.fromJsonWalk(root: string, text: buffer, report: any): any
   local _, A, adesc = adapted(root)
   local input = buffer.readstring(text, 0, buffer.len(text))
   local lua = core_from(A, root, input, report)
@@ -3131,8 +3149,11 @@ function J.FromJsonTolerant(root: string, text: buffer, report: any): any
 end
 
 -- the strict text read's refusals, in Go's TableReport.Err() order
--- (docs/SPEC-TABLES.md §6.5): unknown, widened and duplicate alone never refuse
+-- (docs/SPEC-TABLES.md §6.5): unknown and widened alone never refuse; a
+-- repeated key, keyed slot or map key is damage (docs/plans/strict-only.md
+-- decision 5)
 local STRICT: { { string } } = {
+  { "duplicate", "malformed" },
   { "blobShared", "blob_shared" },
   { "clamped", "clamped" },
   { "kindMismatch", "kind_mismatch" },
@@ -3145,14 +3166,14 @@ local STRICT: { { string } } = {
 -- read that crosses a security or meaning boundary — a malformed text, a
 -- missing required field, a blob named from two slots, a clamped value, a
 -- kind mismatch. A caller who needs the recovered value past one of those
--- asks for it by name, through FromJsonTolerant.
+-- asks for it by name, through fromJsonWalk.
 function J.FromJson(root: string, text: buffer, report: any): any
   local rep: any = report or {}
   rep.malformed = false
   rep.unknown, rep.kindMismatch, rep.clamped, rep.widened, rep.duplicate = 0, 0, 0, 0, 0
   rep.missingRequired, rep.nonFinite, rep.blobShared = 0, 0, 0
   rep.reason = nil
-  local v = J.FromJsonTolerant(root, text, rep)
+  local v = J.fromJsonWalk(root, text, rep)
   if v == nil then
     if rep.reason == nil then rep.reason = "malformed" end
     return nil
@@ -3177,12 +3198,12 @@ function J.ToJson(root: string, v: any, report: any): buffer?
   refuse_reason = ""
   local lua = to_lua(adesc, v, A, memo)
   if memo.invalid then
-    if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end
+    if report then report.reason = refuse_reason ~= "" and refuse_reason or "out_of_range" end
     return nil
   end
   local text = core_to(A, root, lua)
   if text == nil then
-    if report then report.reason = refuse_reason ~= "" and refuse_reason or "clamped" end
+    if report then report.reason = refuse_reason ~= "" and refuse_reason or "out_of_range" end
     return nil
   end
   return from_string(text)

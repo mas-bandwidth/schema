@@ -38,23 +38,50 @@
 #endif
 #endif
 
-/* The table-wire read report — the permissive contract's ledger. Silence
-   (all zero) means the data matched this reader's schema exactly. */
+
+typedef int ludicrous_table_refuse_reason_t;
+enum {
+    SCHEMA_LUDICROUS_TABLE_REFUSE_OK=0,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_NOT_A_COOK=1,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_FOREIGN_ORDER=2,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_BAD_ALIGNMENT=5,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_TRUNCATED=6,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_UNALIGNED_BASE=7,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_BAD_LAYOUT=8,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_UNKNOWN_FORM=9,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_DATA_CYCLE=13,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_INVALID_VALUE=14,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_ALLOCATION_FAILED=15,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_WIRE_DAMAGED=16,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_MALFORMED=17,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_OUT_OF_RANGE=18,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_KIND_MISMATCH=19,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_BASE64_DAMAGED=20,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_NON_FINITE_FLOAT=23,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_BLOB_SHARED=24,
+    SCHEMA_LUDICROUS_TABLE_REFUSE_MISSING_REQUIRED=25
+};
+
+
+/* The table-wire read report — the strict read's ledger. Silence
+   (all zero) means the data matched this reader's schema exactly. A read
+   returns the whole value or refuses the whole load: the refusal lands
+   in refused/refuse_reason below, never as a counter over a kept value. */
 typedef struct ludicrous_table_report_t
 {
     int32_t unknown;       /* unknown field ids skipped (newer data) */
-    int32_t kind_mismatch; /* known id, changed type — skipped, never misdecoded */
-    int32_t clamped;       /* out-of-range values clamped to declared bounds */
-    /* a key the TEXT form saw twice: last wins, and the repeat is counted
-       (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-       id twice is legal input whose last occurrence wins, silently (§3). */
-    int32_t duplicate;
     /* required fields (docs/SPEC-TABLES.md §2.3) the body omitted. */
     int32_t missing_required;
-    int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
-       the tolerant read keeps the one node and counts each extra naming. */
+       the strict read keeps the one node and counts each extra naming. */
     int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* a refusal by name (reason), not framing damage */
@@ -62,12 +89,11 @@ typedef struct ludicrous_table_report_t
     /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
        TableRefuseReason, the same value a measure's -1 and a cook's open
        answer, set by every plain read name on its refusal and OK otherwise.
-       unknown, widened and retained alone leave it OK. The tolerant reads
-       never write it. */
+       unknown, widened and retained alone leave it OK. */
     int refuse_reason;
     int damage_reason;
     /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
-       an infinity is refused on its raw bits by every read, the tolerant one
+       an infinity is refused on its raw bits by every read, the strict one
        included, so a read that moves this answers refused, reason
        SCHEMA_TABLE_NON_FINITE_FLOAT, and lands nothing. It is a count only so
        a read can tell its own refusal from a caller's report that already

@@ -316,7 +316,7 @@ _T.TableEntityFixedLayout = _schema_fixed.fixed_layout({
 	{ id = 9179190079975030720i, kind = 9, size = 8, children = 0 }, -- damage
 	{ id = 1271228688681418151i, kind = 1, size = 1, children = 0 }, -- moving
 	{ id = 8535675692938965450i, kind = 1, size = 1, children = 0 }, -- firing
-})
+}, _T)
 
 -- TableEntity: the fixed lineage, OLDEST FIRST, this build's own LAST, and the
 -- floor below which a known layout is layout_unsupported (docs/FIXED-FORM-ALGORITHM.md §5.2)
@@ -332,7 +332,7 @@ _T.TableStatFixedLayout = _schema_fixed.fixed_layout({
 	{ id = 2984383410656091285i, kind = 13, size = 8, children = 2 }, -- TableStat
 	{ id = 0x80ab75f0866dbf65i, kind = 6, size = 4, children = 0 }, -- stat_id
 	{ id = 5910805692604981441i, kind = 4, size = 4, children = 0 }, -- delta
-})
+}, _T)
 
 -- TableStat: the fixed lineage, OLDEST FIRST, this build's own LAST, and the
 -- floor below which a known layout is layout_unsupported (docs/FIXED-FORM-ALGORITHM.md §5.2)
@@ -420,7 +420,7 @@ _T.TableMixedFixedLayout = _schema_fixed.fixed_layout({
 	{ id = 0xc08292176cfd8672i, kind = 1, size = 1, children = 0 }, -- has_extra
 	{ id = 0xfd29ee12a979cb69i, kind = 4, size = 4, children = 0 }, -- extra
 	{ id = 8651444298976115966i, kind = 4, size = 4, children = 0 }, -- idle_ticks
-})
+}, _T)
 
 -- TableMixed: the fixed lineage, OLDEST FIRST, this build's own LAST, and the
 -- floor below which a known layout is layout_unsupported (docs/FIXED-FORM-ALGORITHM.md §5.2)
