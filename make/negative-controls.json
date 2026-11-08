@@ -1005,6 +1005,7 @@
         "tables-js-usage-negative-control",
         "tables-js-release-negative-control",
         "conformance-negative-control-js-absent",
+        "conformance-negative-control-js-fixed",
         "tables-js-cook-map-unsorted-negative-control",
         "tables-js-cook-map-unaligned-negative-control",
         "tables-js-cook-map-extent-start-negative-control",

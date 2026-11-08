@@ -47,9 +47,9 @@ if [ "$mode" = positive ]; then
     "${NODE:-node}" "$out/bom/stripped-main.mjs" "$out/bom/manifest" json-hostile "$out/bom/stripped"
     cmp "$out/bom/strict/bom-single" "$out/bom/buffer/bom-single"
     cmp "$out/bom/strict/bom-double" "$out/bom/buffer/bom-double"
-    grep -qx '0,0,0,0,0,false,read' "$out/bom/strict/bom-single"
+    [ "$(head -n 1 "$out/bom/strict/bom-single")" = read ]
     grep -qx 'refused' "$out/bom/strict/bom-double"
-    grep -qx '0,0,0,0,0,false,read' "$out/bom/stripped/bom-double"
+    [ "$(head -n 1 "$out/bom/stripped/bom-double")" = read ]
     echo 'JavaScript UTF-8 BOM: exactly one leading BOM reads; stripping at the adapter would incorrectly accept a double BOM'
     echo 'JavaScript strict UTF-8 boundary: all text claims pass'
     exit 0
