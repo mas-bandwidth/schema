@@ -60,7 +60,7 @@ func evolutionProgram(t *testing.T, u *evolutionUnit, root string, dir string, c
 	fmt.Fprintf(&b, "    var values: %s::%s[%d] = [%s::%s { .. }; %d];\n", ns, root, capacity, ns, root, capacity)
 	b.WriteString("    var report = schema_rt::FixedEvolveReport { .. };\n")
 	fmt.Fprintf(&b, "    let n = %s::%sFixedEvolveLoad(values[0..%d], bytes, report);\n", ns, root, capacity)
-	b.WriteString("    print(n, \" \", schema_rt::fixed_evolve_refusal_name(report.reason), \" \", report.clamped, \" \", report.widened, \" \", report.unknown);\n")
+	b.WriteString("    print(n, \" \", schema_rt::fixed_evolve_refusal_name(report.reason), \" \", report.oor, \" \", report.widened, \" \", report.unknown);\n")
 	b.WriteString("    if n < 0 { return; }\n")
 	for _, p := range print {
 		fmt.Fprintf(&b, "    print(\" \", %s);\n", p)
@@ -247,7 +247,7 @@ fixed table Census
 	out := t.TempDir()
 	main := evolutionProgram(t, &u, "Census", out, 1, []string{"old.bin"}, []string{
 		"values[0].Lead", "values[0].Items[0].A", "values[0].Items[1].A",
-		"values[0].Items[2].A", "values[0].Items[3].A", "values[0].Trail", "report.kind_mismatch",
+		"values[0].Items[2].A", "values[0].Items[3].A", "values[0].Trail", "report.mismatch",
 	})
 	got := joinedProbe(t, gooserun.Run(t, out, main, map[string][]byte{"old.bin": data}))
 	const want = "1 ok 0 0 0 1 10 11 12 13 2 1"
@@ -729,7 +729,7 @@ fn main() {
     let saved = probe::LineageFixedSave(cur_in, cur_bytes);
     var cur_out: probe::Lineage[2] = [probe::Lineage { .. }; 2];
     // Dirty report before call to prove entry zeroing (R23).
-    var erep = schema_rt::FixedEvolveReport { reason: 99, clamped: 99, widened: 99, unknown: 99, kind_mismatch: 99, malformed: true, hash: 0xdeadbeef };
+    var erep = schema_rt::FixedEvolveReport { reason: 99, oor: 99, widened: 99, unknown: 99, mismatch: 99, damaged: true, hash: 0xdeadbeef };
     let n_cur = probe::LineageFixedEvolveLoad(cur_out, cur_bytes, erep);
     print("cur ", saved == probe::LineageFixedMeasure(2), " ", n_cur, " ", schema_rt::fixed_evolve_refusal_name(erep.reason), " ", erep.widened, " ", erep.hash, " ", cur_out[0].B, " ", cur_out[1].C);
 
