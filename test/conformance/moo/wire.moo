@@ -4,10 +4,10 @@
 -- and takes back the surfaces it carries:
 --
 --   wire    Load the instance's wire, Save, the bytes
---   report  Load the wire tolerantly, the report as `u,k,w,c,d,m,verdict\n`
---   framing the report line as `report` prints it, then the §16 text of the
---           value the read left, unless the row says `no-value` or the read
---           was refused (docs/LAYERS/1-framing.md)
+--   report  Load the wire, the verdict `read` or `refused`, then the §16 text
+--           of the value and its write-back wire when the read reads
+--   framing the same answer over the framing vectors, without the text when
+--           the row says `no-value` (docs/LAYERS/1-framing.md)
 --
 -- through the emitted table_load.moo and table_save.moo and the descriptors the
 -- unit's <Base>Table modules register. ctx is the one block.moo documents, with
@@ -20,17 +20,11 @@ return function(ctx: any): { [string]: Surface }
 		return ctx.module(key, "table_load") ~= nil and ctx.module(key, "table_save") ~= nil
 	end
 
-	-- the load of one wire at its root: the value, the report, and whether the
-	-- load refused (a refused report, or a non-finite float with no value)
-	local function loadWire(f: { string }): (any?, any, any, any, boolean)
+	-- the one read of one wire at its root (main.moo's ctx.read): the value,
+	-- or nil when the read refused, and the report
+	local function loadWire(f: { string }): (any?, any)
 		ctx.tables(f[3])
-		local load: any = ctx.module(f[3], "table_load")
-		local save: any = ctx.module(f[3], "table_save")
-		local schema: any = ctx.module(f[3], "schema_tables")
-		local report = load.newReport()
-		local v = load.load(f[4], ctx.inputs(f[5]), report)
-		local refused = report.refused > 0 or (v == nil and report.nonFinite > 0)
-		return v, report, save, schema, refused
+		return ctx.read(f[3], f[4], ctx.inputs(f[5]))
 	end
 
 	local surfaces: { [string]: Surface } = {}
@@ -42,12 +36,15 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], nil)
 					continue
 				end
-				local v, _, save, schema, refused = loadWire(f)
-				if v == nil or refused then
-					ctx.say(f[2], "refused")
+				-- a read the wire's own row expects refused (`wire-refused`) is a
+				-- named absence: the harness scores it a pass there, and on any
+				-- other row an absence the matrix counts, never a pass
+				local v, rep = loadWire(f)
+				if v == nil then
+					ctx.refuse(f[2], tostring(rep.reason))
 					continue
 				end
-				local out, why = save.save(schema.lookup(f[4]), v)
+				local out, why = ctx.write(f[3], f[4], v)
 				if out ~= nil then
 					ctx.say(f[2], buffer.tostring(out))
 				elseif why ~= nil and why.name == "blob_shared" then
@@ -59,6 +56,38 @@ return function(ctx: any): { [string]: Surface }
 			end
 		end,
 	}
+	-- REPORT and FRAMING answer one verdict (docs/SPEC-TABLES.md §4, strict
+	-- only): `read` then the §16 text of the whole value and, beside it as
+	-- `<case>.wire`, the canonical write-back wire; or `refused` alone, with no
+	-- value. A unit with no text module answers the verdict alone beside its
+	-- absence, so the verdict is held and the value is the missing feature
+	-- (test/conformance/README.md). A framing line is
+	-- `framing <case> <unit> <root> <wire> [no-value]`; a no-value row owes the
+	-- verdict and the write-back wire, never the text.
+	local function answer(f: { string }, withText: boolean)
+		local v = loadWire(f)
+		if v == nil then
+			ctx.say(f[2], "refused\n")
+			return
+		end
+		local root = (ctx.module(f[3], "schema_tables") :: any).lookup(f[4])
+		local out = ctx.write(f[3], f[4], v)
+		if out == nil then
+			error("driver: " .. f[2] .. ": Save refused a value the read accepted", 0)
+		end
+		ctx.say(f[2] .. ".wire", buffer.tostring(out))
+		if not withText then
+			ctx.say(f[2], "read\n")
+			return
+		end
+		local J: any = ctx.module(f[3], "json")
+		if J == nil then
+			ctx.say(f[2], "read\n")
+			ctx.say(f[2], nil)
+			return
+		end
+		ctx.say(f[2], "read\n" .. J.toJson(root, v))
+	end
 	surfaces["report"] = {
 		carried = carried,
 		run = function()
@@ -67,38 +96,10 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], nil)
 					continue
 				end
-				-- the report line, then the §16 text of the value when the read
-				-- reads; a unit with no text module answers the line alone beside
-				-- its absence, so the verdict is held and the value is the missing
-				-- feature (test/conformance/README.md)
-				local v, r, _, schema, refused = loadWire(f)
-				local malformed = r.damaged or (v == nil and not refused)
-				local text = string.format(
-					"%d,%d,%d,%d,%d,%s,%s\n",
-					r.unknown,
-					0,
-					r.widened,
-					0,
-					0,
-					tostring(malformed),
-					if refused then "refused" else "read"
-				)
-				if not refused and not malformed then
-					local J: any = ctx.module(f[3], "json")
-					if J == nil then
-						ctx.say(f[2], text)
-						ctx.say(f[2], nil)
-						continue
-					end
-					text ..= J.toJson(schema.lookup(f[4]), v)
-				end
-				ctx.say(f[2], text)
+				answer(f, true)
 			end
 		end,
 	}
-	-- THE FRAMING VECTORS (docs/LAYERS/1-framing.md). A derived line is
-	-- `framing <case> <unit> <root> <wire> [no-value]`. A damaged row owes the
-	-- refusal alone (D1), so a row with no value owes nothing past the report.
 	surfaces["framing"] = {
 		carried = carried,
 		run = function()
@@ -107,27 +108,7 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], nil)
 					continue
 				end
-				local v, r, _, schema, refused = loadWire(f)
-				local malformed = r.damaged or (v == nil and not refused)
-				local text = string.format(
-					"%d,%d,%d,%d,%d,%s,%s\n",
-					r.unknown,
-					0,
-					r.widened,
-					0,
-					0,
-					tostring(malformed),
-					if refused then "refused" else "read"
-				)
-				if not refused and f[6] ~= "no-value" then
-					if v == nil then
-						ctx.say(f[2], text .. "!no value")
-						continue
-					end
-					local J: any = ctx.module(f[3], "json")
-					text ..= J.toJson(schema.lookup(f[4]), v)
-				end
-				ctx.say(f[2], text)
+				answer(f, f[6] ~= "no-value")
 			end
 		end,
 	}
