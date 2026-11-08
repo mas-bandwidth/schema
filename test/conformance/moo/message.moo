@@ -62,9 +62,12 @@ return function(ctx: any): { [string]: Surface }
 				if not MS.AnnounceRead(vocabulary, ctx.inputs(conn[5]), report) then
 					error("driver: " .. f[2] .. ": the announcement was refused: " .. tostring(report.reason), 0)
 				end
+				-- THE ONE READ (SPEC-TABLES §3.3, §6.5): the batch is read whole or
+				-- refused whole, and the verdict is the contract, never the reason
 				local count, values = MS.LoadMessages(vocabulary, f[4], ctx.inputs(f[6]), BATCH, report)
-				if count < 1 then
-					error("driver: " .. f[2] .. ": message load: " .. tostring(report.reason), 0)
+				if count < 1 or report.damaged or report.refused or #values ~= count then
+					ctx.refuse(f[2], "refused")
+					continue
 				end
 				local body: { any } = table.move(values, 1, count, 1, {})
 				local size = MS.MeasureMessages(f[4], body, report)

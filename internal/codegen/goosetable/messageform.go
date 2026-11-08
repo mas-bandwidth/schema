@@ -19,7 +19,7 @@
 //
 // THE READ IS BY PEER ENTRY (§3.3, §4): a connection's reader first reads the
 // PEER's announcement with AnnounceRead (runtime/message.goose: a form-1 file
-// read tolerantly into a vocabulary of the peer's build, each entry's id, kind
+// read into a vocabulary of the peer's build, each entry's id, kind
 // and shape), and every reference of a body resolves against that vocabulary.
 // The entry's id selects this reader's declaration through a match on the
 // 64-bit ids, and the payload decodes at the SENDER's announced shape: an id
@@ -580,10 +580,10 @@ func (e *msgEmit) readClamp(ind int, f *ir.Field, x string) {
 			l, h := goose.IntLit(lo), goose.IntLit(hi)
 			e.p(ind, "if %s < %s {", x, l)
 			e.p(ind+1, "%s = %s;", x, l)
-			e.p(ind+1, "r.clamped += 1;")
+			e.p(ind+1, "r.oor += 1;")
 			e.p(ind, "} else if %s > %s {", x, h)
 			e.p(ind+1, "%s = %s;", x, h)
-			e.p(ind+1, "r.clamped += 1;")
+			e.p(ind+1, "r.oor += 1;")
 			e.p(ind, "}")
 			return
 		}
@@ -591,13 +591,13 @@ func (e *msgEmit) readClamp(ind int, f *ir.Field, x string) {
 		if lo.Sign() > 0 {
 			e.p(ind, "if %s < %s {", x, l)
 			e.p(ind+1, "%s = %s;", x, l)
-			e.p(ind+1, "r.clamped += 1;")
+			e.p(ind+1, "r.oor += 1;")
 			e.p(ind, "} else if %s > %s {", x, h)
 		} else {
 			e.p(ind, "if %s > %s {", x, h)
 		}
 		e.p(ind+1, "%s = %s;", x, h)
-		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind+1, "r.oor += 1;")
 		e.p(ind, "}")
 		return
 	}
@@ -605,7 +605,7 @@ func (e *msgEmit) readClamp(ind int, f *ir.Field, x string) {
 		m := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1))
 		e.p(ind, "if %s > %s {", x, m.String())
 		e.p(ind+1, "%s = %s;", x, m.String())
-		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind+1, "r.oor += 1;")
 		e.p(ind, "}")
 	}
 }
@@ -639,10 +639,10 @@ func (e *msgEmit) readClamp128(ind int, f *ir.Field, v string) {
 	e.p(ind, "let ceil%s = schema_rt::Int128 { lo: %s, hi: %s };", v, tlo, thi)
 	e.p(ind, "if %s {", less(v, "floor"+v))
 	e.p(ind+1, "%s = floor%s;", v, v)
-	e.p(ind+1, "r.clamped += 1;")
+	e.p(ind+1, "r.oor += 1;")
 	e.p(ind, "} else if %s {", less("ceil"+v, v))
 	e.p(ind+1, "%s = ceil%s;", v, v)
-	e.p(ind+1, "r.clamped += 1;")
+	e.p(ind+1, "r.oor += 1;")
 	e.p(ind, "}")
 }
 
@@ -678,10 +678,10 @@ func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) 
 		e.p(ind, "let wide%s: f64 = q%s;", v, v)
 		e.p(ind, "if wide%s < schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMin))
 		e.p(ind+1, "q%s = %s;", v, f32Lit(float32(f.FMin)))
-		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind+1, "r.oor += 1;")
 		e.p(ind, "} else if wide%s > schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMax))
 		e.p(ind+1, "q%s = %s;", v, f32Lit(float32(f.FMax)))
-		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind+1, "r.oor += 1;")
 		e.p(ind, "} else if wide%s == 0.0 {", v)
 		e.p(ind+1, "q%s = 0.0;", v)
 		e.p(ind, "}")
@@ -690,7 +690,7 @@ func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) 
 	}
 	e.p(ind, "let lo%s, hi%s = schema_rt::msg_number(r, %s);", v, v, en)
 	if e.fx.kindOf(f) == kInt128 || clamps(f) {
-		e.p(ind, "if !r.ok { return false; }") // damage is never clamped
+		e.p(ind, "if !r.ok { return false; }") // damage is never oor
 	}
 	if e.fx.kindOf(f) == kInt128 {
 		e.p(ind, "var w%s = schema_rt::Int128 { lo: lo%s, hi: hi%s };", v, v, v)
@@ -800,7 +800,7 @@ func (e *msgEmit) getElement(ind int, el *ir.Field, en, dst string) {
 }
 
 // getValue lands a field's payload from the entry `en`: text (kept to the
-// reader's bound, the excess counted clamped), an array's elements (the
+// reader's bound, the excess counted oor), an array's elements (the
 // excess past the bound stepped over by the announced width, or read into a
 // scratch and dropped where each element resolves something), a keyed array's
 // present slots, or one element.
@@ -819,7 +819,7 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 			e.p(ind, "var k%s = n%s;", v, v)
 			e.p(ind, "if k%s > %d { k%s = %d; }", v, f.Type.Size, v, f.Type.Size)
 		}
-		e.p(ind, "if k%s < n%s { r.clamped += 1; }", v, v)
+		e.p(ind, "if k%s < n%s { r.oor += 1; }", v, v)
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
 		e.p(ind, "while %s < k%s {", i, v)
@@ -854,7 +854,7 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 		e.p(ind, "}")
 		e.p(ind, "if high%s { return schema_rt::msg_damage(r); }", v)
 		e.p(ind, "if k%s < n%s {", v, v)
-		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind+1, "r.oor += 1;")
 		e.p(ind+1, "if k%s > 0 && %s[k%s - 1] >= 0xD800 && %s[k%s - 1] <= 0xDBFF { k%s -= 1; }", v, pl.val, v, pl.val, v, v)
 		e.p(ind, "}")
 		e.p(ind, "%s = k%s as! i32;", pl.length, v)
@@ -875,8 +875,8 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 			if int64(k) < slots {
 				e.getElement(ind+3, el, "el"+v, pl.at(fmt.Sprint(k)).val)
 			} else {
-				// a key past this build's slots is dropped and counted clamped
-				e.p(ind+3, "r.clamped += 1;")
+				// a key past this build's slots is dropped and counted oor
+				e.p(ind+3, "r.oor += 1;")
 				e.p(ind+3, "var sc: %s = %s;", e.elemType(el), e.scratchInit(el))
 				e.getElement(ind+3, el, "el"+v, "sc")
 			}
@@ -898,7 +898,7 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 		e.p(ind, "var k%s = n%s;", v, v)
 		e.p(ind, "if k%s > %d {", v, f.ArrayBound)
 		e.p(ind+1, "k%s = %d;", v, f.ArrayBound)
-		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind+1, "r.oor += 1;")
 		e.p(ind, "}")
 		// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3); an
 		// element that resolves something is read into a scratch and dropped
@@ -1155,7 +1155,7 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(0, "fn %sLoadMessages(values: %s[:], voc: const schema_rt::MsgVocabulary&, data: const u8[:], report: schema_rt::MsgReport&) -> i64 {", n, typ)
 	e.p(1, "report = schema_rt::MsgReport { .. };")
 	e.p(1, "if data.len < 1 {")
-	e.p(2, "report.malformed = true;")
+	e.p(2, "report.damaged = true;")
 	e.p(2, "return -1;")
 	e.p(1, "}")
 	e.p(1, "if data[0] != schema_rt::MsgForm {")
@@ -1164,7 +1164,7 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "}")
 	if st.Integrity == "crc32c" {
 		e.p(1, "if !schema_rt::integrity_holds(data, 2) {")
-		e.p(2, "report.malformed = true;")
+		e.p(2, "report.damaged = true;")
 		e.p(2, "report.reason = schema_rt::MsgRefuseIntegrityMismatch;")
 		e.p(2, "return -1;")
 		e.p(1, "}")
@@ -1179,7 +1179,7 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "var r = schema_rt::MsgReader { b: batch, pos: 8, end: batch.len * 8, voc: voc, .. };")
 	e.p(1, "let count = (schema_rt::msg_get(r, 8) as! i64) + 1;")
 	e.p(1, "if !r.ok {")
-	e.p(2, "report.malformed = true;")
+	e.p(2, "report.damaged = true;")
 	e.p(2, "return -1;")
 	e.p(1, "}")
 	e.p(1, "if count > values.len {")
@@ -1194,17 +1194,17 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(4, "report.reason = r.reason;")
 	e.p(4, "return -1;")
 	e.p(3, "}")
-	e.p(3, "report.malformed = true;")
+	e.p(3, "report.damaged = true;")
 	e.p(3, "break;")
 	e.p(2, "}")
 	e.p(2, "i += 1;")
 	e.p(1, "}")
 	e.p(1, "report.unknown = r.unknown;")
-	e.p(1, "report.kind_mismatch = r.kind_mismatch;")
+	e.p(1, "report.mismatch = r.mismatch;")
 	e.p(1, "report.widened = r.widened;")
-	e.p(1, "report.clamped = r.clamped;")
-	e.p(1, "if !report.malformed && (!schema_rt::msg_align_read(r) || r.pos != r.end) { report.malformed = true; }")
-	e.p(1, "if report.malformed {")
+	e.p(1, "report.oor = r.oor;")
+	e.p(1, "if !report.damaged && (!schema_rt::msg_align_read(r) || r.pos != r.end) { report.damaged = true; }")
+	e.p(1, "if report.damaged {")
 	e.p(2, "var j: i64 = 0;")
 	e.p(2, "while j < count {")
 	e.p(3, "values[j] = %s { .. };", typ)

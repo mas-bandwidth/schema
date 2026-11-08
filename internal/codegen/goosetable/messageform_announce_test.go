@@ -108,7 +108,7 @@ fn main() {
 	b.WriteString(`        var rep = schema_rt::MsgReport { .. };
         let ok = schema_rt::announce_read(voc, data, rep);
         let h = hex16(voc.build_version);
-        print((if ok && voc.announced { 1 } else { 0 }), " ", schema_rt::msg_reason_name(rep.reason), " ", (if rep.malformed { 1 } else { 0 }), " ", rep.unknown, " ", voc.count, " ", voc.ref_bits, " ", h);
+        print((if ok && voc.announced { 1 } else { 0 }), " ", schema_rt::msg_reason_name(rep.reason), " ", (if rep.damaged { 1 } else { 0 }), " ", rep.unknown, " ", voc.count, " ", voc.ref_bits, " ", h);
     }
 }
 `)
@@ -375,7 +375,7 @@ fn main() {
         if rep.reason != 0 {
             print(got, " ", schema_rt::msg_reason_name(rep.reason), " 0");
         } else {
-            print(got, " ok ", (if rep.malformed { 1 } else { 0 }), " ", rep.unknown, " ", rep.kind_mismatch, " ", rep.widened, " ", rep.clamped);
+            print(got, " ok ", (if rep.damaged { 1 } else { 0 }), " ", rep.unknown, " ", rep.mismatch, " ", rep.widened, " ", rep.oor);
         }
     }
 }
