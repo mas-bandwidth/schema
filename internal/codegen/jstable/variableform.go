@@ -582,6 +582,17 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
 }
 
 // ---- the text form's string (docs/SPEC-TABLES.md §16.3; tabletext writeString)
+//
+// A string with an unpaired surrogate has no UTF-8 spelling in either width,
+// and the writer REFUSES it (null; §16.14 W0) rather than writing U+FFFD:
+// replacing it would hand the reader a different value from the one held.
+
+function TableVariableJsonText(out, s) {
+  const t = TableVariableJsonString(s);
+  if (t === null) { return false; }
+  out.push(t);
+  return true;
+}
 
 function TableVariableJsonString(s) {
   let out = '"';
@@ -591,7 +602,7 @@ function TableVariableJsonString(s) {
       const lo = s.charCodeAt(i + 1);
       if (lo >= 0xdc00 && lo <= 0xdfff) { out += s[i] + s[i + 1]; i++; continue; }
     }
-    if (c >= 0xd800 && c <= 0xdfff) { out += "�"; continue; }
+    if (c >= 0xd800 && c <= 0xdfff) { return null; }
     switch (c) {
       case 0x22: out += '\\"'; break;
       case 0x5c: out += '\\\\'; break;

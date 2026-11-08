@@ -1,0 +1,58 @@
+#!/bin/sh
+# THE JAVASCRIPT LEG's TEXT WRITER negative control (docs/SPEC-TABLES.md §16.2,
+# §16.14 W0).
+#
+# One rule of the GENERATED text writer is taken back out in a COPY of the
+# generated tree, and json-write must go red on exactly the row that rule owns:
+#
+#   float      a float32's shortest text is judged by Number() then
+#              Math.fround(), which rounds twice, so text_float32_double_round
+#              writes a shorter text that names its neighbour.
+#   surrogate  an unpaired surrogate is written as U+FFFD instead of refused,
+#              so text_refuse_unpaired writes a text.
+#
+# The driver (test/conformance/js/main.mjs) imports from SCHEMA_JS_GENERATED,
+# so it is aimed at the copy and nothing tracked is written to.
+set -eu
+
+mode=${1:-}
+src=build/tables-generated-js
+out=build/js-conformance-negative-text-writer-$mode
+case "$mode" in
+float)
+    anchor='if (single ? TableVariableF32OfToken(text, back) === v : back === v) { return text; }'
+    sabotage='if (single ? Math.fround(back) === v : back === v) { return text; } \/\/ SABOTAGED'
+    row='text_float32_double_round'
+    ;;
+surrogate)
+    anchor='if (c >= 0xd800 \&\& c <= 0xdfff) { return null; }'
+    sabotage='if (c >= 0xd800 \&\& c <= 0xdfff) { out += "\\uFFFD"; continue; } \/\/ SABOTAGED'
+    row='text_refuse_unpaired'
+    ;;
+*)
+    echo "unknown control: '$mode' (float, surrogate)" >&2
+    exit 1
+    ;;
+esac
+
+rm -rf "$out"
+mkdir -p "$out"
+cp -R "$src" "$out/generated"
+patched=0
+for f in $(cd "$out/generated" && find . -name '*Variable.js'); do
+    sed "s/$anchor/$sabotage/" "$src/$f" > "$out/generated/$f"
+    cmp -s "$src/$f" "$out/generated/$f" || patched=$((patched + 1))
+done
+[ "$patched" -gt 0 ] || { echo "negative control patched nothing: $mode" >&2; exit 1; }
+
+root=$(pwd)
+printf '#!/bin/sh\nSCHEMA_JS_GENERATED=%s/%s/generated exec %s/test/conformance/js/driver "$@"\n' "$root" "$out" "$root" > "$out/driver"
+chmod +x "$out/driver"
+printf 'js %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
+
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+    echo "negative control failed: $mode left conformance green" >&2
+    exit 1
+fi
+grep -q "js / json-write: $row.json:" "$out/log" || { cat "$out/log"; echo "negative control: $mode did not turn $row red" >&2; exit 1; }
+echo "JavaScript text writer negative control: $mode detected by js / json-write ($row)"
