@@ -21,7 +21,6 @@ import (
 // skipped before the JSON value, never inside `Jr::space`, and `U+FEFF` inside
 // string values is preserved.
 func TestJsonLeadingBOMBoundaryRust(t *testing.T) {
-	t.Skip("layer 4 (rust): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	slowtest.Gate(t, "rustc (it compiles and runs the generated JSON BOM boundary probe)")
 
@@ -132,8 +131,8 @@ fn check_case(
         got_wire_hex = hex_encode(&saved);
     }
     println!(
-        "CASE {name}: ok={got_ok} u={} k={} w={} c={} d={} malformed={} canon_len={} wire={got_wire_hex}",
-        rep.unknown, rep.kind_mismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, got_canon.len()
+        "CASE {name}: ok={got_ok} u={} w={} malformed={} canon_len={} wire={got_wire_hex}",
+        rep.unknown, rep.widened, rep.damaged, got_canon.len()
     );
     if got_ok != want_ok
         || (want_ok && (got_canon.as_slice() != want_canon || got_wire_hex != want_wire_hex))
@@ -141,11 +140,11 @@ fn check_case(
         println!(
             "MISMATCH {name} (bytes): got ok={got_ok} ({},{},{},{},{},{}) canon={:?} wire={got_wire_hex}, want ok={want_ok} ({want_u},{want_k},{want_w},{want_c},{want_d},{want_m}) canon={:?} wire={want_wire_hex}",
             rep.unknown,
-            rep.kind_mismatch,
+            0,
             rep.widened,
-            rep.clamped,
-            rep.duplicate,
-            rep.malformed,
+            0,
+            0,
+            rep.damaged,
             String::from_utf8_lossy(&got_canon),
             String::from_utf8_lossy(want_canon),
         );
@@ -167,11 +166,11 @@ fn check_case(
             println!(
                 "MISMATCH {name} (str): got ok={got_s_ok} ({},{},{},{},{},{}) canon={:?} wire={got_s_wire_hex}, want ok={want_ok} ({want_u},{want_k},{want_w},{want_c},{want_d},{want_m}) canon={:?} wire={want_wire_hex}",
                 rep_str.unknown,
-                rep_str.kind_mismatch,
+                0,
                 rep_str.widened,
-                rep_str.clamped,
-                rep_str.duplicate,
-                rep_str.malformed,
+                0,
+                0,
+                rep_str.damaged,
                 String::from_utf8_lossy(&got_s_canon),
                 String::from_utf8_lossy(want_canon),
             );

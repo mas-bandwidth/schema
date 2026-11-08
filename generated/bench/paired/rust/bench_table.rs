@@ -254,53 +254,53 @@ pub fn mixed_stat_save_body(v: &MixedStat, out: &mut Vec<u8>, ids: &mut IdTable,
     }
 }
 
-/// mixed_chat_event_load_body — the tolerant read of one MixedChatEvent body (docs/SPEC-TABLES.md §4, §5).
+/// mixed_chat_event_load_body — the strict read of one MixedChatEvent body (docs/SPEC-TABLES.md §4, §5).
 /// `retain` is Some on the retaining path, and every unknown field it names
 /// is captured into the store under `path` (docs/SPEC-TABLES.md §6.6); None on
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedChatEvent, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
-    if end > wire.len() { report.malformed = true; return false; }
+    if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
-        let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
+        let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
-        let Some(id) = ref_id(ids, r) else { report.malformed = true; return false; };
-        if *off >= end { report.malformed = true; return false; }
+        let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
-        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
+        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
-            if nested { report.malformed = true; return false; }
-            if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+            if nested { report.damaged = true; return false; }
+            if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
             continue;
         }
         match id {
             0xa5013e9ad5caeda4 => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < 0i64 { x = 0i64; report.clamped += 1; } else if x > 3i64 { x = 3i64; report.clamped += 1; }
+                    if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 3i64 { x = 3i64; report.damaged = true; }
                     v.channel = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xfbf1ac4d96ebd022 => {
                 if kind == 7 || table_kind_widens(kind, 7) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
-                    if x > 4095u64 { x = 4095u64; report.clamped += 1; }
+                    if x > 4095u64 { x = 4095u64; report.damaged = true; }
                     v.speaker = x as u16;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
                 report.unknown += 1;
                 let start = *off;
-                if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedChatEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -326,131 +326,131 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
             }
         }
     }
-    report.malformed = true; false
+    report.damaged = true; false
 }
 
-/// mixed_entity_load_body — the tolerant read of one MixedEntity body (docs/SPEC-TABLES.md §4, §5).
+/// mixed_entity_load_body — the strict read of one MixedEntity body (docs/SPEC-TABLES.md §4, §5).
 /// `retain` is Some on the retaining path, and every unknown field it names
 /// is captured into the store under `path` (docs/SPEC-TABLES.md §6.6); None on
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedEntity, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
-    if end > wire.len() { report.malformed = true; return false; }
+    if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
-        let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
+        let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
-        let Some(id) = ref_id(ids, r) else { report.malformed = true; return false; };
-        if *off >= end { report.malformed = true; return false; }
+        let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
-        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
+        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
-            if nested { report.malformed = true; return false; }
-            if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+            if nested { report.damaged = true; return false; }
+            if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
             continue;
         }
         match id {
             0x23fcfd6678e36712 => {
                 if kind == 7 || table_kind_widens(kind, 7) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
-                    if x > 4095u64 { x = 4095u64; report.clamped += 1; }
+                    if x > 4095u64 { x = 4095u64; report.damaged = true; }
                     v.entity_id = x as u16;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xcb4b37357667310e => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < -16383i64 { x = -16383i64; report.clamped += 1; } else if x > 16383i64 { x = 16383i64; report.clamped += 1; }
+                    if x < -16383i64 { x = -16383i64; report.damaged = true; } else if x > 16383i64 { x = 16383i64; report.damaged = true; }
                     v.pos_x = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xcb4b3835766732c1 => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < -16383i64 { x = -16383i64; report.clamped += 1; } else if x > 16383i64 { x = 16383i64; report.clamped += 1; }
+                    if x < -16383i64 { x = -16383i64; report.damaged = true; } else if x > 16383i64 { x = 16383i64; report.damaged = true; }
                     v.pos_y = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xcb4b353576672da8 => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < -16383i64 { x = -16383i64; report.clamped += 1; } else if x > 16383i64 { x = 16383i64; report.clamped += 1; }
+                    if x < -16383i64 { x = -16383i64; report.damaged = true; } else if x > 16383i64 { x = 16383i64; report.damaged = true; }
                     v.pos_z = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xb54d8e19798e16e8 => {
                 if kind == 7 || table_kind_widens(kind, 7) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
-                    if x > 511u64 { x = 511u64; report.clamped += 1; }
+                    if x > 511u64 { x = 511u64; report.damaged = true; }
                     v.yaw = x as u16;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x53a9f665a90cc1b1 => {
                 if kind == 7 || table_kind_widens(kind, 7) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
-                    if x > 511u64 { x = 511u64; report.clamped += 1; }
+                    if x > 511u64 { x = 511u64; report.damaged = true; }
                     v.pitch = x as u16;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x6cede6b6eb60ee67 => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < -2048i64 { x = -2048i64; report.clamped += 1; } else if x > 2047i64 { x = 2047i64; report.clamped += 1; }
+                    if x < -2048i64 { x = -2048i64; report.damaged = true; } else if x > 2047i64 { x = 2047i64; report.damaged = true; }
                     v.vel_x = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x6cede5b6eb60ecb4 => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < -2048i64 { x = -2048i64; report.clamped += 1; } else if x > 2047i64 { x = 2047i64; report.clamped += 1; }
+                    if x < -2048i64 { x = -2048i64; report.damaged = true; } else if x > 2047i64 { x = 2047i64; report.damaged = true; }
                     v.vel_y = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x6cede8b6eb60f1cd => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < -2048i64 { x = -2048i64; report.clamped += 1; } else if x > 2047i64 { x = 2047i64; report.clamped += 1; }
+                    if x < -2048i64 { x = -2048i64; report.damaged = true; } else if x > 2047i64 { x = 2047i64; report.damaged = true; }
                     v.vel_z = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x7f69d4b5288ba9cf => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < 0i64 { x = 0i64; report.clamped += 1; } else if x > 1000i64 { x = 1000i64; report.clamped += 1; }
+                    if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 1000i64 { x = 1000i64; report.damaged = true; }
                     v.health = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xa0b610205f2c6e01 => {
-                if kind != 30 { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                if kind != 30 { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
                 else {
-                    let Some(vref) = leb_read(wire, off) else { report.malformed = true; return false; };
-                    if *off > end { report.malformed = true; return false; }
+                    let Some(vref) = leb_read(wire, off) else { report.damaged = true; return false; };
+                    if *off > end { report.damaged = true; return false; }
                     v.weapon = if vref == 0 { MixedWeapon::None }
-                    else if vref as usize > ids.len() { report.malformed = true; return false; }
+                    else if vref as usize > ids.len() { report.damaged = true; return false; }
                     else {
                         match ids[vref as usize - 1] {
                             0xa790eee12766cf0c => MixedWeapon::Fists,
@@ -475,32 +475,32 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
             }
             0x7f6308be8ab37fc0 => {
                 if kind == 9 || table_kind_widens(kind, 9) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 9 { report.widened += 1; }
                     let x = raw;
                     v.damage = x;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x11a44fc1d1243da7 => {
                 if kind == 1 || table_kind_widens(kind, 1) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 1 { report.widened += 1; }
                     v.moving = raw != 0;
-                    if raw > 1 { report.malformed = true; }
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                    if raw > 1 { report.damaged = true; }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x7674cfd19b9031ca => {
                 if kind == 1 || table_kind_widens(kind, 1) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 1 { report.widened += 1; }
                     v.firing = raw != 0;
-                    if raw > 1 { report.malformed = true; }
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                    if raw > 1 { report.damaged = true; }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
                 report.unknown += 1;
                 let start = *off;
-                if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedEntity", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -526,73 +526,73 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
             }
         }
     }
-    report.malformed = true; false
+    report.damaged = true; false
 }
 
-/// mixed_hit_event_load_body — the tolerant read of one MixedHitEvent body (docs/SPEC-TABLES.md §4, §5).
+/// mixed_hit_event_load_body — the strict read of one MixedHitEvent body (docs/SPEC-TABLES.md §4, §5).
 /// `retain` is Some on the retaining path, and every unknown field it names
 /// is captured into the store under `path` (docs/SPEC-TABLES.md §6.6); None on
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedHitEvent, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
-    if end > wire.len() { report.malformed = true; return false; }
+    if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
-        let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
+        let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
-        let Some(id) = ref_id(ids, r) else { report.malformed = true; return false; };
-        if *off >= end { report.malformed = true; return false; }
+        let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
-        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
+        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
-            if nested { report.malformed = true; return false; }
-            if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+            if nested { report.damaged = true; return false; }
+            if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
             continue;
         }
         match id {
             0xb7bc9ac015a25050 => {
                 if kind == 7 || table_kind_widens(kind, 7) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
-                    if x > 4095u64 { x = 4095u64; report.clamped += 1; }
+                    if x > 4095u64 { x = 4095u64; report.damaged = true; }
                     v.target_id = x as u16;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x7f6308be8ab37fc0 => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < 0i64 { x = 0i64; report.clamped += 1; } else if x > 4095i64 { x = 4095i64; report.clamped += 1; }
+                    if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 4095i64 { x = 4095i64; report.damaged = true; }
                     v.damage = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x01fbc365b059b925 => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < 0i64 { x = 0i64; report.clamped += 1; } else if x > 7i64 { x = 7i64; report.clamped += 1; }
+                    if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 7i64 { x = 7i64; report.damaged = true; }
                     v.hit_kind = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x126167908c9aa52d => {
                 if kind == 1 || table_kind_widens(kind, 1) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 1 { report.widened += 1; }
                     v.crit = raw != 0;
-                    if raw > 1 { report.malformed = true; }
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                    if raw > 1 { report.damaged = true; }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
                 report.unknown += 1;
                 let start = *off;
-                if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedHitEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -618,56 +618,56 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
             }
         }
     }
-    report.malformed = true; false
+    report.damaged = true; false
 }
 
-/// mixed_pickup_event_load_body — the tolerant read of one MixedPickupEvent body (docs/SPEC-TABLES.md §4, §5).
+/// mixed_pickup_event_load_body — the strict read of one MixedPickupEvent body (docs/SPEC-TABLES.md §4, §5).
 /// `retain` is Some on the retaining path, and every unknown field it names
 /// is captured into the store under `path` (docs/SPEC-TABLES.md §6.6); None on
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedPickupEvent, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
-    if end > wire.len() { report.malformed = true; return false; }
+    if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
-        let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
+        let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
-        let Some(id) = ref_id(ids, r) else { report.malformed = true; return false; };
-        if *off >= end { report.malformed = true; return false; }
+        let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
-        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
+        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
-            if nested { report.malformed = true; return false; }
-            if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+            if nested { report.damaged = true; return false; }
+            if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
             continue;
         }
         match id {
             0x9e7fd06d864fbd56 => {
                 if kind == 7 || table_kind_widens(kind, 7) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
                     let mut x = raw;
-                    if x > 1023u64 { x = 1023u64; report.clamped += 1; }
+                    if x > 1023u64 { x = 1023u64; report.damaged = true; }
                     v.item_id = x as u16;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x8113fe7ea2b16969 => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < 0i64 { x = 0i64; report.clamped += 1; } else if x > 255i64 { x = 255i64; report.clamped += 1; }
+                    if x < 0i64 { x = 0i64; report.damaged = true; } else if x > 255i64 { x = 255i64; report.damaged = true; }
                     v.amount = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
                 report.unknown += 1;
                 let start = *off;
-                if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedPickupEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -693,56 +693,56 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
             }
         }
     }
-    report.malformed = true; false
+    report.damaged = true; false
 }
 
-/// mixed_stat_load_body — the tolerant read of one MixedStat body (docs/SPEC-TABLES.md §4, §5).
+/// mixed_stat_load_body — the strict read of one MixedStat body (docs/SPEC-TABLES.md §4, §5).
 /// `retain` is Some on the retaining path, and every unknown field it names
 /// is captured into the store under `path` (docs/SPEC-TABLES.md §6.6); None on
 /// the plain path.
 #[allow(unused_variables, unused_mut, clippy::too_many_arguments)]
 pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64], v: &mut MixedStat, nodes: &mut TableNodeReader, report: &mut TableReport, path: TableRetainPath, mut retain: Option<&mut TableRetain>, nested: bool) -> bool {
-    if end > wire.len() { report.malformed = true; return false; }
+    if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
     while *off < end {
-        let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };
+        let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
-        let Some(id) = ref_id(ids, r) else { report.malformed = true; return false; };
-        if *off >= end { report.malformed = true; return false; }
+        let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
-        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.malformed = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
+        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
-            if nested { report.malformed = true; return false; }
-            if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+            if nested { report.damaged = true; return false; }
+            if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
             continue;
         }
         match id {
             0x80ab75f0866dbf65 => {
                 if kind == 6 || table_kind_widens(kind, 6) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 6 { report.widened += 1; }
                     let mut x = raw;
-                    if x > 255u64 { x = 255u64; report.clamped += 1; }
+                    if x > 255u64 { x = 255u64; report.damaged = true; }
                     v.stat_id = x as u8;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x52076675ec13a0c1 => {
                 if kind == 4 || table_kind_widens(kind, 4) {
-                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.malformed = true; return false; };
+                    let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
                     let mut x = raw as i64;
-                    if x < -512i64 { x = -512i64; report.clamped += 1; } else if x > 511i64 { x = 511i64; report.clamped += 1; }
+                    if x < -512i64 { x = -512i64; report.damaged = true; } else if x > 511i64 { x = 511i64; report.damaged = true; }
                     v.delta = x as i32;
-                } else { report.kind_mismatch += 1; if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; } }
+                } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
                 report.unknown += 1;
                 let start = *off;
-                if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }
+                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedStat", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -768,7 +768,7 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
             }
         }
     }
-    report.malformed = true; false
+    report.damaged = true; false
 }
 
 /// The body of one table record of the numbering, by its type id (docs/SPEC-TABLES.md §3.1).
@@ -1159,8 +1159,8 @@ pub fn mixed_stat_json_write(v: &MixedStat, w: &mut Jw, depth: usize, label: u64
 #[allow(dead_code)]
 pub fn mixed_chat_event_json_read(jr: &mut Jr, v: &mut MixedChatEvent) {
     jr.space();
-    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
-    if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return; }
+    if jr.peek() != b'{' { jr.damaged = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_chat_event_json_fields(jr, v, None);
@@ -1182,9 +1182,9 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
+                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
                 jr.space();
-                if jr.peek() != b':' { jr.malformed = true; return n; }
+                if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
                 k
             }
@@ -1192,39 +1192,39 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
         n += 1;
         match key.as_str() {
             "channel" => {
-                if seen[0] { jr.duplicate += 1; }
+                if seen[0] { jr.damaged = true; }
                 seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 3i128 { x = 3i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 3i128 { x = 3i128; jr.damaged = true; }
                     v.channel = x as i32;
                 }
             }
             "speaker" => {
-                if seen[1] { jr.duplicate += 1; }
+                if seen[1] { jr.damaged = true; }
                 seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 4095i128 { x = 4095i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 4095i128 { x = 4095i128; jr.damaged = true; }
                     v.speaker = x as u16;
                 }
             }
             _ => {
                 // a `&`-prefixed key among the keys a reader PLACES is malformed,
                 // never unknown: it is a construct this position cannot honor (§16.7)
-                if key.starts_with('&') { jr.malformed = true; return n; }
+                if key.starts_with('&') { jr.damaged = true; return n; }
                 jr.unknown += 1;
                 jr.skip_value();
             }
         }
-        if jr.malformed || jr.missing_required != 0 { return n; }
+        if jr.damaged || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
         if c == b'}' {
             jr.p += 1; return n;
         }
-        jr.malformed = true;
+        jr.damaged = true;
         return n;
     }
 }
@@ -1234,15 +1234,15 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
-            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
+            if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' {
                 let mut v = MixedChatEvent::default();
                 let _ = mixed_chat_event_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
-            if jr.peek() != b':' { jr.malformed = true; return None; }
+            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedChatEvent::default();
@@ -1251,36 +1251,36 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
                 jr.depth -= 1;
                 return Some(Rc::new(v));
             }
-            let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
+            let Some(label) = jr.read_label() else { jr.damaged = true; return None; };
             match jr.peek() {
                 b'}' => { jr.p += 1; jr.refer::<MixedChatEvent>(label) }
                 b',' => {
                     jr.p += 1;
                     // a label already defined, or still open, takes no second definition
-                    if jr.labels.contains_key(&label) { jr.malformed = true; return None; }
+                    if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedChatEvent::default();
                     // a definition carries at least one field
                     jr.depth += 1;
                     let count = mixed_chat_event_json_fields(jr, &mut v, None);
                     jr.depth -= 1;
-                    if count == 0 { jr.malformed = true; return None; }
+                    if count == 0 { jr.damaged = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
                 }
-                _ => { jr.malformed = true; None }
+                _ => { jr.damaged = true; None }
             }
         }
-        _ => { jr.kind_mismatch += 1; jr.skip_value(); None }
+        _ => { jr.damaged = true; jr.skip_value(); None }
     }
 }
 
 #[allow(dead_code)]
 pub fn mixed_entity_json_read(jr: &mut Jr, v: &mut MixedEntity) {
     jr.space();
-    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
-    if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return; }
+    if jr.peek() != b'{' { jr.damaged = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_entity_json_fields(jr, v, None);
@@ -1302,9 +1302,9 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
+                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
                 jr.space();
-                if jr.peek() != b':' { jr.malformed = true; return n; }
+                if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
                 k
             }
@@ -1312,97 +1312,97 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
         n += 1;
         match key.as_str() {
             "entity_id" => {
-                if seen[0] { jr.duplicate += 1; }
+                if seen[0] { jr.damaged = true; }
                 seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 4095i128 { x = 4095i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 4095i128 { x = 4095i128; jr.damaged = true; }
                     v.entity_id = x as u16;
                 }
             }
             "pos_x" => {
-                if seen[1] { jr.duplicate += 1; }
+                if seen[1] { jr.damaged = true; }
                 seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < -16383i128 { x = -16383i128; jr.clamped += 1; } else if x > 16383i128 { x = 16383i128; jr.clamped += 1; }
+                    if x < -16383i128 { x = -16383i128; jr.damaged = true; } else if x > 16383i128 { x = 16383i128; jr.damaged = true; }
                     v.pos_x = x as i32;
                 }
             }
             "pos_y" => {
-                if seen[2] { jr.duplicate += 1; }
+                if seen[2] { jr.damaged = true; }
                 seen[2] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < -16383i128 { x = -16383i128; jr.clamped += 1; } else if x > 16383i128 { x = 16383i128; jr.clamped += 1; }
+                    if x < -16383i128 { x = -16383i128; jr.damaged = true; } else if x > 16383i128 { x = 16383i128; jr.damaged = true; }
                     v.pos_y = x as i32;
                 }
             }
             "pos_z" => {
-                if seen[3] { jr.duplicate += 1; }
+                if seen[3] { jr.damaged = true; }
                 seen[3] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < -16383i128 { x = -16383i128; jr.clamped += 1; } else if x > 16383i128 { x = 16383i128; jr.clamped += 1; }
+                    if x < -16383i128 { x = -16383i128; jr.damaged = true; } else if x > 16383i128 { x = 16383i128; jr.damaged = true; }
                     v.pos_z = x as i32;
                 }
             }
             "yaw" => {
-                if seen[4] { jr.duplicate += 1; }
+                if seen[4] { jr.damaged = true; }
                 seen[4] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 511i128 { x = 511i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 511i128 { x = 511i128; jr.damaged = true; }
                     v.yaw = x as u16;
                 }
             }
             "pitch" => {
-                if seen[5] { jr.duplicate += 1; }
+                if seen[5] { jr.damaged = true; }
                 seen[5] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 511i128 { x = 511i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 511i128 { x = 511i128; jr.damaged = true; }
                     v.pitch = x as u16;
                 }
             }
             "vel_x" => {
-                if seen[6] { jr.duplicate += 1; }
+                if seen[6] { jr.damaged = true; }
                 seen[6] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < -2048i128 { x = -2048i128; jr.clamped += 1; } else if x > 2047i128 { x = 2047i128; jr.clamped += 1; }
+                    if x < -2048i128 { x = -2048i128; jr.damaged = true; } else if x > 2047i128 { x = 2047i128; jr.damaged = true; }
                     v.vel_x = x as i32;
                 }
             }
             "vel_y" => {
-                if seen[7] { jr.duplicate += 1; }
+                if seen[7] { jr.damaged = true; }
                 seen[7] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < -2048i128 { x = -2048i128; jr.clamped += 1; } else if x > 2047i128 { x = 2047i128; jr.clamped += 1; }
+                    if x < -2048i128 { x = -2048i128; jr.damaged = true; } else if x > 2047i128 { x = 2047i128; jr.damaged = true; }
                     v.vel_y = x as i32;
                 }
             }
             "vel_z" => {
-                if seen[8] { jr.duplicate += 1; }
+                if seen[8] { jr.damaged = true; }
                 seen[8] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < -2048i128 { x = -2048i128; jr.clamped += 1; } else if x > 2047i128 { x = 2047i128; jr.clamped += 1; }
+                    if x < -2048i128 { x = -2048i128; jr.damaged = true; } else if x > 2047i128 { x = 2047i128; jr.damaged = true; }
                     v.vel_z = x as i32;
                 }
             }
             "health" => {
-                if seen[9] { jr.duplicate += 1; }
+                if seen[9] { jr.damaged = true; }
                 seen[9] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 1000i128 { x = 1000i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 1000i128 { x = 1000i128; jr.damaged = true; }
                     v.health = x as i32;
                 }
             }
             "weapon" => {
-                if seen[10] { jr.duplicate += 1; }
+                if seen[10] { jr.damaged = true; }
                 seen[10] = true;
                 if jr.peek() == b'"' {
                     if let Some(s) = jr.read_string() {
@@ -1411,10 +1411,10 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                             None => { jr.unknown += 1; MixedWeapon::None },
                         };
                     }
-                } else { jr.kind_mismatch += 1; jr.skip_value(); }
+                } else { jr.damaged = true; jr.skip_value(); }
             }
             "damage" => {
-                if seen[11] { jr.duplicate += 1; }
+                if seen[11] { jr.damaged = true; }
                 seen[11] = true;
                 if jr.peek() == b'[' {
                     jr.p += 1;
@@ -1436,44 +1436,44 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                                 },
                                 None => break,
                             }
-                        } else { jr.kind_mismatch += 1; jr.skip_value(); }
+                        } else { jr.damaged = true; jr.skip_value(); }
                         if jr.peek() == b',' { jr.p += 1; continue; }
                         if jr.peek() == b']' { jr.p += 1; break; }
-                        jr.malformed = true; break;
+                        jr.damaged = true; break;
                     }
                     v.damage = bits;
-                } else { jr.kind_mismatch += 1; jr.skip_value(); }
+                } else { jr.damaged = true; jr.skip_value(); }
             }
             "moving" => {
-                if seen[12] { jr.duplicate += 1; }
+                if seen[12] { jr.damaged = true; }
                 seen[12] = true;
                 if jr.peek() == b't' && jr.b[jr.p..].starts_with(b"true") { jr.p += 4; v.moving = true; }
                 else if jr.peek() == b'f' && jr.b[jr.p..].starts_with(b"false") { jr.p += 5; v.moving = false; }
-                else { jr.kind_mismatch += 1; jr.skip_value(); }
+                else { jr.damaged = true; jr.skip_value(); }
             }
             "firing" => {
-                if seen[13] { jr.duplicate += 1; }
+                if seen[13] { jr.damaged = true; }
                 seen[13] = true;
                 if jr.peek() == b't' && jr.b[jr.p..].starts_with(b"true") { jr.p += 4; v.firing = true; }
                 else if jr.peek() == b'f' && jr.b[jr.p..].starts_with(b"false") { jr.p += 5; v.firing = false; }
-                else { jr.kind_mismatch += 1; jr.skip_value(); }
+                else { jr.damaged = true; jr.skip_value(); }
             }
             _ => {
                 // a `&`-prefixed key among the keys a reader PLACES is malformed,
                 // never unknown: it is a construct this position cannot honor (§16.7)
-                if key.starts_with('&') { jr.malformed = true; return n; }
+                if key.starts_with('&') { jr.damaged = true; return n; }
                 jr.unknown += 1;
                 jr.skip_value();
             }
         }
-        if jr.malformed || jr.missing_required != 0 { return n; }
+        if jr.damaged || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
         if c == b'}' {
             jr.p += 1; return n;
         }
-        jr.malformed = true;
+        jr.damaged = true;
         return n;
     }
 }
@@ -1483,15 +1483,15 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
-            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
+            if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' {
                 let mut v = MixedEntity::default();
                 let _ = mixed_entity_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
-            if jr.peek() != b':' { jr.malformed = true; return None; }
+            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedEntity::default();
@@ -1500,36 +1500,36 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
                 jr.depth -= 1;
                 return Some(Rc::new(v));
             }
-            let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
+            let Some(label) = jr.read_label() else { jr.damaged = true; return None; };
             match jr.peek() {
                 b'}' => { jr.p += 1; jr.refer::<MixedEntity>(label) }
                 b',' => {
                     jr.p += 1;
                     // a label already defined, or still open, takes no second definition
-                    if jr.labels.contains_key(&label) { jr.malformed = true; return None; }
+                    if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedEntity::default();
                     // a definition carries at least one field
                     jr.depth += 1;
                     let count = mixed_entity_json_fields(jr, &mut v, None);
                     jr.depth -= 1;
-                    if count == 0 { jr.malformed = true; return None; }
+                    if count == 0 { jr.damaged = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
                 }
-                _ => { jr.malformed = true; None }
+                _ => { jr.damaged = true; None }
             }
         }
-        _ => { jr.kind_mismatch += 1; jr.skip_value(); None }
+        _ => { jr.damaged = true; jr.skip_value(); None }
     }
 }
 
 #[allow(dead_code)]
 pub fn mixed_hit_event_json_read(jr: &mut Jr, v: &mut MixedHitEvent) {
     jr.space();
-    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
-    if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return; }
+    if jr.peek() != b'{' { jr.damaged = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_hit_event_json_fields(jr, v, None);
@@ -1551,9 +1551,9 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
+                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
                 jr.space();
-                if jr.peek() != b':' { jr.malformed = true; return n; }
+                if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
                 k
             }
@@ -1561,55 +1561,55 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
         n += 1;
         match key.as_str() {
             "target_id" => {
-                if seen[0] { jr.duplicate += 1; }
+                if seen[0] { jr.damaged = true; }
                 seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 4095i128 { x = 4095i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 4095i128 { x = 4095i128; jr.damaged = true; }
                     v.target_id = x as u16;
                 }
             }
             "damage" => {
-                if seen[1] { jr.duplicate += 1; }
+                if seen[1] { jr.damaged = true; }
                 seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 4095i128 { x = 4095i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 4095i128 { x = 4095i128; jr.damaged = true; }
                     v.damage = x as i32;
                 }
             }
             "hit_kind" => {
-                if seen[2] { jr.duplicate += 1; }
+                if seen[2] { jr.damaged = true; }
                 seen[2] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 7i128 { x = 7i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 7i128 { x = 7i128; jr.damaged = true; }
                     v.hit_kind = x as i32;
                 }
             }
             "crit" => {
-                if seen[3] { jr.duplicate += 1; }
+                if seen[3] { jr.damaged = true; }
                 seen[3] = true;
                 if jr.peek() == b't' && jr.b[jr.p..].starts_with(b"true") { jr.p += 4; v.crit = true; }
                 else if jr.peek() == b'f' && jr.b[jr.p..].starts_with(b"false") { jr.p += 5; v.crit = false; }
-                else { jr.kind_mismatch += 1; jr.skip_value(); }
+                else { jr.damaged = true; jr.skip_value(); }
             }
             _ => {
                 // a `&`-prefixed key among the keys a reader PLACES is malformed,
                 // never unknown: it is a construct this position cannot honor (§16.7)
-                if key.starts_with('&') { jr.malformed = true; return n; }
+                if key.starts_with('&') { jr.damaged = true; return n; }
                 jr.unknown += 1;
                 jr.skip_value();
             }
         }
-        if jr.malformed || jr.missing_required != 0 { return n; }
+        if jr.damaged || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
         if c == b'}' {
             jr.p += 1; return n;
         }
-        jr.malformed = true;
+        jr.damaged = true;
         return n;
     }
 }
@@ -1619,15 +1619,15 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
-            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
+            if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' {
                 let mut v = MixedHitEvent::default();
                 let _ = mixed_hit_event_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
-            if jr.peek() != b':' { jr.malformed = true; return None; }
+            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedHitEvent::default();
@@ -1636,36 +1636,36 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
                 jr.depth -= 1;
                 return Some(Rc::new(v));
             }
-            let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
+            let Some(label) = jr.read_label() else { jr.damaged = true; return None; };
             match jr.peek() {
                 b'}' => { jr.p += 1; jr.refer::<MixedHitEvent>(label) }
                 b',' => {
                     jr.p += 1;
                     // a label already defined, or still open, takes no second definition
-                    if jr.labels.contains_key(&label) { jr.malformed = true; return None; }
+                    if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedHitEvent::default();
                     // a definition carries at least one field
                     jr.depth += 1;
                     let count = mixed_hit_event_json_fields(jr, &mut v, None);
                     jr.depth -= 1;
-                    if count == 0 { jr.malformed = true; return None; }
+                    if count == 0 { jr.damaged = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
                 }
-                _ => { jr.malformed = true; None }
+                _ => { jr.damaged = true; None }
             }
         }
-        _ => { jr.kind_mismatch += 1; jr.skip_value(); None }
+        _ => { jr.damaged = true; jr.skip_value(); None }
     }
 }
 
 #[allow(dead_code)]
 pub fn mixed_pickup_event_json_read(jr: &mut Jr, v: &mut MixedPickupEvent) {
     jr.space();
-    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
-    if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return; }
+    if jr.peek() != b'{' { jr.damaged = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_pickup_event_json_fields(jr, v, None);
@@ -1687,9 +1687,9 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
+                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
                 jr.space();
-                if jr.peek() != b':' { jr.malformed = true; return n; }
+                if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
                 k
             }
@@ -1697,39 +1697,39 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
         n += 1;
         match key.as_str() {
             "item_id" => {
-                if seen[0] { jr.duplicate += 1; }
+                if seen[0] { jr.damaged = true; }
                 seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 1023i128 { x = 1023i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 1023i128 { x = 1023i128; jr.damaged = true; }
                     v.item_id = x as u16;
                 }
             }
             "amount" => {
-                if seen[1] { jr.duplicate += 1; }
+                if seen[1] { jr.damaged = true; }
                 seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 255i128 { x = 255i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 255i128 { x = 255i128; jr.damaged = true; }
                     v.amount = x as i32;
                 }
             }
             _ => {
                 // a `&`-prefixed key among the keys a reader PLACES is malformed,
                 // never unknown: it is a construct this position cannot honor (§16.7)
-                if key.starts_with('&') { jr.malformed = true; return n; }
+                if key.starts_with('&') { jr.damaged = true; return n; }
                 jr.unknown += 1;
                 jr.skip_value();
             }
         }
-        if jr.malformed || jr.missing_required != 0 { return n; }
+        if jr.damaged || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
         if c == b'}' {
             jr.p += 1; return n;
         }
-        jr.malformed = true;
+        jr.damaged = true;
         return n;
     }
 }
@@ -1739,15 +1739,15 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
-            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
+            if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' {
                 let mut v = MixedPickupEvent::default();
                 let _ = mixed_pickup_event_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
-            if jr.peek() != b':' { jr.malformed = true; return None; }
+            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedPickupEvent::default();
@@ -1756,36 +1756,36 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
                 jr.depth -= 1;
                 return Some(Rc::new(v));
             }
-            let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
+            let Some(label) = jr.read_label() else { jr.damaged = true; return None; };
             match jr.peek() {
                 b'}' => { jr.p += 1; jr.refer::<MixedPickupEvent>(label) }
                 b',' => {
                     jr.p += 1;
                     // a label already defined, or still open, takes no second definition
-                    if jr.labels.contains_key(&label) { jr.malformed = true; return None; }
+                    if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedPickupEvent::default();
                     // a definition carries at least one field
                     jr.depth += 1;
                     let count = mixed_pickup_event_json_fields(jr, &mut v, None);
                     jr.depth -= 1;
-                    if count == 0 { jr.malformed = true; return None; }
+                    if count == 0 { jr.damaged = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
                 }
-                _ => { jr.malformed = true; None }
+                _ => { jr.damaged = true; None }
             }
         }
-        _ => { jr.kind_mismatch += 1; jr.skip_value(); None }
+        _ => { jr.damaged = true; jr.skip_value(); None }
     }
 }
 
 #[allow(dead_code)]
 pub fn mixed_stat_json_read(jr: &mut Jr, v: &mut MixedStat) {
     jr.space();
-    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
-    if jr.peek() != b'{' { jr.malformed = true; return; }
+    if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return; }
+    if jr.peek() != b'{' { jr.damaged = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_stat_json_fields(jr, v, None);
@@ -1807,9 +1807,9 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
                 if jr.peek() == b'}' {
                     jr.p += 1; return n;
                 }
-                let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
+                let Some(k) = jr.read_string() else { jr.damaged = true; return n; };
                 jr.space();
-                if jr.peek() != b':' { jr.malformed = true; return n; }
+                if jr.peek() != b':' { jr.damaged = true; return n; }
                 jr.p += 1;
                 k
             }
@@ -1817,39 +1817,39 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
         n += 1;
         match key.as_str() {
             "stat_id" => {
-                if seen[0] { jr.duplicate += 1; }
+                if seen[0] { jr.damaged = true; }
                 seen[0] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < 0i128 { x = 0i128; jr.clamped += 1; } else if x > 255i128 { x = 255i128; jr.clamped += 1; }
+                    if x < 0i128 { x = 0i128; jr.damaged = true; } else if x > 255i128 { x = 255i128; jr.damaged = true; }
                     v.stat_id = x as u8;
                 }
             }
             "delta" => {
-                if seen[1] { jr.duplicate += 1; }
+                if seen[1] { jr.damaged = true; }
                 seen[1] = true;
                 if let Some(n) = jr.read_int() {
                     let mut x = n;
-                    if x < -512i128 { x = -512i128; jr.clamped += 1; } else if x > 511i128 { x = 511i128; jr.clamped += 1; }
+                    if x < -512i128 { x = -512i128; jr.damaged = true; } else if x > 511i128 { x = 511i128; jr.damaged = true; }
                     v.delta = x as i32;
                 }
             }
             _ => {
                 // a `&`-prefixed key among the keys a reader PLACES is malformed,
                 // never unknown: it is a construct this position cannot honor (§16.7)
-                if key.starts_with('&') { jr.malformed = true; return n; }
+                if key.starts_with('&') { jr.damaged = true; return n; }
                 jr.unknown += 1;
                 jr.skip_value();
             }
         }
-        if jr.malformed || jr.missing_required != 0 { return n; }
+        if jr.damaged || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
         if c == b'}' {
             jr.p += 1; return n;
         }
-        jr.malformed = true;
+        jr.damaged = true;
         return n;
     }
 }
@@ -1859,15 +1859,15 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
     match jr.peek() {
         b'n' => { jr.read_null(); None }
         b'{' => {
-            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
+            if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; return None; }
             jr.p += 1;
             if jr.peek() == b'}' {
                 let mut v = MixedStat::default();
                 let _ = mixed_stat_json_fields(jr, &mut v, None);
                 return Some(Rc::new(v));
             }
-            let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
-            if jr.peek() != b':' { jr.malformed = true; return None; }
+            let Some(key) = jr.read_string() else { jr.damaged = true; return None; };
+            if jr.peek() != b':' { jr.damaged = true; return None; }
             jr.p += 1;
             if key != "&node" {
                 let mut v = MixedStat::default();
@@ -1876,28 +1876,28 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
                 jr.depth -= 1;
                 return Some(Rc::new(v));
             }
-            let Some(label) = jr.read_label() else { jr.malformed = true; return None; };
+            let Some(label) = jr.read_label() else { jr.damaged = true; return None; };
             match jr.peek() {
                 b'}' => { jr.p += 1; jr.refer::<MixedStat>(label) }
                 b',' => {
                     jr.p += 1;
                     // a label already defined, or still open, takes no second definition
-                    if jr.labels.contains_key(&label) { jr.malformed = true; return None; }
+                    if jr.labels.contains_key(&label) { jr.damaged = true; return None; }
                     jr.labels.insert(label, JsonLabel::Open);
                     let mut v = MixedStat::default();
                     // a definition carries at least one field
                     jr.depth += 1;
                     let count = mixed_stat_json_fields(jr, &mut v, None);
                     jr.depth -= 1;
-                    if count == 0 { jr.malformed = true; return None; }
+                    if count == 0 { jr.damaged = true; return None; }
                     let n = Rc::new(v);
                     jr.labels.insert(label, JsonLabel::Node(n.clone()));
                     Some(n)
                 }
-                _ => { jr.malformed = true; None }
+                _ => { jr.damaged = true; None }
             }
         }
-        _ => { jr.kind_mismatch += 1; jr.skip_value(); None }
+        _ => { jr.damaged = true; jr.skip_value(); None }
     }
 }
 

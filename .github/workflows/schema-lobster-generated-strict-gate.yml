@@ -19,7 +19,7 @@ name: schema Lobster generated strict gate
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-lobster-generated-strict-gate.mk'
       - 'make/lobster*.mk'

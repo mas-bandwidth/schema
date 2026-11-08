@@ -83,7 +83,7 @@ func TestLobsterDescriptorOverlayNamesEveryClause(t *testing.T) {
 				continue
 			}
 			defined := testFuncs(src)
-			for _, token := range strings.Split(testsPart, ",") {
+			for token := range strings.SplitSeq(testsPart, ",") {
 				name := strings.TrimSpace(token)
 				base, _, _ := strings.Cut(name, "/")
 				if base == "" || !defined[base] {
@@ -157,8 +157,8 @@ func parseDescriptorOverlay(t *testing.T, src string) map[string]*descriptorRow 
 		if sm := descriptorRevisionRx.FindStringSubmatch(seg); sm != nil {
 			row.revision = sm[1]
 		}
-		if ei := strings.Index(seg, ":evidence ("); ei >= 0 {
-			body := seg[ei+len(":evidence ("):]
+		if _, after, ok := strings.Cut(seg, ":evidence ("); ok {
+			body := after
 			if ci := strings.IndexByte(body, ')'); ci >= 0 {
 				body = body[:ci]
 			}
