@@ -152,11 +152,11 @@ Variable tables have pointers to other tables, maps and other features that give
 | unbounded arrays | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | the message form (form byte 2, a bitpacked body) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | retain-unknown | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ |
-| complete | 100% | 100% | 100% | 60% | 100% | 100% | 100% | 100% | 100% | 100% | 24% | 93% | 90% | 96% | 96% | 0% |
+| complete | 100% | 100% | 100% | 60% | 100% | 100% | 100% | 100% | 100% | 100% | 24% | 93% | 90% | 96% | 93% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
