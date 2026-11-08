@@ -100,8 +100,8 @@ func TestIssue710UnpackPaths(t *testing.T) {
 // Small, explicit file-form fixtures, each with damage inside one field and a
 // sibling after it. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4;
 // Glenn: "if it fails to read, it's broken and everything in it today is
-// suspect. discard."): the tolerant read refuses the load and reports it
-// malformed, and no value it decoded is held to anything.
+// suspect. discard."): the read refuses the load and reports the
+// damage, and no value it decoded is held to anything.
 func issue710Wire(body []byte, ids ...uint64) []byte {
 	wire := append([]byte{ir.TableWireForm}, body...)
 	wire = append(wire, 0)
@@ -134,13 +134,13 @@ func TestIssue710TableRecovery(t *testing.T) {
 		cpp        string
 	}{
 		{"default", "Text", issue710Wire(append([]byte{1, 12, 2, 'x', 0}, after...), fieldID("Text", 0), fieldID("Text", 1)),
-			`Text v; TableReport r; if (TextLoadTolerant(v, wire, sizeof(wire), &r) || !r.malformed) return 1;`},
+			`TextBuilder b; TableReport r; if (TextLoadBuilder(b, wire, sizeof(wire), &r) || !r.damaged || r.refuse_reason != wire_damaged) return 1;`},
 		{"array", "Rows", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0}, after...), fieldID("Rows", 0), fieldID("Rows", 1), fieldID("Element", 0)),
-			`Rows v; TableReport r; if (RowsLoadTolerant(v, wire, sizeof(wire), &r) || !r.malformed) return 2;`},
+			`RowsBuilder b; TableReport r; if (RowsLoadBuilder(b, wire, sizeof(wire), &r) || !r.damaged || r.refuse_reason != wire_damaged) return 2;`},
 		{"map", "Mapping", issue710Wire(append([]byte{1, 14, 11, 13, 1, 8, 3, byte(ir.TableKindU32), 1, 0, 0, 0, 0, 0}, after...), fieldID("Mapping", 0), fieldID("Mapping", 1), ir.MapKeyWireId),
-			`MappingBuilder b; TableReport r; if (MappingLoadBuilderTolerant(b,wire,sizeof(wire),&r) || !r.malformed) return 3;`},
+			`MappingBuilder b; TableReport r; if (MappingLoadBuilder(b,wire,sizeof(wire),&r) || !r.damaged || r.refuse_reason != wire_damaged) return 3;`},
 		{"keyed", "Keyed", issue710Wire(append([]byte{1, byte(ir.TableKindKeyed), 21, 13, 2, 4, 8, 3, byte(ir.TableKindI32), 99, 0, 0, 0, 0, 0, 5, 7, 3, byte(ir.TableKindI32), 55, 0, 0, 0, 0}, after...), fieldID("Keyed", 0), fieldID("Keyed", 1), fieldID("Element", 0), ir.TableWireId(u.Enums["Key"].VariantWireName(0)), ir.TableWireId(u.Enums["Key"].VariantWireName(1))),
-			`Keyed v; TableReport r; if (KeyedLoadTolerant(v, wire, sizeof(wire), &r) || !r.malformed) return 4;`},
+			`KeyedBuilder b; TableReport r; if (KeyedLoadBuilder(b, wire, sizeof(wire), &r) || !r.damaged || r.refuse_reason != wire_damaged) return 4;`},
 	}
 	c := New()
 	files, err := c.Generate(u, "cpp", Options{})
@@ -377,7 +377,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 		for _, b := range wire {
 			fmt.Fprintf(&cpp, "%d,", b)
 		}
-		fmt.Fprintf(&cpp, "}; %sBuilder b; TableReport r; if(%sLoadBuilder(b,wire,sizeof(wire),&r) || r.malformed || r.unknown || r.kind_mismatch || b.GetRoot()->past!=0) return 1; TableRefuseReason reason = count_over_length; if(%sLoadMeasure(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=count_over_extent_cap) return 2; }\n", tc.root, tc.root, tc.root)
+		fmt.Fprintf(&cpp, "}; %sBuilder b; TableReport r; if(%sLoadBuilder(b,wire,sizeof(wire),&r) || r.damaged || r.unknown || r.refuse_reason!=count_over_extent_cap || b.GetRoot()->past!=0) return 1; TableRefuseReason reason = count_over_length; if(%sLoadMeasure(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=count_over_extent_cap) return 2; }\n", tc.root, tc.root, tc.root)
 	}
 	cpp.WriteString("return 0;}\n")
 	issue710CompileRun(t, dir, "c++", ".cpp", cpp.String())

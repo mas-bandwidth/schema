@@ -3,8 +3,8 @@
 // A table read is untrusted input, and this is the reference reader on the
 // pipe the harness's fuzzer drives: `harness wire-fuzz` generates every mutant
 // and holds the oracle, and this process only READS — each mutant through the
-// generated tolerant Load, then Save of whatever it decoded — and answers what
-// happened. It decides nothing about what a mutant means; the engine does.
+// generated plain (strict) Load, then Save of whatever it decoded — and answers
+// what happened. It decides nothing about what a mutant means; the engine does.
 //
 // The stream, little-endian throughout:
 //
@@ -14,7 +14,9 @@
 //   out: one byte per root — 1 when this leg has a codec for it, else 0
 //   in:  per mutant: u32 roster index, u32 length, the bytes; EOF ends it
 //   out: per mutant: u8 loaded; i32 unknown, kind_mismatch, widened, clamped,
-//        duplicate; u8 malformed; u8 refused; i64 measure; i32 retained,
+//        duplicate; u8 malformed; u8 refused; (kind_mismatch, clamped and
+//        duplicate are retired with the tolerant read and always ride as zero:
+//        the slots stay because the harness's reply layout keeps them) i64 measure; i32 retained,
 //        retain_lost (§6.6, zero on an entry that does not retain); i64 saved
 //        length (-1 when Save refused the value), the saved bytes
 //
@@ -106,12 +108,18 @@ struct Reply
 template <typename T>
 static void copy_report( const T & from, Reply & to )
 {
+    // THE READ IS STRICT (docs/SPEC-TABLES.md §6.5): a kind mismatch, an
+    // out-of-range value or a repeated id refuses the whole load, so those
+    // three counters are gone from the report and ride the pipe as zero. The
+    // verdict the harness reads is loaded && !refused && !malformed; a
+    // refusal the report does not flag as refused (damage, framing) is folded
+    // into malformed by the caller from the read's own false.
     to.unknown = from.unknown;
-    to.kind_mismatch = from.kind_mismatch;
+    to.kind_mismatch = 0;
     to.widened = from.widened;
-    to.clamped = from.clamped;
-    to.duplicate = from.duplicate;
-    to.malformed = from.malformed;
+    to.clamped = 0;
+    to.duplicate = 0;
+    to.malformed = false;
     to.refused = from.refused;
     to.retained = from.retained;
     to.retain_lost = from.retain_lost;
@@ -255,9 +263,9 @@ struct VariableRetain
 };
 
 #define FIXED( unit_key, ns, type ) \
-    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport>::run<ns::type##LoadTolerant, ns::type##Measure, ns::type##Save> }
+    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport>::run<ns::type##Load, ns::type##Measure, ns::type##Save> }
 #define VARIABLE( unit_key, ns, type ) \
-    { unit_key, #type, 1, 0, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##LoadTolerant, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
+    { unit_key, #type, 1, 0, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
 #define RETAIN( unit_key, ns, type ) \
     { unit_key, #type, 1, 1, VariableRetain<ns::type, ns::TableReport, ns::TableRetain, ns::TableAllocator, ns::TableRefuseReason>::run< \
         ns::type##LoadMeasure, ns::type##LoadRetain, ns::type##MeasureRetain, ns::type##SaveRetain, ns::TableDefaultAllocator> }

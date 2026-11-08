@@ -247,7 +247,7 @@ static void one( int32_t wide_fields, int32_t leaf_count )
     {
         printf( "LOAD FAILED %d/%d\n", wide_fields, leaf_count ); failures++;
     }
-    else if ( report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 || report.malformed )
+    else if ( report.unknown != 0 || report.widened != 0 || report.damaged || report.refuse_reason != ok )
     {
         printf( "LOAD REPORTED %d/%d\n", wide_fields, leaf_count ); failures++;
     }

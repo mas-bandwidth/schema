@@ -284,7 +284,7 @@ static void test_message_form_batch()
     backenddemo::TableReport read_report;
     CHECK( backenddemo::EnvelopeLoadMessages( read, &count, vocabulary, batch, wrote, &read_report ) );
     CHECK( count == 3 );
-    CHECK( !read_report.malformed && !read_report.refused && read_report.unknown == 0 );
+    CHECK( !read_report.damaged && !read_report.refused && read_report.unknown == 0 );
     CHECK( read[0].payload.type == backenddemo::PayloadType::Login && read[0].payload.login.client_build == 140233 );
     CHECK( read[1].payload.type == backenddemo::PayloadType::Result && read[1].payload.result.players[9].placement == 10 );
     CHECK( read[2].payload.type == backenddemo::PayloadType::Purchase && read[2].payload.purchase.quantity == 7 );
@@ -315,7 +315,7 @@ static void test_message_form_batch()
     backenddemo::TableReport wide_report;
     CHECK( backenddemo::LoginRequestLoadMessages( back, &wide_count, vocabulary, wide, wide_bytes, &wide_report ) );
     CHECK( wide_count == 256 && back[0].client_build == 1 && back[255].client_build == 256 );
-    CHECK( !wide_report.malformed && !wide_report.refused );
+    CHECK( !wide_report.damaged && !wide_report.refused );
 }
 
 // ---- the goldens READ BACK, against the connection's announced table -------
@@ -332,15 +332,15 @@ static void reload_message_golden( const char * name, const backenddemo::TableVo
     reset( value );
     int64_t count = 1;
     backenddemo::TableReport report;
-    if ( !load_messages( &value, &count, vocabulary, golden_pinned, pinned, &report ) || report.malformed || count != 1 )
+    if ( !load_messages( &value, &count, vocabulary, golden_pinned, pinned, &report ) || report.damaged || count != 1 )
     {
         printf( "FAIL message golden %s does not load\n", message_name );
         failures++;
         return;
     }
     CHECK( !report.refused );
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
-    CHECK( report.clamped == 0 && report.duplicate == 0 );
+    CHECK( report.unknown == 0 );
+    CHECK( report.refuse_reason == backenddemo::ok );
     CHECK( measure_messages( &value, 1, &report ) == pinned );
     const int64_t wrote = save_messages( &value, 1, golden_again, sizeof( golden_again ), &report );
     if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
@@ -374,7 +374,7 @@ static void cross_message_golden( const char * name, const backenddemo::TableVoc
     {
         T value;
         reset( value );
-        CHECK( load( value, file, file_bytes, &report ) && !report.malformed );
+        CHECK( load( value, file, file_bytes, &report ) && !report.damaged );
         CHECK( measure_messages( &value, 1, &report ) == message_bytes );
         CHECK( save_messages( &value, 1, golden_again, sizeof( golden_again ), &report ) == message_bytes );
         if ( memcmp( golden_again, message, (size_t) message_bytes ) != 0 )
@@ -388,7 +388,7 @@ static void cross_message_golden( const char * name, const backenddemo::TableVoc
         T value;
         reset( value );
         int64_t count = 1;
-        CHECK( load_messages( &value, &count, vocabulary, message, message_bytes, &report ) && !report.malformed && count == 1 );
+        CHECK( load_messages( &value, &count, vocabulary, message, message_bytes, &report ) && !report.damaged && count == 1 );
         CHECK( measure( value ) == file_bytes );
         CHECK( save( value, golden_again, sizeof( golden_again ) ) == file_bytes );
         if ( memcmp( golden_again, file, (size_t) file_bytes ) != 0 )
@@ -510,7 +510,7 @@ static void test_message_form_wide_vocabulary()
         vocabdemo::Wide09 read;
         int64_t count = 1;
         CHECK( vocabdemo::Wide09LoadMessages( &read, &count, vocabulary, message, bytes, &report ) );
-        CHECK( !report.refused && !report.malformed && report.unknown == 0 );
+        CHECK( !report.refused && !report.damaged && report.unknown == 0 );
         CHECK( read.field_09_00 == 1 && read.field_09_12 == 13 );
         static uint8_t again[4096];
         CHECK( vocabdemo::Wide09SaveMessages( &read, 1, again, sizeof( again ), &report ) == bytes );
@@ -553,7 +553,7 @@ static void test_message_form_wide_vocabulary()
         vocab9demo::Wide19 read;
         int64_t count = 1;
         CHECK( vocab9demo::Wide19LoadMessages( &read, &count, vocabulary, message, bytes, &report ) );
-        CHECK( !report.malformed && read.field_19_00 == 1 && read.field_19_12 == 13 );
+        CHECK( !report.damaged && read.field_19_00 == 1 && read.field_19_12 == 13 );
 
         static vocab9demo::Wide00 low;
         low.field_00_00 = 5;
@@ -640,8 +640,8 @@ static void test_message_form_refusals()
         int64_t count = 1;
         CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, empty, message, bytes, &report ) );
         CHECK( report.refused && report.reason == backenddemo::no_vocabulary );
-        CHECK( !report.malformed );
-        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && report.duplicate == 0 );
+        CHECK( !report.damaged );
+        CHECK( report.unknown == 0 );
         CHECK( out.player_id == 0 && count == 0 ); // nothing was decoded: the declared default stands
         pin_table_golden( "message_no_vocabulary", message, bytes );
     }
@@ -655,10 +655,10 @@ static void test_message_form_refusals()
         backenddemo::TableReport report;
         const int64_t bytes = backenddemo::LoginRequestSaveMessages( &value, 1, message, sizeof( message ), &report );
         backenddemo::LoginRequest out;
-        CHECK( !backenddemo::LoginRequestLoadTolerant( out, message, bytes, &report ) );
+        CHECK( !backenddemo::LoginRequestLoad( out, message, bytes, &report ) );
         CHECK( report.refused && report.reason == backenddemo::message_form_as_file );
-        CHECK( !report.malformed );
-        CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+        CHECK( !report.damaged );
+        CHECK( report.unknown == 0 );
     }
 
     // AND A FILE WHERE A MESSAGE WAS EXPECTED is a form byte this reader does
@@ -673,7 +673,7 @@ static void test_message_form_refusals()
         int64_t count = 1;
         backenddemo::TableReport report;
         CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, file, bytes, &report ) );
-        CHECK( report.refused && report.reason == backenddemo::newer_form && !report.malformed );
+        CHECK( report.refused && report.reason == backenddemo::newer_form && !report.damaged );
     }
 
     // A SECOND ANNOUNCEMENT ON A CONNECTION IS REFUSED BY NAME. It does not
@@ -687,7 +687,7 @@ static void test_message_form_refusals()
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &report ) );
         CHECK( report.refused && report.reason == backenddemo::second_announcement );
-        CHECK( !report.malformed );
+        CHECK( !report.damaged );
         CHECK( vocabulary.announced && vocabulary.count == was && vocabulary.build_version == was_version );
         pin_table_golden( "message_second_announcement", announcement, announced );
         // and a DIFFERENT second announcement changes nothing either
@@ -708,7 +708,7 @@ static void test_message_form_refusals()
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &report ) );
         CHECK( report.refused && report.reason == backenddemo::vocabulary_too_large );
-        CHECK( !report.malformed && !vocabulary.announced );
+        CHECK( !report.damaged && !vocabulary.announced );
         CHECK( vocabulary.count == 0 );
         // and exactly at the bound it is read, which is the unit's own count
         VOCABULARY_AT( backenddemo, exact, 33 );
@@ -757,12 +757,12 @@ static void test_message_form_five_answers()
         for ( int32_t i = 0; i < 257; i++ ) { backenddemo::LoginRequestReset( many[i] ); }
         backenddemo::TableReport measure_report;
         CHECK( backenddemo::LoginRequestMeasureMessages( many, 257, &measure_report ) == -1 );
-        CHECK( measure_report.refused && measure_report.reason == backenddemo::batch_too_large && !measure_report.malformed );
+        CHECK( measure_report.refused && measure_report.reason == backenddemo::batch_too_large && !measure_report.damaged );
         static uint8_t buffer[8192];
         memset( buffer, 0xAB, sizeof( buffer ) );
         backenddemo::TableReport save_report;
         CHECK( backenddemo::LoginRequestSaveMessages( many, 257, buffer, sizeof( buffer ), &save_report ) == -1 );
-        CHECK( save_report.refused && save_report.reason == backenddemo::batch_too_large && !save_report.malformed );
+        CHECK( save_report.refused && save_report.reason == backenddemo::batch_too_large && !save_report.damaged );
         bool untouched = true;
         for ( size_t i = 0; i < sizeof( buffer ); i++ ) { if ( buffer[i] != 0xAB ) { untouched = false; break; } }
         CHECK( untouched ); // nothing was written: no consecutive batches on the caller's behalf
@@ -783,7 +783,7 @@ static void test_message_form_five_answers()
         backenddemo::TableReport small;
         CHECK( !backenddemo::LoginRequestLoadMessages( eight, &count, vocabulary, wide, wide_bytes, &small ) );
         CHECK( small.refused && small.reason == backenddemo::batch_too_large );
-        CHECK( !small.malformed && small.unknown == 0 && small.kind_mismatch == 0 && small.clamped == 0 );
+        CHECK( !small.damaged && small.unknown == 0 );
         CHECK( count == 256 ); // the wire's M, not the caller's capacity
         CHECK( eight[0].client_build == 0 ); // nothing decoded
         // and the recovery is one call with capacity at or above it
@@ -815,7 +815,7 @@ static void test_message_form_five_answers()
         int64_t count = 3;
         backenddemo::TableReport damage;
         CHECK( !backenddemo::LoginRequestLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
-        CHECK( damage.malformed && !damage.refused );
+        CHECK( damage.damaged && !damage.refused );
         CHECK( count == 0 ); // damage delivers no body (SPEC-TABLES §4)
     }
 
@@ -854,7 +854,7 @@ static void test_message_form_damage_terminal()
         int64_t count = 3;
         backenddemo::TableReport damage;
         CHECK( !backenddemo::MatchResultLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
-        CHECK( damage.malformed && !damage.refused && damage.unknown == 0 );
+        CHECK( damage.damaged && !damage.refused && damage.unknown == 0 );
         CHECK( count == 0 );
     }
     // inside a NESTED body of the second: the first PlayerRow's score reference
@@ -869,7 +869,7 @@ static void test_message_form_damage_terminal()
         int64_t count = 3;
         backenddemo::TableReport damage;
         CHECK( !backenddemo::MatchResultLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
-        CHECK( damage.malformed && !damage.refused && damage.unknown == 0 );
+        CHECK( damage.damaged && !damage.refused && damage.unknown == 0 );
         CHECK( count == 0 );
     }
 }
@@ -895,7 +895,7 @@ static void test_message_form_pad()
         int64_t count = 1;
         backenddemo::TableReport pad;
         CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, bad_pad, bytes, &pad ) );
-        CHECK( pad.malformed && !pad.refused );
+        CHECK( pad.damaged && !pad.refused );
         CHECK( count == 0 ); // damaged padding discards the batch too
     }
     // a byte after the pad
@@ -908,7 +908,7 @@ static void test_message_form_pad()
         int64_t count = 1;
         backenddemo::TableReport extra;
         CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, trailing, bytes + 1, &extra ) );
-        CHECK( extra.malformed && !extra.refused );
+        CHECK( extra.damaged && !extra.refused );
     }
 }
 
@@ -952,7 +952,7 @@ static void test_message_form_mask_width()
     pin_table_golden( "loadout_appended_bit", file, file_bytes );
     tabledemo::LoadoutConfig from_file;
     tabledemo::LoadoutConfigReset( from_file );
-    CHECK( tabledemo::LoadoutConfigLoadTolerant( from_file, file, file_bytes, &report ) && !report.malformed );
+    CHECK( tabledemo::LoadoutConfigLoad( from_file, file, file_bytes, &report ) && !report.damaged );
     CHECK( from_file.perks == ( ( 1u << 3 ) | 1u ) ); // the file kept the appended bit
     static uint8_t message[4096];
     const int64_t message_bytes = tabledemo::LoadoutConfigSaveMessages( &from_file, 1, message, sizeof( message ), &report );
@@ -961,7 +961,7 @@ static void test_message_form_mask_width()
     tabledemo::LoadoutConfig from_message;
     tabledemo::LoadoutConfigReset( from_message );
     int64_t count = 1;
-    CHECK( tabledemo::LoadoutConfigLoadMessages( &from_message, &count, vocabulary, message, message_bytes, &report ) && !report.malformed );
+    CHECK( tabledemo::LoadoutConfigLoadMessages( &from_message, &count, vocabulary, message, message_bytes, &report ) && !report.damaged );
     CHECK( from_message.perks == 1u ); // the message DROPPED the bit above W, by width
 }
 
@@ -1038,7 +1038,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !report.refused && !vocabulary.announced );
+        CHECK( report.damaged && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_no_build_version", forged, bytes );
     }
     // BUILD VERSION TWICE
@@ -1052,7 +1052,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !report.refused && !vocabulary.announced );
+        CHECK( report.damaged && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_build_version_twice", forged, bytes );
     }
     // BUILD VERSION UNDER A KIND OTHER THAN 9: kind 8, a u32
@@ -1066,7 +1066,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !report.refused && !vocabulary.announced );
+        CHECK( report.damaged && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_build_version_kind", forged, bytes );
     }
     // BUILD VERSION AT A WIDTH THAT IS NOT EIGHT: kind 9 with four bytes left
@@ -1076,7 +1076,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !report.refused && !vocabulary.announced );
+        CHECK( report.damaged && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_build_version_width", forged, bytes );
     }
     // VOCABULARY ABSENT: the build version alone
@@ -1088,7 +1088,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !report.refused && !vocabulary.announced );
+        CHECK( report.damaged && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_no_vocabulary", forged, bytes );
     }
     // VOCABULARY TWICE
@@ -1102,7 +1102,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !report.refused && !vocabulary.announced );
+        CHECK( report.damaged && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_vocabulary_twice", forged, bytes );
     }
     // VOCABULARY UNDER A WRONG ELEMENT KIND: kind 14 over element kind 8
@@ -1116,7 +1116,7 @@ static void test_message_form_announcement_check()
         VOCABULARY( backenddemo, vocabulary );
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !report.refused && !vocabulary.announced );
+        CHECK( report.damaged && !report.refused && !vocabulary.announced );
         pin_table_golden( "announce_vocabulary_element_kind", forged, bytes );
     }
     // AND THE TOLERANT ROW: an UNKNOWN field beside both sets the vocabulary
@@ -1137,7 +1137,7 @@ static void test_message_form_announcement_check()
         CHECK( vocabulary.build_version == 0x8877665544332211ull );
         CHECK( vocabulary.count == 33 );
         CHECK( report.unknown == 1 );
-        CHECK( !report.refused && !report.malformed );
+        CHECK( !report.refused && !report.damaged );
         pin_table_golden( "announce_unknown_field", forged, bytes );
     }
 }
@@ -1166,20 +1166,20 @@ static void test_message_form_reserved_ids()
             file[at++] = 1; for ( int b = 1; b < 8; b++ ) { file[at++] = 0; } // one entry
             backenddemo::LoginRequest out;
             backenddemo::TableReport report;
-            backenddemo::LoginRequestLoadTolerant( out, file, at, &report );
+            backenddemo::LoginRequestLoad( out, file, at, &report );
             if ( i == 0 )
             {
                 // THE ROOT BODY IS THE NODE TABLE'S OWN TRANSPORT (§3.1): a fixed
                 // reader meeting one there is the table-gained-a-pointer edit, and
                 // it reads it as the ordinary unknown it is
-                CHECK( !report.malformed && report.unknown == 1 );
+                CHECK( !report.damaged && report.unknown == 1 );
             }
             else
             {
-                CHECK( report.malformed );
+                CHECK( report.damaged );
                 CHECK( report.unknown == 0 );
             }
-            CHECK( report.kind_mismatch == 0 && report.clamped == 0 && report.duplicate == 0 );
+            CHECK( report.refuse_reason != backenddemo::kind_mismatch );
             CHECK( !report.refused );
             char name[128];
             snprintf( name, sizeof( name ), "file_reserved_%s_root", names[i] );
@@ -1204,9 +1204,9 @@ static void test_message_form_reserved_ids()
             file[at++] = 2; for ( int b = 1; b < 8; b++ ) { file[at++] = 0; }
             backenddemo::MatchResult out;
             backenddemo::TableReport report;
-            backenddemo::MatchResultLoadTolerant( out, file, at, &report );
-            CHECK( report.malformed );
-            CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && report.duplicate == 0 );
+            backenddemo::MatchResultLoad( out, file, at, &report );
+            CHECK( report.damaged );
+            CHECK( report.unknown == 0 );
             CHECK( !report.refused );
             char name[128];
             snprintf( name, sizeof( name ), "file_reserved_%s_nested", names[i] );
@@ -1248,7 +1248,7 @@ static void test_message_form_reserved_ids()
             VOCABULARY_AT( backenddemo, vocabulary, backenddemo::kTableMessageEntriesHere + 1 );
             backenddemo::TableReport report;
             CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-            CHECK( report.malformed && !report.refused && !vocabulary.announced );
+            CHECK( report.damaged && !report.refused && !vocabulary.announced );
             CHECK( report.unknown == 0 );
             char name[128];
             snprintf( name, sizeof( name ), "announce_reserved_%s", planted_names[i] );
@@ -1291,7 +1291,7 @@ static void test_message_form_reference_bound()
         int64_t count = 1;
         backenddemo::TableReport damage;
         CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, damaged, bytes, &damage ) );
-        CHECK( damage.malformed && !damage.refused && damage.unknown == 0 );
+        CHECK( damage.damaged && !damage.refused && damage.unknown == 0 );
         CHECK( count == 0 );
         if ( i == 2 ) { pin_table_golden( "message_reference_past_table", damaged, bytes ); }
     }
@@ -1315,7 +1315,7 @@ static void test_message_form_reference_bound()
         int64_t count = 1;
         backenddemo::TableReport ok;
         CHECK( backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, last, last_bytes, &ok ) );
-        CHECK( !ok.malformed && !ok.refused );
+        CHECK( !ok.damaged && !ok.refused );
         CHECK( ok.unknown == 1 && out.player_id == 5 && count == 1 );
         pin_table_golden( "message_reference_last_slot", last, last_bytes );
     }
@@ -1481,7 +1481,7 @@ static void test_message_form_bases()
     basesdemo::Bases read;
     int64_t count = 1;
     CHECK( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, bytes, &report ) );
-    CHECK( count == 1 && !report.malformed && report.clamped == 0 && report.unknown == 0 );
+    CHECK( count == 1 && !report.damaged && report.unknown == 0 );
     CHECK( read.high_a == 9223372036854775808ull && read.high_b == 9223372036854775809ull );
     CHECK( read.top_a == 18446744073709551614ull && read.top_b == 18446744073709551615ull );
     CHECK( read.small_a == -5 && read.small_b == 10 && read.seven == 7 );
@@ -1563,7 +1563,7 @@ static void test_message_form_refused_first()
     vocabulary.max_entries = backenddemo::kTableMessageEntriesHere;
     backenddemo::TableReport second;
     CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &second ) );
-    CHECK( second.refused && second.reason == backenddemo::second_announcement && !second.malformed );
+    CHECK( second.refused && second.reason == backenddemo::second_announcement && !second.damaged );
     CHECK( !vocabulary.announced && vocabulary.count == 0 );
     // and a body refuses as no_vocabulary with nothing decoded and no counter moved
     static backenddemo::LoginRequest value;
@@ -1576,7 +1576,7 @@ static void test_message_form_refused_first()
     int64_t count = 1;
     backenddemo::TableReport body;
     CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, message, bytes, &body ) );
-    CHECK( body.refused && body.reason == backenddemo::no_vocabulary && !body.malformed && body.unknown == 0 );
+    CHECK( body.refused && body.reason == backenddemo::no_vocabulary && !body.damaged && body.unknown == 0 );
     CHECK( out.client_build == 0 && count == 0 );
 }
 
@@ -1591,10 +1591,10 @@ static void test_message_form_findings()
     int64_t own_bytes = 0;
     const uint8_t * own_words = announcement_vocabulary( announcement, own_bytes );
 
-    // M1: A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION. The
-    // sender announces `few` over [0, 8] and sends six; the reader's [2..5]
-    // keeps the first five, counts one clamped, and element zero is element
-    // zero.
+    // M1: A SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION. The sender
+    // announces `few` over [0, 8] and sends six; the reader's [2..5] holds
+    // five, so the count is out of range and the whole batch refuses: no
+    // element lands, and none is written past the reader's storage.
     {
         const uint8_t wide_few[4] = { 0, 8, 8, 0 }; // min 0, max 8, element kind 8 raw
         static uint8_t forged[8192];
@@ -1619,9 +1619,10 @@ static void test_message_form_findings()
         basesdemo::Bases read;
         int64_t count = 1;
         basesdemo::TableReport report;
-        CHECK( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, message_bytes, &report ) );
-        CHECK( !report.malformed && report.clamped == 1 );
-        CHECK( read.few_count == 5 && read.few[0] == 1 && read.few[4] == 5 );
+        read.few_count = 3; // non-default, so the reset is visible
+        CHECK( !basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, message_bytes, &report ) );
+        CHECK( !report.damaged && report.refuse_reason == basesdemo::out_of_range );
+        CHECK( count == 0 && read.few_count == basesdemo::Bases().few_count );
     }
 
     // M2: A RANGED 128-BIT VALUE IS ONE ARITHMETIC FOR MEASURE, WRITE AND READ:
@@ -1645,7 +1646,7 @@ static void test_message_form_findings()
         scalardemo::SimState read;
         int64_t count = 1;
         CHECK( scalardemo::SimStateLoadMessages( &read, &count, vocabulary, message, bytes, &report ) );
-        CHECK( !report.malformed && report.clamped == 0 && report.unknown == 0 );
+        CHECK( !report.damaged && report.unknown == 0 );
         CHECK( read.flux == state.flux && read.energy == 123 && read.entity_id == serialize::uint128_t( 77 ) );
     }
 
@@ -1659,13 +1660,13 @@ static void test_message_form_findings()
         VOCABULARY( basesdemo, vocabulary );
         basesdemo::TableReport report;
         CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !vocabulary.announced );
+        CHECK( report.damaged && !vocabulary.announced );
         const uint8_t nine[4] = { 1, 9, 0xC8, 0x01 }; // bits 9, base 200 as a two-byte LEB128
         bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_narrow, nine, 4 );
         VOCABULARY( basesdemo, narrow_vocabulary );
         basesdemo::TableReport narrow_report;
         CHECK( !basesdemo::AnnounceRead( narrow_vocabulary, forged, bytes, &narrow_report ) );
-        CHECK( narrow_report.malformed && !narrow_vocabulary.announced );
+        CHECK( narrow_report.damaged && !narrow_vocabulary.announced );
         // and the bit reader itself refuses a width above its primitive
         uint8_t zeros[16] = { 0 };
         basesdemo::TableBitReader r( zeros, 16 );
@@ -1674,7 +1675,8 @@ static void test_message_form_findings()
     }
 
     // M6: THE BOUND APPLIES WHILE THE VALUE IS WIDE: narrow over [200, 250]
-    // reading offset 63 reconstructs 263 and clamps to 250, never to 7
+    // reading offset 63 reconstructs 263, which is out of range and refuses;
+    // a narrowed 7 would have landed in silence
     {
         int64_t narrow_slot = 0;
         for ( int64_t slot = 1; slot <= own.count; slot++ ) { if ( is_narrow( basesdemo::TableVocabularyEntryAt( own, slot ) ) ) { narrow_slot = slot; } }
@@ -1691,8 +1693,9 @@ static void test_message_form_findings()
         basesdemo::Bases read;
         int64_t count = 1;
         basesdemo::TableReport report;
-        CHECK( basesdemo::BasesLoadMessages( &read, &count, own, message, message_bytes, &report ) );
-        CHECK( !report.malformed && report.clamped == 1 && read.narrow == 250 );
+        CHECK( !basesdemo::BasesLoadMessages( &read, &count, own, message, message_bytes, &report ) );
+        CHECK( !report.damaged && report.refuse_reason == basesdemo::out_of_range );
+        CHECK( count == 0 && read.narrow == basesdemo::Bases().narrow );
     }
 
     // A HOSTILE QUANTIZED TRIPLE: min not below max, res not above zero, and a
@@ -1710,7 +1713,7 @@ static void test_message_form_findings()
             VOCABULARY( basesdemo, vocabulary );
             basesdemo::TableReport report;
             CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-            CHECK( report.malformed && !vocabulary.announced );
+            CHECK( report.damaged && !vocabulary.announced );
         }
     }
 }
@@ -1749,13 +1752,13 @@ static void test_message_form_cold_read()
         VOCABULARY( basesdemo, vocabulary );
         basesdemo::TableReport report;
         CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !vocabulary.announced );
+        CHECK( report.damaged && !vocabulary.announced );
         bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_few, at_ceiling, 8 );
         CHECK( bytes > 0 );
         VOCABULARY( basesdemo, edge );
         basesdemo::TableReport edge_report;
         CHECK( basesdemo::AnnounceRead( edge, forged, bytes, &edge_report ) );
-        CHECK( edge.announced && !edge_report.malformed );
+        CHECK( edge.announced && !edge_report.damaged );
     }
 
     // A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE: two entries that agree on
@@ -1773,7 +1776,7 @@ static void test_message_form_cold_read()
         VOCABULARY_AT( basesdemo, vocabulary, basesdemo::kTableMessageEntriesHere + 4 );
         basesdemo::TableReport report;
         CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !vocabulary.announced );
+        CHECK( report.damaged && !vocabulary.announced );
     }
 
     // AN ELEMENT KIND OF 12 OR 33 IS REFUSED AT THE ANNOUNCEMENT, rather than
@@ -1787,7 +1790,7 @@ static void test_message_form_cold_read()
         VOCABULARY( basesdemo, vocabulary );
         basesdemo::TableReport report;
         CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.malformed && !vocabulary.announced );
+        CHECK( report.damaged && !vocabulary.announced );
     }
 
     // A QUANTIZED INDEX ABOVE `count` IS REJECTED, as the packet wire rejects
@@ -1814,12 +1817,12 @@ static void test_message_form_cold_read()
             const bool ok = basesdemo::BasesLoadMessages( &read, &count, own, message, message_bytes, &report );
             if ( indices[i] == 1023 )
             {
-                CHECK( !ok && report.malformed && report.clamped == 0 );
+                CHECK( !ok && report.damaged );
                 CHECK( read.q == 0.0f ); // nothing decoded past the damage
             }
             else
             {
-                CHECK( ok && !report.malformed && report.clamped == 0 );
+                CHECK( ok && !report.damaged );
                 CHECK( read.q == packet_float( 1000, 0.0f, 10.0f, 0.01f ) );
             }
         }
@@ -1828,8 +1831,8 @@ static void test_message_form_cold_read()
     // A ZERO-WIDTH ELEMENT UNDER A WIDE COUNT. `few` announced over
     // [2, 2^32 - 1] with a ranged uint32 element whose min equals its max
     // rides NO BITS AT ALL, so a count of 2^31 + 1 is six bytes of wire. The
-    // read keeps five, counts ONE clamped, lands a count of five and never a
-    // negative one, and finds the array's end by arithmetic.
+    // read refuses it as out_of_range, never landing a negative count, and
+    // finds the array's end by arithmetic rather than looping 2^31 times.
     {
         const uint8_t wide[10] = { 0x02, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0x08, 0x01, 0x00, 0x00 }; // min 2, max 2^32 - 1, element kind 8 ranged at 0 bits over base 0
         static uint8_t forged[8192];
@@ -1853,10 +1856,9 @@ static void test_message_form_cold_read()
         basesdemo::Bases read;
         int64_t count = 1;
         basesdemo::TableReport report;
-        CHECK( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, message_bytes, &report ) );
-        CHECK( !report.malformed && report.clamped == 1 );
-        CHECK( read.few_count == 5 ); // never the negative a narrowed count lands
-        for ( int i = 0; i < 5; i++ ) { CHECK( read.few[i] == 0 ); }
+        CHECK( !basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, message_bytes, &report ) );
+        CHECK( !report.damaged && report.refuse_reason == basesdemo::out_of_range );
+        CHECK( count == 0 && read.few_count == basesdemo::Bases().few_count ); // never the negative a narrowed count lands
     }
 }
 
@@ -1869,8 +1871,8 @@ static void test_message_form_cold_read()
 // (the a1_arm_moved_width_as_a2 report row): arm `a` is `int32` under A1 and
 // `int64` under A2, so the same wire under this form names the same answer.
 //
-// Red where a reader treats the announced kind as a mismatch: the arm reads
-// None and `kind_mismatch` moves in `widened`'s place.
+// Red where a reader treats the announced kind as a mismatch: the read
+// refuses as kind_mismatch and `widened` never moves.
 static void test_message_form_widened()
 {
     static uint8_t a1_announcement[8192];
@@ -1895,8 +1897,8 @@ static void test_message_form_widened()
     int64_t count = 1;
     tbla2::TableReport report;
     CHECK( tbla2::RootLoadMessages( &out, &count, from_a1, message, bytes, &report ) );
-    CHECK( !report.malformed && report.unknown == 0 );
-    CHECK( report.kind_mismatch == 0 ); // a kind the declaration WIDENS is not a mismatch
+    CHECK( !report.damaged && report.unknown == 0 );
+    CHECK( report.refuse_reason == tbla2::ok ); // a kind the declaration WIDENS is not a mismatch
     CHECK( report.widened == 1 );       // ONE for the arm
     CHECK( out.value.type == tbla2::ValueType::A );
     CHECK( out.value.a == 1000 );       // the value is the writer's own, exactly

@@ -131,21 +131,11 @@ var sabotages = map[string][]edit{
 		new: `        if ( false ) { return false; } // SABOTAGED: the zero-unit rule removed`,
 	}},
 
-	// docs/SPEC-TABLES.md §3: a clamp keeps the first N code units, and where
-	// the last kept unit is a HIGH SURROGATE whose low half did not fit, that
-	// unit is dropped with it — so a clamp can never invent an unpaired
-	// surrogate. Take the drop out and the clamp splits the pair.
-	"table-wstring-clamp-splits-a-pair": {{
-		old: `        const uint16_t last = TableUtf16Unit( bytes, cut - 1 );
-        if ( last >= 0xD800 && last <= 0xDBFF ) { cut--; }`,
-		new: `        (void) bytes; // SABOTAGED: the high surrogate whose low half did not fit is kept`,
-	}},
-
 	// docs/SPEC-TABLES.md §3: `L` is a BYTE length like every `L` on this wire,
 	// so an ODD `L` is framing damage on the body that carries it. Take the
 	// check out and half a code unit reads as a code unit.
 	"table-wstring-accept-odd-length": {{
-		old: `		g.pf("%sif ( ( len & 1 ) != 0 ) { r.report->malformed = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)`,
+		old: `		g.pf("%sif ( ( len & 1 ) != 0 ) { r.report->damaged = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)`,
 		new: `		g.pf("%s(void) 0; // SABOTAGED: the odd-L rule removed (%s, %s)\n", ind, f.Name, f.Name)`,
 	}},
 
@@ -301,7 +291,7 @@ var sabotages = map[string][]edit{
 		}
 	}`,
 	}, {
-		old: `	g.pf("    return extent_at == %sExtent( ctx, value ); // the extent written is the extent measured, or no header is written\n}\n\n", st.Name)`,
+		old: `	g.pf("    return extent_at == %sExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written\n}\n\n", st.Name)`,
 		new: `	g.pf("    (void) extent_at; return true; // SABOTAGED: the extent written is not held to the extent measured\n}\n\n")`,
 	}},
 

@@ -157,10 +157,13 @@ static void save_wire( const char * name, const void * data, int64_t bytes )
 static void report_silent( const TableReport & r, const char * where )
 {
     checks++;
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 || r.malformed )
+    // the read is strict, so an accepted load already rules out a kind
+    // mismatch, an out-of-range value and a repeated id: what is left to be
+    // silent is the evolution pair and the verdict itself
+    if ( r.unknown != 0 || r.widened != 0 || r.damaged || r.refused || r.refuse_reason != ok )
     {
-        printf( "FAIL [%s] %s: the report is not silent (unknown %d, kind_mismatch %d, clamped %d, duplicate %d, malformed %d)\n",
-                g_shape, where, r.unknown, r.kind_mismatch, r.clamped, r.duplicate, (int) r.malformed );
+        printf( "FAIL [%s] %s: the report is not silent (unknown %d, widened %d, damaged %d, refused %d, refuse_reason %d)\n",
+                g_shape, where, r.unknown, r.widened, (int) r.damaged, (int) r.refused, (int) r.refuse_reason );
         failures++;
     }
 }
@@ -168,10 +171,10 @@ static void report_silent( const TableReport & r, const char * where )
 static void reports_agree( const TableReport & a, const TableReport & b )
 {
     CHECK_EQ( a.unknown, b.unknown );
-    CHECK_EQ( a.kind_mismatch, b.kind_mismatch );
-    CHECK_EQ( a.clamped, b.clamped );
-    CHECK_EQ( a.duplicate, b.duplicate );
-    CHECK_EQ( (int) a.malformed, (int) b.malformed );
+    CHECK_EQ( a.widened, b.widened );
+    CHECK_EQ( (int) a.damaged, (int) b.damaged );
+    CHECK_EQ( (int) a.refused, (int) b.refused );
+    CHECK_EQ( (int) a.refuse_reason, (int) b.refuse_reason );
 }
 
 // A REFERENCE RESOLVES INSIDE THE BLOCK THAT HOLDS IT (docs/SPEC-TABLES.md
@@ -202,13 +205,13 @@ static bool ref_inside( const uint8_t * base, int64_t bytes, const TableRef & re
         static int64_t Measure( const Root * r ) { return Root##Measure( r ); }                                          \
         static int64_t Save( const Root * r, uint8_t * out, int64_t capacity ) { return Root##Save( r, out, capacity ); } \
         static int64_t LoadMeasure( const uint8_t * wire, int64_t bytes ) { return Root##LoadMeasure( wire, bytes ); }   \
-        static const Root * LoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t bytes, TableReport * report ) \
+        static const Root * Load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t bytes, TableReport * report ) \
         {                                                                                                                \
-            return Root##LoadTolerant( region, region_bytes, wire, bytes, report );                                              \
+            return Root##Load( region, region_bytes, wire, bytes, report );                                              \
         }                                                                                                                \
-        static bool LoadBuilderTolerant( Builder & into, const uint8_t * wire, int64_t bytes, TableReport * report )             \
+        static bool LoadBuilder( Builder & into, const uint8_t * wire, int64_t bytes, TableReport * report )             \
         {                                                                                                                \
-            return Root##LoadBuilderTolerant( into, wire, bytes, report );                                                       \
+            return Root##LoadBuilder( into, wire, bytes, report );                                                       \
         }                                                                                                                \
         static int64_t CookMeasure( const Builder & b ) { return Root##CookMeasure( b ); }                               \
         static bool Cook( const Builder & b, void * out, uint64_t capacity, TableByteOrder order ) { return Root##Cook( b, out, capacity, order ); } \
@@ -269,7 +272,7 @@ static void exercise( const char * name, void ( * build )( typename S::Builder &
         if ( region != NULL )
         {
             TableReport report;
-            const Root * loaded = S::LoadTolerant( region, need, wire, saved, &report );
+            const Root * loaded = S::Load( region, need, wire, saved, &report );
             CHECK( loaded != NULL );
             report_silent( report, "a loaded region" );
             if ( loaded != NULL )
@@ -280,14 +283,14 @@ static void exercise( const char * name, void ( * build )( typename S::Builder &
             }
             Builder into;
             TableReport tool;
-            CHECK( S::LoadBuilderTolerant( into, wire, saved, &tool ) );
+            CHECK( S::LoadBuilder( into, wire, saved, &tool ) );
             reports_agree( tool, report );
             CHECK_EQ( S::Save( into, again, sizeof( again ) ), saved );
             CHECK( memcmp( again, wire, (size_t) saved ) == 0 );
             // the region is EXACT: one byte short is refused. Load zeroes the
             // region it is handed before it refuses, so this is the last act.
             TableReport short_report;
-            CHECK( S::LoadTolerant( region, need - 1, wire, saved, &short_report ) == NULL );
+            CHECK( S::Load( region, need - 1, wire, saved, &short_report ) == NULL );
             free( region );
         }
     }

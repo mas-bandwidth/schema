@@ -73,7 +73,7 @@ int main() {
     RootBuilder builder;
     TableReport report;
     REQUIRE(RootLoadBuilder(builder,wire,sizeof(wire),&report));
-    REQUIRE(!report.malformed);
+    REQUIRE(!report.damaged&&report.refuse_reason==ok);
     alignas(64) uint8_t out[sizeof(little)+1];
     for (int locked=0; locked<2; ++locked) {
         uint8_t saved[sizeof(wire)];

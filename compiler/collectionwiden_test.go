@@ -53,7 +53,7 @@ using namespace fixture;
 int main(){const uint8_t wire[]={%s};const uint8_t want[]={%s};
 auto n=RootLoadMeasure(wire,sizeof(wire));REQUIRE(n>0);REQUIRE(%d==0||n==%d);
 auto region=(uint8_t*)malloc(n);TableReport report;auto root=RootLoad(region,n,wire,sizeof(wire),&report);
-REQUIRE(root!=nullptr);REQUIRE(report.widened==%d);REQUIRE(!report.malformed&&!report.kind_mismatch);
+REQUIRE(root!=nullptr);REQUIRE(report.widened==%d);REQUIRE(!report.damaged&&report.refuse_reason==ok);
 uint8_t out[sizeof(want)];REQUIRE(RootSave(root,out,sizeof(out))==sizeof(out));REQUIRE(memcmp(out,want,sizeof(out))==0);
 free(region);return 0;}
 `, cppWire(wire), cppWire(want), tc.region, tc.region, tc.widened))

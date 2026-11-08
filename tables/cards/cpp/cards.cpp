@@ -141,8 +141,11 @@ bool CardFromJSON(const char * text, size_t len, Record & out, TableReport & rep
     refuse_class.clear();
     CardBuilder b;
     if (!CardFromJson(b, text, (int64_t)len, &report)) { refuse_class = "malformed"; return false; }
-    if (report.malformed) { refuse_class = "malformed"; return false; }
-    if (report.unknown > 0 || report.kind_mismatch > 0 || report.clamped > 0) { refuse_class = "malformed"; return false; }
+    // the strict read refuses a kind mismatch, a value past its bound and a
+    // repeat on its own; an unknown field is the one thing it reads and counts,
+    // and a card the facade accepts carries none
+    if (report.damaged || report.refused) { refuse_class = "malformed"; return false; }
+    if (report.unknown > 0) { refuse_class = "malformed"; return false; }
     if (!b.Lock()) { refuse_class = "malformed"; return false; }
     const Card * root = b.AsConst();
     int64_t size = CardMeasure(root);
@@ -604,11 +607,11 @@ bool envIs(const char * name) {
 }
 
 bool lossy(const TableReport & r) {
-    return r.unknown > 0 || r.kind_mismatch > 0 || r.clamped > 0 || r.retain_lost > 0 || r.malformed;
+    return r.unknown > 0 || r.retain_lost > 0 || r.damaged || r.refused;
 }
 
 bool upgradeLoss(const TableReport & r) {
-    return r.retain_lost > 0 || r.kind_mismatch > 0 || r.clamped > 0 || r.malformed;
+    return r.retain_lost > 0 || r.damaged || r.refused;
 }
 
 void classifyUpgrade(const TableReport & r, std::string & refuse_class) {
@@ -832,7 +835,7 @@ bool ReadStrict(const uint8_t * wire, size_t len, Record & out, std::string & re
         refuse_class = "malformed";
         return false;
     }
-    if (report.unknown > 0 || report.kind_mismatch > 0 || report.clamped > 0 || report.malformed) {
+    if (report.unknown > 0 || report.damaged || report.refused) {
         out = Record{};
         refuse_class = "malformed";
         return false;

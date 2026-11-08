@@ -2174,40 +2174,49 @@ tables-block-gate2: build/schema_test_block_gate2 build/tables-generated-cs/.sta
 tables-block-gate2-smoke: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
 	./build/schema_test_block_gate2 --smoke
 	cd test/cs-block && $(DOTNET) run -c Release -- --gate2-smoke
-# The NEGATIVE CONTROL for a KEYED object's duplicate counting
-# (docs/SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
-# the missing count was invisible to every round-trip test — the value was
-# right and only the ledger was wrong. This sabotage removes the increment and
-# the fixture must go red; without it, nothing in the suite could see the
-# defect the pack engine's two-sided gate found.
+# The NEGATIVE CONTROL for a KEYED object's repeated key (docs/SPEC-TABLES.md
+# §16.2, §4). A variant named twice inside a keyed object is a repeated key and
+# the strict read refuses the whole value. This sabotage removes that refusal,
+# so the walker falls back to last-wins and accepts: the fixture must see the
+# accept (exit 0). The HONEST arm must see the refusal with the value at its
+# defaults (exit 2); a binary that answered the same both ways reads nothing.
 .PHONY: tables-json-keyed-dup-negative-control
 tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_negative_main.cpp
 	@rm -rf build/json-dup-sabotage && mkdir -p build/json-dup-sabotage
 	./bin/schema generate --lang cpp --out build/json-dup-sabotage tables/examples
-	@sed -i.bak 's|if ( ( seen\[slot >> 6\] \& bit ) != 0 ) { in.report->duplicate++; }|if ( ( seen[slot >> 6] \& bit ) != 0 ) { /* sabotaged: no count */ }|' build/json-dup-sabotage/KeyedTable.cpp
-	@grep -q 'sabotaged: no count' build/json-dup-sabotage/KeyedTable.cpp || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@sed -i.bak -e 's|if ( ( seen\[slot >> 6\] \& bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed;; }|if ( ( seen[slot >> 6] \& bit ) != 0 ) { /* sabotaged: no refusal */ }|' \
+		-e 's|if ( repeated ) { in.report->refused = true; in.report->refuse_reason = malformed;; }|if ( repeated ) { /* sabotaged: no refusal */ }|' build/json-dup-sabotage/KeyedTable.cpp
+	@[ "$$(grep -c 'sabotaged: no refusal' build/json-dup-sabotage/KeyedTable.cpp)" -ge 2 ] || { echo "NEGATIVE CONTROL: the sabotage did not apply to both the key-spelling and the slot check"; exit 1; }
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
 		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
+	@rm -rf build/json-dup-honest && mkdir -p build/json-dup-honest
+	@./bin/schema generate --lang cpp --out build/json-dup-honest tables/examples
+	@$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-dup-honest test/tables/json_keyed_dup_negative_main.cpp build/json-dup-honest/KeyedTable.cpp -o build/schema_test_json_keyed_dup_honest
+	@./build/schema_test_json_keyed_dup_honest > build/json-dup-honest.log 2>&1; status=$$?; \
+	if [ $$status -ne 2 ]; then \
+		echo "NEGATIVE CONTROL FAILED: against the HONEST walker the control exited $$status, not 2,"; \
+		echo "      so the honest read did not refuse the repeated key cleanly"; \
+		cat build/json-dup-honest.log; exit 1; \
+	fi
+	@echo "negative control: the keyed duplicate control sees the accept under the sabotage and the refusal without it"
 
-# The NEGATIVE CONTROL for the clamp's PREFIX rule (docs/SPEC-TABLES.md §16.2).
-# A clamped string keeps a PREFIX of the text, and a scan that resumes after one
-# code point fails to fit stores bytes the input never spelled in that order
-# while the `clamped` count stays right. That is invisible to any test that
-# reads only counters. This sabotage drops the stop and the fixture must go red.
+# The NEGATIVE CONTROL for an over-long string in JSON (docs/SPEC-TABLES.md
+# §16.2, §4). A string past its field's bound used to clamp to a code-point
+# prefix; the strict read refuses the whole value (out_of_range). This sabotage
+# removes the refusal, so the walker hands back the shortened string: the
+# fixture must see the accept (exit 0).
 #
 # THE CONTROL IS RUN BOTH WAYS, because a binary that only ever meets the
-# sabotage cannot show it has a blade: against the sabotaged walker it must SEE
-# the wrong bytes, and against the HONEST one it must find nothing to see. The
-# second arm is the one that goes red for a control whose verdict is whatever it
-# read rather than a reading of the bytes, which is what a control becomes the
-# moment a failed read or a moved clamp count counts as success.
+# sabotage cannot show it has a blade: against the HONEST walker it must see
+# the refusal with out_of_range and the field at its default (exit 2).
 .PHONY: tables-json-clamp-prefix-negative-control
 tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_prefix_negative_main.cpp
 	@rm -rf build/json-clamp-sabotage && mkdir -p build/json-clamp-sabotage
 	./bin/schema generate --lang cpp --out build/json-clamp-sabotage tables/examples
-	@sed -i.bak 's|else if ( !clamped \&\& placed + unit_length <= capacity )|else if ( placed + unit_length <= capacity ) // SABOTAGED|' build/json-clamp-sabotage/TablesTable.cpp
+	@sed -i.bak 's|else if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }|else if ( oor_flag ) { /* SABOTAGED: no refusal */ }|' build/json-clamp-sabotage/TablesTable.cpp
 	@grep -q 'SABOTAGED' build/json-clamp-sabotage/TablesTable.cpp || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
@@ -2217,12 +2226,13 @@ tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_pre
 	@./bin/schema generate --lang cpp --out build/json-clamp-honest tables/examples
 	@$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
 		-Ibuild/json-clamp-honest test/tables/json_clamp_prefix_negative_main.cpp build/json-clamp-honest/TablesTable.cpp -o build/schema_test_json_clamp_prefix_honest
-	@if ./build/schema_test_json_clamp_prefix_honest > build/json-clamp-honest.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the control reported the defect against the HONEST walker,"; \
-		echo "      so what it prints is not a reading of the bytes"; \
+	@./build/schema_test_json_clamp_prefix_honest > build/json-clamp-honest.log 2>&1; status=$$?; \
+	if [ $$status -ne 2 ]; then \
+		echo "NEGATIVE CONTROL FAILED: against the HONEST walker the control exited $$status, not 2,"; \
+		echo "      so the honest read did not refuse the over-long string cleanly"; \
 		cat build/json-clamp-honest.log; exit 1; \
 	fi
-	@echo "negative control: the clamp prefix control sees the defect under the sabotage and nothing without it"
+	@echo "negative control: the over-long string control sees the accept under the sabotage and the refusal without it"
 
 # THE NEGATIVE CONTROL FOR PER-CASE ABSENCE (test/conformance/README.md).
 #
@@ -2973,23 +2983,12 @@ wide-table-zero-unit-negative-control: EXPECT = on vector wstring-table-refuse-n
 wide-table-zero-unit-negative-control:
 	$(wide-table-negative-control-body)
 
-# A CLAMP NEVER SPLITS A PAIR (§3): where the last kept unit is a high
-# surrogate whose low half did not fit, it is dropped with it. Take the drop
-# out and the clamp lands an unpaired surrogate in storage — the one thing no
-# wire may put there (§5).
-.PHONY: wide-table-clamp-negative-control
-wide-table-clamp-negative-control: SABOTAGE = table-wstring-clamp-splits-a-pair
-wide-table-clamp-negative-control: SOURCE = internal/codegen/cpptable/text.go
-wide-table-clamp-negative-control: EXPECT = on vector wstring-table-clamp-never-splits-a-pair
-wide-table-clamp-negative-control:
-	$(wide-table-negative-control-body)
-
 # An ODD `L` is framing damage on the body that carries it (§3), because the
 # value is `L / 2` code units. Take the check out and half a unit reads as one.
 .PHONY: wide-table-odd-length-negative-control
 wide-table-odd-length-negative-control: SABOTAGE = table-wstring-accept-odd-length
 wide-table-odd-length-negative-control: SOURCE = internal/codegen/cpptable/codecs.go
-wide-table-odd-length-negative-control: EXPECT = FAILED: report.malformed (
+wide-table-odd-length-negative-control: EXPECT = FAILED: report.damaged (
 wide-table-odd-length-negative-control:
 	$(wide-table-negative-control-body)
 
@@ -3410,7 +3409,11 @@ tables-hostile-negative-control: tables-hostile-values
 # encoder — elide a present `?T`, which §2.3 forbids — and the golden must go
 # red. A gate that cannot be made to fail is not a gate, so this target runs the
 # POSITIVE one first: a red golden must not be able to pass as a successful
-# sabotage.
+# sabotage. PackConfig is a FIXED root, so `schema pack` writes it through
+# EncodeFixed (form 3, docs/SPEC-TABLES.md §3.4) and the sabotage lands in
+# fixed.go's field encoder: the same elision in encode.go's variable encoder
+# never reaches these bytes and left the golden green. The sed is scoped to
+# encodeFixedField so the decoder's own `if !fv.Present {` is not touched.
 #
 # The sabotaged source lives under build/ and reaches the compiler through
 # `go build -overlay`, so no tracked file is ever written to: an interrupt in
@@ -3419,11 +3422,11 @@ tables-hostile-negative-control: tables-hostile-values
 .PHONY: tables-pack-negative-control
 tables-pack-negative-control: tables-pack
 	@mkdir -p build
-	@sed 's/if !fv\.Present {/if true { \/\/ SABOTAGED: a present ?T elides/' \
-		internal/tablewire/encode.go > build/encode-sabotaged.gotext
-	@cmp -s build/encode-sabotaged.gotext internal/tablewire/encode.go && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/build/encode-sabotaged.gotext"}}\n' \
+	@sed '/^func encodeFixedField(/,/^}/ s/if !fv\.Present {/if true { \/\/ SABOTAGED: a present ?T elides/' \
+		internal/tablewire/fixed.go > build/fixed-sabotaged.gotext
+	@test "$$(grep -c SABOTAGED build/fixed-sabotaged.gotext)" = "1" || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not land exactly once"; exit 1; }
+	@printf '{"Replace":{"%s/internal/tablewire/fixed.go":"%s/build/fixed-sabotaged.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/sabotage-overlay.json
 	@go build -overlay=build/sabotage-overlay.json -o build/schema-sabotaged ./cmd/schema
 	@./build/schema-sabotaged pack --root PackConfig --out build/tables-pack-sabotaged.bin \
@@ -3605,7 +3608,6 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	# TABLE emitter and names the row that must go red.
 	$(MAKE) wide-table-surrogate-negative-control
 	$(MAKE) wide-table-zero-unit-negative-control
-	$(MAKE) wide-table-clamp-negative-control
 	$(MAKE) wide-table-odd-length-negative-control
 	$(MAKE) wide-table-byte-length-negative-control
 	$(MAKE) check-zero-range-negative-control
@@ -3937,7 +3939,7 @@ endef
 .PHONY: tables-maps-builder-cap-negative-control
 tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,builder-cap,'s@fill.refused = nodes.carve->worker != NULL;@fill.refused = false;@',internal/codegen/cpptable/maps.go,a builder count refusal became damage without turning the map gate red)
-	@grep -Fq '!report.malformed' build/map-builder-cap.log
+	@grep -Fq '!report.damaged' build/map-builder-cap.log
 	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
 	@if go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
@@ -3958,33 +3960,61 @@ tables-maps-dead-entry-negative-control: bin/schema build/tables-generated/.stam
 	$(call map_negative_control,dead,'s@segment->dead\[ i / 32 \] |= 1u << ( i % 32 );@(void) i; // SABOTAGED@',internal/codegen/cpptable/maps.go,a dead entry riding on the wire left the map gate GREEN)
 
 # THE READER'S ASCENDING CHECK IS DROPPED. The SHUFFLED report row meets it,
-# and the row's `malformed` flag goes red.
+# and the row's damage verdict goes red: the strict read accepts it.
 .PHONY: tables-maps-ascending-negative-control
 tables-maps-ascending-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,ascending,'s@if ( order > 0 )@if ( order > 0 \&\& false )@',internal/codegen/cpptable/maps.go,a shuffled map left the map gate GREEN)
 
-# THE DUPLICATE RULE IS DROPPED, first wins or both kept. The row whose
-# DUPLICATE entry ELIDES a field the first occurrence set meets it, and the
-# decoded value goes red — a reader that overlays instead of resetting agrees
-# with the rule on every other body.
+# THE DUPLICATE RULE IS DROPPED. A repeated key REFUSES the whole load under
+# the strict read (docs/SPEC-TABLES.md §6.5), whichever slot the repeat
+# decoded into, so the sabotage drops the refusal itself: the row whose
+# DUPLICATE entry ELIDES a field the first occurrence set is then accepted,
+# and its refusal check goes red. (Swapping the slot alone, the control's
+# tolerant-era form, no longer moves the verdict.)
 .PHONY: tables-maps-duplicate-negative-control
 tables-maps-duplicate-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,duplicate,'s@slot = TableMapFillLast( fill );@slot = TableMapFillNext( fill ); // SABOTAGED@',internal/codegen/cpptable/maps.go,keeping both occurrences of a duplicate left the map gate GREEN)
+	$(call map_negative_control,duplicate,'s@if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed;; }@if ( false ) { r.report->refused = true; r.report->refuse_reason = malformed;; } // SABOTAGED@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
 
 # THE KEY-KIND RULE DECODES ANYWAY. The row written under a CHANGED KEY KIND
-# meets it, and its five counters go red, because an entry lands under a
-# defaulted key where the row says the map is empty.
+# meets it: the strict read refuses it as kind_mismatch, and the sabotaged
+# reader lands the entries under defaulted keys and accepts.
 .PHONY: tables-maps-key-kind-negative-control
 tables-maps-key-kind-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,keykind,'s@out.kind_bad = field_kind != %d;@out.kind_bad = ( field_kind != %d ) \&\& false;@',internal/codegen/cpptable/maps.go,decoding under a changed key kind left the map gate GREEN)
 
 # KEYS NEVER CLAMP. The row whose key is longer than the reader's bound meets
-# it, and the DECODED VALUE is the half that says it: a clamped key merges two
-# entries where the rule drops one, and the `clamped` count alone cannot
-# separate the two.
+# it: the strict read refuses it as out_of_range. The refusal stands in TWO
+# places, the map's key scan (maps.go, `out.over`) and the key FIELD's own
+# string(N) read inside the entry body (codecs.go), so a reader that clamps
+# keys has to have lost both: the sabotage drops the scan's bound test and
+# lets the string read cut down without refusing, and the row is then
+# accepted under a key the wire never spelled. Two emitter files, so the
+# recipe is spelled out rather than taken from map_negative_control; the
+# rest of it is that define.
 .PHONY: tables-maps-clamp-negative-control
 tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,clamp,'s@out.over = key_len > %d;@out.over = ( key_len > %d ) \&\& false;@',internal/codegen/cpptable/maps.go,clamping an over-long key left the map gate GREEN)
+	@mkdir -p build
+	@sed -e 's@out.over = key_len > %d;@out.over = ( key_len > %d ) \&\& false; // SABOTAGED@' \
+		internal/codegen/cpptable/maps.go > build/map-clamp.gotext
+	@test "$$(grep -c SABOTAGED build/map-clamp.gotext)" = "1" || \
+		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in maps.go exactly once"; exit 1; }
+	@sed -e 's@len, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // at a code point boundary@len, %d ); } // SABOTAGED: cut down, not refused@' \
+		internal/codegen/cpptable/codecs.go > build/map-clamp-codecs.gotext
+	@test "$$(grep -c SABOTAGED build/map-clamp-codecs.gotext)" = "1" || \
+		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in codecs.go exactly once"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-clamp.gotext","%s/internal/codegen/cpptable/codecs.go":"%s/build/map-clamp-codecs.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/map-clamp-overlay.json
+	@go build -overlay=build/map-clamp-overlay.json -o build/schema-map-clamp ./cmd/schema
+	@rm -rf build/tables-map-clamp && mkdir -p build/tables-map-clamp
+	@./build/schema-map-clamp generate --lang cpp --out build/tables-map-clamp/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-clamp/maps -Itest/tables test/tables/maps_main.cpp \
+		build/tables-map-clamp/maps/*Table.cpp -o build/schema_test_maps_clamp
+	@if ./build/schema_test_maps_clamp > build/map-clamp.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: clamping an over-long key left the map gate GREEN"; exit 1; \
+	fi
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-clamp.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-clamp.log; exit 1; }
+	@echo "negative control: clamp turns the MAP GATE red on $$(grep -c '^FAIL' build/map-clamp.log) failures"
 
 # N = 100000 UNDER A SHORT L. The measure-refusals row meets it: a Fleet of a
 # few dozen bytes whose map count the body cannot carry answers -1 with the
@@ -3998,10 +4028,12 @@ tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
 # N = 0x80000000, PAST THE INT32 CAP. The measure-refusals row meets it: the
 # cap is tested before the L, so the reason is count_over_extent_cap, and a
 # dropped cap check lets the L answer count_over_length instead, which the row
-# asserts by name.
+# asserts by name. The measure's cap branch spans lines, so the sabotage is
+# ranged to it: the `return false` after the cap's reason falls through to
+# the L check.
 .PHONY: tables-maps-cap-negative-control
 tables-maps-cap-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,cap,'s@if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }@if ( n > (uint64_t) INT32_MAX \&\& false ) { reason = count_over_extent_cap; return false; }@',internal/codegen/cpptable/maps.go,an N past the int32 cap left the map gate GREEN)
+	$(call map_negative_control,cap,'/reason = count_over_extent_cap;/$(comma)/return false;/ s@return false;@(void) 0; // SABOTAGED@',internal/codegen/cpptable/maps.go,an N past the int32 cap left the map gate GREEN)
 
 # LOADMEASURE OVER A MAP OF MAPS, summed at ONE DEPTH only. The instance whose
 # value is itself a map meets it, and the measure goes red against the region
@@ -4109,7 +4141,7 @@ tables-maps-key-length-negative-control: bin/schema build/tables-generated/.stam
 # bound of 300 is wide enough that the declared bound catches neither.
 .PHONY: tables-maps-key-identity-negative-control
 tables-maps-key-identity-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,keyidentity,'s@else if ( key_over || token_length > key->array_bound )@else if ( token_length > key->array_bound )@',internal/codegen/cpptable/json.go,truncating a key into the walker buffer left the map gate GREEN)
+	$(call map_negative_control,keyidentity,'s@else if ( !key->unbounded && ( key_over || token_length > key->array_bound ) )@else if ( !key->unbounded \&\& ( token_length > key->array_bound ) )@',internal/codegen/cpptable/json.go,truncating a key into the walker buffer left the map gate GREEN)
 
 # THE TARGET DOMAIN IS ESTABLISHED BEFORE THE CAST (§16.2). The uint64 key rows
 # meet it: read through the interpreter's own signed lane, a magnitude in the
@@ -4250,7 +4282,7 @@ tables-float-nan-negative-control: bin/schema build/tables-generated/.stamp
 	@if ./build/schema_test_floatnan_control > build/float-nan-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a read that never tests the bits left the finite pin GREEN"; exit 1; \
 	fi
-	@grep -q "floats_nan was not refused as non_finite_float by the TOLERANT read" build/float-nan-control/log && \
+	@grep -q "floats_nan was not refused as non_finite_float by the read" build/float-nan-control/log && \
 	 grep -q "floats_nan was not refused as non_finite_float through the widened rung" build/float-nan-control/log && \
 	 grep -q "a fixed record carrying 0x7f800001 was not refused" build/float-nan-control/log && \
 	 grep -q "a message carrying 0x7f800001 was not refused" build/float-nan-control/log || \
@@ -4433,9 +4465,14 @@ tables-lists-dead-element-negative-control: bin/schema build/tables-generated/.s
 tables-lists-preorder-negative-control: bin/schema build/tables-generated/.stamp
 	@mkdir -p build
 	@printf 'func listElementHoldsMap(f *ir.Field) bool {\n\tref := listElementStruct(f)\n\tif ref == nil {\n\t\treturn false\n\t}\n\tfor i := range ref.Fields {\n\t\tif ref.Fields[i].IsMap() {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n' > build/list-preorder-helper.txt
-	$(call list_negative_control,preorder,'s@g.pf("%s    at += (int64_t) cursor.count \* %d; // the whole array FIRST\\n", ind, size)@if !listElementHoldsMap(f) { g.pf("%s    at += (int64_t) cursor.count * %d; // the whole array FIRST\\n", ind, size) } // SABOTAGED@' -e 's@g.pf("%s    at += (int64_t) cursor.count \* (int64_t) sizeof( %s ); // the whole array FIRST\\n", ind, elem)@if !listElementHoldsMap(f) { g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\\n", ind, elem) } // SABOTAGED@' -e '$$r build/list-preorder-helper.txt',internal/codegen/cpptable/extent.go,laying the element array after a nested container left the list gate GREEN)
+	$(call list_negative_control,preorder,'s@g.pf("%s    at += (int64_t) cursor.count \* %d; // the whole array FIRST\\n", ind, size)@if !listElementHoldsMap(f) { g.pf("%s    at += (int64_t) cursor.count * %d; // the whole array FIRST\\n", ind, size) } // SABOTAGED@' -e 's@g.pf("%s        at += (int64_t) cursor.count \* %d; // canonical cook layout\\n", ind, size)@if !listElementHoldsMap(f) { g.pf("%s        at += (int64_t) cursor.count * %d; // canonical cook layout\\n", ind, size) } // SABOTAGED@' -e '$$r build/list-preorder-helper.txt',internal/codegen/cpptable/extent.go,laying the element array after a nested container left the list gate GREEN)
+	@# TWO branches carry a list's cook layout: the cook's WRITER ("the whole
+	@# array FIRST") and the extent MEASURE's cook arm ("canonical cook
+	@# layout"). Both are sabotaged so the writer still lands on the extent it
+	@# measured and the cook is written, laid wrong, for the pinned cook
+	@# compare and cook-check's containment clause below to name.
 	@grep -c "SABOTAGED" build/list-preorder.gotext | grep -qx 2 || \
-		{ echo "NEGATIVE CONTROL FAILED: the preorder sabotage did not reach both the pack's and the cook's list branch"; exit 1; }
+		{ echo "NEGATIVE CONTROL FAILED: the preorder sabotage did not reach both the cook writer's and the cook measure's list branch"; exit 1; }
 	@grep -q "^FAIL.*list_of_maps_cook" build/list-preorder.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the pinned list_of_maps_cook byte compare stayed GREEN"; cat build/list-preorder.log; exit 1; }
 	@rm -rf build/tables-list-preorder/cooks && mkdir -p build/tables-list-preorder/cooks
@@ -4470,11 +4507,12 @@ tables-lists-shared-negative-control: bin/schema build/tables-generated/.stamp
 tables-lists-clamp-negative-control: bin/schema build/tables-generated/.stamp
 	$(call list_negative_control,clamp,'s@    fill.capacity = (int32_t) n;@    fill.capacity = n > 65536 ? 65536 : (int32_t) n; // SABOTAGED@',internal/codegen/cpptable/lists.go,clamping the count left the list gate GREEN)
 
-# THE ELEMENT-KIND RULE DECODES ANYWAY: the `Ints`-as-`Floats` row meets it,
-# and the decoded values go red.
+# THE ELEMENT-KIND RULE DECODES ANYWAY: the `Ints`-as-`Floats` row meets it.
+# The read is strict, so the clean tree REFUSES that row as kind_mismatch, and
+# under the sabotage the load is accepted and the refusal check goes red.
 .PHONY: tables-lists-element-kind-negative-control
 tables-lists-element-kind-negative-control: bin/schema build/tables-generated/.stamp
-	$(call list_negative_control,elemkind,'s@else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }@else if ( elem_kind != %d \&\& false ) { r.report->kind_mismatch++; r.offset = body_end; break; }@',internal/codegen/cpptable/lists.go,decoding under a changed element kind left the list gate GREEN)
+	$(call list_negative_control,elemkind,'s@else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }@else if ( elem_kind != %d \&\& false ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; } // SABOTAGED@',internal/codegen/cpptable/lists.go,decoding under a changed element kind left the list gate GREEN)
 
 # LoadMeasure OVER A LIST OF TABLES HOLDING LISTS, summed at ONE DEPTH only:
 # `list_nested` meets it, and the measure goes red against the region Load
@@ -4487,7 +4525,7 @@ tables-lists-depth-negative-control: bin/schema build/tables-generated/.stamp
 # refusals battery goes red on the reason.
 .PHONY: tables-lists-fit-negative-control
 tables-lists-fit-negative-control: bin/schema build/tables-generated/.stamp
-	$(call list_negative_control,fit,'s@if ( n > (uint64_t) ( rest / elem_floor ) ) { reason = count_over_length; return false; }@if ( n > (uint64_t) ( rest / elem_floor ) \&\& false ) { reason = count_over_length; return false; }@',internal/codegen/cpptable/lists.go,an N the list L cannot carry left the list gate GREEN)
+	$(call list_negative_control,fit,'s@^    if ( n > (uint64_t) ( rest / elem_floor ) )$$@    if ( n > (uint64_t) ( rest / elem_floor ) \&\& false ) // SABOTAGED@',internal/codegen/cpptable/lists.go,an N the list L cannot carry left the list gate GREEN)
 
 # AN UNREACHED NON-EMPTY LIST SLOT IS REFUSED by Cook and by Lock: the `Deck`
 # instance whose counted array holds a list PAST ITS LIVE COUNT meets it.
@@ -5226,7 +5264,7 @@ CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildc
 	build/tables-generated/block/PaddedBlock.cpp build/tables-generated/pointers/GraphTable.cpp \
 	build/tables-generated/pointers/MarksTable.cpp build/tables-generated/pointers/PartsTable.cpp \
 	build/tables-generated/messages/MessagesTable.cpp build/tables-generated/stream/StreamTable.cpp \
-	build/tables-generated/blobs/AssetsTable.cpp \
+	build/tables-generated/blobs/AssetsTable.cpp build/tables-generated/rt1/RT1Table.cpp \
 	build/tables-generated/m1/M1Table.cpp build/tables-generated/m2/M2Table.cpp \
 	build/tables-generated/a1/A1Table.cpp build/tables-generated/a2/A2Table.cpp \
 	build/tables-generated/k1/K1Table.cpp build/tables-generated/k2/K2Table.cpp \
@@ -5507,7 +5545,7 @@ tables-wire-fuzz-wide-text-negative-control: build/conformance-harness
 # length this pass plants is 0xFFFFFFFFFFFFFFFF, the largest the wire can spell
 # and the one no buffer ever has room for.
 tables-wire-fuzz-length-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->malformed = true; return false; }|if ( !r.getleb( len ) ) { r.report->malformed = true; return false; } if ( !r.room( len ) ) { return false; } // NEGATIVE CONTROL: the fit check is gone|,the report differs|the oracle discards a damaged load)
+	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->damaged = true; return false; }|if ( !r.getleb( len ) ) { r.report->damaged = true; return false; } if ( !r.room( len ) ) { return false; } // NEGATIVE CONTROL: the fit check is gone|,the report differs|the oracle discards a damaged load)
 
 # the numbering's `index - 1 >= map.count`: an index past the node table then
 # reads a directory entry the region does not hold
@@ -5520,14 +5558,14 @@ tables-wire-fuzz-index-negative-control: build/conformance-harness
 # every width the closed set has and to zero; without the check the arm decodes
 # a value out of a payload that is not its own.
 tables-wire-fuzz-arm-width-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,arm-width,internal/codegen/cpptable/arms.go,s|if ( %s.size != %d ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.size != %d ) { %s = %s; r.report->malformed = true|,differs|the oracle discards a damaged load)
+	$(call wire_fuzz_control,arm-width,internal/codegen/cpptable/arms.go,s|if ( %s.size != %d ) { %s = %s; r.report->damaged = true|if ( false \&\& %s.size != %d ) { %s = %s; r.report->damaged = true|,differs|the oracle discards a damaged load)
 
 # A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3), for an arm whose payload
 # is a body as much as for a kind `13` field: the fuzzer writes the ZERO
 # REFERENCE ahead of the payload's last byte, so the body ends inside its own
 # `L` and the bytes after it are claimed by no field.
 tables-wire-fuzz-arm-terminator-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,arm-terminator,internal/codegen/cpptable/arms.go,s|if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true|if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->malformed = true|,the decoded value differs|the oracle discards a damaged load)
+	$(call wire_fuzz_control,arm-terminator,internal/codegen/cpptable/arms.go,s|if ( %s.offset != %s.size ) { %s = %s; r.report->damaged = true|if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->damaged = true|,the decoded value differs|the oracle discards a damaged load)
 
 # THE ORACLE NEVER PANICS, which is what makes it an oracle. The four controls
 # above sabotage the C++ EMITTER and ask whether the fuzzer notices a leg that
@@ -6102,7 +6140,7 @@ define message_form_count_control
 		test/tables/message_count_main.cpp build/message-nc/$(1)-bases/BasesTable.cpp \
 		-o build/message-nc/$(1)-control
 	@if ./build/message-nc/$(1)-control > build/message-nc/$(1).log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the $(1) emitter sabotage landed and the wide count still clamped"; \
+		echo "NEGATIVE CONTROL FAILED: the $(1) emitter sabotage landed and the wide count still refused"; \
 		cat build/message-nc/$(1).log; exit 1; \
 	fi
 	@cat build/message-nc/$(1).log
@@ -6120,12 +6158,15 @@ tables-message-form-count-negative-control: bin/schema test/tables/message_count
 
 # AND THE ONE CONTENT RULE ON A MESSAGE BODY (docs/SPEC-TABLES.md §3.3,
 # schema#620): a kind 12 payload that is not well-formed UTF-8, or that carries
-# a zero byte, is damage and terminal for the batch, and a clamp cuts at a code
-# point boundary. Neither is reachable from a corpus value, because a writer
-# produces neither, so the instrument is a batch forged over backenddemo's
-# `sku` and a program that reads the report and the stored bytes back. The
-# emitter's own copy of each rule is what the two sabotages remove; the ORACLE's
-# two ride in MESSAGE_FORM_CONTROLS above. $(1) the sabotage, $(2) the emitter file.
+# a zero byte, is damage and terminal for the batch, and a payload past the
+# bound refuses the batch as out_of_range. Neither is reachable from a corpus
+# value, because a writer produces neither, so the instrument is a batch forged
+# over backenddemo's `sku` and a program that reads the report and the stored
+# bytes back. The emitter's content rule is what the sabotage removes; the
+# strict read keeps no prefix, so where a clamp would have cut is no longer
+# observable and the old clamp-off-boundary blade has nothing left to guard
+# here. The ORACLE's two ride in MESSAGE_FORM_CONTROLS above. $(1) the
+# sabotage, $(2) the emitter file.
 define message_form_text_control
 	@mkdir -p build/message-nc
 	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
@@ -6163,7 +6204,6 @@ tables-message-form-text-negative-control: bin/schema test/tables/message_text_m
 		-o build/message-nc/text-true
 	./build/message-nc/text-true
 	$(call message_form_text_control,message-emitter-text-accepts-ill-formed,internal/codegen/cpptable/messageload.go)
-	$(call message_form_text_control,message-emitter-text-clamp-off-boundary,internal/codegen/cpptable/messageload.go)
 
 # ILL-FORMED TEXT ON A MESSAGE BODY (docs/SPEC-TABLES.md §3, §3.3; schema#620),
 # and the vector message_ill_formed_text is what holds the two engines to one
@@ -7097,7 +7137,7 @@ tables-was-negative-control: build/tables-generated/.stamp test/tables/was_contr
 		build/tables-generated/w2/W2Table.cpp -o build/tables-was-nc/with-was
 	@./build/tables-was-nc/with-was > build/tables-was-nc/with-was.log
 	@cat build/tables-was-nc/with-was.log
-	@grep -q '^unknown=0 kind_mismatch=0 malformed=0 flagship=Aurora escorts=2 home_name=untitled$$' build/tables-was-nc/with-was.log || \
+	@grep -q '^unknown=0 widened=0 damaged=0 flagship=Aurora escorts=2 home_name=untitled$$' build/tables-was-nc/with-was.log || \
 		{ echo "CONTROL FAILED: with was, the W1 fleet did not read in silence under W2"; exit 1; }
 	@sed -e 's/^fixed table Ship | was = "Vessel"$$/fixed table Ship/' test/tables/W2.schema > build/tables-was-nc/W2.schema
 	@cmp -s test/tables/W2.schema build/tables-was-nc/W2.schema && \
@@ -7107,7 +7147,7 @@ tables-was-negative-control: build/tables-generated/.stamp test/tables/was_contr
 		build/tables-was-nc/w2/W2Table.cpp -o build/tables-was-nc/without-was
 	@./build/tables-was-nc/without-was > build/tables-was-nc/without-was.log
 	@cat build/tables-was-nc/without-was.log
-	@grep -q '^unknown=2 kind_mismatch=0 malformed=0 flagship=null escorts=2 home_name=untitled$$' build/tables-was-nc/without-was.log || \
+	@grep -q '^unknown=2 widened=0 damaged=0 flagship=null escorts=2 home_name=untitled$$' build/tables-was-nc/without-was.log || \
 		{ echo "NEGATIVE CONTROL FAILED: without was, the W1 fleet did not read as unknown records under W2"; exit 1; }
 	@echo "negative control: stripping was from the renamed table turns the cross read RED (unknown counted, the pointers null, the value at its default)"
 
@@ -7128,7 +7168,7 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 		build/tables-generated/r2/R2Table.cpp -o build/tables-wasrows-nc/with-was
 	@./build/tables-wasrows-nc/with-was > build/tables-wasrows-nc/with-was.log
 	@cat build/tables-wasrows-nc/with-was.log
-	@grep -q '^unknown=0 kind_mismatch=0 malformed=0 grade=Argent effect=shield charge=2.5 mult=1.5 tally_argent=7$$' build/tables-wasrows-nc/with-was.log || \
+	@grep -q '^unknown=0 widened=0 damaged=0 grade=Argent effect=shield charge=2.5 mult=1.5 tally_argent=7$$' build/tables-wasrows-nc/with-was.log || \
 		{ echo "CONTROL FAILED: with was, the R1 config did not read in silence under R2"; exit 1; }
 	@sed -e 's/^\(    [A-Z][A-Za-z]*\) | was = "[A-Za-z]*"$$/\1,/' -e 's/ *| was = "[A-Za-z]*"$$//' test/tables/R2.schema > build/tables-wasrows-nc/R2.schema
 	@test $$(grep -c 'was' build/tables-wasrows-nc/R2.schema) -eq $$(grep -c 'was' test/tables/R2.schema | awk '{print $$1 - 4}') || \
@@ -7138,7 +7178,7 @@ tables-wasrows-negative-control: build/tables-generated/.stamp test/tables/wasro
 		build/tables-wasrows-nc/r2/R2Table.cpp -o build/tables-wasrows-nc/without-was
 	@./build/tables-wasrows-nc/without-was > build/tables-wasrows-nc/without-was.log
 	@cat build/tables-wasrows-nc/without-was.log
-	@grep -q '^unknown=5 kind_mismatch=0 malformed=0 grade=None effect=None charge=0 mult=1 tally_argent=0$$' build/tables-wasrows-nc/without-was.log || \
+	@grep -q '^unknown=5 widened=0 damaged=0 grade=None effect=None charge=0 mult=1 tally_argent=0$$' build/tables-wasrows-nc/without-was.log || \
 		{ echo "NEGATIVE CONTROL FAILED: without was, the R1 config did not read as unknown names under R2"; exit 1; }
 	@echo "negative control: stripping was from the variant, the arms and the type's field turns the cross read RED (unknown counted, the value at its default)"
 
