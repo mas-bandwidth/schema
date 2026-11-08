@@ -91,13 +91,13 @@ func auditUnknownDepthWire(levels int, leaf string) []byte {
 		inner = []byte{1, 15, 1, 4, 4, 7, 0, 0, 0, 0}
 	}
 	if leaf == "union-wrapper" {
-		for i := 0; i < levels; i++ {
+		for range levels {
 			arm := binary.AppendUvarint([]byte{1, 15}, uint64(len(inner)))
 			inner = append(arm, inner...)
 		}
 		inner = append(append([]byte{1, 15}, inner...), 0)
 	} else if leaf == "union-table" {
-		for i := 0; i < levels; i++ {
+		for range levels {
 			arm := binary.AppendUvarint([]byte{1, 13}, uint64(len(inner)))
 			arm = append(arm, inner...)
 			inner = append(append([]byte{1, 15}, arm...), 0)
