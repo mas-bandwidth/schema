@@ -4,7 +4,10 @@
 # no schema file. This generates tables/examples twice — as committed, and
 # with an earlier-sorting packet-only file (Aaa.schema) added — and requires
 # every runtime module (internal/codegen/lobstertable/runtime/*.lobster) at its
-# own name and byte-identical in both trees, and the same set of table modules.
+# own name and byte-identical in both trees. Every schema file has its own
+# <Base>Table.lobster (lobstertable.go moduleFiles: every packet type carries a
+# reflection descriptor), so the added tree's table modules are the base's
+# plus AaaTable.lobster alone: none of the base's moves or is renamed.
 #
 # usage: test/lobster-runtime-home/check <schema binary> <scratch dir>
 set -eu
@@ -30,10 +33,14 @@ for f in internal/codegen/lobstertable/runtime/*.lobster; do
     fi
 done
 base=$(cd "$out/base" && ls *Table.lobster | tr '\n' ' ')
-added=$(cd "$out/added" && ls *Table.lobster | tr '\n' ' ')
+added=$(cd "$out/added" && ls *Table.lobster | grep -vx 'AaaTable.lobster' | tr '\n' ' ')
+if [ ! -f "$out/added/AaaTable.lobster" ]; then
+    echo "RUNTIME HOME GATE FAILED: the added file Aaa.schema has no table module AaaTable.lobster"
+    status=1
+fi
 if [ "$base" != "$added" ]; then
     echo "RUNTIME HOME GATE FAILED: the table modules moved: [$base] became [$added]"
     status=1
 fi
 [ "$status" -eq 0 ] || exit 1
-echo "runtime home gate (Lobster): every runtime module keeps its name and its bytes, and the table modules stay [${base% }], when an earlier-sorting file joins the unit"
+echo "runtime home gate (Lobster): every runtime module keeps its name and its bytes, and the table modules stay [${base% }] beside the new AaaTable.lobster, when an earlier-sorting file joins the unit"
