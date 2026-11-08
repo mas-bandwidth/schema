@@ -52,7 +52,7 @@ table Root { a *string
 		fmt.Fprintf(&b, "{final parsed=w.rootFromJson(%q);check(hex(w.rootWireSave(parsed))==%q,'JSON string slots stay distinct');}\n", input, hex.EncodeToString(wire))
 		fmt.Fprintf(&b, `for(final retaining in [false,true]){final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();
  final v=retaining?w.rootWireLoadRetain(data,store,r):w.rootWireLoad(data,r);
- check(!r.malformed&&!r.refused&&r.unknown==0,'decoded string report %d');
+ check(!r.refused&&r.unknown==0,'decoded string report %d');
  for(var repeat=0;repeat<3;repeat++){
  final saved=retaining?w.rootWireSaveRetain(v,store,w.TableWireReport()):w.rootWireSave(v);
  check(hex(saved)==%q,'distinct string node wire %d');
@@ -96,7 +96,7 @@ table Root { a *string
 	fmt.Fprintf(&b, `for(final retaining in [false,true]){
  final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();final data=bytes(%q);
  final v=retaining?w.rootWireLoadRetain(data,store,r):w.rootWireLoad(data,r);
- check(!r.malformed&&!r.refused,'shared string read');
+ check(!r.refused,'shared string read');
  var refused=false;try{if(retaining){w.rootWireSaveRetain(v,store,w.TableWireReport());}else{w.rootWireSave(v);}}on StateError catch(e){refused=e.message.toString().contains('blob_shared');}
  check(refused,'genuinely shared incoming string refuses');
  var textRefused=false;try{w.rootToJson(v);}on StateError catch(e){textRefused=e.message.toString().contains('blob_shared');}

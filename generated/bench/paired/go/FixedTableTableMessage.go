@@ -10,7 +10,10 @@
 
 package bench
 
-import "unsafe"
+import (
+	"slices"
+	"unsafe"
+)
 
 func FixedTableSaveMessageBody(w *TableMessageWriter, value *FixedTable) bool {
 	{
@@ -97,11 +100,9 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {

@@ -59,7 +59,7 @@ table Card { id string(64) }
 
 // variableRuntimeProbe writes a form-1 wire by hand and reads it back through
 // the runtime: one i32 field (kind 4) under reference 1, the zero terminator,
-// then the id-table trailer. It also proves a non-canonical LEB128 is malformed
+// then the id-table trailer. It also proves a non-canonical LEB128 is damage
 // and an unknown form byte is a refusal, not damage.
 const variableRuntimeProbe = `package probe;
 
@@ -78,7 +78,7 @@ public final class Probe {
 
         TableVariable.Report r = new TableVariable.Report();
         TableVariable.Reader rd = TableVariable.open(wire, r);
-        if (r.refused || r.malformed) { throw new AssertionError("open refused/malformed"); }
+        if (r.refused || r.damaged) { throw new AssertionError("open refused/damaged"); }
         long ref = rd.leb();
         if (ref != 1) { throw new AssertionError("ref " + ref); }
         long id = rd.resolve(ref);
@@ -89,19 +89,19 @@ public final class Probe {
         if (v != 0x01020304) { throw new AssertionError("value " + Integer.toHexString(v)); }
         if (rd.leb() != 0) { throw new AssertionError("terminator"); }
 
-        // A non-canonical LEB128 (0x80 0x00) is malformed.
+        // A non-canonical LEB128 (0x80 0x00) is damage.
         byte[] bad = new byte[] { 1, (byte) 0x80, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         TableVariable.Report rb = new TableVariable.Report();
         TableVariable.Reader rdb = TableVariable.open(bad, rb);
         if (rdb == null) { throw new AssertionError("bad open"); }
         rdb.leb();
-        if (!rb.malformed) { throw new AssertionError("non-canonical LEB not malformed"); }
+        if (!rb.damaged) { throw new AssertionError("non-canonical LEB not damaged"); }
 
         // An unknown form byte is a refusal, not damage.
         byte[] unknown = new byte[] { 7, 0, 0, 0, 0, 0, 0, 0, 0 };
         TableVariable.Report ru = new TableVariable.Report();
         TableVariable.open(unknown, ru);
-        if (!ru.refused || ru.malformed) { throw new AssertionError("unknown form not a refusal"); }
+        if (!ru.refused || ru.damaged) { throw new AssertionError("unknown form not a refusal"); }
 
         // A hand-built node table (§3.1): one *string record under the reserved
         // string type id — declared 1, type reference 2, size 3, body "abc".
@@ -110,7 +110,7 @@ public final class Probe {
         TableVariable.Report rn = new TableVariable.Report();
         TableVariable.Reader rnr = new TableVariable.Reader(nodePay, nodeIds, rn);
         TableVariable.NodeRecord[] recs = TableVariable.nodes(rnr, false);
-        if (rn.malformed || recs == null || recs.length != 1) { throw new AssertionError("nodes"); }
+        if (rn.damaged || recs == null || recs.length != 1) { throw new AssertionError("nodes"); }
         if (recs[0].typeId != 0x704be0d8faaffc58L) { throw new AssertionError("node typeId"); }
         if (!java.util.Arrays.equals(recs[0].body, new byte[] { 'a', 'b', 'c' })) { throw new AssertionError("node body"); }
         if (TableVariable.node(recs, 2) != recs[0]) { throw new AssertionError("node resolve 2"); }

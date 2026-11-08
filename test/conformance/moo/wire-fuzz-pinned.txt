@@ -1,9 +1,9 @@
 # THE MUTANTS THE MOO WIRE-FUZZ LEG DIVERGED ON, each fixed in the moo table
 # runtime and replayed alone by make/moo-fuzz.mk tables-moo-wire-fuzz-pinned:
 # <mutant file> <unit> <root> [message|retain]
-# a map header whose count runs past the field's L: the count is bounded by the
-# enclosing body, as an array's is (docs/LAYERS/1-framing.md H3; table_load.moo
-# read_map, read_keyed)
+# a map header whose count runs past the field's L: a header lies inside its
+# own L, so the crossing is damage and the read refuses (docs/plans/strict-only.md
+# decision 7; table_load.moo read_map, read_keyed)
 test/conformance/moo/wire-fuzz-pinned/crews_map_count_past_l.bin mapdemo Crews retain
 test/conformance/moo/wire-fuzz-pinned/slots_map_count_past_l.bin mapdemo Slots retain
 test/conformance/moo/wire-fuzz-pinned/fleet_map_count_past_l.bin mapdemo Fleet
@@ -12,7 +12,8 @@ test/conformance/moo/wire-fuzz-pinned/fleet_map_count_past_l.bin mapdemo Fleet
 # §3.1, §4; table_load.moo cyclic)
 testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin graphdemo Scene
 testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin graphdemo Scene retain
-# a widened repeated map key replaces an earlier key of a foreign kind
-# (docs/SPEC-TABLES.md §2.8; table_load.moo scan_key)
+# a map entry that names its key twice (the second widened): a field id twice
+# in one body is damage and the read refuses (docs/plans/strict-only.md
+# decision 5; table_load.moo read_map)
 testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin mapdemo Pairs
 testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin mapdemo Pairs retain

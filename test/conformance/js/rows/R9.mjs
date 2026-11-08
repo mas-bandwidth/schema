@@ -47,7 +47,7 @@ const layoutAt = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes;
   const plan = v1.CellFixedNewPlan();
   const r = new home.TableFixedReport();
   const n = v1.CellFixedLoad([new home.Cell()], 1, valid, valid.length, plan, r);
-  check(n === 1 && r.refused === 0 && !r.malformed,
+  check(n === 1 && r.refused === 0 && !r.damaged,
     "GREEN: a valid file opens (negative control)");
 }
 
@@ -60,7 +60,7 @@ const layoutAt = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes;
   const n = v1.CellFixedLoad([new home.Cell()], 1, broken, broken.length, plan, r);
   check(n === -1 && r.refused === TableFixedRefusal.LayoutMalformed,
     "RED: a known hash with a different layout byte is layout_malformed");
-  check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && !r.malformed,
+  check(r.unknown === 0 && r.mismatch === 0 && r.widened === 0 && r.oor === 0 && !r.damaged,
     "RED: a known hash with a different layout byte moves no counter");
 }
 
@@ -77,7 +77,7 @@ const layoutAt = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes;
   const n = v1.CellFixedLoad([new home.Cell()], 1, broken, broken.length, plan, r);
   check(n === -1 && r.refused === TableFixedRefusal.LayoutMalformed,
     "RED: a known hash with a different layout length is layout_malformed");
-  check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && !r.malformed,
+  check(r.unknown === 0 && r.mismatch === 0 && r.widened === 0 && r.oor === 0 && !r.damaged,
     "RED: a known hash with a different layout length moves no counter");
 }
 

@@ -264,19 +264,19 @@ func runJavaDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []dep
         RootFixed.Value[] values = new RootFixed.Value[]{v0, v1};
         TableVocabulary.Report rep = new TableVocabulary.Report();
         int count = RootMessage.loadMessages(values, values.length, vocab, wire, rep);
-        boolean ok = !rep.malformed && !rep.refused && count == 2;
+        boolean ok = !rep.damaged && !rep.refused && count == 2;
         if (expectOK) {
             if (ok && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
                 System.out.println("PASS " + name);
             } else {
-                System.out.println("FAIL " + name + ": count=" + count + " malformed=" + rep.malformed + " refused=" + rep.refused + " unknown=" + rep.unknown + " a0=" + values[0].a + " a1=" + values[1].a);
+                System.out.println("FAIL " + name + ": count=" + count + " damaged=" + rep.damaged + " refused=" + rep.refused + " unknown=" + rep.unknown + " a0=" + values[0].a + " a1=" + values[1].a);
                 failed = true;
             }
         } else {
-            if (count == 0 && rep.malformed && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {
+            if (count == 0 && rep.damaged && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {
                 System.out.println("PASS " + name);
             } else {
-                System.out.println("FAIL " + name + ": count=" + count + " malformed=" + rep.malformed + " refused=" + rep.refused + " a0=" + values[0].a + " a1=" + values[1].a);
+                System.out.println("FAIL " + name + ": count=" + count + " damaged=" + rep.damaged + " refused=" + rep.refused + " a0=" + values[0].a + " a1=" + values[1].a);
                 failed = true;
             }
         }

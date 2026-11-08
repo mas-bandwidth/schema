@@ -32,9 +32,8 @@ static partial class Program
             V1.TableReport report = new V1.TableReport();
             var expected = distinct ? V1.Schema.TableWire.Verdict.Ok : V1.Schema.TableWire.Verdict.Damaged;
             var verdict = V1.Schema.CfgLoadVerdict(target, padded.AsSpan(3, wire.Length), report);
-            Check(verdict == expected && report.Verdict == expected && report.Malformed == !distinct &&
-                !report.Refused && report.Reason == null && report.Unknown == 0 && report.KindMismatch == 0 &&
-                report.Clamped == 0 && report.Widened == 0 && report.Duplicate == 0,
+            Check(verdict == expected && report.Verdict == expected && report.Damaged == !distinct &&
+                !report.Refused && report.Reason == null && report.Unknown == 0 && report.Widened == 0,
                 "vocabulary verdict and report: " + label);
             Check(ResetTargetDefaults(target, 5), "vocabulary preserves root defaults: " + label);
             Check(padded.AsSpan(3, wire.Length).SequenceEqual(wire), "vocabulary never mutates input: " + label);
@@ -99,7 +98,7 @@ static partial class Program
         DirtyResetTarget(target);
         V1.TableReport forgedReport = new V1.TableReport();
         Check(V1.Schema.CfgLoadVerdict(target, forgedCount, forgedReport) == V1.Schema.TableWire.Verdict.Damaged &&
-            forgedReport.Malformed && !forgedReport.Refused && ResetTargetDefaults(target, 5),
+            forgedReport.Damaged && !forgedReport.Refused && ResetTargetDefaults(target, 5),
             "forged maximum vocabulary count is rejected before indexing or hashing");
         V1.TableReport allocationReport = new V1.TableReport();
         for (int i = 0; i < 1000; i++) { V1.Schema.CfgLoadVerdict(target, valid, allocationReport); }

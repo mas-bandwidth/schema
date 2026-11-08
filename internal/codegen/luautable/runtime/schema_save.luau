@@ -17,6 +17,7 @@
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local St = require("./schema_tables")
+local F = require("./schema_fixed")
 
 local S = {}
 
@@ -1027,6 +1028,11 @@ function S.save(d: any, v: any): (buffer?, any?)
 	if v == nil then return nil, { name = "nil_value", field = d.name } end
 	local invalid = invalid_deprecated(d, v, {})
 	if invalid ~= nil then return nil, invalid end
+	if d.fixed then
+		local ok, res = pcall(F.save, d, nil :: any, { v })
+		if not ok then return nil, res end
+		return res, nil
+	end
 	local w, why = walk(d, v, false)
 	if w == nil then return nil, why end
 	local out = buffer.create(w.n)
@@ -1039,6 +1045,12 @@ end
 function S.measure(d: any, v: any): (number?, any?)
 	local invalid = invalid_deprecated(d, v, {})
 	if invalid ~= nil then return nil, invalid end
+	if d.fixed then
+		if v == nil then return nil, { name = "nil_value", field = d.name } end
+		local ok, res = pcall(F.save, d, nil :: any, { v })
+		if not ok then return nil, res end
+		return buffer.len(res), nil
+	end
 	local w, why = walk(d, v, true)
 	if w == nil then return nil, why end
 	return w.n, nil

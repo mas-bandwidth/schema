@@ -98,7 +98,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"fixed_value_refusal", "fixed_union_arm_bytes", "fixed_utf8_valid_no_nul", "fixed_wide_ill_formed",
 		"fixed_widens", "i128_lt", "tableFixedBool", "tableFixedCheck", "tableFixedCompiler", "tableFixedConst",
 		"tableFixedCopy", "tableFixedCount", "tableFixedDstDeprecated", "tableFixedEntryBytes",
-		"tableFixedLayoutHeaderBytes", "tableFixedMaxDepth", "tableFixedNoGuard", "tableFixedOrdinal",
+		"tableFixedLayoutHeaderBytes", "tableFixedMaxDepth", "tableFixedNoGuard", "tableFixedOrdinal", "tableFixedPlanMaxEntries",
 		"tableFixedPresent", "tableFixedRecordMaxBytes", "tableFixedRemapMax", "tableFixedTag", "tableFixedText", "tableFixedTextBytes",
 		"tableFixedTextUtf8", "tableFixedTextWide", "tableFixedWiden", "tableFixedWidenF", "u128_lt",
 	},

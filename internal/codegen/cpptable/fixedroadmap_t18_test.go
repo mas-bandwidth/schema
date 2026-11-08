@@ -802,8 +802,11 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 `, pair.root, pair.newPkg, 3))
 
 		// forged ordinal past the writer's variant count: tier=Gold(3) forged to 4,
-		// one past the writer's three variants. out_of_range == 1 on the COMPILED plan
-		// (NEW reader) exactly as on the IDENTITY plan (OLD reader), never 2.
+		// one past the writer's three variants. The read is strict-only
+		// (docs/plans/strict-only.md): the COMPILED plan (NEW reader) refuses it
+		// as out_of_range exactly as the IDENTITY plan (OLD reader) does, n=-1,
+		// and the refused record is its declared defaults, never the ordinal
+		// clamped to None.
 		pair = cppT18Generate(t, "enum_append")
 		cppT18Run(t, pair, fmt.Sprintf(`
     {
@@ -820,17 +823,21 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
             if ( found != 1 ) { printf( "ordinal: locator matched %%d times, want 1\n", found ); return 1; }
         }
 `+t18Read+`
-        if ( n != 1 ) { printf( "ordinal compiled: n=%%lld\n", (long long) n ); return 1; }
-        if ( back[0].tier != %[2]s::Tier::None ) { printf( "ordinal compiled: lands %%d, not None\n", (int) back[0].tier ); return 1; }
-        if ( r.refused != 1 ) { printf( "ordinal compiled: out_of_range=%%d want 1\n", r.refused ); return 1; }
+        if ( n != -1 ) { printf( "ordinal compiled: n=%%lld, want the refusal\n", (long long) n ); return 1; }
+        if ( !r.refused || r.refuse_reason != %[2]s::out_of_range ) { printf( "ordinal compiled: refused=%%d reason=%%d want out_of_range\n", (int) r.refused, (int) r.refuse_reason ); return 1; }
+        {
+            %[2]s::%[1]s fresh; %[2]s::%[1]sReset( fresh );
+            if ( back[0].tier != fresh.tier || back[0].seq != fresh.seq ) { printf( "ordinal compiled: the refused record is not its defaults\n" ); return 1; }
+        }
         {
             %[1]s back0;
             static TableFixedEntry plan[4096];
             TableReport rr; memset( &rr, 0, sizeof( rr ) );
             const int64_t m = %[1]sFixedLoad( &back0, 1, buffer, written, plan, 4096, NULL, &rr );
-            if ( m != 1 ) { printf( "ordinal identity: n=%%lld\n", (long long) m ); return 1; }
-            if ( back0.tier != Tier::None ) { printf( "ordinal identity: lands %%d, not None\n", (int) back0.tier ); return 1; }
-            if ( rr.refused != 1 ) { printf( "ordinal identity: out_of_range=%%d want 1\n", rr.refused ); return 1; }
+            if ( m != -1 ) { printf( "ordinal identity: n=%%lld, want the refusal\n", (long long) m ); return 1; }
+            if ( !rr.refused || rr.refuse_reason != out_of_range ) { printf( "ordinal identity: refused=%%d reason=%%d want out_of_range\n", (int) rr.refused, (int) rr.refuse_reason ); return 1; }
+            %[1]s fresh0; %[1]sReset( fresh0 );
+            if ( back0.tier != fresh0.tier || back0.seq != fresh0.seq ) { printf( "ordinal identity: the refused record is not its defaults\n" ); return 1; }
         }
     }
 `, pair.root, pair.newPkg, 1))

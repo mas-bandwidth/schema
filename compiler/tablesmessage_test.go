@@ -102,7 +102,7 @@ int main()
     TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
     TableReport report;
     REQUIRE( AnnounceRead( vocabulary, own, (int64_t) sizeof( own ), &report ) );
-    REQUIRE( vocabulary.announced && !report.malformed && !report.refused );
+    REQUIRE( vocabulary.announced && !report.damaged && !report.refused );
     REQUIRE( vocabulary.count == %d );
     // the two rates: one id, kind 10, one derivation, TWO slots
     const TableMessageEntry & first = TableVocabularyEntryAt( vocabulary, %d );
@@ -110,13 +110,13 @@ int main()
     REQUIRE( first.id == second.id && first.kind == 10 && second.kind == 10 );
     REQUIRE( first.qmin == second.qmin && first.qdelta == second.qdelta && first.qcount == second.qcount );
     REQUIRE( first.qcount == 10 && first.value_bits == second.value_bits );
-    // the control: an entry the wire spells twice, byte for byte, is malformed
+    // the control: an entry the wire spells twice, byte for byte, is damaged
     const uint8_t repeated[] = { %s };
     TableMessageEntry room[ kTableMessageEntriesHere + 1 ];
     TableVocabulary twice( room, kTableMessageEntriesHere + 1 );
     TableReport refused;
     REQUIRE( !AnnounceRead( twice, repeated, (int64_t) sizeof( repeated ), &refused ) );
-    REQUIRE( !twice.announced && twice.refused && refused.malformed && !refused.refused );
+    REQUIRE( !twice.announced && twice.refused && refused.damaged && !refused.refused );
     return 0;
 }
 `, len(entries), rate+1, rate+2, cppWire(repeated))

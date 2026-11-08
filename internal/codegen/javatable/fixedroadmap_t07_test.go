@@ -59,10 +59,10 @@ func t07Capability(t *testing.T, schema, root, setters string, want map[string]s
 	classes := t07Build(t, schema, root, setters)
 	out := t07Run(t, classes)
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.malformed {
+	if r.n != 1 || r.refused || r.damaged {
 		t.Fatalf("the round trip did not read: %+v", r)
 	}
-	if r.clamped != 0 || r.widened != 0 || r.unknown != 0 || r.kindMismatch != 0 {
+	if r.widened != 0 || r.unknown != 0 {
 		t.Errorf("a clean round trip moved a counter: %+v", r)
 	}
 	for name, want := range want {
@@ -386,8 +386,8 @@ public final class Probe_p2 {
         final TableFixed.Report r = new TableFixed.Report();
         final int n = TFixed.load(new TFixed.Value[] { got }, 1, first,
                 TableFixed.plan(1 << 14), new short[1 << 14], TFixed.image(), r);
-        if (n != 1 || r.refused || r.malformed) {
-            System.out.println("P2-FAIL load n=" + n + " refused=" + r.refused + " malformed=" + r.malformed);
+        if (n != 1 || r.refused || r.damaged) {
+            System.out.println("P2-FAIL load n=" + n + " refused=" + r.refused + " malformed=" + r.damaged);
             System.exit(1);
         }
 

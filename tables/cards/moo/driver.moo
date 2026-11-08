@@ -11,13 +11,15 @@ local function writeFile(path: string, data: string)
   for i = 1, #data do hex[i] = string.format("%02x", data:byte(i)) end
   print("FILE " .. path .. " " .. table.concat(hex))
 end
--- reportText writes the read report, one Name=value line per counter of the
--- generated report in declaration order (FORMAT.md, "The read report").
+-- reportText writes the read report of an accepted read, one Name=value line
+-- per row of FORMAT.md ("The read report"), in its order. The first four are
+-- the counters; the strict read refuses the whole load on a kind mismatch, an
+-- out-of-range value, a repeat or damage, so an accepted read writes the last
+-- four rows as zero and false.
 local function reportText(report)
-  return string.format(
-    "Retained=%d\nRetainLost=%d\nWidened=%d\nUnknown=%d\nKindMismatch=%d\nClamped=%d\nDuplicate=%d\nMalformed=%s\n",
-    report.retained, report.retainLost, report.widened, report.unknown, report.kindMismatch, report.clamped,
-    report.duplicate, tostring(report.malformed))
+  return string.format("Retained=%d\nRetainLost=%d\nWidened=%d\nUnknown=%d\n",
+    report.retained, report.retainLost, report.widened, report.unknown)
+    .. "KindMismatch=0\nClamped=0\nDuplicate=0\nMalformed=false\n"
 end
 
 local function refuse(outdir, name, class) writeFile(outdir .. "/" .. name .. ".refused", class .. "\n") end

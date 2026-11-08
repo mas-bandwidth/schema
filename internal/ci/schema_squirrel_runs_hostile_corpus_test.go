@@ -502,10 +502,7 @@ func TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly(t *testing.T) {
 }
 
 const squirrelHostilePrelude = `local inputs = dofile("inputs.nut", true);
-local fresh = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
-};
+local fresh = function() { return {}; };
 local hexOf = function(s) {
   if (s == null) return "-";
   local out = "";
@@ -519,6 +516,19 @@ local named = function(report, fallback) {
   if (report != null && ("reason" in report) && report.reason != null) return report.reason;
   return fallback;
 };
+// THE VERDICT IS THE CONTRACT (docs/plans/strict-only.md, decision 3): a
+// refusal's own name is compared only where the corpus pins one that is not
+// damage, as the C++ runner does (test/cpp-hostile/hostile.hpp, hc_refused);
+// every other refusal (out_of_range, kind_mismatch, malformed, wire_damaged,
+// truncated, a layout refusal) is the corpus's damaged.
+local KEPT = { newer_form = true, message_form_as_file = true, no_vocabulary = true,
+  second_announcement = true, vocabulary_too_large = true, batch_too_large = true,
+  non_finite_float = true };
+local verdictOf = function(why) {
+  if (why == "count_over_extent_cap") return "count_refusal";
+  if (why != null && (why in KEPT)) return why;
+  return "damaged";
+};
 local run = function(name, carrier, dir, mod, root, annkey) {
   local schema = dofile(dir + "/schema_module.nut", true);
   local T = schema.require(mod);
@@ -526,28 +536,24 @@ local run = function(name, carrier, dir, mod, root, annkey) {
   local v = null;
   local r = fresh();
   if (carrier == "text") {
-    v = J.FromJsonTolerant(T, root, inputs[name], r);
-    if (v == null || r.malformed) { emit(name, "refuse", "damaged", null); return; }
+    v = J.FromJson(T, root, inputs[name], r);
+    if (v == null) { emit(name, "refuse", "damaged", null); return; }
   } else if (carrier == "wire") {
-    local R = schema.require("schema_table_refusal");
-    local rr = {};
-    v = R.ReadStrict(T, root, inputs[name], rr);
-    if (v == null && (named(rr, "") == "clamped" || named(rr, "") == "kind_mismatch")) {
-      // THE CORPUS CARRIES THE TOLERANT ANSWER (docs/HOSTILE-CORPUS.md): a
-      // strict refusal that names only a counter is a read the tolerant load
-      // keeps, so its value is the one digested.
-      rr = fresh();
-      v = schema.require("schema_table_load").loadTolerant(T, root, inputs[name], rr);
-      if (v != null && ("malformed" in rr) && rr.malformed) v = null;
+    local bytes = inputs[name];
+    local form = bytes.len() > 0 ? (bytes[0] & 0xff) : -1;
+    local rr = fresh();
+    if (form == 3 && T.Descriptors[root].fixed && ((root + "FixedLoad") in T)) {
+      // A FIXED ROOT'S FILE FORM 3 IS READ BY ITS FORM BYTE through the
+      // root's own fixed reader (docs/SPEC-TABLES.md §3.4), as the C++
+      // runner reads it through FixedLoad (039073a52)
+      local out = [T.Descriptors[root].make()];
+      local n = T[root + "FixedLoad"](bytes, out, 1);
+      if (n == 1) v = out[0];
+      else rr.reason <- n < 0 ? T.FixedReason : "wire_damaged";
+    } else {
+      v = schema.require("schema_table_refusal").ReadStrict(T, root, bytes, rr);
     }
-    if (v == null) {
-      local why = named(rr, "wire_damaged");
-      if (why == "wire_damaged" || why == "malformed" || why == "truncated") why = "damaged";
-      // the corpus names a count past the int32 storage cap count_refusal
-      if (why == "count_over_extent_cap") why = "count_refusal";
-      emit(name, "refuse", why, null);
-      return;
-    }
+    if (v == null) { emit(name, "refuse", verdictOf(named(rr, null)), null); return; }
   } else if (carrier == "announce" || carrier == "announce_second" ||
              carrier == "announce_bytes" || carrier == "announce_entries") {
     local V = {};
@@ -557,11 +563,11 @@ local run = function(name, carrier, dir, mod, root, annkey) {
     local ar = {};
     local ok = T.AnnounceRead(V, inputs[name], ar);
     if (carrier == "announce_second") {
-      if (ok != true) { emit(name, "refuse", named(ar, "damaged"), null); return; }
+      if (ok != true) { emit(name, "refuse", verdictOf(named(ar, null)), null); return; }
       ar = {};
       ok = T.AnnounceRead(V, inputs[name], ar);
     }
-    if (ok != true) { emit(name, "refuse", named(ar, "damaged"), null); return; }
+    if (ok != true) { emit(name, "refuse", verdictOf(named(ar, null)), null); return; }
     emit(name, "accept", "-", null);
     return;
   } else if (carrier == "message" || carrier == "message_novocab") {
@@ -576,7 +582,7 @@ local run = function(name, carrier, dir, mod, root, annkey) {
     local rr = {};
     local loadMessages = T[root + "LoadMessages"];
     local n = loadMessages(storage, V, inputs[name], rr);
-    if (n < 1) { emit(name, "refuse", named(rr, "damaged"), null); return; }
+    if (n < 1) { emit(name, "refuse", verdictOf(named(rr, null)), null); return; }
     v = storage[0];
   } else {
     emit(name, "unknown", carrier, null);

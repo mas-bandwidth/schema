@@ -29,7 +29,6 @@ fixed table Probe
 `
 
 func TestCPPRefuseReasonMatchesGosOrder(t *testing.T) {
-	t.Skip("layer 4 (cpp): the Go enum renames clamped to out_of_range in place (docs/SPEC-TABLES.md §6.5); the C++ enum takes the same rename in its leg layer: docs/plans/strict-only.md")
 	t.Parallel()
 	u := unitFromSource(t, cppRefuseReasonSchema)
 

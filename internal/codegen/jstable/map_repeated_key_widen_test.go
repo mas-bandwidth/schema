@@ -52,8 +52,8 @@ for(const c of rows) for(const retaining of [false,true]) for(let repeat=0;repea
  const report=new m.TableVariableReport();
  const store=new m.TableVariableRetain(new Uint8Array(1<<20),new Array((1<<20)/8));
  const value=retaining?m[c.root+"LoadRetain"](wire,store,report):m[c.root+"Load"](wire,report);
- const counters=[report.unknown,report.kindMismatch,report.widened,report.clamped,report.duplicate];
- if(value===null||report.malformed||report.refused||JSON.stringify(counters)!==JSON.stringify(c.report))
+ const counters=[report.unknown,report.mismatch,report.widened,report.oor,report.repeated];
+ if(value===null||report.damaged||report.refused||JSON.stringify(counters)!==JSON.stringify(c.report))
   throw Error(c.name+" retain="+retaining+" report="+JSON.stringify(report));
  const saved=m[c.root+"Save"](value);
  if(saved===null||Buffer.from(saved).toString("hex")!==c.saved)

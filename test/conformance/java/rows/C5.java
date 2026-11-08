@@ -5,7 +5,7 @@
 //
 //   unit := (meta == wide) ? 2 : 1;
 //   cap  := size / unit;
-//   v    := SLE(4, record+src) clamped into [0, cap], COUNT clamped if it fired.
+//   v    := SLE(4, record+src) outside [0, cap] REFUSES as lengthOverBound.
 //
 // `v` is the USED LENGTH IN CODE UNITS, and the clamp uses CODE UNITS, not
 // BYTES. An astral pair is TWO code units (surrogate high + surrogate low)
@@ -23,13 +23,11 @@
 //   1. used = 2 (astral pair written as 4 bytes): clamp does not fire,
 //      the length lands as 2 in the image's length word.
 //   2. used = 3 (writer said three code units, beyond the bound of 2):
-//      clamp fires, the length lands clamped to 2, report.clamped == 1.
-//      THIS IS THE BITE: a reader that divided cap by 2N instead of unit
-//      would land 3 unchanged. The fix the cell is for (7) is exactly that
-//      distinction.
-//   3. used = -1 (the four-byte length is negative): clamp fires as the
-//      count side of the spec's `v < 0` branch, length lands as 0,
-//      report.clamped == 1.
+//      the strict read REFUSES as lengthOverBound. THIS IS THE BITE: a
+//      reader that took the cap in bytes (4) would read 3 as in bounds. The
+//      fix the cell is for (7) is exactly that distinction.
+//   3. used = -1 (the four-byte length is negative): the spec's `v < 0`
+//      branch REFUSES as lengthOverBound.
 //
 // If any case fails the test prints the failing case to stderr and returns 1;
 // on success each case prints a single line to stdout.
@@ -118,8 +116,8 @@ public final class C5 {
 
     public static void main(String[] args) {
         // CASE 1: used = 2, an astral pair (high+low surrogate).
-        // 4 bytes, counted as 2 code units. The length lands as 2 and no
-        // clamp fires.
+        // 4 bytes, counted as 2 code units. The length lands as 2 and the
+        // read does not refuse.
         {
             TableFixed.Entry[] plan = TableFixed.plan(1);
             TableFixed.Entry e = plan[0];
@@ -137,16 +135,14 @@ public final class C5 {
             int v = (image[0] & 0xff) | ((image[1] & 0xff) << 8)
                     | ((image[2] & 0xff) << 16) | ((image[3] & 0xff) << 24);
             check("C5 wide text: used=2 (astral pair) lands as 2 code units", v == 2);
-            check("C5 wide text: used=2 does not fire the clamp", report.clamped == 0);
+            check("C5 wide text: used=2 is inside the bound and does not refuse", !report.refused && !report.damaged);
         }
 
         // CASE 2: used = 3, beyond the bound cap = size / unit = 4 / 2 = 2.
-        // The clamp fires (report.clamped == 1) and the length lands as 2,
-        // NOT 3 and NOT 6 (the byte count). THIS IS THE CELL'S OWN BITE: a
-        // reader that took cap = size (and unit = 1) would clamp to 3 (the
-        // byte bound), and a reader that doubled on the way IN would land 6.
-        // The wide-text code-units rule says cap = size / unit, which gives
-        // exactly 2.
+        // The read refuses as lengthOverBound. THIS IS THE CELL'S OWN BITE: a
+        // reader that took cap = size (and unit = 1) would read 3 as inside
+        // its 4-byte bound and accept it. The wide-text code-units rule says
+        // cap = size / unit, which gives exactly 2, and 3 is past it.
         {
             TableFixed.Entry[] plan = TableFixed.plan(1);
             TableFixed.Entry e = plan[0];
@@ -161,17 +157,13 @@ public final class C5 {
             byte[] image = new byte[8];
             TableFixed.Report report = new TableFixed.Report();
             TableFixed.run(plan, 1, remap, src, 0, src.length, image, report);
-            int v = (image[0] & 0xff) | ((image[1] & 0xff) << 8)
-                    | ((image[2] & 0xff) << 16) | ((image[3] & 0xff) << 24);
-            check("C5 wide text: used=3 clamps to cap=2 (code units, not bytes)", v == 2);
-            check("C5 wide text: used=3 fires the clamp exactly once", report.clamped == 1);
+            check("C5 wide text: used=3 is past cap=2 (code units, not bytes) and refuses as lengthOverBound",
+                    report.refused && report.reason == TableFixed.Reason.lengthOverBound && !report.damaged);
         }
 
         // CASE 3: used = -1 (the count-side `v < 0` branch).
-        // The runtime clamps to 0 and increments clamped. A reader that
-        // interpreted the u32 as signed would already do this; a reader that
-        // interpreted it as unsigned would land v = 0xffffffff == 4 billion
-        // and clamp to cap = 2 from the OTHER branch.
+        // The runtime refuses it as lengthOverBound, whichever branch (signed
+        // negative, or unsigned past the cap) a reader takes.
         {
             TableFixed.Entry[] plan = TableFixed.plan(1);
             TableFixed.Entry e = plan[0];
@@ -186,10 +178,8 @@ public final class C5 {
             byte[] image = new byte[8];
             TableFixed.Report report = new TableFixed.Report();
             TableFixed.run(plan, 1, remap, src, 0, src.length, image, report);
-            int v = (image[0] & 0xff) | ((image[1] & 0xff) << 8)
-                    | ((image[2] & 0xff) << 16) | ((image[3] & 0xff) << 24);
-            check("C5 wide text: used=-1 lands as 0", v == 0);
-            check("C5 wide text: used=-1 fires the clamp exactly once", report.clamped == 1);
+            check("C5 wide text: used=-1 refuses as lengthOverBound",
+                    report.refused && report.reason == TableFixed.Reason.lengthOverBound && !report.damaged);
         }
 
         if (failures > 0) {

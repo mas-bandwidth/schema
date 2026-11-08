@@ -94,7 +94,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        readFieldsRetain(r, v, null, retain, report, path, 0);\n")
 		b.WriteString("        if (report.refused) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
 		b.WriteString("        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)\n")
-		b.WriteString("        if (report.malformed) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
+		b.WriteString("        if (report.damaged || report.refused) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
 		b.WriteString("        return v;\n")
 		b.WriteString("    }\n\n")
 	} else {
@@ -136,9 +136,9 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "            for (int i = 0; i < nt.recs.length; i++) { TableVariable.NodeRecord rec = nt.recs[i]; if (rec.table != null) { nt.from = i + 2; %sVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, %sVariable.TYPE_ID, report); } }\n", st.Name, st.Name)
 		b.WriteString("        }\n")
 		b.WriteString("        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)\n")
-		b.WriteString("        if (report.malformed) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
+		b.WriteString("        if (report.damaged || report.refused) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
 		b.WriteString("        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)\n")
-		b.WriteString("        if (TableVariable.cyclic(nt)) { report.malformed = true; retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
+		b.WriteString("        if (TableVariable.cyclic(nt)) { report.damaged = true; retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
 		b.WriteString("        return v;\n")
 		b.WriteString("    }\n\n")
 	}
@@ -191,7 +191,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	}
 	b.WriteString("            long id = r.resolve(ref);\n")
 	b.WriteString("            if (r.fail) { return; }\n")
-	b.WriteString("            if (!r.has(1)) { report.malformed = true; return; }\n")
+	b.WriteString("            if (!r.has(1)) { report.damaged = true; return; }\n")
 	b.WriteString("            int kind = r.get8();\n")
 	first := true
 	for i, f := range st.Fields {
@@ -223,9 +223,9 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	} else {
 		b.WriteString("                if (nt != null && r.rootBody) { r.skip(kind); }\n")
 	}
-	b.WriteString("                else { report.malformed = true; return; }\n")
+	b.WriteString("                else { report.damaged = true; return; }\n")
 	b.WriteString("            } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {\n")
-	b.WriteString("                report.malformed = true; return;\n")
+	b.WriteString("                report.damaged = true; return;\n")
 	b.WriteString("            } else {\n")
 	b.WriteString("                captureUnknown(r, id, kind, retain, report, path, depth);\n")
 	b.WriteString("            }\n")
@@ -604,7 +604,7 @@ public final class TableRetain {
         used = write;
     }
 
-    // A winning duplicate map key replaces the entry itself and every child.
+    // A winning repeated map key replaces the entry itself and every child.
     void discardPath(int[] path, int depth) {
         int write = 0;
         for (int at = 0; at < used; ) {
@@ -706,7 +706,7 @@ public final class TableRetain {
     }
 
     // A resolving cursor over one self-framed payload (§6.6). The walk's own
-    // damage is a dropped record and never malformed, so it reads the bytes
+    // damage is a dropped record and never damaged, so it reads the bytes
     // directly and touches no report; the outer framing was validated by the
     // plain read's skip before the walk began.
     static final class Resolver {

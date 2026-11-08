@@ -11,7 +11,7 @@ package javatable
 //       the entries the page names, the build version kept.
 //   2.3 the refusals second_announcement (and refusal is terminal) and
 //       vocabulary_too_large (both bounds), and the two strict checks answered
-//       `malformed`.
+//       `damaged`.
 //
 // The rows are the reference's own bytes, pinned by
 // testdata/conformance/tables/MANIFEST.txt's `connection` lines.
@@ -251,7 +251,7 @@ func announceReadMain(u *ir.Unit, vocab []ir.TableVocabularyEntry) string {
         v.reset(%d);
         final TableVocabulary.Report report = new TableVocabulary.Report();
         if (!TableVocabulary.announceRead(v, ann, report)) { fail("announceRead refused"); }
-        if (report.malformed || report.refused) { fail("report " + report.reason); }
+        if (report.damaged || report.refused) { fail("report " + report.reason); }
         if (v.count != %d) { fail("count " + v.count); }
         if (Long.compareUnsigned(v.buildVersion, 0x%016xL) != 0) { fail("version " + Long.toUnsignedString(v.buildVersion, 16)); }
         if (v.refBits != %d) { fail("refBits " + v.refBits); }
@@ -590,7 +590,7 @@ func refusalsMain(u *ir.Unit) string {
         if (!TableVocabulary.announceRead(first, ann, r1)) { fail("first announce"); }
         final int before = first.count;
         final TableVocabulary.Report r2 = new TableVocabulary.Report();
-        if (TableVocabulary.announceRead(first, ann, r2) || !r2.refused || !"second_announcement".equals(r2.reason) || r2.malformed) {
+        if (TableVocabulary.announceRead(first, ann, r2) || !r2.refused || !"second_announcement".equals(r2.reason) || r2.damaged) {
             fail("second announcement was not refused by name");
         }
         if (first.count != before) { fail("a second announcement replaced the vocabulary"); }
@@ -612,7 +612,7 @@ func refusalsMain(u *ir.Unit) string {
         final TableVocabulary smallEntries = new TableVocabulary();
         smallEntries.reset(1);
         final TableVocabulary.Report e1 = new TableVocabulary.Report();
-        if (TableVocabulary.announceRead(smallEntries, ann, e1) || !e1.refused || !"vocabulary_too_large".equals(e1.reason) || e1.malformed || smallEntries.announced) {
+        if (TableVocabulary.announceRead(smallEntries, ann, e1) || !e1.refused || !"vocabulary_too_large".equals(e1.reason) || e1.damaged || smallEntries.announced) {
             fail("entry count bound was not refused by name");
         }
         // The entry bound is maxEntries too, not the storage's capacity alone:
@@ -623,14 +623,14 @@ func refusalsMain(u *ir.Unit) string {
         narrowEntries.reset(%d);
         narrowEntries.maxEntries = 1;
         final TableVocabulary.Report e3 = new TableVocabulary.Report();
-        if (TableVocabulary.announceRead(narrowEntries, ann, e3) || !e3.refused || !"vocabulary_too_large".equals(e3.reason) || e3.malformed || narrowEntries.announced) {
+        if (TableVocabulary.announceRead(narrowEntries, ann, e3) || !e3.refused || !"vocabulary_too_large".equals(e3.reason) || e3.damaged || narrowEntries.announced) {
             fail("maxEntries bound was not refused by name");
         }
         final TableVocabulary smallBytes = new TableVocabulary();
         smallBytes.reset(%d);
         smallBytes.maxBytes = 4;
         final TableVocabulary.Report e2 = new TableVocabulary.Report();
-        if (TableVocabulary.announceRead(smallBytes, ann, e2) || !e2.refused || !"vocabulary_too_large".equals(e2.reason) || e2.malformed || smallBytes.announced) {
+        if (TableVocabulary.announceRead(smallBytes, ann, e2) || !e2.refused || !"vocabulary_too_large".equals(e2.reason) || e2.damaged || smallBytes.announced) {
             fail("vocabulary byte bound was not refused by name");
         }
 
@@ -640,8 +640,8 @@ func refusalsMain(u *ir.Unit) string {
             final TableVocabulary v = new TableVocabulary();
             v.reset(%d);
             final TableVocabulary.Report report = new TableVocabulary.Report();
-            if (TableVocabulary.announceRead(v, fromHex(h), report) || !report.malformed || report.refused || v.announced) {
-                fail("a failed strict check was not malformed");
+            if (TableVocabulary.announceRead(v, fromHex(h), report) || !report.damaged || report.refused || v.announced) {
+                fail("a failed strict check was not damaged");
             }
         }
         // The build version is kept the moment it is read, refusal or not (§3.3).
@@ -649,7 +649,7 @@ func refusalsMain(u *ir.Unit) string {
         keep.reset(%d);
         final TableVocabulary.Report kr = new TableVocabulary.Report();
         final byte[] keeps = fromHex("%s");
-        if (TableVocabulary.announceRead(keep, keeps, kr) || !kr.malformed || Long.compareUnsigned(keep.buildVersion, 0x%016xL) != 0 || keep.announced) {
+        if (TableVocabulary.announceRead(keep, keeps, kr) || !kr.damaged || Long.compareUnsigned(keep.buildVersion, 0x%016xL) != 0 || keep.announced) {
             fail("the refused announcement did not keep the build version");
         }
         System.out.println("ok");

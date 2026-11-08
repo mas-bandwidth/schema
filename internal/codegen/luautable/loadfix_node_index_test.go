@@ -105,7 +105,7 @@ func loadFixBMain(g *generatedUnit) string {
 	}
 	b.WriteString(`local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local d = S.lookup("Scene")
-local v = load.loadTolerant("Scene", inputs.wire, report)
+local v = load.loadWalk("Scene", inputs.wire, report)
 local saved = nil
 if v ~= nil then saved = save.save(d, v) end
 local function hex(b: buffer): string

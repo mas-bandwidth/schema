@@ -112,7 +112,7 @@ for(const c of spec.rows){
  expect(has(c.name+"Block")===c.block,"block export "+c.name);
  const value=new v[c.name]();value.n=7;
  expect(hex(v[c.name+"Save"](value))===c.wire,"declared forms moved wire "+c.name);
- const report=new v.TableVariableReport();expect(v[c.name+"Load"](new Uint8Array(Buffer.from(c.wire,"hex")),report)!==null && !report.malformed,"wire load "+c.name);
+ const report=new v.TableVariableReport();expect(v[c.name+"Load"](new Uint8Array(Buffer.from(c.wire,"hex")),report)!==null && !report.damaged,"wire load "+c.name);
  if(c.json){expect(v[c.name+"ToJson"](value)===c.text,"JSON closure "+c.name);expect(v[c.name+"FromJson"](c.text,new v.TableVariableReport())!==null,"JSON read "+c.name);}
  if(c.cook){const n=v[c.name+"CookMeasure"](value);const bytes=new Uint8Array(n>0?n:0);expect(n>0 && v[c.name+"CookFrom"](value,bytes,1),"cook write "+c.name);const reader=all.find(m=>m[c.name+"Cook"]!==undefined)[c.name+"Cook"];expect(reader.Open(bytes)!==null,"cook read "+c.name);}
 }

@@ -25,12 +25,12 @@ const countStopPrelude = `local inputs = dofile("inputs.nut", true);
 local schema = dofile("mapdemo/schema_module.nut", true);
 local T = schema.require(%q);
 local L = schema.require("schema_table_load");
-local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-  duplicate = 0, malformed = false, refused = false, stopped = false };
-local v = L.loadTolerant(T, "Docs", inputs["case"], report);
+local report = { unknown = 0, mismatch = 0, widened = 0, oor = 0,
+  repeated = 0, bodyDamaged = false, refused = false, stopped = false };
+local v = L.loadWalk(T, "Docs", inputs["case"], report);
 print("case " + ((v != null && !report.stopped) ? "loaded" : "stopped") + "," + report.unknown + "," +
-  report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," +
-  report.malformed + "\n");
+  report.mismatch + "," + report.widened + "," + report.oor + "," + report.repeated + "," +
+  report.bodyDamaged + "\n");
 `
 
 // mutant 54031: mapdemo.Docs's map announces 2^31 entries
@@ -109,6 +109,8 @@ func TestSquirrelCountRefusalStopsTheBuilderNegativeControl(t *testing.T) {
 		t.Fatalf("the root body's skip appears %d times in the load runtime, want exactly once", n)
 	}
 	patched = strings.Replace(patched, skip, "bodyRead(", 1)
+	// and the wire-alone check, which refuses the same count after the walk
+	patched = withoutWireCheck(t, patched)
 	got, want := runCountStop(t, patched)
 	if got == want {
 		t.Fatalf("with the read going on past the count refusal, the pin still answers %s", got)

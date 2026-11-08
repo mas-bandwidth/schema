@@ -154,7 +154,7 @@ public final class Driver {
         // M6: a shared node is written once, byte for byte with the reference
         TableVariable.Report report = new TableVariable.Report();
         SceneVariable.Value shared = SceneVariable.load(wire, report);
-        if (shared == null || report.malformed || report.refused) { fail("graph_shared did not load"); }
+        if (shared == null || report.damaged || report.refused) { fail("graph_shared did not load"); }
         if (shared.head == null || shared.head != shared.alias || shared.head != shared.ground.head) {
             fail("load: the three pointers to one ListNode are not one object");
         }
@@ -187,7 +187,7 @@ public final class Driver {
         if (diamond == null) { fail("a diamond, which is no cycle, was refused"); }
         TableVariable.Report again = new TableVariable.Report();
         SceneVariable.Value back = SceneVariable.load(diamond, again);
-        if (back == null || again.malformed || back.tree == null || back.tree.left == null
+        if (back == null || again.damaged || back.tree == null || back.tree.left == null
                 || back.tree.left != back.tree.right) {
             fail("re-save: the diamond's shared leaf did not load back as one node");
         }

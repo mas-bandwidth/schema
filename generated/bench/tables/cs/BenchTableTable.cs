@@ -747,7 +747,7 @@ namespace Benchtable
                     int code = text[i];
                     if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.Length && text[i + 1] >= 0xdc00 && text[i + 1] <= 0xdfff)
                     { code = 0x10000 + ((code - 0xd800) << 10) + text[++i] - 0xdc00; }
-                    else if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+                    else if (code >= 0xd800 && code <= 0xdfff) { o.Invalid = true; continue; } // an unpaired surrogate is not text: the write refuses (§16.14 W0)
                     if (!WriteEscape(ref o, code)) { WriteUtf8(ref o, code); }
                 }
                 o.Put((byte)'"');
@@ -975,6 +975,9 @@ namespace Benchtable
                 public bool Measuring;
                 public long Offset;
                 public bool Overflow;
+                // storage that is not text (ill-formed UTF-8, an unpaired surrogate)
+                // refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
+                public bool Invalid;
                 internal TableWire.Graph Graph;
 
                 public void Raw(ReadOnlySpan<byte> data)
@@ -1114,15 +1117,10 @@ namespace Benchtable
                 o.Put((byte)(0x80 | (code & 0x3f)));
             }
 
-            // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
-            // byte-transparent — the wire imposes no encoding (§3) and a string may
-            // hold anything — so the WRITER is where that obligation is met: a byte
-            // that is not part of a well-formed sequence is written as U+FFFD, one per
-            // bad byte, and never raw. A text this walk writes is therefore readable by
-            // any conforming parser, which a raw byte would not be. The cost is stated
-            // plainly: for a string holding invalid UTF-8, the round trip is NOT
-            // byte-identical, because the alternative is emitting a text that is not
-            // JSON.
+            // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts
+            // anything else into storage, so a byte that is not part of a well-formed
+            // sequence was put there by a program: the write REFUSES (invalid_value,
+            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
             static void WriteString(ref Out o, ReadOnlySpan<byte> s)
             {
                 o.Put((byte)'"');
@@ -1134,7 +1132,7 @@ namespace Benchtable
                     int width;
                     if (Utf8(s, i, out width) < 0)
                     {
-                        WriteUtf8(ref o, 0xfffd); // one per bad byte
+                        o.Invalid = true; // not text: the write refuses (§16.14 W0)
                     }
                     else
                     {
@@ -1288,11 +1286,11 @@ namespace Benchtable
                 return n;
             }
 
-            // A float writes at the SHORTEST precision that reads back as the same
-            // value at the field's own width, so a round trip is exact and a text stays
-            // readable. Non-finite values have no JSON spelling at all, and the writer
-            // REFUSES rather than losing one silently — the same rule measure and save
-            // already apply to an enum value no variant names (§5).
+            // A float writes by §16.14's W12: C's %.*g at the first precision whose
+            // text reads back as the same value at the field's own width. Non-finite
+            // values have no JSON spelling at all, and the writer REFUSES rather than
+            // losing one silently — the same rule measure and save already apply to an
+            // enum value no variant names (§5).
             static bool WriteFloat(ref Out o, double value, bool single)
             {
                 if (!Finite(value)) { return false; }
@@ -1305,17 +1303,21 @@ namespace Benchtable
                     length = FormatG(value, digits, text);
                     if (length <= 0) { return false; }
                     if (digits >= high) { break; }
-                    double back;
-                    if (!double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out back))
-                    {
-                        continue;
-                    }
+                    // the read-back is ONE correctly rounded conversion at the field's
+                    // own width (§16.14, W12): a float32 parses as a float, never as a
+                    // double then narrowed, because rounding twice parts from once
                     if (single)
                     {
-                        if ((double)(float)back == value) { break; }
+                        float back32;
+                        if (float.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out back32)
+                            && (double)back32 == value) { break; }
+                        continue;
                     }
-                    else if (back == value) { break; }
+                    double back;
+                    if (double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out back)
+                        && back == value) { break; }
                 }
                 for (int i = 0; i < length; i++) { o.Put((byte)text[i]); }
                 return true;
@@ -2789,14 +2791,15 @@ namespace Benchtable
                     // occurrence's slots standing
                     ResetSlots(value, f);
                     char shape = ElementShape(f);
-                    // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a
-                    // duplicate key like any other, last-wins and counted (§16.2).
+                    // A KEYED OBJECT'S KEYS ARE KEYS: a key named twice is a
+                    // repeated key like any other, and damage.
                     // The schema fixes the vocabulary size. Small schemas use the
                     // stack; larger ones still count every duplicate exactly.
                     int words = (f.ArrayBound + 63) / 64;
                     Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
                     seen.Clear();
                     Span<byte> key = stackalloc byte[MaxKey];
+                    System.Collections.Generic.HashSet<string> unplaced = null;
                     for (; ; )
                     {
                         byte c = Peek(text, ref input);
@@ -2823,6 +2826,13 @@ namespace Benchtable
                         }
                         if (slot < 0)
                         {
+                            // a key this reader cannot place (None, or a name outside
+                            // the key vocabulary) is still a key: spelling it twice is
+                            // a repeated key, damage like a placed one.
+                            // Compared on the decoded bytes, so an
+                            // escaped spelling of the same name is the same key.
+                            unplaced ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                            if (!unplaced.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                             input.Report.Unknown++;
                             if (!SkipValue(text, ref input, depth + 1)) { return false; }
                         }
@@ -2895,7 +2905,7 @@ namespace Benchtable
             }
 
             // ONE table object: keys are field keys, unknown ones are skipped and
-            // counted, a repeated key is last-wins and counted. The instance is already
+            // counted, a repeated key (known or unknown) is damage. The instance is already
             // at its declared defaults when this is entered, so a key the text never
             // mentions keeps the default an absent field takes on the wire (§4).
             static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth, bool opened = false)
@@ -2917,6 +2927,7 @@ namespace Benchtable
                 Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
                 seen.Clear();
                 Span<byte> key = stackalloc byte[MaxKey];
+                System.Collections.Generic.HashSet<string> unknown = null;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
@@ -2942,6 +2953,10 @@ namespace Benchtable
                     }
                     if (index < 0)
                     {
+                        // an unknown key is still a key: spelling it twice is a
+                        // repeated JSON key, damage
+                        unknown ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                        if (!unknown.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                         input.Report.Unknown++;
                         if (!SkipValue(text, ref input, depth + 1)) { return false; }
                     }
@@ -3041,13 +3056,14 @@ namespace Benchtable
                 o.Measuring = measuring;
                 o.Offset = 0;
                 o.Overflow = false;
+                o.Invalid = false;
                 if (info.Variable) { o.Graph = TableWire.Number(value, info); if (o.Graph == null) { return -1; } }
                 if (!WriteValue(ref o, value, info, 0)) { return -1; }
                 // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every
                 // writer emits it — this one, the C++ walk and schema unpack — and
                 // every reader accepts a text with or without.
                 o.Put((byte)'\n');
-                if (o.Overflow) { return -1; }
+                if (o.Overflow || o.Invalid) { return -1; }
                 return o.Offset;
             }
         }
@@ -3824,13 +3840,12 @@ namespace Benchtable
                     }
                 }
             }
-            static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report, ReadOnlySpan<byte> headerTail = default)
+            static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report)
             {
-                if (!a.Has(2)) { return true; }
+                // THE HEADER LIES INSIDE THE MAP'S OWN L (docs/SPEC-TABLES.md §2.8, §3)
+                if (!a.Has(2)) { return Damage(report); }
                 byte kind = a.Byte();
-                Reader header = headerTail.IsEmpty ? a : new Reader(headerTail, a.Vocabulary) { Offset = 1 };
-                if (!header.Var(out ulong count)) { Damage(report); return true; }
-                a.Offset = Math.Min(a.Buffer.Length, header.Offset);
+                if (!a.Var(out ulong count)) { return Damage(report); }
                 if (kind != 13) { return Fail(report, "kind_mismatch"); }
                 if (count > int.MaxValue) { return CollectionCap(report); }
                 f.ResetField(value);
@@ -3854,7 +3869,9 @@ namespace Benchtable
                     if (order == 0) { return Fail(report, "duplicate"); }
                     else { last = KeyOf(entry, keyField); landed++; }
                 }
-                f.SetCount(value, landed); return true;
+                f.SetCount(value, landed);
+                // bytes left inside the map's L after its entries are damage
+                return report.Damaged || report.Refused || a.Offset == a.Buffer.Length || Damage(report);
             }
 
             static int BitCount(ulong n) { return n == 0 ? 0 : System.Numerics.BitOperations.Log2(n) + 1; }
@@ -5258,7 +5275,7 @@ namespace Benchtable
                 if (kind == 14)
                 {
                     ResetArm(value, f);
-                    if (!r.Has(2)) { return true; } // an inert short arm still selects
+                    if (!r.Has(2)) { return Damage(report); } // the header lies inside the arm's L
                     byte elementKind = r.Byte();
                     if (!r.Var(out ulong count)) { return Damage(report); }
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
@@ -5273,7 +5290,9 @@ namespace Benchtable
                         decoded++;
                     }
                     if (f.Counted) { f.SetCount(value, decoded); }
-                    return true; // damaged elements preserve the selected arm's prefix
+                    // bytes left inside the arm's L after its payload are damage
+                    if (!report.Damaged && !report.Refused && r.Offset != r.Buffer.Length) { return Damage(report); }
+                    return true;
                 }
                 if (!ReadScalar(ref r, value, f, 0, kind, report)) { return false; }
                 return r.Offset == r.Buffer.Length || Damage(report);
@@ -5331,7 +5350,7 @@ namespace Benchtable
             static bool ReadField(ref Reader r, object value, TableFieldInfo f, byte kind, TableReport report, out bool placed)
             {
                 placed = true;
-                if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report, r.Buffer.Slice(r.Offset - map.Buffer.Length)); }
+                if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report); }
                 if (kind == 12 || kind == 33)
                 {
                     if (!r.Slice(out Reader text)) { return Damage(report); }
@@ -5342,14 +5361,12 @@ namespace Benchtable
                 if (kind == 14 || kind == 16)
                 {
                     if (!r.Slice(out Reader array)) { return Damage(report); }
-                    if (array.Buffer.Length < 2) { return true; } // inert, including under a repeat
+                    // THE HEADER LIES INSIDE ITS OWN L (docs/SPEC-TABLES.md §3,
+                    // tla/Framing.tla): an L too short for it, or a count that crosses
+                    // it, is damage, as the Go oracle's arrayBody and keyed say.
+                    if (array.Buffer.Length < 2) { return Damage(report); }
                     byte elementKind = array.Byte();
-                    // Match the reference's header cursor: the count is read at the
-                    // enclosing cursor, then all elements are bounded by the array's L.
-                    // A count spilling past L can clamp, but cannot invent an element.
-                    Reader header = new Reader(r.Buffer.Slice(r.Offset - array.Buffer.Length + 1), r.Vocabulary);
-                    if (!header.Var(out ulong count)) { Damage(report); return true; }
-                    array.Offset = Math.Min(array.Buffer.Length, 1 + header.Offset);
+                    if (!array.Var(out ulong count)) { return Damage(report); }
                     if (!Compatible(elementKind, f.Kind, report)) { placed = false; return true; }
                     if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
                     if (kind == 16)
@@ -5362,6 +5379,8 @@ namespace Benchtable
                             if (slot == 0) { report.Unknown++; continue; }
                             ReadElement(ref element, value, f, slot - 1, elementKind, report, false);
                             if (report.Refused) { return false; }
+                            // bytes left inside a keyed slot after its element are damage
+                            if (element.Offset != element.Buffer.Length) { return Damage(report); }
                         }
                     }
                     else
@@ -5383,6 +5402,8 @@ namespace Benchtable
                         }
                         if (f.Counted) { ResetCountedTail(value, f, previous, decoded); }
                     }
+                    // bytes left inside the array's L after its elements are damage
+                    if (!report.Damaged && !report.Refused && array.Offset != array.Buffer.Length) { return Damage(report); }
                     return true;
                 }
                 return ReadElement(ref r, value, f, 0, kind, report, true);

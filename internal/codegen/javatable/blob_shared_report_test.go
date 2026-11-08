@@ -22,7 +22,7 @@ type blobSharedReportCase struct {
 }
 
 func TestJavaBlobSharedReportCensus(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
+	t.Skip("generator gap, re-pinned and red: a node record no pointer reaches is damage (strict-only decision 11, the all_null case); the Java load checks only for cycles (variableform.go, the node-table load), so it keeps a value the oracle refuses")
 	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 
@@ -41,6 +41,11 @@ func TestJavaBlobSharedReportCensus(t *testing.T) {
 		t.Fatalf("expected 9 shared blob-report cases, got %d", len(cases))
 	}
 
+	// The census counters are retired (docs/plans/strict-only.md): the oracle's
+	// verdict on each case is what the Java leg owes. A blob owned by more than
+	// one slot (Shared) or a blob slot under another kind (KindMismatch) must
+	// be among the refusals; a case the oracle reads reads with no unknown.
+	refused := map[string]bool{}
 	m := tabletext.NewModel(u)
 	for _, row := range cases {
 		wire, err := hex.DecodeString(row.Wire)
@@ -49,9 +54,9 @@ func TestJavaBlobSharedReportCensus(t *testing.T) {
 		}
 		v := m.New(u.Tables["Root"])
 		for _, retaining := range []bool{false, true} {
-			r := tabletext.Report{}
 			store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
 			for repeat := 1; repeat <= 2; repeat++ {
+				r := tabletext.Report{}
 				var ok bool
 				var err error
 				if retaining {
@@ -59,8 +64,19 @@ func TestJavaBlobSharedReportCensus(t *testing.T) {
 				} else {
 					ok, err = tablewire.Decode(m, v, wire, &r)
 				}
-				if !ok || err != nil || r.Unknown != row.Shared*repeat || r.Unknown != row.KindMismatch*repeat {
-					t.Fatalf("%s neutral retain=%v: %+v %v", row.Name, retaining, r, err)
+				if err != nil && !tablewire.ReadRefusal(err) {
+					t.Fatalf("%s retain=%v: oracle: %v", row.Name, retaining, err)
+				}
+				verdict := !ok || r.Refused
+				if first, seen := refused[row.Name]; seen && first != verdict {
+					t.Fatalf("%s retain=%v repeat=%d: the oracle's verdict moved: %+v %v", row.Name, retaining, repeat, r, err)
+				}
+				refused[row.Name] = verdict
+				if (row.Shared != 0 || row.KindMismatch != 0) && !verdict {
+					t.Fatalf("%s retain=%v: the oracle read a shared or mis-kinded blob: %+v", row.Name, retaining, r)
+				}
+				if !verdict && r.Unknown != 0 {
+					t.Fatalf("%s retain=%v: the oracle read with unknown: %+v", row.Name, retaining, r)
 				}
 			}
 		}
@@ -100,8 +116,8 @@ func TestJavaBlobSharedReportCensus(t *testing.T) {
 		for _, b := range wire {
 			elems = append(elems, fmt.Sprintf("(byte) 0x%02x", b))
 		}
-		body.WriteString(fmt.Sprintf("        check(%q, new byte[]{%s}, %q, %d, %d);\n",
-			tc.Name, strings.Join(elems, ", "), tc.Saved, tc.Shared, tc.KindMismatch))
+		body.WriteString(fmt.Sprintf("        check(%q, new byte[]{%s}, %q, %t);\n",
+			tc.Name, strings.Join(elems, ", "), tc.Saved, refused[tc.Name]))
 	}
 
 	driver := fmt.Sprintf(`import %s.*;
@@ -109,90 +125,90 @@ import java.util.HexFormat;
 
 public final class BlobSharedReportDriver {
     private static int checks = 0;
+    private static int failures = 0;
 
-    private static void check(String name, byte[] wire, String savedHex, int shared, int kindMismatch) {
+    private static void fail(String why) {
+        System.out.println("FAIL " + why);
+        failures++;
+    }
+
+    private static void check(String name, byte[] wire, String savedHex, boolean refuse) {
         for (boolean retaining : new boolean[]{false, true}) {
             for (int history : new int[]{0, 7}) {
-                TableVariable.Report report = new TableVariable.Report();
-                if (report.blobShared != 0) {
-                    throw new AssertionError("new report counter " + name);
-                }
-                report.blobShared = history;
-                report.unknown = 11;
-                report.widened = 13;
-                report.clamped = 17;
                 TableRetain retain = new TableRetain(1 << 16, 1024);
                 for (int repeat = 1; repeat <= 2; repeat++) {
+                    TableVariable.Report report = new TableVariable.Report();
+                    report.unknown = 11 + history;
+                    report.widened = 13;
                     RootVariable.Value v = retaining
                             ? RootRetain.loadRetain(wire, retain, report)
                             : RootVariable.load(wire, report);
                     String why = name + " retain=" + retaining + " history=" + history + " repeat=" + repeat;
-                    if (v == null || report.malformed || report.refused
-                            || report.blobShared != history + shared * repeat
-                            || report.kindMismatch != kindMismatch * repeat) {
-                        throw new AssertionError("census " + why
-                                + " blobShared=" + report.blobShared
-                                + " kindMismatch=" + report.kindMismatch
-                                + " malformed=" + report.malformed
-                                + " refused=" + report.refused);
-                    }
-                    if (report.unknown != 11 || report.widened != 13 || report.clamped != 17) {
-                        throw new AssertionError("history preserved " + why);
-                    }
-                    if (name.equals("shared_empty") || name.equals("shared_equal") || name.equals("repeated_field_naming")) {
-                        if (v.a == null || v.a != v.b || v.c == null || v.c != v.d) {
-                            throw new AssertionError("one shared object per blob " + why);
+                    if (refuse) {
+                        // the oracle refuses this case: the whole load refuses and
+                        // hands back nothing (docs/plans/strict-only.md)
+                        if (v != null || !(report.refused || report.damaged)) {
+                            fail("strict refusal " + why
+                                    + " value=" + (v != null) + " refused=" + report.refused + " damaged=" + report.damaged);
                         }
+                        if (retaining && (retain.used != 0 || retain.idUsed != 0)) {
+                            fail("refused retaining load kept a tail " + why);
+                        }
+                        checks++;
+                        continue;
+                    }
+                    if (v == null || report.damaged || report.refused) {
+                        fail("read " + why
+                                + " damaged=" + report.damaged + " refused=" + report.refused);
+                        checks++;
+                        continue;
+                    }
+                    if (report.unknown != 11 + history || report.widened != 13) {
+                        fail("history preserved " + why);
                     }
                     if (name.startsWith("distinct_")) {
                         if (v.a == null || v.b == null || v.c == null || v.d == null || v.c == v.d) {
-                            throw new AssertionError("distinct equal blob identities " + why);
+                            fail("distinct equal blob identities " + why);
                         }
                     }
                     if (name.equals("all_null")) {
                         if (v.a != null || v.b != null || v.c != null || v.d != null) {
-                            throw new AssertionError("null slots " + why);
+                            fail("null slots " + why);
                         }
                     }
-                    if (shared == 0) {
-                        byte[] saved = RootVariable.save(v);
-                        if (saved == null || !HexFormat.of().formatHex(saved).equals(savedHex)) {
-                            throw new AssertionError("distinct/null save " + why);
+                    byte[] saved = RootVariable.save(v);
+                    if (saved == null || !HexFormat.of().formatHex(saved).equals(savedHex)) {
+                        fail("distinct/null save " + why);
+                    }
+                    if (retaining) {
+                        byte[] rsaved = RootRetain.saveRetain(v, retain, report);
+                        if (rsaved == null || !HexFormat.of().formatHex(rsaved).equals(savedHex)) {
+                            fail("distinct/null retained save " + why);
                         }
-                        if (retaining) {
-                            byte[] rsaved = RootRetain.saveRetain(v, retain, report);
-                            if (rsaved == null || !HexFormat.of().formatHex(rsaved).equals(savedHex)) {
-                                throw new AssertionError("distinct/null retained save " + why);
-                            }
-                        }
-                    } else {
-                        if (RootVariable.save(v) != null || RootVariable.toJson(v) != null) {
-                            throw new AssertionError("shared writer refusal " + why);
-                        }
-                        if (retaining && (RootRetain.saveRetain(v, retain, report) != null || RootRetain.measureRetain(v, retain) >= 0)) {
-                            throw new AssertionError("shared retained writer refusal " + why);
-                        }
+                    }
+                    report.reset();
+                    if (report.unknown != 0 || report.widened != 0 || report.damaged
+                            || report.refused || report.reason != null) {
+                        fail(name + ": reset did not clear report");
                     }
                     checks++;
-                }
-                report.reset();
-                if (report.blobShared != 0 || report.unknown != 0 || report.kindMismatch != 0
-                        || report.widened != 0 || report.clamped != 0 || report.duplicate != 0
-                        || report.malformed || report.refused || report.reason != null) {
-                    throw new AssertionError(name + ": reset did not clear report");
                 }
             }
             RootVariable.Value noReport = retaining
                     ? RootRetain.loadRetain(wire, new TableRetain(1 << 16, 1024), null)
                     : RootVariable.load(wire, null);
-            if (noReport == null) {
-                throw new AssertionError("nil report remains tolerant " + name);
+            if ((noReport == null) != refuse) {
+                fail("a null report changes the verdict " + name);
             }
         }
     }
 
     public static void main(String[] args) {
-%s        System.out.println("BLOB REPORT OK " + checks);
+%s        if (failures != 0) {
+            System.out.println("BLOB REPORT FAILED " + failures + " of " + checks);
+            System.exit(1);
+        }
+        System.out.println("BLOB REPORT OK " + checks);
     }
 }
 `, javaPackageOf(u), body.String())

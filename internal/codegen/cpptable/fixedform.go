@@ -851,7 +851,7 @@ func (g *tableGen) emitFixedLoadStrict(st *ir.Struct) {
 	g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
 	g.pf("    const int64_t n = %sFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );\n", st.Name)
 	g.pf("    if ( n < 0 ) { return -1; }\n")
-	g.pf("    if ( out->damaged || out->refused || out->refused || out->refused )\n    {\n")
+	g.pf("    if ( out->damaged || out->refused )\n    {\n")
 	g.pf("        for ( int64_t k = 0; k < n; ++k ) { %sReset( values[k] ); }\n", st.Name)
 	g.pf("        return -1;\n    }\n")
 	g.pf("    return n;\n}\n\n")

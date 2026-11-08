@@ -22,7 +22,7 @@ on:
     - cron: '23 3 * * *'
   workflow_dispatch:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-lua-resource-bounds.mk'
       - 'internal/ci/schema_lua_resource_bounds_test.go'

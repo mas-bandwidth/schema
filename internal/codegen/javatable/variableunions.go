@@ -158,11 +158,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		// the arm's `L` cannot be read, and only the field's own None, unknown
 		// or arm damage resets it. null says "leave the previous arm": the
 		// field caller keeps it, an array element takes None (§3, §2.8).
-		fmt.Fprintf(&b, "    static Value readPayload%s(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report%s){Value v=new Value();long ref=input.leb();if(input.fail)return null;if(ref==0)return v;long id=input.resolve(ref);if(input.fail)return null;if(!input.has(1)){report.malformed=true;input.fail=true;return null;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return null;\n", suffix, args)
+		fmt.Fprintf(&b, "    static Value readPayload%s(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report%s){Value v=new Value();long ref=input.leb();if(input.fail)return null;if(ref==0)return v;long id=input.resolve(ref);if(input.fail)return null;if(!input.has(1)){report.damaged=true;input.fail=true;return null;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return null;\n", suffix, args)
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        if(id==0x%016xL){\n", ir.TableWireId(arm.WireName()))
 			if arm.Void() {
-				fmt.Fprintf(&b, "        if(kind!=32){report.kindMismatch++;return v;}if(body.off!=body.limit){report.malformed=true;return v;}v.tag=%d;return v;}\n", i+1)
+				fmt.Fprintf(&b, "        if(kind!=32){report.refuse(\"kind_mismatch\");return v;}if(body.off!=body.limit){report.damaged=true;return v;}v.tag=%d;return v;}\n", i+1)
 				continue
 			}
 			one := *arm.F
@@ -177,13 +177,13 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 					widenKinds = append(widenKinds, k)
 				}
 			}
-			fmt.Fprintf(&b, "        if(!(%s)){report.kindMismatch++;return v;}\n", condition.String())
+			fmt.Fprintf(&b, "        if(!(%s)){report.refuse(\"kind_mismatch\");return v;}\n", condition.String())
 			if len(widenKinds) > 0 {
 				widthExpr := "0"
 				for _, k := range widenKinds {
 					widthExpr = fmt.Sprintf("(kind==%d?%d:%s)", k, ir.TableKindWidth(k), widthExpr)
 				}
-				fmt.Fprintf(&b, "        if(kind!=%d&&((body.limit-body.off)!=%s)){report.malformed=true;return v;}\n", expected, widthExpr)
+				fmt.Fprintf(&b, "        if(kind!=%d&&((body.limit-body.off)!=%s)){report.damaged=true;return v;}\n", expected, widthExpr)
 			}
 			b.WriteString("        TableVariable.Reader r=TableVariable.fieldPayload(body,kind);\n")
 			directText := one.Array == ir.ArrayNone && (one.Type.Kind == ir.TString || one.Type.Kind == ir.TWString) && !one.Type.Pointer
@@ -203,7 +203,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				b.WriteString("        if(!armOwn)return new Value();\n")
 			}
 			if directText {
-				b.WriteString("parentReport.clamped+=report.clamped;parentReport.malformed|=report.malformed;if(report.malformed)return new Value();report=parentReport;\n")
+				b.WriteString("if(report.refused)parentReport.refuse(report.reason);parentReport.damaged|=report.damaged;if(report.damaged||report.refused)return new Value();report=parentReport;\n")
 			}
 			// BYTES LEFT INSIDE A NESTED-UNION ARM'S `L` AFTER A WHOLE INNER
 			// UNION ARE NOT DAMAGE (docs/SPEC-TABLES.md §3, the append rule):
@@ -212,9 +212,9 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			_, nestedUnion := one.Type.Ref.(*ir.Union)
 			nestedUnion = nestedUnion && one.Type.Kind == ir.TNamed && !one.Type.Pointer && one.Array == ir.ArrayNone
 			if nestedUnion {
-				fmt.Fprintf(&b, "        if(r.fail){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+				fmt.Fprintf(&b, "        if(r.fail){report.damaged=true;return new Value();}v.tag=%d;return v;}\n", i+1)
 			} else {
-				fmt.Fprintf(&b, "        if(r.fail||r.off!=r.limit){report.malformed=true;return new Value();}v.tag=%d;return v;}\n", i+1)
+				fmt.Fprintf(&b, "        if(r.fail||r.off!=r.limit){report.damaged=true;return new Value();}v.tag=%d;return v;}\n", i+1)
 			}
 		}
 		b.WriteString("        report.unknown++;")
@@ -245,7 +245,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        if(%q.equals(armName)){\n", arm.Name)
 			if arm.Void() {
-				fmt.Fprintf(&b, "        if(in.peek()=='n'){in.lit(\"null\");v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
+				fmt.Fprintf(&b, "        if(in.peek()=='n'){in.lit(\"null\");v.tag=%d;}else{in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", i+1)
 			} else {
 				one := *arm.F
 				one.Name = mem[i]
@@ -255,7 +255,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				}
 				fmt.Fprintf(&b, "        if(%s){\n", shape)
 				readJsonFieldValue(&b, u, st, &one)
-				fmt.Fprintf(&b, "        if(!in.bad)v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
+				fmt.Fprintf(&b, "        if(!in.bad)v.tag=%d;}else{in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", i+1)
 			}
 			b.WriteString("        }else ")
 		}
@@ -291,7 +291,7 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		// A repeated field's last occurrence wins WHOLE, but a damaged occurrence
 		// whose header never became an arm leaves the earlier arm standing
 		// (docs/SPEC-TABLES.md §3, §4).
-		fmt.Fprintf(b, "%sVariable.Value read=%sVariable.%s(r,nt,report%s);if(read!=null)v.%s=read;}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m)
+		fmt.Fprintf(b, "%sVariable.Value read=%sVariable.%s(r,nt,report%s);if(read!=null)v.%s=read;}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", un.Name, un.Name, method, args, m)
 		return
 	}
 	// A BOUNDED or FIXED array of unions keeps its first bound elements and
@@ -299,9 +299,9 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	// §3, §4); only an unbounded count past what a list can hold is refused.
 	countCheck := "else if(count<0||count>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else{"
 	if f.ArrayBound > 0 {
-		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.clamped++;}", f.ArrayBound, f.ArrayBound)
+		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.refuse(\"count_over_bound\");}", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=%s;if(!ar.fail){if(ek!=15){report.kindMismatch++;}%sv.%s.clear();", countRead(f, "ar"), countCheck, m)
+	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=%s;if(!ar.fail){if(ek!=15){report.refuse(\"kind_mismatch\");}%sv.%s.clear();", countRead(f, "ar"), countCheck, m)
 	if retain {
 		fmt.Fprintf(b, "retain.discardField(path,depth,%d);", ordinal)
 	}
@@ -314,10 +314,10 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	// array keeps the slot at its default, and a counted or unbounded array
 	// keeps only the prefix that decoded (the engine's arrayBody, §4).
 	if f.Array == ir.ArrayFixed {
-		fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);v.%s.add(elem==null?new %sVariable.Value():elem);if(elem==null||ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m, un.Name)
+		fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);v.%s.add(elem==null?new %sVariable.Value():elem);if(elem==null||ar.fail)break;}}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", un.Name, un.Name, method, args, m, un.Name)
 		return
 	}
-	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);if(elem==null)break;v.%s.add(elem);if(ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m)
+	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);if(elem==null)break;v.%s.add(elem);if(ar.fail)break;}}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", un.Name, un.Name, method, args, m)
 
 }
 

@@ -105,7 +105,7 @@ const m = await import(pathToFileURL(%q).href);
 const wire = new Uint8Array(readFileSync(%q));
 const rep = new m.TableVariableReport();
 const v = m.%sLoad(wire, rep);
-console.log("JS loaded=" + (v !== null) + "|malformed=" + rep.malformed);
+console.log("JS loaded=" + (v !== null) + "|malformed=" + rep.damaged);
 `, module, wirePath, tc.root)
 				script := filepath.Join(work, "probe_"+w.label+".mjs")
 				if err := os.WriteFile(script, []byte(src), 0o600); err != nil {

@@ -7,12 +7,11 @@ package javatable
 // writer's 4 and the reader's 8.
 //
 // The NEW build reads the forged OLD file through its lineage, so the plan is a
-// COMPILED one, and the bound the count op clamps against is the WRITER's,
-// carried by the plan: `valsCount` stays 4, never the reader's 8 and never the
-// forged 7. `clamped` is asserted EXACTLY == 1 and never >= 1: the BOUNDS pass
-// counts once per entry per record (§5.4), and a leg that also counted inside
-// some other op would land 2 and be wrong. This is the java twin of the C row
-// landed in #1126.
+// COMPILED one, and the bound the count op holds against is the WRITER's,
+// carried by the plan, never the reader's 8. Under the strict read
+// (docs/plans/strict-only.md, ALG §4.5) a count past it REFUSES the whole load
+// as countOverBound, n = -1, no counter moved. This is the java twin of the C
+// row landed in #1126.
 import (
 	"bytes"
 	"os"
@@ -51,31 +50,8 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
 		{key: "refuses", schema: "VOLD_array_bounded_grow.schema"},
 	})
 
-	r := runProbe(t, classes, "Probe_reads", hostile)
-
-	if r.n != 1 {
-		t.Errorf("n=%d, want 1", r.n)
-	}
-	if r.refused || r.malformed {
-		t.Errorf("a clean hostile read refused: refused=%v reason=%s malformed=%v", r.refused, r.reason, r.malformed)
-	}
-	if got := r.value["valsCount"]; got != "4" {
-		t.Errorf("valsCount=%s, want the WRITER's 4 — never the reader's 8 and never the forged 7", got)
-	}
-	if got := r.value["vals"]; got != "list:1000,1001,1002,1003,0,0,0,0" {
-		t.Errorf("vals=%s, want list:1000,1001,1002,1003 then the reader's declared default 0 in the grown slots", got)
-	}
-	if got := r.value["lead"]; got != "-1431655766" {
-		t.Errorf("lead=%s, want 0xAAAAAAAA", got)
-	}
-	if got := r.value["trail"]; got != "-1145324613" {
-		t.Errorf("trail=%s, want 0xBBBBBBBB", got)
-	}
-	if r.clamped != 1 {
-		t.Errorf("clamped=%d, want 1 exactly — the bounds pass counts once per entry per record (§5.4)", r.clamped)
-	}
-	if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 {
-		t.Errorf("counters moved on a clean hostile read: unknown=%d kindMismatch=%d widened=%d, want all 0",
-			r.unknown, r.kindMismatch, r.widened)
-	}
+	// The count 7 sits inside the READER's own 8 but past the WRITER's 4, which
+	// the plan carries: the read refuses the whole load as countOverBound and
+	// never lands 4, 7 or the reader's 8.
+	requireNamedRefusal(t, "writer_bound_count", runProbe(t, classes, "Probe_reads", hostile), "countOverBound")
 }

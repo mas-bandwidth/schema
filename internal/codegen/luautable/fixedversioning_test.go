@@ -448,7 +448,7 @@ local function LOAD(name: string, report: any): { any }?
 	return F.read(T.%[2]sDescriptor, fixed, inputs[name], report)
 end
 local function LOADT(name: string, report: any): { any }?
-	return F.loadTolerant(T.%[2]sDescriptor, fixed, inputs[name], report)
+	return F.loadWalk(T.%[2]sDescriptor, fixed, inputs[name], report)
 end
 local _ = num; local _ = f32bits; local _ = f64bits; local _ = LOADT
 local function body()

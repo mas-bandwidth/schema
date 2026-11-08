@@ -67,7 +67,7 @@ public final class TableFixed {
 
     /**
      * a count: clamp it to the ENTRY's bound -- which the compiled plan sets to the WRITER's (5.3
-     * step 11) -- and count one clamped if it fired.
+     * step 11) -- and refuse countOverBound if out of bound.
      */
     public static final byte opCount = 1;
 
@@ -281,11 +281,11 @@ public final class TableFixed {
     public static boolean readHeader(byte[] data, Header out, Report report) {
         // THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH (§5.3): a committed
         // form-1 file is TEN bytes and a form-2 batch THREE, so a reader that
-        // measured first would answer malformed for every real file of the two
+        // measured first would answer damaged for every real file of the two
         // forms it is supposed to name. Only a file with NO FIRST BYTE is
-        // malformed before the byte is read.
+        // damaged before the byte is read.
         if (data == null || data.length < 1) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         if (data[0] != form) {
@@ -296,13 +296,13 @@ public final class TableFixed {
             return false;
         }
         if (data.length < fileHeaderBytes + 4) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
         for (int i = 1; i < hashAt; i++) {
             if (data[i] != 0) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
         }
@@ -517,7 +517,10 @@ public final class TableFixed {
          * Report.nonFiniteFloat names the field as {@code <Table>.<field>}. Spelled
          * non_finite_float on every wire.
          */
-        nonFiniteFloat
+        nonFiniteFloat,
+        outOfRange,
+        countOverBound,
+        lengthOverBound
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */
@@ -525,17 +528,13 @@ public final class TableFixed {
         /** a name this reader cannot name. */
         public int unknown;
 
-        /** a kind that moved since the writer. */
-        public int kindMismatch;
-
         /** a kind that grew since the writer; the value landed exactly. */
         public int widened;
 
-        /** a count, a length or a value cut to this reader's own bound. */
-        public int clamped;
-
         /** framing damage: the two ends of the record met. */
-        public boolean malformed;
+        public boolean damaged;
+
+        int kindChanged;
 
         /** a refusal, which is never damage. */
         public boolean refused;
@@ -560,10 +559,9 @@ public final class TableFixed {
         /** clear every counter and the refusal. */
         public void reset() {
             unknown = 0;
-            kindMismatch = 0;
             widened = 0;
-            clamped = 0;
-            malformed = false;
+            damaged = false;
+            kindChanged = 0;
             refused = false;
             reason = Reason.none;
             layoutHash = 0;
@@ -572,8 +570,8 @@ public final class TableFixed {
 
         /** refuse by name, and set nothing else; a nonFiniteFloat refusal is never overwritten. */
         public void refuse(Reason why) {
-            refused = true;
-            if (reason != Reason.nonFiniteFloat) {
+            if (!refused || (why == Reason.nonFiniteFloat && reason != Reason.nonFiniteFloat)) {
+                refused = true;
                 reason = why;
             }
         }
@@ -715,7 +713,7 @@ public final class TableFixed {
     /**
      * EVERY LINK OF A GUARD CHAIN PAST TWO HOLDS (docs/FIXED-FORM-ALGORITHM.md §4.1): an arm inside
      * an arm inside an arm answers to every enclosing tag, outermost first, each at its own width
-     * and inside the writer's record. A link past the record sets malformed.
+     * and inside the writer's record. A link past the record sets damaged.
      */
     static boolean chainHolds(Entry p, byte[] src, int srcAt, int srcLength, Report report) {
         for (int j = 0; j < p.gcount; j++) {
@@ -723,7 +721,7 @@ public final class TableFixed {
             final int g = (int) gl;
             final int gw = guardWidth((byte) (gl >>> 32));
             if (g < 0 || g + gw > srcLength) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             if (tagAt(src, srcAt + g, gw) != p.gpool[2 * (p.gindex + j) + 1]) {
@@ -758,7 +756,7 @@ public final class TableFixed {
                 // bounded by the writer's record like every other offset (5.2).
                 final int gw = guardWidth(p.argw);
                 if (p.guard < 0 || p.guard + gw > srcLength) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
                 if (tagAt(src, srcAt + p.guard, gw) != p.arg) {
@@ -771,7 +769,7 @@ public final class TableFixed {
                 // when BOTH tags hold their ordinal.
                 final int gw2 = guardWidth(p.argw2);
                 if (p.guard2 < 0 || p.guard2 + gw2 > srcLength) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
                 if (tagAt(src, srcAt + p.guard2, gw2) != p.arg2) {
@@ -779,7 +777,7 @@ public final class TableFixed {
                 }
             }
             if (p.gcount > 2 && !chainHolds(p, src, srcAt, srcLength, report)) {
-                if (report.malformed) {
+                if (report.damaged) {
                     return;
                 }
                 continue;
@@ -788,7 +786,7 @@ public final class TableFixed {
                 case opCopy:
                     {
                         if (p.size < 0 || p.src < 0 || p.src + p.size > srcLength) {
-                            report.malformed = true;
+                            report.damaged = true;
                             return;
                         }
                         System.arraycopy(src, srcAt + p.src, image, p.dst, p.size);
@@ -797,16 +795,16 @@ public final class TableFixed {
                 case opCount:
                     {
                         if (p.src + 4 > srcLength) {
-                            report.malformed = true;
+                            report.damaged = true;
                             return;
                         }
                         int v = get32(src, srcAt + p.src);
                         if (v < 0) {
                             v = 0;
-                            report.clamped++;
+                            report.refuse(Reason.countOverBound);
                         } else if (v > p.size) {
                             v = p.size;
-                            report.clamped++;
+                            report.refuse(Reason.countOverBound);
                         }
                         put32(image, p.dst, v);
                         break;
@@ -816,16 +814,16 @@ public final class TableFixed {
                         final int unit = (p.meta == textWide) ? 2 : 1;
                         final int cap = p.size / unit;
                         if (p.src + 4 + p.size > srcLength) {
-                            report.malformed = true;
+                            report.damaged = true;
                             return;
                         }
                         int v = get32(src, srcAt + p.src);
                         if (v < 0) {
                             v = 0;
-                            report.clamped++;
+                            report.refuse(Reason.lengthOverBound);
                         } else if (v > cap) {
                             v = cap;
-                            report.clamped++;
+                            report.refuse(Reason.lengthOverBound);
                         }
                         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE
                         // (§4.5 fix 11): UTF-8 validity over v bytes, wide code
@@ -845,7 +843,7 @@ public final class TableFixed {
                         // writer whose enum gained a variant IN THE MIDDLE is
                         // remapped here and never reinterpreted.
                         if (p.src + p.size > srcLength) {
-                            report.malformed = true;
+                            report.damaged = true;
                             return;
                         }
                         // AN ORDINAL IS UNSIGNED, AT EVERY WIDTH. An eight-byte
@@ -872,7 +870,7 @@ public final class TableFixed {
                         // of a counted array is not this op's: scatter walks the
                         // LIVE count, so unused slots never reach a clamp.
                         if (Long.compareUnsigned(raw, n) > 0) {
-                            report.clamped++;
+                            report.refuse(Reason.outOfRange);
                         }
                         putUint(image, p.dst, v, p.dstsize);
                         break;
@@ -880,7 +878,7 @@ public final class TableFixed {
                 case opWiden:
                     {
                         if (p.src + p.size > srcLength) {
-                            report.malformed = true;
+                            report.damaged = true;
                             return;
                         }
                         // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the
@@ -896,7 +894,7 @@ public final class TableFixed {
                 case opWidenF:
                     {
                         if (p.src + 4 > srcLength) {
-                            report.malformed = true;
+                            report.damaged = true;
                             return;
                         }
                         // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
@@ -915,7 +913,7 @@ public final class TableFixed {
                         // COUNT: a tag past that set lands None (already written
                         // just above) and COUNTS, so the compiled plan counts it
                         // exactly as the identity plan's decode bound does and the
-                        // SAME forged bytes land the SAME clamped == 1 on either
+                        // SAME forged bytes refuse outOfRange on either
                         // plan (schema#1254, 5.4, 5.8 row 12).
                         //
                         // THE BOUND IS HERE AND NOT AT THE PUSH, and that is stated
@@ -927,12 +925,12 @@ public final class TableFixed {
                         // cases use.
                         if (p.aux == 0 && p.dstsize != 0 && p.guard == noGuard) {
                             if (p.src < 0 || p.src + p.size > srcLength) {
-                                report.malformed = true;
+                                report.damaged = true;
                                 return;
                             }
                             final long raw = tagAt(src, srcAt + p.src, p.size);
                             if (raw > (p.dstsize & 0xFFL)) {
-                                report.clamped++;
+                                report.refuse(Reason.outOfRange);
                             }
                         }
                         break;
@@ -970,10 +968,10 @@ public final class TableFixed {
             long landed = v;
             if (signed ? v < lo : Long.compareUnsigned(v, lo) < 0) {
                 landed = lo;
-                report.clamped++;
+                report.refuse(Reason.outOfRange);
             } else if (signed ? v > hi : Long.compareUnsigned(v, hi) > 0) {
                 landed = hi;
-                report.clamped++;
+                report.refuse(Reason.outOfRange);
             }
             if (landed != v) {
                 putUint(image, at, landed, width);
@@ -1525,7 +1523,7 @@ public final class TableFixed {
             // word, and the guard's reach too. ONE entry past it refuses the
             // plan WHOLE, by name, on this lineage entry's own lane -- never a
             // partly compiled plan landing values and then a per-record
-            // malformed the joint table of 5.3 forbids beside them.
+            // damaged the joint table of 5.3 forbids beside them.
             //
             // THE REACH IS THE OP'S, NOT THE size LANE'S. size is a byte run
             // for copy, ordinal and widen, a TEXT entry's unit count behind a
@@ -1790,7 +1788,7 @@ public final class TableFixed {
             }
             // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
             if (c.report != null) {
-                c.report.kindMismatch++;
+                c.report.kindChanged++;
             }
             return;
         }
@@ -2049,7 +2047,7 @@ public final class TableFixed {
                                 (byte) mySize,
                                 (byte) 0);
                     } else if (c.report != null) {
-                        c.report.kindMismatch++;
+                        c.report.kindChanged++;
                     }
                     break;
                 }
@@ -2065,7 +2063,7 @@ public final class TableFixed {
      * <p>TWO REFUSALS AND NOT ONE (5.3's joint table, 5.9 #45): a plan that does not fit the
      * storage is planTooLarge, and ONE ENTRY PAST THE WRITER'S OWN RECORD is layoutRecordTooLarge.
      * Both are named on report and both refuse the plan WHOLE -- which is what keeps a read from
-     * landing values and THEN setting a per-record malformed beside n >= 1, two answers 5.3's table
+     * landing values and THEN setting a per-record damaged beside n >= 1, two answers 5.3's table
      * does not let a report carry at once.
      */
     public static int compile(
@@ -2281,7 +2279,7 @@ public final class TableFixed {
      * the lock, the walk happens once per class, off every load path, and a plan that will not
      * build is a refusal this entry CARRIES rather than one a load discovers.
      *
-     * <p>unknown and kindMismatch are the COMPILE CENSUS: the plan's own numbers, fixed when it was
+     * <p>unknown and kindChanged are the COMPILE CENSUS: the plan's own numbers, fixed when it was
      * built, landed on the report ONCE after the record loop and only on a read that returns (5.9
      * #6). remap is this plan's OWN ordinal table -- a static plan cannot borrow the caller's
      * scratch, because the table is part of the plan (5.9 #24).
@@ -2291,17 +2289,17 @@ public final class TableFixed {
         public final int count;
         public final short[] remap;
         public final int unknown;
-        public final int kindMismatch;
+        public final int kindChanged;
 
         /** Reason.none, or the name a file selecting this entry is refused by. */
         public final Reason why;
 
-        Plan(Entry[] entries, int count, short[] remap, int unknown, int kindMismatch, Reason why) {
+        Plan(Entry[] entries, int count, short[] remap, int unknown, int kindChanged, Reason why) {
             this.entries = entries;
             this.count = count;
             this.remap = remap;
             this.unknown = unknown;
-            this.kindMismatch = kindMismatch;
+            this.kindChanged = kindChanged;
             this.why = why;
         }
     }
@@ -2371,7 +2369,7 @@ public final class TableFixed {
             final Report census = new Report();
             final int made = compile(theirs, me, dest, p, table, census);
             if (made >= 0) {
-                out[i] = new Plan(p, made, table, census.unknown, census.kindMismatch, Reason.none);
+                out[i] = new Plan(p, made, table, census.unknown, census.kindChanged, Reason.none);
             } else {
                 // THE ENTRY'S OWN LANE CARRIES ITS OWN REASON (5.9 #36): an
                 // entry past the writer's record is layoutRecordTooLarge and a

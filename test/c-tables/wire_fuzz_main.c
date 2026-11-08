@@ -79,8 +79,9 @@ int main( int argc, char ** argv )
         if(forms[index]==2){length=codec->message_fuzz(wire,(int64_t)size,&saved,&report,&loaded,&region_bytes);free(wire);goto reply;}
         value = codec->storage();
         region_bytes=codec->load_measure ? codec->load_measure(wire,(int64_t)size) : -1;
-        loaded = codec->load( value, wire, (int64_t) size, &report ); free( wire );
-        length = cook ? (loaded ? codec->cook_measure(value) : -1) : codec->measure( value );
+        loaded = codec->load( value, wire, (int64_t) size, &report ) && !report.refused; free( wire );
+        /* a refusal saves nothing: no defaults, no partial value (README, `saved`) */
+        length = !loaded ? -1 : cook ? codec->cook_measure(value) : codec->measure( value );
         if(cook) { region_bytes=length; }
         if ( length >= 0 ) {
             saved = (uint8_t *) malloc( (size_t) (length ? length : 1) );
@@ -88,18 +89,14 @@ int main( int argc, char ** argv )
             if(cook) { if(!codec->cook(value,saved,(uint64_t)length,big)) { length=-1; } }
             else { length = codec->save( value, saved, length ); }
         }
-        /* §2.5: a save refused because one blob is named from two slots is a
-           NAMED refusal, answered as the length -2 (the tolerant load counted
-           it); every other failed save is -1. */
-        if ( !cook && length < 0 && report.blob_shared > 0 ) { length = -2; }
-        /* Fixed storage always exists; load's bool is the body verdict. */
-        if ( !loaded && !report.refused ) { report.malformed = 1; }
         reply:
-        write_number( codec->load_measure ? (uint64_t)loaded : 1, 1 );
-        write_number( (uint64_t) report.unknown, 4 ); write_number( (uint64_t) report.kind_mismatch, 4 );
-        write_number( (uint64_t) report.widened, 4 ); write_number( (uint64_t) report.clamped, 4 );
-        write_number( (uint64_t) report.duplicate, 4 ); write_number( (uint64_t) report.malformed, 1 );
-        write_number( (uint64_t) report.refused, 1 ); write_number( (uint64_t)region_bytes, 8 );
+        write_number( (uint64_t)loaded, 1 );
+        /* the 47-byte header keeps its retired kind_mismatch, clamped, duplicate
+           and malformed slots for transport; the verdict is loaded and refused */
+        write_number( (uint64_t) report.unknown, 4 ); write_number( 0, 4 );
+        write_number( (uint64_t) report.widened, 4 ); write_number( 0, 4 );
+        write_number( 0, 4 ); write_number( 0, 1 );
+        write_number( (uint64_t) ( report.refused || !loaded ), 1 ); write_number( (uint64_t)region_bytes, 8 );
         write_number( (uint64_t)report.retained, 4 ); write_number( (uint64_t)report.retain_lost, 4 ); write_number( (uint64_t) length, 8 );
         if ( length > 0 && fwrite( saved, 1, (size_t) length, stdout ) != (size_t) length ) { return 1; }
         free( saved ); if ( fflush( stdout ) != 0 ) { return 1; }

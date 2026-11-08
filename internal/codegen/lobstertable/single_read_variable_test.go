@@ -72,6 +72,12 @@ func TestLobsterSingleReadVariable(t *testing.T) {
 		}
 		inputs[name] = data
 	}
+	// A map entry whose key field is absent is evolution, not damage: the
+	// entry lands the key's declared default, as the reference reads it
+	// (internal/tablewire Decode), so the one read accepts it.
+	if verdict, _ := goLoad(g.u, "Probe", inputs["map_missing_key"]); verdict != "read" {
+		t.Fatalf("map_missing_key: the reference %s it; this test's acceptance rests on the reference reading it", verdict)
+	}
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(singleReadVariableProgram), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -237,10 +243,9 @@ refused("keyed_duplicate")
 refused("map_repeated_key")
 refused("map_descending_key")
 refused("map_long_key")
-refused("map_missing_key")
 refused("text_total")
 refused("text_element")
-for(["widened", "unknown_valid", "unknown_node_valid", "empty"]) name:
+for(["widened", "unknown_valid", "unknown_node_valid", "empty", "map_missing_key"]) name:
     let data = read_file(name)
     assert data
     let evolution_report = schema_rt.LoadReport {}

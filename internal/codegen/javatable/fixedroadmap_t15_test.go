@@ -140,7 +140,7 @@ func t15JavaProbe(class string, chain bool) string {
             byte[] image = probe.RootFixed.image();
             probe.TableFixed.Report r = new probe.TableFixed.Report();
             probe.TableFixed.run(plan, made, remap, file, rec, probe.RootFixed.bodyBytes, image, r);
-            if (r.malformed || r.refused) { bad += fail("compiled poison " + poison + ": malformed=" + r.malformed); continue; }
+            if (r.damaged || r.refused) { bad += fail("compiled poison " + poison + ": malformed=" + r.damaged); continue; }
             probe.RootFixed.Value back = new probe.RootFixed.Value();
             probe.RootFixed.scatter(image, 0, back, r);
             int x = back.o.m.i.a.x;

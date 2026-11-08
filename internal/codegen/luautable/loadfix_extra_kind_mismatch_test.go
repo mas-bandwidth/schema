@@ -74,7 +74,7 @@ local function hex(b)
 end
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local desc = S.lookup(inputs.root)
-local v = load.loadTolerant(inputs.root, inputs.wire, report)
+local v = load.loadWalk(inputs.root, inputs.wire, report)
 if v == nil and desc ~= nil and not desc.variable then v = desc.new() end
 	local saved = ""
 	local saveok = 0

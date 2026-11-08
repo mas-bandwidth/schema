@@ -16,7 +16,6 @@ root_full 39121 29 18387
 root_default 1389 0 842
 profile_elide 16074 2 8614
 loadout_full 17726 18 8378
-wide_blob 14773073 19 6037586
 archive 40179 29 19355
 keyed_config 32364 61 15238
 keyed_default 21955 37 10730

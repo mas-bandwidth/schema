@@ -120,7 +120,7 @@ int main()
         CHECK( region != NULL );
         TableReport report = {};
         const M * loaded = MLoad( region, 1 << 16, wire, n, &report );
-        CHECK( loaded != NULL && !report.malformed && !report.refused );
+        CHECK( loaded != NULL && !report.damaged && !report.refused && report.refuse_reason == ok );
         CHECK( describe( loaded ) == shape );
         CHECK( MSave( loaded, twin, sizeof( twin ) ) == n && memcmp( twin, wire, (size_t) n ) == 0 );
         free( region );
@@ -136,7 +136,7 @@ int main()
         MBuilder jb;
         TableReport jr = {};
         CHECK( MFromJson( jb, text, jn, &jr ) );
-        CHECK( !jr.malformed && !jr.refused && jr.unknown == 0 && jr.kind_mismatch == 0 && jr.duplicate == 0 );
+        CHECK( !jr.damaged && !jr.refused && jr.unknown == 0 && jr.refuse_reason == ok );
         {
             // A BUILDER'S MAP IS SEGMENTED until Lock: the builder's own Find
             // (MTagsFind) is the lookup here, not the const form's FindEntry.
@@ -158,7 +158,7 @@ int main()
         CHECK( kept_region != NULL );
         TableReport rr = {};
         const M * kept = MLoadRetain( kept_region, need, wire, n, &retain, &rr );
-        CHECK( kept != NULL && !rr.malformed && !rr.refused );
+        CHECK( kept != NULL && !rr.damaged && !rr.refused && rr.refuse_reason == ok );
         CHECK( describe( kept ) == shape );
         const int64_t rn = MSaveRetain( kept, &retain, twin, sizeof( twin ), &rr );
         CHECK( rn == n && memcmp( twin, wire, (size_t) n ) == 0 );
@@ -186,14 +186,16 @@ int main()
         const int64_t n = MSave( nb.AsConst(), wire, sizeof( wire ) );
         CHECK( n >= 0 && hexes( wire, n, golden_absent ) );
     }
-    // a repeated key whose last value is null leaves the map absent
+    // a repeated key REFUSES the whole load (the read is strict-only,
+    // docs/plans/strict-only.md): nothing of it lands, the map is absent and
+    // the root is at its defaults
     {
         MBuilder rb;
         TableReport rr = {};
         const char * repeated = "{\"id\":1,\"tags\":{\"a\":5},\"tags\":null}";
-        CHECK( MFromJson( rb, repeated, (int64_t) strlen( repeated ), &rr ) );
-        CHECK( rr.duplicate == 1 );
-        CHECK( describe( rb.GetRoot() ) == 0 );
+        CHECK( !MFromJson( rb, repeated, (int64_t) strlen( repeated ), &rr ) );
+        CHECK( rr.refuse_reason != ok );
+        CHECK( describe( rb.GetRoot() ) == 0 && rb.GetRoot()->id == 0 );
     }
     return 0;
 }
@@ -235,7 +237,7 @@ int main()
         }
         TableReport report = {};
         const M * got = MLoad( region, 1 << 16, wire, n, &report );
-        CHECK( got != NULL && !report.malformed && !report.refused );
+        CHECK( got != NULL && !report.damaged && !report.refused && report.refuse_reason == ok );
         CHECK( got->id == 1 && got->tags.count == counts[shape] );
         if ( counts[shape] == 1 )
         {

@@ -35,7 +35,7 @@ table Holder
 `
 
 // cppArrayRootProbe pins the answers the Go oracle pins for the array root:
-// the text is the bare array, an object at the root is malformed, and the
+// the text is the bare array, an object at the root is refused malformed, and the
 // same array is the text of an array-root table held by value.
 const cppArrayRootProbe = `#include "ProbeTable.h"
 #include <stdio.h>
@@ -83,23 +83,23 @@ int main()
     compact( text );
     CHECK( strcmp( text, "[{\"x\":1},{\"x\":2}]" ) == 0 );
 
-    // READ THE ARRAY BACK EQUAL (Go: the same row's GoalListFromJsonTolerant)
+    // READ THE ARRAY BACK EQUAL (Go: the same row's GoalListFromJson)
     GoalListBuilder r;
     TableReport report;
     const char * array_text = "[{\"x\":1},{\"x\":2}]";
     CHECK( GoalListFromJson( r, array_text, (int64_t) strlen( array_text ), &report ) );
-    CHECK( !report.malformed && !report.refused && report.kind_mismatch == 0 );
+    CHECK( !report.damaged && !report.refused && report.refuse_reason == ok );
     CHECK( r.GetRoot()->goals.count == 2 );
     CHECK( r.Lock() );
     CHECK( r.AsConst()->goals[ 0 ].x == 1 && r.AsConst()->goals[ 1 ].x == 2 );
 
     // AN OBJECT AT THE ARRAY ROOT IS REFUSED (Go: json_root_not_array;
-    // C++ has no Reason string, so the malformed verdict is the same answer)
+    // C++ has no Reason string, so the malformed refusal is the same answer)
     GoalListBuilder bad;
     TableReport bad_report;
     const char * object_text = "{\"goals\":[{\"x\":1}]}";
     CHECK( !GoalListFromJson( bad, object_text, (int64_t) strlen( object_text ), &bad_report ) );
-    CHECK( bad_report.malformed );
+    CHECK( bad_report.refuse_reason == malformed );
 
     // THE ARRAY ROOT NESTED BY VALUE (Go: Holder {"g":["x","y"]})
     HolderBuilder h;
@@ -118,17 +118,19 @@ int main()
     TableReport hr_report;
     const char * holder_text = "{\"g\":[{\"x\":7}]}";
     CHECK( HolderFromJson( hr, holder_text, (int64_t) strlen( holder_text ), &hr_report ) );
-    CHECK( !hr_report.malformed && hr_report.kind_mismatch == 0 );
+    CHECK( !hr_report.damaged && !hr_report.refused && hr_report.refuse_reason == ok );
     CHECK( hr.GetRoot()->g.goals.count == 1 );
     CHECK( hr.Lock() );
     CHECK( hr.AsConst()->g.goals[ 0 ].x == 7 );
 
-    // an OBJECT where the nested array root is is the ordinary kind mismatch
+    // an OBJECT where the nested array root is is the ordinary kind mismatch,
+    // which the strict-only read refuses by that name
     HolderBuilder hm;
     TableReport hm_report;
     const char * nested_object = "{\"g\":{\"goals\":[{\"x\":7}]}}";
-    CHECK( HolderFromJsonTolerant( hm, nested_object, (int64_t) strlen( nested_object ), &hm_report ) );
-    CHECK( hm_report.kind_mismatch == 1 );
+    CHECK( !HolderFromJson( hm, nested_object, (int64_t) strlen( nested_object ), &hm_report ) );
+    CHECK( hm_report.refused && hm_report.refuse_reason == kind_mismatch );
+    CHECK( hm.GetRoot()->g.goals.count == 0 );
 
     return failures != 0;
 }

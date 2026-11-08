@@ -188,6 +188,7 @@ local openUnit = function(key) {
     opened = {
       T = schema.require(module),
       L = schema.require("schema_table_load"),
+      R = schema.require("schema_table_refusal"),
       S = schema.require("schema_table_save")
     };
   }
@@ -235,10 +236,10 @@ for (;;) {
   }
   local c = roster[index];
   local report = {
-    unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false, stopped = false
+    unknown = 0, mismatch = 0, widened = 0, oor = 0,
+    repeated = 0, bodyDamaged = false, refused = false, stopped = false
   };
-  local v = c.u.L.loadTolerant(c.u.T, c.root, wire, report);
+  local v = c.u.L.loadWalk(c.u.T, c.root, wire, report);
   // THE BUILDER ARM: `loaded` is whether the read finished. A refused form
   // and a framing too damaged to open answer null, a root body that stopped
   // before its terminator says so in `stopped`, and a stopped builder saves
@@ -257,18 +258,17 @@ for (;;) {
   local r = blob(0);
   putU8(r, loaded ? 1 : 0);
   putLE(r, report.unknown, 4);
-  putLE(r, report.kindMismatch, 4);
+  putLE(r, report.mismatch, 4);
   putLE(r, report.widened, 4);
-  putLE(r, report.clamped, 4);
-  putLE(r, report.duplicate, 4);
-  putU8(r, report.malformed ? 1 : 0);
-  // A builder's count refusal (count_over_extent_cap, docs/SPEC-TABLES.md
-  // §2.9) rides the completion and save-failure channel: the shared builder
-  // oracle answers it as a stopped builder with its ordinary report, so the
-  // refused byte carries every refusal but that one, as the Dart and
-  // JavaScript drivers send it.
-  local countRefused = ("reason" in report) && report.reason == "count_over_extent_cap";
-  putU8(r, report.refused && !countRefused ? 1 : 0);
+  putLE(r, report.oor, 4);
+  putLE(r, report.repeated, 4);
+  putU8(r, report.bodyDamaged ? 1 : 0);
+  // THE REFUSED BYTE IS THE STRICT READ'S VERDICT (docs/SPEC-TABLES.md §6.5,
+  // docs/plans/strict-only.md): every condition the one read refuses on,
+  // a count past the storage cap (count_over_extent_cap, §2.9) included,
+  // refuses the whole load; the walk's counters above are diagnostics.
+  local strictRefused = c.u.R.ReadStrict(c.u.T, c.root, wire, {}) == null;
+  putU8(r, strictRefused ? 1 : 0);
   putLE(r, -1, 8);   // measure: no region (the header above)
   putLE(r, 0, 4);    // retained: no retention
   putLE(r, 0, 4);    // retain_lost

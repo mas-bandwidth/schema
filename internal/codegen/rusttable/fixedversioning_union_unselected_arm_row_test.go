@@ -72,9 +72,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
         !report.refused && report.reason == TableFixedReason::None,
         "a clean backward read is not a refusal: {:?}", report
     );
-    assert!(!report.malformed, "a clean backward read is not damage: {:?}", report);
+    assert!(!report.damaged, "a clean backward read is not damage: {:?}", report);
     assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0 && report.clamped == 0,
+        report.unknown == 0 && report.widened == 0,
         "a clean backward read moved a counter: {:?}", report
     );
 `, file)

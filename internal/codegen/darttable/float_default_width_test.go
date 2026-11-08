@@ -124,19 +124,19 @@ w.TableRetain store()=>w.TableRetain(4096,List<int>.filled(256,0));
 void row(String name,String text,w.Root authored,Uint8List want){
  final jr=w.TableTextReport();
  final parsed=w.rootFromJson(text,jr);
- check(jr.unknown==0 && jr.kindMismatch==0 && jr.clamped==0 && jr.duplicate==0,'$name JSON report');
+ check(jr.unknown==0 && !jr.refused,'$name JSON report');
  final wr=w.TableWireReport();
  final loaded=w.rootWireLoad(want,wr);
- check(!wr.malformed && !wr.refused,'$name wire report');
+ check(!wr.refused,'$name wire report');
  final rr=w.TableWireReport();
  final retainedStore=store();
  final retained=w.rootWireLoadRetain(want,retainedStore,rr);
- check(!rr.malformed && !rr.refused,'$name retained wire report');
+ check(!rr.refused,'$name retained wire report');
  for(final pair in [('authored',authored),('JSON',parsed),('wire',loaded),('retained-wire',retained)]){
   check(same(w.rootWireSave(pair.$2),want),'$name ${pair.$1} plain canonical');
   final sr=w.TableWireReport();
   final out=w.rootWireSaveRetain(pair.$2,pair.$1=='retained-wire'?retainedStore:store(),sr);
-  check(same(out,want) && !sr.malformed && !sr.refused,'$name ${pair.$1} retained canonical');
+  check(same(out,want) && !sr.refused,'$name ${pair.$1} retained canonical');
  }
 }
 void main(){

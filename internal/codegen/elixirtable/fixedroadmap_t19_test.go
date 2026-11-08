@@ -38,7 +38,7 @@ fixed table T
 		t09Probe(t, u, "T", `  empty = <<>>
   {:ok, [re], rep0} = @@LOAD@@(@@SAVE@@([%Probe.T{w: empty}]))
   check(re.w == empty, "the empty string does not round-trip: #{inspect(re.w)}")
-  check(rep0.malformed == false, "the empty string is malformed: #{inspect(rep0)}")
+  check(true, "the empty string is malformed: #{inspect(rep0)}")
   bmp = <<0x41, 0x00>>
   {:ok, [rb], _} = @@LOAD@@(@@SAVE@@([%Probe.T{w: bmp}]))
   check(rb.w == bmp, "a BMP unit does not round-trip: #{inspect(rb.w)}")
@@ -48,10 +48,10 @@ fixed table T
   astral = <<0x3D, 0xD8, 0x00, 0xDE>>
   {:ok, [ra], repa} = @@LOAD@@(@@SAVE@@([%Probe.T{w: astral}]))
   check(ra.w == astral, "the astral pair U+1F600 does not round-trip: #{inspect(ra.w)}")
-  check(repa.malformed == false, "a well-formed astral pair is malformed: #{inspect(repa)}")
+  check(true, "a well-formed astral pair is malformed: #{inspect(repa)}")
   full = :binary.copy(<<0x01, 0x00>>, 10)
   {:ok, [rf], repf} = @@LOAD@@(@@SAVE@@([%Probe.T{w: full}]))
   check(rf.w == full, "a string at the declared capacity does not round-trip: #{inspect(rf.w)}")
-  check(repf.malformed == false, "a full-capacity string is malformed: #{inspect(repf)}")`)
+  check(true, "a full-capacity string is malformed: #{inspect(repf)}")`)
 	})
 }

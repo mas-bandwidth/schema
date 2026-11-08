@@ -90,13 +90,13 @@ public final class R9 {
 
     /** the report a read that lands values owes (§5.3's joint table). */
     private static boolean clean(TableFixed.Report r) {
-        return !r.refused && !r.malformed && r.reason == TableFixed.Reason.none
-                && r.unknown == 0 && r.kindMismatch == 0 && r.widened == 0 && r.clamped == 0
+        return !r.refused && !r.damaged && r.reason == TableFixed.Reason.none
+                && r.unknown == 0 && r.widened == 0
                 && r.layoutHash == 0;
     }
 
     private static String shape(TableFixed.Report r) {
-        return "n/a reason=" + r.reason + " refused=" + r.refused + " malformed=" + r.malformed
+        return "n/a reason=" + r.reason + " refused=" + r.refused + " malformed=" + r.damaged
                 + " layoutHash=0x" + Long.toHexString(r.layoutHash);
     }
 
@@ -172,8 +172,8 @@ public final class R9 {
         final boolean underKnown = TableFixed.get64(f, TableFixed.hashAt) == CfgFixed.hash;
         final boolean oneName = read.n == -1 && r.refused
                 && r.reason == TableFixed.Reason.layoutMalformed;
-        final boolean joint = !r.malformed && r.unknown == 0 && r.kindMismatch == 0
-                && r.widened == 0 && r.clamped == 0 && r.layoutHash == 0;
+        final boolean joint = !r.damaged && r.unknown == 0
+                && r.widened == 0 && r.layoutHash == 0;
         final boolean total = v[0].a == MARKER;
         check(underKnown && oneName && joint && total,
                 what + " — under the KNOWN hash the answer is the ONE name layout_malformed"

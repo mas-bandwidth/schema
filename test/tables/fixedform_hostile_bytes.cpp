@@ -12,7 +12,7 @@
 // and on a plan compiled from another writer's layout. The first two cases below
 // are ordinary checks now; each was the RED witness that waited on fix 2, and
 // each names the neighbouring bytes it pre-poisons so a normalise that spilled
-// would be caught. Each also holds the four §4 counters at exactly zero, because
+// would be caught. Each also holds the two live §4 counters at exactly zero, because
 // a forged bool is a CONTENT fact and not a damage event.
 //
 // THE LAST TWO CASES ARE THE WIDER WITNESS finding 3 asks for. `compiled_norm`
@@ -53,12 +53,14 @@ uint8_t byte_of( const void * p )
     return v;
 }
 
-// A FORGED BOOL IS NOT DAMAGE. The four §4 counters stay exactly zero on both
-// the identity plan and a compiled one; the read still returns the record.
+// A FORGED BOOL IS NOT DAMAGE. The two live §4 counters stay exactly zero on
+// both the identity plan and a compiled one, and the strict read names no
+// refusal: a read that refused a forged bool (kind_mismatch, out_of_range)
+// would return -1 and set a reason here, not land the record.
 template <class Report>
 void counters_are_zero( const Report & r, const char * what )
 {
-    check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0, what );
+    check( r.unknown == 0 && r.widened == 0 && r.refuse_reason == decltype( r.refuse_reason )( 0 ), what );
 }
 
 // One lawful record, saved, with `at` pointing at the record BODY so a case can
@@ -94,16 +96,16 @@ void bool_byte_two_case()
     back.trail = 0x5A5A5A5Au;
     hb::TableReport r;
     std::vector<hb::TableFixedEntry> plan( 256 );
-    const int64_t n = hb::HostileFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = hb::HostileFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                             plan.data(), 256, NULL, &r );
-    check( n == 1 && !r.refused && !r.malformed,
+    check( n == 1 && !r.refused && !r.damaged,
            "bool_byte_two: a bool byte of 2 is a CONTENT fact, so the record still reads" );
     check( byte_of( &back.flag ) == 1,
            "bool_byte_two: a bool byte of 2 lands as the language's own true (1), never verbatim (§4.5)" );
     check( back.link_present && back.link.n == 11 && back.trail == 0xBBBBBBBBu,
            "bool_byte_two: the fields beside the normalised byte land from the wire, untouched" );
     counters_are_zero( r,
-           "bool_byte_two: unknown/kind_mismatch/widened/clamped stay exactly 0" );
+           "bool_byte_two: unknown/widened stay exactly 0 and no refusal is named" );
 }
 
 // a present byte of 2
@@ -119,16 +121,16 @@ void present_byte_two_case()
     back.trail = 0x5A5A5A5Au;
     hb::TableReport r;
     std::vector<hb::TableFixedEntry> plan( 256 );
-    const int64_t n = hb::HostileFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = hb::HostileFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                             plan.data(), 256, NULL, &r );
-    check( n == 1 && !r.refused && !r.malformed,
+    check( n == 1 && !r.refused && !r.damaged,
            "present_byte_two: a present byte of 2 is a CONTENT fact, so the record still reads" );
     check( byte_of( &back.link_present ) == 1,
            "present_byte_two: an optional's present byte of 2 lands as the language's own true (1) (§4.5)" );
     check( back.trail == 0xBBBBBBBBu && back.link.n == 11,
            "present_byte_two: the payload and the trail beside it land from the wire, untouched" );
     counters_are_zero( r,
-           "present_byte_two: unknown/kind_mismatch/widened/clamped stay exactly 0" );
+           "present_byte_two: unknown/widened stay exactly 0 and no refusal is named" );
 }
 
 // ---- THE PLAN THAT IS NOT THE IDENTITY -------------------------------------
@@ -196,9 +198,9 @@ void compiled_plan_normalises_case()
     back.trail = 0x5A5A5A5Au;  // and the one after it
     vnew_hostile_bool::TableReport r;
     std::vector<vnew_hostile_bool::TableFixedEntry> plan( 256 );
-    const int64_t n = vnew_hostile_bool::HbbFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = vnew_hostile_bool::HbbFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                                        plan.data(), 256, NULL, &r );
-    check( n == 1 && !r.refused && !r.malformed,
+    check( n == 1 && !r.refused && !r.damaged,
            "compiled_norm: an OLD record read through a plan compiled from its layout still reads" );
     check( byte_of( &back.flag ) == 1,
            "compiled_norm: a forged bool lands as true (1) on the COMPILED plan, never verbatim" );
@@ -213,7 +215,7 @@ void compiled_plan_normalises_case()
     check( back.extra == 9,
            "compiled_norm: the field the OLD writer never had takes its declared default" );
     counters_are_zero( r,
-           "compiled_norm: unknown/kind_mismatch/widened/clamped stay exactly 0" );
+           "compiled_norm: unknown/widened stay exactly 0 and no refusal is named" );
 }
 
 // THE BOOL-RUN AND COALESCER PATH, on the identity plan. `flags` is ONE
@@ -232,16 +234,16 @@ void bool_run_sentinels_case()
     back.trail = 0x5A5A5A5Au;
     vnew_hostile_bool::TableReport r;
     std::vector<vnew_hostile_bool::TableFixedEntry> plan( 256 );
-    const int64_t n = vnew_hostile_bool::HbbFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = vnew_hostile_bool::HbbFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                                        plan.data(), 256, NULL, &r );
-    check( n == 1 && !r.refused && !r.malformed, "bool_run: the record reads" );
+    check( n == 1 && !r.refused && !r.damaged, "bool_run: the record reads" );
     bool run_ok = true;
     for ( size_t i = 0; i < 8; ++i ) { if ( byte_of( &back.flags[i] ) != (uint8_t) ( kStorm[i] != 0 ) ) { run_ok = false; } }
     check( run_ok, "bool_run: the normalised [N]bool run lands every byte as 0 or 1" );
     check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
            "bool_run: the non-bool sentinels ADJACENT to the run land from the wire, untouched" );
     counters_are_zero( r,
-           "bool_run: unknown/kind_mismatch/widened/clamped stay exactly 0" );
+           "bool_run: unknown/widened stay exactly 0 and no refusal is named" );
 }
 
 } // namespace

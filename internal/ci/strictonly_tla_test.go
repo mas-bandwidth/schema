@@ -103,7 +103,7 @@ func readTLAConfig(path string) (tlaConfig, error) {
 		return tlaConfig{}, err
 	}
 	cfg := tlaConfig{constants: map[string]bool{}, invariants: map[string]bool{}}
-	for _, raw := range strings.Split(string(data), "\n") {
+	for raw := range strings.SplitSeq(string(data), "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "\\*") {
 			continue

@@ -73,7 +73,13 @@ fixed table FixedRoot
 		"tolerant",
 		"clamped",
 		"Clamped",
-		"duplicate",
+		// duplicate as a counter or report member; the text form's
+		// text_duplicate_key refusal name is the shared vector spelling
+		// (test/conformance/textform/refusals) and stays.
+		"int32_t duplicate",
+		"duplicate++",
+		"->duplicate",
+		".duplicate",
 		"Duplicate",
 		// kind_mismatch as a counter or report member, not as a reason.
 		"kind_mismatch++",

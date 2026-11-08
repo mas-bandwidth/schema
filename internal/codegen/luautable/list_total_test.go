@@ -159,14 +159,14 @@ end
 
 for _, name in { "under", "at", "over" } do
 	local r = fresh()
-	local v = load.loadTolerant("L", inputs[name], r)
+	local v = load.loadWalk("L", inputs[name], r)
 	if v == nil or r.refused > 0 then print(name .. " REFUSED"); return end
 	local count, sum = measure(v)
 	print(string.format("%d %d %d", count, sum, r.clamped))
 end
 
 local r = fresh()
-local v = load.loadTolerant("L", inputs.at, r)
+local v = load.loadWalk("L", inputs.at, r)
 local val = v[fd.slot]
 local x = val[1]
 local b = x

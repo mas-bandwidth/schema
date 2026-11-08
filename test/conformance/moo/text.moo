@@ -7,9 +7,9 @@
 --   json-write    Load the wire file, ToJson, the text
 --                 and, for a json-write-refusal line, the damage put into storage in
 --                 code first, then `refused\n` when ToJson refuses
---   json-hostile  FromJson <tree>/<root>.json, the report as
---                 `u,k,w,c,d,m,verdict\n` and the §16 text of the value it
---                 left, or `refused\n`
+--   json-hostile  FromJson <tree>/<root>.json: `read\n`, the §16 text of
+--                 the whole value and its write-back wire as `<case>.wire`,
+--                 or `refused\n` alone
 --
 -- through the emitted json.moo's descriptor-driven walk, the table load and save
 -- and the descriptors the unit's <Base>Table modules register. A row marked
@@ -63,7 +63,6 @@ return function(ctx: any): { [string]: Surface }
 				end
 				ctx.tables(f[3])
 				local J: any = ctx.module(f[3], "json")
-				local save: any = ctx.module(f[3], "table_save")
 				local d: any = (ctx.module(f[3], "schema_tables") :: any).lookup(f[4])
 				local rec = d.new()
 				local report: any = {}
@@ -71,7 +70,7 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], "refused")
 					continue
 				end
-				local out = save.save(d, rec)
+				local out = ctx.write(f[3], f[4], rec)
 				ctx.say(f[2], if out ~= nil then buffer.tostring(out) else "refused")
 			end
 		end,
@@ -88,11 +87,9 @@ return function(ctx: any): { [string]: Surface }
 				end
 				ctx.tables(f[3])
 				local J: any = ctx.module(f[3], "json")
-				local load: any = ctx.module(f[3], "table_load")
 				local d: any = (ctx.module(f[3], "schema_tables") :: any).lookup(f[4])
-				local report = load.newReport()
-				local v = load.load(f[4], ctx.inputs(f[5]), report)
-				local text = if v ~= nil and report.refused == 0 then J.toJson(d, v) else nil
+				local v = ctx.read(f[3], f[4], ctx.inputs(f[5]))
+				local text = if v ~= nil then J.toJson(d, v) else nil
 				ctx.say(f[2] .. ".json", text or "refused")
 			end
 			-- THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
@@ -105,9 +102,8 @@ return function(ctx: any): { [string]: Surface }
 				end
 				ctx.tables(f[3])
 				local J: any = ctx.module(f[3], "json")
-				local load: any = ctx.module(f[3], "table_load")
 				local d: any = (ctx.module(f[3], "schema_tables") :: any).lookup(f[4])
-				local v = load.load(f[4], ctx.inputs(f[5]), load.newReport())
+				local v = ctx.read(f[3], f[4], ctx.inputs(f[5]))
 				if v == nil then
 					error(f[2] .. ": load refused " .. f[5])
 				end
@@ -136,23 +132,16 @@ return function(ctx: any): { [string]: Surface }
 				local rec = d.new()
 				local r: any = {}
 				local ok = J.fromJson(d, rec, ctx.inputs(f[5] .. "/" .. f[4] .. ".json"), r)
-				if not ok then
+				if not ok or r.damaged then
 					ctx.say(f[2], "refused\n")
-				else
-					ctx.say(
-						f[2],
-						string.format(
-							"%d,%d,%d,%d,%d,%s,%s\n",
-							r.unknown,
-							0,
-							r.widened,
-							0,
-							0,
-							tostring(r.damaged),
-							"read"
-						) .. J.toJson(d, rec)
-					)
+					continue
 				end
+				local out = ctx.write(f[3], f[4], rec)
+				if out == nil then
+					error("driver: " .. f[2] .. ": Save refused a value the text read accepted", 0)
+				end
+				ctx.say(f[2] .. ".wire", buffer.tostring(out))
+				ctx.say(f[2], "read\n" .. J.toJson(d, rec))
 			end
 		end,
 	}

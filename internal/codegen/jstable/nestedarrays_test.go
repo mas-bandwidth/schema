@@ -78,7 +78,7 @@ func TestNestedTypesAndFixedArraysOnTheTableWireJavaScript(t *testing.T) {
 	// the committed text; and this leg's variable class carries every root.
 	for _, u := range units {
 		vc := newVariableClass(u.unit)
-		m := tabletext.NewModel(u.unit)
+		m := jsVariableModel(u.unit)
 		for _, c := range u.cases {
 			if !vc.carried(c.Root) {
 				t.Fatalf("%s: this leg refuses %s: %s", c.Name, c.Root, vc.reason[c.Root])
@@ -104,7 +104,7 @@ func TestNestedTypesAndFixedArraysOnTheTableWireJavaScript(t *testing.T) {
 	if why := newVariableClass(probe).reason["Probe"]; why != "" {
 		t.Fatalf("the probe root is refused: %s", why)
 	}
-	pm := tabletext.NewModel(probe)
+	pm := jsVariableModel(probe)
 	var probeCases []*vcCase
 	for _, pc := range nestedArraysProbeTexts {
 		inst := pm.New(pm.Lookup("Probe"))

@@ -93,7 +93,7 @@ checks = [
      {image, report} = run.(plan_utf8, record_utf8)
 
      image == <<2, 5::little-signed-32, "hello", 0, 0, 0>> and
-       report.malformed == false and report.clamped == 0
+       report.unknown == 0 and report.widened == 0 and report.layout_hash == 0
    end},
   {"W7 the guard answers the ORDINAL lane, never the flavour: tag 1 (== the flavour) fires nothing",
    fn ->
@@ -101,7 +101,8 @@ checks = [
      # the guard read the meta lane, "hello" would land here. It must not.
      {image, report} = run.(plan_utf8, <<1, 5::little-signed-32, "hello", 0, 0, 0>>)
 
-     image == <<1, 0::size(12)-unit(8)>> and report.malformed == false
+     image == <<1, 0::size(12)-unit(8)>> and report.unknown == 0 and
+       report.widened == 0 and report.layout_hash == 0
    end},
   {"W7 the FLAVOUR lane alone moves the read: wide under the same arm-2 guard counts units",
    fn ->
@@ -111,7 +112,7 @@ checks = [
      {image, report} = run.(plan_wide, record_wide)
 
      image == <<2, 2::little-signed-32, "h", 0, "e", 0, "l", 0, "l", 0>> and
-       report.malformed == false and report.clamped == 0
+       report.unknown == 0 and report.widened == 0 and report.layout_hash == 0
    end},
   {"W7 NEGATIVE CONTROL: the old one-lane encoding (flavour stamped over the ordinal) drops the string under arm 2",
    fn ->

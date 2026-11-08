@@ -151,7 +151,7 @@ int main( int argc, char ** argv )
         t1_total += (double) n;
         bench::BenchMixed back;
         bench::TableReport rep;
-        if ( !bench::BenchMixedLoad( back, g_t1[k].data(), n, &rep ) || rep.malformed )
+        if ( !bench::BenchMixedLoad( back, g_t1[k].data(), n, &rep ) || rep.damaged )
         { fprintf( stderr, "form1 load %d failed\n", k ); return 1; }
         const int64_t m = bench::BenchMixedSave( back, g_twin, BufferSize );
         if ( m != n || memcmp( g_twin, g_t1[k].data(), (size_t) n ) != 0 )
@@ -175,7 +175,7 @@ int main( int argc, char ** argv )
         bench::TableReport rep;
         const int64_t got = bench::FixedTableFixedLoad( g_fixed_out, NumVariants, g_f3_batch.data(), n,
                                                         plan.data(), (int32_t) plan.size(), NULL, &rep );
-        if ( got != NumVariants || rep.malformed || rep.refused )
+        if ( got != NumVariants || rep.damaged || rep.refused )
         { fprintf( stderr, "form3 batch load failed (got %lld)\n", (long long) got ); return 1; }
         // cross-wire oracle: every form-3 record must re-encode to its packet source
         for ( int k = 0; k < NumVariants; k++ )

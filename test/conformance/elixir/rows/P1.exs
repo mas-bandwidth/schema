@@ -50,32 +50,45 @@ body_bytes = PF.chain_fixed_body_bytes()
 {:ok, mine} = RT.parse_layout(layout)
 {:ok, made, _n, _} = RT.compile(mine, mine, dst, 4096, RT.report())
 
-run_both = fn body ->
-  {img_a, ra} = RT.run(plan, body, prefill, RT.report())
-  {img_b, rb} = RT.run(made, body, prefill, RT.report())
-
-  {{img_a, ra.clamped + elem(decode.(img_a, 0), 1)},
-   {img_b, rb.clamped + elem(decode.(img_b, 0), 1)}}
+run_one = fn plan, body ->
+  # The strict report carries no clamp counter: the bounds-pass count is the
+  # decode's own second element. The compiled plan refuses a past-bound body
+  # by throwing {:refuse, name} out of run/4 (the load catches it into
+  # {:error, name, report}); the identity plan lands the image and its
+  # decode counts the same crossing, which the load's range_check then
+  # refuses. Both plans cross the bound; the strict answer differs by plan.
+  try do
+    {img, _report} = RT.run(plan, body, prefill, RT.report())
+    {:ok, img, elem(decode.(img, 0), 1)}
+  catch
+    :throw, {:refuse, why} -> {:refused, why}
+  end
 end
+
+run_both = fn body -> {run_one.(plan, body), run_one.(made, body)} end
 
 # VALUES: compare decoded values from real bodies.
 # The compiled plan may produce a different image for hostile bytes (because
 # it processes text/ordinal fields with clamping), so values are compared
 # only over real corpus bodies where the images match.
 both = Enum.map(bodies, run_both)
-values_ok = Enum.all?(both, fn {{a, _}, {b, _}} -> decode.(a, 0) == decode.(b, 0) end)
 
-# COUNTERS: include the hostile body to ensure bounds are actually crossed.
+values_ok =
+  Enum.all?(both, fn {{:ok, a, _}, {:ok, b, _}} -> decode.(a, 0) == decode.(b, 0) end)
+
+# COUNTERS: on real bodies both plans count the bounds pass the same (zero).
+counters_ok = Enum.all?(both, fn {{:ok, _, a}, {:ok, _, b}} -> a == b end)
+
+# HOSTILE: include the hostile body to ensure bounds are actually crossed —
+# the identity decode counts the crossing, the compiled run refuses it.
 hostile = :binary.copy(<<0xFF>>, body_bytes)
-counted = both ++ [run_both.(hostile)]
-counters_ok = Enum.all?(counted, fn {{_, a}, {_, b}} -> a == b end)
-{{_, hostile_count}, _} = List.last(counted)
-hostile_ok = hostile_count > 0
+{hostile_a, hostile_b} = run_both.(hostile)
+hostile_ok = match?({:ok, _, n} when n > 0, hostile_a) and match?({:refused, _}, hostile_b)
 
 results = [
   {"identity and compiled land the same decoded values", values_ok},
-  {"identity and compiled count clamped the same", counters_ok},
-  {"hostile body crossed a bound (clamped > 0)", hostile_ok}
+  {"identity and compiled count the bounds pass the same", counters_ok},
+  {"hostile body crossed a bound (identity counts it, compiled refuses it)", hostile_ok}
 ]
 
 passed = Enum.count(results, fn {_, ok} -> ok end)

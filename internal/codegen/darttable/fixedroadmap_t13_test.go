@@ -47,8 +47,7 @@ const t13HeldBody = `
     return true;
   }
   bool quiet(t.TableFixedReport r) =>
-      r.unknown == 0 && r.kindMismatch == 0 && r.clamped == 0 &&
-      r.widened == 0 && r.duplicate == 0;
+      r.unknown == 0 && r.widened == 0;
   // ONE REFUSAL, WHOLE (§5.3's refusal table, §5.9 #7): -1, the name, never
   // malformed too, no counter moves, not one destination byte and not one
   // published value.
@@ -62,7 +61,6 @@ const t13HeldBody = `
     final n = t.lineageFixedLoad(values, values.length, file, file.length, plan, rep);
     check(n == -1, '$what: owes -1, not $n: ${why(rep)}');
     check(rep.refused == want, '$what: owes ${name(want)}, not ${name(rep.refused)}');
-    check(!rep.malformed, '$what: a refusal by name never sets malformed too: ${why(rep)}');
     check(quiet(rep), '$what: REFUSE is total, no counter moves: ${why(rep)}');
     check(untouched(), '$what: REFUSE writes not one destination byte');
     check(values[0].x == 0x5A5A && values[0].y == 0x5A5A &&
@@ -76,7 +74,7 @@ const t13HeldBody = `
   poison();
   final good = t.TableFixedReport();
   final whole = t.lineageFixedLoad(values, values.length, bytes, bytes.length, plan, good);
-  check(whole == 1 && good.refused == 0 && !good.malformed,
+  check(whole == 1 && good.refused == 0,
       'the writer\'s own file must read first: n=$whole ${why(good)}');
   check(good.hash == t.lineageFixedHash,
       'the identity lane took the header\'s own hash: ${good.hash}');
@@ -85,10 +83,10 @@ const t13HeldBody = `
   // known hash over different bytes is layout_malformed (§2 step 5, §5.3 step 7).
   final bent = Uint8List.fromList(bytes);
   bent[layoutAt + layoutBytes - 1] ^= 0x01;
-  final r1 = refused(bent, t.TableFixedRefusal.layoutMalformed,
+  final r1 = refused(bent, t.TableFixedRefusal.layoutDamaged,
       'a bent layout byte under the held hash');
   check(r1.layoutHash == 0 && r1.hash == 0,
-      'layout_malformed reports no hash: ${why(r1)}');
+      'layout_damaged reports no hash: ${why(r1)}');
 
   // (2) THE LAYOUT LENGTH WORD CHANGED WITH THE BYTES TO MATCH: one byte
   // appended to the layout and L raised to cover it, the hash held. A known
@@ -100,7 +98,7 @@ const t13HeldBody = `
       layoutAt + layoutBytes);
   ByteData.sublistView(longer).setUint32(
       t.TableFixedLimits.headerBytes, layoutBytes + 1, Endian.little);
-  refused(longer, t.TableFixedRefusal.layoutMalformed,
+  refused(longer, t.TableFixedRefusal.layoutDamaged,
       'a longer layout under the held hash');
 
   // THE "CHANGES NOTHING" READ-BACK, AFTER: the held layout and plan were not
@@ -108,7 +106,7 @@ const t13HeldBody = `
   poison();
   final again = t.TableFixedReport();
   final reread = t.lineageFixedLoad(values, values.length, bytes, bytes.length, plan, again);
-  check(reread == 1 && again.refused == 0 && !again.malformed,
+  check(reread == 1 && again.refused == 0,
       'the refusals changed nothing: the held file still reads: n=$reread ${why(again)}');
   check(again.hash == t.lineageFixedHash, 'the held hash is still the file\'s');
 `
@@ -143,11 +141,9 @@ const t13ReverseBody = `
   check(n == -1, 'a hash in no entry owes -1, not $n: ${why(rep)}');
   check(rep.refused == t.TableFixedRefusal.layoutNewer,
       'a hash in no entry is layout_newer, not ${name(rep.refused)}');
-  check(!rep.malformed, 'layout_newer is a refusal by name: ${why(rep)}');
   check(rep.layoutHash == stranger,
       'layout_newer reports the FILE\'s hash: ${rep.layoutHash} want $stranger');
-  check(rep.hash == 0 && rep.unknown == 0 && rep.kindMismatch == 0 &&
-      rep.clamped == 0 && rep.widened == 0 && rep.duplicate == 0,
+  check(rep.hash == 0 && rep.unknown == 0 && rep.widened == 0,
       'layout_newer reports the file\'s hash AND NOTHING ELSE: ${why(rep)}');
   check(untouched(), 'layout_newer writes not one destination byte');
 `

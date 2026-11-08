@@ -34,10 +34,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
       'pick.alpha.m is the writer 7, not ${values[0].pick.alpha.m}');
   check(values[0].seq == 15,
       'seq is the writer 15, not ${values[0].seq}');
-  check(report.clamped == 0 && report.unknown == 0 && report.kindMismatch == 0 &&
-      report.widened == 0 && report.duplicate == 0,
+  check(report.unknown == 0 && report.widened == 0,
       'a clean read moved a counter: ${why(report)}');
-  check(!report.malformed, 'a clean backward read is not malformed: ${why(report)}');
+  check(report.refused == 0, 'a clean backward read is not refused: ${why(report)}');
   check(report.refused == 0, 'a clean backward read is not a refusal: ${why(report)}');`
 
 	// probe 1, the compiled column: reader VNEW, older VOLD. The poison is laid

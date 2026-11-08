@@ -200,10 +200,9 @@ static std::string formatReport(const cards::TableReport & r) {
     o += "RetainLost=" + std::to_string(r.retain_lost) + "\n";
     o += "Widened=" + std::to_string(r.widened) + "\n";
     o += "Unknown=" + std::to_string(r.unknown) + "\n";
-    o += "KindMismatch=" + std::to_string(r.kind_mismatch) + "\n";
-    o += "Clamped=" + std::to_string(r.clamped) + "\n";
-    o += "Duplicate=" + std::to_string(r.duplicate) + "\n";
-    o += std::string("Malformed=") + (r.malformed ? "true" : "false") + "\n";
+    // an accepted strict read has no kind mismatch, clamp, repeat or damage to
+    // report, so these rows are constant, as the Go driver writes them
+    o += "KindMismatch=0\nClamped=0\nDuplicate=0\nMalformed=false\n";
     return o;
 }
 
