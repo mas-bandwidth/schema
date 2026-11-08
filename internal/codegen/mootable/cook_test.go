@@ -1,7 +1,6 @@
 package mootable_test
 
 import (
-	"encoding/binary"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // valueDump is the canonical moo value dump the cook probes compare: every
@@ -198,8 +196,8 @@ func cookFixture(t *testing.T, caseName, rootName string) []byte {
 // fixture (test/cookgen, as the harness writes it) opens and reads back to
 // the value the Go tool's Uncook finds in it (re-encoded and loaded by moo);
 // and every `cook` forgery, materialised over its fixture as the harness does,
-// opens or refuses as its verdict says, a refusal naming its `refusal` row's
-// reason.
+// opens or refuses as its verdict says (the verdict is the contract,
+// docs/rulings.json refusal-verdict-only).
 func TestMooCookFixturesAndForgeries(t *testing.T) {
 	slowtest.Gate(t, "moo and go build (it runs the emitted table_cookread.moo over test/cookgen's fixtures)")
 	t.Parallel()
@@ -226,7 +224,6 @@ func TestMooCookFixturesAndForgeries(t *testing.T) {
 			t.Errorf("cook %s: %s", caseName, out)
 		}
 	}
-	reasons := refusalReasons(t)
 	fgs := forgeries(t, "cook")
 	if len(fgs) == 0 {
 		t.Fatal("the manifest names no cook forgery")
@@ -238,66 +235,13 @@ func TestMooCookFixturesAndForgeries(t *testing.T) {
 		}
 		data, lead, extent, null := fg.materialize(t, base)
 		got := g.run(t, cookProbe(g, fg.subject, lead, extent, null, false), map[string][]byte{"cook": data})
-		want := fg.verdict
-		if fg.verdict == "refuse" {
-			reason, pinned := reasons[fg.name]
-			if !pinned {
-				st := g.unit.Tables[fg.subject]
-				l := ir.RecordLayout(g.unit, st)
-				reason = goCookReason(data, lead, extent, null, ir.BuildVersion(g.unit), l.Size, l.Align)
-			}
-			want = "refuse " + reason
-		}
-		if got != want {
-			t.Errorf("%s: moo answers %q, want %q", fg.name, got, want)
+		if forgeryVerdict(got) != fg.verdict {
+			t.Errorf("%s: moo answers %q, want the verdict %q", fg.name, got, fg.verdict)
 		}
 	}
 	if out := g.analyze(t); out != "" {
 		t.Fatalf("moo-analyze is not silent:\n%s", out)
 	}
-}
-
-// goCookReason is Go's GENERATED Open check (internal/codegen/gotable cook.go
-// emitOpen, docs/SPEC-TABLES.md §7.4) over the placed bytes, clause for clause
-// and in its order: the reason a forgery with no `refusal` row of its own owes.
-func goCookReason(data []byte, lead, extent int, null bool, build uint64, rootSize, rootAlign int64) string {
-	if null {
-		return "unaligned_base"
-	}
-	if extent < 64 {
-		return "truncated"
-	}
-	h := data[lead:]
-	le := binary.LittleEndian
-	if magic := le.Uint64(h); magic != 0x4B4F4F434D484353 {
-		if magic == 0x5343484D434F4F4B {
-			return "foreign_order"
-		}
-		return "not_a_cook"
-	}
-	if le.Uint64(h[16:]) != 1 {
-		return "not_a_cook"
-	}
-	if le.Uint64(h[8:]) != build {
-		return "wrong_build_version"
-	}
-	if le.Uint64(h[48:]) != 0 || le.Uint64(h[56:]) != 0 {
-		return "reserved_not_zero"
-	}
-	alignment := le.Uint64(h[40:])
-	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%uint64(rootAlign) != 0 {
-		return "bad_alignment"
-	}
-	bytes := uint64(extent)
-	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
-	dataLength, attribution := le.Uint64(h[24:]), le.Uint64(h[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < uint64(rootSize) {
-		return "truncated"
-	}
-	if uint64(lead)%alignment != 0 {
-		return "unaligned_base"
-	}
-	return "ok"
 }
 
 // TestMooCookAndBlockRefuseNonFiniteFloats: a float whose bits are a NaN or
