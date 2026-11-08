@@ -352,7 +352,7 @@ func init() {
 	tableBlockLayoutOffset("PackConfigBlockProjection.BuildVersion", unsafe.Offsetof(PackConfigBlockProjection{}.BuildVersion), 8)
 	tableBlockLayoutOffset("PackConfigBlockProjection.ByteOrder", unsafe.Offsetof(PackConfigBlockProjection{}.ByteOrder), 16)
 	tableBlockLayoutOffset("PackConfigBlockProjection.Version", unsafe.Offsetof(PackConfigBlockProjection{}.Version), 24)
-	tableBlockLayoutOffset("PackConfigBlockProjection.Global", unsafe.Offsetof(PackConfigBlockProjection{}.Global), 28)
+	tableBlockLayoutOffset("PackConfigBlockProjection.Settings", unsafe.Offsetof(PackConfigBlockProjection{}.Settings), 28)
 	tableBlockLayoutOffset("PackConfigBlockProjection.Ships", unsafe.Offsetof(PackConfigBlockProjection{}.Ships), 100)
 	tableBlockLayoutOffset("PackConfigBlockProjection.Thresholds", unsafe.Offsetof(PackConfigBlockProjection{}.Thresholds), 424)
 	tableBlockLayoutOffset("PackConfigBlockProjection.Reserves", unsafe.Offsetof(PackConfigBlockProjection{}.Reserves), 440)
@@ -538,7 +538,7 @@ func init() {
 		Fields: []TableBlockFieldInfo{
 			{Name: "version", Offset: 24, Size: 4, Kind: 8, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "global", Offset: 28, Size: 72, Kind: 13, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			{Name: "settings", Offset: 28, Size: 72, Kind: 13, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 72, PresentOffset: 0xffffffff, Element: func() *TableBlockInfo { return &tableBlockRecords[13] }},
 			{Name: "ships", Offset: 100, Size: 324, Kind: 13, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: true, Counted: false, Optional: false, ArrayBound: 3, ElemSize: 108, PresentOffset: 0xffffffff, Element: func() *TableBlockInfo { return &tableBlockRecords[18] }},

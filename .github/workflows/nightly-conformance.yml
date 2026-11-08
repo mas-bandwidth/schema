@@ -60,7 +60,7 @@ env:
   # registers what it carries only in a binary built with it, and the claim
   # check refuses a leg it has no registration for rather than enforcing
   # nothing (test/conformance/harness/claims.go).
-  HARNESS_TAGS: schema_leg_luau,schema_leg_lobster,schema_leg_goose,schema_leg_lua,schema_leg_squirrel,schema_leg_moo
+  HARNESS_TAGS: schema_leg_luau,schema_leg_lobster,schema_leg_goose,schema_leg_lua,schema_leg_squirrel,schema_leg_moo,schema_leg_python
 
 jobs:
   registry:

@@ -329,10 +329,10 @@ func TestUnpackPrunesWhatItDoesNotWrite(t *testing.T) {
 	}
 	// a stale spelling of a field that IS written, and one of a field that is
 	// not: both name something the root owns, so both must go
-	if err := os.MkdirAll(filepath.Join(work, "global"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(work, "settings"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(work, "global", "tick_rate.json"), []byte("1\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(work, "settings", "tick_rate.json"), []byte("1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// a sparse instance: the ships all-default, so their gunner optionals are absent
@@ -347,7 +347,7 @@ func TestUnpackPrunesWhatItDoesNotWrite(t *testing.T) {
 	if _, err := c.Unpack(u, "PackConfig", thin, work); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(work, "global")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(work, "settings")); !os.IsNotExist(err) {
 		t.Fatal("a stale directory spelling of a written field survived the unpack")
 	}
 	again, _, _, err := c.Pack(u, "PackConfig", work)

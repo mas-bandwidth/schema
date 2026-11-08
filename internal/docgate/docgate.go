@@ -59,12 +59,16 @@ var crossDocNumbers = map[string][]string{
 	"docs/SPEC-TABLES.md":                 {"4.3", "4.12", "5.3"},
 }
 
-// skipDir names directories that are not part of the tracked tree. dist is
-// where the pinned toolchains unpack (`make dist-goose`; /dist in .gitignore),
-// and their own pages link files the release does not ship.
+// skipDir names directories whose pages are not this tree's. Most are not
+// part of the tracked tree: dist is where the pinned toolchains unpack
+// (`make dist-goose`; /dist in .gitignore), and their own pages link files the
+// release does not ship. third_party is tracked, but each directory in it is a
+// sibling repository staged as it will stand on its own (serialize.py,
+// docs/PORT-PYTHON.md), and the family pages it vendors verbatim link files of
+// the repository they came from.
 var skipDir = map[string]bool{
 	".git": true, "build": true, "bin": true, "dist": true, "node_modules": true,
-	"obj": true, "__pycache__": true,
+	"obj": true, "__pycache__": true, "third_party": true,
 }
 
 // slugify reproduces GitHub's heading anchor: lowercase, drop everything that

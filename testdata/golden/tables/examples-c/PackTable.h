@@ -4990,7 +4990,7 @@ typedef struct tabledemo_global_settings_t {
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct tabledemo_pack_config_t {
     uint32_t version;
-    tabledemo_global_settings_t global;
+    tabledemo_global_settings_t settings;
     tabledemo_ship_entry_t ships[TABLEDEMO_SHIP_TYPE_MAX]; /* [ShipType]: one slot per named variant, the key k at index k-1 */
     int32_t thresholds[TABLEDEMO_DIFFICULTY_MAX]; /* [Difficulty]: one slot per named variant, the key k at index k-1 */
     tabledemo_ship_entry_t reserves[3]; /* used count beside it; count in [0, 3] */
@@ -5046,7 +5046,7 @@ static SCHEMA_UNUSED void schema_tabledemo_global_settings_reset_raw_( void * st
 static SCHEMA_UNUSED void tabledemo_pack_config_reset( tabledemo_pack_config_t * value )
 {
     value->version = 1;
-    tabledemo_global_settings_reset( &value->global );
+    tabledemo_global_settings_reset( &value->settings );
     tabledemo_ship_entry_reset( &value->ships[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( TABLEDEMO_SHIP_TYPE_MAX ); i++ ) { value->ships[i] = value->ships[0]; } }
     memset( value->thresholds, 0, sizeof( value->thresholds ) );
@@ -6663,9 +6663,9 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body( tabledemo_table_writer
             tabledemo_table_writer_put32( w, (uint32_t) ( value->version ) );
         }
     }
-    { /* global */
+    { /* settings */
         tabledemo_table_writer_t default_probe = tabledemo_table_writer_probe( w ); default_probe.check_default = 1;
-        if ( !tabledemo_global_settings_save_body( &default_probe, &value->global ) ) { return 0; }
+        if ( !tabledemo_global_settings_save_body( &default_probe, &value->settings ) ) { return 0; }
         tabledemo_table_writer_rewind(&default_probe);
         if ( default_probe.offset > 1 )
         {
@@ -6673,15 +6673,15 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body( tabledemo_table_writer
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !tabledemo_global_settings_save_body( w, &value->global ) ) { return 0; }
+                if ( !tabledemo_global_settings_save_body( w, &value->settings ) ) { return 0; }
                 tabledemo_table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 tabledemo_table_writer_t probe = tabledemo_table_writer_probe( w );
-                if ( !tabledemo_global_settings_save_body( &probe, &value->global ) ) { return 0; }
+                if ( !tabledemo_global_settings_save_body( &probe, &value->settings ) ) { return 0; }
                 tabledemo_table_writer_rewind(&probe); tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !tabledemo_global_settings_save_body( w, &value->global ) ) { return 0; }
+                if ( !tabledemo_global_settings_save_body( w, &value->settings ) ) { return 0; }
             }
         }
     }
@@ -6842,7 +6842,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                 }
                 break;
             }
-            case 0x7fb43557b54149ceull: /* global */
+            case 0x7fb43557b54149ceull: /* settings */
             {
                 if ( kind != 13 )
                 {
@@ -6852,8 +6852,8 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                 }
                 tabledemo_table_reader_t sub;
                 if ( !tabledemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-                tabledemo_global_settings_load_body( &sub, &value->global );
-                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; tabledemo_global_settings_reset( &value->global ); }
+                tabledemo_global_settings_load_body( &sub, &value->settings );
+                if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; tabledemo_global_settings_reset( &value->settings ); }
                 break;
             }
             case 0x294a5c4913e1ad44ull: /* ships */
@@ -7036,16 +7036,16 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_message_body(tabledemo_table
   tabledemo_table_bit_put(w,(uint64_t)(value->version)-UINT64_C(0),32);
  }
  }
- { /* global */
+ { /* settings */
  tabledemo_table_bit_writer_t probe=*w;
  probe.buffer=NULL;
  probe.capacity=INT64_MAX;
  probe.bits=0;
  probe.check_default=1;
- if(!tabledemo_global_settings_save_message_body(&probe,&value->global)) return 0;
+ if(!tabledemo_global_settings_save_message_body(&probe,&value->settings)) return 0;
  if(probe.bits>TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE) {
   tabledemo_table_bit_put(w,28,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(!tabledemo_global_settings_save_message_body(w,&value->global)) return 0;
+  if(!tabledemo_global_settings_save_message_body(w,&value->settings)) return 0;
  }
  }
  { /* ships */
@@ -7213,7 +7213,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
  if(!tabledemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
- if(!tabledemo_global_settings_load_message_body(r,&value->global))return 0;
+ if(!tabledemo_global_settings_load_message_body(r,&value->settings))return 0;
  break;
  }
  case UINT64_C(0x294a5c4913e1ad44): {
@@ -7402,7 +7402,7 @@ SCHEMA_TABLE_STATIC_ASSERT( tabledemo_fixed_global_settings_build_note_length, o
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_fixed_global_settings_spawn_delays, offsetof( tabledemo_global_settings_t, spawn_delays ) == 60, "GlobalSettings.spawn_delays: the fixed form's plan lands here" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_fixed_pack_config_size, sizeof( tabledemo_pack_config_t ) == 740, "PackConfig: the fixed form's plan is laid out for this size" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_fixed_pack_config_version, offsetof( tabledemo_pack_config_t, version ) == 0, "PackConfig.version: the fixed form's plan lands here" );
-SCHEMA_TABLE_STATIC_ASSERT( tabledemo_fixed_pack_config_global, offsetof( tabledemo_pack_config_t, global ) == 4, "PackConfig.global: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( tabledemo_fixed_pack_config_settings, offsetof( tabledemo_pack_config_t, settings ) == 4, "PackConfig.settings: the fixed form's plan lands here" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_fixed_pack_config_ships, offsetof( tabledemo_pack_config_t, ships ) == 76, "PackConfig.ships: the fixed form's plan lands here" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_fixed_pack_config_thresholds, offsetof( tabledemo_pack_config_t, thresholds ) == 400, "PackConfig.thresholds: the fixed form's plan lands here" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_fixed_pack_config_reserves, offsetof( tabledemo_pack_config_t, reserves ) == 412, "PackConfig.reserves: the fixed form's plan lands here" );
@@ -7476,7 +7476,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_co
 {
     (void) b; (void) value;
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->version );
-    schema_tabledemo_global_settings_fixed_write_body_( b + 4, &value->global );
+    schema_tabledemo_global_settings_fixed_write_body_( b + 4, &value->settings );
     {
         int64_t i;
         for ( i = 0; i < (int64_t) 3; ++i )
@@ -7537,7 +7537,7 @@ static SCHEMA_UNUSED int schema_tabledemo_global_settings_fixed_finite_body_( co
 /* PackConfig's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
 static SCHEMA_UNUSED int schema_tabledemo_pack_config_fixed_finite_body_( const tabledemo_pack_config_t * value )
 {
-    if ( !schema_tabledemo_global_settings_fixed_finite_body_( &value->global ) ) { return 0; }
+    if ( !schema_tabledemo_global_settings_fixed_finite_body_( &value->settings ) ) { return 0; }
     {
         int64_t i;
         for ( i = 0; i < 3; ++i )
@@ -7602,7 +7602,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_global_
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_config_fixed_clamp_body_( tabledemo_pack_config_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
-    schema_tabledemo_global_settings_fixed_clamp_body_( &value->global, out_of_range, damaged );
+    schema_tabledemo_global_settings_fixed_clamp_body_( &value->settings, out_of_range, damaged );
     {
         int64_t i;
         for ( i = 0; i < 3; ++i )
@@ -8581,7 +8581,7 @@ static SCHEMA_UNUSED const int64_t tabledemo_pack_config_fixed_layout_bytes = (i
 static SCHEMA_UNUSED const tabledemo_table_fixed_dst_t tabledemo_pack_config_fixed_dst[] = {
     { 0, 0, 0, 0, 0 }, /* PackConfig */
     { 0, 0, 0, 0, 0 }, /* version */
-    { 4, 0, 0, 0, 0 }, /* global */
+    { 4, 0, 0, 0, 0 }, /* settings */
     { 0, 0, 0, 0, 0 }, /* tick_rate */
     { 4, 0, 0, 0, 0 }, /* difficulty */
     { 0, 0, 0, 0, 0 }, /* Easy */
@@ -10069,11 +10069,11 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body_retain( tabledemo_table
             tabledemo_table_writer_put32( w, (uint32_t) ( value->version ) );
         }
     }
-    { /* global */
+    { /* settings */
     retention=tabledemo_table_retain_step(body_keep,1,0);
         tabledemo_table_writer_t default_probe = tabledemo_table_retain_probe( w , retention);
         default_probe.check_default = 1;
-        if ( !tabledemo_global_settings_save_body_retain( &default_probe, &value->global , retention) ) { return 0;
+        if ( !tabledemo_global_settings_save_body_retain( &default_probe, &value->settings , retention) ) { return 0;
         }
         tabledemo_table_retain_rewind(&default_probe, retention);
         if ( default_probe.offset > 1 )
@@ -10083,18 +10083,18 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body_retain( tabledemo_table
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !tabledemo_global_settings_save_body_retain( w, &value->global , retention) ) { return 0;
+                if ( !tabledemo_global_settings_save_body_retain( w, &value->settings , retention) ) { return 0;
                 }
                 tabledemo_table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 tabledemo_table_writer_t probe = tabledemo_table_retain_probe( w , retention);
-                if ( !tabledemo_global_settings_save_body_retain( &probe, &value->global , retention) ) { return 0;
+                if ( !tabledemo_global_settings_save_body_retain( &probe, &value->settings , retention) ) { return 0;
                 }
                 tabledemo_table_retain_rewind(&probe, retention);
                 tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !tabledemo_global_settings_save_body_retain( w, &value->global , retention) ) { return 0;
+                if ( !tabledemo_global_settings_save_body_retain( w, &value->settings , retention) ) { return 0;
                 }
             }
         }
@@ -10291,7 +10291,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                 }
                 break;
             }
-            case 0x7fb43557b54149ceull: /* global */
+            case 0x7fb43557b54149ceull: /* settings */
             {
                 if ( kind != 13 )
                 {
@@ -10307,9 +10307,9 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                 if ( !tabledemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                 return 0;
                 }
-                tabledemo_global_settings_load_body_retain( &sub, &value->global , retention);
+                tabledemo_global_settings_load_body_retain( &sub, &value->settings , retention);
                 if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
-                tabledemo_global_settings_reset( &value->global );
+                tabledemo_global_settings_reset( &value->settings );
                 }
                 break;
             }
@@ -10776,7 +10776,7 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_body_pack_(struct tabledem
     const tabledemo_pack_config_t * value=(const tabledemo_pack_config_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
     tabledemo_table_cook_put(at+0,(uint64_t)value->version,4,order);
-    if(!schema_tabledemo_global_settings_body_pack_(n,at+4,&value->global,order)) { return 0; }
+    if(!schema_tabledemo_global_settings_body_pack_(n,at+4,&value->settings,order)) { return 0; }
     { int32_t cook_i1; for(cook_i1=0;cook_i1<3;cook_i1++) {
         if(!schema_tabledemo_ship_entry_body_pack_(n,at+76+cook_i1*108,&value->ships[cook_i1],order)) { return 0; }
     } }
@@ -10839,7 +10839,7 @@ SCHEMA_TABLE_STATIC_ASSERT( tabledemo_GlobalSettings_spawn_delays_offset, offset
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_PackConfig_sizeof, sizeof( tabledemo_pack_config_t ) == 740, "PackConfig's sizeof moved: the build version was taken over 740, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_PackConfig_alignof, SCHEMA_TABLE_ALIGNOF( tabledemo_pack_config_t ) == 4, "PackConfig's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_PackConfig_version_offset, offsetof( tabledemo_pack_config_t, version ) == 0, "PackConfig's field version moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( tabledemo_PackConfig_global_offset, offsetof( tabledemo_pack_config_t, global ) == 4, "PackConfig's field global moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( tabledemo_PackConfig_settings_offset, offsetof( tabledemo_pack_config_t, settings ) == 4, "PackConfig's field settings moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_PackConfig_ships_offset, offsetof( tabledemo_pack_config_t, ships ) == 76, "PackConfig's field ships moved: the build version was taken over offset 76 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_PackConfig_thresholds_offset, offsetof( tabledemo_pack_config_t, thresholds ) == 400, "PackConfig's field thresholds moved: the build version was taken over offset 400 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_PackConfig_reserves_offset, offsetof( tabledemo_pack_config_t, reserves ) == 412, "PackConfig's field reserves moved: the build version was taken over offset 412 (docs/SPEC-TABLES.md §20.3)" );

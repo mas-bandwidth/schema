@@ -1042,12 +1042,12 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 		probe := *w
 		probe.Measuring = true
 		probe.Bits = 0
-		if !GlobalSettingsSaveMessageBody(&probe, &value.Global) {
+		if !GlobalSettingsSaveMessageBody(&probe, &value.Settings) {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
 			w.Put(28, TableMessageRefBitsHere)
-			if !GlobalSettingsSaveMessageBody(w, &value.Global) {
+			if !GlobalSettingsSaveMessageBody(w, &value.Settings) {
 				return false
 			}
 		}
@@ -1276,7 +1276,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						return false
 					}
 				}
-				if !GlobalSettingsLoadMessageBody(r, &value.Global) {
+				if !GlobalSettingsLoadMessageBody(r, &value.Settings) {
 					return false
 				}
 				if widened {

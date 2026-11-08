@@ -38,7 +38,7 @@ fixed table GlobalSettings
 fixed table PackConfig
 {
     version    uint32 = 1
-    global     GlobalSettings
+    settings   GlobalSettings | was = "global"
     ships      [ShipType]ShipEntry // one record per ship type, riding by NAME
     thresholds [Difficulty]int32                                               | min = 0, max = 1000
     reserves   [..3]ShipEntry

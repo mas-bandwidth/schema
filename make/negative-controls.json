@@ -658,6 +658,15 @@
       "python": "pin"
     },
     {
+      "name": "python-serialize",
+      "when": "pull-request",
+      "why": "serialize.py's corpus runner (third_party/serialize.py, make/python-serialize.mk), on the pins .github/actions/python restores into dist/: the corpus test pointed at a root with no vectors must go red by that name. The eighteen per-rule sabotage controls run inside python-serialize-test itself. One interpreter run, under 1 s on a bench, so the row is the pins' cache restore.",
+      "targets": [
+        "python-serialize-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

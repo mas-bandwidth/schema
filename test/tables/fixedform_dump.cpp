@@ -636,12 +636,12 @@ static bool pack_file( const char * dir )
     {
         tabledemo::PackConfigReset( v[k] );
         MSI( v[k].version, 7u + (uint32_t) k, (long long) ( k ) );
-        MSI( v[k].global.tick_rate, 120u - (uint32_t) k, (long long) ( k ) );
-        MSEI( v[k].global.difficulty, k == 0 ? tabledemo::Difficulty::Hard : tabledemo::Difficulty::Easy, (long long) ( k ) );
+        MSI( v[k].settings.tick_rate, 120u - (uint32_t) k, (long long) ( k ) );
+        MSEI( v[k].settings.difficulty, k == 0 ? tabledemo::Difficulty::Hard : tabledemo::Difficulty::Easy, (long long) ( k ) );
         const char * note = k == 0 ? "first build" : "second build";
-        MSTRI( v[k].global.build_note, note, (long long) ( k ) );
-        MSI( v[k].global.build_note_length, (int32_t) std::strlen( note ), (long long) ( k ) );
-        for ( int i = 0; i < 3; ++i ) { MSI( v[k].global.spawn_delays[i], 0.5f * (float) ( i + 1 + k ), (long long) ( k ), (long long) ( i ) ); }
+        MSTRI( v[k].settings.build_note, note, (long long) ( k ) );
+        MSI( v[k].settings.build_note_length, (int32_t) std::strlen( note ), (long long) ( k ) );
+        for ( int i = 0; i < 3; ++i ) { MSI( v[k].settings.spawn_delays[i], 0.5f * (float) ( i + 1 + k ), (long long) ( k ), (long long) ( i ) ); }
         for ( int s = 0; s < 3; ++s )
         {
             const char * names[3] = { "fighter", "bomber", "scout" };

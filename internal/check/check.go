@@ -3625,6 +3625,13 @@ var reservedLanguages = []struct {
 		out_of_range namespace not and or attribute if for while super constructor guard
 		abstract union member member_frame static static_frame operator elif else break
 		continue bool true false`},
+	// Python's hard keywords (keyword.kwlist, the same on both pinned
+	// interpreters; docs/PORT-PYTHON.md, IDENTIFIERS). The soft keywords
+	// (match, case, type, lazy, _) are identifiers in every position the
+	// generated code spells a name, so they are not here.
+	{"Python", []string{"python"}, `False None True and as assert async await break class continue def del
+		elif else except finally for from global if import in is lambda nonlocal not or pass raise return
+		try while with yield`},
 }
 
 // targetReserved maps each reserved word of the supported languages to the
@@ -3962,6 +3969,11 @@ func (c *checker) checkTargetNames() {
 				walkBlock(d.Body, d.Name, map[string]claim{})
 			case *ast.EnumDecl:
 				for _, v := range d.Variants {
+					// None and Max are every enum's own names: the variant
+					// rule refuses them (resolveEnum), once
+					if reservedEnumVariant(v.Text) {
+						continue
+					}
 					checkEscaped(v.Text, v.Pos, "enum variant")
 				}
 			case *ast.FlagsDecl:

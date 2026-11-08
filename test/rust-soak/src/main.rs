@@ -528,7 +528,7 @@ mod demo {
     }
     pub fn packs(v: &[PackConfigRow]) -> u64 {
         v.iter()
-            .map(|p| p.version as u64 ^ p.global.tick_rate as u64 ^ p.global.difficulty as u64)
+            .map(|p| p.version as u64 ^ p.settings.tick_rate as u64 ^ p.settings.difficulty as u64)
             .fold(0, u64::wrapping_add)
     }
 }

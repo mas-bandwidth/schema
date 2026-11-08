@@ -1,0 +1,205 @@
+# serialize conformance vectors: serialize_double
+#
+# The format is specified in STANDARD.md, "The vector format". Records are
+# separated by blank lines.
+#
+# STANDARD.md, "double": the 64 bits of the IEEE-754 double-precision
+# representation, written as one 64-bit group — which is serialize_bits over 64
+# bits, so the low 32-bit group precedes the high one and the bytes on an
+# aligned stream are the value in little-endian order.
+#
+# "Finite values only, every one bit exact" binds this operation exactly as it
+# binds float: an all-ones exponent field is refused with non_finite_float, and
+# every other pattern, negative zero and the subnormals included, is accepted
+# and reproduced bit for bit. These vectors compare BIT PATTERNS, not values.
+
+operation double
+name double-positive-zero
+bytes 00 00 00 00 00 00 00 00
+expect bits = 0x0000000000000000
+consumed 64
+writer canonical
+
+operation double
+name double-negative-zero
+bytes 00 00 00 00 00 00 00 80
+expect bits = 0x8000000000000000
+consumed 64
+writer canonical
+
+operation double
+name double-one
+bytes 00 00 00 00 00 00 F0 3F
+expect bits = 0x3FF0000000000000
+consumed 64
+writer canonical
+
+operation double
+name double-one-third
+bytes 55 55 55 55 55 55 D5 3F
+expect bits = 0x3FD5555555555555
+consumed 64
+writer canonical
+
+# The two 32-bit groups, each alone, so a reader that swaps them decodes a
+# different pattern.
+
+operation double
+name double-low-half-only
+bytes EF CD AB 89 00 00 00 00
+expect bits = 0x0000000089ABCDEF
+consumed 64
+writer canonical
+
+operation double
+name double-high-half-only
+bytes 00 00 00 00 EF CD AB 89
+expect bits = 0x89ABCDEF00000000
+consumed 64
+writer canonical
+
+operation double
+name double-smallest-positive-denormal
+bytes 01 00 00 00 00 00 00 00
+expect bits = 0x0000000000000001
+consumed 64
+writer canonical
+
+operation double
+name double-largest-denormal
+bytes FF FF FF FF FF FF 0F 00
+expect bits = 0x000FFFFFFFFFFFFF
+consumed 64
+writer canonical
+
+operation double
+name double-negative-denormal
+bytes 01 00 00 00 00 00 00 80
+expect bits = 0x8000000000000001
+consumed 64
+writer canonical
+
+operation double
+name double-smallest-positive-normal
+bytes 00 00 00 00 00 00 10 00
+expect bits = 0x0010000000000000
+consumed 64
+writer canonical
+
+operation double
+name double-largest-finite
+bytes FF FF FF FF FF FF EF 7F
+expect bits = 0x7FEFFFFFFFFFFFFF
+consumed 64
+writer canonical
+
+operation double
+name double-most-negative-finite
+bytes FF FF FF FF FF FF EF FF
+expect bits = 0xFFEFFFFFFFFFFFFF
+consumed 64
+writer canonical
+
+operation double
+name double-refuse-positive-infinity
+bytes 00 00 00 00 00 00 F0 7F
+expect refused non_finite_float
+
+operation double
+name double-refuse-negative-infinity
+bytes 00 00 00 00 00 00 F0 FF
+expect refused non_finite_float
+
+operation double
+name double-refuse-quiet-nan
+bytes 00 00 00 00 00 00 F8 7F
+expect refused non_finite_float
+
+operation double
+name double-refuse-negative-quiet-nan
+bytes 00 00 00 00 00 00 F8 FF
+expect refused non_finite_float
+
+operation double
+name double-refuse-signaling-nan
+bytes 01 00 00 00 00 00 F0 7F
+expect refused non_finite_float
+
+operation double
+name double-refuse-nan-with-payload
+bytes 00 00 00 00 00 AD FE 7F
+expect refused non_finite_float
+
+operation double
+name double-refuse-negative-nan-all-payload-bits
+bytes FF FF FF FF FF FF FF FF
+expect refused non_finite_float
+
+# The NaN's only payload bit sits in the LOW 32-bit group, so a reader that
+# judges the pattern from the high group alone sees infinity, and one that
+# narrows through float32 on the way may see something else again.
+
+operation double
+name double-refuse-nan-payload-in-low-group-only
+bytes 00 01 00 00 00 00 F0 7F
+expect refused non_finite_float
+
+operation double
+name double-refuse-past-end-56-of-64
+bytes FF FF FF FF FF FF FF
+expect refused past_end
+
+operation double
+name double-refuse-past-end-empty-stream
+bytes
+expect refused past_end
+
+# Finite doubles whose 32-bit halves are shaped like a float32 signalling NaN:
+# exponent field all ones, top mantissa bit clear, mantissa non-zero. Each is a
+# finite double and must be accepted and reproduced bit for bit. A reader or
+# writer that moves either half through a float32 view (dart2wasm canonicalises
+# signalling NaNs that way) turns these finite values into NaN or an infinity,
+# or changes their bits. Found by the cross-port security audit, 2026-10-27.
+
+# The audit's witness, 1.6246e307: the high half 0x7FB72276 is sNaN shaped.
+
+operation double
+name double-finite-high-half-snan-shaped
+bytes 00 02 10 F2 76 22 B7 7F
+expect bits = 0x7FB72276F2100200
+consumed 64
+writer canonical
+
+# The second witness: the high half 0x7FB00000, the low half zero.
+
+operation double
+name double-finite-high-half-snan-shaped-low-half-zero
+bytes 00 00 00 00 00 00 B0 7F
+expect bits = 0x7FB0000000000000
+consumed 64
+writer canonical
+
+# The low half 0x7F800001 is sNaN shaped; the double is 1 plus a few ulps.
+
+operation double
+name double-finite-low-half-snan-shaped
+bytes 01 00 80 7F 00 00 F0 3F
+expect bits = 0x3FF000007F800001
+consumed 64
+writer canonical
+
+# Both halves sNaN shaped, and the same with the sign bit set.
+
+operation double
+name double-finite-both-halves-snan-shaped
+bytes 00 00 A0 7F 00 00 A0 7F
+expect bits = 0x7FA000007FA00000
+consumed 64
+writer canonical
+
+operation double
+name double-finite-negative-both-halves-snan-shaped
+bytes 01 00 80 FF 01 00 80 FF
+expect bits = 0xFF800001FF800001
+consumed 64
+writer canonical

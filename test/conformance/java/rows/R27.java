@@ -126,24 +126,24 @@ public final class R27 {
     // ---- THE MANIFEST LINE, written as the C++ dump would write it ---------
     //
     // Constructed from test/tables/fixedform_dump.cpp's PackConfigFixed values.
-    // Record 0: version=7, global.tickRate=120, difficulty=3 (Hard),
+    // Record 0: version=7, settings.tickRate=120, difficulty=3 (Hard),
     //   buildNote="first build" (length 12), spawnDelays=[0.5, 1.0, 1.5],
     //   ships[i]: displayName=["fighter","bomber","scout"], health=[100,110,120],
     //   mass=[1.0,1.25,1.5], hardpointsCount=[1,2,3], gunnerPresent=[true,false,true],
     //   thresholds=[100,200,300], reservesCount=2
-    // Record 1: version=8, global.tickRate=119, difficulty=1 (Easy),
+    // Record 1: version=8, settings.tickRate=119, difficulty=1 (Easy),
     //   buildNote="second build" (length 13), thresholds=[101,201,301]
 
     static final String PACK_MANIFEST_LINE =
         "file=pack.bin row=pack side=none root=PackConfig records=2 values=" +
         "r0.version=7," +
-        "r0.global.tickRate=120," +
-        "r0.global.difficulty=3," +
-        "r0.global.buildNote=\"first build\"," +
-        "r0.global.buildNoteLength=12," +
-        "r0.global.spawnDelays[0]=0.5|0x3F000000," +
-        "r0.global.spawnDelays[1]=1|0x3F800000," +
-        "r0.global.spawnDelays[2]=1.5|0x3FC00000," +
+        "r0.settings.tickRate=120," +
+        "r0.settings.difficulty=3," +
+        "r0.settings.buildNote=\"first build\"," +
+        "r0.settings.buildNoteLength=12," +
+        "r0.settings.spawnDelays[0]=0.5|0x3F000000," +
+        "r0.settings.spawnDelays[1]=1|0x3F800000," +
+        "r0.settings.spawnDelays[2]=1.5|0x3FC00000," +
         "r0.ships[0].displayName=\"fighter\"," +
         "r0.ships[0].displayNameLength=7," +
         "r0.ships[0].health=100|0x42C80000," +
@@ -199,13 +199,13 @@ public final class R27 {
         "r0.reserves[1].hardpoints[0]=8," +
         "r0.reserves[1].gunnerPresent=false," +
         "r1.version=8," +
-        "r1.global.tickRate=119," +
-        "r1.global.difficulty=1," +
-        "r1.global.buildNote=\"second build\"," +
-        "r1.global.buildNoteLength=13," +
-        "r1.global.spawnDelays[0]=1|0x3F800000," +
-        "r1.global.spawnDelays[1]=1.5|0x3FC00000," +
-        "r1.global.spawnDelays[2]=2|0x40000000," +
+        "r1.settings.tickRate=119," +
+        "r1.settings.difficulty=1," +
+        "r1.settings.buildNote=\"second build\"," +
+        "r1.settings.buildNoteLength=13," +
+        "r1.settings.spawnDelays[0]=1|0x3F800000," +
+        "r1.settings.spawnDelays[1]=1.5|0x3FC00000," +
+        "r1.settings.spawnDelays[2]=2|0x40000000," +
         "r1.ships[0].displayName=\"fighter\"," +
         "r1.ships[0].displayNameLength=7," +
         "r1.ships[0].health=101|0x42CA0000," +
@@ -268,13 +268,13 @@ public final class R27 {
     static tabledemo.PackConfigFixed.Value makeRecord(int k) {
         tabledemo.PackConfigFixed.Value v = new tabledemo.PackConfigFixed.Value();
         v.version = 7 + k;
-        v.global.tickRate = (k == 0) ? 120 : 119;
-        v.global.difficulty = (byte) (k == 0 ? 3 : 1);  // Hard, then Easy
+        v.settings.tickRate = (k == 0) ? 120 : 119;
+        v.settings.difficulty = (byte) (k == 0 ? 3 : 1);  // Hard, then Easy
         String note = k == 0 ? "first build" : "second build";
-        setText(v.global.buildNote, note);
-        v.global.buildNoteLength = note.length();
+        setText(v.settings.buildNote, note);
+        v.settings.buildNoteLength = note.length();
         for (int i = 0; i < 3; i++) {
-            v.global.spawnDelays[i] = 0.5f * (float) (i + 1 + k);
+            v.settings.spawnDelays[i] = 0.5f * (float) (i + 1 + k);
         }
         String[] names = {"fighter", "bomber", "scout"};
         for (int s = 0; s < 3; s++) {
@@ -351,19 +351,19 @@ public final class R27 {
         // Record 0
         check(read[0].version == manInt(ml, "r0.version"),
             "reader: r0.version=" + read[0].version + " matches manifest (7)");
-        check(read[0].global.tickRate == manInt(ml, "r0.global.tickRate"),
-            "reader: r0.global.tickRate=" + read[0].global.tickRate + " matches manifest (120)");
+        check(read[0].settings.tickRate == manInt(ml, "r0.settings.tickRate"),
+            "reader: r0.settings.tickRate=" + read[0].settings.tickRate + " matches manifest (120)");
 
         // Record 1
         check(read[1].version == manInt(ml, "r1.version"),
             "reader: r1.version=" + read[1].version + " matches manifest (8)");
-        check(read[1].global.tickRate == manInt(ml, "r1.global.tickRate"),
-            "reader: r1.global.tickRate=" + read[1].global.tickRate + " matches manifest (119)");
+        check(read[1].settings.tickRate == manInt(ml, "r1.settings.tickRate"),
+            "reader: r1.settings.tickRate=" + read[1].settings.tickRate + " matches manifest (119)");
 
         // TEXT FIELDS
-        check(textOf(read[0].global.buildNote, read[0].global.buildNoteLength).equals("first build"),
+        check(textOf(read[0].settings.buildNote, read[0].settings.buildNoteLength).equals("first build"),
             "reader: r0.buildNote=\"first build\"");
-        check(textOf(read[1].global.buildNote, read[1].global.buildNoteLength).equals("second build"),
+        check(textOf(read[1].settings.buildNote, read[1].settings.buildNoteLength).equals("second build"),
             "reader: r1.buildNote=\"second build\"");
 
         // ARRAY FIELDS

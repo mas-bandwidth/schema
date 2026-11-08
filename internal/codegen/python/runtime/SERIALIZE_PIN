@@ -1,0 +1,5 @@
+# Vendored from third_party/serialize.py/src/serialize, serialize.py staged in this tree
+# until mas-bandwidth/serialize.py exists (docs/PORT-PYTHON.md, THE BIT LAYER).
+# Rewrite with: make vendor-serialize-python (make/python-serialize.mk)
+sha256  0c552887d1c61787d7fed3fc6d4c669e3c6c52b10d7c0481e52d43bda2680d10  __init__.py
+sha256  4771b1514ad46c88a5c7b16f8e1f9908911992e29d0f0c04a866787531cdafd2  _core.py

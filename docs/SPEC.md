@@ -1537,8 +1537,9 @@ All compile errors with positions:
   whatever target is generated (Glenn, 2026-10-21: "generated output never
   puts out keywords in Y"). Every command — `check`, `generate --lang L` for
   any L, and the rest — checks a declaration or field name against the
-  reserved words of all fourteen languages: C, C++, C#, Go, Rust, Java,
-  JavaScript, Dart, Elixir, Lua, Luau, Squirrel, Goose and Lobster. The words
+  reserved words of all sixteen languages: C, C++, C#, Go, Rust, Java,
+  JavaScript, Dart, Elixir, Lua, Luau, moo, Squirrel, Goose, Lobster and
+  Python. The words
   live in ONE table in the checker (a language's keywords and literals, plus
   the predeclared names its generated code would shadow: Go's universe block,
   Dart's dart:core types and Object members, Elixir's arity-0 Kernel

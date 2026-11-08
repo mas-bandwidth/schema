@@ -111,7 +111,7 @@ type PackConfigBlockProjection struct {
 	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
 	ByteOrder    uint64 // generated: 1 little, 2 big
 	Version      uint32
-	Global       GlobalSettingsRow
+	Settings     GlobalSettingsRow
 	Ships        [3]ShipEntryRow
 	Thresholds   [3]int32
 	_            [4]byte          // generated padding

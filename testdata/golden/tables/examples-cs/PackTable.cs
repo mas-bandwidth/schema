@@ -53,7 +53,7 @@ namespace Tabledemo
     public sealed class PackConfig
     {
         public uint Version = 1;
-        public GlobalSettings Global = new GlobalSettings();
+        public GlobalSettings Settings = new GlobalSettings();
         public TableKeyed<ShipEntry, ShipType> Ships = new TableKeyed<ShipEntry, ShipType>(); // [ShipType]: one slot per named variant, keyed by the value
         public TableKeyed<int, Difficulty> Thresholds = new TableKeyed<int, Difficulty>(); // [Difficulty]: one slot per named variant, keyed by the value
         public ShipEntry[] Reserves = new ShipEntry[3]; // used count beside it; count in [0, 3]
@@ -477,7 +477,7 @@ namespace Tabledemo
         public static void TableReset(PackConfig value)
         {
             value.Version = 1;
-            TableReset(value.Global);
+            TableReset(value.Settings);
             for (int i = 0; i < value.Ships.Slots.Length; i++)
             {
                 TableReset(value.Ships.Slots[i]);
@@ -754,7 +754,7 @@ namespace Tabledemo
                 info.Fields = new TableFieldInfo[]
                 {
                     new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint32", Id = 0xbb62c62c9808ea37, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.PackConfig)o).Version; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.PackConfig)o).Version = unchecked((uint)r); }, MessageSlot = 27, Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.PackConfig)o; value.Version = 1; }, DefaultRaw = (ulong)1, RangeRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "global", Json = "global", TypeName = "GlobalSettings", Id = 0x7fb43557b54149ce, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GlobalSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.PackConfig)o).Global; }, MessageSlot = 28, Ordinal = 1, NativeOffset = 4, NativeElementSize = 72, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.PackConfig)o; TableReset(value.Global); } },
+                    new TableFieldInfo { Name = "settings", Json = "settings", TypeName = "GlobalSettings", Id = 0x7fb43557b54149ce, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GlobalSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.PackConfig)o).Settings; }, MessageSlot = 28, Ordinal = 1, NativeOffset = 4, NativeElementSize = 72, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.PackConfig)o; TableReset(value.Settings); } },
                     new TableFieldInfo { Name = "ships", Json = "ships", TypeName = "ShipEntry", Id = 0x294a5c4913e1ad44, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Tabledemo.Schema.ShipTypeMax, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "ShipType", KeyName = delegate (ulong v) { return v <= (ulong)ShipTypeMax ? EnumNameShipType((global::Tabledemo.ShipType)v) : "???"; }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Tabledemo.ShipType)v, out id); return id; }, Guard = "", TableRef = delegate { return ShipEntryTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.PackConfig)o).Ships.Slots[i]; }, MessageSlot = 29, Ordinal = 2, NativeOffset = 76, NativeElementSize = 108, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.PackConfig)o; for (int i = 0; i < value.Ships.Slots.Length; i++) { TableReset(value.Ships.Slots[i]); } } },
                     new TableFieldInfo { Name = "thresholds", Json = "thresholds", TypeName = "int32", Id = 0x9cda940a344e1571, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)global::Tabledemo.Schema.DifficultyMax, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Difficulty", KeyName = delegate (ulong v) { return v <= (ulong)DifficultyMax ? EnumNameDifficulty((global::Tabledemo.Difficulty)v) : "???"; }, KeyId = delegate (ulong v) { ulong id; TableEnumId((global::Tabledemo.Difficulty)v, out id); return id; }, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.PackConfig)o).Thresholds.Slots[i])); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.PackConfig)o).Thresholds.Slots[i] = unchecked((int)(long)r); }, MessageSlot = 30, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x3e8ul)), Ordinal = 3, NativeOffset = 400, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.PackConfig)o; Array.Clear(value.Thresholds.Slots, 0, value.Thresholds.Slots.Length); }, DefaultRaw = unchecked((ulong)(long)(0)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L || v > 1000L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RangeRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 1000) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
                     new TableFieldInfo { Name = "reserves", Json = "reserves", TypeName = "ShipEntry", Id = 0x77707fccd201c228, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 3, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ShipEntryTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.PackConfig)o).Reserves[i]; }, GetCount = delegate (object o) { return ((global::Tabledemo.PackConfig)o).ReservesCount; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.PackConfig)o).ReservesCount = n; }, MessageSlot = 31, Ordinal = 4, NativeOffset = 412, NativeElementSize = 108, NativeCountOffset = 736, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.PackConfig)o; for (int i = 0; i < value.Reserves.Length; i++) { TableReset(value.Reserves[i]); } value.ReservesCount = 0; } },
@@ -906,7 +906,7 @@ namespace Tabledemo
         {
             if (value == null) return;
             BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Version);
-            GlobalSettingsFixedWriteBody(b.Slice(4), value.Global);
+            GlobalSettingsFixedWriteBody(b.Slice(4), value.Settings);
             if (value.Ships.Slots != null)
             {
                 for (int i = 0; i < 3 && i < value.Ships.Slots.Length; ++i)
@@ -962,7 +962,7 @@ namespace Tabledemo
         public static void PackConfigFixedClampBody(PackConfig value, ref int clamped)
         {
             if (value == null) return;
-            GlobalSettingsFixedClampBody(value.Global, ref clamped);
+            GlobalSettingsFixedClampBody(value.Settings, ref clamped);
             if (value.Ships.Slots != null)
             {
                 for (int i = 0; i < 3 && i < value.Ships.Slots.Length; ++i)
@@ -1033,7 +1033,7 @@ namespace Tabledemo
         {
             if (value == null) return null;
             {
-                string why = GlobalSettingsFixedFiniteBody(value.Global);
+                string why = GlobalSettingsFixedFiniteBody(value.Settings);
                 if (why != null) return why;
             }
             if (value.Ships.Slots != null)
@@ -2872,7 +2872,7 @@ namespace Tabledemo
         public static readonly TableFixedDst[] PackConfigFixedDst = new TableFixedDst[] {
             new TableFixedDst(0, 0, 0, 0, 0), // PackConfig
             new TableFixedDst(0, 0, 0, 0, 0), // version
-            new TableFixedDst(1, 0, 0, 0, 0), // global
+            new TableFixedDst(1, 0, 0, 0, 0), // settings
             new TableFixedDst(0, 0, 0, 0, 0), // tick_rate
             new TableFixedDst(1, 0, 0, 0, 0), // difficulty
             new TableFixedDst(0, 0, 0, 0, 0), // Easy
@@ -2919,11 +2919,11 @@ namespace Tabledemo
 
         public static readonly TableFixedSlot<PackConfig>[] PackConfigFixedSlots = new TableFixedSlot<PackConfig>[] {
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Version = unchecked((uint)v), reset: (t) => { t.Version = 1; }),
-            new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Global.TickRate = unchecked((uint)v), reset: (t) => { t.Global.TickRate = 60; }),
-            new TableFixedSlot<PackConfig>(setRawReport: (t, v, rep) => { t.Global.Difficulty = (Difficulty)v; }, reset: (t) => { t.Global.Difficulty = global::Tabledemo.Difficulty.Normal; }),
-            new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Global.BuildNoteLength = (int)v, reset: (t) => { t.Global.BuildNoteLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Global.BuildNote != null) b.Slice(0, Math.Min(b.Length, t.Global.BuildNote.Length)).CopyTo(t.Global.BuildNote); }, reset: (t) => { if (t.Global.BuildNote != null) { Array.Clear(t.Global.BuildNote, 0, t.Global.BuildNote.Length); } }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Global.SpawnDelays != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Global.SpawnDelays.Length * 4)), t.Global.SpawnDelays); }, reset: (t) => { if (t.Global.SpawnDelays != null) Array.Clear(t.Global.SpawnDelays, 0, t.Global.SpawnDelays.Length); }),
+            new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Settings.TickRate = unchecked((uint)v), reset: (t) => { t.Settings.TickRate = 60; }),
+            new TableFixedSlot<PackConfig>(setRawReport: (t, v, rep) => { t.Settings.Difficulty = (Difficulty)v; }, reset: (t) => { t.Settings.Difficulty = global::Tabledemo.Difficulty.Normal; }),
+            new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Settings.BuildNoteLength = (int)v, reset: (t) => { t.Settings.BuildNoteLength = 0; }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Settings.BuildNote != null) b.Slice(0, Math.Min(b.Length, t.Settings.BuildNote.Length)).CopyTo(t.Settings.BuildNote); }, reset: (t) => { if (t.Settings.BuildNote != null) { Array.Clear(t.Settings.BuildNote, 0, t.Settings.BuildNote.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Settings.SpawnDelays != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Settings.SpawnDelays.Length * 4)), t.Settings.SpawnDelays); }, reset: (t) => { if (t.Settings.SpawnDelays != null) Array.Clear(t.Settings.SpawnDelays, 0, t.Settings.SpawnDelays.Length); }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[0].DisplayNameLength = (int)v, reset: (t) => { t.Ships.Slots[0].DisplayNameLength = 0; }),
             new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[0].DisplayName != null) b.Slice(0, Math.Min(b.Length, t.Ships.Slots[0].DisplayName.Length)).CopyTo(t.Ships.Slots[0].DisplayName); }, reset: (t) => { if (t.Ships.Slots[0].DisplayName != null) { Array.Clear(t.Ships.Slots[0].DisplayName, 0, t.Ships.Slots[0].DisplayName.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[0].Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[0].Health = (float)d, reset: (t) => { t.Ships.Slots[0].Health = 100.0f; }),
@@ -3001,9 +3001,9 @@ namespace Tabledemo
             switch (slot)
             {
                 case 0: t.Version = unchecked((uint)v); break;
-                case 1: t.Global.TickRate = unchecked((uint)v); break;
-                case 2: { t.Global.Difficulty = (Difficulty)v; } break;
-                case 3: t.Global.BuildNoteLength = (int)v; break;
+                case 1: t.Settings.TickRate = unchecked((uint)v); break;
+                case 2: { t.Settings.Difficulty = (Difficulty)v; } break;
+                case 3: t.Settings.BuildNoteLength = (int)v; break;
                 case 6: t.Ships.Slots[0].DisplayNameLength = (int)v; break;
                 case 8: t.Ships.Slots[0].Health = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 9: t.Ships.Slots[0].Mass = BitConverter.UInt32BitsToSingle((uint)v); break;
@@ -3098,8 +3098,8 @@ namespace Tabledemo
         {
             switch (slot)
             {
-                case 4: { if (t.Global.BuildNote != null) b.Slice(0, Math.Min(b.Length, t.Global.BuildNote.Length)).CopyTo(t.Global.BuildNote); } break;
-                case 5: { if (t.Global.SpawnDelays != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Global.SpawnDelays.Length * 4)), t.Global.SpawnDelays); } break;
+                case 4: { if (t.Settings.BuildNote != null) b.Slice(0, Math.Min(b.Length, t.Settings.BuildNote.Length)).CopyTo(t.Settings.BuildNote); } break;
+                case 5: { if (t.Settings.SpawnDelays != null) TableFixedWire.ReadLittle<float>(b.Slice(0, Math.Min(b.Length, t.Settings.SpawnDelays.Length * 4)), t.Settings.SpawnDelays); } break;
                 case 7: { if (t.Ships.Slots[0].DisplayName != null) b.Slice(0, Math.Min(b.Length, t.Ships.Slots[0].DisplayName.Length)).CopyTo(t.Ships.Slots[0].DisplayName); } break;
                 case 11: { if (t.Ships.Slots[0].Hardpoints != null) TableFixedWire.ReadLittle<int>(b.Slice(0, Math.Min(b.Length, t.Ships.Slots[0].Hardpoints.Length * 4)), t.Ships.Slots[0].Hardpoints); } break;
                 case 16: { if (t.Ships.Slots[0].Gunner.Callsign != null) b.Slice(0, Math.Min(b.Length, t.Ships.Slots[0].Gunner.Callsign.Length)).CopyTo(t.Ships.Slots[0].Gunner.Callsign); } break;
@@ -3135,11 +3135,11 @@ namespace Tabledemo
             switch (slot)
             {
                 case 0: { t.Version = 1; } break;
-                case 1: { t.Global.TickRate = 60; } break;
-                case 2: { t.Global.Difficulty = global::Tabledemo.Difficulty.Normal; } break;
-                case 3: { t.Global.BuildNoteLength = 0; } break;
-                case 4: { if (t.Global.BuildNote != null) { Array.Clear(t.Global.BuildNote, 0, t.Global.BuildNote.Length); } } break;
-                case 5: { if (t.Global.SpawnDelays != null) Array.Clear(t.Global.SpawnDelays, 0, t.Global.SpawnDelays.Length); } break;
+                case 1: { t.Settings.TickRate = 60; } break;
+                case 2: { t.Settings.Difficulty = global::Tabledemo.Difficulty.Normal; } break;
+                case 3: { t.Settings.BuildNoteLength = 0; } break;
+                case 4: { if (t.Settings.BuildNote != null) { Array.Clear(t.Settings.BuildNote, 0, t.Settings.BuildNote.Length); } } break;
+                case 5: { if (t.Settings.SpawnDelays != null) Array.Clear(t.Settings.SpawnDelays, 0, t.Settings.SpawnDelays.Length); } break;
                 case 6: { t.Ships.Slots[0].DisplayNameLength = 0; } break;
                 case 7: { if (t.Ships.Slots[0].DisplayName != null) { Array.Clear(t.Ships.Slots[0].DisplayName, 0, t.Ships.Slots[0].DisplayName.Length); } } break;
                 case 8: { t.Ships.Slots[0].Health = 100.0f; } break;

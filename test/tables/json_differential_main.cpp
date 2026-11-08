@@ -110,7 +110,7 @@ static float draw_tie()
 
 // one float32 leaf of the PackConfig closure, with the name the diagnosis
 // prints. The closure, read off tables/examples/Pack.schema and the generated
-// PackTable.h, is: global.spawn_delays[0..2]; for each of
+// PackTable.h, is: settings.spawn_delays[0..2]; for each of
 // ships[Fighter|Bomber|Scout] .health and .mass, and .gunner.reaction only
 // where gunner_present is true; and for reserves[0..reserves_count) the same
 // three. Enumerated from the loaded instance, never from memory.
@@ -143,8 +143,8 @@ static int enumerate_leaves( PackConfig & c, FloatLeaf * leaves, int cap )
     int n = 0;
     for ( int32_t i = 0; i < 3; i++ )
     {
-        snprintf( leaves[n].name, sizeof( leaves[n].name ), "global.spawn_delays[%d]", i );
-        leaves[n].addr = &c.global.spawn_delays[i];
+        snprintf( leaves[n].name, sizeof( leaves[n].name ), "settings.spawn_delays[%d]", i );
+        leaves[n].addr = &c.settings.spawn_delays[i];
         n++;
     }
     const ShipType ship_types[3] = { ShipType::Fighter, ShipType::Bomber, ShipType::Scout };

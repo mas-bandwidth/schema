@@ -139,12 +139,7 @@ python-toolchain-negative-control: python-toolchain-check
 		{ cat $(PYTHON_NC)/path.log; echo "NEGATIVE CONTROL FAILED: the planted PATH interpreter went red, but not by its file"; exit 1; }
 	@echo "negative control: a wrong PYTHON, a wrong MYPY and an interpreter from PATH each turn python-toolchain-check RED by name"
 
-# test-python, the leg's `make test` half. At this layer the leg is its
-# toolchain: the pins resolve, are what they say, and the check that says so
-# goes red when any of them is not. The layers above add their packages here.
-.PHONY: test-python
-test-python: python-toolchain-check python-toolchain-negative-control
-
-TEST_LEGS             += test-python
+# The leg registers its pins here; test-python and the rest of the leg are
+# make/python.mk's.
 TOOLCHAIN_LEGS        += python
 TOOLCHAIN_PINS_python := PYTHON PYTHON_FLOOR MYPY

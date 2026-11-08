@@ -2180,7 +2180,7 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 // the value already holds. The reader calls it before overlaying.
 func PackConfigReset(value *PackConfig) {
 	value.Version = 1
-	GlobalSettingsReset(&value.Global)
+	GlobalSettingsReset(&value.Settings)
 	for i := range value.Ships {
 		ShipEntryReset(&value.Ships[i])
 	}
@@ -2240,7 +2240,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 		mark := w.Ids.Count
 		ref := w.Ids.refAtHit(68, 0x7fb43557b54149ce)
 		start := w.Ids.Count
-		n := GlobalSettingsMeasureBody(&value.Global, w.Ids)
+		n := GlobalSettingsMeasureBody(&value.Settings, w.Ids)
 		if n < 0 || w.Ids.Overflow {
 			return false
 		}
@@ -2255,7 +2255,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
-				if !GlobalSettingsSaveBody(w, &value.Global) {
+				if !GlobalSettingsSaveBody(w, &value.Settings) {
 					return false
 				}
 			}
@@ -2849,9 +2849,9 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				v := r.Get32()
 				value.Version = uint32(v)
 			}
-		case 0x7fb43557b54149ce: // global
+		case 0x7fb43557b54149ce: // settings
 			if kind != 13 {
-				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.global")
+				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.settings")
 				return false
 			}
 			sub, ok := r.Body()
@@ -2864,7 +2864,7 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			if !GlobalSettingsLoadBody(&sub, &value.Global) {
+			if !GlobalSettingsLoadBody(&sub, &value.Settings) {
 				return false
 			}
 			if sub.Offset != int64(len(sub.Buffer)) {
@@ -3185,7 +3185,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 			payload.Ids.Path = payload1.step(1, uint32(0))
 			{
 				mark := payload.Ids.Count
-				n := GlobalSettingsMeasureBodyRetain(&value.Global, payload.Ids)
+				n := GlobalSettingsMeasureBodyRetain(&value.Settings, payload.Ids)
 				if n < 0 {
 					return false
 				}
@@ -3196,7 +3196,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 					payload.Advance(n)
 				} else {
 					payload.Ids.Truncate(mark)
-					if !GlobalSettingsSaveBodyRetain(&payload, &value.Global) {
+					if !GlobalSettingsSaveBodyRetain(&payload, &value.Settings) {
 						return false
 					}
 				}
@@ -3219,7 +3219,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 					w.Ids.Path = payload2.step(1, uint32(0))
 					{
 						mark := w.Ids.Count
-						n := GlobalSettingsMeasureBodyRetain(&value.Global, w.Ids)
+						n := GlobalSettingsMeasureBodyRetain(&value.Settings, w.Ids)
 						if n < 0 {
 							return false
 						}
@@ -3230,7 +3230,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 							w.Advance(n)
 						} else {
 							w.Ids.Truncate(mark)
-							if !GlobalSettingsSaveBodyRetain(w, &value.Global) {
+							if !GlobalSettingsSaveBodyRetain(w, &value.Settings) {
 								return false
 							}
 						}
@@ -3868,9 +3868,9 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 				v := r.Get32()
 				value.Version = uint32(v)
 			}
-		case 0x7fb43557b54149ce: // global
+		case 0x7fb43557b54149ce: // settings
 			if kind != 13 {
-				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.global")
+				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.settings")
 				return false
 			}
 			sub, ok := r.Body()
@@ -3884,7 +3884,7 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			if !GlobalSettingsLoadBodyRetain(&sub, &value.Global) {
+			if !GlobalSettingsLoadBodyRetain(&sub, &value.Settings) {
 				return false
 			}
 			if sub.Offset != int64(len(sub.Buffer)) {
@@ -4281,7 +4281,7 @@ func PackConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	}
 	{
 		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(PackConfig{}.Global))
+		ed := dst + uint32(unsafe.Offsetof(PackConfig{}.Settings))
 		n += GlobalSettingsFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	for i := range uint32(3) {
@@ -4307,7 +4307,7 @@ func PackConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 
 func PackConfigFixedWriteBody(b []byte, value *PackConfig) {
 	tableFixedPut32(b[0:], uint32(value.Version))
-	GlobalSettingsFixedWriteBody(b[4:], &value.Global)
+	GlobalSettingsFixedWriteBody(b[4:], &value.Settings)
 	for i := range int64(3) {
 		ShipEntryFixedWriteBody(b[73:][i*98:], &value.Ships[i])
 	}
@@ -4357,7 +4357,7 @@ func GlobalSettingsFixedBoundsBody(value *GlobalSettings, over *int32) {
 // PackConfig's read-side bounds: each value outside them counts one in over.
 func PackConfigFixedBoundsBody(value *PackConfig, over *int32) {
 	_, _ = value, over
-	GlobalSettingsFixedBoundsBody(&value.Global, over)
+	GlobalSettingsFixedBoundsBody(&value.Settings, over)
 	for i := range 3 {
 		ShipEntryFixedBoundsBody(&value.Ships[i], over)
 	}
@@ -4407,7 +4407,7 @@ func GlobalSettingsFixedFiniteBody(value *GlobalSettings) string {
 
 // PackConfigFixedFiniteBody is PackConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
 func PackConfigFixedFiniteBody(value *PackConfig) string {
-	if why := GlobalSettingsFixedFiniteBody(&value.Global); why != "" {
+	if why := GlobalSettingsFixedFiniteBody(&value.Settings); why != "" {
 		return why
 	}
 	for i := range 3 {
@@ -4642,7 +4642,7 @@ func GlobalSettingsFixedCheckBodyExact(value *GlobalSettings) bool {
 // PackConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func PackConfigFixedCheckBody(value *PackConfig) bool {
 	_ = value
-	if !GlobalSettingsFixedCheckBody(&value.Global) {
+	if !GlobalSettingsFixedCheckBody(&value.Settings) {
 		return false
 	}
 	for i := range 3 {
@@ -5572,7 +5572,7 @@ var PackConfigFixedLayout = []byte{
 var PackConfigFixedDst = []TableFixedDst{
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // PackConfig
 	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Version)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // version
-	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Global)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // global
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Settings)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // settings
 	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tick_rate
 	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // difficulty
 	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Easy
@@ -6101,8 +6101,8 @@ var PackConfigTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "global", JSON: "global", TypeName: "GlobalSettings", DeclaredTypeName: "GlobalSettings", ID: 0x7fb43557b54149ce, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Global)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Global)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+	{Name: "settings", JSON: "settings", TypeName: "GlobalSettings", DeclaredTypeName: "GlobalSettings", ID: 0x7fb43557b54149ce, Kind: 13, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Settings)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Settings)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 72, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
