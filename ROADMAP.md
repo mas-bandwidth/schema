@@ -4,7 +4,7 @@
 
 ## Packet wire
 
-Constants, enums, flags and types: bit-packed structs exchanged between client and server with exactly the same protocol version.
+Constants, enums, flags and types. Types are bitpacked structs exchanged between client and server with exactly the same protocol version for absolute minimal overhead.
 
 <!-- nova-work:packet-wire:start -->
 
