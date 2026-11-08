@@ -279,6 +279,10 @@ pub enum TableFixedReason {
     /// in non_finite_float, and nothing lands. The writer refuses one too.
     NonFiniteFloat,
     IntegrityMismatch,
+    /// A COUNT, A LENGTH, AN ORDINAL, A TAG OR A VALUE PAST ITS BOUND or
+    /// declared range (docs/SPEC-TABLES.md §4, strict-only): the whole batch
+    /// is refused and nothing lands.
+    OutOfRange,
 }
 
 impl TableFixedReason {
@@ -305,6 +309,7 @@ impl TableFixedReason {
             Self::TextIllFormed => "text_ill_formed",
             Self::NonFiniteFloat => "non_finite_float",
             Self::IntegrityMismatch => "integrity_mismatch",
+            Self::OutOfRange => "out_of_range",
         }
     }
 }
@@ -315,9 +320,16 @@ impl TableFixedReason {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct TableFixedReport {
     pub unknown: u32,
-    pub mismatch: u32,
+    /// THE COMPILE CENSUS's kind changes (§5.4): a writer field whose kind
+    /// moved off every ladder on the lineage. It stays on the plan and is
+    /// never landed on a load's report (strict-only: the verdict is the
+    /// contract, docs/plans/strict-only.md).
+    pub(crate) kind_changed: u32,
     pub widened: u32,
-    pub oor: u32,
+    /// OUT OF RANGE SEEN BY THIS RECORD'S RUN OR SCATTER: a count, a length,
+    /// an ordinal or a tag past its bound. LOAD refuses the whole batch as
+    /// out_of_range when it is non-zero; no read returns with it set.
+    pub(crate) held: u32,
     pub damaged: bool,
     pub refused: bool,
     pub reason: TableFixedReason,
@@ -337,9 +349,9 @@ impl TableFixedReport {
     /// ` + "`malformed`" + ` does not fire.
     pub fn refuse<T>(&mut self, reason: TableFixedReason) -> Option<T> {
         self.unknown = 0;
-        self.mismatch = 0;
+        self.kind_changed = 0;
         self.widened = 0;
-        self.oor = 0;
+        self.held = 0;
         self.damaged = false;
         self.refused = true;
         self.reason = reason;
@@ -574,7 +586,7 @@ pub fn table_fixed_run(
                 let raw = get32(src, s) as i32;
                 let held = raw.clamp(0, p.size as i32);
                 if held != raw {
-                    report.oor += 1;
+                    report.held += 1;
                 }
                 image[d..d + 4].copy_from_slice(&held.to_le_bytes());
             }
@@ -587,7 +599,7 @@ pub fn table_fixed_run(
                 let raw = get32(src, s) as i32;
                 let held = raw.clamp(0, p.aux as i32);
                 if held != raw {
-                    report.oor += 1;
+                    report.held += 1;
                 }
                 image[d..d + 4].copy_from_slice(&held.to_le_bytes());
                 let (head, tail) = image.split_at_mut(d + 4);
@@ -621,7 +633,7 @@ pub fn table_fixed_run(
                         // — it resolves to None through the table and counts
                         // nothing, because nothing was out of range.
                         if raw > u64::from(*count) {
-                            report.oor += 1;
+                            report.held += 1;
                         }
                         0
                     }
@@ -707,7 +719,7 @@ pub fn table_fixed_run(
                                 raw |= u64::from(*b) << (8 * i);
                             }
                             if raw > u64::from(p.dstsize) {
-                                report.oor += 1;
+                                report.held += 1;
                             }
                         }
                     }
@@ -1427,7 +1439,7 @@ fn compile_entry(
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        report.mismatch += 1;
+        report.kind_changed += 1;
         return;
     }
     match me.kind {
@@ -1726,7 +1738,7 @@ fn compile_entry(
                     ..TableFixedEntry::default()
                 });
             } else {
-                report.mismatch += 1;
+                report.kind_changed += 1;
             }
         }
     }

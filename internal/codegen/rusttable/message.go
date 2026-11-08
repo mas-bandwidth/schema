@@ -851,31 +851,26 @@ impl TableReason {
 /// strict read and the message form's batch fill the same type, so a crate
 /// carrying both forms exports one TableReport and never two.
 ///
-/// A field this build cannot name is skipped and counted, a field it can name
-/// but that arrives at another kind is a kind mismatch, and an absent field
-/// reads its default. widened counts a kind that GREW since the writer (§4),
-/// held a value held into a narrower declaration, repeated a repeated
-/// id (zero on the card's wire: no maps), and refused is a verdict, not one of
-/// §4's events: the form byte this reader does not carry (§3), or one of the
-/// message form's refusals BY NAME, whose reason the message form records
-/// (nothing is decoded, no counter moves, and malformed does not fire, §3.3).
+/// STRICT-ONLY (docs/plans/strict-only.md): a read returns the whole value or
+/// refuses the whole load. A field this build cannot name is skipped and
+/// counted unknown, a kind that GREW since the writer decodes exactly and
+/// counts widened (§4), and an absent field reads its default. A kind
+/// mismatch, a value out of range, a count or length past its bound, a
+/// repeated key or id and a shared blob each refuse the load as damaged.
+/// refused is a verdict by name: the form byte this reader does not carry
+/// (§3), or one of the message form's refusals, whose reason it records.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
     pub unknown: u64,
-    pub mismatch: u64,
     pub widened: u64,
-    pub oor: u64,
+    /// The first field a read met out of its declared range or bound, a
+    /// diagnostic beside the refusal, never compared (§6.5).
     pub oor_field: &'static str,
-    pub repeated: u64,
     pub damaged: bool,
     pub refused: bool,
     /// The read met a pointer naming an OPEN node, a cycle no writer produces
     /// (§3.1): the load refuses whole, and a builder save refuses it as data_cycle.
     pub cycle_on_save: bool,
-    /// A BLOB NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5): the strict
-    /// read keeps the one node and counts each extra naming here; every writer
-    /// refuses that graph by name, blob_shared.
-    pub shared_blob: u64,
     /// RETAIN-UNKNOWN'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6): retained
     /// counts the unknown fields whose bytes were kept, retain_lost counts
     /// every unknown this load or save could not keep (capacity, an excluded
@@ -932,18 +927,6 @@ impl TableReport {
                 TableReason::None | TableReason::Ok => TableReason::UnknownForm,
                 named => named,
             });
-        }
-        if self.shared_blob > 0 {
-            return Some(TableReason::BlobShared);
-        }
-        if self.oor > 0 {
-            return Some(TableReason::OutOfRange);
-        }
-        if self.mismatch > 0 {
-            return Some(TableReason::KindMismatch);
-        }
-        if self.repeated > 0 {
-            return Some(TableReason::WireDamaged);
         }
         None
     }

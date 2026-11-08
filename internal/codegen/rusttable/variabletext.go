@@ -90,7 +90,7 @@ pub fn json_escape(s: &str, out: &mut String) {
 /// §16.2): longer than n is held, counted, never cut through a multibyte
 /// character.
 #[allow(dead_code)]
-pub fn json_bound(s: String, n: usize, oor: &mut u64) -> String {
+pub fn json_bound(s: String, n: usize, damaged: &mut bool) -> String {
     if s.len() <= n {
         return s;
     }
@@ -98,7 +98,7 @@ pub fn json_bound(s: String, n: usize, oor: &mut u64) -> String {
     while end > 0 && !s.is_char_boundary(end) {
         end -= 1;
     }
-    *oor += 1;
+    *damaged = true;
     s[..end].to_string()
 }
 
@@ -107,13 +107,13 @@ pub fn json_bound(s: String, n: usize, oor: &mut u64) -> String {
 /// never split; once a character does not fit nothing after it is kept, and
 /// the clamp counts once (the oracle's tabletext scanWString).
 #[allow(dead_code)]
-pub fn json_wide_bound(s: &str, n: usize, oor: &mut u64) -> Vec<u16> {
+pub fn json_wide_bound(s: &str, n: usize, damaged: &mut bool) -> Vec<u16> {
     let mut out: Vec<u16> = Vec::new();
     let mut buf = [0u16; 2];
     for c in s.chars() {
         let units = c.encode_utf16(&mut buf);
         if out.len() + units.len() > n {
-            *oor += 1;
+            *damaged = true;
             break;
         }
         out.extend_from_slice(units);
@@ -299,10 +299,7 @@ pub struct Jr<'a> {
     pub p: usize,
     pub depth: usize,
     pub unknown: u64,
-    pub mismatch: u64,
-    pub oor: u64,
     pub oor_field: &'static str,
-    pub repeated: u64,
     pub damaged: bool,
     /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
     pub zero: bool,
@@ -317,7 +314,7 @@ pub struct Jr<'a> {
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, mismatch: 0, oor: 0, oor_field: "", repeated: 0, damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -437,13 +434,17 @@ impl<'a> Jr<'a> {
                             if (0xdc00..0xe000).contains(&lo) {
                                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo as u32 - 0xdc00);
                             } else {
-                                // A lone surrogate currently normalizes to U+FFFD.
-                                // Strict refusal is deferred by SPEC-TABLES §16.3.
                                 self.p = mark;
                             }
                         }
                         self.zero |= cp == 0;
-                        let ch = char::from_u32(cp).unwrap_or('\u{fffd}');
+                        // A LONE SURROGATE spells no code point: the read refuses
+                        // it (string_lone_surrogate, SPEC-TABLES §16.3), never U+FFFD.
+                        let Some(ch) = char::from_u32(cp) else {
+                            self.damaged = true;
+                            self.text_error = "string_lone_surrogate";
+                            return None;
+                        };
                         let mut buf = [0u8; 4];
                         out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
                     }
@@ -549,7 +550,7 @@ impl<'a> Jr<'a> {
     pub fn read_int(&mut self) -> Option<i128> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.mismatch += 1;
+            self.damaged = true;
             self.skip_value();
             return None;
         }
@@ -562,7 +563,7 @@ impl<'a> Jr<'a> {
                 let d = (b - b'0') as u64;
                 if mag > (u64::MAX - d) / 10 {
                     mag = u64::MAX;
-                    self.oor += 1;
+                    self.damaged = true;
                     break;
                 }
                 mag = mag * 10 + d;
@@ -574,13 +575,13 @@ impl<'a> Jr<'a> {
         }
         let f: f64 = t.parse().ok()?;
         if !f.is_finite() || f.fract() != 0.0 {
-            self.mismatch += 1;
+            self.damaged = true;
             return None;
         }
         let neg = f.is_sign_negative();
         let whole = f.abs();
         let mag = if whole >= 18446744073709551616.0 {
-            self.oor += 1;
+            self.damaged = true;
             u64::MAX
         } else {
             whole as u64
@@ -601,7 +602,7 @@ impl<'a> Jr<'a> {
     pub fn read_wide(&mut self, signed: bool, frac: u32) -> Option<u128> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.mismatch += 1;
+            self.damaged = true;
             self.skip_value();
             return None;
         }
@@ -667,7 +668,7 @@ impl<'a> Jr<'a> {
                 (true, false) => 0,
             };
         } else if point < -40 {
-            self.mismatch += 1;
+            self.damaged = true;
             return None;
         } else {
             // the decimal fraction, at most 128 places: Q I.F holds I + F <= 128
@@ -678,7 +679,7 @@ impl<'a> Jr<'a> {
             while k < end {
                 if n >= 128 {
                     if digit(k) != b'0' {
-                        self.mismatch += 1;
+                        self.damaged = true;
                         return None;
                     }
                 } else {
@@ -698,7 +699,7 @@ impl<'a> Jr<'a> {
                 fraction = (fraction << 1) | u128::from(carry);
             }
             if fd[..n].iter().any(|&d| d != 0) {
-                self.mismatch += 1;
+                self.damaged = true;
                 return None;
             }
             let mut whole = 0u128;
@@ -740,7 +741,7 @@ impl<'a> Jr<'a> {
             }
         }
         if saturated {
-            self.oor += 1;
+            self.damaged = true;
         }
         Some(raw)
     }
@@ -748,7 +749,7 @@ impl<'a> Jr<'a> {
     pub fn read_float(&mut self) -> Option<f64> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.mismatch += 1;
+            self.damaged = true;
             self.skip_value();
             return None;
         }
@@ -759,7 +760,7 @@ impl<'a> Jr<'a> {
     pub fn read_f32(&mut self) -> Option<f32> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.mismatch += 1;
+            self.damaged = true;
             self.skip_value();
             return None;
         }
@@ -795,7 +796,7 @@ impl<'a> Jr<'a> {
             Some(JsonLabel::Node(n)) => match n.clone().downcast::<T>() {
                 Ok(t) => Some(t),
                 Err(_) => {
-                    self.mismatch += 1;
+                    self.damaged = true;
                     None
                 }
             },
@@ -1367,7 +1368,7 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                _ => { jr.damaged = true; None }\n")
 	fmt.Fprintf(b, "            }\n")
 	fmt.Fprintf(b, "        }\n")
-	fmt.Fprintf(b, "        _ => { jr.mismatch += 1; jr.skip_value(); None }\n")
+	fmt.Fprintf(b, "        _ => { jr.damaged = true; jr.skip_value(); None }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "}\n\n")
 }
@@ -1375,14 +1376,14 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 // emitTextReadField emits one field's decode arm inside the read match.
 func (g *gen) emitTextReadField(b *strings.Builder, i int, f *ir.Field, field, ind string) {
 	fmt.Fprintf(b, "%s%q => {\n", ind, g.fieldKey(f))
-	fmt.Fprintf(b, "%s    if seen[%d] { jr.repeated += 1; }\n", ind, i)
+	fmt.Fprintf(b, "%s    if seen[%d] { jr.damaged = true; }\n", ind, i)
 	fmt.Fprintf(b, "%s    seen[%d] = true;\n", ind, i)
 	if f.IsTextList() {
-		fmt.Fprintf(b, "%s    let before_text_clamp = jr.oor;\n", ind)
+		fmt.Fprintf(b, "%s    let before_text_clamp = jr.damaged;\n", ind)
 	}
 	g.emitTextReadValue(b, f, field, ind+"    ")
 	if f.IsTextList() {
-		fmt.Fprintf(b, "%s    if jr.oor != before_text_clamp && jr.oor_field.is_empty() { jr.oor_field = %q; }\n", ind, f.TextListElem().MapEntryOf)
+		fmt.Fprintf(b, "%s    if jr.damaged && !before_text_clamp && jr.oor_field.is_empty() { jr.oor_field = %q; }\n", ind, f.TextListElem().MapEntryOf)
 	}
 	fmt.Fprintf(b, "%s}\n", ind)
 }
@@ -1430,7 +1431,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 				// the total dropped this element; one past [..N] is counted as
 				// well, as the wire counts its count clamp beside the total (§2.13)
 				fmt.Fprintf(b, "%stext_seen += 1;\n", elem)
-				fmt.Fprintf(b, "%sif text_total_hit { if text_seen > %d { jr.oor += 1; } jr.skip_value(); } else {\n", elem, f.ArrayBound)
+				fmt.Fprintf(b, "%sif text_total_hit { if text_seen > %d { jr.damaged = true; } jr.skip_value(); } else {\n", elem, f.ArrayBound)
 			} else {
 				fmt.Fprintf(b, "%sif text_total_hit { jr.skip_value(); } else {\n", elem)
 			}
@@ -1441,7 +1442,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 			} else {
 				fmt.Fprintf(b, "%sif %s.len() >= %d {\n", elem, field, f.ArrayBound)
 			}
-			fmt.Fprintf(b, "%s    jr.oor += 1;\n", elem)
+			fmt.Fprintf(b, "%s    jr.damaged = true;\n", elem)
 			fmt.Fprintf(b, "%s    jr.skip_value();\n", elem)
 			fmt.Fprintf(b, "%s} else {\n", elem)
 			g.emitTextReadElem(b, f, field, elem+"    ")
@@ -1461,7 +1462,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		if f.Array == ir.ArrayFixed {
 			fmt.Fprintf(b, "%s    while %s.len() < %d { %s.push(%s); }\n", in, field, f.ArrayBound, field, fieldDefault(scalarOnly(f)))
 		}
-		fmt.Fprintf(b, "%s} else { jr.mismatch += 1; jr.skip_value(); }\n", in)
+		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 		return
 	}
 	switch classOf(f) {
@@ -1469,7 +1470,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%s%s = %s(jr);\n", in, field, fn(f.Type.Name, "json_ptr"))
 	case vTable:
 		fmt.Fprintf(b, "%sif jr.peek() == b'%c' { %s = %s::default(); %s(jr, &mut %s); }\n", in, tableTextOpening(f), field, f.Type.Name, fn(f.Type.Name, "json_read"), field)
-		fmt.Fprintf(b, "%selse { jr.mismatch += 1; jr.skip_value(); }\n", in)
+		fmt.Fprintf(b, "%selse { jr.damaged = true; jr.skip_value(); }\n", in)
 	case vMap:
 		g.emitMapTextRead(b, f, field, in)
 	case vUnion:
@@ -1492,7 +1493,7 @@ func (g *gen) emitTextReadElem(b *strings.Builder, f *ir.Field, field, ind strin
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	case vTable:
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", ind, f.Type.Name)
-		fmt.Fprintf(b, "%sif jr.peek() == b'%c' { %s(jr, &mut e); } else { jr.mismatch += 1; jr.skip_value(); }\n", ind, tableTextOpening(f), fn(f.Type.Name, "json_read"))
+		fmt.Fprintf(b, "%sif jr.peek() == b'%c' { %s(jr, &mut e); } else { jr.damaged = true; jr.skip_value(); }\n", ind, tableTextOpening(f), fn(f.Type.Name, "json_read"))
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	case vUnion:
 		un := unionOf(f)
@@ -1526,7 +1527,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		fmt.Fprintf(b, "%sif jr.peek() == b'\\\"' { if let Some(s) = jr.read_string() { match table_timestamp_parse(&s) {\n", in)
 		fmt.Fprintf(b, "%s    Some(value) => %s = value,\n", in, dst)
 		fmt.Fprintf(b, "%s    None => { jr.damaged = true; jr.reason = TableReason::TimestampNotRfc3339; jr.text_error = %q; }\n", in, "timestamp_not_rfc3339: "+f.Name)
-		fmt.Fprintf(b, "%s} } } else { jr.mismatch += 1; jr.skip_value(); }\n", in)
+		fmt.Fprintf(b, "%s} } } else { jr.damaged = true; jr.skip_value(); }\n", in)
 		return
 	}
 	switch classOf(f) {
@@ -1537,25 +1538,25 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			fmt.Fprintf(b, "%s    if let Some(s) = jr.read_text() { %s = Some(Rc::from(s)); }\n", in, dst)
 		} else {
 			fmt.Fprintf(b, "%s    if let Some(s) = jr.read_string() {\n", in)
-			fmt.Fprintf(b, "%s        match json_unb64(&s) { Some(d) => %s = Some(Rc::from(d)), None => { jr.mismatch += 1; %s = None; } }\n", in, dst, dst)
+			fmt.Fprintf(b, "%s        match json_unb64(&s) { Some(d) => %s = Some(Rc::from(d)), None => { jr.damaged = true; %s = None; } }\n", in, dst, dst)
 			fmt.Fprintf(b, "%s    }\n", in)
 		}
-		fmt.Fprintf(b, "%s} else { jr.mismatch += 1; jr.skip_value(); }\n", in)
+		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 	case vString:
-		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_bound(s, %d, &mut jr.oor); } }\n", in, dst, rustTextBound(f))
-		fmt.Fprintf(b, "%selse { jr.mismatch += 1; jr.skip_value(); }\n", in)
+		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_bound(s, %d, &mut jr.damaged); } }\n", in, dst, rustTextBound(f))
+		fmt.Fprintf(b, "%selse { jr.damaged = true; jr.skip_value(); }\n", in)
 	case vWString:
-		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_wide_bound(&s, %d, &mut jr.oor); } }\n", in, dst, f.Type.Size)
-		fmt.Fprintf(b, "%selse { jr.mismatch += 1; jr.skip_value(); }\n", in)
+		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_wide_bound(&s, %d, &mut jr.damaged); } }\n", in, dst, f.Type.Size)
+		fmt.Fprintf(b, "%selse { jr.damaged = true; jr.skip_value(); }\n", in)
 	case vBytes:
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)
 		fmt.Fprintf(b, "%s    if let Some(s) = jr.read_string() {\n", in)
 		fmt.Fprintf(b, "%s        match json_unb64(&s) {\n", in)
-		fmt.Fprintf(b, "%s            Some(mut d) => { if d.len() > %d { d.truncate(%d); jr.oor += 1; } %s = d; }\n", in, f.Type.Size, f.Type.Size, dst)
-		fmt.Fprintf(b, "%s            None => { jr.mismatch += 1; }\n", in)
+		fmt.Fprintf(b, "%s            Some(mut d) => { if d.len() > %d { d.truncate(%d); jr.damaged = true; } %s = d; }\n", in, f.Type.Size, f.Type.Size, dst)
+		fmt.Fprintf(b, "%s            None => { jr.damaged = true; }\n", in)
 		fmt.Fprintf(b, "%s        }\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)
-		fmt.Fprintf(b, "%s} else { jr.mismatch += 1; jr.skip_value(); }\n", in)
+		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 	case vEnum:
 		e := f.Type.Ref.(*ir.Enum)
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)
@@ -1565,7 +1566,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		fmt.Fprintf(b, "%s            None => { jr.unknown += 1; %s::None },\n", in, e.Name)
 		fmt.Fprintf(b, "%s        };\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)
-		fmt.Fprintf(b, "%s} else { jr.mismatch += 1; jr.skip_value(); }\n", in)
+		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 	default:
 		if fl := isFlags(f); fl != nil {
 			// a FLAGS MASK reads from the array of its bits' names
@@ -1586,33 +1587,33 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			fmt.Fprintf(b, "%s                },\n", in)
 			fmt.Fprintf(b, "%s                None => break,\n", in)
 			fmt.Fprintf(b, "%s            }\n", in)
-			fmt.Fprintf(b, "%s        } else { jr.mismatch += 1; jr.skip_value(); }\n", in)
+			fmt.Fprintf(b, "%s        } else { jr.damaged = true; jr.skip_value(); }\n", in)
 			fmt.Fprintf(b, "%s        if jr.peek() == b',' { jr.p += 1; continue; }\n", in)
 			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 			fmt.Fprintf(b, "%s        jr.damaged = true; break;\n", in)
 			fmt.Fprintf(b, "%s    }\n", in)
 			fmt.Fprintf(b, "%s    %s = bits;\n", in, dst)
-			fmt.Fprintf(b, "%s} else { jr.mismatch += 1; jr.skip_value(); }\n", in)
+			fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 			return
 		}
 		switch f.Type.Kind {
 		case ir.TBool:
 			fmt.Fprintf(b, "%sif jr.peek() == b't' && jr.b[jr.p..].starts_with(b\"true\") { jr.p += 4; %s = true; }\n", in, dst)
 			fmt.Fprintf(b, "%selse if jr.peek() == b'f' && jr.b[jr.p..].starts_with(b\"false\") { jr.p += 5; %s = false; }\n", in, dst)
-			fmt.Fprintf(b, "%selse { jr.mismatch += 1; jr.skip_value(); }\n", in)
+			fmt.Fprintf(b, "%selse { jr.damaged = true; jr.skip_value(); }\n", in)
 		case ir.TFloat32:
 			// a value a float32 field cannot hold is kind_mismatch, never
 			// stored as infinity (§16.2)
 			fmt.Fprintf(b, "%sif let Some(x) = jr.read_f32() {\n", in)
 			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x;\n", in, dst)
-			emitVariableFloatClamp(b, f, dst, "jr.oor", in+"        ")
-			fmt.Fprintf(b, "%s    } else { jr.mismatch += 1; }\n", in)
+			emitVariableFloatClamp(b, f, dst, "jr.damaged", in+"        ")
+			fmt.Fprintf(b, "%s    } else { jr.damaged = true; }\n", in)
 			fmt.Fprintf(b, "%s}\n", in)
 		case ir.TFloat64:
 			fmt.Fprintf(b, "%sif let Some(x) = jr.read_float() {\n", in)
 			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x;\n", in, dst)
-			emitVariableFloatClamp(b, f, dst, "jr.oor", in+"        ")
-			fmt.Fprintf(b, "%s    } else { jr.mismatch += 1; }\n", in)
+			emitVariableFloatClamp(b, f, dst, "jr.damaged", in+"        ")
+			fmt.Fprintf(b, "%s    } else { jr.damaged = true; }\n", in)
 			fmt.Fprintf(b, "%s}\n", in)
 		default:
 			if f.Type.Kind == ir.TFixed || f.Type.Width == 128 {
@@ -1622,7 +1623,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			lo, hi := textIntRange(f)
 			fmt.Fprintf(b, "%sif let Some(n) = jr.read_int() {\n", in)
 			fmt.Fprintf(b, "%s    let mut x = n;\n", in)
-			fmt.Fprintf(b, "%s    if x < %si128 { x = %si128; jr.oor += 1; } else if x > %si128 { x = %si128; jr.oor += 1; }\n", in, lo, lo, hi, hi)
+			fmt.Fprintf(b, "%s    if x < %si128 { x = %si128; jr.damaged = true; } else if x > %si128 { x = %si128; jr.damaged = true; }\n", in, lo, lo, hi, hi)
 			fmt.Fprintf(b, "%s    %s = x as %s;\n", in, dst, scalarRust(f))
 			fmt.Fprintf(b, "%s}\n", in)
 		}
@@ -1673,10 +1674,7 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        if jr.p != jr.b.len() { jr.damaged = true; }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    report.unknown += jr.unknown;\n")
-	fmt.Fprintf(b, "    report.mismatch += jr.mismatch;\n")
-	fmt.Fprintf(b, "    report.oor += jr.oor;\n")
 	fmt.Fprintf(b, "    if report.oor_field.is_empty() { report.oor_field = jr.oor_field; }\n")
-	fmt.Fprintf(b, "    report.repeated += jr.repeated;\n")
 	fmt.Fprintf(b, "    report.missing_required += jr.missing_required;\n")
 	fmt.Fprintf(b, "    if jr.missing_required != 0 { report.missing_required_fields = jr.missing_required_fields; report.refused = true; }\n")
 	fmt.Fprintf(b, "    report.damaged |= jr.damaged;\n")
@@ -1744,10 +1742,10 @@ func emitTextReadWide(b *strings.Builder, f *ir.Field, dst, in string) {
 	wmin, wmax := textStorageRange(&ir.Field{Type: ir.FieldType{Width: 128, Signed: f.Type.Signed}})
 	var clamps []string
 	if lo.Cmp(wmin) > 0 {
-		clamps = append(clamps, fmt.Sprintf("if x < %s%s { x = %s%s; jr.oor += 1; }", lo, wide, lo, wide))
+		clamps = append(clamps, fmt.Sprintf("if x < %s%s { x = %s%s; jr.damaged = true; }", lo, wide, lo, wide))
 	}
 	if hi.Cmp(wmax) < 0 {
-		clamps = append(clamps, fmt.Sprintf("if x > %s%s { x = %s%s; jr.oor += 1; }", hi, wide, hi, wide))
+		clamps = append(clamps, fmt.Sprintf("if x > %s%s { x = %s%s; jr.damaged = true; }", hi, wide, hi, wide))
 	}
 	if len(clamps) == 0 {
 		fmt.Fprintf(b, "%s    %s = %s;\n", in, dst, rustCastStmt("raw", "u128", t))

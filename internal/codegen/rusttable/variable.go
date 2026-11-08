@@ -592,7 +592,7 @@ impl TableNodeReader {
             return None;
         }
         if index == 1 {
-            if want != self.root_type { report.mismatch += 1; return None; }
+            if want != self.root_type { report.damaged = true; return None; }
             return Some(0);
         }
         let k = (index - 2) as usize;
@@ -602,12 +602,12 @@ impl TableNodeReader {
         }
         match &self.slots[k] {
             TableNodeSlot::Null => None,
-            TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.mismatch += 1; None }
+            TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.damaged = true; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
-                if *t == want { Some(k + 1) } else { report.mismatch += 1; None }
+                if *t == want { Some(k + 1) } else { report.damaged = true; None }
             }
             TableNodeSlot::Building => {
-                if self.recs[k].0 == want { Some(k + 1) } else { report.mismatch += 1; None }
+                if self.recs[k].0 == want { Some(k + 1) } else { report.damaged = true; None }
             }
         }
     }
@@ -620,7 +620,7 @@ impl TableNodeReader {
             return None;
         }
         if index == 1 {
-            report.mismatch += 1;
+            report.damaged = true;
             return None;
         }
         if index - 2 >= self.slots.len() as u64 {
@@ -639,7 +639,7 @@ impl TableNodeReader {
             self.blob_named.resize(self.slots.len(), false);
         }
         if self.blob_named[k] {
-            report.shared_blob += 1;
+            report.damaged = true;
         } else {
             self.blob_named[k] = true;
         }
@@ -651,7 +651,7 @@ impl TableNodeReader {
         let b = match self.blob_record(index, report)? {
             TableNodeSlot::Null => return None,
             TableNodeSlot::Bytes(b) => b.clone(),
-            _ => { report.mismatch += 1; return None; }
+            _ => { report.damaged = true; return None; }
         };
         self.name_blob(index, report);
         Some(b)
@@ -662,7 +662,7 @@ impl TableNodeReader {
         let s = match self.blob_record(index, report)? {
             TableNodeSlot::Null => return None,
             TableNodeSlot::Text(s) => s.clone(),
-            _ => { report.mismatch += 1; return None; }
+            _ => { report.damaged = true; return None; }
         };
         self.name_blob(index, report);
         Some(s)

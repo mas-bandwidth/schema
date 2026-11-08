@@ -442,7 +442,7 @@ func (m *msgGen) compat(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset,
 	if reset != "" {
 		m.pf("%s%s;\n", inner, reset)
 	}
-	m.pf("%sreport.mismatch += 1;\n%sif !table_message_skip(r, v, &%s, 0) %s\n%sbreak %s;\n", inner, inner, entry, msgBad, inner, label)
+	m.pf("%sreport.damaged = true;\n%sif !table_message_skip(r, v, &%s, 0) %s\n%sbreak %s;\n", inner, inner, entry, msgBad, inner, label)
 	if compat != "" {
 		m.pf("%s    }\n", ind)
 	}
@@ -474,7 +474,7 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s    let text = &buf[start..start + n as usize];\n", ind)
 		m.pf("%s    if !table_message_utf8(text) %s\n", ind, msgBad)
 		m.pf("%s    let kept = table_message_utf8_clamp(text, core::cmp::min(n as usize, %d));\n", ind, f.Type.Size)
-		m.pf("%s    if kept < n as usize { report.oor += 1; }\n", ind)
+		m.pf("%s    if kept < n as usize { report.damaged = true; }\n", ind)
 		m.pf("%s    %s.fill(0);\n%s    %s[..kept].copy_from_slice(&text[..kept]);\n%s    %s_length = kept as i32;\n%s}\n", ind, expr, ind, expr, ind, expr, ind)
 	case f.Type.Kind == ir.TBytes:
 		m.pf("%s{\n", ind)
@@ -483,14 +483,14 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s    let buf = r.buffer;\n%s    let start = (r.offset / 8) as usize;\n", ind, ind)
 		m.pf("%s    if !r.skip(n * 8) %s\n", ind, msgBad)
 		m.pf("%s    let kept = core::cmp::min(n as usize, %d);\n", ind, f.Type.Size)
-		m.pf("%s    if kept < n as usize { report.oor += 1; }\n", ind)
+		m.pf("%s    if kept < n as usize { report.damaged = true; }\n", ind)
 		m.pf("%s    %s.fill(0);\n%s    %s[..kept].copy_from_slice(&buf[start..start + kept]);\n%s    %s_length = kept as i32;\n%s}\n", ind, expr, ind, expr, ind, expr, ind)
 	case f.Type.Kind == ir.TWString:
 		m.pf("%s{\n", ind)
 		m.pf("%s    let Some(n) = table_message_count(r, &%s.shape) else %s;\n", ind, entry, msgBad)
 		m.pf("%s    if n * 16 > (r.buffer.len() as u64) * 8 - r.offset %s\n", ind, msgBad)
 		m.pf("%s    let mut kept = core::cmp::min(n as usize, %d);\n", ind, f.Type.Size)
-		m.pf("%s    if kept < n as usize { report.oor += 1; }\n", ind)
+		m.pf("%s    if kept < n as usize { report.damaged = true; }\n", ind)
 		m.pf("%s    %s.fill(0);\n%s    let mut high = false;\n", ind, expr, ind)
 		m.pf("%s    for i in 0..(n as usize) {\n", ind)
 		m.pf("%s        let unit = r.get(16).unwrap_or(0);\n", ind)
@@ -585,7 +585,7 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 				lo = fmt.Sprintf("f64::from_bits(0x%x)", math.Float64bits(f.FMin))
 				hi = fmt.Sprintf("f64::from_bits(0x%x)", math.Float64bits(f.FMax))
 			}
-			m.pf("%sif x < %s { x = %s; report.oor += 1; } else if x > %s { x = %s; report.oor += 1; }\n", ind, lo, lo, hi, hi)
+			m.pf("%sif x < %s { x = %s; report.damaged = true; } else if x > %s { x = %s; report.damaged = true; }\n", ind, lo, lo, hi, hi)
 		}
 		m.pf("%s%s = x;\n", ind, expr)
 		return
@@ -598,11 +598,11 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 	}
 	if rlo, rhi, ok := ir.TableRawRange(f); ok && f.HasIntRange {
 		l, h := rustBig(rlo, signed), rustBig(rhi, signed)
-		m.pf("%sif x < %s { x = %s; report.oor += 1; } else if x > %s { x = %s; report.oor += 1; }\n", ind, l, l, h, h)
+		m.pf("%sif x < %s { x = %s; report.damaged = true; } else if x > %s { x = %s; report.damaged = true; }\n", ind, l, l, h, h)
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		max := uint64(1)<<f.Type.Width - 1
-		m.pf("%sif x > %d { x = %d; report.oor += 1; }\n", ind, max, max)
+		m.pf("%sif x > %d { x = %d; report.damaged = true; }\n", ind, max, max)
 	}
 	typ := cookElemType(f)
 	switch typ {
@@ -642,7 +642,7 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s    }\n", ind)
 	} else {
 		m.pf("%s    let keep = core::cmp::min(n, %d);\n", ind, f.ArrayBound)
-		m.pf("%s    if keep < n { report.oor += 1; }\n", ind)
+		m.pf("%s    if keep < n { report.damaged = true; }\n", ind)
 		m.pf("%s    let width = table_message_value_bits(%s.kind, &%s.shape);\n", ind, el, el)
 		m.pf("%s    let walk = if width >= 0 { keep } else { n };\n", ind)
 		m.pf("%s    for i in 0..walk {\n", ind)
@@ -731,6 +731,7 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
+    report.damaged = false;
 %[6]s    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };
@@ -739,7 +740,7 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
     }
     let mut r = TableBitReader::new(&data[2..]);
     for i in 0..count {
-        if !%[1]s_load_message_body(&mut r, vocabulary, report, &mut values[i]) || !report.non_finite_float.is_empty() {
+        if !%[1]s_load_message_body(&mut r, vocabulary, report, &mut values[i]) || report.damaged || !report.non_finite_float.is_empty() {
             if !report.non_finite_float.is_empty() {
                 for value in values.iter_mut().take(i + 1) {
                     *value = %[1]s_message_default();

@@ -907,8 +907,8 @@ func clampStmt(f *ir.Field, bits int, signed bool, suffix, counter, ind string) 
 		localMax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
 	}
 	lo, hi := rlo.String(), rhi.String()
-	low := fmt.Sprintf("if x < %s%s { x = %s%s; %s += 1; }", lo, suffix, lo, suffix, counter)
-	high := fmt.Sprintf("if x > %s%s { x = %s%s; %s += 1; }", hi, suffix, hi, suffix, counter)
+	low := fmt.Sprintf("if x < %s%s { x = %s%s; %s = true; }", lo, suffix, lo, suffix, counter)
+	high := fmt.Sprintf("if x > %s%s { x = %s%s; %s = true; }", hi, suffix, hi, suffix, counter)
 	switch canLow, canHigh := rlo.Cmp(localMin) > 0, rhi.Cmp(localMax) < 0; {
 	case canLow && canHigh:
 		return ind + low + " else " + high + "\n"
@@ -951,7 +951,7 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind st
 		fmt.Fprintf(b, "%s%s = if table_finite_f32(raw as u32) { f32::from_bits(raw as u32) } else { report.non_finite(%q); 0.0 };\n", ind, dst, owner)
 		if f.HasFloatRange {
 			fmt.Fprintf(b, "%sif table_finite_f32(raw as u32) {\n", ind)
-			emitVariableFloatClamp(b, f, dst, "report.oor", ind+"    ")
+			emitVariableFloatClamp(b, f, dst, "report.damaged", ind+"    ")
 			fmt.Fprintf(b, "%s}\n", ind)
 		}
 		return
@@ -961,7 +961,7 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind st
 		fmt.Fprintf(b, "%s%s = if %s == %d { if table_finite_f32(raw as u32) { f64::from(f32::from_bits(raw as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(raw) { f64::from_bits(raw) } else { report.non_finite(%q); 0.0 };\n", ind, dst, kvar, ir.TableKindF32, owner, owner)
 		if f.HasFloatRange {
 			fmt.Fprintf(b, "%sif if %s == %d {table_finite_f32(raw as u32)} else {table_finite_f64(raw)} {\n", ind, kvar, ir.TableKindF32)
-			emitVariableFloatClamp(b, f, dst, "report.oor", ind+"    ")
+			emitVariableFloatClamp(b, f, dst, "report.damaged", ind+"    ")
 			fmt.Fprintf(b, "%s}\n", ind)
 		}
 		return
@@ -979,7 +979,7 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind st
 		if signed {
 			suffix, from = "i128", "raw as i128"
 		}
-		clamp := clampStmt(f, 128, signed, suffix, "report.oor", ind)
+		clamp := clampStmt(f, 128, signed, suffix, "report.damaged", ind)
 		fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
 		b.WriteString(clamp)
 		fmt.Fprintf(b, "%s%s = %s;\n", ind, dst, rustCastStmt("x", suffix, scalarRust(f)))
@@ -989,10 +989,10 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind st
 	if signed {
 		suffix, from = "i64", "raw as i64"
 	}
-	clamp := clampStmt(f, 64, signed, suffix, "report.oor", ind)
+	clamp := clampStmt(f, 64, signed, suffix, "report.damaged", ind)
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		max := uint64(1)<<uint(f.Type.Width) - 1
-		clamp += fmt.Sprintf("%sif x > %du64 { x = %du64; report.oor += 1; }\n", ind, max, max)
+		clamp += fmt.Sprintf("%sif x > %du64 { x = %du64; report.damaged = true; }\n", ind, max, max)
 	}
 	fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
 	b.WriteString(clamp)
@@ -1085,7 +1085,7 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "}\n\n")
 }
 
-const kindSkip = "report.mismatch += 1; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }"
+const kindSkip = "report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }"
 
 // emitEnumDecode emits the read of one enum reference into `dst`: 0 is None, a
 // reference past the table is framing damage, and an id this reader's enum
@@ -1153,11 +1153,11 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 	}
 	if f.Array != ir.ArrayNone {
 		if f.IsTextList() {
-			fmt.Fprintf(b, "%slet before_text_clamp = report.oor;\n", in)
+			fmt.Fprintf(b, "%slet before_text_clamp = report.damaged;\n", in)
 		}
 		g.emitArrayLoad(b, f, ordinal, field, in)
 		if f.IsTextList() {
-			fmt.Fprintf(b, "%sif report.oor != before_text_clamp && report.oor_field.is_empty() { report.oor_field = %q; }\n", in, f.TextListElem().MapEntryOf)
+			fmt.Fprintf(b, "%sif report.damaged && !before_text_clamp && report.oor_field.is_empty() { report.oor_field = %q; }\n", in, f.TextListElem().MapEntryOf)
 		}
 		emitRequiredWireSeen(b, f, ordinal, in)
 		fmt.Fprintf(b, "%s}\n", ind)
@@ -1205,7 +1205,7 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "%s        let mut cut = %d;\n", in, rustTextBound(f))
 		fmt.Fprintf(b, "%s        while cut > 0 && b[cut] & 0xC0 == 0x80 { cut -= 1; }\n", in)
 		fmt.Fprintf(b, "%s        %s = std::str::from_utf8(&b[..cut]).unwrap().to_string();\n", in, field)
-		fmt.Fprintf(b, "%s        report.oor += 1;\n", in)
+		fmt.Fprintf(b, "%s        report.damaged = true;\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)
 		fmt.Fprintf(b, "%s    else { %s = std::str::from_utf8(b).unwrap().to_string(); }\n", in, field)
 		fmt.Fprintf(b, "%s    *off = s;\n", in)
@@ -1270,9 +1270,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	cls := classOf(f)
 	widens := cls == vScalar
 	if widens {
-		fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.mismatch += 1; }\n", i3, ek, ek, requiredCollectionSkip(f))
+		fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	} else {
-		fmt.Fprintf(b, "%sif ek != %d { %sreport.mismatch += 1; }\n", i3, ek, requiredCollectionSkip(f))
+		fmt.Fprintf(b, "%sif ek != %d { %sreport.damaged = true; }\n", i3, ek, requiredCollectionSkip(f))
 	}
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
@@ -1290,9 +1290,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	case ir.ArrayList:
 		fmt.Fprintf(b, "%sif count > 0x7fffffff { return nodes.refuse_count(report); }\n%slet keep = count;\n", i4, i4)
 	case ir.ArrayCounted, ir.ArrayFixed:
-		fmt.Fprintf(b, "%slet keep = if count > %d { report.oor += 1; %d } else { count };\n", i4, f.ArrayBound, f.ArrayBound)
+		fmt.Fprintf(b, "%slet keep = if count > %d { report.damaged = true; %d } else { count };\n", i4, f.ArrayBound, f.ArrayBound)
 	default: // bytes(N)
-		fmt.Fprintf(b, "%slet keep = if count > %d { report.oor += 1; %d } else { count };\n", i4, f.Type.Size, f.Type.Size)
+		fmt.Fprintf(b, "%slet keep = if count > %d { report.damaged = true; %d } else { count };\n", i4, f.Type.Size, f.Type.Size)
 	}
 	if f.IsTextList() && f.TextTotal > 0 {
 		fmt.Fprintf(b, "%slet mut text_spent = 0u64;\n", i4)
@@ -1355,7 +1355,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		if ir.TextListOptional(f) {
 			length = "e.value.as_ref().map_or(0, |text| text.len())"
 		}
-		fmt.Fprintf(b, "%slet text_len = %s.last().map_or(0, |e| %s) as u64;\n%sif text_len > %d - text_spent { %s.pop(); report.oor += 1; break; }\n%stext_spent += text_len;\n", i5, field, length, i5, f.TextTotal, field, i5)
+		fmt.Fprintf(b, "%slet text_len = %s.last().map_or(0, |e| %s) as u64;\n%sif text_len > %d - text_spent { %s.pop(); report.damaged = true; break; }\n%stext_spent += text_len;\n", i5, field, length, i5, f.TextTotal, field, i5)
 	}
 	fmt.Fprintf(b, "%s}\n", i4)
 	if f.Array == ir.ArrayFixed {
@@ -2250,7 +2250,7 @@ func emitWideLoadField(b *strings.Builder, f *ir.Field, field, in string) {
 	fmt.Fprintf(b, "%s        None => { report.damaged = true; %s = Vec::new(); }\n", in, field)
 	fmt.Fprintf(b, "%s        Some(u) => {\n", in)
 	fmt.Fprintf(b, "%s            let keep = table_wide_boundary(&u, %d);\n", in, f.Type.Size)
-	fmt.Fprintf(b, "%s            if keep < u.len() { report.oor += 1; }\n", in)
+	fmt.Fprintf(b, "%s            if keep < u.len() { report.damaged = true; }\n", in)
 	fmt.Fprintf(b, "%s            %s = u[..keep].to_vec();\n", in, field)
 	fmt.Fprintf(b, "%s        }\n", in)
 	fmt.Fprintf(b, "%s    }\n", in)
@@ -2350,5 +2350,5 @@ func emitVariableFloatClamp(b *strings.Builder, f *ir.Field, value, counter, ind
 	}
 	kind := scalarRust(f)
 	value = strings.TrimPrefix(value, "let mut ")
-	fmt.Fprintf(b, "%sif (%s as f64) < %s { %s = %s as %s; %s += 1; } else if (%s as f64) > %s { %s = %s as %s; %s += 1; }\n", ind, value, fixedFloatLit(f.FMin), value, fixedFloatLit(f.FMin), kind, counter, value, fixedFloatLit(f.FMax), value, fixedFloatLit(f.FMax), kind, counter)
+	fmt.Fprintf(b, "%sif (%s as f64) < %s { %s = %s as %s; %s = true; } else if (%s as f64) > %s { %s = %s as %s; %s = true; }\n", ind, value, fixedFloatLit(f.FMin), value, fixedFloatLit(f.FMin), kind, counter, value, fixedFloatLit(f.FMax), value, fixedFloatLit(f.FMax), kind, counter)
 }

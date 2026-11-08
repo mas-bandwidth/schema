@@ -642,7 +642,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s        let mut cut = %d;\n", in, rustTextBound(f))
 		fmt.Fprintf(b, "%s        while cut > 0 && b[cut] & 0xC0 == 0x80 { cut -= 1; }\n", in)
 		fmt.Fprintf(b, "%s        tmp = std::str::from_utf8(&b[..cut]).unwrap().to_string();\n", in)
-		fmt.Fprintf(b, "%s        report.oor += 1;\n", in)
+		fmt.Fprintf(b, "%s        report.damaged = true;\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)
 		fmt.Fprintf(b, "%s    else { tmp = std::str::from_utf8(b).unwrap().to_string(); }\n", in)
 		fmt.Fprintf(b, "%s    %s = Some(tmp);\n", in, field)
@@ -663,9 +663,9 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s        match leb_read(wire, off) {\n", in)
 		fmt.Fprintf(b, "%s            None => { report.damaged = true; }\n", in)
 		fmt.Fprintf(b, "%s            Some(count) => {\n", in)
-		fmt.Fprintf(b, "%s                if ek != %d { report.mismatch += 1; }\n", in, ir.TableKindU8)
+		fmt.Fprintf(b, "%s                if ek != %d { report.damaged = true; }\n", in, ir.TableKindU8)
 		fmt.Fprintf(b, "%s                else {\n", in)
-		fmt.Fprintf(b, "%s                    let keep = if count > %d { report.oor += 1; %d } else { count as usize };\n", in, f.Type.Size, f.Type.Size)
+		fmt.Fprintf(b, "%s                    let keep = if count > %d { report.damaged = true; %d } else { count as usize };\n", in, f.Type.Size, f.Type.Size)
 		fmt.Fprintf(b, "%s                    let avail = sub.saturating_sub(*off);\n", in)
 		fmt.Fprintf(b, "%s                    let n = if keep > avail { report.damaged = true; avail } else { keep };\n", in)
 		fmt.Fprintf(b, "%s                    tmp = wire[*off..*off + n].to_vec();\n", in)
@@ -712,7 +712,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s    None => { report.damaged = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
-	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.mismatch += 1; }\n", i3, ek, ek, requiredCollectionSkip(f))
+	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.damaged = true; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
 	fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i4, ek)
@@ -809,7 +809,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%s    None => { report.damaged = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
-	fmt.Fprintf(b, "%sif ek != %d { %sreport.mismatch += 1; }\n", i3, ir.TableKindTable, requiredCollectionSkip(f))
+	fmt.Fprintf(b, "%sif ek != %d { %sreport.damaged = true; }\n", i3, ir.TableKindTable, requiredCollectionSkip(f))
 	fmt.Fprintf(b, "%selse if count > 0x7fffffff { return nodes.refuse_count(report); }\n", i3)
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
@@ -886,9 +886,9 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%sif !leb_skip(wire, &mut scan_off, eend, kkind) { break; }\n", i6)
 	fmt.Fprintf(b, "%s}\n", i5) // loop
 	fmt.Fprintf(b, "%sif entry_widened && !widened { widened = true; report.widened += 1; }\n", i5)
-	fmt.Fprintf(b, "%sif kind_bad { %sreport.mismatch += 1; %s.clear(); break; }\n", i5, requiredCollectionSkip(f), field)
+	fmt.Fprintf(b, "%sif kind_bad { %sreport.damaged = true; %s.clear(); break; }\n", i5, requiredCollectionSkip(f), field)
 	fmt.Fprintf(b, "%sif !scan_ok { report.damaged = true; break; }\n", i5)
-	fmt.Fprintf(b, "%sif key_over { report.oor += 1; *off = eend; continue; }\n", i5)
+	fmt.Fprintf(b, "%sif key_over { report.damaged = true; *off = eend; continue; }\n", i5)
 	fmt.Fprintf(b, "%slet mut order = std::cmp::Ordering::Less;\n", i5)
 	fmt.Fprintf(b, "%sif landed {\n", i5)
 	fmt.Fprintf(b, "%s    order = %s;\n", i5, mapKeyOrd(f, field+"["+field+".len()-1]."+key, "key_val"))
@@ -906,7 +906,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%sif !body_ok { report.damaged = true; continue; }\n", i5)
 	fmt.Fprintf(b, "%se.%s = key_val;\n", i5, key)
 	fmt.Fprintf(b, "%sif order == std::cmp::Ordering::Equal {\n", i5)
-	fmt.Fprintf(b, "%s    report.repeated += 1;\n", i5)
+	fmt.Fprintf(b, "%s    report.damaged = true;\n", i5)
 	fmt.Fprintf(b, "%s    %s[slot_idx] = e;\n", i5, field)
 	fmt.Fprintf(b, "%s    continue;\n", i5)
 	fmt.Fprintf(b, "%s}\n", i5)
@@ -963,7 +963,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 	want := armWireKind(v)
 	if !v.Void() && !v.Body() && v.F.Array == ir.ArrayNone && classOf(v.F) == vScalar {
 		f := v.F
-		fmt.Fprintf(b, "%sif %s != %d && !table_kind_widens(%s, %d) { report.mismatch += 1; %s = %s::None; }\n", ind, akind, want, akind, want, field, un.Name)
+		fmt.Fprintf(b, "%sif %s != %d && !table_kind_widens(%s, %d) { report.damaged = true; %s = %s::None; }\n", ind, akind, want, akind, want, field, un.Name)
 		fmt.Fprintf(b, "%selse if (%s - *off) != table_kind_width(%s) { report.damaged = true; %s = %s::None; }\n", ind, aend, akind, field, un.Name)
 		fmt.Fprintf(b, "%selse {\n", ind)
 		in := ind + "    "
@@ -974,7 +974,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
-	fmt.Fprintf(b, "%sif %s != %d { report.mismatch += 1; %s = %s::None; }\n", ind, akind, want, field, un.Name)
+	fmt.Fprintf(b, "%sif %s != %d { report.damaged = true; %s = %s::None; }\n", ind, akind, want, field, un.Name)
 	if v.Void() {
 		fmt.Fprintf(b, "%selse if *off != %s { report.damaged = true; %s = %s::None; }\n", ind, aend, field, un.Name)
 		fmt.Fprintf(b, "%selse { %s = %s::%s; }\n", ind, field, un.Name, rustVariant(v.Name))
@@ -1030,12 +1030,12 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 			// does not split a pair and counts one clamp
 			fmt.Fprintf(b, "%smatch table_wide_units(&wire[*off..%s]) {\n", in, aend)
 			fmt.Fprintf(b, "%s    None => { report.damaged = true; ok = false; }\n", in)
-			fmt.Fprintf(b, "%s    Some(u) => { let keep = table_wide_boundary(&u, %d); if keep < u.len() { report.oor += 1; } slot = u[..keep].to_vec(); }\n", in, f.Type.Size)
+			fmt.Fprintf(b, "%s    Some(u) => { let keep = table_wide_boundary(&u, %d); if keep < u.len() { report.damaged = true; } slot = u[..keep].to_vec(); }\n", in, f.Type.Size)
 			fmt.Fprintf(b, "%s}\n", in)
 		case classOf(f) == vString:
 			fmt.Fprintf(b, "%slet bytes = &wire[*off..%s];\n", in, aend)
 			fmt.Fprintf(b, "%sif !text_valid(bytes) { report.damaged = true; ok = false; }\n", in)
-			fmt.Fprintf(b, "%selse if bytes.len() > %d { let mut cut = %d; while cut > 0 && bytes[cut] & 0xC0 == 0x80 { cut -= 1; } slot = std::str::from_utf8(&bytes[..cut]).unwrap().to_string(); report.oor += 1; }\n", in, f.Type.Size, f.Type.Size)
+			fmt.Fprintf(b, "%selse if bytes.len() > %d { let mut cut = %d; while cut > 0 && bytes[cut] & 0xC0 == 0x80 { cut -= 1; } slot = std::str::from_utf8(&bytes[..cut]).unwrap().to_string(); report.damaged = true; }\n", in, f.Type.Size, f.Type.Size)
 			fmt.Fprintf(b, "%selse { slot = std::str::from_utf8(bytes).unwrap().to_string(); }\n", in)
 		default:
 			fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, %s, %s) else { report.damaged = true; %s = %s::None; *off = %s; return false; };\n", in, scalarReadFn(f), aend, akind, field, un.Name, aend)
@@ -1079,7 +1079,7 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	}
 	fmt.Fprintf(b, "%s    Some(count) => {\n", in)
 	i2 := in + "        "
-	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { report.mismatch += 1; %s = false; }\n", i2, ek, ek, okVar)
+	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { report.damaged = true; %s = false; }\n", i2, ek, ek, okVar)
 	fmt.Fprintf(b, "%selse {\n", i2)
 	i3 := i2 + "    "
 	fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i3, ek)
@@ -1091,7 +1091,7 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	case f.Array == ir.ArrayList:
 		fmt.Fprintf(b, "%sif count > 0x7fffffff { return nodes.refuse_count(report); }\n%slet keep = count;\n", i3, i3)
 	case bound > 0:
-		fmt.Fprintf(b, "%slet keep = if count > %d { report.oor += 1; %d } else { count };\n", i3, bound, bound)
+		fmt.Fprintf(b, "%slet keep = if count > %d { report.damaged = true; %d } else { count };\n", i3, bound, bound)
 	default:
 		fmt.Fprintf(b, "%slet keep = count;\n", i3)
 	}
@@ -1188,12 +1188,15 @@ func (g *gen) emitKeyedTextWrite(b *strings.Builder, f *ir.Field, x, d, ind stri
 // enum-keyed array (docs/SPEC-TABLES.md §2.4, §16.2).
 func (g *gen) emitKeyedTextRead(b *strings.Builder, f *ir.Field, field, ind string) {
 	elemField := scalarOnly(f)
-	fmt.Fprintf(b, "%sif jr.peek() != b'{' { jr.mismatch += 1; jr.skip_value(); }\n", ind)
+	fmt.Fprintf(b, "%sif jr.peek() != b'{' { jr.damaged = true; jr.skip_value(); }\n", ind)
 	fmt.Fprintf(b, "%selse {\n", ind)
 	in := ind + "    "
 	fmt.Fprintf(b, "%sjr.p += 1;\n", in)
 	fmt.Fprintf(b, "%s%s = %s;\n", in, field, fieldDefault(f))
 	fmt.Fprintf(b, "%slet mut seen = [false; %d];\n", in, len(f.KeyEnumRef.Variants))
+	// a key this build cannot name is skipped and counted unknown, but the same
+	// key twice is a repeated key, which refuses the read like a named one does
+	fmt.Fprintf(b, "%slet mut seen_unknown: Vec<String> = Vec::new();\n", in)
 	fmt.Fprintf(b, "%sloop {\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() == b'}' { jr.p += 1; break; }\n", in)
 	fmt.Fprintf(b, "%s    let Some(ks) = jr.read_string() else { jr.damaged = true; break; };\n", in)
@@ -1203,15 +1206,17 @@ func (g *gen) emitKeyedTextRead(b *strings.Builder, f *ir.Field, field, ind stri
 	fmt.Fprintf(b, "%s    match ks.as_str() {\n", in)
 	for i, v := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "%s        %q => {\n", in, v)
-		fmt.Fprintf(b, "%s            if seen[%d] { jr.repeated += 1; }\n", in, i)
+		fmt.Fprintf(b, "%s            if seen[%d] { jr.damaged = true; }\n", in, i)
 		fmt.Fprintf(b, "%s            seen[%d] = true;\n", in, i)
 		g.emitTextReadValue(b, elemField, fmt.Sprintf("%s[%d]", field, i), in+"            ")
 		fmt.Fprintf(b, "%s        }\n", in)
 	}
 	fmt.Fprintf(b, "%s        _ => {\n", in)
 	fmt.Fprintf(b, "%s            if ks.starts_with('&') { jr.damaged = true; break; }\n", in)
+	fmt.Fprintf(b, "%s            if seen_unknown.contains(&ks) { jr.damaged = true; break; }\n", in)
 	fmt.Fprintf(b, "%s            jr.unknown += 1;\n", in)
 	fmt.Fprintf(b, "%s            jr.skip_value();\n", in)
+	fmt.Fprintf(b, "%s            seen_unknown.push(ks);\n", in)
 	fmt.Fprintf(b, "%s        }\n", in)
 	fmt.Fprintf(b, "%s    }\n", in)
 	fmt.Fprintf(b, "%s    if jr.damaged || jr.missing_required != 0 { break; }\n", in)
@@ -1270,7 +1275,7 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 
 		fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, unused_assignments, dead_code)]\n")
 		fmt.Fprintf(b, "pub fn %s(jr: &mut Jr, v: &mut %s) {\n", fn(un.Name, "json_read"), un.Name)
-		fmt.Fprintf(b, "    if jr.peek() != b'{' { jr.mismatch += 1; jr.skip_value(); return; }\n")
+		fmt.Fprintf(b, "    if jr.peek() != b'{' { jr.damaged = true; jr.skip_value(); return; }\n")
 		fmt.Fprintf(b, "    jr.p += 1;\n")
 		fmt.Fprintf(b, "    *v = %s::None;\n", un.Name)
 		fmt.Fprintf(b, "    if jr.peek() == b'}' { jr.p += 1; return; }\n")
@@ -1284,26 +1289,25 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 			case v.Void():
 				fmt.Fprintf(b, "            if jr.peek() == b'n' {\n")
 				fmt.Fprintf(b, "                if jr.read_null() { *v = %s::%s; }\n", un.Name, rustVariant(v.Name))
-				fmt.Fprintf(b, "            } else { jr.mismatch += 1; jr.skip_value(); }\n")
+				fmt.Fprintf(b, "            } else { jr.damaged = true; jr.skip_value(); }\n")
 			case v.F.Array != ir.ArrayNone:
-				fmt.Fprintf(b, "            if jr.peek() != b'[' { jr.mismatch += 1; jr.skip_value(); }\n")
+				fmt.Fprintf(b, "            if jr.peek() != b'[' { jr.damaged = true; jr.skip_value(); }\n")
 				fmt.Fprintf(b, "            else {\n")
 				fmt.Fprintf(b, "                let mut arm = %s;\n", fieldDefault(v.F))
 				g.emitTextReadValue(b, v.F, "arm", "                ")
 				fmt.Fprintf(b, "                if !jr.damaged { *v = %s::%s(arm); }\n", un.Name, rustVariant(v.Name))
 				fmt.Fprintf(b, "            }\n")
 			case classOf(v.F) == vTable || classOf(v.F) == vMap || classOf(v.F) == vUnion:
-				fmt.Fprintf(b, "            if jr.peek() != b'%c' { jr.mismatch += 1; jr.skip_value(); }\n", tableTextOpening(v.F))
+				fmt.Fprintf(b, "            if jr.peek() != b'%c' { jr.damaged = true; jr.skip_value(); }\n", tableTextOpening(v.F))
 				fmt.Fprintf(b, "            else {\n")
 				fmt.Fprintf(b, "                let mut arm = %s;\n", fieldDefault(v.F))
 				g.emitTextReadValue(b, v.F, "arm", "                ")
 				fmt.Fprintf(b, "                if !jr.damaged { *v = %s::%s(arm); }\n", un.Name, rustVariant(v.Name))
 				fmt.Fprintf(b, "            }\n")
 			default:
-				fmt.Fprintf(b, "            let before_km = jr.mismatch;\n")
 				fmt.Fprintf(b, "            let mut arm = %s;\n", fieldDefault(v.F))
 				g.emitTextReadValue(b, v.F, "arm", "            ")
-				fmt.Fprintf(b, "            if !jr.damaged && jr.mismatch == before_km {\n")
+				fmt.Fprintf(b, "            if !jr.damaged {\n")
 				fmt.Fprintf(b, "                *v = %s::%s(arm);\n", un.Name, rustVariant(v.Name))
 				fmt.Fprintf(b, "            }\n")
 			}
@@ -1364,7 +1368,7 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	keyName := ir.RustSnake(ir.MapKeyFieldName)
 	valName := ir.RustSnake(ir.MapValueFieldName)
 	ent := "ent_" + ir.RustSnake(f.MapEntry.Name)
-	fmt.Fprintf(b, "%sif jr.peek() != b'{' { jr.mismatch += 1; jr.skip_value(); }\n", ind)
+	fmt.Fprintf(b, "%sif jr.peek() != b'{' { jr.damaged = true; jr.skip_value(); }\n", ind)
 	fmt.Fprintf(b, "%selse {\n", ind)
 	in := ind + "    "
 	fmt.Fprintf(b, "%sjr.p += 1;\n", in)
@@ -1380,19 +1384,19 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	fmt.Fprintf(b, "%s    let mut %s = %s::default();\n", in, ent, f.MapEntry.Name)
 	if key.Type.Kind == ir.TString {
 		fmt.Fprintf(b, "%s    if ks.len() > %d {\n", in, rustTextBound(key))
-		fmt.Fprintf(b, "%s        jr.oor += 1; jr.skip_value();\n", in)
+		fmt.Fprintf(b, "%s        jr.damaged = true; jr.skip_value();\n", in)
 		fmt.Fprintf(b, "%s        let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.damaged = true; break;\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)
 		fmt.Fprintf(b, "%s    %s.%s = ks;\n", in, ent, keyName)
 	} else {
 		fmt.Fprintf(b, "%s    match ks.parse::<%s>() {\n", in, scalarRust(key))
 		fmt.Fprintf(b, "%s        Ok(n) => %s.%s = n,\n", in, ent, keyName)
-		fmt.Fprintf(b, "%s        Err(_) => { jr.mismatch += 1; jr.skip_value(); let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.damaged = true; break; }\n", in)
+		fmt.Fprintf(b, "%s        Err(_) => { jr.damaged = true; jr.skip_value(); let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.damaged = true; break; }\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)
 	}
 	g.emitTextReadValue(b, val, ent+"."+valName, in+"    ")
 	fmt.Fprintf(b, "%s    if jr.damaged || jr.missing_required != 0 { break; }\n", in)
-	fmt.Fprintf(b, "%s    if let Some(pos) = %s.iter().position(|x| x.%s == %s.%s) { jr.repeated += 1; %s[pos] = %s; } else { %s.push(%s); }\n", in, field, keyName, ent, keyName, field, ent, field, ent)
+	fmt.Fprintf(b, "%s    if let Some(pos) = %s.iter().position(|x| x.%s == %s.%s) { jr.damaged = true; %s[pos] = %s; } else { %s.push(%s); }\n", in, field, keyName, ent, keyName, field, ent, field, ent)
 	fmt.Fprintf(b, "%s    let c = jr.peek();\n", in)
 	fmt.Fprintf(b, "%s    if c == b',' { jr.p += 1; continue; }\n", in)
 	fmt.Fprintf(b, "%s    if c == b'}' { jr.p += 1; break; }\n", in)

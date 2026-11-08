@@ -665,7 +665,7 @@ func (g *gen) emitFixedScatterCount(member string, at, bound int64) {
 	g.pf("    {\n")
 	g.pf("        let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", at, at+4)
 	g.pf("        let held = raw.clamp(0, %d);\n", bound)
-	g.pf("        if held != raw {\n            report.oor += 1;\n        }\n")
+	g.pf("        if held != raw {\n            report.held += 1;\n        }\n")
 	g.pf("        value.%s = held;\n", member)
 	g.pf("    }\n")
 }
@@ -741,7 +741,7 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 			// the ordinal verbatim out of a stranger's record, so the scatter is
 			// where the range is closed — the same place a count's bound is.
 			g.pf("%s    if raw > %d {\n", ind, extent)
-			g.pf("%s        report.oor += 1;\n", ind)
+			g.pf("%s        report.held += 1;\n", ind)
 			g.pf("%s", set(ind+"        ", "0"))
 			g.pf("%s    } else {\n", ind)
 			g.pf("%s", set(ind+"        ", held))
@@ -917,7 +917,7 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 		g.pf("    // A TAG PAST THE ARM COUNT IS OUT OF RANGE, as a count past its bound is:\n")
 		g.pf("    // it lands as None and counts one held rather than selecting nothing\n")
 		g.pf("    // silently.\n")
-		g.pf("    if tag_raw > %d {\n        report.oor += 1;\n    } else {\n        value.tag = tag_raw;\n    }\n", len(un.Variants))
+		g.pf("    if tag_raw > %d {\n        report.held += 1;\n    } else {\n        value.tag = tag_raw;\n    }\n", len(un.Variants))
 	} else {
 		// EVERY VALUE OF THE TAG'S WIDTH NAMES AN ARM, so there is no
 		// out-of-range tag to clamp and a comparison here would be one the
@@ -965,7 +965,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.ArrayBound)
-		g.pf("%s    if held != raw {\n%s        report.oor += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_count = held;\n%s}\n", ind, ind)
 		if f.ArrayBound > 0 {
 			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
@@ -976,7 +976,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw {\n%s        report.oor += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value = [0u8; %d];\n", ind, f.Type.Size+1)
 		g.pf("%sarm.value[..%d].copy_from_slice(&b[%d..%d]);\n", ind, f.Type.Size, base+4, base+4+f.Type.Size)
@@ -985,7 +985,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw {\n%s        report.oor += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value = [0u16; %d];\n", ind, f.Type.Size+1)
 		g.pf("%sfor i in 0..%d {\n%s    let at = %d + 2 * i;\n", ind, f.Type.Size, ind, base+4)
@@ -995,7 +995,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
 		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
 		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw {\n%s        report.oor += 1;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if held != raw {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value.copy_from_slice(&b[%d..%d]);\n", ind, base+4, base+4+f.Type.Size)
 	default:
@@ -1172,12 +1172,12 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    pub remap: Vec<Vec<u16>>,\n")
 		g.pf("    pub count: [usize; %d],\n", len(lineage))
 		g.pf("    /// THE COMPILE CENSUS, which is the PLAN'S OWN NUMBER: `unknown` once\n")
-		g.pf("    /// per writer field no reader field names, `kind_mismatch` once per\n")
+		g.pf("    /// per writer field no reader field names, `kind_changed` once per\n")
 		g.pf("    /// pair whose kinds moved off every ladder — once per ENDPOINT and never\n")
-		g.pf("    /// per record (§5.4), carried onto the report after the record loop on\n")
-		g.pf("    /// a read that RETURNS (§5.9 #6).\n")
+		g.pf("    /// per record (§5.4). `unknown` is carried onto the report after the\n")
+		g.pf("    /// record loop on a read that RETURNS (§5.9 #6); `kind_changed` stays here.\n")
 		g.pf("    pub unknown: [u32; %d],\n", len(lineage))
-		g.pf("    pub mismatch: [u32; %d],\n", len(lineage))
+		g.pf("    pub kind_changed: [u32; %d],\n", len(lineage))
 		g.pf("    /// `None` on an entry whose plan fits; the refusal LOAD answers with\n")
 		g.pf("    /// when a file selects an entry whose plan does not (§5.9 #4), or whose\n")
 		g.pf("    /// recorded layout is not a parseable one at all (§5.9 #8).\n")
@@ -1190,7 +1190,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        remap: vec![vec![0u16; %s_FIXED_REMAP_CAP]; %d],\n", up, len(lineage))
 		g.pf("        count: [0usize; %d],\n", len(lineage))
 		g.pf("        unknown: [0u32; %d],\n", len(lineage))
-		g.pf("        mismatch: [0u32; %d],\n", len(lineage))
+		g.pf("        kind_changed: [0u32; %d],\n", len(lineage))
 		g.pf("        reason: [TableFixedReason::None; %d],\n", len(lineage))
 		g.pf("    };\n")
 		g.pf("    let mine = match TableFixedBlock::parse(&%s_FIXED_BLOCK) {\n", up)
@@ -1216,7 +1216,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            Some(n) => {\n")
 		g.pf("                out.count[i] = n;\n")
 		g.pf("                out.unknown[i] = census.unknown;\n")
-		g.pf("                out.mismatch[i] = census.mismatch;\n")
+		g.pf("                out.kind_changed[i] = census.kind_changed;\n")
 		g.pf("            }\n")
 		g.pf("            // A compile that refused BY NAME keeps its name: an entry past\n")
 		g.pf("            // the writer's record is layout_record_too_large, and only a plan\n")
@@ -1400,7 +1400,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        entries = &plans.entries[found][..plans.count[found]];\n")
 		g.pf("        guards = &plans.guards[found][..];\n")
 		g.pf("        table = &plans.remap[found][..];\n")
-		g.pf("        census = (plans.unknown[found], plans.mismatch[found]);\n")
+		g.pf("        census = (plans.unknown[found], plans.kind_changed[found]);\n")
 		g.pf("    }\n")
 	} else {
 		g.pf("    // A UNIT WITH NO LOCK has a lineage of ONE — its own layout — so the\n")
@@ -1433,14 +1433,13 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);\n")
 	g.pf("    let holes = &hole_buf[..hole_n];\n")
 	g.pf("    let mut image = [0u8; %s_FIXED_BODY_BYTES];\n", up)
-	g.pf("    let (oor_before, widened_before) = (report.oor, report.widened);\n")
+	g.pf("    let widened_before = report.widened;\n")
 	g.pf("    for k in 0..n {\n")
 	g.pf("        let record = &rest[k * record_bytes..(k + 1) * record_bytes];\n")
 	g.pf("        if u64::from_le_bytes(record[..8].try_into().expect(\"eight bytes\")) != hash {\n")
 	g.pf("            for value in values.iter_mut().take(k) {\n")
 	g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 	g.pf("            }\n")
-	g.pf("            report.oor = oor_before;\n")
 	g.pf("            report.widened = widened_before;\n")
 	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
 	g.pf("        for h in holes {\n")
@@ -1461,7 +1460,6 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            for value in values.iter_mut().take(k + 1) {\n")
 		g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 		g.pf("            }\n")
-		g.pf("            report.oor = oor_before;\n")
 		g.pf("            report.widened = widened_before;\n")
 		g.pf("            return report.refuse_non_finite(why);\n")
 		g.pf("        }\n")
@@ -1481,7 +1479,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 			}
 			g.pf("                _ => {}\n            }\n")
 		}
-		g.pf("            report.oor += oor as u32;\n        }\n")
+		g.pf("            report.held += oor as u32;\n        }\n")
 	}
 	if fixedRangeClampNeeded(st) {
 		g.pf("        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the\n")
@@ -1499,12 +1497,21 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("                for value in values.iter_mut().take(k + 1) {\n")
 		g.pf("                    %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 		g.pf("                }\n")
-		g.pf("                report.oor = oor_before;\n")
 		g.pf("                report.widened = widened_before;\n")
 		g.pf("                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
-		g.pf("            report.oor += oor as u32;\n")
+		g.pf("            report.held += oor as u32;\n")
 		g.pf("        }\n")
 	}
+	// STRICT-ONLY (docs/plans/strict-only.md): a count, a length, an ordinal,
+	// a tag or a value past its bound refuses the whole batch, and every
+	// record this call wrote goes back to its declared defaults.
+	g.pf("        if report.held != 0 {\n")
+	g.pf("            for value in values.iter_mut().take(k + 1) {\n")
+	g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+	g.pf("            }\n")
+	g.pf("            report.widened = widened_before;\n")
+	g.pf("            return report.refuse(TableFixedReason::OutOfRange);\n")
+	g.pf("        }\n")
 	g.pf("    }\n")
 	g.pf("    // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read\n")
 	g.pf("    // that RETURNS (§5.9 #6): `unknown` and `kind_mismatch` are the PLAN'S own\n")
@@ -1512,7 +1519,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // (§5.4) — and a refusal that came after would have moved a counter, where\n")
 	g.pf("    // REFUSE IS TOTAL.\n")
 	g.pf("    report.unknown += census.0;\n")
-	g.pf("    report.mismatch += census.1;\n")
+	g.pf("    let _ = census.1; // the compile census's kind changes stay on the plan, never a read counter\n")
 	g.pf("    Some(n)\n}\n\n")
 }
 

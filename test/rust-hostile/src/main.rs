@@ -97,12 +97,12 @@ fn text_digest(text: Option<String>) -> String {
 
 // A read's verdict off its report: a named refusal is its reason, a malformed
 // read (no name) is the corpus's `damaged`.
-fn refusal(refused: bool, malformed: bool, reason: &str, landed: bool) -> Option<String> {
+fn refusal(refused: bool, damaged: bool, reason: &str, landed: bool) -> Option<String> {
     let named = !reason.is_empty() && reason != "none" && reason != "ok";
     if refused || !landed {
         return Some(refuse(if named { reason } else { "damaged" }));
     }
-    if malformed {
+    if damaged {
         return Some(refuse("damaged"));
     }
     None
@@ -124,7 +124,7 @@ macro_rules! table_ops {
                 } else {
                     $k::$load(input, &mut report)
                 };
-                if let Some(r) = $crate::refusal(report.refused, report.malformed, report.reason.name(), value.is_some()) {
+                if let Some(r) = $crate::refusal(report.refused, report.damaged, report.reason.name(), value.is_some()) {
                     return r;
                 }
                 let value = value.expect("landed");
@@ -143,7 +143,7 @@ macro_rules! table_ops {
             text: |input| {
                 let mut report = $k::TableReport::default();
                 let value = $k::$from_json(input, &mut report);
-                if let Some(r) = $crate::refusal(report.refused, report.malformed, report.reason.name(), value.is_some()) {
+                if let Some(r) = $crate::refusal(report.refused, report.damaged, report.reason.name(), value.is_some()) {
                     return r;
                 }
                 let value = value.expect("landed");
@@ -169,7 +169,7 @@ macro_rules! message_ops {
                 let mut own = vec![0u8; $k::announce_measure()];
                 $k::announce(&mut own);
                 let mut ar = $k::TableReport::default();
-                if !$k::announce_read(&mut vocab, &own, &mut ar) || ar.malformed {
+                if !$k::announce_read(&mut vocab, &own, &mut ar) || ar.damaged {
                     return "error: the unit's own announcement was refused".to_string();
                 }
             }
@@ -182,7 +182,7 @@ macro_rules! message_ops {
                     r => r,
                 });
             }
-            if report.malformed || !ok || n != 1 {
+            if report.damaged || !ok || n != 1 {
                 return $crate::refuse("damaged");
             }
             // the rest of the port's surface on the decoded batch
@@ -228,7 +228,7 @@ macro_rules! vocabulary_ops {
                 }
                 let mut report = $k::TableReport::default();
                 let ok = $k::announce_read(&mut vocab, input, &mut report);
-                if let Some(r) = $crate::refusal(report.refused, report.malformed, report.reason.name(), ok) {
+                if let Some(r) = $crate::refusal(report.refused, report.damaged, report.reason.name(), ok) {
                     return r;
                 }
                 $crate::accept("-")
