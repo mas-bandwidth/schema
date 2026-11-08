@@ -642,6 +642,7 @@ function TableVariableLoad(c, bytes, report, retain) {
     bytes = bytes.subarray(0, bytes.length - 4);
   }
   const missingBefore = report.missingRequired;
+  const strictBefore = TableVariableStrictMark(report);
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
   if (TableVariableCountRefused(report)) { report.refused = 0; report.reason = null; }
@@ -722,8 +723,23 @@ function TableVariableLoad(c, bytes, report, retain) {
     if (retain !== null) { retain.reset(); }
     return null;
   }
+  // THE ONE READ REFUSES THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.5): a
+  // changed kind, a value or a length out of range, a repeated key and a blob
+  // named from two slots hand back nothing; err() names which.
+  if (TableVariableStrictMark(report) !== strictBefore) {
+    report.damaged = carried;
+    if (retain !== null) { retain.reset(); }
+    return null;
+  }
   report.damaged = carried;
   return v;
+}
+
+// THE STRICT MARK: the sum of the counters whose any movement refuses the
+// read. A read takes it before its walk and compares after, so a report a
+// caller reuses across reads judges each read on its own.
+function TableVariableStrictMark(report) {
+  return report.mismatch + report.oor + report.repeated + report.sharedBlob;
 }
 
 // RESOLUTION (§3.1, decodenodes.go resolveCell): 0 is null, 1 is the root
@@ -1904,8 +1920,9 @@ class TableVariableTextIn {
               if (low >= 0xdc00 && low <= 0xdfff) { code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00); }
               else { this.p = mark; }
             }
-            // a surrogate half that never found its partner reads as U+FFFD (§16.3)
-            if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+            // A SURROGATE HALF THAT NEVER FOUND ITS PARTNER REFUSES (§16.3,
+            // docs/plans/strict-only.md decision 9): string_lone_surrogate
+            if (code >= 0xd800 && code <= 0xdfff) { this.bad = true; return null; }
             out += String.fromCodePoint(code);
             break;
           }
@@ -1918,7 +1935,9 @@ class TableVariableTextIn {
         const lo = t.charCodeAt(this.p + 1);
         if (lo >= 0xdc00 && lo <= 0xdfff) { out += t[this.p] + t[this.p + 1]; this.p += 2; continue; }
       }
-      if (c >= 0xd800 && c <= 0xdfff) { out += String.fromCharCode(0xfffd); this.p++; continue; }
+      // an unpaired surrogate in a string handed in as JavaScript text is the
+      // same lone surrogate, and refuses the same way
+      if (c >= 0xd800 && c <= 0xdfff) { this.bad = true; return null; }
       out += t[this.p];
       this.p++;
     }
@@ -2021,6 +2040,7 @@ class TableVariableTextIn {
 // was placed before any stop; a text that is not JSON is damaged.
 function TableVariableFromJson(c, text, report) {
   const missingBefore = report.missingRequired;
+  const strictBefore = TableVariableStrictMark(report);
   report.reason = ""; report.refused = 0;
   const carried = report.damaged;
   report.damaged = false;
@@ -2037,6 +2057,8 @@ function TableVariableFromJson(c, text, report) {
   // back no value
   if (report.missingRequired !== missingBefore) { report.damaged = carried; return null; }
   if (inp.bad || !ok || report.damaged) { report.damaged = true; return null; }
+  // the one read refuses the whole text, as the wire load does (§4, §16.2)
+  if (TableVariableStrictMark(report) !== strictBefore) { report.damaged = carried; return null; }
   report.damaged = carried;
   return v;
 }

@@ -898,11 +898,12 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     if (key === null) { return false; }
     if (inp.peek() !== ":") { inp.bad = true; return false; }
     inp.p++;
+    // A REPEATED KEY IS DAMAGE (docs/plans/strict-only.md decision 5), the
+    // key of no slot (None, or a variant this reader does not carry) as much
+    // as a placed one: no writer produces it, so the read refuses.
+    if (seen.has(key)) { report.repeated++; }
+    seen.add(key);
     const slot = fd.slotByName.get(key);
-    if (slot !== undefined) {
-      if (seen.has(slot)) { report.repeated++; }
-      seen.add(slot);
-    }
     if (slot === undefined) {
       report.unknown++;
       if (!inp.skip(depth + 1, graph)) { return false; }
