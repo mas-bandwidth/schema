@@ -140,9 +140,11 @@ test-luau: tables-luau-json-walk tables-luau-json-walk-negative-control \
 # under which the skip is a FAILURE.
 
 .PHONY: tables-luau-fixed-form tables-luau-versioning
-tables-luau-fixed-form: toolchain-luau tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
-	SCHEMA_REQUIRE_CORPUS=1 SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
-		go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedFormAgreesWithTheByteOracle|TestLuauFixedFormVersioning|TestLuauFixedFormRefusals|TestLuauFixedFormNegativeControl|TestLuauFixedFormRaggedTail|TestLuauFixedFormIntegrity|TestLuauFixedLayoutBounds|TestLuauFixedLoadNamesEveryRefusal|TestLuauFixedPlainReadIsStrict|TestLuauFixedStrictBounds|TestLuauFixedStrictBoundsNegativeControl|TestLuauFixedByteArrays|TestLuauFixedByteArraysNegativeControl)$$'
+tables-luau-fixed-form: toolchain-luau tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod $(LUAU_CONFORMANCE_DRIVER)/inputs.luau $(LUAU_CONFORMANCE_DRIVER)/units.luau packet-finite-luau
+	-SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
+		go test -count=1 -v -timeout 840s ./internal/codegen/luau/... ./internal/codegen/luautable/... 2>&1 | grep -v '^=== ' ; true
+	-$(MAKE) cards-luau-test cards-luau-conformance build/conformance-luau ; true
+	-./build/conformance-harness run --only luau ; true
 	@echo 'tables Luau fixed form: every corpus root on the C++ reference bytes, every refusal by name'
 
 tables-luau-versioning: toolchain-luau tables-fixedform-corpus
