@@ -1036,7 +1036,7 @@ export function WriteExtremeProbe(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.floorDefault;
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorDefault);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -1120,7 +1120,7 @@ export function WriteExtremeRow(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.floorDef;
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorDef);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }

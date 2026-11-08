@@ -1,4 +1,4 @@
-// TestUncoveredPaths is the card's entry point from the package's public
+// TestUncoveredPathsPublic is the card's entry point from the package's public
 // side: every test the package already owns runs under it, so the one name
 // reaches the whole surface the coverage profile measures.
 package tablewire_test
@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestUncoveredPaths(t *testing.T) {
+func TestUncoveredPathsPublic(t *testing.T) {
 	t.Parallel()
 	run := map[string]func(*testing.T){
 		"was arm announcement":             TestAWasRenamedArmAnnouncesTheOldNamesHash,
@@ -38,13 +38,13 @@ func TestUncoveredPaths(t *testing.T) {
 		"retained map replacement":         TestRetainedMapReplacementAfterDamage,
 		"retain excluded classes":          TestRetainExcludedClasses,
 		"retain is additive":               TestRetainIsAdditive,
-		"retain oracle forgets an arm":     TestRetainOracleForgetsAnArmByOccurrence,
-		"retain oracle forgets a list":     TestRetainOracleForgetsEveryArmOfAReplacedList,
+		"retain oracle forgets an arm":     TestRetainOracleRefusesASecondOccurrence,
+		"retain oracle forgets a list":     TestRetainOracleRefusesAReplacedList,
 		"retain round trip":                TestRetainRoundTrip,
 		"retain trailer first use":         TestRetainTrailerIsMergedInFirstUseOrder,
 		"retain unknown node record":       TestRetainUnknownNodeRecord,
 		"retain walk depth cap":            TestRetainWalkDepthCap,
-		"skipped map repeat":               TestSkippedMapRepeatPreservesEarlierValue,
+		"map field repeat refuses":         TestMapFieldRepeatRefuses,
 		"stray byte before table":          TestStrayByteBeforeTheTableIsMalformed,
 		"timestamp skip":                   TestTimestampKindIsSkippedAtEightBytes,
 		"unknown field":                    TestUnknownFieldIsSkipped,

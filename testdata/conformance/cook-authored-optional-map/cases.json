@@ -1,0 +1,40 @@
+[
+  {
+    "Name": "absent_empty",
+    "Present": false,
+    "Entries": [],
+    "Refuse": false
+  },
+  {
+    "Name": "present_empty",
+    "Present": true,
+    "Entries": [],
+    "Refuse": false
+  },
+  {
+    "Name": "present_populated",
+    "Present": true,
+    "Entries": [
+      {
+        "Key": -2,
+        "Value": 7
+      },
+      {
+        "Key": 3,
+        "Value": 11
+      }
+    ],
+    "Refuse": false
+  },
+  {
+    "Name": "absent_stale",
+    "Present": false,
+    "Entries": [
+      {
+        "Key": -2,
+        "Value": 7
+      }
+    ],
+    "Refuse": true
+  }
+]

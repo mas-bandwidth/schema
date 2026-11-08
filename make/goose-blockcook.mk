@@ -25,18 +25,20 @@ tables-goose-block-lead: build/conformance-goose
 .PHONY: tables-goose-block-negative-control
 tables-goose-block-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go test -count=1 -run '^TestGooseBlockNegativeControl$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseBlockNegativeControl$$' ./internal/codegen/goosetable/
 
 # THE ACCELERATORS' HARNESS CONTROLS (group goose-blockcook): one clause of
 # the runtime broken in a copy of the generated units, and the harness must
 # turn red exactly the surfaces it owns — the cook's reserved words (M8),
-# the block's pitch assertion (M7) and the write's byte order (§7.6).
+# the block's pitch assertion (M7), the write's byte order (§7.6) and the
+# region writer's first-visit numbering (§3.1, §7.6).
 .PHONY: tables-goose-accel-negative-control
 tables-goose-accel-negative-control: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control-accel cook-open
 	sh test/conformance/goose/negative-control-accel block-pitch
 	sh test/conformance/goose/negative-control-accel cook-order
+	sh test/conformance/goose/negative-control-accel cook-numbering
 
 # THE FORGERY FUZZER (docs/PORTING.md I3): valid block images and the Go
 # reference's cooks, mutated (a word of the prologue or a triple, a bit, the
@@ -51,10 +53,16 @@ tables-goose-accel-negative-control: build/conformance-harness build/conformance
 GOOSE_ACCEL_FUZZ_SEED ?= $(SEED)
 GOOSE_ACCEL_FUZZ_N    ?= 20000
 
-.PHONY: tables-goose-fuzz
-tables-goose-fuzz: build/conformance-harness build/conformance-goose
-	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+# THE COOK HALF'S FIXTURES, materialised once per make run: the fuzzer and
+# its controls both read build/conformance/fixtures, so under make -j one
+# rule writes them before either starts, never two at once.
+.PHONY: goose-accel-fixtures
+goose-accel-fixtures: build/conformance-harness
 	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
+
+.PHONY: tables-goose-fuzz
+tables-goose-fuzz: build/conformance-harness build/conformance-goose goose-accel-fixtures
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	./test/conformance/goose/driver $(GOOSE_MANIFEST) block-fuzz $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
 	./test/conformance/goose/driver $(GOOSE_MANIFEST) cook-fuzz $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N) build/conformance/fixtures
 
@@ -65,9 +73,8 @@ tables-goose-fuzz: build/conformance-harness build/conformance-goose
 # (test/conformance/goose/negative-control-fuzz says why one half is not a
 # control: the other refuses the same forgery, measured).
 .PHONY: tables-goose-fuzz-negative-control
-tables-goose-fuzz-negative-control: build/conformance-harness build/conformance-goose
+tables-goose-fuzz-negative-control: build/conformance-harness build/conformance-goose goose-accel-fixtures
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
 	sh test/conformance/goose/negative-control-fuzz block-extent $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
 	sh test/conformance/goose/negative-control-fuzz cook-extent $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
 
@@ -148,7 +155,7 @@ GOOSE_AGREE_DIR := build/goose-agree-control
 .PHONY: tables-goose-accessor-descriptor-agreement tables-goose-accessor-negative-control
 tables-goose-accessor-descriptor-agreement:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go test -count=1 -timeout 600s -run '^TestGooseAccessorsAgreeWithDescriptors$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestGooseAccessorsAgreeWithDescriptors$$' ./internal/codegen/goosetable/
 tables-goose-accessor-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@rm -rf $(GOOSE_AGREE_DIR) && mkdir -p $(GOOSE_AGREE_DIR)
@@ -156,7 +163,7 @@ tables-goose-accessor-negative-control:
 		internal/codegen/goosetable/accel.go > $(GOOSE_AGREE_DIR)/accel.go.txt
 	@grep -q SABOTAGED $(GOOSE_AGREE_DIR)/accel.go.txt || { echo "NEGATIVE CONTROL FAILED: the accessor sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/accel.go":"%s/$(GOOSE_AGREE_DIR)/accel.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(GOOSE_AGREE_DIR)/overlay.json
-	@if go test -count=1 -timeout 600s -overlay=$(GOOSE_AGREE_DIR)/overlay.json -run '^TestGooseAccessorsAgreeWithDescriptors$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -timeout 600s -overlay=$(GOOSE_AGREE_DIR)/overlay.json -run '^TestGooseAccessorsAgreeWithDescriptors$$' \
 			./internal/codegen/goosetable/ > $(GOOSE_AGREE_DIR)/log 2>&1; then \
 		cat $(GOOSE_AGREE_DIR)/log; echo "NEGATIVE CONTROL FAILED: a moved pointer accessor left the agreement green"; exit 1; fi
 	@grep -q 'DISAGREE ListNode.next' $(GOOSE_AGREE_DIR)/log || { \

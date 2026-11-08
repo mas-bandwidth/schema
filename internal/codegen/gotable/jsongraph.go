@@ -26,7 +26,8 @@ func (g *tableJSONGraph) setLabel(key uint64,entry tableJSONLabel)bool {
 func (g *tableJSONGraph) close(){if g.memory!=nil{g.release(g.memory);g.memory=nil;g.labels=nil}}
 func tableJSONPointerAt(slot *int64) unsafe.Pointer { if *slot==0{return nil};return unsafe.Add(unsafe.Pointer(slot),*slot) }
 func tableJSONWritePointer(out *tableJSONOut,slot *int64,f *TableFieldInfo,depth int32) bool {
- if depth>tableJSONMaxDepth {return false};p:=tableJSONPointerAt(slot);if p==nil{out.text("null");return true};if out.graph==nil {return false}
+ p:=tableJSONPointerAt(slot);if p==nil{out.text("null");return true} // a null nests nothing: the cap counts containers (§16.14)
+ if depth>tableJSONMaxDepth {return false};if out.graph==nil {return false}
  if out.graph.node==nil{return false};entry:=out.graph.node(p);if entry==nil{return false}
  if f.Table==nil {if entry.refs>1{return false};size:=*(*uint32)(p);data:=unsafe.Slice((*byte)(unsafe.Add(p,8)),int(size));if f.TypeName=="bytes"{tableJSONWriteBase64(out,data)}else{tableJSONWriteString(out,data)};return true}
  if entry.refs<2{return tableJSONWriteValue(out,p,f.Table(),depth)}
@@ -42,14 +43,14 @@ func tableJSONReadLabel(in *tableJSONIn) (uint64,bool) {
 }
 func tableJSONReadPointer(in *tableJSONIn,slot *int64,f *TableFieldInfo,depth int32) bool {
  *slot=0
+ if in.peek()=='n'{return in.literal("null")} // a null nests nothing: the cap counts containers (§16.14)
  if depth>tableJSONMaxDepth{in.bad=true;return false}
- if in.peek()=='n'{return in.literal("null")}
  if in.graph==nil||in.graph.alloc==nil{in.bad=true;return false}
  if f.Table==nil{return tableJSONReadBlob(in,slot,f)}
  if in.peek()!='{'{in.bad=true;return false}
  start:=in.pos;probe:=*in;probe.pos++;label:=uint64(0);hasLabel:=false
  if probe.peek()!='}' {var key [tableJSONMaxKey]byte;length,ok:=probe.scanKey(key[:]);if !ok {in.bad=true;return false};if length>0&&key[0]=='&'{if string(key[:length])!="&node"||probe.peek()!=':'{in.bad=true;return false};probe.pos++;label,ok=tableJSONReadLabel(&probe);if !ok{in.bad=true;return false};hasLabel=true}}
- if hasLabel {entry,exists:=in.graph.getLabel(label);if exists&&entry.open{in.bad=true;return false};if probe.peek()=='}'{if !exists{in.bad=true;return false};probe.pos++;in.pos=probe.pos;if entry.ref!=0 {if entry.target!=f.TargetId{in.report.KindMismatch++}else{*slot=entry.ref}};return true};if exists {in.bad=true;return false};probe.pos++;if probe.peek()=='}'{in.bad=true;return false}}
+ if hasLabel {entry,exists:=in.graph.getLabel(label);if exists&&entry.open{in.bad=true;return false};if probe.peek()=='}'{if !exists{in.bad=true;return false};probe.pos++;in.pos=probe.pos;if entry.ref!=0 {if entry.target!=f.TargetId{in.report.Refuse(TableRefuseKindMismatch,"")}else{*slot=entry.ref}};return true};if exists {in.bad=true;return false};probe.pos++;if probe.peek()=='}'{in.bad=true;return false}}
  p,ref:=in.graph.alloc(int64(f.Table().Size));if p==nil{in.bad=true;return false};*slot=ref;f.Table().Reset(p)
  if hasLabel {if !in.graph.setLabel(label,tableJSONLabel{ref:ref,target:f.TargetId,open:true}){in.bad=true;return false};in.pos=probe.pos;ok:=tableJSONReadTableFields(in,p,f.Table(),depth,false);if ok {entry,_:=in.graph.getLabel(label);entry.open=false;if !in.graph.setLabel(label,entry){in.bad=true;return false}};return ok}
  in.pos=start;return tableJSONReadTable(in,p,f.Table(),depth)
@@ -60,7 +61,7 @@ func tableJSONReadBlob(in *tableJSONIn,slot *int64,f *TableFieldInfo) bool {
   // Decode using the fixed byte field's exact same base64 policy.
   capacity:=int64(size)*3/4+3;p,ref:=in.graph.alloc(8+capacity);if p==nil{in.bad=true;return false}
   shape:=TableFieldInfo{TypeName:"bytes",Kind:6,IsArray:true,Counted:true,ArrayBound:int32(capacity),Offset:8,CountOffset:0,ElemSize:1}
-  before:=in.report.KindMismatch;if !tableJSONReadField(in,p,&shape,0){return false};if in.report.KindMismatch!=before{return true};*(*uint32)(unsafe.Add(p,4))=0;*slot=ref;return true
+  if !tableJSONReadField(in,p,&shape,0)||in.report.Refused(){return false};*(*uint32)(unsafe.Add(p,4))=0;*slot=ref;return true
  }
  p,ref:=in.graph.alloc(8+int64(size)+1);if p==nil{in.bad=true;return false};data:=unsafe.Slice((*byte)(unsafe.Add(p,8)),int(size));length,ok:=in.scanString(data);if !ok{return false};*(*uint32)(p)=uint32(length);*(*uint32)(unsafe.Add(p,4))=0;*slot=ref;return true
 }

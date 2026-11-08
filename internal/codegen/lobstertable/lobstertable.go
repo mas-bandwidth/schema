@@ -67,16 +67,18 @@ func Register(name string, fn Part) {
 	sort.Slice(parts, func(i, j int) bool { return parts[i].name < parts[j].name })
 }
 
-// Generate returns <Base>Table.lobster for every file that declares a table
-// or a table-closure union (or a packet type a table reaches), plus the
-// runtime modules; a table-free unit gets nothing, so its output is the type
-// surface's alone (docs/PORTING.md I10).
+// Generate returns table modules, runtime modules and the unit registry.
+// A table-free unit emits its metadata in the view alone, with descriptor
+// primitives but no table modules or codecs. Packet codecs are unchanged.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
-	if len(u.Tables) == 0 {
+	if len(u.Files) == 0 {
 		return map[string][]byte{}, nil
 	}
 	if err := Refuse(u); err != nil {
 		return nil, err
+	}
+	if len(u.Tables) == 0 {
+		return generateViewOnly(u)
 	}
 	out := map[string][]byte{}
 	reach := closure(u)
@@ -90,6 +92,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g := lobster.NewGen(u, f)
 		g.Suffix, g.Kind = "Table", "table surface"
 		g.Runtimes = []string{lobster.RuntimeModule, RuntimeModule}
+		g.Import(f.Base) // unreferenced packet types still supply reflection accessors
 		emitFile(g, reach)
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {
@@ -109,7 +112,69 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := lobster.ImportCycle(graph, order, "the table surface"); err != nil {
 		return nil, err
 	}
-	maps.Copy(out, Runtime())
+	view := lobster.NewGen(u, u.Files[0])
+	view.Kind = "unit registry"
+	view.Runtimes = []string{"descriptors"}
+	for _, f := range u.Files {
+		view.Import(f.Base + "Table")
+	}
+	view.Pf("def UnitView() -> schema_rt.UnitView:\n    return schema_rt.unit_view()\n")
+	out[u.Package+"View.lobster"] = []byte(strings.Replace(string(view.Assemble()),
+		fmt.Sprintf("from %s.schema.", u.Files[0].Base),
+		fmt.Sprintf("from package %s (all schema files).", u.Package), 1))
+	maps.Copy(out, runtimeForUnit(u))
+	return out, nil
+}
+
+// runtimeForUnit is the exact table-runtime set this unit emits. Keeping the
+// selection shared with the package-name guard prevents unused codecs from
+// rejecting a valid packet-only package.
+func runtimeForUnit(u *ir.Unit) map[string][]byte {
+	all := Runtime()
+	if len(u.Tables) != 0 {
+		return all
+	}
+	out := map[string][]byte{}
+	var include func(string)
+	include = func(name string) {
+		data, exists := all[name]
+		if !exists || out[name] != nil {
+			return
+		}
+		out[name] = data
+		for _, line := range strings.Split(string(data), "\n") {
+			if dep, ok := strings.CutPrefix(strings.TrimSpace(line), "import ."); ok {
+				include(dep + ".lobster")
+			}
+		}
+	}
+	include("descriptors.lobster")
+	return out
+}
+
+func generateViewOnly(u *ir.Unit) (map[string][]byte, error) {
+	g := lobster.NewGen(u, u.Files[0])
+	g.Kind, g.Suffix = "unit registry", "View"
+	g.Runtimes = []string{"descriptors"}
+	// Register every descriptor before a vocabulary looks up its payload.
+	// File order cannot turn an existing payload's descriptor into nil.
+	for _, f := range u.Files {
+		g.File = f
+		g.Import(f.Base)
+		emitFile(g, nil)
+	}
+	for _, f := range u.Files {
+		g.File = f
+		if err := emitDescriptors(g); err != nil {
+			return nil, err
+		}
+	}
+	g.File = u.Files[0]
+	g.Pf("def UnitView() -> schema_rt.UnitView:\n    return schema_rt.unit_view()\n")
+	out := runtimeForUnit(u)
+	out[u.Package+"View.lobster"] = []byte(strings.Replace(string(g.Assemble()),
+		fmt.Sprintf("from %s.schema.", u.Files[0].Base),
+		fmt.Sprintf("from package %s (all schema files).", u.Package), 1))
 	return out, nil
 }
 
@@ -118,7 +183,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // refuses the third after it writes — an import cycle between table modules
 // (docs/PORT-LOBSTER.md, THE RUNTIME LAYOUT).
 func Refuse(u *ir.Unit) error {
-	if err := lobster.CheckBases(u, Runtime()); err != nil {
+	if err := checkRuntimePackageName(u); err != nil {
+		return err
+	}
+	if err := checkReflectionNames(u); err != nil {
+		return err
+	}
+	if err := lobster.CheckBases(u, runtimeForUnit(u)); err != nil {
 		return err
 	}
 	bases := map[string]bool{}
@@ -126,7 +197,10 @@ func Refuse(u *ir.Unit) error {
 		bases[strings.ToLower(f.Base)] = true
 	}
 	for _, f := range u.Files {
-		if bases[strings.ToLower(f.Base+"Table")] {
+		if strings.EqualFold(f.Base, u.Package+"View") {
+			return fmt.Errorf("schema file %s collides with the Lobster unit registry %sView.lobster; rename the file", f.Base, u.Package)
+		}
+		if len(u.Tables) != 0 && bases[strings.ToLower(f.Base+"Table")] {
 			return fmt.Errorf("schema files %s and %sTable collide — the Lobster table surface writes %sTable.lobster as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
 	}
@@ -202,32 +276,17 @@ func reachFrom(u *ir.Unit, root func(*ir.Struct) bool, unions bool) map[string]b
 	return seen
 }
 
-// moduleFiles is the files that get a table module: those with a table or a
-// table-closure union, and those declaring a packet type a table reaches.
-func moduleFiles(u *ir.Unit, reach map[string]bool) map[string]bool {
+// Every source file participates in the unit registry, even if no table
+// reaches its declarations. Packet codecs remain in their own modules.
+func moduleFiles(u *ir.Unit, _ map[string]bool) map[string]bool {
 	out := map[string]bool{}
 	for _, f := range u.Files {
-		if len(f.Tables) > 0 || len(f.TableUnions) > 0 {
-			out[f.Base] = true
-			continue
-		}
-		for _, d := range f.Decls {
-			switch d := d.(type) {
-			case *ir.Struct:
-				if reach[d.Name] {
-					out[f.Base] = true
-				}
-			case *ir.Union:
-				if reach[d.Name] {
-					out[f.Base] = true
-				}
-			}
-		}
+		out[f.Base] = true
 	}
 	return out
 }
 
-func emitFile(g *lobster.Gen, reach map[string]bool) {
+func emitFile(g *lobster.Gen, _ map[string]bool) {
 	for _, un := range g.File.TableUnions {
 		g.EmitUnion(un)
 	}
@@ -242,18 +301,16 @@ func emitFile(g *lobster.Gen, reach map[string]bool) {
 	for _, t := range g.File.Tables {
 		emitDescriptor(g, t)
 	}
-	// the packet types of this file a table reaches: their descriptors only;
-	// the class and its constructor are the type module's
+	// Every packet type and union has a descriptor for reflection, even
+	// outside a table closure. Classes and constructors stay in the type module.
 	for _, d := range g.File.Decls {
 		switch d := d.(type) {
 		case *ir.Struct:
-			if reach[d.Name] {
-				g.Import(g.File.Base)
+			if g.Unit.Tables[d.Name] == nil {
 				emitDescriptor(g, d)
 			}
 		case *ir.Union:
-			if reach[d.Name] {
-				g.Import(g.File.Base)
+			if g.Unit.TableUnions[d.Name] == nil {
 				emitUnionDescriptor(g, d)
 			}
 		}
@@ -273,14 +330,21 @@ func idLit(v uint64) string {
 // one runtime walk of each form reads (docs/SPEC-TABLES.md §3, §3.1, §8.1;
 // docs/PORT-LOBSTER.md, THE TYPE MAPPING), registered by name at load.
 func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
+	wire := t.IsTable || ir.TableClosure(g.Unit)[t.Name]
 	g.Pf("// %sDescriptor — %s as data: node type id, class, and one entry per field\n", t.Name, t.Name)
 	g.Pf("// (docs/SPEC-TABLES.md §3, §8.1)\n")
 	g.Pf("let %sDescriptor = %s.table(%s.TableDescriptor {\n", t.Name, rt, rt)
 	g.Pf("    name: %s,\n", lobster.StringLit([]byte(t.Name)))
+	g.Pf("    doc: %s, tags: %s,\n", lobster.StringLit([]byte(t.Doc)), tagList(t.Tags))
 	g.Pf("    id: %s, // FNV-1a 64 of %s (§3.1)\n", idLit(ir.TableWireId(t.WireName())), t.WireName())
 	g.Pf("    table: %v,\n", t.IsTable)
 	g.Pf("    fixed: %v,\n", t.FixedDeclared)
+	g.Pf("    json_form: %v,\n", t.CarriesForm("json"))
+	g.Pf("    cook_form: %v,\n", t.CarriesForm("cook"))
 	g.Pf("    variable: %v,\n", ir.VariableTables(g.Unit)[t.Name])
+	if t.Integrity == "crc32c" {
+		g.Pf("    integrity: true,\n")
+	}
 	var placeable []string
 	for _, r := range ir.PointerReachable(t) {
 		placeable = append(placeable, lobster.StringLit([]byte(r.Name)))
@@ -303,7 +367,7 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 		if i == len(t.Fields)-1 {
 			sep = ""
 		}
-		g.Pf("        %s%s\n", guarded(fieldDesc(g, f, i, 0), guards[f.Name]), sep)
+		g.Pf("        %s%s\n", guarded(fieldDescWire(g, f, i, 0, wire), guards[f.Name]), sep)
 	}
 	g.Pf("    ]::%s.FieldDescriptor\n", rt)
 	g.Pf("})\n\n")
@@ -312,6 +376,7 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 // emitUnionDescriptor writes <Name>Descriptor for a union: its arms, each a
 // field line under the arm's id (docs/SPEC-TABLES.md §2.6, §3).
 func emitUnionDescriptor(g *lobster.Gen, un *ir.Union) {
+	_, _, _, armOffset := ir.UnionLayout(g.Unit, un)
 	g.Pf("// %sDescriptor — union %s as data: one entry per arm, tag order (§2.6)\n", un.Name, un.Name)
 	g.Pf("let %sDescriptor = %s.union_of(%s.UnionDescriptor {\n", un.Name, rt, rt)
 	g.Pf("    name: %s,\n", lobster.StringLit([]byte(un.Name)))
@@ -327,7 +392,9 @@ func emitUnionDescriptor(g *lobster.Gen, un *ir.Union) {
 		}
 		f := *v.F
 		f.Name = v.Name
-		g.Pf("        %s%s\n", fieldDesc(g, &f, i, i+1), sep)
+		f.Doc, f.Tags = v.Doc, v.Tags
+		desc := strings.TrimSuffix(fieldDesc(g, &f, i, i+1), " }") + fmt.Sprintf(", arm_offset: %d }", armOffset)
+		g.Pf("        %s%s\n", desc, sep)
 	}
 	g.Pf("    ]::%s.FieldDescriptor\n", rt)
 	g.Pf("})\n\n")
@@ -336,6 +403,10 @@ func emitUnionDescriptor(g *lobster.Gen, un *ir.Union) {
 // requireHome imports the table module that registers a descriptor, so a
 // walk that names it by string finds it registered.
 func requireHome(g *lobster.Gen, name string) {
+	if len(g.Unit.Tables) == 0 {
+		// All table-free descriptors live in the unit view itself.
+		return
+	}
 	for _, f := range g.Unit.Files {
 		hit := false
 		for _, t := range f.Tables {
@@ -371,11 +442,23 @@ func requireHome(g *lobster.Gen, name string) {
 //	tab, union         a table or packet type by value (kind 13); a union (kind 15)
 //	arr, map           []T / [..N]T / [N]T / [E]T over an element descriptor; map[K]V
 func fieldDesc(g *lobster.Gen, f *ir.Field, ordinal, tag int) string {
+	return fieldDescWire(g, f, ordinal, tag, true)
+}
+
+func fieldDescWire(g *lobster.Gen, f *ir.Field, ordinal, tag int, wire bool) string {
+	id, jsonKey := ir.TableFieldWireId(f), ir.TableFieldJsonKey(f)
+	if !wire {
+		id, jsonKey = 0, ""
+	}
 	parts := []string{
-		"id: " + idLit(ir.TableFieldWireId(f)),
+		"id: " + idLit(id),
 		"name: " + lobster.StringLit([]byte(f.Name)),
 		"slot: " + lobster.StringLit([]byte(ir.GoExportName(f.Name))),
-		"json: " + lobster.StringLit([]byte(ir.TableFieldJsonKey(f))),
+		"json: " + lobster.StringLit([]byte(jsonKey)),
+		"type_name: " + lobster.StringLit([]byte(ir.TableTypeSpelling(f))),
+		"type_ref: " + lobster.StringLit([]byte(f.Type.Name)),
+		"doc: " + lobster.StringLit([]byte(f.Doc)),
+		"tags: " + tagList(f.Tags),
 		fmt.Sprintf("o: %d", ordinal),
 		fmt.Sprintf("k: %d", ir.TableWireFieldKind(f)),
 	}

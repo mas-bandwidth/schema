@@ -2,12 +2,19 @@ package cstable
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func (g *tableGen) emitBuilders(names []string) {
-	g.tf("%s", tableBuilderSource+tableBuilderCollectionsSource)
+	source := tableBuilderSource
+	restricted := restrictedCook(g.unit)
+	if restricted {
+		source = strings.ReplaceAll(source, "public long CookMeasure()", "protected long CookMeasureCore()")
+		source = strings.ReplaceAll(source, "public bool Cook(Span<byte>", "protected bool CookCore(Span<byte>")
+	}
+	g.tf("%s", source+tableBuilderCollectionsSource)
 	g.pf("internal static TableTypeInfo TableBuilderType<T>() where T : unmanaged\n{\n")
 	closure := ir.TableClosure(g.unit)
 	var rows []string
@@ -28,6 +35,10 @@ func (g *tableGen) emitBuilders(names []string) {
 		g.tf("public sealed unsafe class %sBuilder : TableBuilder\n{\n", n)
 		g.tf("    public %sBuilder(TableAllocator allocator = default) : base(Schema.%sTableType(), allocator) { }\n", n, n)
 		g.pf("public static bool %sLoadBuilder(%sBuilder builder, ReadOnlySpan<byte> bytes, TableReport report) { return builder.Load(bytes, report); }\n", n, n)
+		if restricted && g.unit.Tables[n].CarriesForm("cook") {
+			g.tf("    public long CookMeasure() { return CookMeasureCore(); }\n")
+			g.tf("    public bool Cook(Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return CookCore(bytes, order); }\n")
+		}
 		g.tf("    public %sRow* GetRoot() { return (%sRow*)MutableRoot; }\n", n, n)
 		g.tf("    public %sRow* AsConst() { return (%sRow*)LockedRoot; }\n}\n\n", n, n)
 	}

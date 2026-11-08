@@ -35,7 +35,7 @@ func TestCSharpWideClampComparesThroughTheBCLType(t *testing.T) {
 	if !strings.Contains(src, "if (((System.Int128)value.Flux) < unchecked((Int128)") {
 		t.Error("the low end of MixedRow.Flux's clamp does not compare through System.Int128")
 	}
-	if !strings.Contains(src, "else if (((System.Int128)value.Flux) > unchecked((Int128)") {
+	if !strings.Contains(src, "|| ((System.Int128)value.Flux) > unchecked((Int128)") {
 		t.Error("the high end of MixedRow.Flux's clamp does not compare through System.Int128")
 	}
 	for _, bare := range []string{"(value.Flux < unchecked(", "(value.Flux > unchecked("} {

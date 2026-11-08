@@ -1,0 +1,46 @@
+#!/bin/sh
+# One original-nine reader over the four shared BOM entry fixtures.
+# Use the existing harness scorer and driver protocol; no corpus generation.
+set -eu
+
+check_lang() {
+    case "$1" in
+        cpp|c|cs|go|rust|java|js|dart|elixir) ;;
+        *) echo "BOM entry gate only covers the original nine ports: $1" >&2; exit 2 ;;
+    esac
+}
+
+if [ "${1:-}" = --driver ]; then
+    lang=$2
+    shift 2
+    check_lang "$lang"
+    if [ "$2" = list ]; then
+        # Never let this narrow wrapper invent an advertised reader surface.
+        listed=$(test/conformance/"$lang"/driver "$1" list)
+        printf '%s\n' "$listed" | grep -qx json-hostile || {
+            echo "$lang does not advertise json-hostile" >&2
+            exit 1
+        }
+        printf '%s\n' json-hostile
+        exit 0
+    fi
+    exec test/conformance/"$lang"/driver "$@"
+fi
+
+lang=${1:-}
+check_lang "$lang"
+harness=${2:-build/conformance-harness}
+out=${3:-build/conformance-bom-entry/$lang}
+mkdir -p "$out"
+printf '%s sh test/conformance/bom-entry --driver %s\n' "$lang" "$lang" > "$out/drivers.txt"
+status=0
+"$harness" run --manifest testdata/conformance/tables/bom-entry/MANIFEST.txt \
+    --drivers "$out/drivers.txt" --work "$out/work" \
+    --results "$out/bom-results.json" > "$out/log" 2>&1 || status=$?
+cat "$out/log"
+[ "$status" -eq 0 ] || exit "$status"
+# A substituted registry may otherwise treat a missing surface as uncarried.
+grep -Eq '^json-hostile +pass 4/4 *$' "$out/log" || {
+    echo "$lang did not answer all four BOM entry cases" >&2
+    exit 1
+}

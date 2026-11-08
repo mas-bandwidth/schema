@@ -77,6 +77,9 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	sort.Strings(names)
 	for _, name := range names {
 		st := u.Tables[name]
+		if !st.CarriesForm("cook") {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
@@ -98,7 +101,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	aligns := make([]int64, 0, len(c.members)+len(c.unions))
 	for name := range c.members {
 		c.order = append(c.order, name)
-		aligns = append(aligns, c.members[name].Align)
+		aligns = append(aligns, ir.CookNodeAlign(u, cookMember(u, name)))
 	}
 	for _, un := range c.unions {
 		_, align, _, _ := ir.UnionLayout(u, un)
@@ -119,6 +122,11 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout), uni
 	var walk func(string)
 	var field func(*ir.Field)
 	field = func(f *ir.Field) {
+		// a MAP's entries are records of its generated entry table, laid in the
+		// holder's node extent (§2.8, §7.6)
+		if f != nil && f.IsMap() {
+			walk(f.MapEntry.Name)
+		}
 		if f == nil || f.Type.Kind != ir.TNamed {
 			return
 		}
@@ -163,13 +171,13 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 		if f == nil {
 			return ""
 		}
-		// An UNBOUNDED ARRAY ([]T, docs/SPEC-TABLES.md §2.9) makes a table
-		// VARIABLE-LENGTH: there is no fixed pitch anywhere in it, so a
-		// cooked record's accessors cannot read one field at one offset
-		// (§7, §19). The card is the first such table this backend meets,
-		// and it is skipped here, not laid out.
-		if f.Array == ir.ArrayList {
-			return owner + "." + f.Name + " is an unbounded array, and a variable-length table has no fixed pitch to cook (docs/SPEC-TABLES.md §2.9)"
+		// a map's key and value are its entry's fields
+		if f.IsMap() {
+			for _, ef := range f.MapEntry.Fields {
+				if why := field(owner+"."+f.Name, ef); why != "" {
+					return why
+				}
+			}
 		}
 		if f.Type.Kind != ir.TNamed {
 			return ""
@@ -242,6 +250,9 @@ public enum TableCookStorage {
     BYTES, // uint8[N] with an int32 used length beside it
     UNION, // a TAG at the union's base, the SET arm overlaid after it (§7.2)
     WIDE, // a 128-bit integer: sixteen bytes at sixteen, one eight-byte lane per half
+    LIST, // a []T holder: sixteen bytes, a self-relative reference and an int32 count (§2.9)
+    MAP, // a map holder: the same sixteen bytes over its sorted entry array (§2.8)
+    WSTRING, // char16_t[N + 1] with an int32 used length in UTF-16 code units
 }
 `
 
@@ -288,6 +299,14 @@ public final class TableCookInfo {
      *  what a counted array's slot past the live count and a fixed array's
      *  slot past the value's elements hold (§7.2); null for a union. */
     public java.util.function.Supplier<Object> defaults;
+    /** the record holds a list or a map BY VALUE, at any depth: its node is its
+     *  storage rounded to eight, then its EXTENT (docs/SPEC-TABLES.md §7.6). */
+    public boolean hasExtent;
+    /** the greatest alignment of any element or entry the extent can hold, from the
+     *  TYPES: the node aligns to the greater of this and its record's, and the
+     *  extent begins at the record's size rounded to the greater of this and
+     *  eight (§7.6). 1 for a record with no extent. */
+    public int extentAlign = 1;
     public int size;
     public int align;
     public int numFields;
@@ -322,6 +341,11 @@ public final class TableCookFieldInfo {
     public TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
     public InfoRef recordRef;
     public int tag; // a union ARM's tag (§7.2); 0 for a record's field
+    /** a LIST or MAP holder: one element's size and alignment in the node extent,
+     *  and the element as a field at offset zero (a map's is its entry record). */
+    public int extentSize;
+    public int extentAlign;
+    public TableCookFieldInfo element;
 
     public TableCookInfo record() {
         return recordRef == null ? null : recordRef.get();
@@ -361,6 +385,14 @@ public final class TableCookFieldInfo {
         f.recordRef = record;
         return f;
     }
+
+    /** this field as a LIST or MAP holder over elements of the given size and alignment. */
+    public TableCookFieldInfo extent(int size, int align, TableCookFieldInfo element) {
+        this.extentSize = size;
+        this.extentAlign = align;
+        this.element = element;
+        return this;
+    }
 }
 `
 
@@ -380,6 +412,9 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		if !u.Tables[name].CarriesForm("cook") {
+			continue
+		}
 		var b strings.Builder
 		if !ck.opens(name) {
 			fmt.Fprintf(&b, "// table %s has NO Java cook Open: %s (docs/SPEC-TABLES.md §7, §19.3).\n", name, ck.skipped[name])
@@ -437,7 +472,7 @@ func (g *cookGen) emit() {
 	g.f("    // the greatest alignof in the region, floor eight\n")
 	g.f("    public static final long regionAlignment = %dL;\n", align)
 	g.f("    public static final long rootSize = %dL;\n", ml.Size)
-	g.f("    public static final long rootAlign = %dL;\n\n", ml.Align)
+	g.f("    public static final long rootAlign = %dL;\n\n", ir.CookNodeAlign(g.unit, g.table))
 	g.f("    public byte[] data() { return data; }\n")
 	g.f("    public int region() { return region; }\n")
 	g.f("    public long regionLength() { return regionLength; }\n\n")
@@ -445,11 +480,7 @@ func (g *cookGen) emit() {
 	g.f("     *  %sRow's accessors. */\n", name)
 	g.f("    public int root() { return region; }\n\n")
 	g.emitOpen(ml, align)
-	if m := cookMapFieldOf(g.unit, g.table); m != "" {
-		g.emitWriteRefused(m)
-	} else {
-		g.emitWrite()
-	}
+	g.emitWrite()
 	g.emitAt()
 	g.f("    /** this root's cook descriptors: constant data, so a reflective walk costs a\n")
 	g.f("     *  lookup and not a parse. Every record the region can hold hangs off the\n")
@@ -700,78 +731,59 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
 	return javaFile(u, "the cook closure's layout contract, run once (docs/SPEC-TABLES.md §20.3).", b.String())
 }
 
-// cookMapField names the first map a root's cook closure holds, by value or
-// behind a pointer, as Owner.field, or "" when it holds none. The Java cook
-// writer lays out no map entry array (docs/PORTING.md M19), so a root that
-// holds one REFUSES its cook by name, where the reflective plan failed on the
-// map slot and answered invalid_value: the same refusal the tool's cook gives a
-// map-bearing unit (compiler/tablesmaps.go refuseToolMaps, docs/SPEC-TABLES.md
-// §2.8).
-// cookMapFieldOf is the function the emitter asks; the refusal's negative
-// control (TestJavaCookMapRefusalNegativeControl) swaps it for one that
-// finds no map, which is the refusal planted out of the emitter.
-var cookMapFieldOf = cookMapField
-
-func cookMapField(u *ir.Unit, st *ir.Struct) string {
-	seen := map[string]bool{}
-	var walk func(*ir.Struct) string
-	var field func(string, *ir.Field) string
-	field = func(owner string, f *ir.Field) string {
-		if f == nil {
-			return ""
-		}
-		if f.IsMap() {
-			return owner + "." + f.Name
-		}
-		if f.Type.Kind != ir.TNamed {
-			return ""
-		}
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Union:
-			if seen["union:"+ref.Name] {
-				return ""
-			}
-			seen["union:"+ref.Name] = true
-			for _, v := range ref.Variants {
-				if m := field(ref.Name, v.F); m != "" {
-					return m
-				}
-			}
-		case *ir.Struct:
-			return walk(ref)
-		}
-		return ""
-	}
-	walk = func(s *ir.Struct) string {
-		if s == nil || seen[s.Name] {
-			return ""
-		}
-		seen[s.Name] = true
-		m := cookMember(u, s.Name)
-		if m == nil {
-			m = s
-		}
-		for _, f := range m.Fields {
-			if name := field(m.Name, f); name != "" {
-				return name
-			}
-		}
-		return ""
-	}
-	return walk(st)
+// cookHasExtent is the tool's recordHasExtent (internal/tablecook/extent.go):
+// a record holds a list or a map BY VALUE at any depth — directly, inside a
+// nested record, or inside a union arm — and so its node is its storage rounded
+// to the region's floor of eight, then its EXTENT (docs/SPEC-TABLES.md §7.6). A
+// pointer and a byte buffer are nodes of their own and never part of it.
+func cookHasExtent(u *ir.Unit, st *ir.Struct) bool {
+	return cookExtentWalk(u, st, nil, map[string]bool{})
 }
 
-// emitWriteRefused is emitWrite for a root whose closure holds a map (field
-// names it): every write entry point refuses, by the reason map_bearing, and
-// writes nothing, because the Java cook lays out no map entry array
-// (docs/PORTING.md M19; docs/SPEC-TABLES.md §2.8).
-func (g *cookGen) emitWriteRefused(field string) {
-	g.f("    /** THE COOK OF A MAP-BEARING ROOT IS REFUSED: %s is a map, and this writer\n", field)
-	g.f("     *  lays out no map entry array, so a cook would drop the map. */\n")
-	g.f("    public static final String cookRefusal = \"map_bearing: %s\";\n\n", field)
-	g.f("    public static long cookMeasure(Object value) {\n        return -1;\n    }\n\n")
-	g.f("    public record MeasureReason(long bytes, String reason) {}\n\n")
-	g.f("    public static MeasureReason cookMeasureReason(Object value) {\n")
-	g.f("        return new MeasureReason(-1, cookRefusal);\n    }\n\n")
-	g.f("    public static boolean cookFrom(Object value, byte[] buffer, int order) {\n        return false;\n    }\n\n")
+func cookUnionHasExtent(u *ir.Unit, un *ir.Union) bool {
+	return cookExtentWalk(u, nil, un, map[string]bool{})
+}
+
+func cookExtentWalk(u *ir.Unit, st *ir.Struct, un *ir.Union, seen map[string]bool) bool {
+	var fields []*ir.Field
+	switch {
+	case st != nil:
+		if seen[st.Name] {
+			return false
+		}
+		seen[st.Name] = true
+		if m := cookMember(u, st.Name); m != nil {
+			st = m
+		}
+		fields = st.Fields
+	case un != nil:
+		if seen["union:"+un.Name] {
+			return false
+		}
+		seen["union:"+un.Name] = true
+		for _, v := range un.Variants {
+			if v.F != nil {
+				fields = append(fields, v.F)
+			}
+		}
+	}
+	for _, f := range fields {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
+			return true
+		}
+		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if cookExtentWalk(u, ref, nil, seen) {
+				return true
+			}
+		case *ir.Union:
+			if cookExtentWalk(u, nil, ref, seen) {
+				return true
+			}
+		}
+	}
+	return false
 }

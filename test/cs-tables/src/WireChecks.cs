@@ -73,9 +73,10 @@ static partial class Program
         // fabricated from that following field.
         report = new V1.TableReport();
         byte[] headerSpill = Fixture(new byte[] { 1,14,2,4,128,1,1,1,0 }, "items");
-        Check(V1.Schema.CfgLoadVerdict(cfg, headerSpill, report) == V1.Schema.TableWire.Verdict.Ok &&
-            report.Malformed && report.Clamped == 1 && report.KindMismatch == 1 && cfg.ItemsCount == 0,
-            "array header spill matches reference events while elements stay bounded");
+        // The spill is damage, so the whole load is discarded (§4).
+        Check(V1.Schema.CfgLoadVerdict(cfg, headerSpill, report) == V1.Schema.TableWire.Verdict.Damaged &&
+            report.Malformed && report.Clamped == 1 && report.KindMismatch == 1 && cfg.ItemsCount == 0 && cfg.A == 5,
+            "array header spill matches reference events and discards the whole load");
 
         // The report and all typed storage belong to the caller. Warm metadata
         // and the JIT, then measure only repeated loads and saves.

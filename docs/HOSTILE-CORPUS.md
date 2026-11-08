@@ -19,7 +19,9 @@ internal/ci/hostilecorpus/corpus.go
 internal/ci/schema_shared_hostile_corpus_test.go
     the drift, reason-coverage, source, generator and negative-control tests.
 tools/hostilecorpus/main.go
-    the Go port runner and the worked example every per-port card follows.
+    the Go engine replay and the worked example every per-port card follows.
+test/go-hostile/
+    a separate native runner calling the generated Go public readers.
 make/checks/schema-shared-hostile-corpus.mk
     the gate and generator targets (included explicitly with the other
     make/checks gates).
@@ -75,7 +77,7 @@ engine names `count_refusal`.
 make schema-shared-hostile-corpus                 # fast gate (push/PR)
 make schema-shared-hostile-corpus-negative-control # planted controls (nightly)
 make schema-shared-hostile-corpus-generate        # regenerate after an engine change
-go run ./tools/hostilecorpus run                  # the Go port runner: every verdict
+go run ./tools/hostilecorpus run                  # the Go engine replay: every verdict
 ```
 
 `tools/hostilecorpus run` is the worked example: it loads the manifest, decodes
@@ -84,12 +86,38 @@ case and fails if any verdict differs from the committed manifest. A per-port
 card (`schema-<port>-runs-hostile-corpus`) follows the same shape with that
 port's decoder and the same manifest.
 
-Three ports carry one today. Java: `make schema-java-runs-hostile-corpus`
+The generated Go gate is `make schema-go-runs-hostile-corpus`, included in
+`test-go` and therefore in the full nightly build. It generates each distinct
+unit once and reads each manifest row once through generated tolerant text,
+file, message and announcement APIs. Variable wire reads use the generated
+region measure and load pair; text reads use generated builders. It compares
+named refusals and canonical JSON digests without calling the reference
+engine, and its negative control changes only a scratch manifest verdict.
+
+The ports with runners include Java: `make schema-java-runs-hostile-corpus`
 (`test/java-hostile/Runner.java`, the units the manifest names compiled with
 `javac --release 17 -Xlint:all -Werror`). Elixir: `make schema-elixir-runs-hostile-corpus`
 (`test/elixir-hostile/runner.exs`). Dart: `make schema-dart-runs-hostile-corpus`
 (`test/dart-hostile/runner.dart`, the generated `<Package>Wire.dart` and
-`<Package>Fixed.dart` readers, every carrier). Each carries the disagreements
+`<Package>Fixed.dart` readers, every carrier). Rust: `make schema-rust-runs-hostile-corpus`
+(`test/rust-hostile`, one generated crate per schema the manifest names, run
+in the release and the debug profile, each case in a child process on a
+512 KiB stack with a 5 s budget). C#: `make schema-cs-runs-hostile-corpus`
+(`test/cs-hostile/Runner.cs`; `test/cs-hostile/gen` writes the dispatch from the
+manifest, and each case runs in a pooled worker process on a 512 KiB stack
+thread, so a stack overflow or a hang fails only its own case; a variable
+root's `wire` case must agree on the managed and the native region load).
+JavaScript: `make schema-js-runs-hostile-corpus` (`test/js-hostile/runner.mjs`,
+every carrier, each row on its own worker thread under the per-case time budget;
+a packet case runs both read tiers, runtime and flat, under NODE_ENV development
+and production, one row each). C and C++:
+`make schema-c-runs-hostile-corpus` and `make schema-cpp-runs-hostile-corpus`
+(the units in `test/c-hostile` and `test/cpp-hostile`, linked into one case
+binary per port under AddressSanitizer and UndefinedBehaviorSanitizer and
+driven by `tools/hostilecorpusexec`, which runs each case in its own process
+with a 512 KiB case-thread stack and the per-case budget, so a crash, a
+sanitizer report or a hang fails only that case; a retaining load of a
+fixed-storage root, which neither port has, answers `SKIP`). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.
@@ -125,7 +153,7 @@ seed fails on every push and pull request.
 cited source must still exist in the checkout as a regular file, and every leaf
 file in the seed/vector trees below must be cited by the manifest, so a new fuzz
 crash or conformance vector cannot silently fall out of the corpus. The source
-trees are walked recursively and provenance cites the actual vector file (for a
+trees are walked recursively and provenance cites the actual vector file, and its expected-value golden where it has one (for a
 conformance vector, the case directory's `*.json`, not the directory itself), so
 the 131 `json-hostile` case subdirectories are inventoried too.
 

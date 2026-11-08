@@ -23,7 +23,9 @@ TableRefuseInvalidValue
 TableRefuseAllocationFailed
 TableRefuseWireDamaged
 TableRefuseMalformed
-TableRefuseClamped
+// TableRefuseOutOfRange: a value outside a range the read holds it to
+// (docs/SPEC-TABLES.md §4, §6.5), the ordinal the retired spelling clamped held.
+TableRefuseOutOfRange
 TableRefuseKindMismatch
 TableRefuseBase64Damaged
 TableRefuseBase64NotCanonical
@@ -64,6 +66,10 @@ TableRefuseTextIllFormed
 TableRefuseCountOverBound
 TableRefuseLengthOverBound
 )
+// TableRefuseMissingRequired is a record that lacks a | required field
+// (docs/SPEC-TABLES.md §2.3). It is a report-only member: Err answers the typed
+// TableMissingRequired naming the fields, never this value.
+const TableRefuseMissingRequired TableRefuseReason = 255
 func(r TableRefuseReason) Error()string{switch r {
 case TableRefuseOk:return "ok"
 case TableRefuseNotACook:return "not_a_cook"
@@ -83,7 +89,7 @@ case TableRefuseInvalidValue:return "invalid_value"
 case TableRefuseAllocationFailed:return "allocation_failed"
 case TableRefuseWireDamaged:return "wire_damaged"
 case TableRefuseMalformed:return "malformed"
-case TableRefuseClamped:return "clamped"
+case TableRefuseOutOfRange:return "out_of_range"
 case TableRefuseKindMismatch:return "kind_mismatch"
 case TableRefuseBase64Damaged:return "base64_damaged"
 case TableRefuseBase64NotCanonical:return "base64_not_canonical"
@@ -110,17 +116,17 @@ case TableRefuseBatchTooLarge:return "batch_too_large"
 case TableRefuseTextIllFormed:return "text_ill_formed"
 case TableRefuseCountOverBound:return "count_over_bound"
 case TableRefuseLengthOverBound:return "length_over_bound"
+case TableRefuseMissingRequired:return "missing_required"
 };return "invalid refusal reason"}
 // tableTruncatedMalformed is the typed error a truncated fixed load answers
-// (docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): a short file is
-// malformed by class and truncated by name, so a caller matching either sees
-// it. It is a value, not the caller's *TableReport, so the error keeps its
-// answer when the report is reused. The rule is on this error, not on the
-// enum: the fixed writer's short output buffer returns TableRefuseTruncated
-// itself and never matches malformed.
+// (docs/SPEC-TABLES.md §3.4): truncated by name, and matched by
+// errors.Is(err, TableRefuseWireDamaged) as the damage it is. It is a value, not
+// the caller's *TableReport, so the error keeps its answer when the report is
+// reused; the fixed writer's short output buffer returns TableRefuseTruncated
+// itself.
 type tableTruncatedMalformed struct{}
 func(tableTruncatedMalformed) Error() string {return TableRefuseTruncated.Error()}
-func(tableTruncatedMalformed) Is(target error) bool {return target==TableRefuseTruncated||target==TableRefuseMalformed}
+func(tableTruncatedMalformed) Is(target error) bool {return target==TableRefuseTruncated||target==TableRefuseWireDamaged}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
 // reports (docs/SPEC-TABLES.md §3.3): the endpoint's build version and the
@@ -133,21 +139,30 @@ func(m TableBuildVersionMismatch) Error() string {const digits="0123456789abcdef
 // the record they were missing, and Error() is the report's own reason.
 type TableMissingRequired struct { Fields string }
 func(m TableMissingRequired) Error() string {return "missing_required: "+m.Fields}
-// Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
-// The read report). A strict read refuses malformed, clamped, kind-mismatched,
-// unknown form, wire-damaged, build-version-mismatched, missing-required
-// (§2.3, naming the field), a non-finite float (§3.3, refused by every read:
-// non_finite_float, named in NonFiniteFloat and Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// TableOutOfRange is a read's out_of_range refusal naming the field whose value
+// lies outside the range the read holds it to (docs/SPEC-TABLES.md §4, §6.5):
+// errors.Is(err, TableRefuseOutOfRange) holds.
+type TableOutOfRange struct{ Field string }
+func (e TableOutOfRange) Error() string { return "out_of_range: " + e.Field }
+func (e TableOutOfRange) Is(target error) bool { return target == TableRefuseOutOfRange }
+// TableMalformedField is the JSON read's malformed refusal naming the field it
+// refused (docs/SPEC-TABLES.md §16.2): errors.Is(err, TableRefuseMalformed) holds.
+type TableMalformedField struct{ Field string }
+func (e TableMalformedField) Error() string { return "malformed: " + e.Field }
+func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
+// Err is the report's typed error (docs/SPEC-TABLES.md §6.5): nil on a read that
+// returned, and the refusal otherwise, as an error value whose detail names the
+// reason and, where it has one, the field. errors.Is matches the
+// TableRefuseReason member; errors.As matches the typed errors
+// (TableMissingRequired, TableOutOfRange, TableBuildVersionMismatch).
+// Unknown, Widened and Retained never make it non-nil.
 func(r *TableReport) Err() error {
 if r==nil {return nil}
 if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Remote:r.BuildVersionRemote,Own:r.BuildVersionOwn}}
-// A NON-FINITE FLOAT outranks every later verdict: no read keeps one (§3.3).
-if r.NonFiniteFloat!="" {return TableRefuseNonFiniteFloat}
 // The fixed form's named refusals (docs/SPEC-TABLES.md §6.5, §21.3) answer as
 // their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
 // holds for a fixed load that refused. The form-byte refusals (previous_form,
-// newer_form, message_form_as_file) are NOT in this switch: §6.5's strict error
-// identity keeps them answering TableRefuseUnknownForm below.
+// newer_form, message_form_as_file) answer TableRefuseUnknownForm below.
 if r.FixedRaised && r.Verdict==TableOpenRefused {
 	switch r.Reason {
 	case "layout_unknown": return TableRefuseLayoutUnknown
@@ -167,50 +182,29 @@ if r.FixedRaised && r.Verdict==TableOpenRefused {
 	case "text_ill_formed": return TableRefuseTextIllFormed
 	case "count_over_bound": return TableRefuseCountOverBound
 	case "length_over_bound": return TableRefuseLengthOverBound
+	case "out_of_range": return TableOutOfRange{Field:r.Field}
 	case "truncated": return TableRefuseTruncated
 	case "reserved_not_zero": return TableRefuseReservedNotZero
+	case "wire_damaged": return TableRefuseWireDamaged
+	case "non_finite_float": return TableRefuseNonFiniteFloat
+	case "kind_mismatch": return TableRefuseKindMismatch
 	}
 	return TableRefuseUnknownForm
 }
-// The fixed form's framing-damage returns (docs/SPEC-TABLES.md §6.5, §3.4) set
-// Malformed and their Reason without FixedRaised, because they return -1
-// directly instead of through tableFixedRefuse. A short fixed file keeps the
-// truncated name and answers the malformed class through a value error; the
-// enum itself stays one name per clause, so a save's short output buffer is
-// truncated and not malformed.
-if r.Reason=="truncated" {if r.Malformed {return tableTruncatedMalformed{}};return TableRefuseTruncated}
+// A short fixed file keeps the truncated name and answers the damage class
+// through a value error; a save's short output buffer is truncated alone.
+if r.Reason=="truncated" {if r.Refusal!=TableRefuseOk {return tableTruncatedMalformed{}};return TableRefuseTruncated}
 if r.Reason=="reserved_not_zero" {return TableRefuseReservedNotZero}
 if r.Verdict==TableOpenRefused || r.Reason=="previous_form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" {return TableRefuseUnknownForm}
 if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
-if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
-if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(p)&&f[:len(p)]==p{f=f[len(p):]};return TableMissingRequired{Fields:f}}
-if r.Malformed {return TableRefuseMalformed}
-// A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
-// the one node and counts it; the strict read refuses it by name.
-if r.BlobShared>0 {return TableRefuseBlobShared}
-if r.Clamped>0 {if r.ClampedField!=""{return TableClampedField{Field:r.ClampedField}};return TableRefuseClamped}
-if r.KindMismatch>0 {return TableRefuseKindMismatch}
-return nil}
-// tableNonFiniteFloat names a float whose raw bits a read found to be a NaN or
-// an infinity (docs/SPEC-TABLES.md §3.3): the field is not written and the load,
-// tolerant too, refuses as non_finite_float. The first name wins. It takes the
-// report's slot, not a method, so the shared runtime (§8.4) can export it; the
-// file and message readers both pass &r.Report.NonFiniteFloat.
-func tableNonFiniteFloat(slot *string,field string){if *slot==""{*slot=field}}
-// tableNonFiniteRefused names a load's non-finite float in Reason; the caller
-// refuses and lands nothing (docs/SPEC-TABLES.md §3.3).
-func tableNonFiniteRefused(report *TableReport)bool{if report.NonFiniteFloat==""{return false};report.Reason="non_finite_float: "+report.NonFiniteFloat;return true}
-// tableTextClamped names the field whose value a read clamped (docs/SPEC-TABLES.md
-// §6.5), so a strict read can say which field. The first name a read records
-// wins, as for non_finite_float. It lands in the report's own ClampedField slot,
-// apart from Reason, so the clamped refusal keeps its field whatever Reason holds. The slot is named by pointer
-// so the same emitted call compiles in every reader context (the table read's
-// *TableReader, the message read's TableMessageReader).
-func tableTextClamped(clampedField *string,field string){if clampedField!=nil&&*clampedField==""{*clampedField=field}}
-// TableClampedField is a strict read's clamped refusal naming the field it clamped
-// (docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
-type TableClampedField struct{ Field string }
-func (e TableClampedField) Error() string { return "clamped: " + e.Field }
-func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
+if r.Reason=="count_over_extent_cap" {return TableRefuseCountOverExtentCap}
+if r.Verdict==TableOpenDamaged && r.Refusal==TableRefuseOk {return TableRefuseWireDamaged}
+switch r.Refusal {
+case TableRefuseOk: return nil
+case TableRefuseMissingRequired: return TableMissingRequired{Fields:r.Field}
+case TableRefuseOutOfRange: return TableOutOfRange{Field:r.Field}
+case TableRefuseMalformed: if r.Field!="" {return TableMalformedField{Field:r.Field}}
+}
+return r.Refusal}
 
 `

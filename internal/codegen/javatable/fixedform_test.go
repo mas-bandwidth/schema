@@ -386,13 +386,11 @@ fixed table LiveRoot
 // `make tables-java-fixedform-arm-negative-control`, whose case reads a record
 // through parse/compile/run directly and not through the load path.
 func TestFixedFormFU1FU2(t *testing.T) {
-	t.Skip("retired by §5.6: a compiled read of a stranger's layout; owed as the FU1/FU2 lineage pair in fixedversioning_test.go")
-
 	fu1Files, err := Generate(schemaUnit(t, "FU1.schema"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fu2Files, err := Generate(schemaUnit(t, "FU2.schema"))
+	fu2Files, err := GenerateLineage(schemaUnit(t, "FU2.schema"), lineageOf(t, []string{"FU1.schema"}, 0))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,7 +14,7 @@ typedef struct TableMessageReader {
 } TableMessageReader;
 /* Framing scans skip by announced shape, including a reserved transport id
    (kind 0, no extra bits). A NAME reference still refuses reserved ids.
-   Typed body reads diagnose reserved as malformed after resolving the entry. */
+   Typed body reads diagnose reserved as damaged after resolving the entry. */
 static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMessageEntry ** entry,int name)
 {
  uint64_t ref=0;*entry=NULL;
@@ -50,7 +50,7 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader *,const TableMess
    message_skip_depth). table_message_open zeroes it, so every external caller
    starts at 0. A nested body, a union arm and a walked element each enter the
    next call at skip_depth+1; the caller restores the saved value on every
-   path. Past 128 is malformed, and 128 itself still skips. */
+   path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
 {
  if(r->skip_depth>128)return 0;
@@ -134,21 +134,21 @@ static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const Tab
 {
  uint64_t count;
  memset(r,0,sizeof(*r));r->report=report;r->vocabulary=v;
- if(bytes<1 || buffer==NULL){report->malformed=1;return -1;}
+ if(bytes<1 || buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return -1;}
  if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return -1;}
  if(v==NULL || !v->announced){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;return -1;}
  r->bits=table_bit_reader(buffer+1,bytes-1);
- if(!table_bit_get(&r->bits,&count,8)){report->malformed=1;return -1;}
+ if(!table_bit_get(&r->bits,&count,8)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return -1;}
  return (int64_t)count+1;
 }
 static SCHEMA_UNUSED int table_message_close(TableMessageReader * r)
 {
- if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;return 0;}return 1;
+ if(!table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}return 1;
 }
 `
 
 func (g *tableGen) messageReadEnum(e *ir.Enum, dst, ind string) {
-	g.pf("%s{ const TableMessageEntry * named; if(!table_message_ref(r,&named,1)) goto malformed;\n%s if(named==NULL) %s=%s; else switch(named->id) {\n", ind, ind, dst, enumNoneConst(e.Name))
+	g.pf("%s{ const TableMessageEntry * named; if(!table_message_ref(r,&named,1)) goto damaged;\n%s if(named==NULL) %s=%s; else switch(named->id) {\n", ind, ind, dst, enumNoneConst(e.Name))
 	for i, v := range e.Variants {
 		g.pf("%s case UINT64_C(0x%016x): %s=%s;break;\n", ind, ir.TableWireId(e.VariantWireName(i)), dst, enumConst(e.Name, v))
 	}
@@ -171,21 +171,21 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		// walk goes on; the batch answers the refusal at its end. Every finite
 		// float32 is exactly a float64, so the ordinary conversion is the
 		// float rung.
-		g.pf("%s{ %s decoded=0; int finite=1; if(%s->kind==10) {float narrow=0;int got=table_message_float(r,%s,&narrow);if(!got)goto malformed;finite=got==1;", ind, typ, e, e)
+		g.pf("%s{ %s decoded=0; int finite=1; if(%s->kind==10) {float narrow=0;int got=table_message_float(r,%s,&narrow);if(!got)goto damaged;finite=got==1;", ind, typ, e, e)
 		if kind == tkF64 {
 			g.pf("decoded=(double)narrow;")
 		} else {
 			g.pf("decoded=narrow;")
 		}
-		g.pf("} else {uint64_t raw;if(!table_bit_get(&r->bits,&raw,64))goto malformed;finite=table_bits_finite64(raw);if(finite)decoded=(%s)table_bits_to_double(raw);else table_non_finite_float(r->report);}\n", typ)
+		g.pf("} else {uint64_t raw;if(!table_bit_get(&r->bits,&raw,64))goto damaged;finite=table_bits_finite64(raw);if(finite)decoded=(%s)table_bits_to_double(raw);else table_non_finite_float(r->report);}\n", typ)
 		g.pf("%s if(finite){", ind)
 		if f.HasFloatRange {
-			g.pf("if(decoded<%s){decoded=%s;r->report->clamped++;}else if(decoded>%s){decoded=%s;r->report->clamped++;}", formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMax, kind == tkF32), formatFloat(f.FMax, kind == tkF32))
+			g.pf("if(decoded<%s){decoded=%s;r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;}else if(decoded>%s){decoded=%s;r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;}", formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMax, kind == tkF32), formatFloat(f.FMax, kind == tkF32))
 		}
 		g.pf("%s=decoded;} }\n", dst)
 		return
 	}
-	g.pf("%s{ uint64_t lo,hi;if(!table_message_number(r,%s,&lo,&hi))goto malformed;\n", ind, e)
+	g.pf("%s{ uint64_t lo,hi;if(!table_message_number(r,%s,&lo,&hi))goto damaged;\n", ind, e)
 	if f.Type.Width == 128 {
 		typ := g.cFieldType(f.Type)
 		g.pf("%s %s decoded;decoded.lo=lo;decoded.hi=hi;\n", ind, typ)
@@ -199,7 +199,7 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 				if f.Type.Signed {
 					cmp = "serialize_int128_compare(decoded,bound)" + op + "0"
 				}
-				g.pf("%s { %s bound=%s;if(%s){decoded=bound;r->report->clamped++;} }\n", ind, typ, tableWideLit(b, f.Type.Signed), cmp)
+				g.pf("%s { %s bound=%s;if(%s){decoded=bound;r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;} }\n", ind, typ, tableWideLit(b, f.Type.Signed), cmp)
 			}
 		}
 		g.pf("%s %s=decoded; }\n", ind, dst)
@@ -209,7 +209,7 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		g.pf("%s %s=lo!=0; }\n", ind, dst)
 		return
 	}
-	signed := ir.TableKindSigned(kind)
+	signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 	typ := "uint64_t"
 	if signed {
 		typ = "int64_t"
@@ -231,11 +231,11 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 	floor, ceiling := messageRange(signed, 64)
 	if low.Cmp(floor) > 0 {
 		s := tableIntLit(low, signed, 8)
-		g.pf("%s if(decoded<%s){decoded=%s;r->report->clamped++;}\n", ind, s, s)
+		g.pf("%s if(decoded<%s){decoded=%s;r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;}\n", ind, s, s)
 	}
 	if high.Cmp(ceiling) < 0 {
 		s := tableIntLit(high, signed, 8)
-		g.pf("%s if(decoded>%s){decoded=%s;r->report->clamped++;}\n", ind, s, s)
+		g.pf("%s if(decoded>%s){decoded=%s;r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;}\n", ind, s, s)
 	}
 	g.pf("%s %s=(%s)decoded; }\n", ind, dst, g.cFieldType(f.Type))
 }
@@ -270,28 +270,28 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 		if f.Type.Kind == ir.TWString {
 			bits = 16
 		}
-		g.pf("%s{uint64_t n,kept;if(!table_bit_get(&r->bits,&n,%s))goto malformed;\n", ind, width)
+		g.pf("%s{uint64_t n,kept;if(!table_bit_get(&r->bits,&n,%s))goto damaged;\n", ind, width)
 		if bits == 8 {
-			g.pf("%s if(!table_bit_align_read(&r->bits))goto malformed;\n", ind)
+			g.pf("%s if(!table_bit_align_read(&r->bits))goto damaged;\n", ind)
 		}
-		g.pf("%s if(n>INT64_MAX/%d || !table_bit_has(&r->bits,(int64_t)n*%d))goto malformed;\n", ind, bits, bits)
+		g.pf("%s if(n>INT64_MAX/%d || !table_bit_has(&r->bits,(int64_t)n*%d))goto damaged;\n", ind, bits, bits)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);if(!table_wire_utf8(text,n))goto malformed;kept=table_wire_utf8_clamp(text,n,%d);memcpy(%s,text,(size_t)kept);%s[kept]=0;}\n", ind, f.Type.Size, dst, dst)
+			g.pf("%s {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);if(!table_wire_utf8(text,n))goto damaged;kept=table_wire_utf8_clamp(text,n,%d);memcpy(%s,text,(size_t)kept);%s[kept]=0;}\n", ind, f.Type.Size, dst, dst)
 			g.pf("%s r->bits.offset+=(int64_t)n*8;\n", ind)
 		} else {
 			g.pf("%s kept=n>%d ? %d : n;\n", ind, f.Type.Size, f.Type.Size)
 			if bits == 8 {
-				g.pf("%s if(!table_bit_getbytes(&r->bits,%s,(int64_t)kept)||!table_message_skip_run(r,n-kept,8))goto malformed;\n", ind, dst)
+				g.pf("%s if(!table_bit_getbytes(&r->bits,%s,(int64_t)kept)||!table_message_skip_run(r,n-kept,8))goto damaged;\n", ind, dst)
 			} else {
-				g.pf("%s {uint64_t i,unit;int high=0,ill=0;for(i=0;i<n;i++){if(!table_bit_get(&r->bits,&unit,16))goto malformed;\n", ind)
+				g.pf("%s {uint64_t i,unit;int high=0,ill=0;for(i=0;i<n;i++){if(!table_bit_get(&r->bits,&unit,16))goto damaged;\n", ind)
 				g.pf("%s if(unit==0)ill=1;if(high){if(unit<0xdc00||unit>0xdfff)ill=1;high=0;}else if(unit>=0xd800&&unit<=0xdbff)high=1;else if(unit>=0xdc00&&unit<=0xdfff)ill=1;\n", ind)
-				g.pf("%s if(i<kept)%s[i]=(uint16_t)unit; } if(high||ill)goto malformed;\n", ind, dst)
+				g.pf("%s if(i<kept)%s[i]=(uint16_t)unit; } if(high||ill)goto damaged;\n", ind, dst)
 				g.pf("%s if(kept>0 && kept<n && %s[kept-1]>=0xd800 && %s[kept-1]<=0xdbff)kept--; %s[kept]=0; }\n", ind, dst, dst, dst)
 			}
 		}
-		g.pf("%s if(kept<n)r->report->clamped++;%s=(int32_t)kept; }\n", ind, count)
+		g.pf("%s if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;%s=(int32_t)kept; }\n", ind, count)
 	case f.KeyEnum != "":
-		g.pf("%s{uint64_t n,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n%s if(!table_message_count(r,%s,&n))goto malformed;for(i=0;i<n;i++){const TableMessageEntry * key;int32_t slot=-1;\n%s if(!table_message_ref(r,&key,1)||key==NULL)goto malformed;switch(key->id){\n", ind, e, ind, e, ind)
+		g.pf("%s{uint64_t n,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n%s if(!table_message_count(r,%s,&n))goto damaged;for(i=0;i<n;i++){const TableMessageEntry * key;int32_t slot=-1;\n%s if(!table_message_ref(r,&key,1)||key==NULL)goto damaged;switch(key->id){\n", ind, e, ind, e, ind)
 		for i, v := range f.KeyEnumRef.Variants {
 			g.pf("%s case UINT64_C(0x%016x):slot=%d;break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 			_ = v
@@ -303,10 +303,10 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 		g.pf("%s} }\n", ind)
 	case f.Array != ir.ArrayNone:
 		g.pf("%s{uint64_t n,kept,walk,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n", ind, e)
-		g.pf("%s if(!table_message_count(r,%s,&n))goto malformed;kept=n>%d?%d:n;if(kept<n)r->report->clamped++;\n", ind, e, f.ArrayBound, f.ArrayBound)
+		g.pf("%s if(!table_message_count(r,%s,&n))goto damaged;kept=n>%d?%d:n;if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;\n", ind, e, f.ArrayBound, f.ArrayBound)
 		g.pf("%s walk=element_entry->value_bits>=0?kept:n;for(i=0;i<walk;i++){%s scratch; %s * item=i<kept ? &%s[i] : &scratch;\n", ind, g.sequenceType(f), g.sequenceType(f), dst)
 		g.messageReadElement(f, "(*item)", "element_entry", ind+" ")
-		g.pf("%s }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto malformed;\n", ind)
+		g.pf("%s }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;\n", ind)
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s %s=(int32_t)kept;\n", ind, count)
 		}
@@ -328,7 +328,7 @@ func (g *tableGen) messageAccept(f *ir.Field, e ir.TableVocabularyEntry, ind str
 			widen = fmt.Sprintf("entry->elem_kind==0 && table_kind_widens(entry->kind,%d)", e.Kind)
 		}
 	}
-	g.pf("%sif(!(%s)){if(%s){r->report->widened++;}else{r->report->kind_mismatch++;if(!table_message_skip(r,entry))goto malformed;break;}}\n", ind, condition, widen)
+	g.pf("%sif(!(%s)){if(%s){r->report->widened++;}else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;if(!table_message_skip(r,entry))goto damaged;break;}}\n", ind, condition, widen)
 }
 
 func (g *tableGen) emitMessageReadDeclarations(members []*ir.Struct, unions []*ir.Union) {
@@ -341,7 +341,7 @@ func (g *tableGen) emitMessageReadDeclarations(members []*ir.Struct, unions []*i
 }
 
 func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
-	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;value->type=0;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto malformed;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name)
+	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;value->type=0;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto damaged;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name)
 	for _, v := range un.Variants {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableWireId(v.WireName()))
 		g.messageAccept(v.F, ir.TableArmEntry(v), " ")
@@ -356,12 +356,12 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 		}
 		g.pf(" value->type=%s;break;}\n", enumConst(un.Name+"Type", v.Name))
 	}
-	g.pf("%s", " default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;\n }return 1;\n malformed:r->report->malformed=1;return 0;\n}\n")
+	g.pf("%s", " default:r->report->unknown++;if(!table_message_skip(r,entry))goto damaged;break;\n }return 1;\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
 }
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n", g.api(st.Name, "load_message_body"), st.Name)
-	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto malformed;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;switch(entry->id){\n", g.api(st.Name, "reset"))
+	g.pf(" %s(value);for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;switch(entry->id){\n", g.api(st.Name, "reset"))
 	for _, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
 		g.messageAccept(f, ir.TableFieldEntry(f), " ")
@@ -375,22 +375,19 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf(" break;}\n")
 	}
-	g.pf("%s", " default:r->report->unknown++;if(!table_message_skip(r,entry))goto malformed;break;\n } }\n malformed:r->report->malformed=1;return 0;\n}\n")
+	g.pf("%s", " default:r->report->unknown++;if(!table_message_skip(r,entry))goto damaged;break;\n } }\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
 	g.emitFixedMessageRead(st)
 }
 
 func (g *tableGen) emitFixedMessageRead(st *ir.Struct) {
-	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
-	// OWN (docs/SPEC-TABLES.md §6.5): the batch decode runs under the tolerant
-	// name, unchanged, and the plain name wraps it below.
-	g.pf("/* %s is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */\n", g.api(st.Name, "load_messages_tolerant"))
-	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages_tolerant"), st.Name)
-	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;if(report==NULL)report=&ignored;\n if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;\n bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n non_finite_before=report->non_finite_floats;\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))break;(*count)++;}ok=i==bodies&&table_message_close(&r);\n /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */\n if(table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */\n if(!ok){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n return ok;\n}\n", g.api(st.Name, "load_message_body"), g.api(st.Name, "reset"), g.api(st.Name, "reset"))
-	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */\n", g.api(st.Name, "load_messages"))
-	g.pf("static SCHEMA_UNUSED int %s( %s * values, int64_t * count, const TableVocabulary * vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_messages"), st.Name)
-	g.pf("    TableReport ignored;\n    int64_t i;\n    int ok;\n    if ( report == NULL ) report = &ignored;\n    /* this read's report, not the caller's last one */\n    memset( report, 0, sizeof( *report ) );\n")
-	g.pf("    ok = %s( values, count, vocabulary, buffer, bytes, report );\n", g.api(st.Name, "load_messages_tolerant"))
-	g.pf("    if ( !ok )\n    {\n        (void) table_report_strict_refuses( report, 0 );\n        return 0;\n    }\n")
-	g.pf("    if ( !table_report_strict_refuses( report, 1 ) ) return 1;\n")
-	g.pf("    for ( i = 0; i < *count; i++ ) %s( values + i );\n    *count = 0;\n    return 0;\n}\n", g.api(st.Name, "reset"))
+	// THE ONE BATCH READ (docs/SPEC-TABLES.md §6.5): the walk itself
+	// refuses at the first condition it meets.
+	g.pf("/* %s is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */\n", g.api(st.Name, "load_messages"))
+	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages"), st.Name)
+	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;if(report==NULL)report=&ignored;memset(report,0,sizeof(*report));\n if(values==NULL||count==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}capacity=*count;*count=0;\n")
+	if st.Integrity != "" {
+		g.pf(" if(bytes<1||buffer==NULL){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}\n if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return 0;}\n if(bytes<6||!schema_table_integrity_holds_(buffer,bytes)){report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return 0;}\n bytes-=4;\n")
+	}
+	g.pf(" bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n non_finite_before=report->non_finite_floats;\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))break;(*count)++;}ok=i==bodies&&table_message_close(&r);\n /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */\n if(table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */\n if(!ok||table_report_finish(report,ok)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n return ok;\n}\n", g.api(st.Name, "load_message_body"), g.api(st.Name, "reset"), g.api(st.Name, "reset"))
+
 }

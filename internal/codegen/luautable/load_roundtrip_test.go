@@ -238,6 +238,31 @@ local function str_value(fd, val, owner)
 	return fd.def or ""
 end
 
+-- a timestamp's value (docs/SPEC-TABLES.md §2.11, §16.2): RFC 3339 in UTC,
+-- the fraction at nanosecond precision with its trailing zeros dropped
+local function ts_text(ns)
+	local v = if typeof(ns) == "integer" then ns else integer.create(ns or 0)
+	local day = 86400000000000i
+	local days = integer.div(v, day)
+	local rem = integer.rem(v, day)
+	if integer.lt(rem, 0i) then days = integer.sub(days, 1i); rem = integer.add(rem, day) end
+	local z = integer.tonumber(days) + 719468
+	local era = (if z >= 0 then z else z - 146096) // 146097
+	local doe = z - era * 146097
+	local yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+	local y = yoe + era * 400
+	local doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+	local mp = (5 * doy + 2) // 153
+	local d = doy - (153 * mp + 2) // 5 + 1
+	local m = if mp < 10 then mp + 3 else mp - 9
+	if m <= 2 then y += 1 end
+	local secs = integer.tonumber(integer.div(rem, 1000000000i))
+	local frac = integer.tonumber(integer.rem(rem, 1000000000i))
+	local out = string.format("%04d-%02d-%02dT%02d:%02d:%02d", y, m, d, secs // 3600, (secs // 60) % 60, secs % 60)
+	if frac ~= 0 then out ..= "." .. (string.format("%09d", frac):gsub("0+$", "")) end
+	return q(out .. "Z")
+end
+
 local function enum_name(fd, val)
 	if type(val) == "string" then return val end
 	if val == nil then return "None" end
@@ -291,6 +316,12 @@ local function encode_array(fd, arr, owner)
 		-- a hole in a pointer list is a loader defect: a null is false (§2.1)
 		if x == nil and fd.e ~= nil and fd.e.s == "ptr" and fd.array == "list" then return q("hole in a pointer list") end
 		if x == nil then x = default_value(fd.e) end
+		if fd.optText then
+			-- an optional text list element is its string, or null when absent
+			local vf = S.lookup(fd.e.t).fields[1]
+			if x[vf.present] then parts[#parts + 1] = q(str_value(vf, x[vf.slot], x)) else parts[#parts + 1] = "null" end
+			continue
+		end
 		if flagsOf[fd] ~= nil then parts[#parts + 1] = flags_text(flagsOf[fd], x)
 		else parts[#parts + 1] = encode_value(fd.e, x, owner) end
 	end
@@ -303,6 +334,7 @@ encode_value = function(fd, val, owner)
 	if s == "bool" then return tostring(val == true) end
 	if s == "int" then
 		if flagsOf[fd] ~= nil then return flags_text(flagsOf[fd], val) end
+		if fd.timestamp then return ts_text(val) end
 		if fd.fbits ~= nil and fd.fbits > 0 then return fixed_text(val or 0, fd.signed, fd.fbits) end
 		return int_text(val or 0, fd.signed)
 	end
@@ -409,7 +441,8 @@ counts, labels, next_label = {}, {}, 1
 for _, f in desc.fields do
 	if f.present == nil or v[f.present] then count_walk(f, v[f.slot]) end
 end
-print(encode_obj(desc, v))
+-- the array root's text is its one field's array (§16.10)
+if desc.jsonArray then print(encode_value(desc.fields[1], v[desc.fields[1].slot], v)) else print(encode_obj(desc, v)) end
 `
 
 func roundtripProbe(g *generatedUnit, rootName string) string {
@@ -442,6 +475,66 @@ func roundtripProbe(g *generatedUnit, rootName string) string {
 	}
 	b.WriteString(strings.ReplaceAll(roundtripMain, "ROOT", strconv.Quote(rootName)))
 	return b.String()
+}
+
+// sameLoadedValue compares two normalized trees where the only difference a
+// FLOAT32 may leave is its spelling: the probe prints a float32 widened to the
+// double it is, and the golden spells it at its own width (§16.2), so a golden
+// number that parses at float32 to exactly the probe's double is that value.
+func sameLoadedValue(got, want any) bool {
+	switch g := got.(type) {
+	case string:
+		w, ok := want.(string)
+		if !ok {
+			return false
+		}
+		if g == w {
+			return true
+		}
+		gr, gok := strings.CutPrefix(g, "number:")
+		wr, wok := strings.CutPrefix(w, "number:")
+		if !gok || !wok {
+			return false
+		}
+		gv, ok := new(big.Rat).SetString(gr)
+		if !ok {
+			return false
+		}
+		wv, ok := new(big.Rat).SetString(wr)
+		if !ok {
+			return false
+		}
+		// the probe prints the double's shortest round-trip spelling, so the
+		// nearest double to it is the value it printed; the golden is the same
+		// value when it names that double, at either width
+		g64, _ := gv.Float64()
+		w64, _ := wv.Float64()
+		w32, _ := wv.Float32()
+		return g64 == w64 || float64(w32) == g64
+	case map[string]any:
+		w, ok := want.(map[string]any)
+		if !ok || len(w) != len(g) {
+			return false
+		}
+		for k, gv := range g {
+			if wv, ok := w[k]; !ok || !sameLoadedValue(gv, wv) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		w, ok := want.([]any)
+		if !ok || len(w) != len(g) {
+			return false
+		}
+		for i := range g {
+			if !sameLoadedValue(g[i], w[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return reflect.DeepEqual(got, want)
 }
 
 // normalizeNumbers replaces each json.Number with its exact rational value,
@@ -537,7 +630,7 @@ func TestLuauTableLoadRoundTripsEveryCleanInstance(t *testing.T) {
 		got := decodeText(t, gotText, "the loaded value")
 		wantV := decodeText(t, want, golden)
 		compared = append(compared, row.caseName)
-		if !reflect.DeepEqual(got, wantV) {
+		if !reflect.DeepEqual(got, wantV) && !sameLoadedValue(got, wantV) {
 			failures = append(failures, fmt.Sprintf("%s:\nloaded: %s\ngolden: %s", row.caseName, gotText, want))
 		}
 	}

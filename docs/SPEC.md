@@ -1258,7 +1258,7 @@ classic twin, which is the wire oracle for the stated model.
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits of a FINITE value — the pattern, `-0` and subnormals bit exact; a NaN or an infinity is refused on write and refused on read as `non_finite_float` | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) of a FINITE value, exactly as `float32`'s row | `serialize_double` |
-| `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
+| `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count, and a dequantized value that is not finite as `non_finite_float` | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
 | `f Weapon` (an enum) | minimal bits for [0, max], max being the variant count; read rejects above max, so an unnamed value never reaches the object | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
@@ -1466,7 +1466,17 @@ All compile errors with positions:
   rather than a silent infinity; the checker still carries the NaN arm as
   defense in depth. The derived float32 subtraction and division must also
   remain positive and at most `4294967040`, the runtime's upper clamp; a
-  triple that overflows or requires that clamp is refused. Fractional counts
+  triple that overflows or requires that clamp is refused. **The decode is normative**: a reader computes
+  `q := f32(index) / f32(count)`, then `p := q * delta`, then `x := p + min`,
+  each one float32 operation correctly rounded (round to nearest, ties to
+  even), in that order, with no fused multiply-add and no wider intermediate
+  (JavaScript rounds after each with `Math.fround`; C and C++ build with
+  `-ffp-contract=off`, §7.2). The top step must dequantize to a finite float32
+  by that decode, `float32(1 * delta) + min`: every parameter can be finite and that add can
+  still round past the largest float32 (`min = 3 * 2^103`, `max` the largest
+  float32), and such a triple is refused. A reader still refuses a dequantized
+  value that is not finite, as `non_finite_float`, wherever the declaration
+  reaches it unchecked (a hostile announcement, §3.3 of SPEC-TABLES). Fractional counts
   below one legitimately encode one step. Codec widths use
   `ir.CompressedFloatParams`' float32 arithmetic. The projection's `steps`
   token retains its historical float64 formula, alongside all three original
@@ -2178,8 +2188,8 @@ string transcoded at the boundary (SPEC-TABLES.md §16.2). **The validation
 above holds on both, and only the SHAPE of the refusal differs.** A packet
 read is terminal, so an unpaired surrogate, a zero code unit or a group above
 `0xFFFF` fails the read and stops it. On a table read the same content is
-DAMAGE, and damage refuses the whole load as `malformed` (SPEC-TABLES.md §3,
-§4). **Neither reader accepts it**, which is what
+DAMAGE, and damage refuses the whole load `wire_damaged` (SPEC-TABLES.md §3,
+§4, §6.5). **Neither reader accepts it**, which is what
 keeps the paragraph above true as written — every generated reader enforces
 these rules, in all nine targets, in every build mode — and what lets the table
 wire's `Save` check the used length alone, because ill-formed text never
@@ -2198,16 +2208,14 @@ exactly. Two things are checked on every packet write, in every target, in
 that target's own idiom (§5): **the used length is within [0, N]**, because it
 guards the copy, and **a zero code unit among the used units is refused**,
 exactly as §4.7 refuses the interior null and symmetric with the reader's
-zero-group refusal. **The table wire's `Save` checks the used length and
-nothing about the content**, which is the shape kind `12` already has there:
-ill-formed text is a READ-side verdict on that wire, damage the reader answers
-by refusing the whole load as `malformed` (SPEC-TABLES.md §3, §4). Surrogate pairing is NOT checked on write. It is a writer
-obligation whose enforcement is the reader on the other end, which refuses
-an unpaired surrogate under the rules above. A code unit above `0xFFFF`
+zero-group refusal. **The table wire's `Save` checks the used length AND the content**
+(SPEC-TABLES.md §16.3, 2026-11-03): ill-formed text and an unpaired surrogate
+are refused on write, `invalid_value`, and a reader that meets either anyway
+refuses the whole load `wire_damaged` (SPEC-TABLES.md §3, §4). A code unit above `0xFFFF`
 cannot be written at all, because the storage holds 16 bits per unit in
 every target. In Elixir, where the storage is a binary rather than a counted
 buffer, the write additionally requires an EVEN `byte_size` and raises
-`ArgumentError` otherwise, which is that target's write-refusal idiom under
+`ArgumentError` otherwise, which is that target's json-write-refusal idiom under
 §5: an odd binary has no last code unit.
 
 **Storage, and the conversion rule at the boundary.** Storage is a
@@ -2283,21 +2291,20 @@ they are the accepted set above and nothing else: `wstring-table-empty`,
 `wstring-table-accept-length-inside-a-five-character-buffer`, each the same
 text as its packet twin, each pinned as bytes under kind `33` and read back
 through the report. **The corpus's seventeen refusals carry over as
-COUNTED refusals rather than terminal ones, and the accounting is worth
-stating.** The seven unpaired-surrogate vectors and the three interior-null
-vectors are each one `malformed` on the table wire where they are a failed
-read on the packet wire, and they ride under the same names with `-table` on
+refusals, and the accounting is worth stating.** The seven unpaired-surrogate
+vectors and the three interior-null vectors are each a `wire_damaged` refusal
+on the table wire where they are a failed read on the packet wire, and they ride under the same names with `-table` on
 them. The two group-above-`0xFFFF` vectors have no table analogue at all,
 because two bytes cannot spell a group above `0xFFFF`. The two out-of-range
-length vectors become a CLAMP, `wstring-table-clamp-past-the-bound` and
-`wstring-table-clamp-splitting-a-surrogate-pair`, one `clamped` each. The
+length vectors refuse `length_over_bound`, `wstring-table-clamp-past-the-bound`
+and `wstring-table-clamp-splitting-a-surrogate-pair` (the names are the
+corpus's). The
 three past-end vectors become the table wire's own framing damage, and the
 table form adds the two refusals that are its alone,
-`wstring-table-odd-length` and `wstring-table-length-past-the-body`, each one
-`malformed`. That accounting is the row's real content: **the same text on two
-wires, the same verdict on every vector either wire can express, and a
-difference only in what a refusal COSTS — a stopped read on one, a defaulted
-field and a counter on the other.**
+`wstring-table-odd-length` and `wstring-table-length-past-the-body`, each
+`wire_damaged`. That accounting is the row's real content: **the same text on
+two wires, and the same verdict, a refusal, on every vector either wire can
+express.**
 
 Beside the corpus, the cross-language matrix takes a `wstring(7)` field
 holding serialize.js's interop cases: empty, three basic-plane code

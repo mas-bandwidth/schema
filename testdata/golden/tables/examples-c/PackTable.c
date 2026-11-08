@@ -25,7 +25,7 @@
 
    The dialect: trailing commas are accepted on read (the authoring files
    this exists for carry them) and never written; comments are not JSON and
-   are refused; unknown keys are skipped and counted; a duplicate key is
+   are refused; unknown keys are skipped and counted; a repeated key is
    last-wins and counted; a key present with the wrong JSON type is skipped
    and counted, never coerced. */
 
@@ -318,6 +318,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_is_enum( const tabledemo_table_fie
 
 static SCHEMA_UNUSED char tabledemo_table_json_shape( const tabledemo_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 'a'; }
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
     if ( tabledemo_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( tabledemo_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
@@ -325,9 +326,11 @@ static SCHEMA_UNUSED char tabledemo_table_json_shape( const tabledemo_table_fiel
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }           /* nested table or type */
     if ( tabledemo_table_json_is_enum( f ) ) { return 's'; }
     if ( tabledemo_table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -335,11 +338,14 @@ static SCHEMA_UNUSED char tabledemo_table_json_shape( const tabledemo_table_fiel
 /* the ELEMENT shape of an array field — the same classifier one level down */
 static SCHEMA_UNUSED char tabledemo_table_json_element_shape( const tabledemo_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 's'; }
     if ( f->arms != NULL ) { return 'o'; }
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }
     if ( tabledemo_table_json_is_enum( f ) ) { return 's'; }
     if ( tabledemo_table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -714,6 +720,57 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_float( tabledemo_table_json_
     return 1;
 }
 
+static SCHEMA_UNUSED void schema_tabledemo_table_json_civil_from_days_( int64_t z, int * year, int * month, int * day )
+{
+    int64_t era, doe, yoe, y, doy, mp, d, m;
+    z += 719468;
+    era = ( z >= 0 ? z : z - 146096 ) / 146097;
+    doe = z - era * 146097;
+    yoe = ( doe - doe / 1460 + doe / 36524 - doe / 146096 ) / 365;
+    y = yoe + era * 400;
+    doy = doe - ( 365 * yoe + yoe / 4 - yoe / 100 );
+    mp = ( 5 * doy + 2 ) / 153;
+    d = doy - ( 153 * mp + 2 ) / 5 + 1;
+    m = mp < 10 ? mp + 3 : mp - 9;
+    *year = (int) ( y + ( m <= 2 ? 1 : 0 ) );
+    *month = (int) m;
+    *day = (int) d;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_write_timestamp_( tabledemo_table_json_out_t * out, const void * storage )
+{
+    int64_t nanos = 0, seconds, fraction, days, second_of_day;
+    int year = 0, month = 0, day = 0, hour, minute, second, length;
+    char text[48];
+    memcpy( &nanos, storage, sizeof( nanos ) );
+    seconds = nanos / 1000000000;
+    fraction = nanos % 1000000000;
+    if ( fraction < 0 ) { fraction += 1000000000; seconds -= 1; }
+    days = seconds / 86400;
+    second_of_day = seconds % 86400;
+    if ( second_of_day < 0 ) { second_of_day += 86400; days -= 1; }
+    schema_tabledemo_table_json_civil_from_days_( days, &year, &month, &day );
+    hour = (int) ( second_of_day / 3600 );
+    minute = (int) ( ( second_of_day / 60 ) % 60 );
+    second = (int) ( second_of_day % 60 );
+    length = snprintf( text, sizeof( text ), "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second );
+    if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
+    tabledemo_table_json_put( out, '"' );
+    tabledemo_table_json_raw( out, text, length );
+    if ( fraction != 0 )
+    {
+        char digits[32];
+        int placed = 9;
+        snprintf( digits, sizeof( digits ), "%09lld", (long long) fraction );
+        while ( placed > 1 && digits[placed - 1] == '0' ) { placed--; }
+        tabledemo_table_json_put( out, '.' );
+        tabledemo_table_json_raw( out, digits, placed );
+    }
+    tabledemo_table_json_put( out, 'Z' );
+    tabledemo_table_json_put( out, '"' );
+    return 1;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_write_value( tabledemo_table_json_out_t * out, const void * base, const tabledemo_table_type_info_t * info, int32_t depth );
 
 /* one scalar, at one storage address: a nested object, a union, a
@@ -731,8 +788,46 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_pointer( tabledemo_table_jso
 static SCHEMA_UNUSED int tabledemo_table_json_write_pointer( tabledemo_table_json_out_t * out, const void * slot, const tabledemo_table_field_info_t * f, int32_t depth )
 { (void)out; (void)slot; (void)f; (void)depth; return 0; }
 #endif
+#ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_tabledemo_table_json_write_unbounded_text_( tabledemo_table_json_out_t * out, const void * slot );
+#endif
+static SCHEMA_UNUSED int schema_tabledemo_table_json_write_text_element_( tabledemo_table_json_out_t * out, const void * p, const tabledemo_table_field_info_t * f )
+{
+    const tabledemo_table_field_info_t * v = &f->table->fields[0];
+    int32_t n;
+    if ( f->text_list == 2 && tabledemo_table_json_get_raw( (const uint8_t *) p + v->present_offset, 1 ) == 0 )
+    {
+        tabledemo_table_json_raw( out, "null", 4 );
+        return 1;
+    }
+#ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+    if ( !v->counted ) { return schema_tabledemo_table_json_write_unbounded_text_( out, (const uint8_t *) p + v->offset ); }
+#endif
+    n = tabledemo_table_json_count( p, v );
+    if ( n < 0 || n > v->array_bound ) { return 0; }
+    tabledemo_table_json_write_string( out, (const char *) p + v->offset, n );
+    return 1;
+}
+
+static SCHEMA_UNUSED int64_t schema_tabledemo_table_json_text_bytes_( const void * p, int32_t count, const tabledemo_table_field_info_t * f )
+{
+    const tabledemo_table_field_info_t * v = &f->table->fields[0];
+    int64_t spent = 0;
+    int32_t i;
+    for ( i = 0; i < count; i++ )
+    {
+        const uint8_t * e = (const uint8_t *) p + (int64_t) i * f->elem_size;
+        int32_t n;
+        if ( f->text_list == 2 && tabledemo_table_json_get_raw( e + v->present_offset, 1 ) == 0 ) { continue; }
+        n = tabledemo_table_json_count( e, v );
+        if ( n > 0 ) { spent += (int64_t) n; }
+    }
+    return spent;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json_out_t * out, const void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
+    if ( f->text_list != 0 ) { return schema_tabledemo_table_json_write_text_element_( out, storage, f ); }
     if ( f->kind == 17 ) { return tabledemo_table_json_write_pointer(out,storage,f,depth); }
     if ( f->arms != NULL )
     {
@@ -834,6 +929,8 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json
             memcpy( &v, storage, sizeof( v ) );
             return tabledemo_table_json_write_float( out, v, 0 );
         }
+        case 36:
+            return schema_tabledemo_table_json_write_timestamp_( out, storage );
         case 2: case 3: case 4: case 5:
             tabledemo_table_json_write_signed( out, tabledemo_table_json_get_signed( storage, f->elem_size ) );
             return 1;
@@ -855,8 +952,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_field( tabledemo_table_json_
     if ( f->kind == 33 ) {
         tabledemo_table_json_write_w_string( out, (const uint16_t *)(const void *)storage, tabledemo_table_json_count( base, f ) ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
+#ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if ( !f->counted ) { return schema_tabledemo_table_json_write_unbounded_text_( out, storage ); }
+#endif
         tabledemo_table_json_write_string( out, (const char *) storage, tabledemo_table_json_count( base, f ) );
         return 1;
     }
@@ -897,6 +997,10 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_field( tabledemo_table_json_
     {
         int32_t count = tabledemo_table_json_count( base, f );
         int32_t i;
+        if ( f->text_total > 0 && schema_tabledemo_table_json_text_bytes_( storage, count, f ) > f->text_total )
+        {
+            return 0;
+        }
         if ( count == 0 )
         {
             tabledemo_table_json_raw( out, "[]", 2 );
@@ -952,6 +1056,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_fields( tabledemo_table_json
 static SCHEMA_UNUSED int tabledemo_table_json_write_value( tabledemo_table_json_out_t * out, const void * base, const tabledemo_table_type_info_t * info, int32_t depth )
 {
     int any = 0;
+    if ( info->json_array && info->num_fields == 1 ) { return tabledemo_table_json_write_field( out, base, &info->fields[0], depth ); }
     if ( !tabledemo_table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
     if ( !any ) { tabledemo_table_json_raw(out,"{}",2); return 1; }
     tabledemo_table_json_line(out,depth); tabledemo_table_json_put(out,'}'); return 1;
@@ -1107,7 +1212,7 @@ static SCHEMA_UNUSED int32_t tabledemo_table_json_encode_utf8( uint32_t code, ch
 
 /* Scan one JSON string into a caller buffer. Bytes are appended ONE CODE
    POINT AT A TIME — an escape's encoding, or a UTF-8 sequence read whole —
-   so a string longer than the field is clamped AT A CODE POINT BOUNDARY and
+   so a string longer than the field is out_of_range AT A CODE POINT BOUNDARY and
    never cut through a multi-byte character. Clamping is counted, never
    fatal, exactly as it is on the wire (§4). A NULL destination scans past a
    string without keeping it. */
@@ -1139,26 +1244,19 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_unit( tabledemo_table_json_in
                     int high = tabledemo_table_json_hex4( in );
                     if ( high < 0 ) { in->bad = 1; return 0; }
                     uint32_t code = (uint32_t) high;
-                    if ( high >= 0xd800 && high <= 0xdbff && in->pos + 2 <= in->size &&
-                         in->text[in->pos] == '\\' && in->text[in->pos + 1] == 'u' )
+                    if ( high >= 0xd800 && high <= 0xdbff )
                     {
-                        int64_t mark = in->pos;
-                        in->pos += 2;
-                        int low = tabledemo_table_json_hex4( in );
-                        if ( low >= 0xdc00 && low <= 0xdfff )
+                        int low = -1;
+                        if ( in->pos + 2 <= in->size &&
+                             in->text[in->pos] == '\\' && in->text[in->pos + 1] == 'u' )
                         {
-                            code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
+                            in->pos += 2;
+                            low = tabledemo_table_json_hex4( in );
                         }
-                        else
-                        {
-                            in->pos = mark; // a lone lead surrogate rides as itself
-                        }
+                        if ( low < 0xdc00 || low > 0xdfff ) { in->bad = 1; return 0; }
+                        code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
                     }
-                    // a surrogate half that never found its partner has no
-                    // UTF-8 encoding: encoding it anyway would manufacture
-                    // CESU-8 — invalid UTF-8 — out of input that was valid
-                    // JSON, so it reads as the replacement character
-                    if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; }
+                    else if ( code >= 0xdc00 && code <= 0xdfff ) { in->bad = 1; return 0; }
                     unit_length = tabledemo_table_json_encode_utf8( code, unit );
                     break;
                 }
@@ -1216,7 +1314,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_unit( tabledemo_table_json_in
 static SCHEMA_UNUSED int tabledemo_table_json_scan_string_as( tabledemo_table_json_in_t * in, char * out, int32_t capacity, int32_t * length, int text )
 {
     int32_t placed = 0;
-    int clamped = 0;
+    int out_of_range = 0;
     if ( tabledemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
     in->pos++;
     for ( ;; )
@@ -1226,21 +1324,21 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_string_as( tabledemo_table_js
         if ( !tabledemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
         if ( text && unit[0] == 0 ) { in->bad = 1; return 0; } /* text_holds_zero (§16.3) */
-        if ( out == NULL ) { placed += unit_length; }
+        if ( out == NULL ) { if ( placed > INT32_MAX - unit_length ) { in->bad = 1; return 0; } placed += unit_length; }
         else
         {
-            if ( !clamped && placed + unit_length <= capacity )
+            if ( !out_of_range && placed <= capacity - unit_length )
             {
                 memcpy( out + placed, unit, (size_t) unit_length );
                 placed += unit_length;
             }
             else
             {
-                clamped = 1;
+                out_of_range = 1;
             }
         }
     }
-    if ( clamped ) { in->report->clamped++; }
+    if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     if ( length != NULL ) { *length = placed; }
     return 1;
 }
@@ -1278,7 +1376,7 @@ static SCHEMA_UNUSED uint32_t tabledemo_table_json_decode_utf8( const char * uni
 // table_json_scan_unit with the narrow scan, so the escape grammar and the
 // lone-surrogate rule are one grammar, and appends ONE CODE POINT AT A TIME —
 // one unit below U+10000 and a surrogate PAIR above it. A string longer than
-// the field is therefore clamped at N code units with a pair never split, and
+// the field is therefore out_of_range at N code units with a pair never split, and
 // a high surrogate left without its low half is dropped with it, which is the
 // same sentence the wire's clamp takes (§3). Clamping is counted, never fatal.
 static SCHEMA_UNUSED int tabledemo_table_json_scan_w_string( tabledemo_table_json_in_t * in, uint16_t * out, int32_t capacity, int32_t * length )
@@ -1286,7 +1384,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_w_string( tabledemo_table_jso
     if ( tabledemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
     in->pos++;
     int32_t placed = 0;
-    int clamped = 0;
+    int out_of_range = 0;
     for ( ;; )
     {
         char unit[4];
@@ -1310,9 +1408,10 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_w_string( tabledemo_table_jso
         }
         if ( out == NULL )
         {
+            if ( placed > INT32_MAX - units_length ) { in->bad = 1; return 0; }
             placed += units_length;
         }
-        else if ( !clamped && placed + units_length <= capacity )
+        else if ( !out_of_range && placed <= capacity - units_length )
         {
             for ( int32_t i = 0; i < units_length; i++ ) { out[placed + i] = units[i]; }
             placed += units_length;
@@ -1323,10 +1422,10 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_w_string( tabledemo_table_jso
             // point does not fit, the scan stops placing. A pair is placed
             // whole or not at all, so no clamp can leave an unpaired
             // surrogate in storage.
-            clamped = 1;
+            out_of_range = 1;
         }
     }
-    if ( clamped ) { in->report->clamped++; }
+    if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     if ( length != NULL ) { *length = placed; }
     return 1;
 }
@@ -1343,7 +1442,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_w_string( tabledemo_table_jso
 
    Scanning the production is what makes a typo in an authoring file a
    DIAGNOSTIC rather than a value: "1-2" scans as 1 and leaves "-2" where the
-   object expects a comma, so the text is malformed — which is what §16.2
+   object expects a comma, so the text is damaged — which is what §16.2
    already promises. A permissive scan would hand "1-2" to a digit loop and
    report a clamp, and a config pipeline would never hear about it. Leading
    "+", leading zeros, ".5" and "3." are not JSON either. */
@@ -1697,7 +1796,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_wide( tabledemo_table_json_in
     }
     else if ( point < -40 )
     {
-        in->report->kind_mismatch++; // finer than any F can spell
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; // finer than any F can spell
         return 1;
     }
     else
@@ -1730,7 +1829,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_wide( tabledemo_table_json_in
         {
             if ( fd[k] != 0 )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 return 1;
             }
         }
@@ -1761,13 +1860,13 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_wide( tabledemo_table_json_in
             if ( negative && !tabledemo_table_json_wide_zero( raw ) ) { raw.lo = 0; raw.hi = 0; saturated = 1; }
         }
     }
-    if ( saturated ) { in->report->clamped++; }
+    if ( saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     if ( f->wide != NULL )
     {
         tabledemo_table_json_wide_t lo = { f->wide->lo[0], f->wide->lo[1] };
         tabledemo_table_json_wide_t hi = { f->wide->hi[0], f->wide->hi[1] };
-        if ( tabledemo_table_json_wide_compare( raw, lo, is_signed ) < 0 ) { raw = lo; in->report->clamped++; }
-        else if ( tabledemo_table_json_wide_compare( raw, hi, is_signed ) > 0 ) { raw = hi; in->report->clamped++; }
+        if ( tabledemo_table_json_wide_compare( raw, lo, is_signed ) < 0 ) { raw = lo; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+        else if ( tabledemo_table_json_wide_compare( raw, hi, is_signed ) > 0 ) { raw = hi; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     }
     tabledemo_table_json_wide_store( storage, f->elem_size, raw );
     return 1;
@@ -1782,11 +1881,186 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_list(tabledemo_table_json_in_
 static SCHEMA_UNUSED int tabledemo_table_json_read_map(tabledemo_table_json_in_t * in,void * storage,const tabledemo_table_field_info_t * f,int32_t depth);
 #endif
 #endif
+#ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_( tabledemo_table_json_in_t * in, void * slot );
+#endif
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_digit_( char c )
+{
+    return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_leap_( int year )
+{
+    return year % 4 == 0 && ( year % 100 != 0 || year % 400 == 0 );
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_month_days_( int year, int month )
+{
+    switch ( month )
+    {
+        case 1: case 3: case 5: case 7: case 8: case 10: case 12: return 31;
+        case 4: case 6: case 9: case 11: return 30;
+        case 2: return schema_tabledemo_table_json_timestamp_leap_( year ) ? 29 : 28;
+    }
+    return 0;
+}
+
+static SCHEMA_UNUSED int64_t schema_tabledemo_table_json_timestamp_days_( int year, int month, int day )
+{
+    int64_t y = (int64_t) year;
+    const int64_t m = (int64_t) month;
+    int64_t era, year_of_era, month_of_year, day_of_year, day_of_era;
+    if ( m <= 2 ) { y--; }
+    era = y / 400;
+    if ( y < 0 && y % 400 != 0 ) { era--; }
+    year_of_era = y - era * 400;
+    month_of_year = m + 9;
+    if ( m > 2 ) { month_of_year = m - 3; }
+    day_of_year = ( 153 * month_of_year + 2 ) / 5 + (int64_t) day - 1;
+    day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    return era * 146097 + day_of_era - 719468;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_parse_( tabledemo_table_json_in_t * in, int64_t * out )
+{
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    int index = 0, digits = 0, offset_sign = 0, offset_hour = 0, offset_minute = 0, phase = 0;
+    int64_t fraction = 0, offset, seconds;
+    const int64_t min_second = -9223372037LL;
+    const int64_t max_second = 9223372036LL;
+    const int64_t min_nanos = 145224192LL;
+    const int64_t max_nanos = 854775807LL;
+    uint64_t total;
+    if ( tabledemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    in->pos++;
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        char c;
+        if ( !tabledemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
+        if ( unit_length == 0 ) { break; }
+        if ( unit_length != 1 ) { return 0; }
+        c = unit[0];
+        if ( phase == 0 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( index == 4 || index == 7 ) { if ( c != '-' ) { return 0; } }
+            else if ( index == 10 ) { if ( c != 'T' && c != 't' ) { return 0; } }
+            else if ( index == 13 || index == 16 ) { if ( c != ':' ) { return 0; } }
+            else
+            {
+                if ( digit < 0 ) { return 0; }
+                if ( index < 4 ) { year = year * 10 + digit; }
+                else if ( index < 7 ) { month = month * 10 + digit; }
+                else if ( index < 10 ) { day = day * 10 + digit; }
+                else if ( index < 13 ) { hour = hour * 10 + digit; }
+                else if ( index < 16 ) { minute = minute * 10 + digit; }
+                else { second = second * 10 + digit; }
+            }
+            index++;
+            if ( index == 19 ) { phase = 1; }
+            continue;
+        }
+        if ( phase == 1 )
+        {
+            if ( c == '.' ) { phase = 2; continue; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 2 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit >= 0 )
+            {
+                if ( digits < 9 ) { fraction = fraction * 10 + digit; }
+                digits++;
+                continue;
+            }
+            if ( digits == 0 ) { return 0; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 4 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour = digit * 10;
+            phase = 5;
+            continue;
+        }
+        if ( phase == 5 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour += digit;
+            phase = 6;
+            continue;
+        }
+        if ( phase == 6 ) { if ( c != ':' ) { return 0; } phase = 7; continue; }
+        if ( phase == 7 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute = digit * 10;
+            phase = 8;
+            continue;
+        }
+        if ( phase == 8 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute += digit;
+            phase = 10;
+            continue;
+        }
+        return 0;
+    }
+    if ( phase != 10 ) { return 0; }
+    if ( month < 1 || month > 12 ) { return 0; }
+    if ( day < 1 || day > schema_tabledemo_table_json_timestamp_month_days_( year, month ) ) { return 0; }
+    if ( hour > 23 || minute > 59 || second > 59 ) { return 0; }
+    if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return 0; }
+    for ( ; digits < 9; digits++ ) { fraction *= 10; }
+    offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    seconds = schema_tabledemo_table_json_timestamp_days_( year, month, day ) * 86400 +
+        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+    if ( seconds < min_second || seconds > max_second ) { return 0; }
+    if ( seconds == min_second && fraction < min_nanos ) { return 0; }
+    if ( seconds == max_second && fraction > max_nanos ) { return 0; }
+    total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
+    *out = (int64_t) total;
+    return 1;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_read_text_element_( tabledemo_table_json_in_t * in, void * p, const tabledemo_table_field_info_t * f, int32_t depth )
+{
+    const tabledemo_table_type_info_t * t = f->table;
+    const tabledemo_table_field_info_t * v = &t->fields[0];
+    t->reset( p );
+    if ( tabledemo_table_json_value_shape( in ) == 'z' ) { return tabledemo_table_json_literal( in, "null" ); }
+    if ( !tabledemo_table_json_read_field( in, p, v, depth ) ) { return 0; }
+    if ( f->text_list == 2 ) { tabledemo_table_json_set_raw( (uint8_t *) p + v->present_offset, 1, 1 ); }
+    return 1;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_text_total_keep_( tabledemo_table_json_in_t * in, void * p, const tabledemo_table_field_info_t * f, int64_t * spent )
+{
+    *spent += schema_tabledemo_table_json_text_bytes_( p, 1, f );
+    if ( *spent <= f->text_total ) { return 1; }
+    f->table->reset( p );
+    in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+    return 0;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_in_t * in, void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
     char token[TABLEDEMO_K_TABLE_JSON_MAX_NUMBER];
     int32_t length = 0;
     int integral = 0;
+    if ( f->text_list != 0 ) { return schema_tabledemo_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
         if ( tabledemo_table_json_value_shape(in) == 'z' ) { tabledemo_table_json_set_raw(storage,f->elem_size,0); return tabledemo_table_json_literal(in,"null"); }
@@ -1826,7 +2100,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
             const tabledemo_table_field_info_t * arm = arms->arms[tag].field;
             char want = arm != NULL ? tabledemo_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
             if ( tabledemo_table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && tabledemo_table_json_value_shape(in) == 'z') ) {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !tabledemo_table_json_skip_value( in, depth+1 ) ) { return 0; }
             } else {
                 if ( arm != NULL ) {
@@ -1884,7 +2158,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( c != '"' )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else
@@ -1924,6 +2198,13 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
         tabledemo_table_json_set_raw( storage, f->elem_size, 0 );
         return 1;
     }
+    if ( f->kind == 36 )
+    {
+        int64_t nanos = 0;
+        if ( !schema_tabledemo_table_json_timestamp_parse_( in, &nanos ) ) { in->bad = 1; return 0; }
+        tabledemo_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
+        return 1;
+    }
     if ( !tabledemo_table_json_scan_number( in, token, TABLEDEMO_K_TABLE_JSON_MAX_NUMBER, &length, &integral ) )
     {
         in->bad = 1;
@@ -1943,20 +2224,20 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
            clean writes back. */
         if ( !tabledemo_table_json_finite( fvalue ) )
         {
-            in->report->kind_mismatch++;
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
         if ( f->has_range )
         {
-            if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->clamped++; }
-            else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->clamped++; }
+            if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         }
         if ( single )
         {
             float narrow = (float) fvalue;
             if ( !tabledemo_table_json_finite( (double) narrow ) )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 return 1;
             }
             memcpy( storage, &narrow, sizeof( narrow ) );
@@ -1976,10 +2257,10 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
     const tabledemo_table_json_integer_t number = tabledemo_table_json_interpret( token, length, integral );
     if ( !number.finite || number.fractional )
     {
-        in->report->kind_mismatch++;
+        in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
     }
-    if ( number.saturated ) { in->report->clamped++; } // past what sixty-four bits hold
+    if ( number.saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
     // The comparison is on the value's OWN scale, correctly signed past
@@ -1988,12 +2269,12 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
     if ( f->has_range )
     {
         const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
-        if ( scale < f->range_min ) { bounded = tabledemo_table_json_integer_of( f->range_min ); in->report->clamped++; }
-        else if ( scale > f->range_max ) { bounded = tabledemo_table_json_integer_of( f->range_max ); in->report->clamped++; }
+        if ( scale < f->range_min ) { bounded = tabledemo_table_json_integer_of( f->range_min ); in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+        else if ( scale > f->range_max ) { bounded = tabledemo_table_json_integer_of( f->range_max ); in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     }
     int moved = 0;
     const int64_t value = tabledemo_table_json_integer_in_domain( bounded, is_signed, (int32_t) f->elem_size, &moved );
-    if ( moved ) { in->report->clamped++; }
+    if ( moved ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     tabledemo_table_json_set_raw( storage, f->elem_size, (uint64_t) value );
     return 1;
 }
@@ -2013,9 +2294,12 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
         ((uint16_t *)(void *)storage)[length] = 0;
         tabledemo_table_json_set_count( base, f, length ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
         int32_t length = 0;
+#ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if ( !f->counted ) { return schema_tabledemo_table_json_read_unbounded_text_( in, storage ); }
+#endif
         if ( !tabledemo_table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
         storage[length] = 0;
         tabledemo_table_json_set_count( base, f, length );
@@ -2024,19 +2308,19 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
     if ( tabledemo_table_json_is_bytes( f ) )
     {
         /* The JSON layer decides first (table_json_base64_step): a body that
-           is not a JSON string is malformed, and one that is JSON but carries
+           is not a JSON string is damaged, and one that is JSON but carries
            an escape or a non-ASCII character is simply not base64. Validate the
            stream and its padding before touching storage, so a body that is not
            base64 leaves the declared default. */
         int64_t mark;
         int64_t symbols = 0;
         int64_t pad = 0;
-        int malformed = 0;
+        int damaged = 0;
         int64_t at;
         int32_t placed = 0;
         uint32_t accumulator = 0;
         int32_t held = 0;
-        int clamped = 0;
+        int out_of_range = 0;
         if ( tabledemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
         in->pos++;
         mark = in->pos;
@@ -2050,30 +2334,30 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             if ( c == '"' ) { break; }
             step = tabledemo_table_json_base64_step( in, c );
             if ( step < 0 ) { return 0; }
-            if ( step == 0 ) { malformed = 1; continue; }
-            if ( malformed ) { continue; }
+            if ( step == 0 ) { damaged = 1; continue; }
+            if ( damaged ) { continue; }
             if ( c == '=' ) { pad++; continue; }
-            if ( pad > 0 ) { malformed = 1; continue; }
+            if ( pad > 0 ) { damaged = 1; continue; }
             val = tabledemo_table_json_base64_value( (uint8_t) c );
-            if ( val < 0 ) { malformed = 1; continue; }
+            if ( val < 0 ) { damaged = 1; continue; }
             symbols++;
         }
-        if ( !malformed )
+        if ( !damaged )
         {
             if ( pad > 0 )
             {
-                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { malformed = 1; }
+                if ( pad > 2 || ( symbols + pad ) % 4 != 0 || symbols % 4 < 2 ) { damaged = 1; }
             }
             else if ( symbols % 4 == 1 )
             {
-                malformed = 1;
+                damaged = 1;
             }
         }
-        if ( malformed )
+        if ( damaged )
         {
             /* a body that is not base64 is the wrong shape for the kind: the
                field keeps its default and the event is counted */
-            in->report->kind_mismatch++;
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
         memset( storage, 0, (size_t) f->array_bound );
@@ -2095,11 +2379,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
                 }
                 else
                 {
-                    clamped = 1;
+                    out_of_range = 1;
                 }
             }
         }
-        if ( clamped ) { in->report->clamped++; }
+        if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         tabledemo_table_json_set_count( base, f, placed );
         return 1;
     }
@@ -2120,12 +2404,16 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
         shape = tabledemo_table_json_element_shape( f );
-        /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
+        /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a repeated
            key like any other, last-wins and counted (§16.2). Tracked the way
            a table's own field keys are — a bounded, allocation-free bitmask;
            a vocabulary wider than this still reads, its repeats simply stop
            being counted. */
         memset( seen, 0, sizeof( seen ) );
+        {
+        uint64_t unplaced[64];
+        int32_t unplaced_count = 0;
+        memset( unplaced, 0, sizeof( unplaced ) );
         for ( ;; )
         {
             char c = tabledemo_table_json_peek( in );
@@ -2151,17 +2439,29 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             if ( slot >= 0 && slot < 512 )
             {
                 uint64_t bit = (uint64_t) 1 << ( slot & 63 );
-                if ( ( seen[slot >> 6] & bit ) != 0 ) { in->report->duplicate++; }
+                if ( ( seen[slot >> 6] & bit ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                 seen[slot >> 6] |= bit;
             }
             if ( slot < 0 )
             {
+                /* a key this reader cannot place is still a key: spelling
+                   it twice is a repeated key, refused like a placed one.
+                   Tracked by hash, bounded and allocation-free; past the
+                   table its repeats stop being counted. */
+                uint64_t hash = 1469598103934665603ULL;
+                int32_t ki;
+                for ( ki = 0; ki < key_length; ki++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[ki] ) * 1099511628211ULL; }
+                for ( ki = 0; ki < unplaced_count; ki++ )
+                {
+                    if ( unplaced[ki] == hash ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                }
+                if ( ki == unplaced_count && unplaced_count < 64 ) { unplaced[unplaced_count++] = hash; }
                 in->report->unknown++;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else if ( tabledemo_table_json_value_shape( in ) != shape && !(f->kind == 17 && tabledemo_table_json_value_shape(in) == 'z') )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else if ( !tabledemo_table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
@@ -2173,6 +2473,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             if ( c == '}' ) { in->pos++; break; }
             in->bad = 1;
             return 0;
+        }
         }
         return 1;
     }
@@ -2188,7 +2489,10 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
         char shape;
         if ( tabledemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
-        if ( f->kind == 13 )
+        int64_t spent = 0;
+        int full = 0;
+        int32_t seen = 0; /* the elements spelled once the total is reached */
+        if ( f->kind == 13 || f->text_list != 0 )
         {
             int32_t i;
             for ( i = 0; i < f->array_bound; i++ )
@@ -2207,23 +2511,39 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             char c = tabledemo_table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( placed >= f->array_bound )
+            if ( full )
+            {
+                /* the total dropped this element; one past [..N] is counted
+                   as well, as the wire counts its count clamp (§2.13) */
+                if ( ++seen > f->array_bound ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+                if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            }
+            else if ( placed >= f->array_bound )
             {
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
-                in->report->clamped++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( tabledemo_table_json_value_shape( in ) != shape && !(f->kind == 17 && tabledemo_table_json_value_shape(in) == 'z') )
+            else if ( tabledemo_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && tabledemo_table_json_value_shape(in) == 'z') )
             {
-                in->report->kind_mismatch++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 placed++;
             }
             else
             {
-                if ( !tabledemo_table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
-                placed++;
+                uint8_t * elem = storage + (int64_t) placed * f->elem_size;
+                if ( !tabledemo_table_json_read_scalar( in, elem, f, depth + 1 ) ) { return 0; }
+                if ( f->text_total > 0 && !schema_tabledemo_table_json_text_total_keep_( in, elem, f, &spent ) )
+                {
+                    full = 1;
+                    seen = placed + 1;
+                }
+                else
+                {
+                    placed++;
+                }
             }
             c = tabledemo_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
@@ -2243,9 +2563,26 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
    counted, a repeated key is last-wins and counted. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
+static SCHEMA_UNUSED int schema_tabledemo_table_json_require_seen_( tabledemo_table_json_in_t * in, const void * base, const tabledemo_table_type_info_t * info, const uint64_t * seen )
+{
+    int32_t i;
+    for ( i = 0; i < info->num_fields && i < 512; i++ )
+    {
+        const tabledemo_table_field_info_t * f = &info->fields[i];
+        if ( !f->required ) { continue; }
+        if ( f->guard[0] != 0 && !tabledemo_table_json_guard_holds( base, info, f->guard ) ) { continue; }
+        if ( ( seen[i >> 6] & ( (uint64_t) 1 << ( i & 63 ) ) ) == 0 )
+        {
+            in->report->missing_required++;
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth, const char * first_key )
 {
-    /* duplicate tracking, bounded and allocation-free: a table with more
+    /* repeated tracking, bounded and allocation-free: a table with more
        fields than this still reads, its repeats simply stop being counted */
     uint64_t seen[8];
     memset( seen, 0, sizeof( seen ) );
@@ -2260,7 +2597,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
         else
         {
             c = tabledemo_table_json_peek(in);
-            if ( c == '}' ) { in->pos++; return 1; }
+            if ( c == '}' ) { in->pos++; return schema_tabledemo_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( !tabledemo_table_json_scan_string(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
@@ -2276,7 +2613,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
             /* THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
                16.7): never a field this build lacks, always a construct it
                cannot honor. MALFORMED and refused, never counted as unknown. */
-            in->report->malformed = 1;
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             in->bad = 1;
             return 0;
         }
@@ -2292,7 +2629,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
             if ( index < 512 )
             {
                 uint64_t bit = (uint64_t) 1 << ( index & 63 );
-                if ( ( seen[index >> 6] & bit ) != 0 ) { in->report->duplicate++; }
+                if ( ( seen[index >> 6] & bit ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                 seen[index >> 6] |= bit;
             }
             /* PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
@@ -2304,8 +2641,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
             {
                 if ( !tabledemo_table_json_literal( in, "null" ) ) { return 0; }
                 /* absent, and back at its defaults: a repeated key whose last
-                   occurrence is null must not leave an earlier value standing */
-                if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
+                   occurrence is null must not leave an earlier value standing.
+                   A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
+                   ENTRY table its descriptor names (docs/SPEC-TABLES.md §2.8, §16.2). */
+                if ( f->sequence == 2 ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }
+                else if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
                 tabledemo_table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
@@ -2314,7 +2654,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
                 if ( got != tabledemo_table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
-                    in->report->kind_mismatch++;
+                    in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
                     if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 }
                 else if ( !tabledemo_table_json_read_field( in, base, f, depth ) )
@@ -2329,7 +2669,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
         }
         c = tabledemo_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
-        if ( c == '}' ) { in->pos++; return 1; }
+        if ( c == '}' ) { in->pos++; return schema_tabledemo_table_json_require_seen_( in, base, info, seen ); }
         in->bad = 1;
         return 0;
     }
@@ -2339,7 +2679,13 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
 
 static SCHEMA_UNUSED int tabledemo_table_json_read_table( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth )
 {
-    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH || tabledemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
+    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    if ( info->json_array && info->num_fields == 1 )
+    {
+        if ( tabledemo_table_json_peek(in) != '[' ) { in->bad = 1; return 0; }
+        return tabledemo_table_json_read_field( in, base, &info->fields[0], depth );
+    }
+    if ( tabledemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
     return tabledemo_table_json_read_table_keys(in,base,info,depth,NULL);
 }
@@ -2349,6 +2695,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
     tabledemo_table_report_t ignored;
     tabledemo_table_json_in_t in;
     int ok;
+    int32_t missing_before;
     memset( &ignored, 0, sizeof( ignored ) );
     in.text = text;
     in.size = bytes;
@@ -2359,9 +2706,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
     info->reset( value );
     if ( text == NULL || bytes < 0 )
     {
-        in.report->malformed = 1;
+        in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
         return 0;
     }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    missing_before = in.report->missing_required;
     ok = tabledemo_table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {
@@ -2370,7 +2719,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
     }
     if ( in.bad || !ok )
     {
-        in.report->malformed = 1;
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
         return 0;
     }
     return 1;
@@ -2493,7 +2842,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_blob( tabledemo_table_json_in
     tabledemo_table_json_graph_in_t * graph=(tabledemo_table_json_graph_in_t *)in->graph;
     tabledemo_table_ref_t * ref=(tabledemo_table_ref_t *)slot;
     int64_t mark, symbols=0, pad=0, length, placed=0, at;
-    int malformed=0, held=0;
+    int damaged=0, held=0;
     uint32_t accumulator=0;
     uint8_t * data;
     if(graph==NULL || tabledemo_table_json_peek(in)!='"') { in->bad=1; return 0; }
@@ -2518,25 +2867,25 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_blob( tabledemo_table_json_in
         if(c=='"') { break; }
         step=tabledemo_table_json_base64_step(in,c);
         if(step<0) { return 0; }
-        if(step==0) { malformed=1; continue; }
-        if(malformed) { continue; }
+        if(step==0) { damaged=1; continue; }
+        if(damaged) { continue; }
         if(c=='=') { pad++; continue; }
-        if(pad>0) { malformed=1; continue; }
-        if(tabledemo_table_json_base64_value((uint8_t)c)<0) { malformed=1; continue; }
+        if(pad>0) { damaged=1; continue; }
+        if(tabledemo_table_json_base64_value((uint8_t)c)<0) { damaged=1; continue; }
         symbols++;
     }
-    if(!malformed)
+    if(!damaged)
     {
         if(pad>0)
         {
-            if(pad>2 || (symbols+pad)%4!=0 || symbols%4<2) { malformed=1; }
+            if(pad>2 || (symbols+pad)%4!=0 || symbols%4<2) { damaged=1; }
         }
         else if(symbols%4==1)
         {
-            malformed=1;
+            damaged=1;
         }
     }
-    if(malformed) { in->report->kind_mismatch++; return 1; }
+    if(damaged) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
     length=symbols*6/8;
     data=tabledemo_table_bytes_emplace(graph->worker,ref,length);
     if(data==NULL) { in->bad=1; return 0; }
@@ -2566,9 +2915,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_pointer( tabledemo_table_json
     in->pos++; c = tabledemo_table_json_peek(in);
     if ( c == '}' )
     {
-        in->pos++;
-        if ( tabledemo_table_json_emplace(graph,slot,f->table) == NULL ) { in->bad = 1; return 0; }
-        return 1;
+        node = tabledemo_table_json_emplace(graph,slot,f->table);
+        if ( node == NULL ) { in->bad = 1; return 0; }
+        return tabledemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL);
     }
     if ( !tabledemo_table_json_scan_string(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
     key[length] = 0;
@@ -2593,7 +2942,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_pointer( tabledemo_table_json
         if ( entry->open ) { in->bad = 1; return 0; }
         ((tabledemo_table_ref_t *)slot)->value = 0;
         if ( entry->type == NULL ) { return 1; }
-        if ( entry->type != f->table ) { in->report->kind_mismatch++; return 1; }
+        if ( entry->type != f->table ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
         ((tabledemo_table_ref_t *)slot)->value = entry->node; return 1;
     }
     node = tabledemo_table_json_emplace(graph,slot,f->table);
@@ -2676,12 +3025,16 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_graph( tabledemo_table_worker
     int ok;
     memset(&graph,0,sizeof(graph)); graph.worker = worker; graph.labels.allocator=worker->arena!=NULL ? worker->arena->allocator : tabledemo_table_default_allocator();
     memset(&in,0,sizeof(in)); in.text = text; in.size = bytes; in.report = report ? report : &ignored; in.graph = &graph;
-    if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->malformed = 1; return 0; }
+    if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     info->reset(root);
-    ok = tabledemo_table_json_read_table(&in,root,info,0);
-    if ( ok ) { tabledemo_table_json_space(&in); if ( in.pos != in.size ) { in.bad = 1; } }
-    tabledemo_table_release(graph.labels.allocator,graph.labels.entries);
-    if ( in.bad || !ok ) { in.report->malformed = 1; return 0; }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    {
+        int32_t missing_before = in.report->missing_required;
+        ok = tabledemo_table_json_read_table(&in,root,info,0);
+        if ( ok ) { tabledemo_table_json_space(&in); if ( in.pos != in.size ) { in.bad = 1; } }
+        tabledemo_table_release(graph.labels.allocator,graph.labels.entries);
+        if ( in.bad || !ok ) { if ( in.bad || in.report->missing_required == missing_before ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; } return 0; }
+    }
     return 1;
 }
 
@@ -2713,6 +3066,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_list(tabledemo_table_json_ou
     const TableSequence * list=(const TableSequence *)storage;
     TableSequenceCursor cursor=table_sequence_cursor(NULL,list,f->elem_size); int32_t i;
     if(!cursor.ok) { return 0; }
+    if(f->text_total>0 && list->count>0 && schema_tabledemo_table_json_text_bytes_(cursor.array,list->count,f)>f->text_total) { return 0; }
     tabledemo_table_json_put(out,'[');
     for(i=0;i<list->count;i++) {
         const void * element=table_sequence_next(&cursor); if(element==NULL) { return 0; }
@@ -2725,18 +3079,29 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_list(tabledemo_table_json_in_
 {
     tabledemo_table_json_graph_in_t * graph=(tabledemo_table_json_graph_in_t *)in->graph;
     TableSequence * list=(TableSequence *)storage; char shape=tabledemo_table_json_element_shape(f);
+    int64_t spent=0; int full=0;
     if(graph==NULL || tabledemo_table_json_peek(in)!='[') { in->bad=1; return 0; }
     memset(list,0,sizeof(*list)); in->pos++;
     for(;;) {
         char c=tabledemo_table_json_peek(in); void * element;
         if(c==']') { in->pos++; return 1; }
         if(c==0) { in->bad=1; return 0; }
+        if(full) {
+            if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
+            c=tabledemo_table_json_peek(in);
+            if(c==',') { in->pos++; continue; }
+            if(c==']') { in->pos++; return 1; }
+            in->bad=1; return 0;
+        }
         element=table_sequence_add(graph->worker,list,f->elem_size);
         if(element==NULL) { in->bad=1; return 0; }
-        if(f->kind==13) { f->table->reset(element); }
-        if(tabledemo_table_json_value_shape(in)!=shape && !(f->kind==17 && tabledemo_table_json_value_shape(in)=='z')) {
-            in->report->kind_mismatch++; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
+        if(f->kind==13 || f->text_list!=0) { f->table->reset(element); }
+        if(tabledemo_table_json_value_shape(in)!=shape && !((f->kind==17 || f->text_list==2) && tabledemo_table_json_value_shape(in)=='z')) {
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
         } else if(!tabledemo_table_json_read_scalar(in,element,f,depth+1)) { return 0; }
+        else if(f->text_total>0 && !schema_tabledemo_table_json_text_total_keep_(in,element,f,&spent)) {
+            full=1; table_sequence_erase(graph->worker->arena,list,element,f->elem_size);
+        }
         c=tabledemo_table_json_peek(in);
         if(c==',') { in->pos++; continue; }
         if(c==']') { in->pos++; return 1; }
@@ -2812,14 +3177,20 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_map(tabledemo_table_json_out
     for(i=0;i<map->count;i++) {
         const uint8_t * entry=(const uint8_t *)table_sequence_next(&cursor); if(entry==NULL) { return 0; }
         if(i) { tabledemo_table_json_put(out,','); } tabledemo_table_json_line(out,depth+1);
-        if(key->kind==12) { tabledemo_table_json_write_string(out,(const char *)entry+key->offset,tabledemo_table_json_count(entry,key)); }
+        if(key->kind==12) {
+#ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+            if(!key->counted) { if(!schema_tabledemo_table_json_write_unbounded_text_(out,entry+key->offset)) { return 0; } }
+            else
+#endif
+            { tabledemo_table_json_write_string(out,(const char *)entry+key->offset,tabledemo_table_json_count(entry,key)); }
+        }
         else {
             tabledemo_table_json_put(out,'"');
             if(key->kind>=2 && key->kind<=5) { tabledemo_table_json_write_signed(out,tabledemo_table_json_get_signed(entry+key->offset,key->elem_size)); }
             else { tabledemo_table_json_write_unsigned(out,tabledemo_table_json_get_raw(entry+key->offset,key->elem_size)); }
             tabledemo_table_json_put(out,'"');
         }
-        tabledemo_table_json_raw(out,": ",2); if(!tabledemo_table_json_write_field(out,entry,value,depth+1)) { return 0; }
+        tabledemo_table_json_raw(out,": ",2); if(value->optional && !tabledemo_table_json_get_raw(entry+value->present_offset,1)) { tabledemo_table_json_raw(out,"null",4); } else if(!tabledemo_table_json_write_field(out,entry,value,depth+1)) { return 0; }
     }
     if(map->count) { tabledemo_table_json_line(out,depth); } tabledemo_table_json_put(out,'}'); return 1;
 }
@@ -2841,47 +3212,96 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_map(tabledemo_table_json_in_t
         char c=tabledemo_table_json_peek(in),token[TABLEDEMO_K_TABLE_JSON_MAX_KEY]; int32_t length=0,before; int64_t number=0; int place=1; void * entry;
         tabledemo_table_report_t scratch={0}; tabledemo_table_json_in_t scan=*in; scan.report=&scratch;
         if(c=='}') { in->pos++; return 1; } if(c==0) { in->bad=1; return 0; }
-        if(!tabledemo_table_json_scan_text(&scan,token,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
-        in->pos=scan.pos; token[length]=0;
-        if(tabledemo_table_json_peek(in)!=':') { in->bad=1; return 0; } in->pos++;
-        if(key->kind==12) {
-            if(scratch.clamped || length>key->array_bound) { in->report->clamped++; place=0; }
-        } else {
-            int fits=0;
-            if(scratch.clamped) { in->report->kind_mismatch++; place=0; }
-            else if(!tabledemo_table_json_map_key_value(token,length,key,&number,&fits)) { in->bad=1; return 0; }
-            else if(!fits) { in->report->kind_mismatch++; place=0; }
+#ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if(key->kind==12 && !key->counted) {
+            int64_t mark=in->pos; char * dyn=NULL; const char * kptr=token;
+            if(!tabledemo_table_json_scan_text(&scan,NULL,INT32_MAX,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
+            if(length>=TABLEDEMO_K_TABLE_JSON_MAX_KEY) {
+                dyn=(char *)tabledemo_table_allocate(graph->labels.allocator,(int64_t)length+1);
+                if(dyn==NULL) { in->bad=1; return 0; }
+                kptr=dyn;
+            }
+            scan=*in; scan.report=&scratch; scan.pos=mark;
+            if(!tabledemo_table_json_scan_text(&scan,(char *)kptr,length,&length)) { tabledemo_table_release(graph->labels.allocator,dyn); in->pos=scan.pos; in->bad=1; return 0; }
+            ((char *)kptr)[length]=0; in->pos=scan.pos;
+            if(tabledemo_table_json_peek(in)!=':') { tabledemo_table_release(graph->labels.allocator,dyn); in->bad=1; return 0; }
+            in->pos++;
+            before=map->count; entry=f->place(graph->worker,map,kptr,length,0);
+            tabledemo_table_release(graph->labels.allocator,dyn);
+            if(entry==NULL) { in->bad=1; return 0; }
+        } else
+#endif
+        {
+            if(!tabledemo_table_json_scan_text(&scan,token,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
+            in->pos=scan.pos; token[length]=0;
+            if(tabledemo_table_json_peek(in)!=':') { in->bad=1; return 0; } in->pos++;
+            if(key->kind==12) {
+                if((scratch.refused && scratch.refuse_reason==SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE) || length>key->array_bound) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; place=0; }
+            } else {
+                int fits=0;
+                if(scratch.refused) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; place=0; }
+                else if(!tabledemo_table_json_map_key_value(token,length,key,&number,&fits)) { in->bad=1; return 0; }
+                else if(!fits) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; place=0; }
+            }
+            before=map->count; entry=place ? f->place(graph->worker,map,token,length,number) : NULL;
+            if(place && entry==NULL) { in->bad=1; return 0; }
         }
-        before=map->count; entry=place ? f->place(graph->worker,map,token,length,number) : NULL;
-        if(place && entry==NULL) { in->bad=1; return 0; }
-        if(entry!=NULL && map->count==before) { in->report->duplicate++; }
+        if(entry!=NULL && map->count==before) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
         c=tabledemo_table_json_value_shape(in);
         if(entry==NULL) { if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; } }
-        else if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
-            in->report->kind_mismatch++; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
-        } else if(!tabledemo_table_json_read_field(in,entry,value,depth+1)) { return 0; }
+        else if(value->optional && c=='z') {
+            if(!tabledemo_table_json_literal(in,"null")) { return 0; }
+        } else {
+            if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
+            } else if(!tabledemo_table_json_read_field(in,entry,value,depth+1)) { return 0; }
+            if(value->optional) { tabledemo_table_json_set_raw((uint8_t *)entry+value->present_offset,1,1); }
+        }
         c=tabledemo_table_json_peek(in); if(c==',') { in->pos++; continue; } if(c=='}') { in->pos++; return 1; }
         in->bad=1; return 0;
     }
 }
 #endif
+#ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_tabledemo_table_json_write_unbounded_text_(tabledemo_table_json_out_t * out,const void * slot)
+{
+    int32_t len=0; const char * text=schema_tabledemo_table_text_at_(NULL,(const tabledemo_table_ref_t *)slot,&len);
+    if(len<0) { return 0; }
+    tabledemo_table_json_write_string(out,text,len);
+    return 1;
+}
+static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabledemo_table_json_in_t * in,void * slot)
+{
+    tabledemo_table_json_graph_in_t * graph=(tabledemo_table_json_graph_in_t *)in->graph;
+    tabledemo_table_ref_t * ref=(tabledemo_table_ref_t *)slot;
+    int64_t mark; int32_t count=0,written=0; char * text;
+    if(graph==NULL || tabledemo_table_json_peek(in)!='"') { in->bad=1; return 0; }
+    ref->value=0; mark=in->pos;
+    if(!tabledemo_table_json_scan_text(in,NULL,INT32_MAX,&count)) { return 0; }
+    in->pos=mark;
+    if(count==0) { return tabledemo_table_json_scan_text(in,NULL,0,&written); }
+    text=tabledemo_table_string_emplace(graph->worker,ref,NULL,count);
+    if(text==NULL) { in->bad=1; return 0; }
+    return tabledemo_table_json_scan_text(in,text,count,&written);
+}
+#endif
 static const tabledemo_table_field_info_t schema_tabledemo_gunner_settings_fields_[] = {
-    { "reaction", "reaction", "float32", 0xb75aa3662201646aull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_gunner_settings_t, reaction ), (uint32_t) sizeof( ( (tabledemo_gunner_settings_t *) 0 )->reaction ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "tracking", "tracking", "bool", 0xa6bf719a4602b0bcull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_gunner_settings_t, tracking ), (uint32_t) sizeof( ( (tabledemo_gunner_settings_t *) 0 )->tracking ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "callsign", "callsign", "string", 0x5bc44627b9848818ull, 12, 0, 0, 1, 0, 24, (uint32_t) offsetof( tabledemo_gunner_settings_t, callsign ), (uint32_t) sizeof( ( (tabledemo_gunner_settings_t *) 0 )->callsign ), (uint32_t) offsetof( tabledemo_gunner_settings_t, callsign_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "reaction", "reaction", "float32", 0xb75aa3662201646aull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_gunner_settings_t, reaction ), (uint32_t) sizeof( ( (tabledemo_gunner_settings_t *) 0 )->reaction ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "tracking", "tracking", "bool", 0xa6bf719a4602b0bcull, 1, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_gunner_settings_t, tracking ), (uint32_t) sizeof( ( (tabledemo_gunner_settings_t *) 0 )->tracking ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "callsign", "callsign", "string", 0x5bc44627b9848818ull, 12, 0, 0, 1, 0, 0, 24, (uint32_t) offsetof( tabledemo_gunner_settings_t, callsign ), (uint32_t) sizeof( ( (tabledemo_gunner_settings_t *) 0 )->callsign ), (uint32_t) offsetof( tabledemo_gunner_settings_t, callsign_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_gunner_settings_info_ = { "GunnerSettings", (uint32_t) sizeof( tabledemo_gunner_settings_t ), 3, schema_tabledemo_gunner_settings_fields_, schema_tabledemo_gunner_settings_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_gunner_settings_info_ = { "GunnerSettings", (uint32_t) sizeof( tabledemo_gunner_settings_t ), 3, schema_tabledemo_gunner_settings_fields_, schema_tabledemo_gunner_settings_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_field_info_t schema_tabledemo_ship_entry_fields_[] = {
-    { "display_name", "name", "string", 0x2d21d7cd66bd5a5dull, 12, 0, 0, 1, 0, 32, (uint32_t) offsetof( tabledemo_ship_entry_t, display_name ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->display_name ), (uint32_t) offsetof( tabledemo_ship_entry_t, display_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "health", "health", "float32", 0x7f69d4b5288ba9cfull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ship_entry_t, health ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "mass", "mass", "float32", 0x1f3757a2ce7b0ab1ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ship_entry_t, mass ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->mass ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "hardpoints", "hardpoints", "int32", 0x95d0cce09ca82b73ull, 4, 1, 0, 1, 0, 4, (uint32_t) offsetof( tabledemo_ship_entry_t, hardpoints ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->hardpoints[0] ), (uint32_t) offsetof( tabledemo_ship_entry_t, hardpoints_count ), 0xffffffffu, NULL, 1, 0.0, 8.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, 0, 0, 0, 1, 0, (uint32_t) offsetof( tabledemo_ship_entry_t, gunner ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->gunner ), 0xffffffffu, (uint32_t) offsetof( tabledemo_ship_entry_t, gunner_present ), &schema_tabledemo_gunner_settings_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "display_name", "name", "string", 0x2d21d7cd66bd5a5dull, 12, 0, 0, 1, 0, 0, 32, (uint32_t) offsetof( tabledemo_ship_entry_t, display_name ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->display_name ), (uint32_t) offsetof( tabledemo_ship_entry_t, display_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "health", "health", "float32", 0x7f69d4b5288ba9cfull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ship_entry_t, health ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "mass", "mass", "float32", 0x1f3757a2ce7b0ab1ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_ship_entry_t, mass ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->mass ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "hardpoints", "hardpoints", "int32", 0x95d0cce09ca82b73ull, 4, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_ship_entry_t, hardpoints ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->hardpoints[0] ), (uint32_t) offsetof( tabledemo_ship_entry_t, hardpoints_count ), 0xffffffffu, NULL, 1, 0.0, 8.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, 0, 0, 0, 1, 0, 0, (uint32_t) offsetof( tabledemo_ship_entry_t, gunner ), (uint32_t) sizeof( ( (tabledemo_ship_entry_t *) 0 )->gunner ), 0xffffffffu, (uint32_t) offsetof( tabledemo_ship_entry_t, gunner_present ), &schema_tabledemo_gunner_settings_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_ship_entry_info_ = { "ShipEntry", (uint32_t) sizeof( tabledemo_ship_entry_t ), 5, schema_tabledemo_ship_entry_fields_, schema_tabledemo_ship_entry_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_ship_entry_info_ = { "ShipEntry", (uint32_t) sizeof( tabledemo_ship_entry_t ), 5, schema_tabledemo_ship_entry_fields_, schema_tabledemo_ship_entry_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_variant_info_t schema_tabledemo_global_settings_difficulty_variants_[] = {
     { "None", 0x0000000000000000ull },
@@ -2890,13 +3310,13 @@ static const tabledemo_table_variant_info_t schema_tabledemo_global_settings_dif
     { "Hard", 0x58c7b5d87587287cull },
 };
 static const tabledemo_table_field_info_t schema_tabledemo_global_settings_fields_[] = {
-    { "tick_rate", "tick_rate", "uint32", 0xa65f859b617deaf3ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_global_settings_t, tick_rate ), (uint32_t) sizeof( ( (tabledemo_global_settings_t *) 0 )->tick_rate ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 240.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "difficulty", "difficulty", "Difficulty", 0x467f35a74c6e4a70ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_global_settings_t, difficulty ), (uint32_t) sizeof( ( (tabledemo_global_settings_t *) 0 )->difficulty ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_global_settings_difficulty_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "build_note", "build_note", "string", 0x14ec921cc2549d60ull, 12, 0, 0, 1, 0, 48, (uint32_t) offsetof( tabledemo_global_settings_t, build_note ), (uint32_t) sizeof( ( (tabledemo_global_settings_t *) 0 )->build_note ), (uint32_t) offsetof( tabledemo_global_settings_t, build_note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "spawn_delays", "spawn_delays", "float32", 0x09ae5613b0051271ull, 10, 1, 0, 0, 0, 3, (uint32_t) offsetof( tabledemo_global_settings_t, spawn_delays ), (uint32_t) sizeof( ( (tabledemo_global_settings_t *) 0 )->spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "tick_rate", "tick_rate", "uint32", 0xa65f859b617deaf3ull, 8, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_global_settings_t, tick_rate ), (uint32_t) sizeof( ( (tabledemo_global_settings_t *) 0 )->tick_rate ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 240.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "difficulty", "difficulty", "Difficulty", 0x467f35a74c6e4a70ull, 30, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_global_settings_t, difficulty ), (uint32_t) sizeof( ( (tabledemo_global_settings_t *) 0 )->difficulty ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_global_settings_difficulty_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "build_note", "build_note", "string", 0x14ec921cc2549d60ull, 12, 0, 0, 1, 0, 0, 48, (uint32_t) offsetof( tabledemo_global_settings_t, build_note ), (uint32_t) sizeof( ( (tabledemo_global_settings_t *) 0 )->build_note ), (uint32_t) offsetof( tabledemo_global_settings_t, build_note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "spawn_delays", "spawn_delays", "float32", 0x09ae5613b0051271ull, 10, 1, 0, 0, 0, 0, 3, (uint32_t) offsetof( tabledemo_global_settings_t, spawn_delays ), (uint32_t) sizeof( ( (tabledemo_global_settings_t *) 0 )->spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_global_settings_info_ = { "GlobalSettings", (uint32_t) sizeof( tabledemo_global_settings_t ), 4, schema_tabledemo_global_settings_fields_, schema_tabledemo_global_settings_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_global_settings_info_ = { "GlobalSettings", (uint32_t) sizeof( tabledemo_global_settings_t ), 4, schema_tabledemo_global_settings_fields_, schema_tabledemo_global_settings_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_variant_info_t schema_tabledemo_pack_config_ships_keys_[] = {
     { "None", 0x0000000000000000ull },
@@ -2911,14 +3331,14 @@ static const tabledemo_table_variant_info_t schema_tabledemo_pack_config_thresho
     { "Hard", 0x58c7b5d87587287cull },
 };
 static const tabledemo_table_field_info_t schema_tabledemo_pack_config_fields_[] = {
-    { "version", "version", "uint32", 0xbb62c62c9808ea37ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_pack_config_t, version ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "global", "global", "GlobalSettings", 0x7fb43557b54149ceull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_pack_config_t, global ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->global ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_global_settings_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "ships", "ships", "ShipEntry", 0x294a5c4913e1ad44ull, 13, 1, 0, 0, 0, (int32_t) TABLEDEMO_SHIP_TYPE_MAX, (uint32_t) offsetof( tabledemo_pack_config_t, ships ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->ships[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_ship_entry_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "ShipType", schema_tabledemo_pack_config_ships_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "thresholds", "thresholds", "int32", 0x9cda940a344e1571ull, 4, 1, 0, 0, 0, (int32_t) TABLEDEMO_DIFFICULTY_MAX, (uint32_t) offsetof( tabledemo_pack_config_t, thresholds ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->thresholds[0] ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, "Difficulty", schema_tabledemo_pack_config_thresholds_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "reserves", "reserves", "ShipEntry", 0x77707fccd201c228ull, 13, 1, 0, 1, 0, 3, (uint32_t) offsetof( tabledemo_pack_config_t, reserves ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->reserves[0] ), (uint32_t) offsetof( tabledemo_pack_config_t, reserves_count ), 0xffffffffu, &schema_tabledemo_ship_entry_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "version", "version", "uint32", 0xbb62c62c9808ea37ull, 8, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_pack_config_t, version ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "global", "global", "GlobalSettings", 0x7fb43557b54149ceull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_pack_config_t, global ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->global ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_global_settings_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "ships", "ships", "ShipEntry", 0x294a5c4913e1ad44ull, 13, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_SHIP_TYPE_MAX, (uint32_t) offsetof( tabledemo_pack_config_t, ships ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->ships[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_ship_entry_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "ShipType", schema_tabledemo_pack_config_ships_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "thresholds", "thresholds", "int32", 0x9cda940a344e1571ull, 4, 1, 0, 0, 0, 0, (int32_t) TABLEDEMO_DIFFICULTY_MAX, (uint32_t) offsetof( tabledemo_pack_config_t, thresholds ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->thresholds[0] ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, "Difficulty", schema_tabledemo_pack_config_thresholds_keys_, 3, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "reserves", "reserves", "ShipEntry", 0x77707fccd201c228ull, 13, 1, 0, 1, 0, 0, 3, (uint32_t) offsetof( tabledemo_pack_config_t, reserves ), (uint32_t) sizeof( ( (tabledemo_pack_config_t *) 0 )->reserves[0] ), (uint32_t) offsetof( tabledemo_pack_config_t, reserves_count ), 0xffffffffu, &schema_tabledemo_ship_entry_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_pack_config_info_ = { "PackConfig", (uint32_t) sizeof( tabledemo_pack_config_t ), 5, schema_tabledemo_pack_config_fields_, schema_tabledemo_pack_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_pack_config_info_ = { "PackConfig", (uint32_t) sizeof( tabledemo_pack_config_t ), 5, schema_tabledemo_pack_config_fields_, schema_tabledemo_pack_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 int schema_tabledemo_gunner_settings_from_json_( tabledemo_gunner_settings_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {

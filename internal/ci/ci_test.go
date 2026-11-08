@@ -666,7 +666,14 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 	if expr == "" {
 		return true, nil
 	}
+	if rest, ok := strings.CutPrefix(expr, "${{"); ok && strings.HasSuffix(rest, "}}") {
+		expr = strings.TrimSpace(strings.TrimSuffix(rest, "}}"))
+	}
 	expr = stripOuterParens(expr)
+	if expr == "!cancelled()" {
+		// A job-level cancelled() guard never decides self-hosted admission.
+		return true, nil
+	}
 	if parts := splitTopLevelOp(expr, "||"); len(parts) > 1 {
 		for _, p := range parts {
 			v, err := evalCIExpr(p, ev)
@@ -815,6 +822,13 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 			return "", nil
 		}
 		return ev.HeadRef, nil
+	case "needs.registry.result", "needs.cpp-writes.result", "needs.port.result":
+		// The nightly's upstream jobs are admitted only for same-repository
+		// events (their own if:), so a fork pull request skips them.
+		if ev.Name == "pull_request" && ev.HeadRepo != ev.Repo {
+			return "skipped", nil
+		}
+		return "success", nil
 	case "needs.plan.outputs.packages":
 		return ev.PlanPkgs, nil
 	case "needs.plan.outputs.legs":
@@ -910,12 +924,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanLegs: planLegs,
 	}
 	for _, wantKey := range []string{
-		"ci-fast.yml:block-gate",
-		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:leg-gate",
-		"ci-fast.yml:lint-fast",
-		"ci-fast.yml:plan",
 		"ci-full.yml:pins",
+		"schema-cs-runs-hostile-corpus.yml:corpus",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
@@ -923,6 +934,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-luau-nightly-fuzz.yml:replay",
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
+		"schema-rust-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, sameRepoMainUnlabeled)
@@ -974,12 +986,14 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 	for _, wantKey := range []string{
 		"ci-full.yml:pins",
+		"schema-cs-runs-hostile-corpus.yml:corpus",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-java-runs-hostile-corpus.yml:corpus",
 		"schema-luau-nightly-fuzz.yml:replay",
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
+		"schema-rust-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, streamToDevPR); err != nil || !ok {
@@ -999,7 +1013,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		}
 		for _, wantKey := range []string{
 			"ci-full.yml:go-test",
+			"ci-full.yml:leg-tagged",
 			"ci-full.yml:pins",
+			"schema-cs-runs-hostile-corpus.yml:corpus",
 			"schema-dart-generated-strict-analyze-gate.yml:fast",
 			"schema-elixir-runs-hostile-corpus.yml:corpus",
 			"schema-go-generated-golangci-lint-gate.yml:gate",
@@ -1007,6 +1023,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			"schema-luau-nightly-fuzz.yml:replay",
 			"schema-luau-resource-bounds.yml:luau-resource-bounds",
 			"schema-luau-runs-hostile-corpus.yml:corpus",
+			"schema-rust-runs-hostile-corpus.yml:corpus",
 		} {
 			wfName, jobName, _ := strings.Cut(wantKey, ":")
 			if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, pushEv); err != nil || !ok {
@@ -1030,7 +1047,10 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 	for _, wantKey := range []string{
 		"ci-full.yml:go-test",
+		"ci-full.yml:leg-tagged",
 		"ci-full.yml:pins",
+		"schema-cs-runs-hostile-corpus.yml:corpus",
+		"schema-cs-runs-hostile-corpus.yml:negative-control",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-dart-generated-strict-analyze-gate.yml:nightly",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
@@ -1042,6 +1062,8 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
 		"schema-luau-runs-hostile-corpus.yml:negative-control",
+		"schema-rust-runs-hostile-corpus.yml:corpus",
+		"schema-rust-runs-hostile-corpus.yml:negative-control",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, schedEv); err != nil || !ok {
@@ -1089,20 +1111,32 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		gotKeys = append(gotKeys, sh.Key())
 	}
 	wantKeys := []string{
-		"ci-fast.yml:block-gate",
-		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:leg-gate",
-		"ci-fast.yml:lint-fast",
-		"ci-fast.yml:plan",
 		"ci-full.yml:go-test",
+		"ci-full.yml:leg-tagged",
 		"ci-full.yml:pins",
+		"nightly-conformance.yml:coverage",
+		"nightly-conformance.yml:cpp-writes",
+		"nightly-conformance.yml:port",
+		"nightly-conformance.yml:registry",
+		"roadmap.yml:roadmap",
+		"schema-c-runs-hostile-corpus.yml:corpus",
+		"schema-c-runs-hostile-corpus.yml:negative-control",
+		"schema-cpp-runs-hostile-corpus.yml:corpus",
+		"schema-cpp-runs-hostile-corpus.yml:negative-control",
+		"schema-cs-runs-hostile-corpus.yml:corpus",
+		"schema-cs-runs-hostile-corpus.yml:negative-control",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-dart-generated-strict-analyze-gate.yml:nightly",
+		"schema-dart-runs-hostile-corpus.yml:corpus",
+		"schema-dart-runs-hostile-corpus.yml:negative-control",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
 		"schema-java-runs-hostile-corpus.yml:corpus",
 		"schema-java-runs-hostile-corpus.yml:negative-control",
+		"schema-js-runs-hostile-corpus.yml:corpus",
+		"schema-js-runs-hostile-corpus.yml:negative-control",
 		"schema-lobster-generated-strict-gate.yml:strict",
 		"schema-lua-generated-luacheck-gate.yml:luacheck",
 		"schema-lua-nightly-fuzz.yml:fast",
@@ -1117,6 +1151,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
 		"schema-luau-runs-hostile-corpus.yml:negative-control",
+		"schema-rust-runs-hostile-corpus.yml:corpus",
+		"schema-rust-runs-hostile-corpus.yml:negative-control",
 		"schema-squirrel-all-port-differential.yml:fast",
 		"schema-squirrel-all-port-differential.yml:nightly",
 		"schema-squirrel-nightly-fuzz.yml:fuzz",

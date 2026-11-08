@@ -80,41 +80,16 @@ table Node
 }
 `
 
-func TestRetainOracleForgetsEveryArmOfAReplacedList(t *testing.T) {
+func TestRetainOracleRefusesAReplacedList(t *testing.T) {
 	t.Parallel()
 	m := retainArmOccurrenceModel(t)
-	cases := []struct {
-		name string
-		k    int
-		n2   int
-	}{
-		{"fewer-elements", 10, 4},
-		{"equal-elements", 10, 11},
-		{"more-elements", 10, 20},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			inst := m.New(m.Lookup("Node"))
-			retain := tablewire.Retain{Capacity: 8192, IdCapacity: 1024}
-			var report tabletext.Report
-			ok, err := tablewire.DecodeRetain(m, inst, retainReplacedListWire(tc.k, tc.n2), &retain, &report)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !ok {
-				t.Fatal("the load refused a well-framed file")
-			}
-			if report.Retained != 1 {
-				t.Fatalf("load: retained=%d, want 1: the arm's unknown field is retained", report.Retained)
-			}
-			var save tabletext.Report
-			if _, err := tablewire.EncodeRetain(m, inst, &retain, &save); err != nil {
-				t.Fatal(err)
-			}
-			if save.RetainLost != 0 {
-				t.Fatalf("save: retain_lost=%d, want 0: the replaced occurrence's earlier arm has no record to lose", save.RetainLost)
-			}
-		})
+	for _, n2 := range []int{4, 11, 20} {
+		inst := m.New(m.Lookup("Node"))
+		retain := tablewire.Retain{Capacity: 8192, IdCapacity: 1024}
+		var report tabletext.Report
+		ok, err := tablewire.DecodeRetain(m, inst, retainReplacedListWire(10, n2), &retain, &report)
+		if ok || tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged || retain.Used() != 0 {
+			t.Fatalf("n2=%d: %v %v %+v", n2, ok, err, report)
+		}
 	}
 }

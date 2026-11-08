@@ -21,7 +21,7 @@ import (
 //     total (Wide), past the total on each list in turn, reads with the
 //     longest prefix within the total kept, the rest dropped, clamped counted
 //     once and named in ClampedField, the kept elements' sum within N; ReadStrict
-//     refuses it with TableRefuseClamped naming the field; base64, the
+//     refuses it with TableRefuseOutOfRange naming the field; base64, the
 //     retaining load and a nested table read it the same way; a JSON text
 //     past the total reads with the same prefix kept, clamped counted once and
 //     named, and report.Err() refuses it naming the field.
@@ -65,7 +65,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
-	"strings"
 	"testing"
 )
 
@@ -338,27 +337,20 @@ func TestTextListTotal(t *testing.T) {
 		name := "L." + c.field
 		check := func(t *testing.T, how string, got *L, report TableReport) {
 			t.Helper()
-			if got == nil || report.Clamped != 1 || report.Malformed || report.ClampedField != name {
-				t.Fatalf("%s %s: %+v", c.field, how, report)
-			}
-			s, count := sum(t, got, c.field)
-			if count != c.count || s > total {
-				t.Fatalf("%s %s: kept %d elements summing %d, want %d within %d", c.field, how, count, s, c.count, total)
-			}
-			if err := report.Err(); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), name) {
-				t.Fatalf("%s %s: report.Err %v", c.field, how, err)
+			if got != nil || !errors.Is(report.Err(), TableRefuseLengthOverBound) || report.Field != name {
+				t.Fatalf("%s %s: a list past its total read: %+v", c.field, how, report)
 			}
 		}
 		report = TableReport{}
-		check(t, "wire", LLoadTolerant(make([]byte, 1<<14), over, &report), report)
-		if _, err := LReadStrict(over); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), name) {
+		check(t, "wire", LLoad(make([]byte, 1<<14), over, &report), report)
+		if _, err := LReadStrict(over); !errors.Is(err, TableRefuseLengthOverBound) {
 			t.Fatalf("%s: ReadStrict %v", c.field, err)
 		}
 		var retain TableRetain
 		report = TableReport{}
 		check(t, "retain", LLoadRetain(make([]byte, 1<<14), over, &retain, &report), report)
 		// base64 is the binary wire
-		if _, err := LLoadText(base64.StdEncoding.EncodeToString(over), nil); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), name) {
+		if _, err := LLoadText(base64.StdEncoding.EncodeToString(over), nil); !errors.Is(err, TableRefuseLengthOverBound) {
 			t.Fatalf("%s: LoadText %v", c.field, err)
 		}
 	}
@@ -374,63 +366,26 @@ func TestTextListTotal(t *testing.T) {
 	nested := make([]byte, HolderWideMeasure(nx, &nw.Arena))
 	HolderWideSave(nx, nested, &nw.Arena)
 	report = TableReport{}
-	hgot := HolderLoadTolerant(make([]byte, 1<<14), nested, &report)
-	if hgot == nil || report.Clamped != 1 || report.ClampedField != "L.names" || hgot.Inner.NamesCount != 3 {
+	hgot := HolderLoad(make([]byte, 1<<14), nested, &report)
+	if hgot != nil || report.Field != "L.names" || !errors.Is(report.Err(), TableRefuseLengthOverBound) {
 		t.Fatalf("nested read %+v", report)
 	}
-	if _, err := HolderReadStrict(nested); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), "L.names") {
+	if _, err := HolderReadStrict(nested); !errors.Is(err, TableRefuseLengthOverBound) {
 		t.Fatalf("nested ReadStrict %v", err)
 	}
 
-	// THE JSON TEXT past the total: the same prefix kept, counted once, named
-	for _, c := range []struct {
-		field, text string
-		count       int32
-	}{
-		{"names", "{\"names\":[\"abcde\",\"fghij\",\"k\",\"lmno\",\"x\"]}", 3},
-		{"maybe", "{\"maybe\":[\"abcdefgh\",null,\"ijkl\",\"m\"]}", 3},
-		{"repos", "{\"repos\":[\"abcdefgh\",\"ijkl\",\"m\"]}", 2},
-		{"bases", "{\"bases\":[null,\"abcdefgh\",\"ijkl\",\"\",\"m\"]}", 4},
+	// THE JSON TEXT past the total refuses length_over_bound, naming the list
+	for _, c := range []struct{ field, text string }{
+		{"names", "{\"names\":[\"abcde\",\"fghij\",\"k\",\"lmno\",\"x\"]}"},
+		{"maybe", "{\"maybe\":[\"abcdefgh\",null,\"ijkl\",\"m\"]}"},
+		{"repos", "{\"repos\":[\"abcdefgh\",\"ijkl\",\"m\"]}"},
+		{"bases", "{\"bases\":[null,\"abcdefgh\",\"ijkl\",\"\",\"m\"]}"},
 	} {
 		var jb LBuilder
 		jb.Init()
 		report = TableReport{}
-		if !LFromJSONTolerant(&jb, []byte(c.text), &report) || report.Clamped != 1 || report.Malformed || report.ClampedField != "L."+c.field {
+		if LFromJSON(&jb, []byte(c.text), &report) || report.Field != "L."+c.field || !errors.Is(report.Err(), TableRefuseLengthOverBound) {
 			t.Fatalf("%s FromJSON %+v", c.field, report)
-		}
-		if err := report.Err(); !errors.Is(err, TableRefuseClamped) || !strings.Contains(err.Error(), "L."+c.field) {
-			t.Fatalf("%s JSON report.Err %v", c.field, err)
-		}
-		jv := jb.GetRoot()
-		var count int32
-		var spent int64
-		for i := int32(0); i < 8; i++ {
-			var p []byte
-			var ok bool
-			switch c.field {
-			case "names":
-				count = jv.NamesCount
-				p, ok = LNamesTextAt(jv, i)
-			case "maybe":
-				count = jv.MaybeCount
-				p, ok = LMaybeTextAt(jv, i)
-			case "repos":
-				count = jv.Repos.Count
-				p, ok = LReposTextAt(jv, i, &jb.Arena)
-			default:
-				count = jv.Bases.Count
-				p, ok = LBasesTextAt(jv, i, &jb.Arena)
-			}
-			if ok {
-				spent += int64(len(p))
-			}
-		}
-		if count != c.count || spent > total {
-			t.Fatalf("%s JSON: kept %d elements summing %d, want %d within %d", c.field, count, spent, c.count, total)
-		}
-		// what the JSON read kept is a value every writer takes
-		if LMeasure(jv, &jb.Arena) < 0 {
-			t.Fatalf("%s JSON: the kept prefix is refused by Measure", c.field)
 		}
 		jb.Shutdown()
 	}

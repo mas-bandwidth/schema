@@ -91,53 +91,44 @@ def fixture(path:string) -> string:
     assert data
     return data
 
-// the WIRE surface: Load a form-1 wire through the TOLERANT read, as the
-// reference leg's driver reads (§6.5), and Save it (§3). An instance line is
-// `instance <name> <unit> <root> <wire> [no-text]`. A graph that names one
-// blob from two slots is refused by every writer (§2.5), so that case is a
-// named absence carrying the refusal's name, as the Go writer names it
-// (the manifest's go-refusal= and refused-by=); any other refusal fails.
+// WIRE returns the complete canonical writeback after acceptance, or a refusal
+// without a value. The harness determines which outcome each instance owes.
+// An instance line is `instance <name> <unit> <root> <wire> [no-text]`.
 def surface_wire(text:string):
     for(rows(text, "instance")) f:
         let rep = schema_rt.LoadReport {}
-        let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
-        assert rec
+        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
+        if not rec:
+            say(f[1], "refused\n")
+            continue
         let out, why = schema_rt.save_reasoned(rec)
-        if why == "blob_shared":
-            print(f[1] + " absent blob_shared")
-        else:
-            assert why == ""
-            say(f[1], out)
+        assert why == ""
+        say(f[1], out)
 
-// the REPORT surface: the six counters and the verdict (§4), as
-// `u,k,w,c,d,m,verdict`. A report line is `report <case> <unit> <root> <wire>`.
+// REPORT and FRAMING return one verdict and the complete canonical value
+// after acceptance. A refusal has no value payload; diagnostics stay local.
+// Their lines are `<surface> <case> <unit> <root> <wire>`.
 def surface_report(text:string):
     for(rows(text, "report")) f:
         let rep = schema_rt.LoadReport {}
-        let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
-        // A damaged read discards the record; only its verdict is usable.
-        assert rec or rep.refused or rep.malformed
-        let verdict = if rep.refused: "refused" else: "read"
-        say(f[1], "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{rep.malformed},{verdict}\n")
+        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
+        if rec:
+            let js, why = schema_rt.json_write(rec)
+            assert why == ""
+            say(f[1], "read\n" + js)
+        else:
+            say(f[1], "refused\n")
 
-// the FRAMING surface (docs/LAYERS/1-framing.md): the read report as the
-// report surface prints it, then the §16 text of the value the read left,
-// unless the row says `no-value` or the read refused the wire or met damage.
-// Damage discards the whole load (§4), so a damaged read answers its report
-// line alone. A line is `framing <case> <unit> <root> <wire> [no-value]`.
 def surface_framing(text:string):
     for(rows(text, "framing")) f:
         let rep = schema_rt.LoadReport {}
-        let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
-        let malformed = rep.malformed or (not rec and not rep.refused)
-        let verdict = if rep.refused: "refused" else: "read"
-        var out = "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{malformed},{verdict}\n"
-        let no_value = length(f) > 5 and f[5] == "no-value"
-        if rec and not rep.refused and not malformed and not no_value:
+        let rec = schema_rt.load(f[3], fixture(f[4]), rep)
+        if rec:
             let js, why = schema_rt.json_write(rec)
             assert why == ""
-            out += js
-        say(f[1], out)
+            say(f[1], "read\n" + js)
+        else:
+            say(f[1], "refused\n")
 
 // block_root is the table a block image of the manifest projects, by the
 // image's name, as every leg's driver names it (test/conformance/js/main.mjs)
@@ -201,7 +192,7 @@ def surface_message(text:string):
                     let v = schema_rt.new_vocabulary(schema_rt.message_entries_here())
                     let rep = schema_rt.LoadReport {}
                     assert schema_rt.announce_read(v, fixture(announcement), rep)
-                    let recs, count, ok = schema_rt.load_messages_tolerant(f[3], v, fixture(f[5]), rep, schema_rt.message_batch_max)
+                    let recs, count, ok = schema_rt.load_messages(f[3], v, fixture(f[5]), rep, schema_rt.message_batch_max)
                     assert ok and count == length(recs)
                     let out, n = schema_rt.save_messages(recs, schema_rt.LoadReport {})
                     assert n == length(out)
@@ -234,17 +225,41 @@ def surface_cook_foreign(text:string):
         let why = schema_rt.cook_open_named(f[3], foreign(fixture(f[4])), 0, false)
         say(f[1], if why == "ok": "open\n" else: "refuse\n")
 
-// the COOK-WRITE surface (§7.6): Load the instance's wire, Cook it in each
-// byte order, the bytes as <instance> and <instance>-be. A cook-write line is
-// `cook-write <instance>`, joined to its instance line for the unit and root.
+// Cook input is canonical JSON, or a valid wire for a graph beyond text's
+// depth limit. An optional recipe aliases two named blob slots in memory;
+// Cook preserves that graph even though Save and JSON cannot spell it (§2.5).
+def cook_input(f:[string], recipe:[string]) -> schema_rt.Record?:
+    let rep = schema_rt.LoadReport {}
+    if recipe[2] == "-":
+        return schema_rt.load(f[3], fixture(f[4]), rep)
+    let path = recipe[2]
+    let rec = schema_rt.json_read(f[3], fixture(path), rep)
+    if rec and (recipe[3] != "-" or recipe[4] != "-"):
+        var source_slot:schema_rt.Slot? = nil
+        var alias_slot:schema_rt.Slot? = nil
+        for(rec.fields) sl:
+            if sl.fd.s == "bblob" and sl.fd.present == "":
+                if sl.fd.name == recipe[3]: source_slot = sl
+                if sl.fd.name == recipe[4]: alias_slot = sl
+        assert source_slot and alias_slot and source_slot != alias_slot
+        let blob = source_slot.cell.blob
+        assert blob
+        let node = schema_rt.Node { kind: 3, rec: nil, blob: blob }
+        source_slot.cell.blob_node = node
+        alias_slot.cell.blob = blob
+        alias_slot.cell.blob_node = node
+    return rec
+
+// COOK-WRITE compares both byte orders to the existing independent goldens.
+// A recipe is `cook-write <instance> <input-json-or-dash> <source-or-dash> <alias-or-dash>`.
 def surface_cook_write(text:string):
     let insts = lines(text, "instance")
     for(lines(text, "cook-write")) cw:
+        assert length(cw) == 5
         for(insts) f:
             if f[1] == cw[1] and f[2] == unit_key:
-                let rep = schema_rt.LoadReport {}
-                let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
-                assert rec and not rep.malformed and not rep.refused
+                let rec = cook_input(f, cw)
+                assert rec
                 let ct = schema_rt.cook_table_of(f[3])
                 assert ct
                 let size = schema_rt.cook_measure(rec, ct.build)
@@ -307,11 +322,10 @@ def surface_reason(text:string, kind:string):
                 if f[1] == r[1] and subject_unit(text, kind, f[3]) == unit_key:
                     say(r[1], forged(f) + "\n")
 
-// the RETAIN surfaces (§6.6): LoadRetain at the row's two capacities,
-// MeasureRetain, SaveRetain; the counters `<retained>,<retain_lost>,<unknown>
-// <save lost>`, or the saved bytes. A retain line is `retain <case> <unit>
-// <root> <wire> <capacity> <ids>`: `short` is one byte short of what this
-// leg's own load used, so the driver loads once roomy and once again.
+// RETAIN returns the known canonical value, independently of the retention
+// store's local byte cost. RETAIN-SAVE compares the retained wire separately.
+// A line is `retain <case> <unit> <root> <wire> <capacity> <ids>`;
+// `short` is one byte short of what this leg's own roomy load used.
 def surface_retain(text:string, saves:bool):
     for(rows(text, "retain")) f:
         let wire = fixture(f[4])
@@ -320,27 +334,30 @@ def surface_retain(text:string, saves:bool):
         if f[5] == "short":
             let probe = schema_rt.Retain { capacity: capacity, id_capacity: ids }
             schema_rt.load_retain(f[3], wire, probe, schema_rt.LoadReport {})
-            capacity = probe.used - 1
+            capacity = max(0, probe.used - 1)
         let retain = schema_rt.Retain { capacity: capacity, id_capacity: ids }
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load_retain(f[3], wire, retain, rep)
-        assert not rep.malformed
-        let retained, lost, unknown = rep.retained, rep.retain_lost, rep.unknown
-        let out = schema_rt.save_retain(rec, retain, rep)
-        let save_lost = rep.retain_lost - lost
-        let again_rep = schema_rt.LoadReport {}
-        let again = schema_rt.save_retain(rec, retain, again_rep)
-        assert again == out and again_rep.retain_lost == save_lost
-        if saves:
+        if not rec:
+            say(f[1], "refused\n")
+        elif saves:
+            let out = schema_rt.save_retain(rec, retain, rep)
+            assert not rep.refused
+            let again_rep = schema_rt.LoadReport {}
+            let again = schema_rt.save_retain(rec, retain, again_rep)
+            assert not again_rep.refused and again == out
             say(f[1], out)
         else:
-            say(f[1], "{retained},{lost},{unknown} {save_lost}\n")
+            let js, why = schema_rt.json_write(rec)
+            assert why == ""
+            say(f[1], "read\n" + js)
 // the JSON surfaces (docs/SPEC-TABLES.md §16): an instance line whose sixth
 // word is `no-text` has no text and is not asked (§16.7)
 def has_text(f:[string]) -> bool:
     return not (length(f) > 5 and f[5] == "no-text")
 
-// JSON-READ: FromJson json/<name>.json, Save, the bytes.
+// JSON-READ: read json/<name>.json, Save, compare the complete bytes.
+// json-read and json-hostile use the same json_read entry point.
 def surface_json_read(text:string):
     for(rows(text, "instance")) f:
         if has_text(f):
@@ -356,20 +373,23 @@ def surface_json_write(text:string):
     for(rows(text, "instance")) f:
         if has_text(f):
             let rep = schema_rt.LoadReport {}
-            let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+            let rec = schema_rt.load(f[3], fixture(f[4]), rep)
             assert rec
             let out, why = schema_rt.json_write(rec)
             assert why == ""
             say(f[1] + ".json", out)
 
-// JSON-HOSTILE: FromJson <tree>/<root>.json, `refused` or the report
-// `u,k,w,c,d,false,read`. A line is `json-hostile <case> <unit> <root> <tree>`.
+// JSON-HOSTILE: FromJson <tree>/<root>.json, `refused` or `read` followed
+// by the complete canonical value. A line is
+// `json-hostile <case> <unit> <root> <tree>`.
 def surface_json_hostile(text:string):
     for(rows(text, "json-hostile")) f:
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.json_read(f[3], fixture(f[4] + "/" + f[3] + ".json"), rep)
-        if rec and not rep.malformed:
-            say(f[1], "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},false,read\n")
+        if rec:
+            let js, why = schema_rt.json_write(rec)
+            assert why == ""
+            say(f[1], "read\n" + js)
         else:
             say(f[1], "refused\n")
 

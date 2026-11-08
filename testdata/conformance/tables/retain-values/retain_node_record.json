@@ -1,0 +1,23 @@
+{
+  "name": "beam",
+  "tier": "None",
+  "inner": {
+    "tag": "",
+    "hits": 0
+  },
+  "items": [],
+  "banks": {
+    "Low": {
+      "tag": "",
+      "hits": 0
+    },
+    "High": {
+      "tag": "",
+      "hits": 0
+    }
+  },
+  "pick": {},
+  "head": null,
+  "entries": {},
+  "list": []
+}

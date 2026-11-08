@@ -103,7 +103,7 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 	}
 	// a CI row with no driver behind it is refused, not run
 	writeFile(t, filepath.Join(tree, "test", "conformance", "zy", "ci.json"), `{"targets": "build/conformance-zy"}`+"\n")
-	if _, err := matrix(filepath.Join(tree, "test", "conformance")); err == nil || !strings.Contains(err.Error(), "zy") {
+	if _, err := matrix(filepath.Join(tree, "test", "conformance"), false); err == nil || !strings.Contains(err.Error(), "zy") {
 		t.Errorf("a ci.json with no driver was not refused: %v", err)
 	}
 
@@ -130,7 +130,7 @@ func discover(t *testing.T, tree string) map[string]string {
 	}
 	out["harness"] = strings.Join(langs, " ")
 
-	m, err := matrix(filepath.Join(tree, "test", "conformance"))
+	m, err := matrix(filepath.Join(tree, "test", "conformance"), false)
 	if err != nil {
 		t.Fatal(err)
 	}

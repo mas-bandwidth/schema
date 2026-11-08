@@ -1,0 +1,98 @@
+[
+  {
+    "root": "ArrayRoot",
+    "text": "[]",
+    "mismatch": 0,
+    "clamped": 0,
+    "malformed": false,
+    "reason": ""
+  },
+  {
+    "root": "ArrayRoot",
+    "text": "[1,-2,3]",
+    "mismatch": 0,
+    "clamped": 0,
+    "malformed": false,
+    "reason": ""
+  },
+  {
+    "root": "ArrayRoot",
+    "text": "[2147483648,-2147483649]",
+    "mismatch": 0,
+    "clamped": 2,
+    "malformed": false,
+    "reason": ""
+  },
+  {
+    "root": "ArrayRoot",
+    "text": "[1,\"bad\",null]",
+    "mismatch": 2,
+    "clamped": 0,
+    "malformed": false,
+    "reason": ""
+  },
+  {
+    "root": "ArrayRoot",
+    "text": "{}",
+    "mismatch": 0,
+    "clamped": 0,
+    "malformed": true,
+    "reason": "json_root_not_array: ArrayRoot"
+  },
+  {
+    "root": "ArrayRoot",
+    "text": "null",
+    "mismatch": 0,
+    "clamped": 0,
+    "malformed": true,
+    "reason": "json_root_not_array: ArrayRoot"
+  },
+  {
+    "root": "ArrayRoot",
+    "text": "7",
+    "mismatch": 0,
+    "clamped": 0,
+    "malformed": true,
+    "reason": "json_root_not_array: ArrayRoot"
+  },
+  {
+    "root": "ArrayRoot",
+    "text": "[1,",
+    "mismatch": 0,
+    "clamped": 0,
+    "malformed": true,
+    "reason": ""
+  },
+  {
+    "root": "Bounded",
+    "text": "[]",
+    "mismatch": 0,
+    "clamped": 0,
+    "malformed": false,
+    "reason": ""
+  },
+  {
+    "root": "Bounded",
+    "text": "[1,2,3,4]",
+    "mismatch": 0,
+    "clamped": 1,
+    "malformed": false,
+    "reason": ""
+  },
+  {
+    "root": "Nested",
+    "text": "{\"direct\":[1],\"rows\":[[2],[3]],\"mapping\":{\"1\":[4]},\"choice\":{\"items\":[5]}}",
+    "mismatch": 0,
+    "clamped": 0,
+    "malformed": false,
+    "reason": ""
+  },
+  {
+    "root": "Nested",
+    "text": "{\"direct\":{},\"rows\":[{}],\"mapping\":{\"1\":{}},\"choice\":{\"items\":{}}}",
+    "mismatch": 4,
+    "clamped": 0,
+    "malformed": false,
+    "reason": ""
+  }
+]

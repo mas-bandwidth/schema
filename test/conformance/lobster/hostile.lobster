@@ -24,13 +24,13 @@
 //
 // A carrier maps to the port's reader, as the engine's verdict does
 // (internal/ci/hostilecorpus EngineVerdict):
-//   wire              schema_rt.load_tolerant: a refusal by the form byte, the
+//   wire              schema_rt.load: a refusal by the form byte, the
 //                     int32 count cap or a non-finite float; a read that stops
 //                     short of its root terminator is `damaged`
 //   text              schema_rt.json_read (the tolerant JSON text form)
 //   message           the unit's own announcement read into a vocabulary, then
-//                     load_messages_tolerant at capacity 1
-//   message_novocab   load_messages_tolerant on a vocabulary never announced
+//                     load_messages at capacity 1
+//   message_novocab   load_messages on a vocabulary never announced
 //   announce          announce_read on a fresh vocabulary
 //   announce_second   announce_read twice on one vocabulary
 //   announce_bytes    announce_read with max_bytes 8
@@ -81,7 +81,7 @@ def message_answer(name:string, table:string, data:string, announced:bool) -> st
     var v = schema_rt.new_vocabulary(1 << 20)
     if announced:
         v = schema_rt.own_vocabulary()
-    let out, n, ok = schema_rt.load_messages_tolerant(table, v, data, rep, 1)
+    let out, n, ok = schema_rt.load_messages(table, v, data, rep, 1)
     var answer = name + " refuse damaged\n"
     if rep.refused:
         answer = refused(name, rep)
@@ -107,7 +107,7 @@ def announce_answer(name:string, carrier:string, data:string) -> string:
 
 def wire_answer(name:string, table:string, data:string) -> string:
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load_tolerant(table, data, rep)
+    let rec = schema_rt.load(table, data, rep)
     if rep.refused:
         if length(data) >= 1 and data[0] == 2:
             return name + " refuse message_form_as_file\n"

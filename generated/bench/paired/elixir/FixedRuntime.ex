@@ -268,6 +268,40 @@ defmodule Bench.FixedRuntime do
   def clamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
+  A COMPILED LANE'S IMAGE HELD TO ITS WRITER'S OWN RANGES, before the projection
+  holds this reader's own (docs/FIXED-FORM-ALGORITHM.md §4.6, bill §12.5). Each
+  bound is {offset, bits, sign, lo, hi} on the raw scale; a value past one lands
+  that bound. Answers the image and how many clamps fired, and a clean image
+  comes back as it went in, with no new binary.
+  """
+  def writer_bounds(image, bounds), do: writer_bounds(image, bounds, 0)
+
+  defp writer_bounds(image, [], c), do: {image, c}
+
+  defp writer_bounds(image, [{at, bits, sign, lo, hi} | rest], c) do
+    case writer_raw(image, at, bits, sign) do
+      v when v < lo -> writer_bounds(writer_put(image, at, bits, lo), rest, c + 1)
+      v when v > hi -> writer_bounds(writer_put(image, at, bits, hi), rest, c + 1)
+      _ -> writer_bounds(image, rest, c)
+    end
+  end
+
+  defp writer_raw(image, at, bits, :signed) do
+    <<_::binary-size(^at), v::little-signed-size(^bits), _::binary>> = image
+    v
+  end
+
+  defp writer_raw(image, at, bits, :unsigned) do
+    <<_::binary-size(^at), v::little-unsigned-size(^bits), _::binary>> = image
+    v
+  end
+
+  defp writer_put(image, at, bits, v) do
+    <<pre::binary-size(^at), _::size(^bits), post::binary>> = image
+    <<pre::binary, v::little-size(bits), post::binary>>
+  end
+
+  @doc """
   A RANGED FLOAT AGAINST ITS READER'S OWN BOUNDS, held and counted separately
   from 'clamps/4' so a float bound reads as a float bound. A NaN or an infinity
   never arrives here: 'f32_value/1' and 'f64_value/1' refuse one on its raw
@@ -632,10 +666,10 @@ defmodule Bench.FixedRuntime do
 
   # THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
   # the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-  # adds, the optional wrapper 35. 31 is §3's body framing escape and 34 is
-  # reserved: neither is a kind a declaration spells.
+  # adds, the optional wrapper 35, plus timestamp 36. 31 is §3's body framing
+  # escape and 34 is reserved: neither is a kind a declaration spells.
   defp known_kind?(kind) when kind >= 1 and kind <= 30, do: true
-  defp known_kind?(kind), do: kind == 32 or kind == 33 or kind == 35
+  defp known_kind?(kind), do: kind == 32 or kind == 33 or kind == 35 or kind == 36
 
   # A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
   # ONE exception, stated here rather than left to be found: a bits(N) field
@@ -666,6 +700,7 @@ defmodule Bench.FixedRuntime do
   defp leaf_size(28, size), do: {true, size == 8}
   defp leaf_size(24, size), do: {true, size == 16}
   defp leaf_size(29, size), do: {true, size == 16}
+  defp leaf_size(36, size), do: {true, size == 8}
   defp leaf_size(32, size), do: {true, size == 0}
   defp leaf_size(_, _), do: {false, true}
 

@@ -51,7 +51,9 @@ local cleb = function(c) {
     else v = v | ((x & 0x7f) << shift);
     if ((x & 0x80) == 0) {
       if (i > 0 && x == 0) { c.bad = true; c.at = start; return 0; }
-      return v;
+      // load.nut's leb rule: every value at or past 2^62 is the sentinel, so
+      // a cursor plus a length is bounded and never wraps
+      return v >= 0x4000000000000000 ? 0x4000000000000000 : v;
     }
     shift += 7;
   }
@@ -468,7 +470,16 @@ _M.LoadRetain <- function(T, rootName, bytes, store, report) {
     foreach (rec in store.recs) if (rec.body == inst) return true;
     return false;
   };
-  return L.loadTolerant(T, rootName, bytes, report, store);
+  local v = L.loadTolerant(T, rootName, bytes, report, store);
+  // a count past the int32 storage cap discards the partial builder, and with
+  // it every record the walk captured before the refusal (§2.9)
+  if (v == null && report.countRefusal) {
+    store.recs <- [];
+    store.used <- 0;
+    report.retained = 0;
+    report.retainLost = 0;
+  }
+  return v;
 };
 
 _M.MeasureRetain <- function(T, rootName, value, store) {

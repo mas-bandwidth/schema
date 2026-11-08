@@ -59,8 +59,8 @@ func messageRows(t *testing.T) []messageRow {
 	return rows
 }
 
-// messageDump is the program's message half: announce_read, the tolerant
-// batch read, one value dump a body, and save_messages' bytes.
+// messageDump compares acceptance, complete values and canonical saved bytes.
+// Read diagnostics remain local and are not cross-language verdicts.
 const messageDump = `def mrun(root:string, ann:string, file:string):
     if not schema_rt.is_message_root(root):
         print("absent")
@@ -70,12 +70,16 @@ const messageDump = `def mrun(root:string, ann:string, file:string):
     let announcement = read_file(ann)
     assert announcement
     let aok = schema_rt.announce_read(v, announcement, arep)
-    print(report_line(arep) + " {aok}")
+    print((if aok: "read" else: "refused") + " {aok}")
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
-    let recs, count, ok = schema_rt.load_messages_tolerant(root, v, data, rep, schema_rt.message_batch_max)
-    print(report_line(rep) + " {count} {ok}")
+    let recs, count, ok = schema_rt.load_messages(root, v, data, rep, schema_rt.message_batch_max)
+    print((if ok: "read" else: "refused") + " {count} {ok}")
+    if not ok:
+        assert count == 0 and length(recs) == 0
+        print("0 ")
+        return
     for(recs) rec:
         labels = []
         push(labels, rec)
@@ -148,12 +152,11 @@ func runMessageRows(t *testing.T, g *loadUnit, rows []messageRow) [][]string {
 	return res
 }
 
-func goReportLine(rep tabletext.Report, refused bool) string {
-	verdict := "read"
-	if refused {
-		verdict = "refused"
+func messageReadVerdict(ok bool) string {
+	if ok {
+		return "read"
 	}
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, rep.Malformed, verdict)
+	return "refused"
 }
 
 // goMessageRow is the reference engine's answer for one row
@@ -180,14 +183,20 @@ func goMessageRow(t *testing.T, g *loadUnit, r messageRow) ([]string, []*tablete
 	v := &tablewire.Vocabulary{}
 	var arep tabletext.Report
 	aerr := v.AnnounceRead(announcement, &arep)
-	lines := []string{goReportLine(arep, aerr != nil) + fmt.Sprintf(" %t", aerr == nil && v.Announced())}
+	lines := []string{messageReadVerdict(aerr == nil && v.Announced()) + fmt.Sprintf(" %t", aerr == nil && v.Announced())}
 	insts := make([]*tabletext.Instance, tablewire.TableMessageBatchMax)
 	for i := range insts {
 		insts[i] = m.New(st)
 	}
 	var rep tabletext.Report
 	count, ok, derr := tablewire.DecodeMessages(m, insts, wire, v, &rep)
-	lines = append(lines, goReportLine(rep, derr != nil)+fmt.Sprintf(" %d %t", count, ok && derr == nil))
+	lines = append(lines, messageReadVerdict(ok && derr == nil)+fmt.Sprintf(" %d %t", count, ok && derr == nil))
+	if !ok || derr != nil {
+		if count != 0 {
+			t.Fatalf("%s: refused message batch retained %d records", r.name, count)
+		}
+		return append(lines, "0 "), nil
+	}
 	for _, inst := range insts[:count] {
 		d := &goDumper{labels: map[*tabletext.Instance]int{inst: 0}, next: 1}
 		lines = append(lines, d.rec(inst))
@@ -265,7 +274,7 @@ func compareMessageRows(t *testing.T, patch func(dir string)) (map[string]bool, 
 
 // TestLobsterMessageForm holds the message form to the reference engine over
 // every manifest message row (docs/SPEC-TABLES.md §3.3): the announcement's
-// report, the batch read's report, count and verdict, every decoded body, and
+// acceptance, the batch count and verdict, every decoded body, and
 // the saved batch, which must also be the row's message golden byte for byte.
 // A root that is a variable table is absent on both sides (§3.3).
 func TestLobsterMessageForm(t *testing.T) {

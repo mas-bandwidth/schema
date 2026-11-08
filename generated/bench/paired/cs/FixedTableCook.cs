@@ -217,33 +217,33 @@ namespace Bench
             NumFields = 27,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "sequence", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "ack_sequence", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "ack_bits", Offset = 8, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "session_id", Offset = 16, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "client_id", Offset = 24, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "nonce", Offset = 32, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "world_time", Offset = 40, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "frame_tick", Offset = 48, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "server_time", Offset = 56, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
-                new TableCookFieldInfo { Name = "entities", Offset = 64, Size = 516, ElemSize = 64, IsArray = true, ArrayBound = 8, IsPointer = false, CountOffset = 576, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordMixedEntity; } },
-                new TableCookFieldInfo { Name = "stats", Offset = 580, Size = 644, ElemSize = 8, IsArray = true, ArrayBound = 80, IsPointer = false, CountOffset = 1220, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordMixedStat; } },
-                new TableCookFieldInfo { Name = "game_event", Offset = 1224, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
-                new TableCookFieldInfo { Name = "loadout", Offset = 1244, Size = 4, ElemSize = 1, IsArray = true, ArrayBound = 4, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "player_name", Offset = 1248, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 15, IsPointer = false, CountOffset = 1264, PresentOffset = -1, Storage = TableCookStorage.String, RecordRef = null },
-                new TableCookFieldInfo { Name = "payload", Offset = 1268, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 16, IsPointer = false, CountOffset = 1284, PresentOffset = -1, Storage = TableCookStorage.Bytes, RecordRef = null },
-                new TableCookFieldInfo { Name = "aim_x", Offset = 1288, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
-                new TableCookFieldInfo { Name = "aim_y", Offset = 1292, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
-                new TableCookFieldInfo { Name = "aim_z", Offset = 1296, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
-                new TableCookFieldInfo { Name = "recoil", Offset = 1300, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
-                new TableCookFieldInfo { Name = "drift", Offset = 1304, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
-                new TableCookFieldInfo { Name = "wide_key", Offset = 1312, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "flux", Offset = 1328, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "ping", Offset = 1344, Size = 2, ElemSize = 2, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
-                new TableCookFieldInfo { Name = "crc_hint", Offset = 1348, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "has_extra", Offset = 1352, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
-                new TableCookFieldInfo { Name = "extra", Offset = 1356, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "idle_ticks", Offset = 1360, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "sequence", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "ack_sequence", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "ack_bits", Offset = 8, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "session_id", Offset = 16, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "client_id", Offset = 24, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "nonce", Offset = 32, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "world_time", Offset = 40, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "frame_tick", Offset = 48, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "server_time", Offset = 56, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
+                new TableCookFieldInfo { Name = "entities", Offset = 64, Size = 516, ElemSize = 64, IsArray = true, ArrayBound = 8, IsPointer = false, Unbounded = false, CountOffset = 576, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordMixedEntity; } },
+                new TableCookFieldInfo { Name = "stats", Offset = 580, Size = 644, ElemSize = 8, IsArray = true, ArrayBound = 80, IsPointer = false, Unbounded = false, CountOffset = 1220, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordMixedStat; } },
+                new TableCookFieldInfo { Name = "game_event", Offset = 1224, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
+                new TableCookFieldInfo { Name = "loadout", Offset = 1244, Size = 4, ElemSize = 1, IsArray = true, ArrayBound = 4, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "player_name", Offset = 1248, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 15, IsPointer = false, Unbounded = false, CountOffset = 1264, PresentOffset = -1, Storage = TableCookStorage.String, RecordRef = null },
+                new TableCookFieldInfo { Name = "payload", Offset = 1268, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 16, IsPointer = false, Unbounded = false, CountOffset = 1284, PresentOffset = -1, Storage = TableCookStorage.Bytes, RecordRef = null },
+                new TableCookFieldInfo { Name = "aim_x", Offset = 1288, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "aim_y", Offset = 1292, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "aim_z", Offset = 1296, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "recoil", Offset = 1300, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "drift", Offset = 1304, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Float, RecordRef = null },
+                new TableCookFieldInfo { Name = "wide_key", Offset = 1312, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "flux", Offset = 1328, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "ping", Offset = 1344, Size = 2, ElemSize = 2, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
+                new TableCookFieldInfo { Name = "crc_hint", Offset = 1348, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "has_extra", Offset = 1352, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
+                new TableCookFieldInfo { Name = "extra", Offset = 1356, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "idle_ticks", Offset = 1360, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
             },
         };
 
@@ -255,7 +255,7 @@ namespace Bench
             NumFields = 1,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "value", Offset = 0, Size = 1376, ElemSize = 1376, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordBenchMixed; } },
+                new TableCookFieldInfo { Name = "value", Offset = 0, Size = 1376, ElemSize = 1376, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordBenchMixed; } },
             },
         };
 
@@ -267,8 +267,8 @@ namespace Bench
             NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "channel", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "speaker", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "channel", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "speaker", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
             },
         };
 
@@ -280,20 +280,20 @@ namespace Bench
             NumFields = 14,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "entity_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "pos_x", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "pos_y", Offset = 8, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "pos_z", Offset = 12, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "yaw", Offset = 16, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "pitch", Offset = 20, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "vel_x", Offset = 24, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "vel_y", Offset = 28, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "vel_z", Offset = 32, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "health", Offset = 36, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "weapon", Offset = 40, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "damage", Offset = 48, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "moving", Offset = 56, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
-                new TableCookFieldInfo { Name = "firing", Offset = 57, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
+                new TableCookFieldInfo { Name = "entity_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "pos_x", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "pos_y", Offset = 8, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "pos_z", Offset = 12, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "yaw", Offset = 16, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "pitch", Offset = 20, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "vel_x", Offset = 24, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "vel_y", Offset = 28, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "vel_z", Offset = 32, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "health", Offset = 36, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "weapon", Offset = 40, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "damage", Offset = 48, Size = 8, ElemSize = 8, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "moving", Offset = 56, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
+                new TableCookFieldInfo { Name = "firing", Offset = 57, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
             },
         };
 
@@ -305,10 +305,10 @@ namespace Bench
             NumFields = 4,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "target_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "damage", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "hit_kind", Offset = 8, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
-                new TableCookFieldInfo { Name = "crit", Offset = 12, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
+                new TableCookFieldInfo { Name = "target_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "damage", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "hit_kind", Offset = 8, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "crit", Offset = 12, Size = 1, ElemSize = 1, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Bool, RecordRef = null },
             },
         };
 
@@ -320,8 +320,8 @@ namespace Bench
             NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "item_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "amount", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "item_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "amount", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
             },
         };
 
@@ -333,8 +333,8 @@ namespace Bench
             NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "stat_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
-                new TableCookFieldInfo { Name = "delta", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
+                new TableCookFieldInfo { Name = "stat_id", Offset = 0, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "delta", Offset = 4, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Signed, RecordRef = null },
             },
         };
 

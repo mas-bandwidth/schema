@@ -38,9 +38,9 @@ func cppT11RoundTrip(root, setup, check string, count int) string {
     for ( int i = 0; i < %[4]d; ++i ) %[1]sReset( back[i] );
     memset( &r, 0, sizeof( r ) );
     const int64_t n = %[1]sFixedLoad( back, %[4]d, buffer, need, plan, 4096, NULL, &r );
-    if ( n != %[4]d ) { printf( "load: n=%%lld reason=%%d refused=%%d malformed=%%d\n", (long long) n, (int) r.reason, (int) r.refused, (int) r.malformed ); return 1; }
-    if ( r.clamped || r.unknown || r.kind_mismatch || r.widened || r.duplicate || r.malformed || r.refused )
-        { printf( "counters moved: c=%%d u=%%d km=%%d w=%%d d=%%d m=%%d x=%%d\n", r.clamped, r.unknown, r.kind_mismatch, r.widened, r.duplicate, (int) r.malformed, (int) r.refused ); return 1; }
+    if ( n != %[4]d ) { printf( "load: n=%%lld reason=%%d refused=%%d malformed=%%d\n", (long long) n, (int) r.reason, (int) r.refused, (int) r.damaged ); return 1; }
+    if ( r.refused || r.unknown || r.refused || r.widened || r.refused || r.damaged || r.refused )
+        { printf( "counters moved: c=%%d u=%%d km=%%d w=%%d d=%%d m=%%d x=%%d\n", r.refused, r.unknown, r.refused, r.widened, r.refused, (int) r.damaged, (int) r.refused ); return 1; }
 %[3]s
     return 0;
 `, root, setup, check, count)

@@ -1,0 +1,1 @@
+Sixteen Required default payloads in declaration order, independently hand-framed and shared with the Elixir Required test. A default value is still present on the wire. RequiredEmpty separately covers an empty nested record.

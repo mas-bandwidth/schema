@@ -22,6 +22,56 @@ static partial class Program
     }
     static unsafe void RegisterRetains(RetainScratch scratch)
     {
+        Find("featurewitnesses","Root").Retain=wire=>
+        {
+            long need=Featurewitnesses.Schema.RootLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Featurewitnesses.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Featurewitnesses.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Featurewitnesses.TableReport();
+                var root=Featurewitnesses.Schema.RootLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Featurewitnesses.Schema.RootMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Featurewitnesses.Schema.RootSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("featurewitnesses","ArrayRoot").Retain=wire=>
+        {
+            long need=Featurewitnesses.Schema.ArrayRootLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Featurewitnesses.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Featurewitnesses.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Featurewitnesses.TableReport();
+                var root=Featurewitnesses.Schema.ArrayRootLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Featurewitnesses.Schema.ArrayRootMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Featurewitnesses.Schema.ArrayRootSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
         Find("blobdemo","Catalog").Retain=wire=>
         {
             long need=Blobdemo.Schema.CatalogLoadMeasure(wire);
@@ -115,6 +165,31 @@ static partial class Program
                     {
                         answer.Saved=new byte[checked((int)size)];
                         answer.Written=Graphdemo.Schema.SceneSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("widelist","Wide").Retain=wire=>
+        {
+            long need=Widelistdemo.Schema.WideLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Widelistdemo.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Widelistdemo.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Widelistdemo.TableReport();
+                var root=Widelistdemo.Schema.WideLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Widelistdemo.Schema.WideMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Widelistdemo.Schema.WideSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
                     }
                 }
                 for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
@@ -900,7 +975,7 @@ static partial class Program
                 if(f[5]=="short")
                 { RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],new RT.TableReport()); stores[0].Capacity=stores[0].Used-1; }
                 roots[0]=(IntPtr)RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],report);
-                if(report.Malformed || report.Refused) { return 1; }
+                if(report.Damaged || report.Refused) { return 1; }
                 using var bytes=new MemoryStream(); var save=new RT.TableReport();
                 for(int i=0;i<bodies;i++)
                 {

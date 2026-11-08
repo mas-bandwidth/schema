@@ -113,9 +113,9 @@ func TestTableRefusals(t *testing.T) {
 		// ordinary edit, and a name free before it must not become a collision
 		// after it.
 		{name: "a declaration colliding with the fixed form's read-side bounds", want: "generated TABLE-wire functions",
-			src: "package t\ntable Tab { x int32 }\ntype TabFixedClamp { y int32 }\n"},
+			src: "package t\ntable Tab { x int32 }\ntype TabFixedBounds { y int32 }\n"},
 		{name: "a declaration colliding with the fixed form's per-type bounds body", want: "generated TABLE-wire functions",
-			src: "package t\ntable Tab { x int32 }\ntype TabFixedClampBody { y int32 }\n"},
+			src: "package t\ntable Tab { x int32 }\ntype TabFixedBoundsBody { y int32 }\n"},
 		// THE PER-ENUM IDENTITY PAIR (docs/SPEC-TABLES.md §5, §11). C++ and C#
 		// overload the pair on the enum's own type; JavaScript has no
 		// overloading and no nested scope to hide it in, so each enum brings
@@ -435,6 +435,8 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntype ViewVariant { x int32 }\n"},
 		{name: "the C unit registry function in a table-free unit", want: "generated unit registry",
 			src: "package t\ntype unit_view { x int32 }\n"},
+		{name: "the JavaScript package-derived variable registry", want: "generated JavaScript unit registry",
+			src: "package t\ntable Root { value *bytes }\ntype TUnitRegistry { x int32 }\n"},
 		{name: "a declaration colliding with an out-of-closure type's view descriptor", want: "generated view descriptor",
 			src: "package t\ntable Tab { x int32 }\ntype Orphan { y int32 }\ntype OrphanTableFields { z int32 }\n"},
 		{name: "a schema file named for the unit's view file", want: "the same name as the unit's view file",

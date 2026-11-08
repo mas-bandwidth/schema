@@ -67,7 +67,10 @@ defmodule BlockDump do
                     "outside [ 0, #{f.array_bound} ]"
           end
 
-          ["  #{join(path, f.name)} = #{text(base, at + f.offset, used)}\n", present(base, at, f, path)]
+          [
+            "  #{join(path, f.name)} = #{text(base, at + f.offset, used)}\n",
+            present(base, at, f, path)
+          ]
 
         true ->
           slots = if f.is_array, do: f.array_bound, else: 1
@@ -215,13 +218,22 @@ defmodule CookDump do
             # COUNTED array writes all N slots (§7.2), and a slot past the live
             # count holds the value-initialized element.
             Enum.reduce(0..(slots(f) - 1)//1, {reached, out}, fn slot, {reached, out} ->
-              storage(cook, at + f.offset + slot * f.elem_size, info(f.record), depth,
-                      slot_path(f, name, slot), reached, out)
+              storage(
+                cook,
+                at + f.offset + slot * f.elem_size,
+                info(f.record),
+                depth,
+                slot_path(f, name, slot),
+                reached,
+                out
+              )
             end)
 
           true ->
             Enum.reduce(0..(slots(f) - 1)//1, {reached, out}, fn slot, {reached, out} ->
-              value = scalar(cook.region, at + f.offset + slot * f.elem_size, f.storage, f.elem_size)
+              value =
+                scalar(cook.region, at + f.offset + slot * f.elem_size, f.storage, f.elem_size)
+
               {reached, [line(slot_path(f, name, slot), value) | out]}
             end)
         end
@@ -464,8 +476,12 @@ defmodule Driver do
             # base alignment, and BlockRuntime's note). The block battery's rows
             # all carry 0 today; passing it through is what makes a row that
             # does not an answer rather than a silence.
-            block_verdict(block_unit(subject), block_table(subject), bytes,
-                          String.to_integer(pointer))
+            block_verdict(
+              block_unit(subject),
+              block_table(subject),
+              bytes,
+              String.to_integer(pointer)
+            )
         end
 
       write(outdir, name, verdict)
@@ -533,31 +549,6 @@ defmodule Driver do
     end
   end
 
-  # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----
-
-  # the variable-form codec a (unit, root) names: <Unit>.Table, which exports
-  # load/2, save/2, to_json/2 and from_json/2. nil when the leg has no codec.
-  # a manifest unit key names its module by the unit's package, which is the
-  # key itself except where the schema's package line says otherwise
-  @unit_packages %{
-    "scalars" => "scalardemo",
-    "tblscalars2" => "scalardemo2",
-    "widedemo" => "wide"
-  }
-
-  # the namespace a manifest unit key names: the key itself except where the
-  # schema's package line says otherwise.
-  def unit_package(unit), do: Map.get(@unit_packages, unit, unit)
-
-  defp table_module(unit) do
-    mod = Module.concat([Macro.camelize(unit_package(unit)), "Table"])
-
-    if Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
-         function_exported?(mod, :save, 2),
-       do: mod,
-       else: nil
-  end
-
   defp run("wire", rows, outdir) do
     for [name, unit, root, wire | _] <- rows(rows, "instance") do
       answer_load_save(table_module(unit), root, wire, outdir, name)
@@ -575,37 +566,6 @@ defmodule Driver do
 
     for row <- rows(rows, "retain"), not (saves and List.last(row) == "-") do
       retain_row(row, saves, outdir)
-    end
-  end
-
-  defp retain_row([name, unit, root, wire, capacity, ids | _], saves, outdir) do
-    mod = table_module(unit)
-    data = File.read!(wire)
-    roomy = 1_048_576
-    id_cap = if ids == "full", do: div(roomy, 8), else: String.to_integer(ids)
-    fresh = fn cap -> %{records: [], used: 0, cap: cap, ids: [], id_cap: id_cap} end
-    empty = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
-
-    cap =
-      if capacity == "short" do
-        {:ok, _v, _r, probe} = mod.load_retain(root, data, fresh.(roomy), empty)
-        max(probe.used - 1, 0)
-      else
-        roomy
-      end
-
-    {:ok, value, report, retain} = mod.load_retain(root, data, fresh.(cap), empty)
-    size = mod.measure_retain(root, value, retain)
-    {:ok, out, save, retain} = mod.save_retain(root, value, retain, empty)
-
-    if byte_size(out) != size, do: raise("#{name}: retaining measure and save disagree")
-    {:ok, again, second, _} = mod.save_retain(root, value, retain, empty)
-    if again != out or second.retain_lost != save.retain_lost, do: raise("#{name}: retaining save is not repeatable")
-
-    if saves do
-      write(outdir, name, out)
-    else
-      write(outdir, name, "#{report.retained},#{report.retain_lost},#{report.unknown} #{save.retain_lost}\n")
     end
   end
 
@@ -672,17 +632,210 @@ defmodule Driver do
     end
   end
 
+  # The report line, then the §16 text of the value the read left when the
+  # read reads (test/conformance/README.md), as `framing` answers a row that
+  # owes its value.
+  defp run("report", rows, outdir) do
+    for [name, unit, root, wire] <- rows(rows, "report") do
+      mod = table_module(unit)
+
+      case report_line(mod, root, wire) do
+        :absent -> write_absent(outdir, name)
+        {line, value} -> write(outdir, name, line <> value_text(mod, root, value, name))
+        line -> write(outdir, name, line)
+      end
+    end
+  end
+
+  # THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+  # `report` surface prints it, then the §16 text of the value the read left,
+  # unless the row says `no-value` or the read was refused. A derived line is
+  # `framing <case> <unit> <root> <wire> [no-value]`. A damaged read owes the
+  # refusal alone (§4, DAMAGE DISCARDS THE WHOLE LOAD), so its value is not
+  # written.
+  defp run("framing", rows, outdir) do
+    for [name, unit, root, wire | rest] <- rows(rows, "framing") do
+      case table_module(unit) do
+        nil ->
+          write_absent(outdir, name)
+
+        mod ->
+          case mod.load(root, File.read!(wire)) do
+            {:ok, value, report} ->
+              line = report_counters(report) <> ",read\n"
+
+              cond do
+                Map.get(report, :malformed, false) or rest == ["no-value"] ->
+                  write(outdir, name, line)
+
+                true ->
+                  case mod.to_json(root, value) do
+                    {:ok, text} -> write(outdir, name, line <> IO.iodata_to_binary(text))
+                    _ -> raise "#{name}: to_json refused the value"
+                  end
+              end
+
+            {:error, _refusal, %{reason: "unknown_form"}} ->
+              write(outdir, name, "0,0,0,0,0,false,refused\n")
+
+            {:error, _refusal, %{reason: "wire_damaged"} = report} ->
+              write(outdir, name, report_counters(report) <> ",read\n")
+
+            _ ->
+              write_absent(outdir, name)
+          end
+      end
+    end
+  end
+
+  defp run("json-hostile", rows, outdir) do
+    for [name, unit, root, tree | _] <- rows(rows, "json-hostile") do
+      json = Path.join(tree, root <> ".json")
+      mod = table_module(unit)
+
+      if mod == nil do
+        write_absent(outdir, name)
+      else
+        case mod.from_json(root, File.read!(json)) do
+          {:ok, value, report} ->
+            if Map.get(report, :malformed, false) do
+              write(outdir, name, "refused\n")
+            else
+              # a value the writer refuses (a float32 past its range, §3.3)
+              # answers refused
+              case mod.save(root, value) do
+                {:ok, wire} ->
+                  {:ok, _back, _r2} = mod.load(root, wire)
+                  line = report_counters(report) <> ",read\n"
+                  write(outdir, name, line <> value_text(mod, root, value, name))
+
+                {:error, _} ->
+                  write(outdir, name, "refused\n")
+              end
+            end
+
+          _ ->
+            write(outdir, name, "refused\n")
+        end
+      end
+    end
+  end
+
+  # ---- the MESSAGE FORM's surface (docs/SPEC-TABLES.md §3.3) ----
+
+  # THE ONE SURFACE THAT READS TWO FILES (test/conformance/README.md): each
+  # `message` row is joined BY KEY to the `connection` line naming its unit and
+  # announcement; the announcement read gives the vocabulary, the batch loads
+  # against it, and the saved bytes are the answer. A row the leg cannot answer
+  # writes <case>.absent and says why on stderr.
+  defp run("message", rows, outdir) do
+    connections =
+      Map.new(rows(rows, "connection"), fn [key, unit, _hash, announcement | _] ->
+        {key, {unit, announcement}}
+      end)
+
+    for [name, connection, root, _file, batch | _] <- rows(rows, "message") do
+      case message_answer(Map.get(connections, connection), root, batch) do
+        {:refused, why} ->
+          File.write!(Path.join(outdir, name <> ".absent"), why)
+
+        {:ok, bytes} ->
+          write(outdir, name, bytes)
+
+        {:absent, why} ->
+          IO.puts(:stderr, "message #{name}: absent: #{why}")
+          write_absent(outdir, name)
+      end
+    end
+  end
+
+  defp run(surface, _rows, _outdir) do
+    IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
+    System.halt(2)
+  end
+
+  # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----
+
+  # the variable-form codec a (unit, root) names: <Unit>.Table, which exports
+  # load/2, save/2, to_json/2 and from_json/2. nil when the leg has no codec.
+  # a manifest unit key names its module by the unit's package, which is the
+  # key itself except where the schema's package line says otherwise
+  @unit_packages %{
+    "scalars" => "scalardemo",
+    "tblscalars2" => "scalardemo2",
+    "widedemo" => "wide",
+    "widelist" => "widelistdemo"
+  }
+
+  # the namespace a manifest unit key names: the key itself except where the
+  # schema's package line says otherwise.
+  def unit_package(unit), do: Map.get(@unit_packages, unit, unit)
+
+  defp table_module(unit) do
+    mod = Module.concat([Macro.camelize(unit_package(unit)), "Table"])
+
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
+         function_exported?(mod, :save, 2),
+       do: mod,
+       else: nil
+  end
+
+  defp retain_row([name, unit, root, wire, capacity, ids | _], saves, outdir) do
+    mod = table_module(unit)
+    data = File.read!(wire)
+    roomy = 1_048_576
+    id_cap = if ids == "full", do: div(roomy, 8), else: String.to_integer(ids)
+    fresh = fn cap -> %{records: [], used: 0, cap: cap, ids: [], id_cap: id_cap} end
+
+    empty = %{
+      unknown: 0,
+      kind_mismatch: 0,
+      widened: 0,
+      clamped: 0,
+      malformed: false,
+      retained: 0,
+      retain_lost: 0
+    }
+
+    cap =
+      if capacity == "short" do
+        {:ok, _v, _r, probe} = mod.load_retain(root, data, fresh.(roomy), empty)
+        max(probe.used - 1, 0)
+      else
+        roomy
+      end
+
+    {:ok, value, report, retain} = mod.load_retain(root, data, fresh.(cap), empty)
+    size = mod.measure_retain(root, value, retain)
+    {:ok, out, save, retain} = mod.save_retain(root, value, retain, empty)
+
+    if byte_size(out) != size, do: raise("#{name}: retaining measure and save disagree")
+    {:ok, again, second, _} = mod.save_retain(root, value, retain, empty)
+
+    if again != out or second.retain_lost != save.retain_lost,
+      do: raise("#{name}: retaining save is not repeatable")
+
+    if saves do
+      write(outdir, name, out)
+    else
+      write(
+        outdir,
+        name,
+        "#{report.retained},#{report.retain_lost},#{report.unknown} #{save.retain_lost}\n"
+      )
+    end
+  end
+
   # cook-write (docs/SPEC-TABLES.md §7.6): load the instance, measure, refuse a
-  # short buffer, then write both byte orders. A root the cook writer does not
-  # lay out (cook_carried?/1: one that reaches a map, which `schema cook`
-  # refuses by name, §7.2) writes <case>.absent rather than a wrong byte.
+  # short buffer, then write both byte orders. A unit with no cook writer
+  # writes <case>.absent rather than a wrong byte.
   defp cook_one(nil, _root, _wire, outdir, name) do
     write_absent(outdir, name)
     write_absent(outdir, name <> "-be")
   end
 
   defp cook_one(mod, root, wire, outdir, name) do
-    if not function_exported?(mod, :cook_from, 4) or not mod.cook_carried?(root) do
+    if not function_exported?(mod, :cook_from, 4) do
       write_absent(outdir, name)
       write_absent(outdir, name <> "-be")
     else
@@ -721,88 +874,6 @@ defmodule Driver do
     end
   end
 
-  defp run("report", rows, outdir) do
-    for [name, unit, root, wire] <- rows(rows, "report") do
-      case report_line(table_module(unit), root, wire) do
-        :absent -> write_absent(outdir, name)
-        line -> write(outdir, name, line)
-      end
-    end
-  end
-
-  # THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
-  # `report` surface prints it, then the §16 text of the value the read left,
-  # unless the row says `no-value` or the read was refused. A derived line is
-  # `framing <case> <unit> <root> <wire> [no-value]`. A damaged read owes the
-  # refusal alone (§4, DAMAGE DISCARDS THE WHOLE LOAD), so its value is not
-  # written.
-  defp run("framing", rows, outdir) do
-    for [name, unit, root, wire | rest] <- rows(rows, "framing") do
-      case table_module(unit) do
-        nil ->
-          write_absent(outdir, name)
-
-        mod ->
-          case mod.load(root, File.read!(wire)) do
-            {:ok, value, report} ->
-              line = report_counters(report) <> ",read\n"
-
-              cond do
-                Map.get(report, :malformed, false) or rest == ["no-value"] ->
-                  write(outdir, name, line)
-
-                true ->
-                  case mod.to_json(root, value) do
-                    {:ok, text} -> write(outdir, name, line <> IO.iodata_to_binary(text))
-                    _ -> raise "#{name}: to_json refused the value"
-                  end
-              end
-
-            {:error, _refusal, %{reason: "unknown_form"}} ->
-              write(outdir, name, "0,0,0,0,0,false,refused\n")
-
-            {:error, _refusal, %{reason: "wire_damaged"}} ->
-              write(outdir, name, "0,0,0,0,0,true,read\n")
-
-            _ ->
-              write_absent(outdir, name)
-          end
-      end
-    end
-  end
-
-  defp run("json-hostile", rows, outdir) do
-    for [name, unit, root, tree | _] <- rows(rows, "json-hostile") do
-      json = Path.join(tree, root <> ".json")
-      mod = table_module(unit)
-
-      if mod == nil do
-        write_absent(outdir, name)
-      else
-        case mod.from_json(root, File.read!(json)) do
-          {:ok, value, report} ->
-            if Map.get(report, :malformed, false) do
-              write(outdir, name, "refused\n")
-            else
-              # a value the writer refuses (a float32 past its range, §3.3)
-              # answers refused
-              case mod.save(root, value) do
-                {:ok, wire} ->
-                  {:ok, _back, _r2} = mod.load(root, wire)
-                  write(outdir, name, report_counters(report) <> ",read\n")
-
-                {:error, _} ->
-                  write(outdir, name, "refused\n")
-              end
-            end
-
-          _ ->
-            write(outdir, name, "refused\n")
-        end
-      end
-    end
-  end
-
   defp answer_load_save(mod, root, wire, outdir, name) do
     case mod do
       nil ->
@@ -835,6 +906,15 @@ defmodule Driver do
   # write <case>.absent (docs/SPEC-TABLES.md §11). A line that says "absent"
   # is a wrong answer against the reference's "read"; the sidecar is the
   # absence the harness already counts as a missing feature.
+  # The §16 text of a value a read left: the value half of a `report` and
+  # `json-hostile` answer.
+  defp value_text(mod, root, value, name) do
+    case mod.to_json(root, value) do
+      {:ok, text} -> IO.iodata_to_binary(text)
+      _ -> raise "#{name}: to_json refused the value"
+    end
+  end
+
   defp report_line(nil, _root, _wire), do: :absent
 
   # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
@@ -844,14 +924,16 @@ defmodule Driver do
   # reports.txt spells as a read with malformed set.
   defp report_line(mod, root, wire) do
     case mod.load(root, File.read!(wire)) do
-      {:ok, _value, report} ->
-        report_counters(report) <> ",read\n"
+      {:ok, value, report} ->
+        line = report_counters(report) <> ",read\n"
+        if Map.get(report, :malformed, false), do: line, else: {line, value}
 
       {:error, _refusal, %{reason: "unknown_form"}} ->
         "0,0,0,0,0,false,refused\n"
 
-      {:error, _refusal, %{reason: "wire_damaged"}} ->
-        "0,0,0,0,0,true,read\n"
+      {:error, _refusal, %{reason: "wire_damaged"} = report} ->
+        # a damaged load returns no value, and its report stands
+        report_counters(report) <> ",read\n"
 
       _ ->
         :absent
@@ -882,39 +964,6 @@ defmodule Driver do
 
   defp write_absent(outdir, name) do
     File.write!(Path.join(outdir, name <> ".absent"), "")
-  end
-
-  # ---- the MESSAGE FORM's surface (docs/SPEC-TABLES.md §3.3) ----
-
-  # THE ONE SURFACE THAT READS TWO FILES (test/conformance/README.md): each
-  # `message` row is joined BY KEY to the `connection` line naming its unit and
-  # announcement; the announcement read gives the vocabulary, the batch loads
-  # against it, and the saved bytes are the answer. A row the leg cannot answer
-  # writes <case>.absent and says why on stderr.
-  defp run("message", rows, outdir) do
-    connections =
-      Map.new(rows(rows, "connection"), fn [key, unit, _hash, announcement | _] ->
-        {key, {unit, announcement}}
-      end)
-
-    for [name, connection, root, _file, batch | _] <- rows(rows, "message") do
-      case message_answer(Map.get(connections, connection), root, batch) do
-        {:refused, why} ->
-          File.write!(Path.join(outdir, name <> ".absent"), why)
-
-        {:ok, bytes} ->
-          write(outdir, name, bytes)
-
-        {:absent, why} ->
-          IO.puts(:stderr, "message #{name}: absent: #{why}")
-          write_absent(outdir, name)
-      end
-    end
-  end
-
-  defp run(surface, _rows, _outdir) do
-    IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
-    System.halt(2)
   end
 
   # the unit's message module, <Package>.TableMessage, resolved the way
@@ -985,8 +1034,10 @@ defmodule Driver do
   # THE FIXTURE NAMES ARE THE DRIVER'S OWN, exactly as they are in the reference
   # leg: which table a block image projects is a property of the FIXTURE, and
   # the conformance data deliberately does not carry it.
-  @block_tables %{"block_render" => {"blockdemo", "RenderFrame"},
-                  "block_padded" => {"blockdemo", "PaddedFrame"}}
+  @block_tables %{
+    "block_render" => {"blockdemo", "RenderFrame"},
+    "block_padded" => {"blockdemo", "PaddedFrame"}
+  }
 
   defp block_table(name) do
     {_unit, root} = Map.fetch!(@block_tables, name)
@@ -1198,7 +1249,9 @@ defmodule BlockLead do
           IO.puts(
             :stderr,
             "BASE ALIGNMENT GATE FAILED: #{name} at lead #{lead} answered " <>
-              String.trim(got) <> ", wanted " <> String.trim(want) <>
+              String.trim(got) <>
+              ", wanted " <>
+              String.trim(want) <>
               " — §19.2 checks the base's alignment and lead is how this leg carries it"
           )
 
@@ -1307,8 +1360,8 @@ defmodule WireFuzz do
        else: nil
   end
 
-  # carried?/1 is the variable form's own answer (docs/SPEC-TABLES.md §2.6,
-  # §2.8, §11): a root that reaches a map or a union is uncarried. Roster 0
+  # carried?/1 is the generated variable form's own availability answer.
+  # The combined implementation carries every declared file root. Roster 0
   # means the harness never sends it a mutant. An error return while the root
   # is marked available would be scored against the oracle. A form-2 entry is
   # the fixed table's announced wire (§3.3) and is carried whenever its
@@ -1387,30 +1440,27 @@ defmodule WireFuzz do
   # themselves name; the message surface carries no per-kind counters, so those
   # stay zero here rather than being invented.
   defp answer_message(r, wire) do
-    case message_codec(r.unit, r.root) do
-      nil ->
+    with mod when mod != nil <- message_codec(r.unit, r.root),
+         tmod when tmod != nil <- file_codec(r.unit, r.root),
+         vocab when vocab != nil <- vocab(mod) do
+      case mod.load_messages(vocab, wire) do
+        {:ok, bodies} ->
+          tables = tmod.descriptors()
+          desc = Map.fetch!(tables, r.root)
+          message_decode_and_reply(mod, vocab, tables, desc, bodies)
+
+        {:malformed, _count, _bodies} ->
+          stdout_write(header(0, %{malformed: true}, -1) <> <<-1::little-signed-64>>)
+
+        {:error, reason} when reason in [:newer_form, :non_finite_float] ->
+          stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
+
+        _ ->
+          stdout_write(header(0, %{malformed: true}, -1) <> <<-1::little-signed-64>>)
+      end
+    else
+      _ ->
         stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
-
-      mod ->
-        case vocab(mod) do
-          nil ->
-            stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
-
-          vocab ->
-            case mod.load_messages(vocab, wire) do
-              {:ok, bodies} ->
-                message_reply(mod, vocab, bodies, false)
-
-              {:malformed, _count, bodies} ->
-                message_reply(mod, vocab, bodies, true)
-
-              {:error, :non_finite_float} ->
-                stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
-
-              _ ->
-                stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
-            end
-        end
     end
   end
 
@@ -1436,39 +1486,272 @@ defmodule WireFuzz do
     end
   end
 
-  defp message_reply(mod, vocab, bodies, malformed) do
-    report = %{malformed: malformed}
+  defp message_decode_and_reply(mod, vocab, tables, desc, bodies) do
+    empty = %{
+      unknown: 0,
+      kind_mismatch: 0,
+      widened: 0,
+      clamped: 0,
+      duplicate: 0,
+      malformed: false
+    }
 
-    measure =
-      case mod.measure_messages(vocab, bodies) do
-        {:ok, n} -> n
-        _ -> 0
-      end
+    {decoded_rev, report} =
+      Enum.reduce_while(bodies, {[], empty}, fn raw_body, {acc, rep} ->
+        case msg_decode_body(vocab, tables, desc, raw_body, rep) do
+          {:ok, val, rep2} -> {:cont, {[val | acc], rep2}}
+          {:malformed, rep2} -> {:halt, {[], %{rep2 | malformed: true}}}
+        end
+      end)
 
-    case bodies do
-      [first | _] ->
-        case mod.save_messages(vocab, [first]) do
-          {:ok, bytes} ->
-            stdout_write(header(1, report, measure) <> <<byte_size(bytes)::little-signed-64>>)
-            stdout_write(bytes)
+    if report.malformed do
+      stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
+    else
+      first_val = decoded_rev |> Enum.reverse() |> hd()
+      encoded_first = msg_encode_body(vocab, tables, desc, first_val)
 
-          _ ->
-            stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
+      measure =
+        case mod.measure_messages(vocab, [encoded_first]) do
+          {:ok, n} -> n
+          _ -> 0
         end
 
-      [] ->
-        # damage before body one: the batch delivered no body to save
-        stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
+      case mod.save_messages(vocab, [encoded_first]) do
+        {:ok, bytes} ->
+          stdout_write(header(1, report, measure) <> <<byte_size(bytes)::little-signed-64>>)
+          stdout_write(bytes)
+
+        _ ->
+          stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
+      end
     end
   end
 
+  defp msg_decode_body(vocab, tables, desc, raw_fields, report) do
+    Enum.reduce_while(raw_fields, {:ok, %{}, report}, fn {ref, raw_val}, {:ok, acc, rep} ->
+      entry = Enum.at(vocab.entries, ref - 1)
+
+      case Enum.find(desc.fields, fn f -> f.id == entry.id end) do
+        nil ->
+          {:cont, {:ok, acc, %{rep | unknown: rep.unknown + 1}}}
+
+        f ->
+          mine_elem = msg_field_elem_kind(f)
+
+          theirs_elem =
+            case Map.get(entry, :element) do
+              %{kind: k} -> k
+              _ -> 0
+            end
+
+          cond do
+            entry.kind == f.kind and theirs_elem == mine_elem ->
+              case msg_decode_field(vocab, tables, f, raw_val, rep) do
+                {:ok, v, rep2} -> {:cont, {:ok, Map.put(acc, f.name, v), rep2}}
+                {:malformed, rep2} -> {:halt, {:malformed, rep2}}
+              end
+
+            msg_widens?(entry.kind, theirs_elem, f.kind, mine_elem) ->
+              rep = %{rep | widened: rep.widened + 1}
+
+              case msg_decode_field(vocab, tables, f, raw_val, rep) do
+                {:ok, v, rep2} -> {:cont, {:ok, Map.put(acc, f.name, v), rep2}}
+                {:malformed, rep2} -> {:halt, {:malformed, rep2}}
+              end
+
+            true ->
+              {:cont, {:ok, acc, %{rep | kind_mismatch: rep.kind_mismatch + 1}}}
+          end
+      end
+    end)
+  end
+
+  defp msg_field_elem_kind(%{t: :bytes}), do: 6
+  defp msg_field_elem_kind(%{t: :list, elem_kind: k}), do: k
+  defp msg_field_elem_kind(_), do: 0
+
+  defp msg_widens?(tk, te, mk, me) when te == me and me == 0, do: msg_scalar_widens?(tk, mk)
+  defp msg_widens?(14, te, 14, me), do: msg_scalar_widens?(te, me)
+  defp msg_widens?(_, _, _, _), do: false
+
+  defp msg_scalar_widens?(from, to) do
+    Enum.any?([[2, 3, 4, 5, 18], [6, 7, 8, 9, 19], [10, 11]], fn ladder ->
+      fi = Enum.find_index(ladder, &(&1 == from))
+      ti = Enum.find_index(ladder, &(&1 == to))
+      fi != nil and ti != nil and fi < ti
+    end)
+  end
+
+  defp msg_decode_field(_vocab, _tables, %{t: :int} = f, val, rep) do
+    {val, rep} =
+      if Map.has_key?(f, :min) and Map.has_key?(f, :max) do
+        cond do
+          val < f.min -> {f.min, %{rep | clamped: rep.clamped + 1}}
+          val > f.max -> {f.max, %{rep | clamped: rep.clamped + 1}}
+          true -> {val, rep}
+        end
+      else
+        {val, rep}
+      end
+
+    {:ok, val, rep}
+  end
+
+  defp msg_decode_field(_vocab, _tables, %{t: :string} = f, val, rep) when is_binary(val) do
+    if not String.valid?(val) or :binary.match(val, <<0>>) != :nomatch do
+      {:malformed, rep}
+    else
+      if byte_size(val) > f.size do
+        {:ok, msg_utf8_clamp(val, f.size), %{rep | clamped: rep.clamped + 1}}
+      else
+        {:ok, val, rep}
+      end
+    end
+  end
+
+  defp msg_decode_field(_vocab, _tables, %{t: :bytes} = f, val, rep) when is_list(val) do
+    if length(val) > f.size do
+      {:ok, Enum.take(val, f.size), %{rep | clamped: rep.clamped + 1}}
+    else
+      {:ok, val, rep}
+    end
+  end
+
+  defp msg_decode_field(vocab, _tables, %{t: :enum} = f, vref, rep) do
+    if vref == 0 do
+      {:ok, 0, rep}
+    else
+      ventry = Enum.at(vocab.entries, vref - 1)
+
+      if ventry != nil and Map.has_key?(f.by_id, ventry.id) do
+        {:ok, vref, rep}
+      else
+        {:ok, 0, %{rep | unknown: rep.unknown + 1}}
+      end
+    end
+  end
+
+  defp msg_decode_field(vocab, tables, %{t: :table} = f, raw_sub, rep) do
+    msg_decode_body(vocab, tables, Map.fetch!(tables, f.elem), raw_sub, rep)
+  end
+
+  defp msg_decode_field(vocab, tables, %{t: :list, elem_kind: 13} = f, raw_elems, rep) do
+    bound = Map.get(f, :max_count, Map.get(f, :array_bound, length(raw_elems)))
+    elem_desc = Map.fetch!(tables, f.elem)
+    rep = if length(raw_elems) > bound, do: %{rep | clamped: rep.clamped + 1}, else: rep
+
+    case Enum.reduce_while(raw_elems, {:ok, [], rep}, fn raw_elem, {:ok, acc, r} ->
+           case msg_decode_body(vocab, tables, elem_desc, raw_elem, r) do
+             {:ok, v, r2} -> {:cont, {:ok, [v | acc], r2}}
+             {:malformed, r2} -> {:halt, {:malformed, r2}}
+           end
+         end) do
+      {:ok, rev, rep2} ->
+        {:ok, rev |> Enum.reverse() |> Enum.take(bound), rep2}
+
+      {:malformed, rep2} ->
+        {:malformed, rep2}
+    end
+  end
+
+  defp msg_decode_field(_vocab, _tables, _f, val, rep), do: {:ok, val, rep}
+
+  defp msg_utf8_clamp(bin, max_bytes) when byte_size(bin) <= max_bytes, do: bin
+
+  defp msg_utf8_clamp(bin, max_bytes) do
+    bin
+    |> String.codepoints()
+    |> Enum.reduce_while(<<>>, fn cp, acc ->
+      if byte_size(acc) + byte_size(cp) <= max_bytes do
+        {:cont, acc <> cp}
+      else
+        {:halt, acc}
+      end
+    end)
+  end
+
+  defp msg_encode_body(vocab, tables, desc, val_map) do
+    Enum.flat_map(desc.fields, fn f ->
+      ref = msg_field_slot(vocab, f)
+
+      case f.t do
+        :int ->
+          v = Map.get(val_map, f.name, f.default)
+          if v == f.default, do: [], else: [{ref, v}]
+
+        :string ->
+          v = Map.get(val_map, f.name, <<>>)
+          if v == <<>>, do: [], else: [{ref, v}]
+
+        :bytes ->
+          v = Map.get(val_map, f.name, [])
+          if v == [], do: [], else: [{ref, v}]
+
+        :enum ->
+          v = Map.get(val_map, f.name, 0)
+          if v == 0 or v == nil, do: [], else: [{ref, v}]
+
+        :table ->
+          sub_desc = Map.fetch!(tables, f.elem)
+          sub_val = Map.get(val_map, f.name, %{})
+          sub_raw = msg_encode_body(vocab, tables, sub_desc, sub_val)
+          if sub_raw == [], do: [], else: [{ref, sub_raw}]
+
+        :list ->
+          elem_desc = Map.fetch!(tables, f.elem)
+          bound = Map.get(f, :max_count, Map.get(f, :array_bound, 0))
+          elems = Map.get(val_map, f.name, List.duplicate(%{}, bound))
+          padded = elems ++ List.duplicate(%{}, max(bound - length(elems), 0))
+
+          encoded_elems =
+            Enum.map(Enum.take(padded, bound), &msg_encode_body(vocab, tables, elem_desc, &1))
+
+          [{ref, encoded_elems}]
+
+        _ ->
+          []
+      end
+    end)
+  end
+
+  defp msg_field_slot(vocab, f) do
+    elem_kind = msg_field_elem_kind(f)
+
+    idx =
+      Enum.find_index(vocab.entries, fn e ->
+        e_elem =
+          case Map.get(e, :element) do
+            %{kind: k} -> k
+            _ -> 0
+          end
+
+        e.id == f.id and e.kind == f.kind and e_elem == elem_kind
+      end)
+
+    idx + 1
+  end
+
   # the plain arm (docs/SPEC-TABLES.md §4.2): load, report, save.
+  # the report a LoadMeasure refusal answers: the load's own refusal, which
+  # names a newer form or says malformed
+  defp measure_refusal(mod, root, wire) do
+    case mod.load(root, wire) do
+      {:error, :newer_form, report} -> Map.put(report, :refused, true)
+      {:error, _reason, report} -> %{report | malformed: true}
+      _ -> %{malformed: true}
+    end
+  end
+
   defp answer_plain(mod, r, wire) do
     measure = mod.load_measure(r.root, wire)
 
     if measure < 0 do
-      # LoadMeasure refused the framing: no root, an empty report, nothing saved
-      stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>)
+      # LoadMeasure refused the framing: no root and nothing saved, and the
+      # refusal is DAMAGE, which discards the whole load (Glenn, 2026-10-31):
+      # the report says malformed, or names the form a newer writer used
+      stdout_write(
+        header(0, measure_refusal(mod, r.root, wire), measure) <> <<-1::little-signed-64>>
+      )
     else
       case mod.load(r.root, wire) do
         {:ok, value, report} ->
@@ -1486,8 +1769,19 @@ defmodule WireFuzz do
           # §3.3), and the refusal is the answer the oracle compares
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
-        _ ->
-          stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+        {:error, :newer_form, report} ->
+          # A FORM THIS READER DOES NOT KNOW IS REFUSED BY NAME (docs/SPEC-TABLES.md
+          # §3): nothing is decoded, the verdict is the answer, and the
+          # defaults the load stands on are not compared
+          stdout_write(
+            header(1, Map.put(report, :refused, true), measure) <> <<-1::little-signed-64>>
+          )
+
+        {:error, _reason, report} ->
+          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
+          # damage discards the whole load): its report, malformed among it,
+          # is the answer the oracle compares
+          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)
       end
     end
   end
@@ -1500,12 +1794,23 @@ defmodule WireFuzz do
   # header carries are the pair's whole answer.
   defp answer_retain(mod, r, wire) do
     measure = mod.load_measure(r.root, wire)
-    retain = %{records: [], used: 0, cap: 1048576, ids: [], id_cap: 131072}
-    report = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+    retain = %{records: [], used: 0, cap: 1_048_576, ids: [], id_cap: 131_072}
+
+    report = %{
+      unknown: 0,
+      kind_mismatch: 0,
+      widened: 0,
+      clamped: 0,
+      malformed: false,
+      retained: 0,
+      retain_lost: 0
+    }
 
     if measure < 0 do
       # LoadMeasure refused the framing: no root, an empty report, nothing saved
-      stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>)
+      stdout_write(
+        header(0, measure_refusal(mod, r.root, wire), measure) <> <<-1::little-signed-64>>
+      )
     else
       case mod.load_retain(r.root, wire, retain, report) do
         {:ok, value, report, retain} ->
@@ -1521,8 +1826,11 @@ defmodule WireFuzz do
         {:error, :non_finite_float, _report, _retain} ->
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
-        _ ->
-          stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+        {:error, _reason, report, _retain} ->
+          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
+          # damage discards the whole load): its report, malformed among it,
+          # is the answer the oracle compares
+          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)
       end
     end
   end
@@ -1583,6 +1891,10 @@ defmodule WireFuzz do
 
   # the raw stdin/stdout devices: the wire-fuzz driver runs WITHOUT -noinput,
   # so the standard_io device is live and reads/writes bytes directly.
+  # a zero-length read is the empty binary: :file.read/2 of 0 bytes does not
+  # answer one, so an empty mutant (a truncation to nothing) would stall the leg
+  defp stdin_read(0), do: <<>>
+
   defp stdin_read(n) do
     case :file.read(:standard_io, n) do
       {:ok, data} -> data

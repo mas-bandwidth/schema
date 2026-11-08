@@ -50,6 +50,12 @@ class LoadReport:
     refused:bool = false
     reason:string = ""
     stopped:bool = false
+    // damaged is the verdict's damage (§4, §6.5): a wire whose framing does
+    // not open (no bytes, an id table that does not hold, a root body that
+    // ends before the id table), or a value-only root whose walk read past
+    // damage to its terminator. The strict read names it wire_damaged; a
+    // body that stopped the walk is malformed.
+    damaged:bool = false
 
 class Record
 class Slot
@@ -118,6 +124,8 @@ class Record:
     // held marks a node record the root reaches, for the one pass at the end
     // of a variable load that unlinks the records it does not (RELEASE)
     held:bool = false
+    // walk is the cycle check's mark: 0 unvisited, 1 open, 2 closed
+    walk:int = 0
 
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
@@ -1224,13 +1232,15 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
             if optional:
                 sl.present = true
             return true, false
-        if ek != f.ek:
-            if not widens(ek, f.ek):
-                // the element kind is part of the array's identity (§3)
-                rep.kind_mismatch++
-                r.off = end
-                return true, false
-            rep.widened++
+        if ek != f.ek and not widens(ek, f.ek):
+            // the element kind is part of the array's identity (§3)
+            rep.kind_mismatch++
+            r.off = end
+            return true, false
+        // a widened element kind counts once the count is known to land: the
+        // builder's count-cap refusal moves no counter (§2.9), while the
+        // region read's damage still counts it
+        let widened = ek != f.ek
         // THE READ COMMITS TO REPLACE HERE (Go's arrayBody, §6.6): the
         // retained fields under the elements go with the value it loses
         for(sl.elems) old:
@@ -1240,10 +1250,14 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
             sl.elems = []
             if count < 0 or count > 0x7FFFFFFF:
                 r.off = end
+                if widened and not r.st.variable:
+                    rep.widened++
                 return collection_cap(r), false
         elif ult(bound, count):
             keep = bound
             rep.clamped++
+        if widened:
+            rep.widened++
         // elements are BOUNDED by the field body (§4)
         let sr = sub_to(r, end)
         if is_bytes:
@@ -1573,6 +1587,7 @@ def map_key(body:Reader, k:FieldDescriptor, entry:Record) -> Value, bool, bool, 
         let kind = u8(scan)
         if id == map_key_id:
             if kind != want and widens(kind, want):
+                kind_bad = false
                 widened = true
                 if not scalar_at(scan, cell, k, want, kind):
                     return cell, false, kind_bad, widened
@@ -1965,7 +1980,57 @@ def decode_variable(st:LoadState, root:Record, hi:int):
     if not st.count_refused:
         st.report.stopped = not body_at(reader(st, 1, hi), root, false, false)
     if length(st.nodes) > 0:
+        // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph
+        // the load stored is checked once every index has resolved
+        if not st.report.malformed and load_cyclic(st, root):
+            st.report.malformed = true
         unlink_unreached(st, root)
+
+// load_cyclic reports whether the loaded graph holds a cycle. No writer
+// produces a cyclic wire, so a cycle anywhere refuses the load, one the root
+// never reaches included. The vertices are the root and every node record;
+// the edges are the pointers each one's by-value closure stores (rec_edges).
+// Each vertex is entered once: a pointer to an OPEN vertex is a cycle, and a
+// pointer to a CLOSED one is a legal share. The walk keeps its own stack, so
+// it is linear in vertices plus edges and a chain costs no stack.
+def load_cyclic(st:LoadState, root:Record) -> bool:
+    let all:[Record] = [root]
+    for(st.nodes) node:
+        let nr = node.rec
+        if nr:
+            push(all, nr)
+    var found = false
+    for(all) start:
+        if not found and start.walk == 0:
+            start.walk = 1
+            let first:[Record] = []
+            rec_edges(start, first, false)
+            let stack:[Record] = [start]
+            let edges:[[Record]] = [first]
+            let at:[int] = [0]
+            while not found and length(stack) > 0:
+                let top = length(stack) - 1
+                let es = edges[top]
+                if at[top] >= length(es):
+                    stack[top].walk = 2
+                    pop(stack)
+                    pop(edges)
+                    pop(at)
+                else:
+                    let t = es[at[top]]
+                    at[top] = at[top] + 1
+                    if t.walk == 1:
+                        found = true
+                    elif t.walk == 0:
+                        t.walk = 1
+                        let out:[Record] = []
+                        rec_edges(t, out, false)
+                        push(stack, t)
+                        push(edges, out)
+                        push(at, 0)
+    for(all) r:
+        r.walk = 0
+    return found
 
 // load_tolerant is THE TOLERANT READ, by its own name (docs/SPEC-TABLES.md
 // §6.5): it reads a form-1 wire at the root table named root into a fresh
@@ -1987,14 +2052,21 @@ def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
 
 // strict_reason is docs/SPEC-TABLES.md §6.5's one typed reason for a read,
 // in the order Go's TableReport.Err() applies: a non-finite float first
-// (§3.3), then a form refusal, missing_required, malformed, blob_shared,
-// clamped and kind_mismatch; the empty string on a read whose only counters
-// are unknown or widened, which are not loss.
+// (§3.3), then a count past the int32 storage cap (§2.9), a form refusal,
+// the verdict's damage (wire_damaged), missing_required, malformed,
+// blob_shared, clamped and kind_mismatch; the empty string on a read whose
+// only counters are unknown or widened, which are not loss.
 def strict_reason(rep:LoadReport) -> string:
     if rep.non_finite_float != "":
         return "non_finite_float"
-    if rep.refused or rep.reason == "form" or rep.reason == "message_form_as_file":
+    if rep.reason == "count_over_extent_cap":
+        return "count_over_extent_cap"
+    if rep.refused or rep.reason == "newer_form" or rep.reason == "message_form_as_file":
         return "unknown_form"
+    if rep.reason == "integrity_mismatch":
+        return "integrity_mismatch"
+    if rep.damaged:
+        return "wire_damaged"
     if rep.missing_required > 0:
         return "missing_required"
     if rep.malformed:
@@ -2021,9 +2093,10 @@ def load(root:string, data:string, report:LoadReport) -> Record?:
     return rec
 
 // RELEASE (docs/PORT-LOBSTER.md, THE LOAD). Lobster frees by reference
-// counting, and a pointer graph is legal with a cycle (§3.1): a tolerant load
-// places it, and a cycle of Records outlives every reference the caller
-// holds. Two rules keep a load from leaking:
+// counting, and a cycle of Records outlives every reference the caller holds:
+// a load that refuses a cyclic wire (§3.1, §4) has still built one, and so
+// has a load an orphan cycle never reaches. Two rules keep a load from
+// leaking:
 //
 // - THE LOAD OWNS WHAT THE ROOT DOES NOT REACH. At the end of a variable
 //   load, a node record no pointer path from the root reaches (an orphan,
@@ -2104,34 +2177,48 @@ def release(root:Record?) -> void:
 def load_walk(root:string, data:string, report:LoadReport) -> Record?:
     if length(data) < 1:
         report.malformed = true
+        report.damaged = true
         report.stopped = true
         return nil
     let form = data[0]
     if form != 1:
         report.refused = true
         report.stopped = true
-        report.reason = if form == 2: "message_form_as_file" else: "form"
+        report.reason = if form == 2: "message_form_as_file" else: "newer_form"
         return nil
-    let rec = new_record(table_of(root))
-    let ids, first, ok = trailer(data)
+    let d = table_of(root)
+    let wire, intact = wire_integrity_body(d, data)
+    if not intact:
+        report.malformed = true
+        report.damaged = true
+        report.stopped = true
+        report.reason = "integrity_mismatch"
+        return nil
+    let rec = new_record(d)
+    let ids, first, ok = trailer(wire)
     if not ok:
         report.malformed = true
+        report.damaged = true
         report.stopped = true
         return rec
-    let st = LoadState { data: data, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
+    let st = LoadState { data: wire, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
     let end, terminated = body_extent(st, first)
     if terminated and end != first:
         report.malformed = true
+        report.damaged = true
         report.stopped = true
         return rec
     if not rec.d.variable:
         report.stopped = not body_at(reader(st, 1, first), rec, false, false)
+        if not report.stopped and report.malformed:
+            report.damaged = true
         if report.missing_required > 0:
             return nil
         return rec
     decode_variable(st, rec, first)
     if st.count_refused:
         report.refused = true
+        report.reason = "count_over_extent_cap"
         report.stopped = true
         return nil
     if report.missing_required > 0:

@@ -997,6 +997,11 @@ macro_rules! with_root {
                 use listdemo::{unbounded_from_json_bytes as $from_json, unbounded_load as $load, unbounded_save_checked as $save, unbounded_to_json_checked as $to_json};
                 Some($body)
             }
+            ("widelist", "Wide") => {
+                #[allow(unused_imports)]
+                use widelistdemo::{wide_from_json_bytes as $from_json, wide_load as $load, wide_save_checked as $save, wide_to_json_checked as $to_json};
+                Some($body)
+            }
             ("messagedemo", "ToolMessage") => {
                 #[allow(unused_imports)]
                 use messagedemo::{tool_message_from_json_bytes as $from_json, tool_message_load as $load, tool_message_save_checked as $save, tool_message_to_json_checked as $to_json};
@@ -1163,15 +1168,24 @@ fn surface_wire(manifest: &Manifest, out: &str) {
 fn surface_report(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("report") {
         let data = slurp(&f[4]);
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, _to, _from| {
+        // the report line, then the §16 text of the value the read left when
+        // the read reads (test/conformance/README.md)
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
-            let ok = load(&data, &mut report).is_some();
-            let malformed = report.malformed || (!ok && !report.refused);
+            let value = load(&data, &mut report);
+            let malformed = report.malformed || (value.is_none() && !report.refused);
             let verdict = if report.refused { "refused" } else { "read" };
-            format!(
+            let mut text = format!(
                 "{},{},{},{},{},{},{}\n",
                 report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate, malformed, verdict
-            )
+            );
+            if let (Some(v), false, false) = (value, report.refused, malformed) {
+                match to_json(&v) {
+                    Some(body) => text.push_str(&body),
+                    None => fail(&format!("{}: ToJson refused the value", f[1])),
+                }
+            }
+            text
         });
         match answer {
             Some(text) => spill(out, &f[1], text.as_bytes()),
@@ -1308,17 +1322,76 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
             None => spill_absent(out, &name),
         }
     }
+    // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
+    // wire, then the line's damage put into storage in code, then ToJson,
+    // which must refuse. This leg's ToJson is <root>_to_json_checked, one walk
+    // that is measure and write at once, so one call answers for both.
+    for f in manifest.of_kind("json-write-refusal") {
+        let data = slurp(&f[4]);
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
+            let mut report = Default::default();
+            let Some(mut v) = load(&data, &mut report) else {
+                fail(&format!("{}: load refused {}", f[1], f[4]));
+            };
+            match damage_text(&mut v, &f[5]) {
+                Damage::Placed => Some(match to_json(&v) {
+                    Some(text) => text.into_bytes(),
+                    None => b"refused\n".to_vec(),
+                }),
+                // the row asks for a value this leg cannot hold, so the
+                // writer is never asked: ABSENT, not a refusal it did not make
+                Damage::NotHeld => None,
+            }
+        });
+        let name = format!("{}.json", f[1]);
+        match answer.flatten() {
+            Some(text) => spill(out, &name, &text),
+            None => spill_absent(out, &name),
+        }
+    }
+}
+
+// What a json-write-refusal line's damage did to storage.
+enum Damage {
+    // the damage is in the value, for ToJson to answer
+    Placed,
+    // the storage type cannot hold it: a narrow string is a Rust String,
+    // which is well-formed UTF-8 by construction, so the bytes 61 FF 62 are
+    // refused by String::from_utf8 before any value holds them, and no
+    // text that is not text reaches the writer; the row answers ABSENT
+    NotHeld,
+}
+
+// damage_text puts into a fixed root's top-level text field what no read
+// delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the
+// bytes 61 FF 62 in a narrow field, the units 0061 D800 0062 in a wide one.
+// The field is reached by the root's concrete type.
+fn damage_text(value: &mut dyn std::any::Any, damage: &str) -> Damage {
+    if damage == "none" {
+        return Damage::Placed;
+    }
+    match damage.split_once(':') {
+        Some(("narrow", _)) => match String::from_utf8(vec![0x61, 0xff, 0x62]) {
+            Ok(_) => fail("61 FF 62 read as UTF-8"),
+            Err(_) => Damage::NotHeld,
+        },
+        Some(("wide", "label")) if value.is::<widedemo::Stamp>() => {
+            value.downcast_mut::<widedemo::Stamp>().unwrap().label = vec![0x61, 0xd800, 0x62];
+            Damage::Placed
+        }
+        _ => fail(&format!("damage {damage:?} names no text field this driver reaches")),
+    }
 }
 
 // JSON-HOSTILE (docs/SPEC-TABLES.md §16.2, §16.3; FORMAT.md): one tree per
 // rule the text form states, and the verdict is `refused` or the §4 report the
-// read produces, `u,k,w,c,d,false,read`. The tree is what `schema pack` reads,
+// read produces, `u,k,w,c,d,false,read`, then the §16 text of the value it left. The tree is what `schema pack` reads,
 // so the text is <tree>/<root>.json (§17). A root this leg's text form does not
 // carry answers ABSENT, one row at a time, exactly as json-read does.
 fn surface_json_hostile(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("json-hostile") {
         let path = format!("{}/{}.json", f[4], f[3]);
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, _to, from_json| {
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, to_json, from_json| {
             let text = match fs::read(&path) {
                 Ok(t) => t,
                 Err(e) => fail(&format!("cannot read {path}: {e}")),
@@ -1328,13 +1401,19 @@ fn surface_json_hostile(manifest: &Manifest, out: &str) {
             let mut report = Default::default();
             let value = from_json(&text, &mut report);
             let r = &report;
-            if value.is_none() || r.malformed || r.refused {
-                "refused\n".to_string()
-            } else {
-                format!(
-                    "{},{},{},{},{},false,read\n",
-                    r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
-                )
+            match value {
+                Some(v) if !r.malformed && !r.refused => {
+                    let mut answer = format!(
+                        "{},{},{},{},{},false,read\n",
+                        r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
+                    );
+                    match to_json(&v) {
+                        Some(body) => answer.push_str(&body),
+                        None => fail(&format!("{}: ToJson refused the value", f[1])),
+                    }
+                    answer
+                }
+                _ => "refused\n".to_string(),
             }
         });
         match answer {
@@ -1371,6 +1450,25 @@ macro_rules! with_cook_root {
             ("streamdemo", "Feed") => { use streamdemo::{feed_load as $load, feed_cook_write as $cook}; Some($body) }
             ("messagedemo", "ToolMessage") => { use messagedemo::{tool_message_load as $load, tool_message_cook_write as $cook}; Some($body) }
             ("scalars", "SimState") => { use scalars::{sim_state_load as $load, sim_state_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Cells") => { use mapdemo::{cells_load as $load, cells_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Chunks") => { use mapdemo::{chunks_load as $load, chunks_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Crews") => { use mapdemo::{crews_load as $load, crews_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Depth") => { use mapdemo::{depth_load as $load, depth_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Docs") => { use mapdemo::{docs_load as $load, docs_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Fleet") => { use mapdemo::{fleet_load as $load, fleet_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Pairs") => { use mapdemo::{pairs_load as $load, pairs_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Slots") => { use mapdemo::{slots_load as $load, slots_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Spans") => { use mapdemo::{spans_load as $load, spans_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Text") => { use mapdemo::{text_load as $load, text_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Trails") => { use mapdemo::{trails_load as $load, trails_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Runs") => { use mapdemo::{runs_load as $load, runs_cook_write as $cook}; Some($body) }
+            ("listdemo", "Save") => { use listdemo::{save_load as $load, save_cook_write as $cook}; Some($body) }
+            ("listdemo", "Mixed") => { use listdemo::{mixed_load as $load, mixed_cook_write as $cook}; Some($body) }
+            ("listdemo", "Album") => { use listdemo::{album_load as $load, album_cook_write as $cook}; Some($body) }
+            ("listdemo", "Sheet") => { use listdemo::{sheet_load as $load, sheet_cook_write as $cook}; Some($body) }
+            ("listdemo", "Army") => { use listdemo::{army_load as $load, army_cook_write as $cook}; Some($body) }
+            ("listdemo", "Unbounded") => { use listdemo::{unbounded_load as $load, unbounded_cook_write as $cook}; Some($body) }
+            ("widelist", "Wide") => { use widelistdemo::{wide_load as $load, wide_cook_write as $cook}; Some($body) }
             _ => None,
         }
     }};

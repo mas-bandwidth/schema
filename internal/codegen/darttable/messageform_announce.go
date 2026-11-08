@@ -459,7 +459,7 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
 }
 
 /// tableMessageKnownKind reports whether a kind is one of the closed set.
-bool tableMessageKnownKind(int kind) => kind <= 33;
+bool tableMessageKnownKind(int kind) => kind >= 0 && (kind <= 33 || kind == 36);
 
 /// tableMessageSameEntry reports whether ONE entry's wire bytes equal an
 /// earlier entry's signature (docs/SPEC-TABLES.md §3.3): a repeated entry is
@@ -503,6 +503,7 @@ int tableMessageKindWidth(int kind) {
     case 11:
     case 23:
     case 28:
+    case 36:
       return 8;
     case 18:
     case 19:

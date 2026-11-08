@@ -206,8 +206,8 @@ func t12R15(t *testing.T) {
 	}
 	t12Has(t, load, "census_unknown = lane.Unknown;", "R15 unknown is the compile census")
 	runtime := t12Norm(text)
-	t12Has(t, runtime, "else if ((uint)v > p.Size)", "R15 the count clamp is the writer's bound")
-	t12Has(t, runtime, "else if ((uint)v > cap)", "R15 the text clamp is the writer's span")
+	t12Has(t, runtime, "if (v < 0 || (uint)v > p.Size) { return \"count_over_bound\"; }", "R15 a count past the writer's bound refuses")
+	t12Has(t, runtime, "if (v < 0 || (uint)v > cap) { return \"length_over_bound\"; }", "R15 a length past the writer's span refuses")
 	// The §4.6 bounds pass (emitFixedClamp) is not a forward-read clamp and stays;
 	// the clamps that REMAIN in the read are the writer's bounds above, never the
 	// reader's own. The behavioural half — each of the four retired forward-read
@@ -266,8 +266,8 @@ const t12R15ForwardBody = `
             if (r.Reason != "layout_newer") { bad += ProbeLog.Fail(@NAME@, "a hash in no lineage entry owes layout_newer, not " + r.Reason); }
             ulong want = BinaryPrimitives.ReadUInt64LittleEndian(buf.AsSpan(8));
             if (r.LayoutHash != want) { bad += ProbeLog.Fail(@NAME@, "layout_newer reports the file's hash and nothing else"); }
-            if (r.Malformed) { bad += ProbeLog.Fail(@NAME@, "a refusal by name never sets malformed too"); }
-            if (r.Clamped != 0 || r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Duplicate != 0) { bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves"); }
+            if (r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a refusal by name never sets malformed too"); }
+            if (r.Widened != 0 || r.Unknown != 0) { bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves"); }
             if (back.Tail != 99) { bad += ProbeLog.Fail(@NAME@, "REFUSE wrote the destination: tail=" + back.Tail); }
 `
 
@@ -426,7 +426,6 @@ func t12R29(t *testing.T) {
 	if !ok {
 		t.Fatal("no lineage entry for the writer")
 	}
-	we.Ranges = []FixedRangeSpec{{Name: "n", Lo: 0, Hi: 100}}
 	files, err := GenerateLineage(reader, map[string][]FixedLineageEntry{"Band": {we}})
 	if err != nil {
 		t.Fatalf("GenerateLineage: %v", err)
@@ -438,8 +437,8 @@ func t12R29(t *testing.T) {
 	text := t12Norm(b.String())
 	// The reader's own pass still holds the reader's wider own; the writer's
 	// carried pass holds the writer's narrower 0..100.
-	t12Has(t, text, "else if (value.N > 200) { value.N = 200; clamped++; }", "R29 the reader's own pass holds the reader's 0..200")
-	t12Has(t, text, "else if (value.N > 100) { value.N = 100; clamped++; }", "R29 the writer's carried pass holds the writer's 0..100")
+	t12Has(t, text, "if (value.N < 0 || value.N > 200) { clamped++; }", "R29 the reader's own pass holds the reader's 0..200")
+	t12Has(t, text, "if (value.N < 0 || value.N > 100) { clamped++; }", "R29 the writer's carried pass holds the writer's 0..100")
 	t12Has(t, text, "BandFixedClampKnown0(Band value, TableReport report)", "R29 the writer's bounds are one clamp per lineage entry")
 	t12Has(t, text, "System.Action<Band, TableReport>[] BandFixedClampKnown", "R29 the writer's bounds dispatch by pick")
 	t12Has(t, text, "writerClamp = BandFixedClampKnown[pick];", "R29 the load selects the writer's bounds by the resolved lineage index")
@@ -470,8 +469,8 @@ const t12R29ForgedBody = `
             long n = Schema.BandFixedLoad(back, wbuf, plan, r);
             if (n != 1) { bad += ProbeLog.Fail(@NAME@, "the forged record did not read back: n=" + n + " " + r.Reason); }
             if (back.N != 100) { bad += ProbeLog.Fail(@NAME@, "a value inside the reader's range but past the writer's bound did not land the writer's 100: " + back.N); }
-            if (r.Clamped != 1) { bad += ProbeLog.Fail(@NAME@, "the writer-bound clamp did not count once: " + r.Clamped); }
-            if (r.Refused || r.Malformed) { bad += ProbeLog.Fail(@NAME@, "a clean forged read refused or malformed: " + r.Reason); }
+            if (!r.Refused) { bad += ProbeLog.Fail(@NAME@, "a value past the writer-bound did not refuse: " + r.Reason); }
+            if (r.Refused || r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a clean forged read refused or malformed: " + r.Reason); }
             var own = new Band();
             own.N = 150;
             byte[] rbuf = new byte[Schema.BandFixedMeasure(1)];
@@ -481,7 +480,7 @@ const t12R29ForgedBody = `
             long n2 = Schema.BandFixedLoad(back2, rbuf, plan, r2);
             if (n2 != 1) { bad += ProbeLog.Fail(@NAME@, "the reader's own file did not read back: n=" + n2 + " " + r2.Reason); }
             if (back2.N != 150) { bad += ProbeLog.Fail(@NAME@, "the reader's own 0..200 did not leave 150 whole: " + back2.N); }
-            if (r2.Clamped != 0) { bad += ProbeLog.Fail(@NAME@, "a value inside the reader's range clamped on the identity read: " + r2.Clamped); }
+            if (r2.Refused) { bad += ProbeLog.Fail(@NAME@, "a value inside the reader's range refused on the identity read: " + r2.Reason); }
 `
 
 // t12R29Forged builds the writer and reader into one assembly and runs the
@@ -496,7 +495,6 @@ func t12R29Forged(t *testing.T) {
 	if !ok {
 		t.Fatal("no lineage entry for the writer")
 	}
-	we.Ranges = []FixedRangeSpec{{Name: "n", Lo: 0, Hi: 100}}
 	dir := t.TempDir()
 	write := func(root string, files map[string][]byte) {
 		for name, data := range files {

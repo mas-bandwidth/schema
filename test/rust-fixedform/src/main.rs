@@ -615,13 +615,15 @@ fn the_negative_controls(dir: &str) {
 //   unassigned-form0 form byte 0 with the otherwise valid fixture tail
 //   reserved-byte3  a valid form-3 fixture with reserved byte 3 set nonzero
 // Each probe asserts the report is ONE answer (a named reason XOR `malformed`,
-// never both, no counter moved) AND that REFUSE IS TOTAL: the destination is
-// pre-poisoned and must come back byte for byte unchanged.
+// never both, no counter moved). A named preflight refusal leaves the poisoned
+// destination untouched; malformed damage discards every caller record to its
+// declared defaults, matching the whole-load contract.
 
 const PROBE_ROWS: usize = 8;
 
-/// THE DESTINATION, PRE-POISONED. A refusal is TOTAL (§5.3): no plan runs and
-/// not one destination byte is written. A generated row is `#[repr(C)]` with no
+/// THE DESTINATION, PRE-POISONED. A named preflight refusal is TOTAL (§5.3):
+/// no plan runs and not one destination byte is written. Malformed input instead
+/// discards the caller records to their declared defaults (§4). A generated row is `#[repr(C)]` with no
 /// niche — every bit pattern is a value of the type — so the poison goes in
 /// through a byte pointer and the read-back is those same bytes.
 fn poisoned_rows() -> [tblfx1::FxRootRow; PROBE_ROWS] {
@@ -671,21 +673,33 @@ fn form_probe(label: &str, file: &[u8], want: FormProbe) {
     match want {
         FormProbe::Named(reason) => {
             check(
+                rows_bytes(&values) == before.as_slice(),
+                &format!("{label}: named refusal leaves destination bytes unchanged"),
+            );
+            check(
                 report.refused && report.reason == reason && !report.malformed,
                 &format!("{label}: `{}` by name and nothing else claims the read", reason.name()),
             );
         }
         FormProbe::Malformed => {
+            // FX1.schema declares these values; check fields, not padding.
+            check(
+                values.iter().all(|v| {
+                    v.keep == 7 && v.narrow == 3 && v.renamed == 5 && v.gone == 9
+                        && v.nested.a == 1 && v.nested.b == 2
+                        && v.label_length == 2 && v.label[..2] == *b"fx"
+                        && v.label[2..].iter().all(|&b| b == 0)
+                        && v.marks_count == 0 && v.marks.iter().all(|&n| n == 0)
+                        && v.blob_length == 0 && v.blob.iter().all(|&b| b == 0)
+                }),
+                &format!("{label}: malformed input restores every declared default"),
+            );
             check(
                 report.malformed && !report.refused,
                 &format!("{label}: `malformed`, and no named reason claims the read"),
             );
         }
     }
-    check(
-        rows_bytes(&values) == before.as_slice(),
-        &format!("{label}: not one destination byte was written"),
-    );
 }
 
 fn the_form_header_probes(dir: &str) {

@@ -298,13 +298,15 @@ func RangedSignedSave(value *RangedSigned, buffer []byte) int64 {
 
 func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 	RangedSignedReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -312,116 +314,100 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x48121511bf702eb5: // i8_span
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_span")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int8(r.Get8())
-				if v < -128 {
-					v = -128
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_span")
-				} else if v > 127 {
-					v = 127
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_span")
+				if v < -128 || v > 127 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I8Span = int8(v)
 			}
 		case 0x942bfe3168090f7d: // i8_low
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_low")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int8(r.Get8())
-				if v < -128 {
-					v = -128
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_low")
-				} else if v > 126 {
-					v = 126
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_low")
+				if v < -128 || v > 126 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I8Low = int8(v)
 			}
 		case 0xd182acd105b55dd1: // i8_high
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_high")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int8(r.Get8())
-				if v < -127 {
-					v = -127
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_high")
-				} else if v > 127 {
-					v = 127
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_high")
+				if v < -127 || v > 127 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I8High = int8(v)
 			}
 		case 0xef9ded23c8912a81: // i8_inside
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_inside")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int8(r.Get8())
-				if v < -127 {
-					v = -127
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_inside")
-				} else if v > 126 {
-					v = 126
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_inside")
+				if v < -127 || v > 126 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I8Inside = int8(v)
 			}
@@ -429,46 +415,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -32768 {
-							v = -32768
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
-						} else if v > 32767 {
-							v = 32767
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
+						if v < -32768 || v > 32767 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I16Span = int16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i16_span")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int16(r.Get16())
-				if v < -32768 {
-					v = -32768
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
-				} else if v > 32767 {
-					v = 32767
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
+				if v < -32768 || v > 32767 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I16Span = int16(v)
 			}
@@ -476,46 +450,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -32768 {
-							v = -32768
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
-						} else if v > 32766 {
-							v = 32766
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
+						if v < -32768 || v > 32766 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I16Low = int16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i16_low")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int16(r.Get16())
-				if v < -32768 {
-					v = -32768
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
-				} else if v > 32766 {
-					v = 32766
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
+				if v < -32768 || v > 32766 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I16Low = int16(v)
 			}
@@ -523,46 +485,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -32767 {
-							v = -32767
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
-						} else if v > 32767 {
-							v = 32767
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
+						if v < -32767 || v > 32767 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I16High = int16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i16_high")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int16(r.Get16())
-				if v < -32767 {
-					v = -32767
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
-				} else if v > 32767 {
-					v = 32767
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
+				if v < -32767 || v > 32767 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I16High = int16(v)
 			}
@@ -570,46 +520,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -32767 {
-							v = -32767
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
-						} else if v > 32766 {
-							v = 32766
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
+						if v < -32767 || v > 32766 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I16Inside = int16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i16_inside")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int16(r.Get16())
-				if v < -32767 {
-					v = -32767
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
-				} else if v > 32766 {
-					v = 32766
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
+				if v < -32767 || v > 32766 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I16Inside = int16(v)
 			}
@@ -617,46 +555,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2147483648 {
-							v = -2147483648
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
-						} else if v > 2147483647 {
-							v = 2147483647
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
+						if v < -2147483648 || v > 2147483647 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I32Span = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i32_span")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2147483648 {
-					v = -2147483648
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
-				} else if v > 2147483647 {
-					v = 2147483647
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
+				if v < -2147483648 || v > 2147483647 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I32Span = int32(v)
 			}
@@ -664,46 +590,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2147483648 {
-							v = -2147483648
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
-						} else if v > 2147483646 {
-							v = 2147483646
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
+						if v < -2147483648 || v > 2147483646 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I32Low = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i32_low")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2147483648 {
-					v = -2147483648
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
-				} else if v > 2147483646 {
-					v = 2147483646
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
+				if v < -2147483648 || v > 2147483646 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I32Low = int32(v)
 			}
@@ -711,46 +625,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2147483647 {
-							v = -2147483647
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
-						} else if v > 2147483647 {
-							v = 2147483647
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
+						if v < -2147483647 || v > 2147483647 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I32High = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i32_high")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2147483647 {
-					v = -2147483647
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
-				} else if v > 2147483647 {
-					v = 2147483647
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
+				if v < -2147483647 || v > 2147483647 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I32High = int32(v)
 			}
@@ -758,46 +660,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2147483647 {
-							v = -2147483647
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
-						} else if v > 2147483646 {
-							v = 2147483646
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
+						if v < -2147483647 || v > 2147483646 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I32Inside = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i32_inside")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2147483647 {
-					v = -2147483647
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
-				} else if v > 2147483646 {
-					v = 2147483646
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
+				if v < -2147483647 || v > 2147483646 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I32Inside = int32(v)
 			}
@@ -805,46 +695,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < (-9223372036854775807 - 1) {
-							v = (-9223372036854775807 - 1)
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
-						} else if v > 9223372036854775807 {
-							v = 9223372036854775807
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
+						if v < (-9223372036854775807-1) || v > 9223372036854775807 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I64Span = int64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i64_span")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int64(r.Get64())
-				if v < (-9223372036854775807 - 1) {
-					v = (-9223372036854775807 - 1)
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
-				} else if v > 9223372036854775807 {
-					v = 9223372036854775807
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
+				if v < (-9223372036854775807-1) || v > 9223372036854775807 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I64Span = int64(v)
 			}
@@ -852,46 +730,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < (-9223372036854775807 - 1) {
-							v = (-9223372036854775807 - 1)
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
-						} else if v > 9223372036854775806 {
-							v = 9223372036854775806
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
+						if v < (-9223372036854775807-1) || v > 9223372036854775806 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I64Low = int64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i64_low")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int64(r.Get64())
-				if v < (-9223372036854775807 - 1) {
-					v = (-9223372036854775807 - 1)
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
-				} else if v > 9223372036854775806 {
-					v = 9223372036854775806
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
+				if v < (-9223372036854775807-1) || v > 9223372036854775806 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I64Low = int64(v)
 			}
@@ -899,46 +765,34 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -9223372036854775807 {
-							v = -9223372036854775807
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
-						} else if v > 9223372036854775807 {
-							v = 9223372036854775807
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
+						if v < -9223372036854775807 || v > 9223372036854775807 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I64High = int64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i64_high")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int64(r.Get64())
-				if v < -9223372036854775807 {
-					v = -9223372036854775807
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
-				} else if v > 9223372036854775807 {
-					v = 9223372036854775807
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
+				if v < -9223372036854775807 || v > 9223372036854775807 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I64High = int64(v)
 			}
@@ -946,117 +800,95 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -9223372036854775807 {
-							v = -9223372036854775807
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
-						} else if v > 9223372036854775806 {
-							v = 9223372036854775806
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
+						if v < -9223372036854775807 || v > 9223372036854775806 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I64Inside = int64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i64_inside")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int64(r.Get64())
-				if v < -9223372036854775807 {
-					v = -9223372036854775807
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
-				} else if v > 9223372036854775806 {
-					v = 9223372036854775806
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
+				if v < -9223372036854775807 || v > 9223372036854775806 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I64Inside = int64(v)
 			}
 		case 0xc70cde6b85b6197d: // edges
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.edges")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 3 {
-						if tableKindWidens(elemKind, 3) {
-							r.Report.Widened++
-						} else {
-							r.Report.KindMismatch++
-							break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 3 {
+					if !tableKindWidens(elemKind, 3) {
+						r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.edges")
+						return false
+					}
+					r.Report.Widened++
+				}
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "RangedSigned.edges")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					{
+						v := sub.Signed(elemKind)
+						if v < -32768 || v > 32767 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.edges")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
+						value.Edges[i] = int16(v)
 					}
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
-					}
-					previous := value.EdgesCount
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Signed(elemKind)
-							if v < -32768 {
-								v = -32768
-								r.Report.Clamped++
-								tableTextClamped(&r.Report.ClampedField, "RangedSigned.edges")
-							} else if v > 32767 {
-								v = 32767
-								r.Report.Clamped++
-								tableTextClamped(&r.Report.ClampedField, "RangedSigned.edges")
-							}
-							value.Edges[i] = int16(v)
-						}
-						decoded = int32(i + 1)
-					}
-					if decoded < previous {
-						clear(value.Edges[decoded:previous])
-					}
-					value.EdgesCount = decoded
+				}
+				value.EdgesCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -1065,83 +897,12 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 
 // RangedSigned also carries the FIXED form (form 3): RangedSignedFixedLoad reads that one and
 // names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1, whether or not the table was DECLARED fixed
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
-// RangedSignedLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. RangedSignedLoad is the strict read; call this one by name.
-func RangedSignedLoadTolerant(value *RangedSigned, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		RangedSignedReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !RangedSignedLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			RangedSignedReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			RangedSignedReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		RangedSignedReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// RangedSignedLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever RangedSignedReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. RangedSignedLoadTolerant keeps a recovered value.
+// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// RangedSignedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -1149,24 +910,21 @@ func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) boo
 	} else {
 		*read = TableReport{}
 	}
-	ok := RangedSignedLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !RangedSignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		RangedSignedReset(value)
 		return false
 	}
 	return true
 }
 
-// RangedSignedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// RangedSignedReadStrict is RangedSignedLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func RangedSignedReadStrict(wire []byte) (*RangedSigned, error) {
 	value := &RangedSigned{}
 	var report TableReport
-	ok := RangedSignedLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !RangedSignedLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -1407,6 +1165,8 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 
 func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool {
 	RangedSignedReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -1414,7 +1174,7 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -1422,116 +1182,100 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x48121511bf702eb5: // i8_span
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_span")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int8(r.Get8())
-				if v < -128 {
-					v = -128
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_span")
-				} else if v > 127 {
-					v = 127
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_span")
+				if v < -128 || v > 127 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I8Span = int8(v)
 			}
 		case 0x942bfe3168090f7d: // i8_low
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_low")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int8(r.Get8())
-				if v < -128 {
-					v = -128
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_low")
-				} else if v > 126 {
-					v = 126
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_low")
+				if v < -128 || v > 126 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I8Low = int8(v)
 			}
 		case 0xd182acd105b55dd1: // i8_high
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_high")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int8(r.Get8())
-				if v < -127 {
-					v = -127
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_high")
-				} else if v > 127 {
-					v = 127
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_high")
+				if v < -127 || v > 127 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I8High = int8(v)
 			}
 		case 0xef9ded23c8912a81: // i8_inside
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i8_inside")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int8(r.Get8())
-				if v < -127 {
-					v = -127
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_inside")
-				} else if v > 126 {
-					v = 126
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i8_inside")
+				if v < -127 || v > 126 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I8Inside = int8(v)
 			}
@@ -1539,46 +1283,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -32768 {
-							v = -32768
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
-						} else if v > 32767 {
-							v = 32767
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
+						if v < -32768 || v > 32767 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I16Span = int16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i16_span")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int16(r.Get16())
-				if v < -32768 {
-					v = -32768
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
-				} else if v > 32767 {
-					v = 32767
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_span")
+				if v < -32768 || v > 32767 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I16Span = int16(v)
 			}
@@ -1586,46 +1318,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -32768 {
-							v = -32768
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
-						} else if v > 32766 {
-							v = 32766
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
+						if v < -32768 || v > 32766 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I16Low = int16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i16_low")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int16(r.Get16())
-				if v < -32768 {
-					v = -32768
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
-				} else if v > 32766 {
-					v = 32766
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_low")
+				if v < -32768 || v > 32766 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I16Low = int16(v)
 			}
@@ -1633,46 +1353,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -32767 {
-							v = -32767
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
-						} else if v > 32767 {
-							v = 32767
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
+						if v < -32767 || v > 32767 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I16High = int16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i16_high")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int16(r.Get16())
-				if v < -32767 {
-					v = -32767
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
-				} else if v > 32767 {
-					v = 32767
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_high")
+				if v < -32767 || v > 32767 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I16High = int16(v)
 			}
@@ -1680,46 +1388,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -32767 {
-							v = -32767
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
-						} else if v > 32766 {
-							v = 32766
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
+						if v < -32767 || v > 32766 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I16Inside = int16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i16_inside")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int16(r.Get16())
-				if v < -32767 {
-					v = -32767
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
-				} else if v > 32766 {
-					v = 32766
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i16_inside")
+				if v < -32767 || v > 32766 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I16Inside = int16(v)
 			}
@@ -1727,46 +1423,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2147483648 {
-							v = -2147483648
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
-						} else if v > 2147483647 {
-							v = 2147483647
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
+						if v < -2147483648 || v > 2147483647 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I32Span = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i32_span")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2147483648 {
-					v = -2147483648
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
-				} else if v > 2147483647 {
-					v = 2147483647
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_span")
+				if v < -2147483648 || v > 2147483647 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I32Span = int32(v)
 			}
@@ -1774,46 +1458,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2147483648 {
-							v = -2147483648
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
-						} else if v > 2147483646 {
-							v = 2147483646
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
+						if v < -2147483648 || v > 2147483646 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I32Low = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i32_low")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2147483648 {
-					v = -2147483648
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
-				} else if v > 2147483646 {
-					v = 2147483646
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_low")
+				if v < -2147483648 || v > 2147483646 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I32Low = int32(v)
 			}
@@ -1821,46 +1493,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2147483647 {
-							v = -2147483647
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
-						} else if v > 2147483647 {
-							v = 2147483647
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
+						if v < -2147483647 || v > 2147483647 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I32High = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i32_high")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2147483647 {
-					v = -2147483647
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
-				} else if v > 2147483647 {
-					v = 2147483647
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_high")
+				if v < -2147483647 || v > 2147483647 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I32High = int32(v)
 			}
@@ -1868,46 +1528,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -2147483647 {
-							v = -2147483647
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
-						} else if v > 2147483646 {
-							v = 2147483646
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
+						if v < -2147483647 || v > 2147483646 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I32Inside = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i32_inside")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < -2147483647 {
-					v = -2147483647
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
-				} else if v > 2147483646 {
-					v = 2147483646
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i32_inside")
+				if v < -2147483647 || v > 2147483646 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I32Inside = int32(v)
 			}
@@ -1915,46 +1563,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < (-9223372036854775807 - 1) {
-							v = (-9223372036854775807 - 1)
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
-						} else if v > 9223372036854775807 {
-							v = 9223372036854775807
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
+						if v < (-9223372036854775807-1) || v > 9223372036854775807 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I64Span = int64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i64_span")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int64(r.Get64())
-				if v < (-9223372036854775807 - 1) {
-					v = (-9223372036854775807 - 1)
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
-				} else if v > 9223372036854775807 {
-					v = 9223372036854775807
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_span")
+				if v < (-9223372036854775807-1) || v > 9223372036854775807 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I64Span = int64(v)
 			}
@@ -1962,46 +1598,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < (-9223372036854775807 - 1) {
-							v = (-9223372036854775807 - 1)
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
-						} else if v > 9223372036854775806 {
-							v = 9223372036854775806
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
+						if v < (-9223372036854775807-1) || v > 9223372036854775806 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I64Low = int64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i64_low")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int64(r.Get64())
-				if v < (-9223372036854775807 - 1) {
-					v = (-9223372036854775807 - 1)
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
-				} else if v > 9223372036854775806 {
-					v = 9223372036854775806
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_low")
+				if v < (-9223372036854775807-1) || v > 9223372036854775806 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I64Low = int64(v)
 			}
@@ -2009,46 +1633,34 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -9223372036854775807 {
-							v = -9223372036854775807
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
-						} else if v > 9223372036854775807 {
-							v = 9223372036854775807
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
+						if v < -9223372036854775807 || v > 9223372036854775807 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I64High = int64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i64_high")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int64(r.Get64())
-				if v < -9223372036854775807 {
-					v = -9223372036854775807
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
-				} else if v > 9223372036854775807 {
-					v = 9223372036854775807
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_high")
+				if v < -9223372036854775807 || v > 9223372036854775807 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I64High = int64(v)
 			}
@@ -2056,118 +1668,96 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < -9223372036854775807 {
-							v = -9223372036854775807
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
-						} else if v > 9223372036854775806 {
-							v = 9223372036854775806
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
+						if v < -9223372036854775807 || v > 9223372036854775806 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.I64Inside = int64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.i64_inside")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int64(r.Get64())
-				if v < -9223372036854775807 {
-					v = -9223372036854775807
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
-				} else if v > 9223372036854775806 {
-					v = 9223372036854775806
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedSigned.i64_inside")
+				if v < -9223372036854775807 || v > 9223372036854775806 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.I64Inside = int64(v)
 			}
 		case 0xc70cde6b85b6197d: // edges
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.edges")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 3 {
-						if tableKindWidens(elemKind, 3) {
-							r.Report.Widened++
-						} else {
-							r.Report.KindMismatch++
-							break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 3 {
+					if !tableKindWidens(elemKind, 3) {
+						r.Report.Refuse(TableRefuseKindMismatch, "RangedSigned.edges")
+						return false
+					}
+					r.Report.Widened++
+				}
+				r.Retain.discard(r.Path, true, 16)
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "RangedSigned.edges")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					{
+						v := sub.Signed(elemKind)
+						if v < -32768 || v > 32767 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.edges")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
+						value.Edges[i] = int16(v)
 					}
-					r.Retain.discard(r.Path, true, 16)
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
-					}
-					previous := value.EdgesCount
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Signed(elemKind)
-							if v < -32768 {
-								v = -32768
-								r.Report.Clamped++
-								tableTextClamped(&r.Report.ClampedField, "RangedSigned.edges")
-							} else if v > 32767 {
-								v = 32767
-								r.Report.Clamped++
-								tableTextClamped(&r.Report.ClampedField, "RangedSigned.edges")
-							}
-							value.Edges[i] = int16(v)
-						}
-						decoded = int32(i + 1)
-					}
-					if decoded < previous {
-						clear(value.Edges[decoded:previous])
-					}
-					value.EdgesCount = decoded
+				}
+				value.EdgesCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "RangedSigned") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -2458,13 +2048,15 @@ func RangedUnsignedSave(value *RangedUnsigned, buffer []byte) int64 {
 
 func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 	RangedUnsignedReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -2472,116 +2064,100 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x0f8897557f37c021: // u8_span
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_span")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_span")
-				} else if v > 255 {
-					v = 255
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_span")
+				if v < 0 || v > 255 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U8Span = uint8(v)
 			}
 		case 0x2e17553f8200a2a1: // u8_low
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_low")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_low")
-				} else if v > 254 {
-					v = 254
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_low")
+				if v < 0 || v > 254 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U8Low = uint8(v)
 			}
 		case 0xa0e5c60df9301b7d: // u8_high
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_high")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_high")
-				} else if v > 255 {
-					v = 255
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_high")
+				if v < 1 || v > 255 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U8High = uint8(v)
 			}
 		case 0x1cb2c073a6f5844d: // u8_inside
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_inside")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_inside")
-				} else if v > 254 {
-					v = 254
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_inside")
+				if v < 1 || v > 254 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U8Inside = uint8(v)
 			}
@@ -2589,46 +2165,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
-						} else if v > 65535 {
-							v = 65535
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
+						if v < 0 || v > 65535 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U16Span = uint16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u16_span")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
-				} else if v > 65535 {
-					v = 65535
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
+				if v < 0 || v > 65535 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U16Span = uint16(v)
 			}
@@ -2636,46 +2200,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
-						} else if v > 65534 {
-							v = 65534
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
+						if v < 0 || v > 65534 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U16Low = uint16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u16_low")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
-				} else if v > 65534 {
-					v = 65534
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
+				if v < 0 || v > 65534 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U16Low = uint16(v)
 			}
@@ -2683,46 +2235,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
-						} else if v > 65535 {
-							v = 65535
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
+						if v < 1 || v > 65535 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U16High = uint16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u16_high")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
-				} else if v > 65535 {
-					v = 65535
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
+				if v < 1 || v > 65535 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U16High = uint16(v)
 			}
@@ -2730,46 +2270,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
-						} else if v > 65534 {
-							v = 65534
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
+						if v < 1 || v > 65534 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U16Inside = uint16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u16_inside")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
-				} else if v > 65534 {
-					v = 65534
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
+				if v < 1 || v > 65534 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U16Inside = uint16(v)
 			}
@@ -2777,46 +2305,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
-						} else if v > 4294967295 {
-							v = 4294967295
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
+						if v < 0 || v > 4294967295 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U32Span = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u32_span")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
-				} else if v > 4294967295 {
-					v = 4294967295
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
+				if v < 0 || v > 4294967295 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U32Span = uint32(v)
 			}
@@ -2824,46 +2340,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
-						} else if v > 4294967294 {
-							v = 4294967294
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
+						if v < 0 || v > 4294967294 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U32Low = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u32_low")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
-				} else if v > 4294967294 {
-					v = 4294967294
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
+				if v < 0 || v > 4294967294 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U32Low = uint32(v)
 			}
@@ -2871,46 +2375,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
-						} else if v > 4294967295 {
-							v = 4294967295
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
+						if v < 1 || v > 4294967295 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U32High = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u32_high")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
-				} else if v > 4294967295 {
-					v = 4294967295
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
+				if v < 1 || v > 4294967295 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U32High = uint32(v)
 			}
@@ -2918,46 +2410,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
-						} else if v > 4294967294 {
-							v = 4294967294
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
+						if v < 1 || v > 4294967294 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U32Inside = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u32_inside")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
-				} else if v > 4294967294 {
-					v = 4294967294
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
+				if v < 1 || v > 4294967294 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U32Inside = uint32(v)
 			}
@@ -2965,46 +2445,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
-						} else if v > 18446744073709551615 {
-							v = 18446744073709551615
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
+						if v < 0 || v > 18446744073709551615 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U64Span = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u64_span")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
-				} else if v > 18446744073709551615 {
-					v = 18446744073709551615
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
+				if v < 0 || v > 18446744073709551615 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U64Span = uint64(v)
 			}
@@ -3012,46 +2480,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
-						} else if v > 18446744073709551614 {
-							v = 18446744073709551614
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
+						if v < 0 || v > 18446744073709551614 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U64Low = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u64_low")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
-				} else if v > 18446744073709551614 {
-					v = 18446744073709551614
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
+				if v < 0 || v > 18446744073709551614 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U64Low = uint64(v)
 			}
@@ -3059,46 +2515,34 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
-						} else if v > 18446744073709551615 {
-							v = 18446744073709551615
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
+						if v < 1 || v > 18446744073709551615 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U64High = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u64_high")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
-				} else if v > 18446744073709551615 {
-					v = 18446744073709551615
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
+				if v < 1 || v > 18446744073709551615 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U64High = uint64(v)
 			}
@@ -3106,117 +2550,95 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
-						} else if v > 18446744073709551614 {
-							v = 18446744073709551614
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
+						if v < 1 || v > 18446744073709551614 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U64Inside = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u64_inside")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
-				} else if v > 18446744073709551614 {
-					v = 18446744073709551614
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
+				if v < 1 || v > 18446744073709551614 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U64Inside = uint64(v)
 			}
 		case 0xc341febe5aae51e5: // counts
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.counts")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 9 {
-						if tableKindWidens(elemKind, 9) {
-							r.Report.Widened++
-						} else {
-							r.Report.KindMismatch++
-							break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 9 {
+					if !tableKindWidens(elemKind, 9) {
+						r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.counts")
+						return false
+					}
+					r.Report.Widened++
+				}
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "RangedUnsigned.counts")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					{
+						v := sub.Unsigned(elemKind)
+						if v < 0 || v > 18446744073709551615 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.counts")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
+						value.Counts[i] = uint64(v)
 					}
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
-					}
-					previous := value.CountsCount
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							if v < 0 {
-								v = 0
-								r.Report.Clamped++
-								tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.counts")
-							} else if v > 18446744073709551615 {
-								v = 18446744073709551615
-								r.Report.Clamped++
-								tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.counts")
-							}
-							value.Counts[i] = uint64(v)
-						}
-						decoded = int32(i + 1)
-					}
-					if decoded < previous {
-						clear(value.Counts[decoded:previous])
-					}
-					value.CountsCount = decoded
+				}
+				value.CountsCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -3225,83 +2647,12 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 
 // RangedUnsigned also carries the FIXED form (form 3): RangedUnsignedFixedLoad reads that one and
 // names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1, whether or not the table was DECLARED fixed
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
-// RangedUnsignedLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. RangedUnsignedLoad is the strict read; call this one by name.
-func RangedUnsignedLoadTolerant(value *RangedUnsigned, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		RangedUnsignedReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !RangedUnsignedLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			RangedUnsignedReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			RangedUnsignedReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		RangedUnsignedReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// RangedUnsignedLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever RangedUnsignedReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. RangedUnsignedLoadTolerant keeps a recovered value.
+// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// RangedUnsignedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -3309,24 +2660,21 @@ func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport)
 	} else {
 		*read = TableReport{}
 	}
-	ok := RangedUnsignedLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !RangedUnsignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		RangedUnsignedReset(value)
 		return false
 	}
 	return true
 }
 
-// RangedUnsignedReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// RangedUnsignedReadStrict is RangedUnsignedLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func RangedUnsignedReadStrict(wire []byte) (*RangedUnsigned, error) {
 	value := &RangedUnsigned{}
 	var report TableReport
-	ok := RangedUnsignedLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !RangedUnsignedLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -3567,6 +2915,8 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 
 func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) bool {
 	RangedUnsignedReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -3574,7 +2924,7 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -3582,116 +2932,100 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x0f8897557f37c021: // u8_span
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_span")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_span")
-				} else if v > 255 {
-					v = 255
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_span")
+				if v < 0 || v > 255 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U8Span = uint8(v)
 			}
 		case 0x2e17553f8200a2a1: // u8_low
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_low")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_low")
-				} else if v > 254 {
-					v = 254
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_low")
+				if v < 0 || v > 254 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U8Low = uint8(v)
 			}
 		case 0xa0e5c60df9301b7d: // u8_high
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_high")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_high")
-				} else if v > 255 {
-					v = 255
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_high")
+				if v < 1 || v > 255 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U8High = uint8(v)
 			}
 		case 0x1cb2c073a6f5844d: // u8_inside
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u8_inside")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_inside")
-				} else if v > 254 {
-					v = 254
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u8_inside")
+				if v < 1 || v > 254 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U8Inside = uint8(v)
 			}
@@ -3699,46 +3033,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
-						} else if v > 65535 {
-							v = 65535
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
+						if v < 0 || v > 65535 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U16Span = uint16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u16_span")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
-				} else if v > 65535 {
-					v = 65535
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_span")
+				if v < 0 || v > 65535 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U16Span = uint16(v)
 			}
@@ -3746,46 +3068,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
-						} else if v > 65534 {
-							v = 65534
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
+						if v < 0 || v > 65534 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U16Low = uint16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u16_low")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
-				} else if v > 65534 {
-					v = 65534
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_low")
+				if v < 0 || v > 65534 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U16Low = uint16(v)
 			}
@@ -3793,46 +3103,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
-						} else if v > 65535 {
-							v = 65535
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
+						if v < 1 || v > 65535 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U16High = uint16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u16_high")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
-				} else if v > 65535 {
-					v = 65535
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_high")
+				if v < 1 || v > 65535 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U16High = uint16(v)
 			}
@@ -3840,46 +3138,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
-						} else if v > 65534 {
-							v = 65534
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
+						if v < 1 || v > 65534 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U16Inside = uint16(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u16_inside")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
-				} else if v > 65534 {
-					v = 65534
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u16_inside")
+				if v < 1 || v > 65534 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U16Inside = uint16(v)
 			}
@@ -3887,46 +3173,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
-						} else if v > 4294967295 {
-							v = 4294967295
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
+						if v < 0 || v > 4294967295 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U32Span = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u32_span")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
-				} else if v > 4294967295 {
-					v = 4294967295
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_span")
+				if v < 0 || v > 4294967295 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U32Span = uint32(v)
 			}
@@ -3934,46 +3208,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
-						} else if v > 4294967294 {
-							v = 4294967294
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
+						if v < 0 || v > 4294967294 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U32Low = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u32_low")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
-				} else if v > 4294967294 {
-					v = 4294967294
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_low")
+				if v < 0 || v > 4294967294 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U32Low = uint32(v)
 			}
@@ -3981,46 +3243,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
-						} else if v > 4294967295 {
-							v = 4294967295
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
+						if v < 1 || v > 4294967295 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U32High = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u32_high")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
-				} else if v > 4294967295 {
-					v = 4294967295
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_high")
+				if v < 1 || v > 4294967295 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U32High = uint32(v)
 			}
@@ -4028,46 +3278,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
-						} else if v > 4294967294 {
-							v = 4294967294
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
+						if v < 1 || v > 4294967294 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U32Inside = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u32_inside")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
-				} else if v > 4294967294 {
-					v = 4294967294
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u32_inside")
+				if v < 1 || v > 4294967294 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U32Inside = uint32(v)
 			}
@@ -4075,46 +3313,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
-						} else if v > 18446744073709551615 {
-							v = 18446744073709551615
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
+						if v < 0 || v > 18446744073709551615 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_span")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U64Span = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u64_span")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
-				} else if v > 18446744073709551615 {
-					v = 18446744073709551615
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_span")
+				if v < 0 || v > 18446744073709551615 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_span")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U64Span = uint64(v)
 			}
@@ -4122,46 +3348,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
-						} else if v > 18446744073709551614 {
-							v = 18446744073709551614
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
+						if v < 0 || v > 18446744073709551614 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_low")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U64Low = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u64_low")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
-				} else if v > 18446744073709551614 {
-					v = 18446744073709551614
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_low")
+				if v < 0 || v > 18446744073709551614 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_low")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U64Low = uint64(v)
 			}
@@ -4169,46 +3383,34 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
-						} else if v > 18446744073709551615 {
-							v = 18446744073709551615
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
+						if v < 1 || v > 18446744073709551615 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_high")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U64High = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u64_high")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
-				} else if v > 18446744073709551615 {
-					v = 18446744073709551615
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_high")
+				if v < 1 || v > 18446744073709551615 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_high")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U64High = uint64(v)
 			}
@@ -4216,118 +3418,96 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
-						if v < 1 {
-							v = 1
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
-						} else if v > 18446744073709551614 {
-							v = 18446744073709551614
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
+						if v < 1 || v > 18446744073709551614 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_inside")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.U64Inside = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.u64_inside")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
-				if v < 1 {
-					v = 1
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
-				} else if v > 18446744073709551614 {
-					v = 18446744073709551614
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.u64_inside")
+				if v < 1 || v > 18446744073709551614 {
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_inside")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.U64Inside = uint64(v)
 			}
 		case 0xc341febe5aae51e5: // counts
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.counts")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 9 {
-						if tableKindWidens(elemKind, 9) {
-							r.Report.Widened++
-						} else {
-							r.Report.KindMismatch++
-							break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 9 {
+					if !tableKindWidens(elemKind, 9) {
+						r.Report.Refuse(TableRefuseKindMismatch, "RangedUnsigned.counts")
+						return false
+					}
+					r.Report.Widened++
+				}
+				r.Retain.discard(r.Path, true, 16)
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "RangedUnsigned.counts")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					{
+						v := sub.Unsigned(elemKind)
+						if v < 0 || v > 18446744073709551615 {
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.counts")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
+						value.Counts[i] = uint64(v)
 					}
-					r.Retain.discard(r.Path, true, 16)
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
-					}
-					previous := value.CountsCount
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							if v < 0 {
-								v = 0
-								r.Report.Clamped++
-								tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.counts")
-							} else if v > 18446744073709551615 {
-								v = 18446744073709551615
-								r.Report.Clamped++
-								tableTextClamped(&r.Report.ClampedField, "RangedUnsigned.counts")
-							}
-							value.Counts[i] = uint64(v)
-						}
-						decoded = int32(i + 1)
-					}
-					if decoded < previous {
-						clear(value.Counts[decoded:previous])
-					}
-					value.CountsCount = decoded
+				}
+				value.CountsCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "RangedUnsigned") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -4486,13 +3666,15 @@ func RangedWidthsSave(value *RangedWidths, buffer []byte) int64 {
 
 func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 	RangedWidthsReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -4500,34 +3682,46 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x08a60c07b54d8dc7: // b8
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b8")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
 				if v > 255 {
-					v = 255
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b8")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b8")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B8 = uint32(v)
 			}
@@ -4535,38 +3729,34 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 65535 {
-							v = 65535
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b16")
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b16")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.B16 = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b16")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 65535 {
-					v = 65535
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b16")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b16")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B16 = uint32(v)
 			}
@@ -4574,38 +3764,34 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 4294967295 {
-							v = 4294967295
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b32")
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b32")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.B32 = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b32")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
 				if v > 4294967295 {
-					v = 4294967295
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b32")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b32")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B32 = uint32(v)
 			}
@@ -4613,7 +3799,7 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4623,15 +3809,11 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b64")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4642,38 +3824,34 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 4095 {
-							v = 4095
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b12")
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b12")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.B12 = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b12")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 4095 {
-					v = 4095
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b12")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b12")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B12 = uint32(v)
 			}
@@ -4681,45 +3859,41 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 281474976710655 {
-							v = 281474976710655
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b48")
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b48")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.B48 = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b48")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
 				if v > 281474976710655 {
-					v = 281474976710655
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b48")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b48")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B48 = uint64(v)
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -4728,83 +3902,12 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 
 // RangedWidths also carries the FIXED form (form 3): RangedWidthsFixedLoad reads that one and
 // names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1, whether or not the table was DECLARED fixed
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
-// RangedWidthsLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. RangedWidthsLoad is the strict read; call this one by name.
-func RangedWidthsLoadTolerant(value *RangedWidths, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		RangedWidthsReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !RangedWidthsLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			RangedWidthsReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			RangedWidthsReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		RangedWidthsReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// RangedWidthsLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever RangedWidthsReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. RangedWidthsLoadTolerant keeps a recovered value.
+// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// RangedWidthsLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -4812,24 +3915,21 @@ func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) boo
 	} else {
 		*read = TableReport{}
 	}
-	ok := RangedWidthsLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !RangedWidthsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		RangedWidthsReset(value)
 		return false
 	}
 	return true
 }
 
-// RangedWidthsReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// RangedWidthsReadStrict is RangedWidthsLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func RangedWidthsReadStrict(wire []byte) (*RangedWidths, error) {
 	value := &RangedWidths{}
 	var report TableReport
-	ok := RangedWidthsLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !RangedWidthsLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -4925,6 +4025,8 @@ func RangedWidthsSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedWidths)
 
 func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool {
 	RangedWidthsReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -4932,7 +4034,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -4940,34 +4042,46 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x08a60c07b54d8dc7: // b8
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b8")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
 				if v > 255 {
-					v = 255
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b8")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b8")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B8 = uint32(v)
 			}
@@ -4975,38 +4089,34 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 65535 {
-							v = 65535
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b16")
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b16")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.B16 = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b16")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 65535 {
-					v = 65535
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b16")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b16")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B16 = uint32(v)
 			}
@@ -5014,38 +4124,34 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 4294967295 {
-							v = 4294967295
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b32")
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b32")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.B32 = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b32")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get32()
 				if v > 4294967295 {
-					v = 4294967295
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b32")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b32")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B32 = uint32(v)
 			}
@@ -5053,7 +4159,7 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -5063,15 +4169,11 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b64")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -5082,38 +4184,34 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 4095 {
-							v = 4095
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b12")
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b12")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.B12 = uint32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b12")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get16()
 				if v > 4095 {
-					v = 4095
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b12")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b12")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B12 = uint32(v)
 			}
@@ -5121,45 +4219,41 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Unsigned(kind)
 						if v > 281474976710655 {
-							v = 281474976710655
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "RangedWidths.b48")
+							r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b48")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.B48 = uint64(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "RangedWidths.b48")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get64()
 				if v > 281474976710655 {
-					v = 281474976710655
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "RangedWidths.b48")
+					r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b48")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.B48 = uint64(v)
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "RangedWidths") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -5270,7 +4364,7 @@ func RangedSignedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // edges count
+	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), Size: 4, Aux: 2, Guard: tableFixedNoGuard, Op: tableFixedCount} // edges count
 	n++
 	for i := range uint32(4) {
 		es := src + 64 + i*2
@@ -5405,7 +4499,7 @@ func RangedUnsignedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardL
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // counts count
+	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), Size: 4, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // counts count
 	n++
 	for i := range uint32(4) {
 		es := src + 64 + i*8
@@ -5492,154 +4586,102 @@ func RangedWidthsFixedWriteBody(b []byte, value *RangedWidths) {
 	tableFixedPut64(b[24:], uint64(value.B48))
 }
 
-// RangedSigned's read-side bounds.
-func RangedSignedFixedClampBody(value *RangedSigned, clamped *int32) {
-	_, _ = value, clamped
+// RangedSigned's read-side bounds: each value outside them counts one in over.
+func RangedSignedFixedBoundsBody(value *RangedSigned, over *int32) {
+	_, _ = value, over
 	if value.I8Low > 126 {
-		value.I8Low = 126
-		(*clamped)++
+		(*over)++
 	}
 	if value.I8High < -127 {
-		value.I8High = -127
-		(*clamped)++
+		(*over)++
 	}
-	if value.I8Inside < -127 {
-		value.I8Inside = -127
-		(*clamped)++
-	} else if value.I8Inside > 126 {
-		value.I8Inside = 126
-		(*clamped)++
+	if value.I8Inside < -127 || value.I8Inside > 126 {
+		(*over)++
 	}
 	if value.I16Low > 32766 {
-		value.I16Low = 32766
-		(*clamped)++
+		(*over)++
 	}
 	if value.I16High < -32767 {
-		value.I16High = -32767
-		(*clamped)++
+		(*over)++
 	}
-	if value.I16Inside < -32767 {
-		value.I16Inside = -32767
-		(*clamped)++
-	} else if value.I16Inside > 32766 {
-		value.I16Inside = 32766
-		(*clamped)++
+	if value.I16Inside < -32767 || value.I16Inside > 32766 {
+		(*over)++
 	}
 	if value.I32Low > 2147483646 {
-		value.I32Low = 2147483646
-		(*clamped)++
+		(*over)++
 	}
 	if value.I32High < -2147483647 {
-		value.I32High = -2147483647
-		(*clamped)++
+		(*over)++
 	}
-	if value.I32Inside < -2147483647 {
-		value.I32Inside = -2147483647
-		(*clamped)++
-	} else if value.I32Inside > 2147483646 {
-		value.I32Inside = 2147483646
-		(*clamped)++
+	if value.I32Inside < -2147483647 || value.I32Inside > 2147483646 {
+		(*over)++
 	}
 	if value.I64Low > 9223372036854775806 {
-		value.I64Low = 9223372036854775806
-		(*clamped)++
+		(*over)++
 	}
 	if value.I64High < -9223372036854775807 {
-		value.I64High = -9223372036854775807
-		(*clamped)++
+		(*over)++
 	}
-	if value.I64Inside < -9223372036854775807 {
-		value.I64Inside = -9223372036854775807
-		(*clamped)++
-	} else if value.I64Inside > 9223372036854775806 {
-		value.I64Inside = 9223372036854775806
-		(*clamped)++
+	if value.I64Inside < -9223372036854775807 || value.I64Inside > 9223372036854775806 {
+		(*over)++
 	}
 }
 
-// RangedUnsigned's read-side bounds.
-func RangedUnsignedFixedClampBody(value *RangedUnsigned, clamped *int32) {
-	_, _ = value, clamped
+// RangedUnsigned's read-side bounds: each value outside them counts one in over.
+func RangedUnsignedFixedBoundsBody(value *RangedUnsigned, over *int32) {
+	_, _ = value, over
 	if value.U8Low > 254 {
-		value.U8Low = 254
-		(*clamped)++
+		(*over)++
 	}
 	if value.U8High < 1 {
-		value.U8High = 1
-		(*clamped)++
+		(*over)++
 	}
-	if value.U8Inside < 1 {
-		value.U8Inside = 1
-		(*clamped)++
-	} else if value.U8Inside > 254 {
-		value.U8Inside = 254
-		(*clamped)++
+	if value.U8Inside < 1 || value.U8Inside > 254 {
+		(*over)++
 	}
 	if value.U16Low > 65534 {
-		value.U16Low = 65534
-		(*clamped)++
+		(*over)++
 	}
 	if value.U16High < 1 {
-		value.U16High = 1
-		(*clamped)++
+		(*over)++
 	}
-	if value.U16Inside < 1 {
-		value.U16Inside = 1
-		(*clamped)++
-	} else if value.U16Inside > 65534 {
-		value.U16Inside = 65534
-		(*clamped)++
+	if value.U16Inside < 1 || value.U16Inside > 65534 {
+		(*over)++
 	}
 	if value.U32Low > 4294967294 {
-		value.U32Low = 4294967294
-		(*clamped)++
+		(*over)++
 	}
 	if value.U32High < 1 {
-		value.U32High = 1
-		(*clamped)++
+		(*over)++
 	}
-	if value.U32Inside < 1 {
-		value.U32Inside = 1
-		(*clamped)++
-	} else if value.U32Inside > 4294967294 {
-		value.U32Inside = 4294967294
-		(*clamped)++
+	if value.U32Inside < 1 || value.U32Inside > 4294967294 {
+		(*over)++
 	}
 	if value.U64Low > 18446744073709551614 {
-		value.U64Low = 18446744073709551614
-		(*clamped)++
+		(*over)++
 	}
 	if value.U64High < 1 {
-		value.U64High = 1
-		(*clamped)++
+		(*over)++
 	}
-	if value.U64Inside < 1 {
-		value.U64Inside = 1
-		(*clamped)++
-	} else if value.U64Inside > 18446744073709551614 {
-		value.U64Inside = 18446744073709551614
-		(*clamped)++
+	if value.U64Inside < 1 || value.U64Inside > 18446744073709551614 {
+		(*over)++
 	}
 }
 
-// RangedWidths's read-side bounds.
-func RangedWidthsFixedClampBody(value *RangedWidths, clamped *int32) {
-	_, _ = value, clamped
+// RangedWidths's read-side bounds: each value outside them counts one in over.
+func RangedWidthsFixedBoundsBody(value *RangedWidths, over *int32) {
+	_, _ = value, over
 	if value.B8 > 255 {
-		value.B8 = 255
-		(*clamped)++
+		(*over)++
 	}
 	if value.B16 > 65535 {
-		value.B16 = 65535
-		(*clamped)++
+		(*over)++
 	}
 	if value.B12 > 4095 {
-		value.B12 = 4095
-		(*clamped)++
+		(*over)++
 	}
 	if value.B48 > 281474976710655 {
-		value.B48 = 281474976710655
-		(*clamped)++
+		(*over)++
 	}
 }
 
@@ -5751,18 +4793,18 @@ func RangedWidthsFixedCheckBody(value *RangedWidths) bool {
 	return true
 }
 
-// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): a ranged scalar's
-// declared min and max, and an ORDINAL's set — a union tag past the arm
-// count, an enum ordinal past the enum's top value. Straight-line, after
-// the copy, over STORAGE, so the identity plan and a plan compiled from a
-// stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS. The pass walks LIVE elements only: a counted array's live
-// count, not its slack; an optional's payload only when present; a union's
-// set arm, not the others.
-func RangedSignedFixedClamp(value *RangedSigned, report *TableReport) {
-	clamped := int32(0)
-	RangedSignedFixedClampBody(value, &clamped)
-	report.Clamped += clamped
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.6): a ranged scalar's declared min and max, and an ORDINAL's set — a
+// union tag past the arm count, an enum ordinal past the enum's top value.
+// Straight-line, after the copy, over STORAGE, so the identity plan and a
+// lineage plan are held by the same pass. A value outside them refuses the
+// load out_of_range; nothing is clamped. The pass walks LIVE elements only:
+// a counted array's live count, not its slack; an optional's payload only
+// when present; a union's set arm, not the others (tla/FixedLive.tla).
+func RangedSignedFixedBounds(value *RangedSigned) bool {
+	over := int32(0)
+	RangedSignedFixedBoundsBody(value, &over)
+	return over == 0
 }
 
 // ---- RangedSigned, the fixed form ----
@@ -5934,39 +4976,17 @@ func RangedSignedFixedSaveReason(values []RangedSigned, buffer []byte) (int64, e
 	return -1, TableRefuseInvalidValue
 }
 
-// RangedSignedFixedLoad is the plain fixed-form read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): -1 for
-// every refusal of RangedSignedFixedLoadTolerant and for a read whose report.Err() is not nil, with
-// every value it had written reset. A supplied report receives THIS read's report.
+// RangedSignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
+// or -1 with every value it had written reset. A supplied report receives this read's report,
+// and report.Err() is the reason (tla/FixedLive.tla).
 func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	read := report
-	if read == nil {
-		read = &TableReport{}
-	} else {
-		*read = TableReport{}
-	}
-	n := RangedSignedFixedLoadTolerant(values, data, plan, read)
-	if n < 0 {
-		return -1
-	}
-	if read.Err() != nil {
-		for k := range n {
-			RangedSignedReset(&values[k])
-		}
-		return -1
-	}
-	return n
-}
-
-// RangedSignedFixedLoadTolerant is the TOLERANT fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
 	}
 	*report = TableReport{}
 	if len(data) < 1 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
@@ -5980,13 +5000,13 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
-			report.Malformed = true
+			report.Refuse(TableRefuseWireDamaged, "")
 			report.Reason = TableRefuseReservedNotZero.Error()
 			return -1
 		}
@@ -6019,7 +5039,7 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := RangedSignedFixedHoles
 	recordBytes := known.Record
-	censusUnknown, censusKind := int32(0), int32(0)
+	censusUnknown := int32(0)
 	if hash != RangedSignedFixedHash {
 		lane := &RangedSignedFixedLineagePlans[pick]
 		if lane.Why != "" {
@@ -6027,9 +5047,9 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = RangedSignedFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
-		// lands only on a read that returns: REFUSE moves no counter.
-		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
+		// THE UNKNOWN CENSUS IS ONCE PER ENDPOINT and lands only on a read that
+		// returns (§5.4); an unlawful entry has no plan and refused above.
+		censusUnknown = lane.Unknown
 	}
 	if int64(entryCount) > int64(len(plan)) {
 		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
@@ -6037,7 +5057,7 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
@@ -6063,29 +5083,32 @@ func RangedSignedFixedLoadTolerant(values []RangedSigned, data []byte, plan []Ta
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-		// storage it just wrote: the same pass for either plan (§3.4).
-		RangedSignedFixedClamp(&values[k], report)
+		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
+		if !RangedSignedFixedBounds(&values[k]) {
+			for j := range k + 1 {
+				RangedSignedReset(&values[j])
+			}
+			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+		}
 		at = at[recordBytes:]
 	}
 	report.Unknown += censusUnknown
-	report.KindMismatch += censusKind
 	return n
 }
 
-// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): a ranged scalar's
-// declared min and max, and an ORDINAL's set — a union tag past the arm
-// count, an enum ordinal past the enum's top value. Straight-line, after
-// the copy, over STORAGE, so the identity plan and a plan compiled from a
-// stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS. The pass walks LIVE elements only: a counted array's live
-// count, not its slack; an optional's payload only when present; a union's
-// set arm, not the others.
-func RangedUnsignedFixedClamp(value *RangedUnsigned, report *TableReport) {
-	clamped := int32(0)
-	RangedUnsignedFixedClampBody(value, &clamped)
-	report.Clamped += clamped
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.6): a ranged scalar's declared min and max, and an ORDINAL's set — a
+// union tag past the arm count, an enum ordinal past the enum's top value.
+// Straight-line, after the copy, over STORAGE, so the identity plan and a
+// lineage plan are held by the same pass. A value outside them refuses the
+// load out_of_range; nothing is clamped. The pass walks LIVE elements only:
+// a counted array's live count, not its slack; an optional's payload only
+// when present; a union's set arm, not the others (tla/FixedLive.tla).
+func RangedUnsignedFixedBounds(value *RangedUnsigned) bool {
+	over := int32(0)
+	RangedUnsignedFixedBoundsBody(value, &over)
+	return over == 0
 }
 
 // ---- RangedUnsigned, the fixed form ----
@@ -6257,39 +5280,17 @@ func RangedUnsignedFixedSaveReason(values []RangedUnsigned, buffer []byte) (int6
 	return -1, TableRefuseInvalidValue
 }
 
-// RangedUnsignedFixedLoad is the plain fixed-form read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): -1 for
-// every refusal of RangedUnsignedFixedLoadTolerant and for a read whose report.Err() is not nil, with
-// every value it had written reset. A supplied report receives THIS read's report.
+// RangedUnsignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
+// or -1 with every value it had written reset. A supplied report receives this read's report,
+// and report.Err() is the reason (tla/FixedLive.tla).
 func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	read := report
-	if read == nil {
-		read = &TableReport{}
-	} else {
-		*read = TableReport{}
-	}
-	n := RangedUnsignedFixedLoadTolerant(values, data, plan, read)
-	if n < 0 {
-		return -1
-	}
-	if read.Err() != nil {
-		for k := range n {
-			RangedUnsignedReset(&values[k])
-		}
-		return -1
-	}
-	return n
-}
-
-// RangedUnsignedFixedLoadTolerant is the TOLERANT fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
 	}
 	*report = TableReport{}
 	if len(data) < 1 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
@@ -6303,13 +5304,13 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
-			report.Malformed = true
+			report.Refuse(TableRefuseWireDamaged, "")
 			report.Reason = TableRefuseReservedNotZero.Error()
 			return -1
 		}
@@ -6342,7 +5343,7 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := RangedUnsignedFixedHoles
 	recordBytes := known.Record
-	censusUnknown, censusKind := int32(0), int32(0)
+	censusUnknown := int32(0)
 	if hash != RangedUnsignedFixedHash {
 		lane := &RangedUnsignedFixedLineagePlans[pick]
 		if lane.Why != "" {
@@ -6350,9 +5351,9 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = RangedUnsignedFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
-		// lands only on a read that returns: REFUSE moves no counter.
-		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
+		// THE UNKNOWN CENSUS IS ONCE PER ENDPOINT and lands only on a read that
+		// returns (§5.4); an unlawful entry has no plan and refused above.
+		censusUnknown = lane.Unknown
 	}
 	if int64(entryCount) > int64(len(plan)) {
 		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
@@ -6360,7 +5361,7 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
@@ -6386,29 +5387,32 @@ func RangedUnsignedFixedLoadTolerant(values []RangedUnsigned, data []byte, plan 
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-		// storage it just wrote: the same pass for either plan (§3.4).
-		RangedUnsignedFixedClamp(&values[k], report)
+		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
+		if !RangedUnsignedFixedBounds(&values[k]) {
+			for j := range k + 1 {
+				RangedUnsignedReset(&values[j])
+			}
+			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+		}
 		at = at[recordBytes:]
 	}
 	report.Unknown += censusUnknown
-	report.KindMismatch += censusKind
 	return n
 }
 
-// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): a ranged scalar's
-// declared min and max, and an ORDINAL's set — a union tag past the arm
-// count, an enum ordinal past the enum's top value. Straight-line, after
-// the copy, over STORAGE, so the identity plan and a plan compiled from a
-// stranger's layout are held to the same numbers by the same pass. Every
-// clamp COUNTS. The pass walks LIVE elements only: a counted array's live
-// count, not its slack; an optional's payload only when present; a union's
-// set arm, not the others.
-func RangedWidthsFixedClamp(value *RangedWidths, report *TableReport) {
-	clamped := int32(0)
-	RangedWidthsFixedClampBody(value, &clamped)
-	report.Clamped += clamped
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.6): a ranged scalar's declared min and max, and an ORDINAL's set — a
+// union tag past the arm count, an enum ordinal past the enum's top value.
+// Straight-line, after the copy, over STORAGE, so the identity plan and a
+// lineage plan are held by the same pass. A value outside them refuses the
+// load out_of_range; nothing is clamped. The pass walks LIVE elements only:
+// a counted array's live count, not its slack; an optional's payload only
+// when present; a union's set arm, not the others (tla/FixedLive.tla).
+func RangedWidthsFixedBounds(value *RangedWidths) bool {
+	over := int32(0)
+	RangedWidthsFixedBoundsBody(value, &over)
+	return over == 0
 }
 
 // ---- RangedWidths, the fixed form ----
@@ -6542,39 +5546,17 @@ func RangedWidthsFixedSaveReason(values []RangedWidths, buffer []byte) (int64, e
 	return -1, TableRefuseInvalidValue
 }
 
-// RangedWidthsFixedLoad is the plain fixed-form read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): -1 for
-// every refusal of RangedWidthsFixedLoadTolerant and for a read whose report.Err() is not nil, with
-// every value it had written reset. A supplied report receives THIS read's report.
+// RangedWidthsFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
+// or -1 with every value it had written reset. A supplied report receives this read's report,
+// and report.Err() is the reason (tla/FixedLive.tla).
 func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
-	read := report
-	if read == nil {
-		read = &TableReport{}
-	} else {
-		*read = TableReport{}
-	}
-	n := RangedWidthsFixedLoadTolerant(values, data, plan, read)
-	if n < 0 {
-		return -1
-	}
-	if read.Err() != nil {
-		for k := range n {
-			RangedWidthsReset(&values[k])
-		}
-		return -1
-	}
-	return n
-}
-
-// RangedWidthsFixedLoadTolerant is the TOLERANT fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
 	if report == nil {
 		var local TableReport
 		report = &local
 	}
 	*report = TableReport{}
 	if len(data) < 1 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
@@ -6588,13 +5570,13 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
 	}
 	if len(data) < TableFixedHeaderBytes+4 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
 	for _, reserved := range data[1:TableFixedHashAt] {
 		if reserved != 0 {
-			report.Malformed = true
+			report.Refuse(TableRefuseWireDamaged, "")
 			report.Reason = TableRefuseReservedNotZero.Error()
 			return -1
 		}
@@ -6627,7 +5609,7 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
 	holes := RangedWidthsFixedHoles
 	recordBytes := known.Record
-	censusUnknown, censusKind := int32(0), int32(0)
+	censusUnknown := int32(0)
 	if hash != RangedWidthsFixedHash {
 		lane := &RangedWidthsFixedLineagePlans[pick]
 		if lane.Why != "" {
@@ -6635,9 +5617,9 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 		}
 		entries, entryCount = lane.Entries, lane.Count
 		holes = RangedWidthsFixedLineageHoles[pick]
-		// THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and it
-		// lands only on a read that returns: REFUSE moves no counter.
-		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
+		// THE UNKNOWN CENSUS IS ONCE PER ENDPOINT and lands only on a read that
+		// returns (§5.4); an unlawful entry has no plan and refused above.
+		censusUnknown = lane.Unknown
 	}
 	if int64(entryCount) > int64(len(plan)) {
 		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
@@ -6645,7 +5627,7 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	if recordBytes <= 8 || rest%recordBytes != 0 {
-		report.Malformed = true
+		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
 	}
@@ -6671,14 +5653,17 @@ func RangedWidthsFixedLoadTolerant(values []RangedWidths, data []byte, plan []Ta
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
-		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-		// storage it just wrote: the same pass for either plan (§3.4).
-		RangedWidthsFixedClamp(&values[k], report)
+		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
+		if !RangedWidthsFixedBounds(&values[k]) {
+			for j := range k + 1 {
+				RangedWidthsReset(&values[j])
+			}
+			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+		}
 		at = at[recordBytes:]
 	}
 	report.Unknown += censusUnknown
-	report.KindMismatch += censusKind
 	return n
 }
 
@@ -6900,7 +5885,7 @@ func init() {
 		return RangedSignedSaveBodyRetain(w, (*RangedSigned)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RangedSignedLoadBodyRetain(&r, (*RangedSigned)(p))
-	}, CookSize: 80, CookAlign: 8}
+	}, CycleIndex: 14, CycleType: tableCycleType, CookSize: 80, CookAlign: 8}
 }
 
 // RangedSignedTableType returns RangedSigned's reflection descriptor.
@@ -7122,7 +6107,7 @@ func init() {
 		return RangedUnsignedSaveBodyRetain(w, (*RangedUnsigned)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RangedUnsignedLoadBodyRetain(&r, (*RangedUnsigned)(p))
-	}, CookSize: 104, CookAlign: 8}
+	}, CycleIndex: 15, CycleType: tableCycleType, CookSize: 104, CookAlign: 8}
 }
 
 // RangedUnsignedTableType returns RangedUnsigned's reflection descriptor.
@@ -7212,7 +6197,7 @@ func init() {
 		return RangedWidthsSaveBodyRetain(w, (*RangedWidths)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RangedWidthsLoadBodyRetain(&r, (*RangedWidths)(p))
-	}, CookSize: 40, CookAlign: 8}
+	}, CycleIndex: 16, CycleType: tableCycleType, CookSize: 40, CookAlign: 8}
 }
 
 // RangedWidthsTableType returns RangedWidths's reflection descriptor.

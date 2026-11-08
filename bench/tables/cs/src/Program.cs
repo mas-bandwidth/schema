@@ -1050,7 +1050,7 @@ static class Program
             () => new BenchValue(),
             v => BenchSchema.TableReset(v),
             (v, b) => BenchSchema.TableMixedSave(v, b),
-            (v, b) => BenchSchema.TableMixedLoad(v, b, report) && !report.Malformed);
+            (v, b) => BenchSchema.TableMixedLoad(v, b, report));
 #endif
 
         FlushCsv();

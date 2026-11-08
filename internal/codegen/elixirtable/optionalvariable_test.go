@@ -77,7 +77,7 @@ Probe.check(Probe.hex(again) == %q, %q <> " reloaded: " <> Probe.hex(again))
 	}
 
 	// the reversed witness
-	const fixed = "          case Map.get(value, f.name) do\n            nil -> acc\n            v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)\n          end\n"
+	const fixed = "            case Map.get(value, f.name) do\n              nil -> acc\n              v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)\n            end\n"
 	const old = "          collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name, %{}), acc)\n"
 	planted := map[string][]byte{}
 	n := 0
@@ -170,12 +170,12 @@ IO.puts("ok")
 		t.Fatalf("a scalar list under a table header escaped the Elixir reader: %v\n%s", err, out)
 	}
 
-	const guard = "<<13, count_rest::binary>> when field.elem_kind == 13 ->"
+	const guard = "true <- kind == field.elem_kind or kind_widens?(kind, field.elem_kind),"
 	planted := map[string][]byte{}
 	n := 0
 	for name, data := range files {
 		n += strings.Count(string(data), guard)
-		planted[name] = []byte(strings.ReplaceAll(string(data), guard, "<<13, count_rest::binary>> ->"))
+		planted[name] = []byte(strings.ReplaceAll(string(data), guard, "true <- true,"))
 	}
 	if n == 0 {
 		t.Fatal("the witness found no declared-kind guard in the generated measure")
@@ -229,7 +229,7 @@ func TestCountPastTheBoundClampsBeforeReadingElixir(t *testing.T) {
 	if _, err := tablewire.Decode(m, m.New(m.Lookup("Holder")), mutant, &orep); err != nil {
 		t.Fatal(err)
 	}
-	if orep.Clamped != 1 || orep.Malformed {
+	if orep.Refused {
 		t.Fatalf("the oracle does not answer the probe as one clamp on clean input: %+v", orep)
 	}
 	probe := fmt.Sprintf(`
@@ -308,12 +308,12 @@ IO.puts("ok")
 	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
 		t.Fatalf("the Elixir reader misses a nested body that ends early: %v\n%s", err, out)
 	}
-	const check = "if ends_early?(sub, ids),"
+	const check = "if status == :halt or ends_early?(sub, ids),"
 	planted := map[string][]byte{}
 	k := 0
 	for name, data := range files {
 		k += strings.Count(string(data), check)
-		planted[name] = []byte(strings.ReplaceAll(string(data), check, "if false,"))
+		planted[name] = []byte(strings.ReplaceAll(string(data), check, "if status == :halt,"))
 	}
 	if k == 0 {
 		t.Fatal("the witness found no early-terminator check in the generated reader")

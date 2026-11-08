@@ -1,0 +1,8 @@
+# Separate four-case whole-text entry gate for the original nine ports.
+# SPEC-TABLES §16.3: exactly one UTF-8 BOM at byte zero is skipped.
+# This does not change the global corpus or assign expansion-port outcomes.
+unit tabledemo tables/examples
+json-hostile leading-bom tabledemo RootConfig testdata/conformance/tables/bom-entry/leading-bom read
+json-hostile double-bom tabledemo RootConfig testdata/conformance/tables/bom-entry/double-bom refused
+json-hostile space-bom tabledemo RootConfig testdata/conformance/tables/bom-entry/space-bom refused
+json-hostile cut-bom tabledemo RootConfig testdata/conformance/tables/bom-entry/cut-bom refused

@@ -78,6 +78,18 @@ print(string.format("%d,%d,%d,%d,%d,%s,%s",
 `
 }
 
+// fixedLoadProbe is the Lua main for one row at a FIXED root
+// (docs/SPEC-TABLES.md §3.4): the generated fixed form's tolerant read is
+// the only reader, and a refusal or a read is the whole report surface (a
+// fixed read moves none of the variable form's counters).
+func fixedLoadProbe(module, root string) string {
+	return `local T = require("` + module + `")
+local inputs = require("inputs")
+local ok = pcall(T.ReadFixedTolerant, "` + root + `", inputs.wire)
+print(ok and "0,0,0,0,0,false,read" or "0,0,0,0,0,false,refused")
+`
+}
+
 // manifestUnits reads the unit lines (key -> schema paths).
 func manifestUnits(t *testing.T, path string) map[string][]string {
 	t.Helper()
@@ -101,9 +113,10 @@ func manifestUnits(t *testing.T, path string) map[string][]string {
 	return units
 }
 
-// loadRow generates a manifest row's unit (with the emitted load runtime
-// optionally patched), loads its wire and returns the report line.
-func loadRow(t *testing.T, repo string, paths []string, row manifestRow, patch func([]byte) []byte) string {
+// loadRow generates a manifest row's unit (with the emitted runtimes
+// optionally patched by file name), loads its wire and returns the report
+// line.
+func loadRow(t *testing.T, repo string, paths []string, row manifestRow, patch func(string, []byte) []byte) string {
 	t.Helper()
 	u := luarun.LoadUnit(t, paths...)
 	files, err := Generate(u)
@@ -111,15 +124,23 @@ func loadRow(t *testing.T, repo string, paths []string, row manifestRow, patch f
 		t.Fatalf("unit %s: %v", row.unit, err)
 	}
 	if patch != nil {
-		src, ok := files["load.lua"]
-		if !ok {
-			t.Fatal("the emitted unit has no load.lua")
+		for _, name := range []string{"load.lua", "fixed.lua"} {
+			src, ok := files[name]
+			if !ok {
+				t.Fatal("the emitted unit has no " + name)
+			}
+			files[name] = patch(name, src)
 		}
-		files["load.lua"] = patch(src)
 	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
+	// A fixed root is read by the generated fixed form and a variable root
+	// by the variable form (docs/SPEC-TABLES.md §3.4): there is no tolerant
+	// path that reads one form at the other form's root.
 	probe := loadProbe(ModuleName(u), row.root)
+	if st := u.Tables[row.root]; st != nil && st.FixedDeclared {
+		probe = fixedLoadProbe(ModuleName(u), row.root)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +166,7 @@ type reportComparison struct {
 // compares its report surface line with reports.txt; every instance row is
 // loaded and must not be refused. patch, when set, edits the emitted runtime
 // in memory (the negative control's one anchor).
-func compareReports(t *testing.T, patch func([]byte) []byte) reportComparison {
+func compareReports(t *testing.T, patch func(string, []byte) []byte) reportComparison {
 	t.Helper()
 	repo := filepath.Join("..", "..", "..")
 	manifestPath := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
@@ -245,9 +266,11 @@ func TestLuaTableLoadMatchesTheReports(t *testing.T) {
 		res.compared, res.refusedRows, len(res.refused), res.instance, res.instances)
 }
 
-// TestLuaTableLoadNegativeControl patches the emitted runtime in memory — one
-// anchor, matched exactly once — so an id this table cannot name is not
-// counted, and requires the reports comparison to go red.
+// TestLuaTableLoadNegativeControl patches the emitted runtimes in memory —
+// one anchor each, matched exactly once — so the variable form does not
+// count an id this table cannot name and the fixed form reads a form-1 file
+// it must refuse, and requires the reports comparison to go red on both
+// paths (a fixed root's rows never touch the variable counter).
 func TestLuaTableLoadNegativeControl(t *testing.T) {
 	t.Parallel()
 	const anchor = `      if fd == nil then
@@ -255,22 +278,31 @@ func TestLuaTableLoadNegativeControl(t *testing.T) {
         if not skip(r, kind) then`
 	const sabotaged = `      if fd == nil then
         if not skip(r, kind) then`
-	var patched int
-	patch := func(src []byte) []byte {
-		if n := strings.Count(string(src), anchor); n != 1 {
-			t.Fatalf("the negative-control anchor is matched %d times, want exactly once", n)
+	const fixedAnchor = `local function read_impl(T, name, buf, strict)
+  if #buf < 1 then error("malformed") end`
+	const fixedSabotaged = `local function read_impl(T, name, buf, strict)
+  if true then return {} end
+  if #buf < 1 then error("malformed") end`
+	patched := map[string]int{}
+	patch := func(name string, src []byte) []byte {
+		a, s := anchor, sabotaged
+		if name == "fixed.lua" {
+			a, s = fixedAnchor, fixedSabotaged
 		}
-		patched++
-		return []byte(strings.Replace(string(src), anchor, sabotaged, 1))
+		if n := strings.Count(string(src), a); n != 1 {
+			t.Fatalf("the negative-control anchor in %s is matched %d times, want exactly once", name, n)
+		}
+		patched[name]++
+		return []byte(strings.Replace(string(src), a, s, 1))
 	}
 	res := compareReports(t, patch)
-	if patched == 0 {
-		t.Fatal("the negative control patched no emitted runtime")
+	if patched["load.lua"] == 0 || patched["fixed.lua"] == 0 {
+		t.Fatalf("the negative control patched %v, want both runtimes", patched)
 	}
 	if len(res.mismatches) == 0 {
 		t.Fatalf("the sabotaged load still matched reports.txt (%d rows compared)", res.compared)
 	}
-	t.Logf("%d of %d report rows diverge with the unknown-id counter removed", len(res.mismatches), res.compared+len(res.mismatches))
+	t.Logf("%d of %d report rows diverge with the unknown-id counter removed and the fixed refusal bypassed", len(res.mismatches), res.compared+len(res.mismatches))
 }
 
 // wireCountRefusalSchema is the hostile corpus's probe root
@@ -316,8 +348,8 @@ print(report.reason)
 
 // TestLuaWireCountPastCapIsCountRefusal pins the hostile corpus's
 // wire-count-refusal row (docs/SPEC-TABLES.md §2.8, §2.9): the map count
-// 2^31 is past the int32 storage cap and names count_refusal, exactly as the
-// engine's builder-path CountRefusal does, while a count AT the cap (2^31-1)
+// 2^31 is past the int32 storage cap and names count_over_extent_cap, the
+// port's name for the engine's builder-path CountRefusal, while a count AT the cap (2^31-1)
 // is not that refusal.
 func TestLuaWireCountPastCapIsCountRefusal(t *testing.T) {
 	t.Parallel()
@@ -330,12 +362,12 @@ func TestLuaWireCountPastCapIsCountRefusal(t *testing.T) {
 	if got := corpus[5:10]; string(got) != "\x80\x80\x80\x80\x08" {
 		t.Fatalf("the corpus count bytes are % x, want 80 80 80 80 08", got)
 	}
-	if reason := wireCountRefusalReason(t, corpus); reason != "count_refusal" {
-		t.Errorf("wire-count-refusal: reason = %q, want count_refusal", reason)
+	if reason := wireCountRefusalReason(t, corpus); reason != "count_over_extent_cap" {
+		t.Errorf("wire-count-refusal: reason = %q, want count_over_extent_cap", reason)
 	}
 	atCap := append([]byte(nil), corpus...)
 	copy(atCap[5:10], []byte{0xff, 0xff, 0xff, 0xff, 0x07})
-	if reason := wireCountRefusalReason(t, atCap); reason == "count_refusal" {
-		t.Errorf("a count at the int32 cap answered count_refusal; it must decode normally")
+	if reason := wireCountRefusalReason(t, atCap); reason == "count_over_extent_cap" {
+		t.Errorf("a count at the int32 cap answered count_over_extent_cap; it must decode normally")
 	}
 }

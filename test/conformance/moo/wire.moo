@@ -28,7 +28,7 @@ return function(ctx: any): { [string]: Surface }
 		local save: any = ctx.module(f[3], "table_save")
 		local schema: any = ctx.module(f[3], "schema_tables")
 		local report = load.newReport()
-		local v = load.loadTolerant(f[4], ctx.inputs(f[5]), report)
+		local v = load.load(f[4], ctx.inputs(f[5]), report)
 		local refused = report.refused > 0 or (v == nil and report.nonFinite > 0)
 		return v, report, save, schema, refused
 	end
@@ -67,20 +67,32 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], nil)
 					continue
 				end
-				local _, r, _, _, refused = loadWire(f)
-				ctx.say(
-					f[2],
-					string.format(
-						"%d,%d,%d,%d,%d,%s,%s\n",
-						r.unknown,
-						r.kindMismatch,
-						r.widened,
-						r.clamped,
-						r.duplicate,
-						tostring(r.malformed),
-						if refused then "refused" else "read"
-					)
+				-- the report line, then the §16 text of the value when the read
+				-- reads; a unit with no text module answers the line alone beside
+				-- its absence, so the verdict is held and the value is the missing
+				-- feature (test/conformance/README.md)
+				local v, r, _, schema, refused = loadWire(f)
+				local malformed = r.damaged or (v == nil and not refused)
+				local text = string.format(
+					"%d,%d,%d,%d,%d,%s,%s\n",
+					r.unknown,
+					0,
+					r.widened,
+					0,
+					0,
+					tostring(malformed),
+					if refused then "refused" else "read"
 				)
+				if not refused and not malformed then
+					local J: any = ctx.module(f[3], "json")
+					if J == nil then
+						ctx.say(f[2], text)
+						ctx.say(f[2], nil)
+						continue
+					end
+					text ..= J.toJson(schema.lookup(f[4]), v)
+				end
+				ctx.say(f[2], text)
 			end
 		end,
 	}
@@ -96,14 +108,14 @@ return function(ctx: any): { [string]: Surface }
 					continue
 				end
 				local v, r, _, schema, refused = loadWire(f)
-				local malformed = r.malformed or (v == nil and not refused)
+				local malformed = r.damaged or (v == nil and not refused)
 				local text = string.format(
 					"%d,%d,%d,%d,%d,%s,%s\n",
 					r.unknown,
-					r.kindMismatch,
+					0,
 					r.widened,
-					r.clamped,
-					r.duplicate,
+					0,
+					0,
 					tostring(malformed),
 					if refused then "refused" else "read"
 				)

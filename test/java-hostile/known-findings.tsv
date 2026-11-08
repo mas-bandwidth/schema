@@ -1,3 +1,2 @@
 # carried findings: name	slug	input	one line
 # every line is a FIX-CARD the java port owes; the runner fails if one goes green
-wire-non-finite-float	java-hostile-wire-non-finite-float	inputs/wire-non-finite-float.bin	the wire reader lands a NaN float32 where the engine refuses non_finite_float; owed by the finite-tables Java card (docs/roadmap.sexp tables-finite/java)

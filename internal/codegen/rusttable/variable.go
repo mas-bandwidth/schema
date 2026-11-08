@@ -80,6 +80,9 @@ func variableModules(u *ir.Unit) map[string][]byte {
 		return nil
 	}
 	out := map[string][]byte{}
+	if len(ir.TableIntegrityTables(u)) > 0 {
+		out[integrityRuntimeModule+".rs"] = []byte(header(runtimeSourceName(u), u.Package, "CRC-32C integrity trailers") + integrityRuntimeRust)
+	}
 	out[VariableRuntimeModule+".rs"] = []byte(variableRuntimeModule(u))
 	if d := variableDescriptorModule(u); d != nil {
 		out[VariableDescriptorModule+".rs"] = d
@@ -289,6 +292,7 @@ pub enum TableNodeRecord {
 
 #[derive(Default)]
 pub struct TableNodeGraph {
+    pub invalid_required: bool,
     pub records: Vec<TableNodeRecord>,
     tables: HashMap<usize, u64>,
     blobs: HashMap<usize, u64>,
@@ -366,6 +370,8 @@ pub enum TableNodeSlot {
 /// names is decoded once, the first time a slot resolves it, and shared.
 pub struct TableNodeReader {
     pub good: bool,
+    /// This load hit the int32 collection storage cap; report history is not control state.
+    pub count_refused: bool,
     pub root_type: u64,
     pub retaining: bool,
     pub retain_capacity: usize,
@@ -375,9 +381,23 @@ pub struct TableNodeReader {
     /// which blob records a slot has already named (§2.5): each later naming
     /// of the same record counts blob_shared on the tolerant read
     pub blob_named: Vec<bool>,
+    /// the ROOT's descent is open while its body decodes and closed after:
+    /// a slot naming the root while it is open is a cycle (§3.1)
+    pub root_open: bool,
+    pub stubs: Vec<Option<Rc<dyn Any>>>,
+    pub stub_index: HashMap<usize, usize>,
+    pub decoded: Vec<Option<Rc<dyn Any>>>,
 }
 
 impl TableNodeReader {
+    /// A storage-cap refusal is terminal but adds no malformed event (§2.9).
+    pub fn refuse_count(&mut self, report: &mut TableReport) -> bool {
+        self.count_refused = true;
+        report.refused = true;
+        report.reason = TableReason::CountOverExtentCap;
+        false
+    }
+
     /// Gather the numbering out of a ROOT body ending at end (§3.1). Framing
     /// damage on the root body ends the gathering scan with what it found and
     /// is counted by the body read, not here. A node table under a kind other than 12, a record
@@ -389,7 +409,7 @@ impl TableNodeReader {
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new() };
+        let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new() };
         let mut off = 1usize;
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
@@ -475,16 +495,105 @@ impl TableNodeReader {
     /// otherwise with the event counted — an index above node_count + 1 is
     /// malformed, a record of another type (or a blob) is a kind mismatch, and
     /// an index of 1 names the ROOT, which a node slot whose target is not the
-    /// reader's own root table takes as a kind mismatch. (A root pointing at
-    /// itself is a cycle no writer produces, §3.1, and this storage cannot hold
-    /// one: it reads null.)
+    /// reader's own root table takes as a kind mismatch. A slot of the root's
+    /// own table naming it while the root's descent is open is a cycle no
+    /// writer produces (§3.1): it reads null and marks the cycle, which
+    /// refuses the whole load. Once the root is closed it reads null.
+    pub fn init_stubs(&mut self, root_stub: Rc<dyn Any>, alloc: fn(u64) -> Option<Rc<dyn Any>>) {
+        self.stubs.clear();
+        self.stub_index.clear();
+        self.decoded.clear();
+        if !self.good {
+            return;
+        }
+        let root_ptr = Rc::as_ptr(&root_stub) as *const () as usize;
+        self.stub_index.insert(root_ptr, 0);
+        self.stubs.push(Some(root_stub));
+        self.decoded.resize_with(self.slots.len(), || None);
+        for slot in &self.slots {
+            if let TableNodeSlot::Table(tid) = slot && let Some(s) = alloc(*tid) {
+                let v = self.stubs.len();
+                let ptr = Rc::as_ptr(&s) as *const () as usize;
+                self.stub_index.insert(ptr, v);
+                self.stubs.push(Some(s));
+            } else {
+                self.stubs.push(None);
+            }
+        }
+    }
+
+    pub fn stub_slot(&self, v: usize) -> Option<Rc<dyn Any>> {
+        self.stubs.get(v).and_then(|s| s.clone())
+    }
+
+    pub fn push_edge(&self, ptr: usize, out: &mut Vec<usize>) {
+        if let Some(&target) = self.stub_index.get(&ptr) {
+            out.push(target);
+        }
+    }
+
+    pub fn stub_record(&self, ptr: usize) -> Option<usize> {
+        match self.stub_index.get(&ptr).copied() {
+            Some(v) if v >= 1 => Some(v - 1),
+            _ => None,
+        }
+    }
+
+    /// Iterative 3-color DFS over the loaded graph's final stored pointer slots
+    /// (docs/SPEC-TABLES.md §3.1, §4): vertex 0 is the root and vertex k + 1 is
+    /// record k. Every vertex is entered once (0 = unvisited, 1 = open, 2 =
+    /// closed), so a diamond chain is linear in vertices plus edges; an edge to
+    /// an open vertex is a cycle, and an unreached cycle refuses too. Returns
+    /// the closed vertices in post-order (children before parents).
+    pub fn check_cycles(&self, edges: &[Vec<usize>], report: &mut TableReport) -> Vec<usize> {
+        let n = edges.len();
+        let mut mark = vec![0u8; n];
+        let mut post_order = Vec::with_capacity(n);
+        let mut stack: Vec<(usize, usize)> = Vec::new();
+        for start in 0..n {
+            if mark[start] != 0 {
+                continue;
+            }
+            if start > 0 && self.decoded.get(start - 1).and_then(|d| d.as_ref()).is_none() {
+                continue;
+            }
+            mark[start] = 1;
+            stack.push((start, 0));
+            while let Some((u, idx)) = stack.last_mut() {
+                let u = *u;
+                if *idx == edges[u].len() {
+                    mark[u] = 2;
+                    post_order.push(u);
+                    stack.pop();
+                    continue;
+                }
+                let t = edges[u][*idx];
+                *idx += 1;
+                if t >= n {
+                    continue;
+                }
+                match mark[t] {
+                    1 => {
+                        report.cycle_on_save = true;
+                    }
+                    2 => {}
+                    _ => {
+                        mark[t] = 1;
+                        stack.push((t, 0));
+                    }
+                }
+            }
+        }
+        post_order
+    }
+
     pub fn node_slot(&self, index: u64, want: u64, report: &mut TableReport) -> Option<usize> {
         if !self.good || index == 0 {
             return None;
         }
         if index == 1 {
-            if want != self.root_type { report.kind_mismatch += 1; }
-            return None;
+            if want != self.root_type { report.kind_mismatch += 1; return None; }
+            return Some(0);
         }
         let k = (index - 2) as usize;
         if index - 2 >= self.slots.len() as u64 {
@@ -495,10 +604,10 @@ impl TableNodeReader {
             TableNodeSlot::Null => None,
             TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.kind_mismatch += 1; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
-                if *t == want { Some(k) } else { report.kind_mismatch += 1; None }
+                if *t == want { Some(k + 1) } else { report.kind_mismatch += 1; None }
             }
             TableNodeSlot::Building => {
-                if self.recs[k].0 == want { Some(k) } else { report.kind_mismatch += 1; None }
+                if self.recs[k].0 == want { Some(k + 1) } else { report.kind_mismatch += 1; None }
             }
         }
     }
@@ -1364,7 +1473,11 @@ pub static KNOWN_IDS: &[u64] = &[
 	}
 	b.WriteString("];\n")
 	b.WriteString(textHelpers())
+	if len(ir.TableTimestampFields(u)) > 0 {
+		b.WriteString(timestampHelpersRust)
+	}
 	b.WriteString(cookRegionWriterRust)
+	b.WriteString(cookCarveRust)
 	text := b.String()
 	text = strings.Replace(text, "STRING_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.StringWireTypeId), 1)
 	text = strings.Replace(text, "BYTES_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.BytesWireTypeId), 1)

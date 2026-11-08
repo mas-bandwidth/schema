@@ -23,9 +23,9 @@ local MAX_KEY = 255
 local MAX_NUMBER = 511
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
--- A float32's shortest round-trip text is C's %.*g at the fewest digits from
--- 6 up to this cap that read back to the same float32; 9 always does
--- (docs/SPEC-TABLES.md §16.1; internal/tabletext/write.go's writeFloat).
+-- A float32's text is C's %.*g at the fewest digits from 6 up to this cap that
+-- read back to the same float32; 9 always does (docs/SPEC-TABLES.md §16.14,
+-- W12; internal/tabletext/write.go's writeFloat).
 local FLOAT32_DIGITS = 9
 
 -- Luau has no bitwise operators; bit32 is enough for every value below it (a
@@ -660,45 +660,63 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
     end
     return n
   end
-  if mag_sat(digits) then sat = true end
-  local v = dec_integer(digits == "" and "0" or digits, false)
-  if neg then
-    if fd.signed == false then report.clamped = report.clamped + 1; v = 0i
-    else v = integer.sub(0i, v) end
+  -- THE ENGINE'S ORDER (internal/tabletext placeInteger): a magnitude past 64
+  -- bits saturates at 2^64-1 and counts clamped; then the declared range, then
+  -- the storage domain, which counts once however far the value moved. v holds
+  -- a uint64 at or past 2^63 as a negative 64-bit integer, so every bound of an
+  -- unsigned field is compared unsigned.
+  local unsigned = fd.signed == false
+  if mag_sat(digits) then report.clamped = report.clamped + 1 end
+  local mag = if mag_sat(digits) then -1i else dec_integer(digits == "" and "0" or digits, false)
+  local min64 = integer.bnot(0x7fffffffffffffffi)
+  local v = mag
+  local moved = false
+  if unsigned then
+    if neg then v = 0i; moved = true end
+  elseif neg then
+    if integer.ult(min64, mag) then v = min64; moved = true else v = integer.sub(0i, mag) end
+  elseif integer.ult(0x7fffffffffffffffi, mag) then
+    v = 0x7fffffffffffffffi; moved = true
   end
-  if sat then report.clamped = report.clamped + 1 end
   local function cmp(a: any, b: any): number
     if typeof(a) == "integer" and typeof(b) == "integer" then
+      if unsigned then
+        if integer.ult(a, b) then return -1 elseif integer.ult(b, a) then return 1 else return 0 end
+      end
       if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 else return 0 end
     end
     local x: number = if typeof(a) == "integer" then integer.tonumber(a) else a
     local y: number = if typeof(b) == "integer" then integer.tonumber(b) else b
     if x < y then return -1 elseif x > y then return 1 else return 0 end
   end
+  -- a declared range (or a bits width) holds the value inside the domain, so
+  -- a clamp to it supersedes the domain's move
   if fd.lo ~= nil and fd.hi ~= nil then
-    if cmp(v, fd.lo) < 0 then v = fd.lo; report.clamped = report.clamped + 1
-    elseif cmp(v, fd.hi) > 0 then v = fd.hi; report.clamped = report.clamped + 1 end
-  end
-  if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
+    if moved and neg and not unsigned then v = fd.lo; moved = false; report.clamped = report.clamped + 1
+    elseif moved and not neg then v = fd.hi; moved = false; report.clamped = report.clamped + 1
+    elseif cmp(v, fd.lo) < 0 then v = fd.lo; moved = false; report.clamped = report.clamped + 1
+    elseif cmp(v, fd.hi) > 0 then v = fd.hi; moved = false; report.clamped = report.clamped + 1 end
+  elseif fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
     local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
-    if integer.gt(v, bmax) then v = bmax; report.clamped = report.clamped + 1 end
+    if neg then
+      v = 0i; moved = false; report.clamped = report.clamped + 1
+    elseif moved or cmp(v, bmax) > 0 then
+      v = bmax; moved = false; report.clamped = report.clamped + 1
+    end
   end
   local width = fd.width or 8
-  if fd.signed then
-    local high = 0x7fffffffffffffffi
-    local low = integer.bnot(high)
-    if width < 8 then
-      high = integer.sub(integer.lshift(1i, integer.create(width * 8 - 1)), 1i)
-      low = integer.sub(0i, integer.lshift(1i, integer.create(width * 8 - 1)))
+  if width < 8 then
+    if fd.signed then
+      local high = integer.sub(integer.lshift(1i, integer.create(width * 8 - 1)), 1i)
+      local low = integer.sub(0i, integer.lshift(1i, integer.create(width * 8 - 1)))
+      if integer.lt(v, low) then v = low; moved = true
+      elseif integer.gt(v, high) then v = high; moved = true end
+    else
+      local high = integer.sub(integer.lshift(1i, integer.create(width * 8)), 1i)
+      if integer.ult(high, v) then v = high; moved = true end
     end
-    if integer.lt(v, low) then v = low; report.clamped = report.clamped + 1
-    elseif integer.gt(v, high) then v = high; report.clamped = report.clamped + 1 end
-  else
-    if fd.signed == false and integer.lt(v, 0i) then v = 0i; report.clamped = report.clamped + 1 end
-    local high = -1i
-    if width < 8 then high = integer.sub(integer.lshift(1i, integer.create(width * 8)), 1i) end
-    if integer.ult(high, v) then v = high; report.clamped = report.clamped + 1 end
   end
+  if moved then report.clamped = report.clamped + 1 end
   if fd.dom == "number" then return integer.tonumber(v) end
   return v
 end
@@ -1159,6 +1177,21 @@ local function read_base64(inp: Input, bound: number, report: any): (string | fa
   return table.concat(out)
 end
 
+-- the bytes one text-list element of the walk holds toward its list's total
+-- (docs/SPEC-TABLES.md §2.13): a plain element's string, an optional element's
+-- value when present, zero when absent
+local function walk_text_bytes(T: any, e: any, x: any): number
+  if type(x) == "string" then return #x end
+  if type(x) == "table" and e.shape == "table" then
+    local vf = T.Tables[e.target].fields[1]
+    if vf == nil then return 0 end
+    if vf.optional and not x[vf.name .. "_present"] then return 0 end
+    local v = x[vf.name]
+    if type(v) == "string" then return #v end
+  end
+  return 0
+end
+
 read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
@@ -1169,18 +1202,42 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
   local bound = fd.list and 0x7fffffff or fd.bound
   local placed = 0
   local eshape = shape_of(T, fd.elem)
+  -- A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the read keeps the longest
+  -- prefix whose bytes fit, drops the element that would cross it and every
+  -- later one, counted clamped once; an element past [..N] is counted as well
+  local total = fd.raw ~= nil and fd.raw.total or nil
+  local spent, full, seen = 0, false, 0
   while true do
     local c = peek(inp)
     local vs = value_shape(inp)
     if c == ']' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
-    if placed >= bound then
+    seen = seen + 1
+    local before = placed
+    if full then
+      if seen > bound then report.clamped = report.clamped + 1 end
+      if not skip_value(inp, depth + 1, graph) then return false end
+    elseif placed >= bound then
       report.clamped = report.clamped + 1
       if not skip_value(inp, depth + 1, graph) then return false end
     elseif fd.elem.shape == "pointer" and vs == 'z' then
       literal(inp, "null")
       placed = placed + 1
       out[placed] = false
+    elseif fd.opt_text and (vs == 'z' or vs == 's') then
+      -- AN OPTIONAL TEXT LIST (docs/SPEC-TABLES.md §2.13, §16.2): an element
+      -- is a string, or null for an absent one, held as its element record
+      placed = placed + 1
+      local rec = zero_elem(T, fd.elem)
+      out[placed] = rec
+      local vf = T.Tables[fd.elem.target].fields[1]
+      if vs == 'z' then
+        literal(inp, "null")
+        rec[vf.name .. "_present"] = false
+      else
+        if not read_value(T, vf, inp, rec, vf.name, depth + 1, graph, report, false) then return false end
+        rec[vf.name .. "_present"] = true
+      end
     elseif vs ~= eshape then
       report.kindMismatch = report.kindMismatch + 1
       if not skip_value(inp, depth + 1, graph) then return false end
@@ -1191,6 +1248,17 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
       if out[placed] == nil then out[placed] = zero_elem(T, fd.elem) end
       if not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true) then
         return false
+      end
+    end
+    if total ~= nil and placed > before then
+      local n = walk_text_bytes(T, fd.elem, out[placed])
+      if n <= total - spent then
+        spent = spent + n
+      else
+        report.clamped = report.clamped + 1
+        out[placed] = if fd.fixed then zero_elem(T, fd.elem) else nil
+        placed = placed - 1
+        full = true
       end
     end
     c = peek(inp)
@@ -1771,7 +1839,10 @@ end
 -- the write walk (§16.1, §16.3, §16.7)
 ----------------------------------------------------------------------------
 
-local function W(): any return { parts = {} } end
+-- w.invalid is storage that is not text (ill-formed UTF-8 in a narrow string,
+-- an unpaired surrogate in a wide one), which refuses the whole write,
+-- invalid_value (docs/SPEC-TABLES.md §16.3, §16.14 W0)
+local function W(): any return { parts = {}, invalid = false } end
 local function raw(w: any, s: string) w.parts[#w.parts + 1] = s end
 local function put(w: any, c: string) w.parts[#w.parts + 1] = c end
 local function line(w: any, depth: number)
@@ -1794,7 +1865,7 @@ local function narrow_text_ok(s: string, bound: number): boolean
       i = i + 1
     else
       local width = utf8_seq(s, i)
-      if width < 0 then refuse_reason = "string_not_utf8"; return false end
+      if width < 0 then refuse_reason = "invalid_value"; return false end
       i = i + width
     end
   end
@@ -1811,10 +1882,10 @@ local function wide_text_ok(units: { number }, bound: number): boolean
     if u == 0 then refuse_reason = "text_holds_zero"; return false end
     if u >= 0xd800 and u <= 0xdbff then
       local low = units[i + 1]
-      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "string_not_utf8"; return false end
+      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "invalid_value"; return false end
       i = i + 2
     elseif u >= 0xdc00 and u <= 0xdfff then
-      refuse_reason = "string_not_utf8"; return false
+      refuse_reason = "invalid_value"; return false
     else
       i = i + 1
     end
@@ -1922,7 +1993,7 @@ local function write_string(w: any, s: string)
       i = i + 1
     else
       local width = utf8_seq(s, i)
-      if width < 0 then raw(w, utf8_encode(0xfffd)); i = i + 1
+      if width < 0 then w.invalid = true; i = i + 1 -- not text: the write refuses (§16.14 W0)
       else raw(w, s:sub(i, i + width - 1)); i = i + width end
     end
   end
@@ -1942,8 +2013,9 @@ local function write_wstring(w: any, units: { number })
         i = i + 1
       end
     end
-    if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
-    if code == 34 then raw(w, '\\"')
+    -- an unpaired surrogate is not text: the write refuses (§16.14 W0)
+    if code >= 0xd800 and code <= 0xdfff then w.invalid = true
+    elseif code == 34 then raw(w, '\\"')
     elseif code == 92 then raw(w, '\\\\')
     elseif code == 8 then raw(w, '\\b')
     elseif code == 12 then raw(w, '\\f')
@@ -2135,8 +2207,11 @@ local function float_text(v: number, single: boolean): string?
     local back = tonumber(text)
     if back ~= nil then
       if single then
+        -- ONE correctly rounded conversion, as the reader lands it (§16.14,
+        -- W12): the double narrowed alone rounds twice
         local narrow = string.unpack("<f", string.pack("<f", back))
-        if narrow == v then return text end
+        local tie = f32_tie(back, text)
+        if (if tie ~= nil then tie else narrow) == v then return text end
       elseif back == v then
         return text
       end
@@ -2370,6 +2445,19 @@ write_array = function(T: any, fd: any, val: any, depth: number, g: any, w: any)
     line(w, depth + 1)
     local x = val[i]
     if x == nil then x = zero_elem(T, fd.elem) end
+    if fd.opt_text then
+      -- AN OPTIONAL TEXT LIST (docs/SPEC-TABLES.md §2.13, §16.2): a present
+      -- element is its string and an absent one is null
+      local vf = T.Tables[fd.elem.target].fields[1]
+      if not x[vf.name .. "_present"] then
+        raw(w, "null")
+      else
+        local text = x[vf.name] or ""
+        if not narrow_text_ok(text, vf.bound or -1) then return false end
+        write_string(w, text)
+      end
+      continue
+    end
     if not write_value(T, fd.elem, x, depth + 1, g, w, true) then return false end
   end
   line(w, depth)
@@ -2531,7 +2619,9 @@ local function core_to(T: any, name: string, v: any): string?
   if g == nil then return nil end
   local w = W()
   if not write_table(T, desc, v, 0, g, w) then return nil end
-  if not desc.jsonArray then w.parts[#w.parts + 1] = "\n" end
+  if w.invalid then refuse_reason = "invalid_value"; return nil end
+  -- every root's text ends in one newline, the array root's too (§16.10)
+  w.parts[#w.parts + 1] = "\n"
   return table.concat(w.parts)
 end
 
@@ -2624,7 +2714,10 @@ adapt_field = function(fd: any, owner: any): any
     if fd.fbits ~= nil then o.fixed_units = true end
     end
   elseif s == "float" then o.shape = "float"; o.f32 = fd.f32; o.lo = fd.lo; o.hi = fd.hi; o.res = fd.res
-  elseif s == "str" then o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
+  elseif s == "str" then
+    o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
+    -- an unbounded text list element rides as str with no bound (§2.13.1)
+    if not fd.wide and (fd.bound or 0) == 0 then o.bound = -1 end
   elseif s == "text" then o.shape = "string"; o.bound = -1
   elseif s == "bytes" then o.shape = "bytes"; o.bound = fd.bound
   elseif s == "enum" then
@@ -2644,6 +2737,7 @@ adapt_field = function(fd: any, owner: any): any
     o.keyed = fd.array == "keyed" and fd.keyvs or nil
     o.elem_kind = fd.ek
     o.str_elem = fd.e ~= nil and (fd.e.s == "str")
+    o.opt_text = fd.optText == true
     o.wide_elem = fd.e ~= nil and fd.e.wide == true
     if o.elem.shape == "int" then
       local names = flag_names(owner, fd)
@@ -2784,6 +2878,12 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
       local xi = x[i]
       if xi == nil and e.shape ~= "table" and e.shape ~= "union" and e.shape ~= "array" and e.shape ~= "map" then
         xi = zero_elem(A, e)
+      end
+      if e.shape == "string" and not e.wide then
+        -- a text list element is its bytes at their own length: it has no
+        -- Length companion to say where padding would end (§2.13)
+        out[i] = from_string(xi or "")
+        continue
       end
       out[i] = conv_to_lua(e, xi, A, memo)
     end
@@ -2947,16 +3047,19 @@ to_lua = function(desc: any, v: any, A: any, memo: any): any
   memo.l2v[out] = v
   for _, fd in desc.fields do
     local luau_slot = fd.raw.slot or fd.raw.name
-    if fd.raw.s == "str" or fd.raw.s == "bytes" then
+    -- a slot the value does not hold (an absent optional, a list the read
+    -- never placed) has no length or count to carry: a Lua table cannot be
+    -- indexed by nil
+    local held = v[luau_slot]
+    if held ~= nil and (fd.raw.s == "str" or fd.raw.s == "bytes") then
       memo.len = memo.len or {}
-      memo.len[v[luau_slot]] = v[luau_slot .. "Length"] or 0
+      memo.len[held] = v[luau_slot .. "Length"] or 0
     end
-    if fd.raw.s == "arr" then
+    if held ~= nil and fd.raw.s == "arr" then
       memo.count = memo.count or {}
-      local av = v[luau_slot]
-      if fd.raw.array == "counted" then memo.count[av] = v[luau_slot .. "Count"] or 0
-      elseif fd.raw.array == "list" then memo.count[av] = av ~= nil and (av.n or #av) or 0
-      elseif fd.raw.array == "fixed" or fd.raw.array == "keyed" then memo.count[av] = fd.raw.bound or 0 end
+      if fd.raw.array == "counted" then memo.count[held] = v[luau_slot .. "Count"] or 0
+      elseif fd.raw.array == "list" then memo.count[held] = held.n or #held
+      elseif fd.raw.array == "fixed" or fd.raw.array == "keyed" then memo.count[held] = fd.raw.bound or 0 end
     end
     if fd.optional then
       if v[fd.raw.present] then

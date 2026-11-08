@@ -61,6 +61,16 @@ BigInt tableCookGetWide(ByteData view, int at, int width, bool signed) {
 // pointer past the region is the caller's problem at the dereference, and in
 // Dart the read after it would be an escaping RangeError — which is not a
 // refusal.
+int tableCookTextStart(ByteData view,int slot) {
+ if(slot<0||slot>view.lengthInBytes-8)return -1;
+ final delta=view.getInt64(slot,Endian.little);
+ if(delta==0||delta < -slot||delta > view.lengthInBytes-slot-8)return -1;
+ final at=slot+delta;
+ final n=view.getUint32(at,Endian.little);
+ if(n>view.lengthInBytes-at-9)return -1;
+ return at;
+}
+
 abstract final class TableCookRef {
   static const int none = -1;
   static const int outside = -2;
@@ -97,6 +107,7 @@ final class TableCookFieldInfo {
   final int arrayBound;
   // an eight-byte SIGNED self-relative reference slot (§6.3)
   final bool isPointer;
+  final bool unboundedText;
   // the int32 used-length companion, or -1
   final int countOffset;
   // the bool presence companion of a ?T, or -1
@@ -126,6 +137,7 @@ final class TableCookFieldInfo {
     required this.isArray,
     required this.arrayBound,
     required this.isPointer,
+    this.unboundedText = false,
     required this.countOffset,
     required this.presentOffset,
     required this.storage,
@@ -174,29 +186,74 @@ final class TableCookGraph {
   final Endian order;
   final List<int> offsets;
   final int Function(Object node) indexOf;
-  final int Function(int id, Object blob) blobIndex;
+  final int Function(int id, Object blob, [Object? owner, String? field]) blobIndex;
   ByteData? out;
+  bool valid = true;
 
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
     : offsets = List<int>.filled(count, 0);
 
+  // A map's entries in ASCENDING KEY ORDER (§2.8), a stable sort of a copy:
+  // the writer holds the sort, whatever order the value holds them in, and
+  // the caller's list is not reordered.
+  static List<T> sorted<T>(List<T> entries, int Function(T a, T b) order) {
+    final out = List<T>.of(entries);
+    for (var i = 1; i < out.length; i++) {
+      final x = out[i];
+      var j = i - 1;
+      while (j >= 0 && order(out[j], x) > 0) {
+        out[j + 1] = out[j];
+        j--;
+      }
+      out[j + 1] = x;
+    }
+    return out;
+  }
+
+  // Two string keys by their UTF-8 bytes, unsigned, a prefix first (§2.8).
+  static int bytesOrder(List<int> a, List<int> b) {
+    final n = a.length < b.length ? a.length : b.length;
+    for (var i = 0; i < n; i++) {
+      if (a[i] != b[i]) return a[i] - b[i];
+    }
+    return a.length - b.length;
+  }
+
   // A reference slot holds the signed delta from the slot to its target node,
   // and a null is a delta of zero (§6.3).
   void ref(int slot, Object? node) {
+    // Validate during measurement too: dead storage may name a node the
+    // wire's numbering never reached. Refuse before touching output (§7.6).
+    var index = 0;
+    if (node != null) {
+      try {
+        index = indexOf(node);
+      } on StateError {
+        valid = false;
+        return;
+      }
+    }
     final out = this.out;
     if (out == null) return;
-    var delta = 0;
-    if (node != null) delta = 64 + offsets[indexOf(node) - 1] - slot;
+    final delta = index == 0 ? 0 : 64 + offsets[index - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 
   // A blob is a node of its own reserved type id, numbered by its identity
   // (§3.1): the String or byte list the field holds.
-  void blob(int slot, int id, Object? blob) {
+  void blob(int slot, int id, Object? blob, [Object? owner, String? field]) {
+    var index = 0;
+    if (blob != null) {
+      try {
+        index = blobIndex(id, blob, owner, field);
+      } on StateError {
+        valid = false;
+        return;
+      }
+    }
     final out = this.out;
     if (out == null) return;
-    var delta = 0;
-    if (blob != null) delta = 64 + offsets[blobIndex(id, blob) - 1] - slot;
+    final delta = index == 0 ? 0 : 64 + offsets[index - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 }
@@ -656,6 +713,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -669,6 +727,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -682,6 +741,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -695,6 +755,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -708,6 +769,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -721,6 +783,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -734,6 +797,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -747,6 +811,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -760,6 +825,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -773,6 +839,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -786,6 +853,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -799,6 +867,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -812,6 +881,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.boolean,
@@ -825,6 +895,7 @@ final class TableEntityCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.boolean,
@@ -973,7 +1044,7 @@ final class TableEntityCookWire {
             size = 64;
             alignment = 8;
         }
-        if (!_writeNode(id, node, c, 0)) {
+        if (!_writeNode(id, node, c, 0) || !c.valid) {
           if (report != null) report.reason = 'invalid_value';
           return -1;
         }
@@ -1286,6 +1357,7 @@ final class TableStatCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1299,6 +1371,7 @@ final class TableStatCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1411,7 +1484,7 @@ final class TableStatCookWire {
             size = 8;
             alignment = 4;
         }
-        if (!_writeNode(id, node, c, 0)) {
+        if (!_writeNode(id, node, c, 0) || !c.valid) {
           if (report != null) report.reason = 'invalid_value';
           return -1;
         }
@@ -1684,6 +1757,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1697,6 +1771,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1718,6 +1793,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1731,6 +1807,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1744,6 +1821,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1757,6 +1835,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1770,6 +1849,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1783,6 +1863,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1796,6 +1877,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1809,6 +1891,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1822,6 +1905,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1835,6 +1919,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1848,6 +1933,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1861,6 +1947,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1874,6 +1961,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.boolean,
@@ -1887,6 +1975,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.boolean,
@@ -1908,6 +1997,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1921,6 +2011,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1934,6 +2025,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -1947,6 +2039,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.boolean,
@@ -1968,6 +2061,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1981,6 +2075,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -1994,6 +2089,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -2007,6 +2103,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2020,6 +2117,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2033,6 +2131,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2046,6 +2145,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2059,6 +2159,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -2072,6 +2173,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2085,6 +2187,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.float,
@@ -2098,6 +2201,7 @@ final class TableMixedCook {
         isArray: true,
         arrayBound: 8,
         isPointer: false,
+        unboundedText: false,
         countOffset: 576,
         presentOffset: -1,
         storage: TableCookStorage.record,
@@ -2111,6 +2215,7 @@ final class TableMixedCook {
         isArray: true,
         arrayBound: 80,
         isPointer: false,
+        unboundedText: false,
         countOffset: 1220,
         presentOffset: -1,
         storage: TableCookStorage.record,
@@ -2124,6 +2229,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.record,
@@ -2137,6 +2243,7 @@ final class TableMixedCook {
         isArray: true,
         arrayBound: 4,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2150,6 +2257,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 15,
         isPointer: false,
+        unboundedText: false,
         countOffset: 1264,
         presentOffset: -1,
         storage: TableCookStorage.string,
@@ -2163,6 +2271,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 16,
         isPointer: false,
+        unboundedText: false,
         countOffset: 1284,
         presentOffset: -1,
         storage: TableCookStorage.bytes,
@@ -2176,6 +2285,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.float,
@@ -2189,6 +2299,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.float,
@@ -2202,6 +2313,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.float,
@@ -2215,6 +2327,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.float,
@@ -2228,6 +2341,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.float,
@@ -2241,6 +2355,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2254,6 +2369,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -2267,6 +2383,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.float,
@@ -2280,6 +2397,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2293,6 +2411,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.boolean,
@@ -2306,6 +2425,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -2319,6 +2439,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -2340,6 +2461,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2353,6 +2475,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -2374,6 +2497,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.unsigned,
@@ -2387,6 +2511,7 @@ final class TableMixedCook {
         isArray: false,
         arrayBound: 1,
         isPointer: false,
+        unboundedText: false,
         countOffset: -1,
         presentOffset: -1,
         storage: TableCookStorage.signed,
@@ -2473,7 +2598,7 @@ final class TableMixedCookWire {
             size = 8;
             alignment = 4;
         }
-        if (!_writeNode(id, node, c, 0)) {
+        if (!_writeNode(id, node, c, 0) || !c.valid) {
           if (report != null) report.reason = 'invalid_value';
           return -1;
         }

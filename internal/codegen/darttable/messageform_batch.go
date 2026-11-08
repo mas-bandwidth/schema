@@ -20,6 +20,7 @@ package darttable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 
@@ -110,6 +111,15 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		return
 	}
 	lower := lowerFirst(st.Name)
+	for _, suffix := range []string{"LoadRetainMessages", "SaveRetainMessages"} {
+		g.pf("const String %s%s = %q;\n", lower, suffix, st.Name+": retention requires a variable root and its region directory; the message form is fixed")
+	}
+	g.pf("\n")
+	extra := 0
+	if st.Integrity != "" {
+		extra = 4
+		g.needHome("tableIntegrityValid", "tableIntegrityWrite")
+	}
 	g.needHome("TableBitWriter", "TableMessageReader", "TableVocabulary", "TableReport",
 		"tableMessageBatchOpen", "tableMessageBatchClose", "tableMessageBatchMax",
 		lower+"SaveMessageBody", lower+"LoadMessageBody", "init"+capitalize(st.Name), st.Name)
@@ -124,7 +134,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.pf("    if (!%sSaveMessageBody(w, value)) return -1;\n", lower)
 	g.pf("  }\n  w.align();\n")
 	g.pf("  if (w.overflow) return -1;\n")
-	g.pf("  return 2 + (w.bits >> 3);\n}\n\n")
+	g.pf("  return %d + (w.bits >> 3);\n}\n\n", 2+extra)
 
 	g.pf("/// SaveMessages writes one buffer for a batch of %s bodies, or -1 with\n", st.Name)
 	g.pf("/// the reason on the report (docs/SPEC-TABLES.md §3.3).\n")
@@ -132,20 +142,36 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "Uint8List buffer", "TableReport report"})
 	g.pf("  if (values.length < 1 || values.length > tableMessageBatchMax) {\n")
 	g.pf("    report.Refuse('batch_too_large');\n    return -1;\n  }\n")
-	g.pf("  if (buffer.length < 2) return -1;\n")
+	if st.Integrity != "" {
+		g.pf("  final need = %sMeasureMessages(values, report);\n  if (need < 0 || buffer.length < need) return -1;\n", lower)
+	} else {
+		g.pf("  if (buffer.length < 2) return -1;\n")
+	}
 	g.pf("  buffer[0] = 2;\n  buffer[1] = values.length - 1;\n")
-	g.pf("  final w = TableBitWriter(Uint8List.sublistView(buffer, 2));\n")
+	if st.Integrity != "" {
+		g.pf("  final w = TableBitWriter(Uint8List.sublistView(buffer, 2, need - 4));\n")
+	} else {
+		g.pf("  final w = TableBitWriter(Uint8List.sublistView(buffer, 2));\n")
+	}
 	g.pf("  for (final value in values) {\n")
 	g.pf("    if (!%sSaveMessageBody(w, value)) return -1;\n", lower)
 	g.pf("  }\n  w.align();\n")
 	g.pf("  if (w.overflow) return -1;\n")
-	g.pf("  return 2 + (w.bits >> 3);\n}\n\n")
+	if st.Integrity != "" {
+		g.pf("  tableIntegrityWrite(buffer, need - 4);\n  return need;\n}\n\n")
+	} else {
+		g.pf("  return 2 + (w.bits >> 3);\n}\n\n")
+	}
 
 	g.pf("/// LoadMessages reads one buffer into the caller's storage, allocating\n")
 	g.pf("/// nothing, and answers the bodies read (docs/SPEC-TABLES.md §3.3).\n")
 	g.emitFn("int", lower+"LoadMessages",
 		[]string{"List<" + st.Name + "> values", "Uint8List bytes",
 			"TableVocabulary vocabulary", "TableReport report"})
+	if st.Integrity != "" {
+		g.pf("  if (report.reason == 'integrity_mismatch') { report.reason = ''; report.malformed = false; }\n")
+		g.pf("  if (bytes.isNotEmpty && bytes[0] == 2) {\n    if (!tableIntegrityValid(bytes, bytes.length, 6)) {\n      report.malformed = true;\n      report.reason = 'integrity_mismatch';\n      return -1;\n    }\n    bytes = Uint8List.sublistView(bytes, 0, bytes.length - 4);\n  }\n")
+	}
 	g.pf("  final r = TableMessageReader();\n")
 	g.pf("  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);\n")
 	g.pf("  if (count < 0) return -1;\n")
@@ -156,11 +182,15 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	// A NON-FINITE FLOAT REFUSES THE WHOLE BATCH, the tolerant read included
 	// (docs/SPEC-TABLES.md §3.3): every body this call wrote goes back to its
 	// defaults and the read answers no body at all.
-	g.pf("      if (report.nonFiniteFloat.isEmpty) return i;\n")
+	// DAMAGE DISCARDS THE WHOLE BATCH the same way (docs/SPEC-TABLES.md §4):
+	// no body this call decoded is handed back.
 	g.pf("      for (var j = 0; j <= i; j++) {\n        init%s(values[j]);\n      }\n", capitalize(st.Name))
 	g.pf("      return 0;\n    }\n")
 	g.pf("  }\n")
-	g.pf("  if (!tableMessageBatchClose(r)) return count;\n")
+	// damage after the last body (the pad, trailing bytes) discards the batch too
+	g.pf("  if (!tableMessageBatchClose(r)) {\n")
+	g.pf("    for (var j = 0; j < count; j++) {\n      init%s(values[j]);\n    }\n", capitalize(st.Name))
+	g.pf("    return 0;\n  }\n")
 	g.pf("  return count;\n}\n\n")
 }
 
@@ -289,6 +319,16 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
 		// ELISION COMPARES BITS (docs/SPEC-TABLES.md §3.3): a -0 under a +0
 		// default rides, as on the variable form
+		if f.Type.Kind == ir.TFloat32 {
+			def := float32(0)
+			if f.HasDefault {
+				def = float32(f.DefFloat)
+			}
+			// Keep the conversion at the assignment, using the existing views:
+			// an out-of-line double conversion can box under the Dart JIT.
+			g.pf("%sTableBitWriter._float32Cell[0] = %s;\n", ind, expr)
+			return fmt.Sprintf("TableBitWriter._float32Words[0] != %d", math.Float32bits(def))
+		}
 		return floatRides(f, expr, g.gen.fixedZeroFor(f))
 	}
 	return expr + " != " + g.gen.fixedZeroFor(f)
@@ -974,6 +1014,9 @@ class TableBitWriter {
     if (measuring) return;
     if ((bits + 7) >> 3 > buffer.length) { overflow = true; return; }
     for (var i = 0; i < n; i++) {
+      // Initialize each output byte when its first bit is written; callers
+      // may reuse a buffer containing arbitrary previous data.
+      if (((at + i) & 7) == 0) buffer[(at + i) >> 3] = 0;
       if (((value >> i) & 1) != 0) {
         buffer[(at + i) >> 3] |= 1 << ((at + i) & 7);
       }
@@ -1176,7 +1219,7 @@ final class TableMessageShape {
     if (kind == 1) {
       return 1;
     }
-    if (kind == 11) {
+    if (kind == 11 || kind == 36) {
       return 64;
     }
     if (kind == 10) {

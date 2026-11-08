@@ -181,9 +181,7 @@ inline const uint8_t * TableCookRefuse( TableRefuseReason * reason, TableRefuseR
 
 inline uint64_t table_cook_byteswap64( uint64_t v )
 {
-    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
-         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
-         | ( v << 56 );
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull ) | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull ) | ( v << 56 );
 }
 
 inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align, TableRefuseReason * reason )
@@ -273,7 +271,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 func (g *tableGen) emitCookSurface(members []*ir.Struct) {
 	first := true
 	for _, st := range members {
-		if !st.IsTable || st.IsMapEntry() {
+		if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("cook") {
 			// a `type` is not a node and cannot be a cook's root, and a map's
 			// generated ENTRY is §2.8's one exception to "a root is any
 			// table": it is reached only through its map
@@ -318,13 +316,13 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 		g.pf("// what this returns. There is no graph below it and nothing to resolve.\n")
 	}
 	g.pf("//\n")
-	g.pf("// There is ONE entry point and no tolerant twin: a build either wrote this\n")
+	g.pf("// There is ONE entry point and no strict twin: a build either wrote this\n")
 	g.pf("// file or it did not, and the build version is what says which. Validating a\n")
 	g.pf("// file whose provenance a person doubts is schema cook-check, offline,\n")
 	g.pf("// over the ATTRIBUTION part beside the data — a person's decision, never a\n")
 	g.pf("// parameter on a load.\n")
 	g.pf("inline const %s * %sOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )\n{\n", n, n)
-	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) alignof( %s ), reason );\n}\n\n", n, n, n)
+	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) %d, reason );\n}\n\n", n, n, ir.CookNodeAlign(g.unit, st))
 }
 
 // emitCookLayoutAsserts is this backend's half of the LAYOUT CONTRACT

@@ -39,8 +39,8 @@ func TestSchemaDartRunsHostileCorpusWiring(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the Dart runner is missing: %v", err)
 	}
-	for _, want := range []string{"manifest.tsv", "FIX-CARD", "STALE", "FromJson", "WireLoad", "LoadMessages", "announceRead",
-		"'text'", "'wire'", "'message'", "'message_novocab'", "'announce'", "'announce_second'", "'announce_bytes'", "'announce_entries'"} {
+	for _, want := range []string{"manifest.tsv", "FIX-CARD", "STALE", "FromJson", "WireLoad", "LoadMessages", "announceRead", "Isolate.spawn", "HOSTILE_CASE_BUDGET_MS",
+		"'text'", "'wire'", "'wire_retain'", "'packet'", "'message'", "'message_novocab'", "'announce'", "'announce_second'", "'announce_bytes'", "'announce_entries'"} {
 		if !strings.Contains(string(runner), want) {
 			t.Errorf("test/dart-hostile/runner.dart does not carry %q", want)
 		}

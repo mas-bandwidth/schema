@@ -135,13 +135,12 @@ schema-go-generated-golangci-lint-gate: schema-go-generated-golangci-lint-gate-p
 	$(call golangci_gate_module_tests,$(GOLANGCI_GATE_DIR)/ludicrous)
 	@echo "schema Go generated golangci-lint gate: errcheck, gosec, ineffassign, go vet and -race within the ratchet on the packet corpus"
 
-# Nightly: the table corpus. Its units are separate modules and the shared
-# runtime (docs/SPEC-TABLES.md §8.4) is imported from this checkout, so each
-# module is wired to the sibling runtime and this module before the checks. All
-# units are counted into one "tables" corpus and held to the same ratchet; vet
-# runs beside the lint.
-.PHONY: schema-go-generated-golangci-lint-gate-nightly
-schema-go-generated-golangci-lint-gate-nightly: schema-go-generated-golangci-lint-gate-probe $(GOLANGCI_GATE_CONFIG)
+# Nightly measurement: the table corpus. Its units are separate modules and the
+# shared runtime is imported from this checkout, so each module is wired to the
+# sibling runtime and this module before the checks. This target records the
+# actual generated inventory without applying a ratchet.
+.PHONY: schema-go-generated-golangci-lint-gate-nightly-measure
+schema-go-generated-golangci-lint-gate-nightly-measure: schema-go-generated-golangci-lint-gate-probe $(GOLANGCI_GATE_CONFIG)
 	$(MAKE) --no-print-directory build/tables-generated-go/.stamp
 	@for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
@@ -165,13 +164,31 @@ schema-go-generated-golangci-lint-gate-nightly: schema-go-generated-golangci-lin
 		} \
 		END { for(k in c) print k "\t" c[k] }' \
 		"$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.lint.log" > "$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.actual.tsv"
-	@$(MAKE) --no-print-directory schema-go-generated-golangci-lint-gate-ratchet \
-		GOLANGCI_GATE_ACTUAL=$(GOLANGCI_GATE_DIR)/tables.actual.tsv
 	@for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
 		( cd "$$d" && go vet ./... ) || exit 1; \
 	done
+	@echo "schema Go generated golangci-lint gate: table corpus measured and vetted"
+
+# Nightly gate: compare the actual table inventory with its checked-in ratchet.
+.PHONY: schema-go-generated-golangci-lint-gate-nightly
+schema-go-generated-golangci-lint-gate-nightly: schema-go-generated-golangci-lint-gate-nightly-measure
+	@$(MAKE) --no-print-directory schema-go-generated-golangci-lint-gate-ratchet \
+		GOLANGCI_GATE_ACTUAL=$(GOLANGCI_GATE_DIR)/tables.actual.tsv
 	@echo "schema Go generated golangci-lint gate (nightly): errcheck, gosec, ineffassign and go vet within the ratchet on the table corpus"
+
+# Explicitly remeasure the whole generated inventory before changing its pins.
+# This is separate from the nightly gate so a stale pin can never silently
+# rewrite itself during CI; after regeneration, the nightly comparator still
+# fails on any later growth.
+.PHONY: schema-go-generated-golangci-lint-gate-ratchet-regenerate
+schema-go-generated-golangci-lint-gate-ratchet-regenerate: schema-go-generated-golangci-lint-gate-nightly-measure
+	@tmp="$(GOLANGCI_GATE_DIR)/ratchet.regenerated.tsv"; \
+		{ awk -F '\t' 'BEGIN { data=0 } data==0 && $$0 != "" && $$0 !~ /^#/ { data=1 } data==0 { print; next } NF==4 && $$1 != "tables" { print }' "$(GOLANGCI_GATE_RATCHET)"; \
+		  LC_ALL=C sort -k1,1 -k2,2 -k3,3 "$(GOLANGCI_GATE_DIR)/tables.actual.tsv"; \
+		} > "$$tmp"; \
+		mv "$$tmp" "$(GOLANGCI_GATE_RATCHET)"
+	@echo "schema Go generated golangci-lint gate: ratchet regenerated from pinned-linter measurements"
 
 # THE NEGATIVE CONTROL. A scratch copy of the generated packet output gets one
 # unchecked error (errcheck's oldest pattern) in a file that carries the same

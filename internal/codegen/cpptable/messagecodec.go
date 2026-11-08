@@ -332,6 +332,22 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		inner = *shape.Inner
 	}
 	loop := fmt.Sprintf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, idx, idx, count, idx, ind)
+	if f.IsTextList() && ir.TextListPlain(f) && !ir.TextListUnbounded(f) {
+		m := ir.TextListValue(f).Type.Size
+		width := ir.TableMessageBitsRequired(0, m)
+		if pass == messagePassMeasure {
+			g.pf("%s", loop)
+			g.pf("%s    bits += %d + TableAlignBits( at + bits ) + (int64_t) %s.value_length * 8;\n", ind, width, elem)
+			g.pf("%s}\n", ind)
+			return
+		}
+		g.pf("%s", loop)
+		g.pf("%s    w.put( (uint64_t) %s.value_length, %d );\n", ind, elem, width)
+		g.pf("%s    w.align(); // a string payload ALIGNS before its bytes\n", ind)
+		g.pf("%s    w.putbytes( (const uint8_t *) %s.value, %s.value_length );\n", ind, elem, elem)
+		g.pf("%s}\n", ind)
+		return
+	}
 	switch int(shape.Elem) {
 	case tkTable:
 		g.pf("%s", loop)
@@ -467,6 +483,9 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 // alone, because presence has already decided.
 func (g *tableGen) emitMessagePayload(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string, pass messagePass) {
 	switch {
+	case f.Type.Kind == ir.TString && !f.Type.TextUnbounded():
+		g.pf("%sif ( value.%s_length < 0 || value.%s_length > %d ) { return %s; } // storage invariant\n", ind, f.Name, f.Name, f.Type.Size, messageBad(pass))
+		g.emitMessageTextPayload(f, entry, expr, "value."+f.Name+"_length", ind, pass)
 	case f.Array != ir.ArrayNone:
 		count := strconv.FormatInt(f.ArrayBound, 10)
 		if f.CountedOnWire() {

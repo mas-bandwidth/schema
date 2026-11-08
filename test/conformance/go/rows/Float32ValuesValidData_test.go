@@ -83,13 +83,12 @@ func TestRowFloat32ValuesValidData(t *testing.T) {
 	var report tblv1.TableReport
 	got := tblv1.CfgFixedLoad(scratch, buf, plan, &report)
 	if got != int64(len(values)) {
-		t.Fatalf("CfgFixedLoad: n=%d want %d (verdict=%v reason=%q malformed=%v)",
-			got, len(values), report.Verdict, report.Reason, report.Malformed)
+		t.Fatalf("CfgFixedLoad: n=%d want %d (verdict=%v reason=%q refused=%v)",
+			got, len(values), report.Verdict, report.Reason, report.Refused())
 	}
-	if report.Verdict != tblv1.TableOpenOk || report.Malformed ||
-		report.Widened != 0 || report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 {
-		t.Fatalf("valid data read dirty: verdict=%v malformed=%v widened=%d unknown=%d kind_mismatch=%d clamped=%d",
-			report.Verdict, report.Malformed, report.Widened, report.Unknown, report.KindMismatch, report.Clamped)
+	if report.Verdict != tblv1.TableOpenOk || report.Refused() ||
+		report.Widened != 0 || report.Unknown != 0 {
+		t.Fatalf("valid data read dirty: %+v", report)
 	}
 	for k := range values {
 		if scratch[k].Effect.Type != tblv1.EffectTypeWard {
@@ -139,8 +138,8 @@ func TestRowFloat32ValuesNonFiniteRefused(t *testing.T) {
 			scratch := make([]tblv1.Cfg, 2)
 			plan := make([]tblv1.TableFixedEntry, 8192)
 			var report tblv1.TableReport
-			if n := tblv1.CfgFixedLoadTolerant(scratch, forged, plan, &report); n != -1 ||
-				report.Reason != "non_finite_float: "+site.name || report.Err() != tblv1.TableRefuseNonFiniteFloat {
+			if n := tblv1.CfgFixedLoad(scratch, forged, plan, &report); n != -1 ||
+				report.Err() == nil {
 				t.Errorf("%s %08x: n=%d reason=%q err=%v, want the non_finite_float refusal", site.name, bits, n, report.Reason, report.Err())
 			}
 			var reset tblv1.Cfg

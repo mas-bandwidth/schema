@@ -22,7 +22,7 @@ func (g *tableGen) mapKeyType(f *ir.Field) string {
 
 func mapPair(f *ir.Field) bool {
 	v := ir.MapValueField(f)
-	return v.Array == ir.ArrayCounted || !v.Type.Pointer && (v.Type.Kind == ir.TString || v.Type.Kind == ir.TWString || v.Type.Kind == ir.TBytes)
+	return v.Type.Optional || v.Array == ir.ArrayCounted || !v.Type.Pointer && (v.Type.Kind == ir.TString || v.Type.Kind == ir.TWString || v.Type.Kind == ir.TBytes)
 }
 
 func (g *tableGen) mapValueType(f *ir.Field) string {
@@ -87,13 +87,19 @@ func (g *tableGen) emitMapHelpers(owner *ir.Struct, f *ir.Field) {
 	if value.Array == ir.ArrayFixed {
 		g.pf("typedef %s %s[%d];\n", g.sequenceType(value), vtype, value.ArrayBound)
 	}
-	g.pf("static SCHEMA_UNUSED %s %s(const %s * entry)\n{\n", ktype, g.sym(n, "key"), n)
-	if stringKey {
-		g.pf("    TableMapKey key={entry->key,entry->key_length}; return key;\n")
+	unboundedKey := key.Type.TextUnbounded()
+	if unboundedKey {
+		g.pf("static SCHEMA_UNUSED %s %s(const TableCtx * ctx,const %s * entry)\n{\n", ktype, g.sym(n, "key"), n)
+		g.pf("    TableMapKey key={NULL,0}; key.data=schema_table_text_at_(ctx,&entry->key,&key.length); return key;\n}\n")
 	} else {
-		g.pf("    return entry->key;\n")
+		g.pf("static SCHEMA_UNUSED %s %s(const %s * entry)\n{\n", ktype, g.sym(n, "key"), n)
+		if stringKey {
+			g.pf("    TableMapKey key={entry->key,entry->key_length}; return key;\n")
+		} else {
+			g.pf("    return entry->key;\n")
+		}
+		g.pf("}\n")
 	}
-	g.pf("}\n")
 	g.pf("static SCHEMA_UNUSED int %s(%s a,%s b)\n{ return ", g.sym(n, "key_compare"), ktype, ktype)
 	if stringKey {
 		g.pf("table_map_key_compare(a,b)")
@@ -101,13 +107,31 @@ func (g *tableGen) emitMapHelpers(owner *ir.Struct, f *ir.Field) {
 		g.pf("a<b ? -1 : (a>b ? 1 : 0)")
 	}
 	g.pf("; }\n")
-	g.pf("static SCHEMA_UNUSED int %s(const void * a,const void * b)\n{ return %s(%s((const %s *)a),%s((const %s *)b)); }\n", g.sym(n, "compare"), g.sym(n, "key_compare"), g.sym(n, "key"), n, g.sym(n, "key"), n)
+	if g.anyUnboundedText {
+		if unboundedKey {
+			g.pf("static SCHEMA_UNUSED int %s(const TableCtx * ctx,const void * a,const void * b)\n{ return %s(%s(ctx,(const %s *)a),%s(ctx,(const %s *)b)); }\n", g.sym(n, "compare"), g.sym(n, "key_compare"), g.sym(n, "key"), n, g.sym(n, "key"), n)
+		} else {
+			g.pf("static SCHEMA_UNUSED int %s(const TableCtx * ctx,const void * a,const void * b)\n{ (void)ctx; return %s(%s((const %s *)a),%s((const %s *)b)); }\n", g.sym(n, "compare"), g.sym(n, "key_compare"), g.sym(n, "key"), n, g.sym(n, "key"), n)
+		}
+	} else {
+		g.pf("static SCHEMA_UNUSED int %s(const void * a,const void * b)\n{ return %s(%s((const %s *)a),%s((const %s *)b)); }\n", g.sym(n, "compare"), g.sym(n, "key_compare"), g.sym(n, "key"), n, g.sym(n, "key"), n)
+	}
+	keyArenaCall := g.sym(n, "key") + "(entry)"
+	keyRegionCall := g.sym(n, "key") + "(entries+mid)"
+	if unboundedKey {
+		keyArenaCall = g.sym(n, "key") + "(ctx,entry)"
+		keyRegionCall = g.sym(n, "key") + "(NULL,entries+mid)"
+	}
 	g.pf("static SCHEMA_UNUSED %s * %s(const TableCtx * ctx,const TableMap * map,%s key)\n{\n", n, g.sym(n, "find"), ktype)
-	g.pf("    if(ctx!=NULL && ctx->arena!=NULL) { TableSequenceCursor cursor=table_sequence_cursor(ctx,map,sizeof(%s)); const %s * entry;\n        while((entry=(const %s *)table_sequence_next(&cursor))!=NULL) { if(%s(%s(entry),key)==0) { return (%s *)(uintptr_t)entry; } }\n    } else {\n", n, n, n, g.sym(n, "key_compare"), g.sym(n, "key"), n)
-	g.pf("        int32_t lo=0,hi=map->count; const %s * entries=map->items.value ? (const %s *)((const uint8_t *)(const void *)&map->items+map->items.value) : NULL;\n        if(entries==NULL) { return NULL; }\n        while(lo<hi) { int32_t mid=lo+(hi-lo)/2; int order=%s(%s(entries+mid),key); if(order<0) { lo=mid+1; } else if(order>0) { hi=mid; } else { return (%s *)(uintptr_t)(entries+mid); } }\n    } return NULL;\n}\n", n, n, g.sym(n, "key_compare"), g.sym(n, "key"), n)
+	g.pf("    if(ctx!=NULL && ctx->arena!=NULL) { TableSequenceCursor cursor=table_sequence_cursor(ctx,map,sizeof(%s)); const %s * entry;\n        while((entry=(const %s *)table_sequence_next(&cursor))!=NULL) { if(%s(%s,key)==0) { return (%s *)(uintptr_t)entry; } }\n    } else {\n", n, n, n, g.sym(n, "key_compare"), keyArenaCall, n)
+	g.pf("        int32_t lo=0,hi=map->count; const %s * entries=map->items.value ? (const %s *)((const uint8_t *)(const void *)&map->items+map->items.value) : NULL;\n        if(entries==NULL) { return NULL; }\n        while(lo<hi) { int32_t mid=lo+(hi-lo)/2; int order=%s(%s,key); if(order<0) { lo=mid+1; } else if(order>0) { hi=mid; } else { return (%s *)(uintptr_t)(entries+mid); } }\n    } return NULL;\n}\n", n, n, g.sym(n, "key_compare"), keyRegionCall, n)
 	g.pf("static SCHEMA_UNUSED %s * %s(TableWorker * worker,TableMap * map,%s key)\n{\n    TableCtx ctx; %s * entry;\n    if(worker==NULL || worker->arena==NULL || worker->arena->locked) { return NULL; } ctx.arena=worker->arena;\n", n, g.sym(n, "place"), ktype, n)
 	if stringKey {
-		g.pf("    if(key.length<0 || key.length>%d || (key.length && key.data==NULL)) { return NULL; }\n", key.Type.Size)
+		if unboundedKey {
+			g.pf("    if(key.length<0 || (key.length && key.data==NULL) || !table_wire_utf8((const uint8_t *)key.data,(uint64_t)key.length)) { return NULL; }\n")
+		} else {
+			g.pf("    if(key.length<0 || key.length>%d || (key.length && key.data==NULL)) { return NULL; }\n", key.Type.Size)
+		}
 	}
 	g.pf("    entry=%s(&ctx,map,key);\n    if(entry!=NULL) {\n", g.sym(n, "find"))
 	// Reset just the value: string keys may point into this same entry.
@@ -115,7 +139,11 @@ func (g *tableGen) emitMapHelpers(owner *ir.Struct, f *ir.Field) {
 	g.emitTableResetField(value)
 	g.pf("        return entry;\n    }\n    entry=(%s *)table_sequence_add(worker,map,sizeof(%s)); if(entry==NULL) { return NULL; }\n    %s(entry);\n", n, n, g.api(n, "reset"))
 	if stringKey {
-		g.pf("    if(key.length) { memcpy(entry->key,key.data,(size_t)key.length); } entry->key[key.length]=0; entry->key_length=key.length;\n")
+		if unboundedKey {
+			g.pf("    if(!schema_table_text_store_(worker,&entry->key,key.data,key.length)) { table_sequence_erase(worker->arena,map,entry,sizeof(%s)); return NULL; }\n", n)
+		} else {
+			g.pf("    if(key.length) { memcpy(entry->key,key.data,(size_t)key.length); } entry->key[key.length]=0; entry->key_length=key.length;\n")
+		}
 	} else {
 		g.pf("    entry->key=key;\n")
 	}
@@ -123,7 +151,11 @@ func (g *tableGen) emitMapHelpers(owner *ir.Struct, f *ir.Field) {
 	keyParam, keyArg := ktype, "key"
 	if stringKey {
 		keyParam = "const char *"
-		keyArg = fmt.Sprintf("table_map_key(key,%d)", key.Type.Size)
+		if unboundedKey {
+			keyArg = "table_map_key(key,INT32_MAX-1)"
+		} else {
+			keyArg = fmt.Sprintf("table_map_key(key,%d)", key.Type.Size)
+		}
 	}
 	handle := "&entry->value"
 	if mapPair(f) {
@@ -161,36 +193,40 @@ func (g *tableGen) emitMapKeyRead(f *ir.Field) {
 	key := ir.MapKeyField(f)
 	kt := g.mapKeyType(f)
 	kind := ir.TableWireScalarKind(key)
-	g.pf("typedef struct %s { %s key; int kind_bad,widened,over,malformed; } %s;\n", readType, kt, readType)
-	g.pf("static SCHEMA_UNUSED %s %s(TableReader r)\n{\n    %s out; memset(&out,0,sizeof(out));\n    for(;;) { uint64_t ref,id; uint8_t kind;\n        if(!table_reader_leb(&r,&ref)) { out.malformed=1; return out; } if(ref==0) { out.malformed=r.offset!=r.size; return out; }\n        if(ref>r.id_count || !table_reader_has(&r,1)) { out.malformed=1; return out; }\n        id=table_reader_id_at(&r,ref); kind=table_reader_get8(&r);\n        if(id==UINT64_C(0x%016x)) {\n", readType, g.sym(n, "read_key"), readType, ir.MapKeyWireId)
-	g.pf("            if(kind!=%d && table_kind_widens(kind,%d)) { out.widened=1; } else { out.kind_bad=kind!=%d; }\n", kind, kind, kind)
+	g.pf("typedef struct %s { %s key; int kind_bad,widened,over,damaged; } %s;\n", readType, kt, readType)
+	g.pf("static SCHEMA_UNUSED %s %s(TableReader r)\n{\n    %s out; memset(&out,0,sizeof(out));\n    for(;;) { uint64_t ref,id; uint8_t kind;\n        if(!table_reader_leb(&r,&ref)) { out.damaged=1; return out; } if(ref==0) { out.damaged=r.offset!=r.size; return out; }\n        if(ref>r.id_count || !table_reader_has(&r,1)) { out.damaged=1; return out; }\n        id=table_reader_id_at(&r,ref); kind=table_reader_get8(&r);\n        if(id==UINT64_C(0x%016x)) {\n", readType, g.sym(n, "read_key"), readType, ir.MapKeyWireId)
+	g.pf("            if(kind!=%d && table_kind_widens(kind,%d)) { out.widened=1; out.kind_bad=0; } else { out.kind_bad=kind!=%d; }\n", kind, kind, kind)
 	g.pf("            if(!out.kind_bad) {\n")
 	if key.Type.Kind == ir.TString {
-		g.pf("                TableReader text; if(!table_reader_span(&r,&text) || !table_wire_utf8(text.buffer,text.size)) { out.malformed=1; return out; }\n                out.key.data=(const char *)text.buffer; out.key.length=(int32_t)text.size; out.over=text.size>%d;\n", key.Type.Size)
+		if key.Type.TextUnbounded() {
+			g.pf("                TableReader text; if(!table_reader_span(&r,&text) || !table_wire_utf8(text.buffer,text.size) || (uint64_t)text.size>(uint64_t)INT32_MAX) { out.damaged=1; return out; }\n                out.key.data=(const char *)text.buffer; out.key.length=(int32_t)text.size; out.over=0;\n")
+		} else {
+			g.pf("                TableReader text; if(!table_reader_span(&r,&text) || !table_wire_utf8(text.buffer,text.size)) { out.damaged=1; return out; }\n                out.key.data=(const char *)text.buffer; out.key.length=(int32_t)text.size; out.over=text.size>%d;\n", key.Type.Size)
+		}
 	} else {
-		g.wireScalarRead(key, "out.key", "r", "kind", "                ", "out.malformed=1; return out;")
+		g.wireScalarRead(key, "out.key", "r", "kind", "                ", "out.damaged=1; return out;")
 	}
-	g.pf("                continue;\n            }\n        }\n        if(!table_reader_skip(&r,kind)) { out.malformed=1; return out; }\n    }\n}\n")
+	g.pf("                continue;\n            }\n        }\n        if(!table_reader_skip(&r,kind)) { out.damaged=1; return out; }\n    }\n}\n")
 }
 
 func (g *tableGen) emitMapRead(f *ir.Field, dst, bounded string) {
 	n := f.MapEntry.Name
 	g.pf("                TableReader sub;\n")
 	if bounded == "" {
-		g.pf("                if(!table_reader_span(r,&sub)) { r->report->malformed=1; return 0; }\n")
+		g.pf("                if(!table_reader_span(r,&sub)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n")
 	} else {
 		g.pf("                sub=%s; %s.offset=%s.size;\n", bounded, bounded, bounded)
 	}
 	g.pf("                if(sub.size>=2) {\n                    uint8_t elem_kind; uint64_t count,i; TableSequenceFill fill; %s * last=NULL; %s previous; int widened=0; memset(&previous,0,sizeof(previous));\n", n, g.sym(n, "key_read"))
 	if bounded == "" {
-		g.pf("                    if(!table_reader_array_header(&sub,r,&elem_kind,&count)) { r->report->malformed=1; break; }\n")
+		g.pf("                    if(!table_reader_array_header(&sub,r,&elem_kind,&count)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 	} else {
-		g.pf("                    elem_kind=table_reader_get8(&sub); if(!table_reader_leb(&sub,&count)) { r->report->malformed=1; break; }\n")
+		g.pf("                    elem_kind=table_reader_get8(&sub); if(!table_reader_leb(&sub,&count)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 	}
-	g.pf("                    if(elem_kind!=13) { r->report->kind_mismatch++; break; }\n")
+	g.pf("                    if(elem_kind!=13) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; }\n")
 	g.retainReplace(f, "                    ")
-	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, n, n)
-	g.pf("                    for(i=0;i<count;i++) {\n                        TableReader item; %s key; %s * entry; int order;\n                        if(!table_reader_span(&sub,&item)) { r->report->malformed=1; break; }\n                        key=%s(item);\n                        if(key.widened && !widened) { widened=1; r->report->widened++; }\n                        if(key.kind_bad) { r->report->kind_mismatch++; memset(&%s,0,sizeof(%s)); break; }\n                        if(key.malformed) { r->report->malformed=1; break; }\n                        if(key.over) { r->report->clamped++; continue; }\n                        order=last ? %s(previous.key,key.key) : -1;\n                        if(order>0) { r->report->malformed=1; break; }\n                        if(order==0) { entry=last; r->report->duplicate++; }\n                        else { entry=(%s *)table_sequence_fill_next(&fill); }\n                        if(entry==NULL) { r->report->malformed=1; break; }\n                        %s%s(&item,entry); if(r->nodes!=NULL && r->nodes->refused) { return 0; } last=entry; previous=key;\n                    }\n                    table_sequence_fill_end(&fill);\n                }\n", g.sym(n, "key_read"), n, g.sym(n, "read_key"), dst, dst, g.sym(n, "key_compare"), n, g.retainMapIndex(), g.api(n, "load_body"))
+	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),%d);\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", dst, n, g.sequenceAlign(f))
+	g.pf("                    for(i=0;i<count;i++) {\n                        TableReader item; %s key; %s * entry; int order;\n                        if(!table_reader_span(&sub,&item)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n                        key=%s(item);\n                        if(key.widened && !widened) { widened=1; r->report->widened++; }\n                        if(key.kind_bad) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; memset(&%s,0,sizeof(%s)); break; }\n                        if(key.damaged) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n                        if(key.over) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; continue; }\n                        order=last ? %s(previous.key,key.key) : -1;\n                        if(order>0) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n                        if(order==0) { entry=last; }\n                        else { entry=(%s *)table_sequence_fill_next(&fill); }\n                        if(entry==NULL) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n                        %s%s(&item,entry); if(r->nodes!=NULL && r->nodes->refused) { return 0; } if(order==0) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; } last=entry; previous=key;\n                    }\n                    table_sequence_fill_end(&fill);\n                }\n", g.sym(n, "key_read"), n, g.sym(n, "read_key"), dst, dst, g.sym(n, "key_compare"), n, g.retainMapIndex(), g.api(n, "load_body"))
 }
 
 func (g *tableGen) emitMapIndex(owner *ir.Struct, f *ir.Field, result, found, keyParam, keyArg string) {
@@ -205,8 +241,14 @@ func (g *tableGen) emitMapIndex(owner *ir.Struct, f *ir.Field, result, found, ke
 	}
 	g.pf("; }\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s(const TableMap * map)\n{ int32_t slots=table_map_index_slots(map->count); return slots ? (int64_t)slots*(int64_t)sizeof(int32_t) : -1; }\n", g.api(surface, "index_measure"))
-	g.pf("static SCHEMA_UNUSED TableMapIndex %s(const TableMap * map,void * storage,int64_t bytes)\n{\n    TableMapIndex index={NULL,0,0}; int32_t i,slots=table_map_index_slots(map->count); const %s * entries;\n    if(!slots || storage==NULL || ((uintptr_t)storage & (SCHEMA_TABLE_ALIGNOF(int32_t)-1)) || bytes<(int64_t)slots*(int64_t)sizeof(int32_t)) { return index; }\n    index.slots=(int32_t *)storage; index.capacity=slots; memset(storage,0,(size_t)slots*sizeof(int32_t));\n    entries=map->items.value ? (const %s *)((const uint8_t *)(const void *)&map->items+map->items.value) : NULL;\n    if(map->count && entries==NULL) { return index; }\n    for(i=0;i<map->count;i++) { int32_t at=(int32_t)(%s(%s(entries+i))&(uint64_t)(slots-1)); while(index.slots[at]) { at=(at+1)&(slots-1); } index.slots[at]=i+1; }\n    index.good=1; return index;\n}\n", g.api(surface, "index"), n, n, g.sym(n, "hash"), g.sym(n, "key"))
-	g.pf("static SCHEMA_UNUSED %s %s(const TableMapIndex * index,const TableMap * map,%s key)\n{\n    int32_t at,probe; %s lookup=%s; const %s * entries;\n    if(index==NULL || !index->good) { return %s(map,key); }\n    entries=map->items.value ? (const %s *)((const uint8_t *)(const void *)&map->items+map->items.value) : NULL; if(entries==NULL) { return NULL; }\n    at=(int32_t)(%s(lookup)&(uint64_t)(index->capacity-1));\n    for(probe=0;probe<index->capacity;probe++) { int32_t slot=index->slots[at]; const %s * entry;\n        if(slot<=0 || slot>map->count) { return NULL; } entry=entries+slot-1;\n        if(%s(%s(entry),lookup)==0) { return %s; } at=(at+1)&(index->capacity-1);\n    } return NULL;\n}\n", result, g.api(surface, "index_find"), keyParam, g.mapKeyType(f), keyArg, n, g.api(surface, "find"), n, g.sym(n, "hash"), n, g.sym(n, "key_compare"), g.sym(n, "key"), found)
+	keyAtI := g.sym(n, "key") + "(entries+i)"
+	keyAtEntry := g.sym(n, "key") + "(entry)"
+	if ir.MapKeyField(f).Type.TextUnbounded() {
+		keyAtI = g.sym(n, "key") + "(NULL,entries+i)"
+		keyAtEntry = g.sym(n, "key") + "(NULL,entry)"
+	}
+	g.pf("static SCHEMA_UNUSED TableMapIndex %s(const TableMap * map,void * storage,int64_t bytes)\n{\n    TableMapIndex index={NULL,0,0}; int32_t i,slots=table_map_index_slots(map->count); const %s * entries;\n    if(!slots || storage==NULL || ((uintptr_t)storage & (SCHEMA_TABLE_ALIGNOF(int32_t)-1)) || bytes<(int64_t)slots*(int64_t)sizeof(int32_t)) { return index; }\n    index.slots=(int32_t *)storage; index.capacity=slots; memset(storage,0,(size_t)slots*sizeof(int32_t));\n    entries=map->items.value ? (const %s *)((const uint8_t *)(const void *)&map->items+map->items.value) : NULL;\n    if(map->count && entries==NULL) { return index; }\n    for(i=0;i<map->count;i++) { int32_t at=(int32_t)(%s(%s)&(uint64_t)(slots-1)); while(index.slots[at]) { at=(at+1)&(slots-1); } index.slots[at]=i+1; }\n    index.good=1; return index;\n}\n", g.api(surface, "index"), n, n, g.sym(n, "hash"), keyAtI)
+	g.pf("static SCHEMA_UNUSED %s %s(const TableMapIndex * index,const TableMap * map,%s key)\n{\n    int32_t at,probe; %s lookup=%s; const %s * entries;\n    if(index==NULL || !index->good) { return %s(map,key); }\n    entries=map->items.value ? (const %s *)((const uint8_t *)(const void *)&map->items+map->items.value) : NULL; if(entries==NULL) { return NULL; }\n    at=(int32_t)(%s(lookup)&(uint64_t)(index->capacity-1));\n    for(probe=0;probe<index->capacity;probe++) { int32_t slot=index->slots[at]; const %s * entry;\n        if(slot<=0 || slot>map->count) { return NULL; } entry=entries+slot-1;\n        if(%s(%s,lookup)==0) { return %s; } at=(at+1)&(index->capacity-1);\n    } return NULL;\n}\n", result, g.api(surface, "index_find"), keyParam, g.mapKeyType(f), keyArg, n, g.api(surface, "find"), n, g.sym(n, "hash"), n, g.sym(n, "key_compare"), keyAtEntry, found)
 }
 
 func (g *tableGen) retainMapIndex() string {

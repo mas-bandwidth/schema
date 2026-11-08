@@ -163,7 +163,7 @@ func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 func TestMapCarriers(t *testing.T) {
 	// squirrel registers from compiler/target_squirrel_maps.go, which carries
 	// no build tag, so it is a carrier in every build.
-	want := withGooseLeg([]string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust", "squirrel"})
+	want := withMooLeg(withGooseLeg([]string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust", "squirrel"}))
 	if !slices.Equal(gooseLegOrdered(mapTargets), want) {
 		t.Fatalf("mapTargets = %v, want %v", mapTargets, want)
 	}
@@ -194,7 +194,7 @@ func TestMapRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseMaps accepted a map-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{gooseLegSpelled("a map is c, cpp, cs, dart, elixir, go, java, js, lobster, lua, luau, rust and squirrel only today"), "Fleet.ships", "--lang cpp", "--lang squirrel"} {
+	for _, want := range []string{mooLegSpelled(gooseLegSpelled("a map is c, cpp, cs, dart, elixir, go, java, js, lobster, lua, luau, rust and squirrel only today")), "Fleet.ships", "--lang cpp", "--lang squirrel"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}
@@ -266,14 +266,10 @@ func TestMapEntryIsNotARoot(t *testing.T) {
 	}
 }
 
-// TestToolRefusesMapsByName: the tool's WIRE and TEXT halves carry maps now
-// (docs/SPEC-TABLES.md §2.8), and its COOK half does not. So the cook and
-// uncook surfaces refuse a map-bearing unit BY NAME rather than laying out an
-// entry array they have no placement for. Without the refusal a caller gets a
-// cook whose region is short of the entries, which is worse than a diagnostic.
-// `cook-check` refuses at the SLOT instead, where its scan meets one, and
-// internal/tablecook's TestCookCheckMapSlotRefusedByName holds that.
-func TestToolRefusesMapsByName(t *testing.T) {
+// TestToolCooksAMapBearingUnit: the tool's COOK and UNCOOK halves carry maps
+// (docs/SPEC-TABLES.md §2.8, §7.6), so an empty file is refused for the
+// FILE's reason, never for the construct: both surfaces reach their engines.
+func TestToolCooksAMapBearingUnit(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
 	c := New()
 	surfaces := map[string]func() error{
@@ -284,25 +280,11 @@ func TestToolRefusesMapsByName(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			err := call()
 			if err == nil {
-				t.Fatalf("%s accepted a map-bearing unit — it must refuse by name", name)
+				t.Fatalf("%s accepted an empty file", name)
 			}
-			for _, want := range []string{"Fleet.ships", "schema#380", "cpp"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("%s's refusal does not name %q: %v", name, want, err)
-				}
-			}
-			if strings.Contains(err.Error(), "framing") && !strings.Contains(err.Error(), "framing damage rather than") {
-				t.Errorf("%s blamed the framing: %v", name, err)
+			if strings.Contains(err.Error(), "declares a map") {
+				t.Errorf("%s refused a map-bearing unit by construct rather than reading the file: %v", name, err)
 			}
 		})
-	}
-}
-
-// TestToolTakesAMapFreeUnit: the refusal above is the CONSTRUCT's and not a
-// tax on every unit — a map-free one reaches the engines exactly as it did.
-func TestToolTakesAMapFreeUnit(t *testing.T) {
-	u := unitFromSource(t, optionalArraySrc)
-	if err := refuseToolMaps(u); err != nil {
-		t.Fatalf("the tool refused a map-free unit: %v", err)
 	}
 }

@@ -454,6 +454,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x float32 | min = 1.0, max = 1.00000001, resolution = 0.000000001 }\n"},
 		{name: "resolution collapses to zero at float32", want: "collapses to zero at float32",
 			src: "package t\ntype T { x float32 | min = 0.0, max = 1.0, resolution = 1e-46 }\n"},
+		{name: "top quantization step dequantizes to an infinity", want: "dequantizes past the largest float32",
+			src: "package t\ntype Edge { x float32 = 30423614405477505635920876929024.0 | min = 30423614405477505635920876929024.0, max = 340282346638528859811704183484516925440.0, resolution = 1e36 }\n"},
 
 		// ---- package names that cannot compile (the compile fuzzer's
 		// `package exit` specimen). Without the rule, the
@@ -714,6 +716,10 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		// and beside a table alike: the claim is the registry's list and
 		// nothing wider, so a name that merely starts with the same word is
 		// untouched (docs/SPEC-TABLES.md §11).
+		// THE TOP STEP AT THE LARGEST FLOAT32 IS FINITE from a zero min: the
+		// finite-decode refusal reaches only a top step that rounds past it.
+		{name: "a compressed float whose top step is the largest float32",
+			src: "package t\ntype Edge { x float32 | min = 0.0, max = 340282346638528859811704183484516925440.0, resolution = 1e36 }\n"},
 		{name: "near-miss spellings of the table runtime's names",
 			src: "package t\nconst tableJsonMaxDepths = 5\ntype tableJsonInput { n int32 }\ntype TableReports { n int32 }\n"},
 		// THE BITS-ENTRY CLAIM IS EXACT (schema#584): read_frame_bits is

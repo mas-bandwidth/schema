@@ -16,17 +16,20 @@ public final class BenchPacketRetain {
     // loss, never retained silently.
     public static BenchPacketVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return BenchPacketVariable.load(data, report);
         }
         int[] path = new int[128];
+        retain.used = 0;
+        retain.idUsed = 0;
+        retain.nodeKeys.clear();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
         }
-        retain.used = 0;
-        retain.idUsed = 0;
-        retain.nodeKeys.clear();
         BenchPacketVariable.Value v = new BenchPacketVariable.Value();
         report.rootTypeId = BenchPacketVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
@@ -63,6 +66,9 @@ public final class BenchPacketRetain {
         }
         readFieldsRetain(r, v, nt, retain, report, path, 0);
         if (report.refused) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
         TableVariable.Measure measure = new TableVariable.Measure();
@@ -71,15 +77,37 @@ public final class BenchPacketRetain {
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
             }
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
+        nt.from = 1;
         BenchPacketVariable.resolveNodes(v, nt, report);
         if (nt.recs != null && !nt.bad) {
-            for (TableVariable.NodeRecord rec : nt.recs) {
-                if (rec.table != null)
+            for (int i = 0; i < nt.recs.length; i++) {
+                TableVariable.NodeRecord rec = nt.recs[i];
+                if (rec.table != null) {
+                    nt.from = i + 2;
                     BenchPacketVariable.resolveNodePointers(
                             rec.table, rec.typeId, nt, v, BenchPacketVariable.TYPE_ID, report);
+                }
             }
+        }
+        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
+        if (report.malformed) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
+        }
+        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
+        if (TableVariable.cyclic(nt)) {
+            report.malformed = true;
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
         }
         return v;
     }
@@ -362,6 +390,10 @@ public final class BenchPacketRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.bits7 & 0xffffffffL) > 127L) {
+                        v.bits7 = (int) 127L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -383,6 +415,10 @@ public final class BenchPacketRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.bits13 & 0xffffffffL) > 8191L) {
+                        v.bits13 = (int) 8191L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -413,6 +449,10 @@ public final class BenchPacketRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.bits23 & 0xffffffffL) > 8388607L) {
+                        v.bits23 = (int) 8388607L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

@@ -1,0 +1,123 @@
+package gotable
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+)
+
+// TestJsonIllFormedUTF8RefusedBothWays pins docs/SPEC-TABLES.md §16.3 and
+// §16.14 (W0): the generated Go text writer refuses ill-formed UTF-8 in narrow
+// string storage, measure and write alike, and the reader refuses every
+// ill-formed UTF-8 sequence with string_not_utf8 and Malformed.
+func TestJsonIllFormedUTF8RefusedBothWays(t *testing.T) {
+	t.Parallel()
+
+	slowtest.Gate(t, "the generated Go runtime")
+
+	files, err := Generate(goUnit(t, jsonFffdSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
+	files["fffd_test.go"] = []byte(jsonFffdProbe)
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-v", ".")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generated runtime: %v\n%s", err, out)
+	}
+}
+
+const jsonFffdSchema = `package probe
+
+fixed table Root {
+	s string(16)
+}
+`
+
+const jsonFffdProbe = `package probe
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+func TestReaderRefusesIllFormedUTF8(t *testing.T) {
+	illFormed := []struct {
+		name string
+		raw  []byte
+	}{
+		{"E2_82_41", []byte{0xe2, 0x82, 0x41}},
+		{"F0_80_80_80", []byte{0xf0, 0x80, 0x80, 0x80}},
+		{"ED_A0_80", []byte{0xed, 0xa0, 0x80}},
+		{"C0_AF", []byte{0xc0, 0xaf}},
+		{"F4_90_80_80", []byte{0xf4, 0x90, 0x80, 0x80}},
+		{"FF", []byte{0xff}},
+	}
+	for _, tc := range illFormed {
+		text := append(append([]byte("{\"s\":\""), tc.raw...), []byte("\"}")...)
+		var dst Root
+		var rep TableReport
+		if RootFromJSON(&dst, text, &rep) {
+			t.Fatalf("reader %s: RootFromJSON accepted ill-formed UTF-8", tc.name)
+		}
+		if !(rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") || !strings.HasPrefix(rep.Reason, "string_not_utf8") {
+			t.Fatalf("reader %s: report = %+v, want Malformed with string_not_utf8", tc.name, rep)
+		}
+	}
+
+	// Well-formed E2 82 AC (U+20AC) reads cleanly.
+	var dst Root
+	var rep TableReport
+	if !RootFromJSON(&dst, []byte("{\"s\":\"\xe2\x82\xac\"}"), &rep) || (rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") {
+		t.Fatalf("reader E2_82_AC: RootFromJSON refused well-formed UTF-8: %+v", rep)
+	}
+	if got := dst.S[:dst.SLength]; !bytes.Equal(got, []byte{0xe2, 0x82, 0xac}) {
+		t.Fatalf("reader E2_82_AC: got %x, want e282ac", got)
+	}
+}
+
+func TestWriterRefusesIllFormedUTF8(t *testing.T) {
+	cases := []struct {
+		name      string
+		raw       []byte
+		illFormed bool
+	}{
+		{"E2_82_41", []byte{0xe2, 0x82, 0x41}, true},
+		{"F0_80_80_80", []byte{0xf0, 0x80, 0x80, 0x80}, true},
+		{"ED_A0_80", []byte{0xed, 0xa0, 0x80}, true},
+		{"C0_AF", []byte{0xc0, 0xaf}, true},
+		{"F4_90_80_80", []byte{0xf4, 0x90, 0x80, 0x80}, true},
+		{"FF", []byte{0xff}, true},
+		{"E2_82_AC", []byte{0xe2, 0x82, 0xac}, false},
+	}
+	for _, tc := range cases {
+		var src Root
+		copy(src.S[:], tc.raw)
+		src.SLength = int32(len(tc.raw))
+		var buf [256]byte
+		n := RootToJSON(&src, buf[:])
+		measure := RootToJSONMeasure(&src)
+		if tc.illFormed {
+			if n != -1 || measure != -1 {
+				t.Fatalf("writer %s: write %d, measure %d; storage that is not text refuses both", tc.name, n, measure)
+			}
+			continue
+		}
+		out := buf[:n]
+		if want := "\"s\": \"" + string(tc.raw) + "\""; !bytes.Contains(out, []byte(want)) {
+			t.Fatalf("writer %s: output %q missing %q", tc.name, out, want)
+		}
+	}
+}
+`

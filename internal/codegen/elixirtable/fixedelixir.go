@@ -906,10 +906,13 @@ func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, live node) {
 	}
 	d := g.leafDec(f, "e")
 	if d.count == nil {
-		out.stmt("l_"+v, forNode{gen: fmt.Sprintf("<<%s <- %s>>", d.spec, "b_"+v), body: d.wrap})
+		run := "b_" + v
 		if f.Array == ir.ArrayCounted {
-			out.stmt("l_"+v, call("Enum.take", raw("l_"+v), live))
+			// Slice before decoding: an unused float slot may contain any
+			// bits, including a NaN that the live finite reader must refuse.
+			run = fmt.Sprintf("binary_part(%s, 0, %d * %s)", run, elem, live.flat())
 		}
+		out.stmt("l_"+v, forNode{gen: fmt.Sprintf("<<%s <- %s>>", d.spec, run), body: d.wrap})
 		out.field(f.Name, raw("l_"+v))
 		return
 	}
@@ -1747,6 +1750,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # THE RETIRED HASHES and the operator's own sentence for each, which is what\n")
 	g.pf("  # `:layout_unsupported` means in words.\n")
 	g.pf("  @%s_retired [%s]\n\n", snake, strings.Join(retired, ", "))
+	writerBounds := g.emitWriterBounds(st, snake, lineage, hash)
 
 	g.pf("  def %s_fixed_body_bytes, do: @%s_body_bytes\n", snake, snake)
 	g.pf("  def %s_fixed_record_bytes, do: @%s_record_bytes\n", snake, snake)
@@ -1765,6 +1769,9 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  def %s_fixed_measure(count) do\n", snake)
 	head := fmt.Sprintf("R.file_header_bytes() + byte_size(@%s_layout) +", snake)
 	tail := fmt.Sprintf("count * @%s_record_bytes", snake)
+	if st.Integrity != "" {
+		tail += " + 4"
+	}
 	if fits(4, 0, head+" "+tail) {
 		g.pf("    %s %s\n", head, tail)
 	} else {
@@ -1786,12 +1793,21 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 		fmt.Sprintf("@%s_layout::binary", snake),
 	}}, 4))
 	g.emitLines([]string{""})
-	g.pf("    R.each(values, head, fn value, acc ->\n")
-	g.pf("      %s\n", call(snake+"_fixed_write_into", raw("value"), rawf("<<acc::binary, @%s_hash::little-unsigned-64>>", snake)).render(6, 6, 0))
-	g.pf("    end)\n")
+	indent := 4
+	if st.Integrity != "" {
+		g.pf("    data =\n")
+		indent = 6
+	}
+	pad := strings.Repeat(" ", indent)
+	g.pf("%sR.each(values, head, fn value, acc ->\n", pad)
+	g.pf("%s  %s\n", pad, call(snake+"_fixed_write_into", raw("value"), rawf("<<acc::binary, @%s_hash::little-unsigned-64>>", snake)).render(indent+2, indent+2, 0))
+	g.pf("%send)\n", pad)
+	if st.Integrity != "" {
+		g.pf("\n    R.integrity_seal(data)\n")
+	}
 	g.pf("  end\n\n")
 
-	g.emitLoad(st, snake)
+	g.emitLoad(st, snake, writerBounds)
 }
 
 // emitLoad prints the root's reader: the form byte, the layout, the plan the
@@ -1799,7 +1815,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 // path for a record this build wrote — the identity plan is data, and the same
 // `R.run` walks it (Glenn, 2026-09-10: "one codepath always, whether version
 // matches or not"). The verdict is a tagged tuple and never an exception.
-func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
+func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("  @doc \"\"\"\n")
 	g.pf("  Read a form-3 FILE of %s records.\n\n", st.Name)
 	g.pf("  `{:ok, values, report}` or `{:error, reason, report}`, the reason BY NAME.\n")
@@ -1809,6 +1825,15 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  another, and the only thing that differs is which plan it was handed.\n")
 	g.pf("  \"\"\"\n")
 	g.pf("  def %s_fixed_load(data, opts \\\\ []) when is_binary(data) do\n", snake)
+	if st.Integrity != "" {
+		g.pf("    with {:ok, body} <- R.integrity_open(data, 3) do\n")
+		g.pf("      %s_fixed_load_raw(body, opts)\n", snake)
+		g.pf("    else\n      {:error, :integrity_mismatch} ->\n")
+		g.pf("        report = %%{R.report() | malformed: true}\n")
+		g.pf("        {:error, :integrity_mismatch, Map.put(report, :reason, \"integrity_mismatch\")}\n")
+		g.pf("    end\n  end\n\n")
+		g.pf("  defp %s_fixed_load_raw(data, opts) do\n", snake)
+	}
 	g.pf("    report = R.report()\n\n")
 	g.pf("    # A FORM BYTE THIS BUILD DOES NOT CARRY IS A REFUSAL BY NAME and never\n")
 	g.pf("    # damage: nothing is decoded and no counter moves. The registry is\n")
@@ -1858,16 +1883,24 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  defp %s_fixed_lane(i, records, hash, report, cap, bcap, copy) do\n", snake)
 	g.pf("    case R.lineage_lane(__MODULE__, :%s, i) do\n", snake)
 	g.pf("      :identity ->\n")
-	g.pf("        %s\n", call(snake+"_fixed_run",
-		rawf("@%s_plan", snake), rawf("@%s_body_bytes", snake), raw("records"), raw("hash"),
-		raw("report"), raw("copy"), raw("bcap"), raw("{0, 0}")).render(8, 8, 0))
+	identityArgs := []node{rawf("@%s_plan", snake), rawf("@%s_body_bytes", snake), raw("records"), raw("hash"),
+		raw("report"), raw("copy"), raw("bcap"), raw("{0, 0}")}
+	laneArgs := []node{raw("plan"), raw("size"), raw("records"), raw("hash"), raw("report"), raw("copy"),
+		raw("bcap"), raw("{u, k}")}
+	if writerBounds {
+		// THE LANE'S WRITER RANGES RIDE WITH ITS CENSUS: both are facts of the
+		// lineage entry the file selected, fixed when the build laid it down.
+		identityArgs[len(identityArgs)-1] = raw("{0, 0, []}")
+		laneArgs[len(laneArgs)-1] = rawf("{u, k, %s_fixed_writer_bounds(i)}", snake)
+	}
+	g.pf("        %s\n", call(snake+"_fixed_run", identityArgs...).render(8, 8, 0))
 	g.pf("\n")
 	g.pf("      {:ok, _plan, _size, made, _u, _k} when made > cap ->\n")
 	g.pf("        # THE DECLARED CAPACITY A BUILD HOLDS AN ENTRY TO IS REAL (§5.9 #4) and\n")
 	g.pf("        # the NAME is the contract (§5.9 #5).\n")
 	g.pf("        {:error, :plan_too_large, report}\n\n")
 	g.pf("      {:ok, plan, size, _made, u, k} ->\n")
-	g.pf("        %s_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k})\n\n", snake)
+	g.pf("        %s\n\n", call(snake+"_fixed_run", laneArgs...).render(8, 8, 0))
 	g.pf("      {:error, why} ->\n")
 	g.pf("        {:error, why, report}\n")
 	g.pf("    end\n")
@@ -1877,7 +1910,11 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  # a byte is landed. Neither plan clamps a ranged integer: the generated\n")
 	g.pf("  # projection holds the bound after the loop, the same pass for either plan.\n")
 	g.pf("  defp %s_fixed_run(plan, size, records, hash, report, copy, bcap, census) do\n", snake)
-	g.pf("    {census_u, census_k} = census\n\n")
+	if writerBounds {
+		g.pf("    {census_u, census_k, bounds} = census\n\n")
+	} else {
+		g.pf("    {census_u, census_k} = census\n\n")
+	}
 	g.pf("    # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,\n")
 	g.pf("    # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs\n")
 	g.pf("    # first and owns the ragged tail, so a `rest` that is not a whole number\n")
@@ -1900,8 +1937,16 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 		g.pf("            {image, report} =\n")
 		g.pf("              R.run(plan, R.detach(body, copy), @%s_prefill, report)\n\n", snake)
 	}
-	g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
-	g.pf("            {value, R.damaged(R.clamped(report, c), m)}\n")
+	if writerBounds {
+		// THE WRITER'S RANGE, THEN THIS READER'S (§4.6): the lane's own
+		// ranges on the image, then the projection's clamp.
+		g.pf("            {image, w} = R.writer_bounds(image, bounds)\n")
+		g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
+		g.pf("            {value, R.damaged(R.clamped(report, c + w), m)}\n")
+	} else {
+		g.pf("            {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
+		g.pf("            {value, R.damaged(R.clamped(report, c), m)}\n")
+	}
 	g.pf("          end)\n\n")
 	g.pf("        # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that\n")
 	g.pf("        # RETURNS (§5.9 #6): §5.4 says once per endpoint and never per record, and a\n")

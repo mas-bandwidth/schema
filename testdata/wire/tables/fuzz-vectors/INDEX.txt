@@ -28,29 +28,27 @@
 # 24845619678, on Certify run 33887252419.
 stream_count_past_body streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_count_past_body.bin
 
-# THE FORGED POINTER CYCLE (§3.1, §14 note 9; schema#535, filed on #521 as
-# G-19). One flipped bit in a three-node ListNode chain turns the middle node's
-# `next` index from 3 into 2, which is that node's own index. The wire loads,
-# the report is all zero, and the loaded node points at itself.
+# THE FORGED POINTER CYCLE (§3.1, §4; schema#535, filed on #521 as G-19). One
+# flipped bit in a three-node ListNode chain turns the middle node's `next`
+# index from 3 into 2, which is that node's own index.
 #
-# THAT IS THE CONTRACT, NOT A HOLE, and this vector pins it as one. §3.1: "A
-# pointer field's payload is a NUMBER: it is bounds-checked and stored, never
-# followed... Load itself is safe on any input: it scans, it terminates, it
-# fabricates nothing. What a cyclic structure costs is paid by whatever WALKS
-# it." The index names a node that exists and whose type matches, so no §4
-# event happened and no counter may move. §14 note 9 prices the reader-side
-# acyclicity check this version does not spend.
-#
-# The vector's job here is the REFERENCE AND THE ORACLE AGREEING on that: both
-# must accept it with a silent report, and a port that starts following
-# references — or one that stops bounds-checking the index — parts from the
-# other and this seeks the disagreement rather than searching for it. The
-# walking consumers' half of the contract is held beside it, in Go, by
-# internal/tablewire's TestForgedPointerCycleLoadsSilentlyAndRefusesEveryWalk:
-# the text export and a re-encode each refuse the loaded instance BY NAME, and
-# each refusal returns rather than recursing away. Its three negative controls
-# are the two guards reverted and a counter added on the load path.
+# A CYCLIC WIRE IS DAMAGE (Glenn, 2026-10-31: "It's perhaps the MOST OBVIOUS
+# attack somebody would do on this protocol!"), so the whole load is refused as
+# `malformed`. The vector's job here is the REFERENCE AND THE ORACLE AGREEING
+# on that refusal. internal/tablewire's TestForgedPointerCycleIsDamage holds the
+# engine's half.
 pointer_self_cycle graphdemo Scene    testdata/wire/tables/fuzz-vectors/pointer_self_cycle.bin
+
+# A CYCLE THE ROOT NEVER REACHES IS STILL A CYCLIC WIRE (§3.1, §4). The root's
+# head is null, so ListNode 2 and ListNode 3 are orphans, and ListNode 2's
+# `next` names ListNode 2 itself. The vertices of the cycle check are the root
+# and EVERY record the load placed, reached or not, so the whole load is
+# refused as `malformed`: Go's decodeState.cyclic, and the C++ reference's and
+# the C and Go legs' Kahn pass over the node directory. Its twin, the same wire
+# with that pointer back at ListNode 3, holds the same two orphans and loads.
+# Found as graphdemo.Scene graph_deep on the Squirrel builder arm: Lua and
+# Squirrel checked only the graph the root reaches, and loaded it.
+pointer_orphan_cycle graphdemo Scene  testdata/wire/tables/fuzz-vectors/pointer_orphan_cycle.bin
 
 # ILL-FORMED TEXT ON A MESSAGE BODY (§3, §3.3; schema#620). §3's one content
 # rule holds over a form-`2` body unchanged in what it rejects, and §3.3 says
@@ -215,3 +213,130 @@ arm_array_count_past_arm_length messagedemo ToolMessage testdata/wire/tables/fuz
 # Found by the index pass (#33, corpus seed blob_small) of the retention arm at
 # seed 24845619678, on tables-cs-release on hetzner1.
 retain_blob_shared_refused blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_blob_shared_refused.bin
+
+# Retained unknown unions carry an explicit arm frame, even for fixed scalars.
+# Dart previously consumed the frame length as payload and lost the field.
+retain_union_arm_frame streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_union_arm_frame.bin
+
+# Retaining readers must recognize every reachable byte-blob type like plain readers.
+# Dart omitted bytesBlob initialization and dropped valid nodes as unknown.
+retain_byte_blob_reachability blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_byte_blob_reachability.bin
+
+# Two empty string records have distinct incoming identity despite canonical String values.
+# Dart formerly merged them and refused the valid graph as blob_shared.
+distinct_empty_string_blobs blobdemo Catalog testdata/wire/tables/fuzz-vectors/distinct_empty_string_blobs.bin
+
+# An unknown enum in a counted list is an excluded retained class.
+# Dart counted unknown but omitted retain_lost for this list element.
+retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain_enum_list_unknown.bin
+
+# Retained records in nodes no longer reached by the save count retain_lost.
+# Dart saved the right bytes but omitted the unvisited retained-record count.
+retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retain_unreachable_record.bin
+
+# Replaced map entries discard their retained bodies without reporting loss.
+# The discarded body and an unreachable pointer node have different ownership.
+retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin
+# Final widened key occurrence replaces an earlier incompatible key kind.
+# The neutral oracle and C++ previously retained the earlier mismatch flag.
+map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
+# A malformed child ends there, and its list reads on to a later element
+# carrying a non-finite float, which refuses the read (§4).
+list_damaged_child_reads_on listdemo Save testdata/wire/tables/fuzz-vectors/list_damaged_child_reads_on.bin
+
+# Reserved node-table transport has exactly kind12; a different kind is damage.
+node_table_wrong_kind featurewitnesses ArrayRoot testdata/wire/tables/fuzz-vectors/node_table_wrong_kind.bin
+
+# A shortened union table body must not decode its truncated float payload.
+arm_length_empty_float tabledemo RootConfig testdata/wire/tables/fuzz-vectors/arm_length_empty_float.bin
+
+# Length bounds are checked before cursor addition; huge signed lengths cannot wrap.
+wire_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/wire_length_overflow.bin
+node_table_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_length_overflow.bin
+node_table_negative_length graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_negative_length.bin
+
+# An enum array reference above the trailing id-table count is framing damage.
+enum_array_ref_outside tabledemo RootConfig testdata/wire/tables/fuzz-vectors/enum_array_ref_outside.bin
+
+# An unknown enum variant in a known array slot is excluded retention loss.
+enum_array_foreign_variant tabledemo RootConfig testdata/wire/tables/fuzz-vectors/enum_array_foreign_variant.bin
+
+# A nested union arm retains unknown fields in its selected inner table body.
+retain_nested_union_arm messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_nested_union_arm.bin
+
+# A known numeric union arm widens identically in plain and retaining reads.
+retain_union_arm_widen messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_union_arm_widen.bin
+
+# A keyed scalar element kind widens once and preserves every named slot.
+keyed_element_widen tabledemo KeyedConfig testdata/wire/tables/fuzz-vectors/keyed_element_widen.bin
+inert_byte_array_header streamdemo Feed testdata/wire/tables/fuzz-vectors/inert_byte_array_header.bin
+blob_field_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_field_replaced.bin
+blob_table_owner_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_table_owner_replaced.bin
+union_array_element_kind messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/union_array_element_kind.bin
+
+# Replacing a table array supersedes retained inline records without save loss.
+retain_array_replaced mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_array_replaced.bin
+retain_list_replaced listdemo Save testdata/wire/tables/fuzz-vectors/retain_list_replaced.bin
+retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain_list_maps_replaced.bin
+
+# A map key with an unknown kind is a clean whole-map mismatch, not malformed
+# input. Discovered by the Elixir wire pass; TestPinnedMapKeyKindElixir fails
+# against the pre-admission-scan emitter and passes with the repaired scanner.
+map_key_kind_unknown mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_kind_unknown.bin
+
+# Unknown key fields leave two equal default keys: last wins and duplicate counts.
+map_key_default_duplicate mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_default_duplicate.bin
+
+# UTF-16 NUL is malformed even though the host Unicode converter accepts it.
+wide_text_zero_unit widedemo Caption testdata/wire/tables/fuzz-vectors/wide_text_zero_unit.bin
+
+# A bounded byte count clamps before payload extent checks.
+bytes_count_clamped_prefix backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/bytes_count_clamped_prefix.bin
+
+# A POINTER CYCLE THROUGH NODES THE ROOT REACHES (§3.1, §4). Each is its seed
+# with one pointer's node index lowered to 2 (stream_chain, blob_small,
+# graph_tree), which closes a cycle in the stored pointer graph. A cyclic
+# wire is damage on every read, the builder and retaining reads included: the
+# oracle discards the load as malformed. The Goose load stored the edges and
+# returned the root; its save then refused the data cycle.
+stream_chain_link_cycle streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_chain_link_cycle.bin
+blob_catalog_cycle blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_catalog_cycle.bin
+graph_tree_cycle graphdemo Scene testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin
+
+# A CRC-32C TRAILER THAT DOES NOT MATCH A ONE-BYTE BODY (§2.14). Five bytes as
+# a root that declares integrity = "crc32c": the form byte 1 is the whole
+# body, and its CRC-32C is 0xA016D052, not the trailer's 0x00070401. The read
+# is malformed with integrity_mismatch, nothing decoded and nothing saved. The
+# Goose load never answered: GCC 15 -O2 compiled its bitwise CRC loop into an
+# endless one. Found by the retaining arm at seed 1, pass truncate #5 of
+# feature_full.
+integrity_short_body_mismatch featurewitnesses Root testdata/wire/tables/fuzz-vectors/integrity_short_body_mismatch.bin
+
+# A framed node record with an impossible collection count refuses region sizing.
+node_record_list_count_refusal listdemo Sheet testdata/wire/tables/fuzz-vectors/node_record_list_count_refusal.bin
+
+# An unknown enum-keyed array slot in variable form skips its length-framed element without decoding inside it (§3.2, §6.6).
+unknown_keyed_slot_length_skip tblv2 Cfg testdata/wire/tables/fuzz-vectors/unknown_keyed_slot_length_skip.bin
+
+# THE ID TABLE'S MAXIMUM (§3, THE DISTINCTNESS CHECK IS BOUNDED WORK; F6 of
+# docs/LAYERS/1-framing.md): an empty root under an id table of 4096 distinct
+# entries the reader cannot name, which resolves and counts nothing, and the
+# same with one entry more, which is malformed whatever the buffer holds. The
+# entries are splitmix64 of 1..n, spread as hashed ids are. The Goose load read
+# any count the buffer allowed and proved the entries distinct pairwise, and
+# C#'s LoadMeasure and builder open loaded the variable-root 4097 table. Each
+# pair rides a variable root and a value-only root, so every arm meets it.
+id_table_4096       graphdemo Scene testdata/wire/tables/fuzz-vectors/id_table_4096.bin
+id_table_4097       graphdemo Scene testdata/wire/tables/fuzz-vectors/id_table_4097.bin
+id_table_4096_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4096_value.bin
+id_table_4097_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4097_value.bin
+
+# A POINTER INDEX PAST THE NODE TABLE IS DAMAGE WHERE IT IS READ (§3.1, §4),
+# even in a map entry a later DUPLICATE key replaces whole (§2.8). The first
+# entry of mapdemo.Chunks names node 126 of two; the second repeats its key.
+# The engine resolves each slot while it reads the entry (decodenodes.go
+# resolveCell), so the load is refused as `malformed`. The Lua load queued the
+# slot for later and took the replaced entry's slots out of the queue, so it
+# never met the index and loaded. From mapdemo.Chunks, random #20608 of seed 2.
+map_duplicate_pointer_past_table mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_duplicate_pointer_past_table.bin
+

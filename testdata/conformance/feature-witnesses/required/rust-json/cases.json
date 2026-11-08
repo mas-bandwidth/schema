@@ -1,0 +1,154 @@
+[
+  {
+    "Name": "two_missing",
+    "Root": "RequiredValue",
+    "Input": "{}",
+    "Reason": "missing_required: a, b",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "one_missing",
+    "Root": "RequiredValue",
+    "Input": "{\"b\":0}",
+    "Reason": "missing_required: a",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "named_default",
+    "Root": "RequiredValue",
+    "Input": "{\"a\":0,\"b\":0}",
+    "Reason": "",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "named_wrong_shape",
+    "Root": "RequiredValue",
+    "Input": "{\"a\":[],\"b\":{}}",
+    "Reason": "",
+    "KindMismatch": 2,
+    "Duplicate": 0
+  },
+  {
+    "Name": "duplicate_named",
+    "Root": "RequiredValue",
+    "Input": "{\"a\":4,\"a\":false,\"b\":0}",
+    "Reason": "",
+    "KindMismatch": 1,
+    "Duplicate": 1
+  },
+  {
+    "Name": "body",
+    "Root": "Outer",
+    "Input": "{\"inner\":{}}",
+    "Reason": "missing_required: id",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "list",
+    "Root": "Sequence",
+    "Input": "{\"children\":[{}]}",
+    "Reason": "missing_required: id",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "map",
+    "Root": "Mapping",
+    "Input": "{\"items\":{\"1\":{}}}",
+    "Reason": "missing_required: id",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "pointer",
+    "Root": "Graph",
+    "Input": "{\"child\":{}}",
+    "Reason": "missing_required: id",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "pointer_named",
+    "Root": "Graph",
+    "Input": "{\"child\":{\"&node\":2,\"extra\":0}}",
+    "Reason": "missing_required: id",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "outer_inactive",
+    "Root": "Guarded",
+    "Input": "{\"outer\":false,\"inner\":true}",
+    "Reason": "",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "inner_inactive",
+    "Root": "Guarded",
+    "Input": "{\"outer\":true,\"inner\":false}",
+    "Reason": "",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "both_active",
+    "Root": "Guarded",
+    "Input": "{\"outer\":true,\"inner\":true}",
+    "Reason": "missing_required: req",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "late_guard",
+    "Root": "Guarded",
+    "Input": "{\"inner\":true,\"outer\":true}",
+    "Reason": "missing_required: req",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "named_before_guards",
+    "Root": "Guarded",
+    "Input": "{\"req\":0,\"inner\":true,\"outer\":true}",
+    "Reason": "",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "duplicate_guard_last_false",
+    "Root": "Guarded",
+    "Input": "{\"outer\":true,\"inner\":true,\"inner\":false}",
+    "Reason": "",
+    "KindMismatch": 0,
+    "Duplicate": 1
+  },
+  {
+    "Name": "duplicate_guard_last_true",
+    "Root": "Guarded",
+    "Input": "{\"outer\":true,\"inner\":false,\"inner\":true}",
+    "Reason": "missing_required: req",
+    "KindMismatch": 0,
+    "Duplicate": 1
+  },
+  {
+    "Name": "trailing_damage",
+    "Root": "RequiredValue",
+    "Input": "{}/*",
+    "Reason": "missing_required: a, b",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  },
+  {
+    "Name": "nested_trailing_damage",
+    "Root": "Outer",
+    "Input": "{\"inner\":{}/*",
+    "Reason": "missing_required: id",
+    "KindMismatch": 0,
+    "Duplicate": 0
+  }
+]

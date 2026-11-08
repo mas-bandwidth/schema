@@ -25,22 +25,15 @@
 // THE ARM (<arm>) AND THE ENTRY: `file` is the harness's ordinary run and its
 // --retain and --message runs; `builder` is its --builder run.
 //
-//   file, form 1      every table root. A fixed root always loads and answers
-//                     the measure -1; a variable root answers load_measure
-//                     (region_measure.lobster, Go's FileRegionMeasure), and a
-//                     measure that refuses the framing loads nothing (§6.5).
-//   file, retain 1    the variable roots, through load_retain and save_retain
-//                     with both capacities large (§6.6), the measure as above
-//                     and the two retention counters beside the six.
-//   file, form 2      the fixed message roots, through load_messages_tolerant
-//                     (load_messages_into, so a body the stream stops inside
-//                     keeps what it decoded, as the engine's instance does)
-//                     against the unit's own vocabulary with room for the
-//                     wire's whole batch, body one saved through save_messages
-//                     (§3.3). A variable message root answers 0: its batch
-//                     region (the harness's sizeBatch) is not measured here.
-//   builder, form 1   the variable roots, a mutable file reader held to
-//                     tablewire.Decode with no region preflight.
+//   file, form 1      all file roots through load. The legacy roster label
+//                     names the file family; the actual wire starts with
+//                     form 1 (variable) or form 3 (declared fixed).
+//   file, retain 1    variable roots through load_retain and save_retain.
+//   file, form 2      fixed message roots through a whole-batch read.
+//   builder, form 1   variable roots without region preflight.
+//
+// Every path returns either a complete value or refusal. Allocation measures
+// and read diagnostics may accompany the reply but are not shared verdicts.
 
 import .load
 import .schema_save
@@ -73,7 +66,9 @@ def carried(name:string, form:int, retain:int) -> bool:
         return retain == 0 and not d.variable and schema_rt.is_message_root(name)
     if retain == 1:
         return d.variable
-    return true
+    // load dispatches declared fixed roots through their native Record
+    // codec and validates the actual wire form. No form-1 fallback exists.
+    return form == 1
 
 // put32 and put64 write one little-endian field into the reply buffer
 def put8(b:string, at:int, v:int) -> string:
@@ -135,35 +130,13 @@ def load_one(name:string, form:int, retain:int):
         variable_one(name, data, retain == 1)
         return
     let rep = schema_rt.LoadReport {}
-    let got = schema_rt.load_tolerant(name, data, rep)
-    // A FORM BYTE THIS READER DOES NOT CARRY is the one refusal the verdict
-    // byte names (§3); a collection count past the storage cap stops the read
-    // without refusing the file (the builder's CountRefusal).
-    let form_refused = length(data) >= 1 and data[0] != 1
-    if arm == "builder":
-        // THE BUILDER ARM: loaded is whether the read finished its root body;
-        // a stopped read saves nothing
-        let stopped = rep.stopped
-        if stopped or not got:
-            schema_rt.release(got)
-            reply(record(false, rep, rep.malformed, form_refused, -1, ""))
-            return
-        let n, out = save_answer(got)
-        // the leg owns the graph it loaded and ends it (RELEASE)
-        schema_rt.release(got)
-        reply(record(true, rep, rep.malformed, false, n, out))
+    let got = schema_rt.load(name, data, rep)
+    if not got:
+        reply(record(false, rep, rep.malformed, true, -1, ""))
         return
-    // THE FILE ARM, a fixed root: it always loads. A refused or empty wire
-    // decodes nothing, so what is saved is the value read into, at its
-    // declared defaults.
-    var rec = got
-    if not rec:
-        rec = schema_rt.new_record(schema_rt.table_of(name))
-    let n, out = save_answer(rec)
-    schema_rt.release(rec)
-    // a read that stopped short is damage, except a refusal, which is the
-    // whole answer: nothing decoded, no counter moved (§3)
-    reply(record(true, rep, rep.malformed or (rep.stopped and not form_refused), form_refused, n, out))
+    let n, out = save_answer(got)
+    schema_rt.release(got)
+    reply(record(true, rep, false, false, n, out))
 
 // variable_one is a variable root in the region arms: the measure first,
 // then the load, the plain one or the retaining one
@@ -171,13 +144,15 @@ def variable_one(name:string, data:string, retain:bool):
     let measure, _whole, refused = schema_rt.load_measure(name, data)
     if refused:
         // LOADMEASURE REFUSED THE FRAMING: no region, no root, no counter
-        reply(record_measured(false, schema_rt.LoadReport {}, false, false, -1, retain, -1, ""))
+        reply(record_measured(false, schema_rt.LoadReport {}, false, true, -1, retain, -1, ""))
         return
     let rep = schema_rt.LoadReport {}
-    let form_refused = length(data) >= 1 and data[0] != 1
     if retain:
         let store = schema_rt.Retain { capacity: 1 << 20, id_capacity: 1 << 17 }
         let rec = schema_rt.load_retain(name, data, store, rep)
+        if not rec:
+            reply(record_measured(false, rep, rep.malformed, true, measure, true, -1, ""))
+            return
         let _probe, why = schema_rt.save_reasoned(rec)
         var n = -1
         var out = ""
@@ -187,30 +162,31 @@ def variable_one(name:string, data:string, retain:bool):
             out = schema_rt.save_retain(rec, store, rep)
             n = if length(out) > 0: length(out) else: -1
         schema_rt.release(rec)
-        reply(record_measured(true, rep, rep.malformed or (rep.stopped and not form_refused), form_refused, measure, true, n, out))
+        reply(record_measured(true, rep, false, false, measure, true, n, out))
         return
-    var rec = schema_rt.load_tolerant(name, data, rep)
+    let rec = schema_rt.load(name, data, rep)
     if not rec:
-        rec = schema_rt.new_record(schema_rt.table_of(name))
+        reply(record_measured(false, rep, rep.malformed, true, measure, false, -1, ""))
+        return
     let n, out = save_answer(rec)
     schema_rt.release(rec)
-    reply(record_measured(true, rep, rep.malformed or (rep.stopped and not form_refused), form_refused, measure, false, n, out))
+    reply(record_measured(true, rep, false, false, measure, false, n, out))
 
-// message_one is a fixed message root (§3.3): the batch read against the
-// unit's own vocabulary, body one saved as a batch of one
+// message_one reads and writes the complete batch against the unit vocabulary.
 def message_one(name:string, data:string):
     let rep = schema_rt.LoadReport {}
     let bodies:[schema_rt.Record] = []
     let _count, ok = schema_rt.load_messages_into(name, schema_rt.own_vocabulary(), data, rep, 256, bodies)
-    var body = schema_rt.new_record(schema_rt.table_of(name))
-    if length(bodies) > 0:
-        body = bodies[0]
+    if not ok:
+        assert length(bodies) == 0
+        reply(record(false, rep, rep.malformed, true, -1, ""))
+        return
+    assert length(bodies) > 0
     let saved_rep = schema_rt.LoadReport {}
-    let out, n = schema_rt.save_messages([body], saved_rep)
+    let out, n = schema_rt.save_messages(bodies, saved_rep)
     for(bodies) b:
         schema_rt.release(b)
-    let malformed = rep.malformed or (not ok and not rep.refused)
-    reply(record(true, rep, malformed and not rep.refused, rep.refused, n, out))
+    reply(record(true, rep, false, false, n, out))
 
 while true:
     let line = get_line("")

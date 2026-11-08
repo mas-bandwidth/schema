@@ -1,17 +1,18 @@
 ;;;; tools/roadmap/render.lisp
 ;;;;
-;;;; Deterministic roadmap renderer and validator for Schema.
+;;;; Deterministic roadmap table renderer and validator for Schema.
 ;;;;
-;;;; ROADMAP.md is generated end to end from data: the work graph in
+;;;; The tables in ROADMAP.md are generated from data: the work graph in
 ;;;; docs/roadmap.sexp (one restricted S-expression plist) and the evidence
 ;;;; overlay in docs/roadmap-evidence/*.sexp (one form per task, written by
-;;;; the cards that proved the task). The page's prose, its order of tables
-;;;; and its closing sections are data too (the root form's :page and each
-;;;; roadmap node's :title and :text), so nothing in ROADMAP.md is written by
-;;;; hand. Each table sits between <!-- nova-work:<roadmap-id>:start --> and
-;;;; <!-- nova-work:<roadmap-id>:end -->; tools/roadmap/tally_test.go holds
-;;;; every table to those markers and, where sbcl is installed, holds the
-;;;; committed page to this renderer's output.
+;;;; the cards that proved the task). Everything else on the page (the title,
+;;;; the headings and every paragraph) is Glenn's, written by hand, and this
+;;;; renderer never writes it: each table sits between
+;;;; <!-- nova-work:<roadmap-id>:start --> and <!-- nova-work:<roadmap-id>:end -->,
+;;;; and only the bytes between those markers are rewritten.
+;;;; tools/roadmap/tally_test.go holds every block to a table and its source
+;;;; link, and, where sbcl is installed, holds the committed tables to this
+;;;; renderer's output.
 ;;;;
 ;;;; A cell is ✅ only when every leaf task under its work node is :done, and a
 ;;;; :done task must carry non-empty :evidence. An evidence overlay entry may
@@ -19,14 +20,15 @@
 ;;;; not have, and it is held to the same rule.
 ;;;;
 ;;;; Usage:
-;;;;   sbcl --script tools/roadmap/render.lisp [--check] [--evidence DIR] [roadmap.sexp] [ROADMAP.md]
+;;;;   sbcl --script tools/roadmap/render.lisp [--check] [--require-original-nine] [--evidence DIR] [roadmap.sexp] [ROADMAP.md]
 ;;;;   sbcl --script tools/roadmap/render.lisp --test
 
 (defpackage :roadmap-renderer
   (:use :cl)
   (:export #:main
            #:render-table-string
-           #:render-page-string
+           #:splice-page-string
+           #:outside-markers
            #:update-roadmap-text
            #:apply-evidence-overlay
            #:run-tests))
@@ -535,56 +537,26 @@ name; nil when DIR does not exist."
 
     (get-output-stream-string out)))
 
-;;; Whole-page rendering
+;;; Tables only
 ;;;
 ;;; The root form carries
-;;;   :page (:title "Schema roadmap"
-;;;          :roadmaps ("packet-wire" "fixed-tables" "variable-tables")
-;;;          :closing ((:title "..." :text ("paragraph" ...)) ...))
-;;; and each roadmap node carries :title (its heading) and :text (a paragraph
-;;; string or a list of paragraph strings). Whitespace runs inside a paragraph
-;;; collapse to one blank, so the data may be wrapped freely.
-
-(defun whitespace-char-p (c)
-  (member c '(#\Space #\Tab #\Newline #\Return #\Page)))
-
-(defun flat (s)
-  "S with every run of whitespace collapsed to one blank, trimmed."
-  (let ((out (make-string-output-stream))
-        (pending nil)
-        (started nil))
-    (loop for c across s do
-      (if (whitespace-char-p c)
-          (setf pending t)
-          (progn
-            (when (and pending started)
-              (write-char #\Space out))
-            (setf pending nil started t)
-            (write-char c out))))
-    (get-output-stream-string out)))
-
-(defun paragraphs (text context)
-  "TEXT as a list of flattened paragraphs; a string is one paragraph, a list
-of strings is several, nil is none."
-  (cond
-    ((null text) nil)
-    ((stringp text) (list (flat text)))
-    ((and (listp text) (every #'stringp text)) (mapcar #'flat text))
-    (t (error "~a: :text must be a string or a list of strings, got ~s" context text))))
-
-(defun start-marker (id) (format nil "<!-- nova-work:~a:start -->" id))
-(defun end-marker (id) (format nil "<!-- nova-work:~a:end -->" id))
+;;;   :page (:roadmaps ("packet-wire" "fixed-tables" "variable-tables"))
+;;; and nothing else: the page's headings and prose are Glenn's, written by hand
+;;; in ROADMAP.md, and the data holds cell data and evidence only. A :page key
+;;; other than :roadmaps, or a :text on a roadmap node, is prose in the data and
+;;; is refused.
 
 (defun validate-page (sexp table)
-  "The :page form, checked: a title, roadmap ids that are reachable roadmap
-nodes, and closing sections each with a title and text."
+  "The :page form, checked: only :roadmaps, naming reachable roadmap nodes
+once each, none of which carries :text."
   (let ((page (getf sexp :page))
         (root-id (getf sexp :root)))
     (unless page
-      (error "Root form lacks :page (the page title, the roadmaps in order and the closing sections)"))
+      (error "Root form lacks :page (:roadmaps, the table ids in page order)"))
     (validate-plist-no-duplicates page ":page")
-    (unless (non-blank-string-p (getf page :title))
-      (error ":page lacks a non-empty :title"))
+    (loop for (key nil) on page by #'cddr do
+      (unless (eq key :roadmaps)
+        (error ":page carries ~s; it holds :roadmaps only (headings and prose live in ROADMAP.md, written by hand)" key)))
     (let ((ids (getf page :roadmaps)))
       (unless (and (listp ids) ids (every #'stringp ids))
         (error ":page :roadmaps must be a non-empty list of roadmap ids"))
@@ -596,60 +568,179 @@ nodes, and closing sections each with a title and text."
           (let ((rm (find-reachable-roadmap root-id table id)))
             (unless rm
               (error ":page :roadmaps names ~s, which is no roadmap node reachable from root ~s" id root-id))
-            (unless (non-blank-string-p (getf rm :title))
-              (error "Roadmap ~s lacks a non-empty :title" id))
-            (paragraphs (getf rm :text) (format nil "roadmap ~a" id))))))
-    (let ((closing (getf page :closing)))
-      (unless (listp closing)
-        (error ":page :closing must be a list"))
-      (dolist (section closing)
-        (validate-plist-no-duplicates section ":page :closing section")
-        (unless (non-blank-string-p (getf section :title))
-          (error ":page :closing section lacks a non-empty :title: ~s" section))
-        (unless (paragraphs (getf section :text) ":page :closing section")
-          (error ":page :closing section ~s lacks :text" (getf section :title)))))
+            (when (getf rm :text)
+              (error "Roadmap ~s carries :text; prose lives in ROADMAP.md, written by hand, never in the data" id))))))
     page))
 
-(defun render-page-string (sexp table sexp-path)
-  "The whole ROADMAP.md: title, generated-file notice, one section per roadmap
-in :page order (heading, prose, table between its markers), then the closing
-sections."
-  (let* ((page (validate-page sexp table))
-         (root-id (getf sexp :root))
-         (out (make-string-output-stream)))
-    (format out "# ~a~%~%" (flat (getf page :title)))
-    (format out "<!-- Generated from ~a and ~a~a by tools/roadmap/render.lisp. Do not edit this file: edit the data and run `make roadmap`. -->~%"
-            sexp-path
-            (directory-namestring (pathname sexp-path))
-            (string-right-trim "/" *evidence-subdirectory*))
-    (dolist (id (getf page :roadmaps))
-      (let ((rm (find-reachable-roadmap root-id table id)))
-        (format out "~%## ~a~%" (flat (getf rm :title)))
-        (dolist (p (paragraphs (getf rm :text) id))
-          (format out "~%~a~%" p))
-        (format out "~%~a~%~%~a~%~%~a~%"
-                (start-marker id)
-                (string-trim '(#\Newline #\Space #\Tab) (render-table-string rm table sexp-path))
-                (end-marker id))))
-    (dolist (section (getf page :closing))
-      (format out "~%## ~a~%" (flat (getf section :title)))
-      (dolist (p (paragraphs (getf section :text) (getf section :title)))
-        (format out "~%~a~%" p)))
-    (get-output-stream-string out)))
+;;; Explicit release acceptance; rendering/drift checks remain usable mid-work.
 
-;;; Marker update in ROADMAP.md (the single-block form; kept for callers and
-;;; tests that splice one table into an existing page)
+(defparameter *original-nine-languages*
+  '("cpp" "c" "cs" "go" "rust" "java" "js" "dart" "elixir"))
+
+(defparameter *original-nine-roadmaps*
+  '("packet-wire" "fixed-tables" "variable-tables"))
+
+(defun original-nine-problems (sexp table)
+  "Every unfinished original-nine cell and leaf, plus missing required page
+sections/columns. TABLE is the validated graph after evidence overlays."
+  (let ((page (validate-page sexp table))
+        (memo (make-hash-table :test 'equal))
+        (problems nil))
+    (dolist (id *original-nine-roadmaps*)
+      (unless (member id (getf page :roadmaps) :test #'string=)
+        (push (format nil "Missing required rendered roadmap section ~s" id) problems))
+      (let ((roadmap (find-reachable-roadmap (getf sexp :root) table id)))
+        (if (null roadmap)
+            (push (format nil "Missing required reachable roadmap ~s" id) problems)
+            (dolist (lang *original-nine-languages*)
+              (if (not (assoc lang (getf roadmap :columns) :test #'string=))
+                  (push (format nil "Missing required language ~s in roadmap ~s" lang id) problems)
+                  (dolist (row (getf roadmap :rows))
+                    (let* ((row-id (first row))
+                           (cell (find-if (lambda (c)
+                                            (and (string= row-id (first c))
+                                                 (string= lang (second c))))
+                                          (getf roadmap :cells)))
+                           (work-id (third cell))
+                           (leaves (collect-work-leaves work-id table memo nil 0))
+                           (unfinished
+                             (remove-if
+                              (lambda (leaf)
+                                (let ((task (gethash leaf table)))
+                                  (and (eq (getf task :state) :done)
+                                       (some #'non-blank-string-p (getf task :evidence)))))
+                              leaves)))
+                      (when unfinished
+                        (push (format nil "Unfinished cell ~a/~a/~a (work ~s)" id row-id lang work-id)
+                              problems)
+                        (dolist (leaf unfinished)
+                          (push (format nil "  leaf ~s: state ~s~a"
+                                        leaf (getf (gethash leaf table) :state)
+                                        (if (some #'non-blank-string-p
+                                                  (getf (gethash leaf table) :evidence))
+                                            "" ", missing evidence"))
+                                problems))))))))))
+    (nreverse problems)))
+
+;;; Splicing the tables into ROADMAP.md
+;;;
+;;; make roadmap reads the committed page and rewrites only what sits between
+;;; each <!-- nova-work:<id>:start --> and <!-- nova-work:<id>:end --> pair:
+;;; a blank line, the table and its [Source data] link, a blank line. Every
+;;; byte outside the markers is left exactly as it was.
+
+(defun start-marker (id) (format nil "<!-- nova-work:~a:start -->" id))
+(defun end-marker (id) (format nil "<!-- nova-work:~a:end -->" id))
+
+(defun marker-line-p (line)
+  (let ((prefix "<!-- nova-work:")
+        (suffix " -->"))
+    (and (> (length line) (+ (length prefix) (length suffix)))
+         (string= prefix line :end2 (length prefix))
+         (string= suffix line :start2 (- (length line) (length suffix))))))
+
+(defun line-bounds (text pos)
+  "The start and end (exclusive, before the newline) of the line holding POS."
+  (let ((start (let ((nl (position #\Newline text :end pos :from-end t)))
+                 (if nl (1+ nl) 0)))
+        (end (or (position #\Newline text :start pos) (length text))))
+    (values start end)))
+
+(defun find-marker-line (text marker)
+  "The start of the one line of TEXT that is exactly MARKER; refuses a marker
+that is missing, repeated, or shares its line with other text."
+  (let ((found nil)
+        (from 0))
+    (loop
+      (let ((pos (search marker text :start2 from)))
+        (unless pos (return))
+        (multiple-value-bind (start end) (line-bounds text pos)
+          (unless (and (= start pos) (= end (+ pos (length marker))))
+            (error "~s shares its line with other text" marker))
+          (when found
+            (error "~s appears more than once" marker))
+          (setf found start))
+        (setf from (+ pos (length marker)))))
+    (unless found
+      (error "~s is missing from the page" marker))
+    found))
+
+(defun splice-block (text id table-string)
+  "TEXT with the block ID's contents replaced by TABLE-STRING; everything
+outside the block's two marker lines is returned unchanged."
+  (let* ((start (find-marker-line text (start-marker id)))
+         (inner-start (+ start (length (start-marker id))))
+         (end (find-marker-line text (end-marker id))))
+    (unless (< start end)
+      (error "~s opens after it closes" id))
+    (when (search "<!-- nova-work:" text :start2 inner-start :end2 end)
+      (error "block ~s holds another marker" id))
+    (concatenate 'string
+                 (subseq text 0 inner-start)
+                 (format nil "~%~%~a~%~%"
+                         (string-trim '(#\Newline #\Space #\Tab) table-string))
+                 (subseq text end))))
 
 (defun update-roadmap-text (roadmap-text table-string)
-  (let ((start-pos (search *start-marker* roadmap-text))
-        (end-pos (search *end-marker* roadmap-text)))
-    (unless (and start-pos end-pos (< start-pos end-pos))
-      (error "Markers ~s and ~s not found or in wrong order" *start-marker* *end-marker*))
-    (let* ((prefix-end (+ start-pos (length *start-marker*)))
-           (prefix (subseq roadmap-text 0 prefix-end))
-           (suffix (subseq roadmap-text end-pos))
-           (cleaned-table (string-trim '(#\Newline #\Space #\Tab) table-string)))
-      (format nil "~a~%~%~a~%~%~a" prefix cleaned-table suffix))))
+  "The single-block form: splice TABLE-STRING into the fixed-tables block."
+  (splice-block roadmap-text "fixed-tables" table-string))
+
+(defun outside-markers (text)
+  "TEXT with the contents of every block removed and its marker lines kept:
+the part of the page that is written by hand."
+  (let ((out (make-string-output-stream))
+        (inside nil)
+        (pos 0))
+    (loop while (< pos (length text)) do
+      (let* ((nl (position #\Newline text :start pos))
+             (end (if nl (1+ nl) (length text)))
+             (line (subseq text pos (if nl nl (length text)))))
+        (cond
+          ((marker-line-p line)
+           (write-string (subseq text pos end) out)
+           (setf inside (not (null (search ":start -->" line)))))
+          ((not inside)
+           (write-string (subseq text pos end) out)))
+        (setf pos end)))
+    (get-output-stream-string out)))
+
+(defun page-block-ids (text)
+  "The ids of the start markers in TEXT, in page order."
+  (let ((ids nil)
+        (prefix "<!-- nova-work:")
+        (suffix ":start -->"))
+    (dolist (line (split-lines text))
+      (when (and (marker-line-p line) (search suffix line))
+        (push (subseq line (length prefix) (- (length line) (length suffix))) ids)))
+    (nreverse ids)))
+
+(defun split-lines (text)
+  (let ((lines nil) (pos 0))
+    (loop
+      (let ((nl (position #\Newline text :start pos)))
+        (push (subseq text pos (or nl (length text))) lines)
+        (unless nl (return))
+        (setf pos (1+ nl))))
+    (nreverse lines)))
+
+(defun splice-page-string (existing sexp table sexp-path)
+  "EXISTING with every table block re-rendered from the data, in :page
+order. Refuses a page whose blocks are not exactly the :page roadmaps in
+order, and refuses a result whose hand-written part differs from EXISTING's."
+  (let* ((page (validate-page sexp table))
+         (root-id (getf sexp :root))
+         (ids (getf page :roadmaps))
+         (text existing))
+    (unless (equal (page-block-ids existing) ids)
+      (error "ROADMAP.md carries blocks ~s; the data's :page :roadmaps are ~s"
+             (page-block-ids existing) ids))
+    (dolist (id ids)
+      (setf text (splice-block text id
+                               (render-table-string (find-reachable-roadmap root-id table id)
+                                                    table sexp-path))))
+    (unless (string= (outside-markers text) (outside-markers existing))
+      (error "Splicing changed ROADMAP.md outside the nova-work markers"))
+    text))
 
 (defun load-work-graph (sexp-path evidence-dir)
   "Read the sexp, validate it, apply the evidence overlay. Returns
@@ -663,28 +754,79 @@ sections."
     (multiple-value-bind (files entries) (apply-evidence-directory table evidence-dir)
       (values sexp table files entries))))
 
-(defun render-to-roadmap-file (sexp-path roadmap-path check-only &optional evidence-dir)
+(defun render-to-roadmap-file (sexp-path roadmap-path check-only
+                                &optional evidence-dir require-original-nine)
   (let ((evidence-dir (or evidence-dir (default-evidence-directory sexp-path))))
     (multiple-value-bind (sexp table files entries) (load-work-graph sexp-path evidence-dir)
-      (let ((page (render-page-string sexp table sexp-path))
-            (existing (and (probe-file roadmap-path) (read-file-to-string roadmap-path))))
+      (unless (probe-file roadmap-path)
+        (error "~a not found: the tables are spliced into the hand-written page, which must exist" roadmap-path))
+      (let* ((existing (read-file-to-string roadmap-path))
+             (page (splice-page-string existing sexp table sexp-path))
+             (problems (and require-original-nine (original-nine-problems sexp table))))
+        (when require-original-nine
+          (if problems
+              (progn
+                (format *error-output* "INCOMPLETE: original-nine roadmap acceptance failed~%")
+                (dolist (problem problems)
+                  (format *error-output* "~a~%" problem)))
+              (format t "OK: original-nine roadmap acceptance (all three sections, all required leaves done with evidence)~%")))
         (if check-only
-            (if (and existing (string= existing page))
+            (if (string= existing page)
                 (progn
-                  (format t "OK: ~a is up to date with ~a (~D evidence files, ~D entries)~%"
+                  (format t "OK: the tables in ~a are up to date with ~a (~D evidence files, ~D entries)~%"
                           roadmap-path sexp-path files entries)
-                  0)
+                  (if problems 1 0))
                 (progn
-                  (format *error-output* "DRIFT: ~a differs from the page rendered from ~a; run: make roadmap~%"
+                  (format *error-output* "DRIFT: a table in ~a differs from what ~a renders; run: make roadmap~%"
                           roadmap-path sexp-path)
                   1))
-            (progn
-              (write-string-to-file roadmap-path page)
-              (format t "Rendered ~a from ~a (~D evidence files, ~D entries)~%"
-                      roadmap-path sexp-path files entries)
-              0))))))
+            (if problems
+                1
+                (progn
+                  (write-string-to-file roadmap-path page)
+                  (format t "Spliced the tables into ~a from ~a (~D evidence files, ~D entries)~%"
+                          roadmap-path sexp-path files entries)
+                  0)))))))
 
 ;;; Test Suite
+
+(defun original-nine-test-graph ()
+  "A complete original-nine page with unfinished optional expansion columns."
+  (let ((sections '("packet-wire" "fixed-tables" "variable-tables"))
+        (languages '("cpp" "c" "cs" "go" "rust" "java" "js" "dart" "elixir" "lua"))
+        (nodes nil))
+    (dolist (section sections)
+      (let ((cells nil))
+        (dolist (lang languages)
+          (let ((id (format nil "~a/~a" section lang)))
+            (push (list :id id :type :task
+                        :state (if (string= lang "lua") :todo :done)
+                        :evidence (unless (string= lang "lua") '("executed fixture gate")))
+                  nodes)
+            (push (list "feature" lang id) cells)))
+        (push (list :id section :type :roadmap :title section
+                    :rows '(("feature" "Feature"))
+                    :columns (mapcar (lambda (lang) (list lang lang)) languages)
+                    :cells (nreverse cells))
+              nodes)))
+    (push (list :id "goal" :type :work-set :children sections) nodes)
+    (list :schema 1 :root "goal"
+          :page (list :roadmaps (copy-list sections))
+          :nodes (nreverse nodes))))
+
+(defun original-nine-test-problems (sexp &optional overlays)
+  (let ((table (build-and-validate-node-table (validate-root sexp) (getf sexp :root))))
+    (apply-evidence-overlay table overlays)
+    (original-nine-problems sexp table)))
+
+(defun original-nine-test-node (sexp id)
+  (find id (getf sexp :nodes) :key (lambda (node) (getf node :id)) :test #'string=))
+
+(defun original-nine-test-set (sexp id key value)
+  (setf (getf sexp :nodes)
+        (mapcar (lambda (node)
+                  (if (string= id (getf node :id)) (plist-put node key value) node))
+                (getf sexp :nodes))))
 
 (defun run-tests ()
   (format t "=== Running Roadmap Renderer Validation Test Suite ===~%")
@@ -700,6 +842,101 @@ sections."
                  (error (e)
                    (format t "FAIL: ~a (~a)~%" name e)
                    (incf fail-count)))))
+
+      (test "original nine accepts all three sections and ignores optional expansion TODOs"
+        (lambda ()
+          (when (original-nine-test-problems (original-nine-test-graph))
+            (error "Complete original nine did not pass"))))
+
+      (test "original nine names every unfinished cell and leaf"
+        (lambda ()
+          (let ((sexp (original-nine-test-graph)))
+            (loop for id in '("packet-wire/cpp" "fixed-tables/c" "variable-tables/dart")
+                  for state in '(:todo :doing :unknown) do
+                    (original-nine-test-set sexp id :state state))
+            (let ((problems (original-nine-test-problems sexp)))
+              (unless (= 6 (length problems))
+                (error "Expected three cell and three leaf diagnostics: ~s" problems))
+              (dolist (id '("packet-wire/cpp" "fixed-tables/c" "variable-tables/dart"))
+                (unless (some (lambda (line) (and (search "leaf" line) (search id line))) problems)
+                  (error "Missing unfinished leaf ~a: ~s" id problems)))))))
+
+      (test "original nine descends work sets and reports shared debt for both cells"
+        (lambda ()
+          (let* ((sexp (original-nine-test-graph))
+                 (roadmap (original-nine-test-node sexp "variable-tables")))
+            (push '(:id "shared-debt" :type :task :state :todo) (getf sexp :nodes))
+            (push '(:id "nested" :type :work-set :children ("shared-debt")) (getf sexp :nodes))
+            (push '(:id "both" :type :work-set :children ("nested" "variable-tables/dart"))
+                  (getf sexp :nodes))
+            (dolist (cell (getf roadmap :cells))
+              (when (member (second cell) '("dart" "go") :test #'string=)
+                (setf (third cell) "both")))
+            (let ((problems (original-nine-test-problems sexp)))
+              (unless (and (= 4 (length problems))
+                           (= 2 (count-if (lambda (line) (search "leaf \"shared-debt\"" line)) problems))
+                           (some (lambda (line) (search "variable-tables/feature/dart" line)) problems)
+                           (some (lambda (line) (search "variable-tables/feature/go" line)) problems))
+                (error "Shared nested debt lost a cell or leaf: ~s" problems))))))
+
+      (test "original nine refuses a missing required column even when remaining matrix is complete"
+        (lambda ()
+          (let* ((sexp (original-nine-test-graph))
+                 (roadmap (original-nine-test-node sexp "fixed-tables")))
+            (setf (getf roadmap :columns)
+                  (remove "dart" (getf roadmap :columns) :key #'first :test #'string=)
+                  (getf roadmap :cells)
+                  (remove "dart" (getf roadmap :cells) :key #'second :test #'string=))
+            (unless (equal (original-nine-test-problems sexp)
+                           '("Missing required language \"dart\" in roadmap \"fixed-tables\""))
+              (error "Missing original-nine column escaped")))))
+
+      (test "original nine refuses an unrendered section that remains in the graph"
+        (lambda ()
+          (let ((sexp (original-nine-test-graph)))
+            (setf (getf (getf sexp :page) :roadmaps) '("packet-wire" "fixed-tables"))
+            (unless (equal (original-nine-test-problems sexp)
+                           '("Missing required rendered roadmap section \"variable-tables\""))
+              (error "Hidden required section escaped")))))
+
+      (test "original nine refuses a removed section"
+        (lambda ()
+          (let ((sexp (original-nine-test-graph)))
+            (setf (getf (getf sexp :page) :roadmaps) '("packet-wire" "fixed-tables")
+                  (getf sexp :nodes)
+                  (remove "variable-tables" (getf sexp :nodes)
+                          :key (lambda (node) (getf node :id)) :test #'string=))
+            (original-nine-test-set sexp "goal" :children '("packet-wire" "fixed-tables"))
+            (unless (= 2 (length (original-nine-test-problems sexp)))
+              (error "Missing required section escaped")))))
+
+      (test "original nine uses effective overlay state in both directions"
+        (lambda ()
+          (let ((sexp (original-nine-test-graph)))
+            (unless (= 2 (length (original-nine-test-problems
+                                 sexp '((:id "variable-tables/dart" :state :todo)))))
+              (error "Overlay regression escaped"))
+            (original-nine-test-set sexp "variable-tables/dart" :state :todo)
+            (when (original-nine-test-problems
+                   sexp '((:id "variable-tables/dart" :state :done :evidence ("executed new gate"))))
+              (error "Proven overlay completion was ignored")))))
+
+      (test "original nine fails closed on evidence and malformed graph"
+        (lambda ()
+          (dolist (fault '(:evidence :dangling :cycle :missing-cell))
+            (let* ((sexp (original-nine-test-graph))
+                   (node (original-nine-test-node sexp "variable-tables"))
+                   (caught nil))
+              (case fault
+                (:evidence
+                 (original-nine-test-set sexp "variable-tables/dart" :evidence nil))
+                (:dangling (setf (third (first (getf node :cells))) "missing"))
+                (:cycle
+                 (push '(:id "cycle" :type :work-set :children ("cycle")) (getf sexp :nodes)))
+                (:missing-cell (setf (getf node :cells) (rest (getf node :cells)))))
+              (handler-case (original-nine-test-problems sexp)
+                (error () (setf caught t)))
+              (unless caught (error "Accepted malformed original-nine input: ~s" fault))))))
 
       (test "literal EOF keyword is trailing data"
         (lambda ()
@@ -1107,35 +1344,42 @@ sections."
           (unless (= 3 (length (read-restricted-forms-from-string (format nil "(:a 1) ; a comment~%(:b 2) (:c 3)"))))
             (error "Overlay reader did not read every form"))))
 
-      ;; Test 21: The whole page is rendered from the data
-      (test "whole page from data"
+      ;; Test 21: Only the tables are rewritten; the hand-written page is kept byte for byte
+      (test "tables spliced, hand text kept"
         (lambda ()
           (let* ((sexp '(:schema 1 :root "goal"
-                         :page (:title "  Schema   roadmap "
-                                :roadmaps ("alpha" "beta")
-                                :closing ((:title "Fund this work" :text ("Line one
-                                                                             wrapped." "Line two."))))
+                         :page (:roadmaps ("alpha" "beta"))
                          :nodes
                          ((:id "t-done" :type :task :title "Done" :state :done :evidence ("ev"))
                           (:id "t-todo" :type :task :title "Todo" :state :todo :evidence nil)
-                          (:id "alpha" :type :roadmap :title "Alpha wire" :text "Alpha
-                            prose."
+                          (:id "alpha" :type :roadmap :title "Alpha"
                            :rows (("r1" "Row 1")) :columns (("c1" "c1") ("c2" "c2"))
                            :cells (("r1" "c1" "t-done") ("r1" "c2" "t-todo")))
-                          (:id "beta" :type :roadmap :title "Beta tables" :text ("First." "Second.")
+                          (:id "beta" :type :roadmap :title "Beta"
                            :rows (("r1" "Row 1")) :columns (("c1" "c1"))
                            :cells (("r1" "c1" "t-done")))
                           (:id "goal" :type :work-set :children ("alpha" "beta")))))
                  (nodes (validate-root sexp))
                  (table (build-and-validate-node-table nodes "goal"))
-                 (page (render-page-string sexp table "docs/roadmap.sexp"))
-                 (expected (format nil "# Schema roadmap~%~%<!-- Generated from docs/roadmap.sexp and docs/roadmap-evidence by tools/roadmap/render.lisp. Do not edit this file: edit the data and run `make roadmap`. -->~%~%## Alpha wire~%~%Alpha prose.~%~%<!-- nova-work:alpha:start -->~%~%| feature | c1 | c2 |~%|---|:---:|:---:|~%| Row 1 | ✅ | ❌ |~%| complete | 100% | 0% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:alpha:end -->~%~%## Beta tables~%~%First.~%~%Second.~%~%<!-- nova-work:beta:start -->~%~%| feature | c1 |~%|---|:---:|~%| Row 1 | ✅ |~%| complete | 100% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:beta:end -->~%~%## Fund this work~%~%Line one wrapped.~%~%Line two.~%")))
+                 (hand (format nil "# Glenn's  title~%~%Some   prose, kept  as written.~%~%<!-- nova-work:alpha:start -->~%stale~%<!-- nova-work:alpha:end -->~%~%## Beta~%<!-- nova-work:beta:start -->~%<!-- nova-work:beta:end -->~%Tail without a newline"))
+                 (page (splice-page-string hand sexp table "docs/roadmap.sexp"))
+                 (expected (format nil "# Glenn's  title~%~%Some   prose, kept  as written.~%~%<!-- nova-work:alpha:start -->~%~%| feature | c1 | c2 |~%|---|:---:|:---:|~%| Row 1 | ✅ | ❌ |~%| complete | 100% | 0% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:alpha:end -->~%~%## Beta~%<!-- nova-work:beta:start -->~%~%| feature | c1 |~%|---|:---:|~%| Row 1 | ✅ |~%| complete | 100% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:beta:end -->~%Tail without a newline")))
             (unless (string= page expected)
-              (error "Page differs from the expected render:~%~a~%--- expected ---~%~a" page expected))
-            (unless (string= page (render-page-string sexp table "docs/roadmap.sexp"))
-              (error "Page render is not deterministic")))))
+              (error "Page differs from the expected splice:~%~a~%--- expected ---~%~a" page expected))
+            (unless (string= page (splice-page-string page sexp table "docs/roadmap.sexp"))
+              (error "Splice is not idempotent"))
+            (unless (string= (outside-markers page) (outside-markers hand))
+              (error "Splice changed the page outside the markers"))
+            ;; Negative control: an edit outside the markers is seen by outside-markers.
+            (when (string= (outside-markers (concatenate 'string page (format nil "~%Rust update: x.")))
+                           (outside-markers page))
+              (error "outside-markers is blind to a paragraph added outside the blocks"))
+            ;; and an edit inside a block is not.
+            (unless (string= (outside-markers (splice-block page "alpha" "| feature |"))
+                             (outside-markers page))
+              (error "outside-markers counts a block's contents as hand text")))))
 
-      ;; Test 22: The page refuses a roadmap it cannot reach and a section without text
+      ;; Test 22: The data refuses prose, and the page must carry exactly the data's blocks
       (test "page refusals"
         (lambda ()
           (let* ((nodes '((:id "t-done" :type :task :title "Done" :state :done :evidence ("ev"))
@@ -1144,19 +1388,45 @@ sections."
                           (:id "decoy" :type :roadmap :title "Decoy"
                            :rows (("r1" "Row 1")) :columns (("c1" "c1")) :cells (("r1" "c1" "t-done")))
                           (:id "goal" :type :work-set :children ("alpha"))))
-                 (table (build-and-validate-node-table nodes "goal")))
-            (dolist (page '((:title "P" :roadmaps ("decoy") :closing ())
-                            (:title "P" :roadmaps ("alpha" "alpha") :closing ())
-                            (:title "" :roadmaps ("alpha") :closing ())
-                            (:title "P" :roadmaps () :closing ())
-                            (:title "P" :roadmaps ("alpha") :closing ((:title "Closing")))
+                 (table (build-and-validate-node-table nodes "goal"))
+                 (good (format nil "<!-- nova-work:alpha:start -->~%<!-- nova-work:alpha:end -->~%")))
+            (dolist (page '((:roadmaps ("decoy"))
+                            (:roadmaps ("alpha" "alpha"))
+                            (:roadmaps ())
+                            (:title "P" :roadmaps ("alpha"))
+                            (:roadmaps ("alpha") :closing ((:title "Fund this work" :text "x")))
                             nil))
               (let ((caught nil))
                 (handler-case
-                    (render-page-string (list :schema 1 :root "goal" :page page :nodes nodes) table "docs/roadmap.sexp")
+                    (splice-page-string good (list :schema 1 :root "goal" :page page :nodes nodes) table "docs/roadmap.sexp")
                   (error () (setf caught t)))
                 (unless caught
-                  (error "Accepted a bad :page: ~s" page))))))))
+                  (error "Accepted a bad :page: ~s" page))))
+            (let* ((texty (mapcar (lambda (n)
+                                    (if (string= (getf n :id) "alpha")
+                                        (append n (list :text "Rust update: prose in the data."))
+                                        n))
+                                  nodes))
+                   (texty-table (build-and-validate-node-table texty "goal"))
+                   (caught nil))
+              (handler-case
+                  (splice-page-string good (list :schema 1 :root "goal" :page '(:roadmaps ("alpha")) :nodes texty)
+                                      texty-table "docs/roadmap.sexp")
+                (error () (setf caught t)))
+              (unless caught (error "Accepted a roadmap node carrying :text")))
+            (dolist (bad (list ""
+                               (format nil "<!-- nova-work:alpha:start -->~%")
+                               (format nil "~a~a" good good)
+                               (format nil "x <!-- nova-work:alpha:start -->~%<!-- nova-work:alpha:end -->~%")
+                               (format nil "<!-- nova-work:alpha:end -->~%<!-- nova-work:alpha:start -->~%")
+                               (format nil "~a<!-- nova-work:decoy:start -->~%<!-- nova-work:decoy:end -->~%" good)))
+              (let ((caught nil))
+                (handler-case
+                    (splice-page-string bad (list :schema 1 :root "goal" :page '(:roadmaps ("alpha")) :nodes nodes)
+                                        table "docs/roadmap.sexp")
+                  (error () (setf caught t)))
+                (unless caught
+                  (error "Spliced into a page with bad markers: ~s" bad))))))))
 
     (format t "=== Results: ~D passed, ~D failed ===~%" pass-count fail-count)
     (if (zerop fail-count)
@@ -1168,6 +1438,7 @@ sections."
 (defun main (argv)
   (let ((check-only nil)
         (test-mode nil)
+        (require-original-nine nil)
         (evidence-dir nil)
         (positional nil))
     (loop while argv do
@@ -1175,6 +1446,8 @@ sections."
         (cond
           ((string= arg "--check")
            (setf check-only t))
+          ((string= arg "--require-original-nine")
+           (setf require-original-nine t))
           ((string= arg "--test")
            (setf test-mode t))
           ((string= arg "--evidence")
@@ -1200,7 +1473,8 @@ sections."
                                               (and evidence-dir
                                                    (pathname (if (char= (char evidence-dir (1- (length evidence-dir))) #\/)
                                                                  evidence-dir
-                                                                 (concatenate 'string evidence-dir "/")))))))
+                                                                 (concatenate 'string evidence-dir "/"))))
+                                              require-original-nine)))
             (sb-ext:exit :code code))
         (error (e)
           (format *error-output* "Error: ~a~%" e)

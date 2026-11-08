@@ -1,7 +1,6 @@
 package tablewire
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"math"
 )
@@ -11,6 +10,14 @@ import (
 // array extent declared on the wire. Generated runtimes never call this
 // independent compiler-side oracle.
 func FileRegionMeasure(u *ir.Unit, root *ir.Struct, data []byte) (bytes int64, whole, refused bool) {
+	if len(data) == 0 || data[0] != ir.TableWireForm {
+		return 0, false, false
+	}
+	var valid bool
+	data, valid = fileIntegrityBody(root, data)
+	if !valid {
+		return 0, false, false
+	}
 	body, ids, ok := trailer(data)
 	if len(data) == 0 || data[0] != ir.TableWireForm || !ok {
 		return 0, false, false
@@ -28,7 +35,7 @@ func FileRegionMeasure(u *ir.Unit, root *ir.Struct, data []byte) (bytes int64, w
 	if !ok {
 		return -1, true, true
 	}
-	payload, present, framed := nodeTableBytes(body, ids, &tabletext.Report{})
+	payload, present, framed := nodeTableBytes(body, ids)
 	if present && !framed {
 		return 0, false, false
 	}
@@ -107,6 +114,16 @@ func (s *extentScan) record(st *ir.Struct, body []byte) bool {
 			}
 			continue
 		}
+		if kind == ir.TableKindString && f.Type.TextUnbounded() && f.Array == ir.ArrayNone && !f.Type.Pointer {
+			payload, ok := extentBody(&r)
+			if !ok {
+				return true
+			}
+			if !s.unboundedText(int64(len(payload))) {
+				return false
+			}
+			continue
+		}
 		if kind == ir.TableKindUnion && f.Array == ir.ArrayNone && !f.Type.Pointer {
 			if un, ok := f.Type.Ref.(*ir.Union); ok {
 				if !s.union(&r, un) {
@@ -181,6 +198,18 @@ func (s *extentScan) field(f *ir.Field, body []byte) bool {
 			s.at = (s.at + align - 1) & -align
 			s.at += int64(count) * size
 		}
+		if kind == ir.TableKindString && ir.TextListUnbounded(f) {
+			for i := uint64(0); i < count && r.has(1); i++ {
+				payload, ok := extentBody(&r)
+				if !ok {
+					return true
+				}
+				if !s.unboundedText(int64(len(payload))) {
+					return false
+				}
+			}
+			return true
+		}
 		if kind != ir.TableKindTable && kind != ir.TableKindUnion {
 			return true
 		}
@@ -215,6 +244,21 @@ func (s *extentScan) field(f *ir.Field, body []byte) bool {
 	if st, ok := f.Type.Ref.(*ir.Struct); ok {
 		return s.record(st, body)
 	}
+	if f.Type.TextUnbounded() {
+		return s.unboundedText(int64(len(body)))
+	}
+	return true
+}
+func (s *extentScan) unboundedText(n int64) bool {
+	if n == 0 {
+		return true
+	}
+	if uint64(n) > math.MaxUint32 {
+		return false
+	}
+	align := ir.TableRegionAlign(s.u)
+	s.at = (s.at + 7) & -8
+	s.at += (9 + n + align - 1) & -align
 	return true
 }
 func (s *extentScan) union(r *wireReader, un *ir.Union) bool {

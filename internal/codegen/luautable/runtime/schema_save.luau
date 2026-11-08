@@ -232,9 +232,10 @@ end
 -- the bytes one text-list element contributes to its total
 -- (docs/SPEC-TABLES.md §2.13): a plain element's buffer length, or a ?element's value
 -- when present, zero when absent.
-local function text_elem_used(e: any, x: any): number
+local function text_elem_used(e: any, x: any, used: number?): number
 	if e == nil or x == nil then return 0 end
 	if e.s == "str" or e.s == "text" then
+		if used ~= nil then return used end
 		if typeof(x) == "buffer" then return buffer.len(x) end
 		return 0
 	end
@@ -749,9 +750,10 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	-- bytes sum past the total is refused, as a count past [..N] is.
 	if fd.total ~= nil and s == "arr" then
 		local live = live_count(fd, v, val)
+		local lens = v[fd.slot .. "Length"]
 		local spent = 0
 		for i = 1, live do
-			spent = spent + text_elem_used(fd.e, elem_at(val, i))
+			spent = spent + text_elem_used(fd.e, elem_at(val, i), if type(lens) == "table" then lens[i] else nil)
 		end
 		if spent > fd.total then return false end
 	end

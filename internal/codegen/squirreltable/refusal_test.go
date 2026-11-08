@@ -83,7 +83,9 @@ func strictName(t *testing.T, row, pinned string) string {
 // other's form; §6.5, the ruling), or "" when the form is the root's own.
 func formName(b byte, fixed bool) string {
 	switch {
-	case b == 1, fixed && b == 3:
+	case fixed && b == 1:
+		return "previous_form"
+	case !fixed && b == 1, fixed && b == 3:
 		return ""
 	case b == 2:
 		return "message_form_as_file"
@@ -182,7 +184,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		field := pinnedFields[r.name]
 		if len(data) == 0 {
 			want = "wire_damaged"
-		} else if f := formName(data[0], isFixed(r.unit, r.root) && fixedReaders[r.unit+"/"+r.root]); f != "" {
+		} else if f := formName(data[0], isFixed(r.unit, r.root)); f != "" {
 			want, field = f, "-"
 		} else if data[0] == 3 {
 			t.Fatalf("%s: a form-3 report row; the fixed reader's name is not derived here", r.name)
@@ -192,7 +194,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		if want == "ok" || want == "wire_damaged" {
 			field = "-"
 		}
-		cases = append(cases, refusalCase{key: r.name, unit: r.unit, root: r.root, input: r.name, form: -1, want: want, field: field})
+		cases = append(cases, refusalCase{key: r.name, unit: r.unit, root: r.root, input: r.name, form: -1, integrity: parsed[r.unit].Tables[r.root].Integrity != "", want: want, field: field})
 		compared++
 	}
 	if compared == 0 {
@@ -307,7 +309,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		refusalCase{key: "variable_unknown", unit: "streamdemo", root: "Feed", input: "form_v127", form: 127, want: "newer_form", field: "-"},
 		// a fixed root: form 1 is READ as the variable form (the ruling, §6.5);
 		// a lone form byte is the framing's damage, not previous_form
-		refusalCase{key: "fixed_previous", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, want: "wire_damaged", field: "-"},
+		refusalCase{key: "fixed_previous", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, want: "previous_form", field: "-"},
 		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "form_f2", form: 2, want: "message_form_as_file", field: "-"},
 		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "form_f9", form: 9, want: "newer_form", field: "-"},
 		// a form-3 byte at a fixed root goes to its own fixed reader, which
@@ -321,7 +323,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		// file is the framing's damage, not previous_form)
 		cases = append(cases,
 			refusalCase{key: "bare_fixed_form3", unit: bareUnit, root: bareRoot, input: "form_b3", form: 3, want: "unknown_form", field: "-"},
-			refusalCase{key: "bare_fixed_form1", unit: bareUnit, root: bareRoot, input: "form_b1", form: 1, want: "wire_damaged", field: "-"},
+			refusalCase{key: "bare_fixed_form1", unit: bareUnit, root: bareRoot, input: "form_b1", form: 1, want: "previous_form", field: "-"},
 		)
 	}
 	inputs["empty"] = []byte{}
@@ -438,7 +440,7 @@ func TestSquirrelStrictReadReadsFormOneAtFixedRoot(t *testing.T) {
 		t.Fatalf("v1_cfg.bin carries form byte %d, want 1 (the variable form)", data[0])
 	}
 	pinned := readReportCounts(t, filepath.Join(root, "testdata", "conformance", "tables", "reports.txt"))["v1_cfg_as_v2"]
-	const wantReport = "1,1,0,1,0,false,read"
+	const wantReport = "0,0,0,0,0,false,refused"
 	if pinned != wantReport {
 		t.Fatalf("v1_cfg_as_v2 pinned report %q, want %q", pinned, wantReport)
 	}
@@ -472,16 +474,13 @@ func TestSquirrelStrictReadReadsFormOneAtFixedRoot(t *testing.T) {
 		t.Fatalf("probe line %q is not key|value|reason|counters", string(stdout))
 	}
 	reason := parts[2]
-	if reason == "previous_form" {
-		t.Errorf("ReadStrict at a declared-fixed root refuses a form-1 file as previous_form; the ruling reads it")
+	if reason != "previous_form" {
+		t.Errorf("ReadStrict at a declared-fixed root refuses %q, want previous_form", reason)
 	}
-	if want := strictName(t, "v1_cfg_as_v2", pinned); reason != want {
-		t.Errorf("ReadStrict at a declared-fixed root refuses %q, want %q (the variable-form read's own strict name)", reason, want)
+	if parts[1] != "null" {
+		t.Errorf("ReadStrict answered %q, want null", parts[1])
 	}
-	if (reason == "-") != (parts[1] == "root") {
-		t.Errorf("ReadStrict answered %q and %q together; it answers one or the other", parts[1], reason)
-	}
-	wantCounters := wantReport[:len(wantReport)-len(",false,read")]
+	wantCounters := "0,0,0,0,0"
 	if parts[3] != wantCounters {
 		t.Errorf("the read reports %q, want the row's counters %q", parts[3], wantCounters)
 	}

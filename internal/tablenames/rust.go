@@ -5,6 +5,11 @@ const Rust Backend = 1 << 2
 
 func init() {
 	define(Rust,
+		Name{Name: "TableIntegrityChecksum", What: "CRC-32C over one complete wire buffer", Scoped: true},
+		Name{Name: "TableIntegrityBody", What: "verify and remove a declared integrity trailer", Scoped: true},
+		Name{Name: "TableIntegritySeal", What: "append a declared integrity trailer", Scoped: true},
+		Name{Name: "TableCarve", What: "the variable cook writer extent cursor"},
+		Name{Name: "TableCookSpan", What: "the cooked collection offset and count"},
 		Name{Name: "TableBlockTriple", What: "one array's (offset_of, count, stride)"},
 		Name{Name: "TableEnums", What: "the module that holds the table layer's enums once per crate (table_enums.rs); a module name, which a schema file lowering to it is refused for by the crate root's own module check", Scoped: true},
 		Name{Name: "TableBlockFieldInfo", What: "a block field's reflection descriptor"},
@@ -25,6 +30,8 @@ func init() {
 		Name{Name: "TableCookWriteRecord", What: "the cook write's record walk over the cook descriptors; a null buffer measures and validates only, so a refusal changes no byte (§7.6)", Scoped: true},
 		Name{Name: "TableCookRaw", What: "the cook write's raw slot read at the descriptor's width (§7.6)", Scoped: true},
 		Name{Name: "TableRegionWriter", What: "the cook write's region writer over the storage value: the data part, the byte order and each node's region offset (§6.3, §7.6)"},
+		Name{Name: "TableCarve", What: "the cook write's pre-order node-extent bump cursor over a holder's maps and lists (§2.8, §2.9, §7.6)"},
+		Name{Name: "TableCookSpan", What: "a cooked map's or list's sixteen-byte self-relative reference and count slot (§2.8, §2.9, §6.3)"},
 		Name{Name: "TableRegionLayout", What: "the cook write's layout pass: every node of the numbering at its own alignment, the region rounded to the greatest (§7, §7.6)", Scoped: true},
 		Name{Name: "TableRegionUp", What: "the cook write's align-up (§7)", Scoped: true},
 		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3.

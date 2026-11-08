@@ -1,0 +1,7 @@
+package probe
+
+table M
+{
+    id int32
+    tags ?map[string(8)]int32
+}

@@ -44,6 +44,7 @@ public final class TablesWireFuzz {
         switch (unit) {
             case "scalars": return "scalardemo";
             case "widedemo": return "wide";
+            case "widelist": return "widelistdemo";
             case "tblscalars2": return "scalardemo2";
             default: return unit;
         }

@@ -1,0 +1,27 @@
+package compiler
+
+import "testing"
+
+func init() {
+	nonGoCarriers["dart"] = append(nonGoCarriers["dart"], carryOneSidedRange, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryForms, carryIntegrity, carryTextList, carryTextListTotal, carryUnboundedText)
+}
+func TestDartCarriesRangeAndArrayRoot(t *testing.T) {
+	for _, src := range []string{
+		"package probe\n table M { values []string\n keys map[string]int32 }\n",
+		"package probe\n table M { value [..3]?string(8) | total=12 }\n",
+		"package probe\n table M { value [..3]?string(8) }\n",
+		"package probe\n fixed table M | integrity = \"crc32c\" { value int32 }\n",
+		"package probe\n table M | forms = \"wire,json\" { value int32 }\n",
+		"package probe\n table M { value int32 | required }\n",
+		"package probe\n table M { tags ?map[string(8)]int32 }\n",
+		"package probe\n fixed table Clock { at timestamp }\n",
+		"package probe\n fixed table Range { n uint64 = 9007199254740993 | min = 9007199254740993 }\n",
+		"package probe\n table Item { n int32 }\n table Items | json = \"array\" { entries []Item }\n table Holder { items Items }\n",
+	} {
+		u := unitFromSource(t, src)
+		files, err := New().Generate(u, "dart", nil)
+		if err != nil || len(files) == 0 {
+			t.Fatalf("public Dart generation files=%d err=%v", len(files), err)
+		}
+	}
+}

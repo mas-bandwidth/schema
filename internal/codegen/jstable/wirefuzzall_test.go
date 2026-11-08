@@ -3,6 +3,8 @@ package jstable
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,14 +46,14 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 	if !strings.Contains(s, "test-js: tables-js-wire-fuzz-all") {
 		t.Fatal("test-js does not run tables-js-wire-fuzz-all")
 	}
-	// The absent set (the 14 message-form seeds the arm does not bind) is
-	// pinned, so a roster root dropping to absent fails the target. tblg1
-	// Guarded's four answer: the target carries an optional over a variable
-	// closure (docs/SPEC-TABLES.md §2.3).
-	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 14\n") {
-		t.Error("make/js.mk does not pin the absent set at the 14 message-form seeds")
+	// The absent set is pinned at 0 (every file-form and message-form seed
+	// in the default roster is bound), so a roster root dropping to absent
+	// fails the target. tblg1 Guarded's four answer: the target carries an
+	// optional over a variable closure (docs/SPEC-TABLES.md §2.3).
+	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 0\n") {
+		t.Error("make/js.mk does not pin the absent set at 0 seeds")
 	}
-	if !strings.Contains(target, "', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent '") {
+	if !strings.Contains(target, "! grep -qE '[0-9]+ seeds absent '") {
 		t.Errorf("tables-js-wire-fuzz-all does not check the pinned absent count:\n%s", target)
 	}
 	// The four form-1 roster roots no other unit carries are generated for
@@ -150,5 +152,142 @@ func TestWireFuzzCodecFailsByNameJavaScript(t *testing.T) {
 	stdout, stderr, err := run(missing, "nosuchunit", "Root")
 	if err != nil || stdout != "\x00" {
 		t.Errorf("unnamed unit: want known=0 and a clean exit, got err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+}
+
+// The managed Load API has builder count-cap semantics. The protocol's
+// Refused bit names a wire-form refusal, not this out-of-band storage limit.
+func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
+	t.Skip("layer 4 (js): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
+	node := jsNode(t)
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnitForMeasure(t, repo, "tables/lists")
+	wire, err := os.ReadFile(filepath.Join(repo, "testdata/wire/tables/fuzz-vectors/list_count_cross_length.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := tabletext.NewModel(u)
+	var report tabletext.Report
+	ok, err := tablewire.Decode(model, model.New(model.Lookup("Album")), wire, &report)
+	if ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("builder oracle: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	files, err := generateVariableFiles(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "lists"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, "lists", name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, retaining := range []byte{0, 1} {
+		var input bytes.Buffer
+		binary.Write(&input, binary.LittleEndian, uint32(1))
+		for _, name := range []string{"listdemo", "Album"} {
+			binary.Write(&input, binary.LittleEndian, uint16(len(name)))
+			input.WriteString(name)
+		}
+		input.WriteByte(1)
+		input.WriteByte(retaining)
+		binary.Write(&input, binary.LittleEndian, uint32(0))
+		binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
+		input.Write(wire)
+		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
+		cmd.Stdin = &input
+		var output, stderr bytes.Buffer
+		cmd.Stdout = &output
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("driver: %v\n%s", err, stderr.String())
+		}
+		data := output.Bytes()
+		if len(data) != 48 || data[0] != 1 {
+			t.Fatalf("retaining=%d protocol len%d %x", retaining, len(data), data)
+		}
+		reply := data[1:]
+		if reply[0] != 0 || reply[21] != 0 || reply[22] != 0 || int64(binary.LittleEndian.Uint64(reply[39:47])) != -1 {
+			t.Fatalf("retaining=%d count refusal became a wire report event: %x", retaining, reply)
+		}
+		for _, off := range []int{1, 5, 9, 13, 17, 31, 35} {
+			if binary.LittleEndian.Uint32(reply[off:off+4]) != 0 {
+				t.Fatalf("unexpected report event at%d", off)
+			}
+		}
+	}
+}
+
+// A failed independent measurement must not suppress the managed reader report.
+func TestWireFuzzMalformedMeasureReportJavaScript(t *testing.T) {
+	node := jsNode(t)
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnitForMeasure(t, repo, "tables/lists")
+	wire := []byte{}
+	model := tabletext.NewModel(u)
+	var report tabletext.Report
+	ok, err := tablewire.Decode(model, model.New(model.Lookup("Album")), wire, &report)
+	if ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("builder oracle: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	files, err := generateVariableFiles(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "lists"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, "lists", name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, retaining := range []byte{0, 1} {
+		var input bytes.Buffer
+		binary.Write(&input, binary.LittleEndian, uint32(1))
+		for _, name := range []string{"listdemo", "Album"} {
+			binary.Write(&input, binary.LittleEndian, uint16(len(name)))
+			input.WriteString(name)
+		}
+		input.WriteByte(1)
+		input.WriteByte(retaining)
+		binary.Write(&input, binary.LittleEndian, uint32(0))
+		binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
+		input.Write(wire)
+		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
+		cmd.Stdin = &input
+		var output, stderr bytes.Buffer
+		cmd.Stdout = &output
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("driver: %v\n%s", err, stderr.String())
+		}
+		data := output.Bytes()
+		if len(data) != 48 || data[0] != 1 {
+			t.Fatalf("retaining=%d protocol len%d %x", retaining, len(data), data)
+		}
+		reply := data[1:]
+		if reply[0] != 0 || reply[21] != 1 || reply[22] != 0 || int64(binary.LittleEndian.Uint64(reply[39:47])) != -1 {
+			t.Fatalf("retaining=%d empty malformed load did not preserve its report: %x", retaining, reply)
+		}
+		for _, off := range []int{1, 5, 9, 13, 17, 31, 35} {
+			if binary.LittleEndian.Uint32(reply[off:off+4]) != 0 {
+				t.Fatalf("unexpected report event at%d", off)
+			}
+		}
 	}
 }

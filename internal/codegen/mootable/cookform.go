@@ -27,7 +27,7 @@ func emitCookForm(g *Gen) error {
 	ck := g.Require("table_cookread")
 	g.Pf("-- the cooked form's layouts (docs/SPEC-TABLES.md §7.2): every record and union\n")
 	g.Pf("-- this module describes, its storage pieces at their C ABI offsets\n")
-	g.Pf("%s.unit(%s)\n", ck, g.K(WideNew("Uint64", new(big.Int).SetUint64(ir.BuildVersion(g.Unit)), 64)))
+	g.Pf("%s.unit(%s, %d)\n", ck, g.K(WideNew("Uint64", new(big.Int).SetUint64(ir.BuildVersion(g.Unit)), 64)), ir.TableRegionAlign(g.Unit))
 	reach := closure(g.Unit)
 	for _, un := range g.File.TableUnions {
 		emitCookUnion(g, ck, un)
@@ -99,7 +99,7 @@ func emitCookRecord(g *Gen, ck string, st *ir.Struct) {
 	for _, fl := range ml.Fields {
 		fields = append(fields, cookPieces(g, fl.Field, fl.Offset))
 	}
-	g.Pf("%s.record(%q, { size = %d, align = %d, fields = { %s } })\n", ck, st.Name, ml.Size, ml.Align, strings.Join(fields, ", "))
+	g.Pf("%s.record(%q, { size = %d, align = %d, nodeAlign = %d, extentStart = %d, fields = { %s } })\n", ck, st.Name, ml.Size, ml.Align, ir.CookNodeAlign(g.Unit, st), ir.CookExtentStart(g.Unit, st), strings.Join(fields, ", "))
 }
 
 func emitCookUnion(g *Gen, ck string, un *ir.Union) {

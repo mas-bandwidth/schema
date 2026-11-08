@@ -296,10 +296,9 @@ func TestLobsterRefusesByName(t *testing.T) {
 	}
 }
 
-// TestLobsterTableFreeUnitAddsNothing is the zero-cost gate's half for this
-// leg (docs/PORTING.md I10): a unit with no tables gets no table module and
-// no table runtime, so its output is the type surface's alone.
-func TestLobsterTableFreeUnitAddsNothing(t *testing.T) {
+// Reflection includes table-free units. Packet modules still import only
+// their packet runtime; consumers opt into the separate registry entry point.
+func TestLobsterTableFreeUnitHasRegistry(t *testing.T) {
 	t.Parallel()
 	paths, err := compiler.GatherPaths([]string{filepath.Join(root, "examples")})
 	if err != nil {
@@ -316,8 +315,8 @@ func TestLobsterTableFreeUnitAddsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 0 {
-		t.Fatalf("a table-free unit got %d table-surface files", len(files))
+	if files[u.Package+"View.lobster"] == nil {
+		t.Fatal("table-free unit has no registry entry point")
 	}
 	// the control: a unit with a table does get its module and runtime
 	paths, err = compiler.GatherPaths([]string{filepath.Join(root, "tables", "examples")})

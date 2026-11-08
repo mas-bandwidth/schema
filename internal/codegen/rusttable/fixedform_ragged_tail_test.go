@@ -25,8 +25,8 @@ import (
 // second arm, !rest.len().is_multiple_of(record_bytes), by appending 1 to
 // record_bytes-1 bytes to a real corpus file. extra == record_bytes is one more
 // whole record, not a ragged tail, so it owes batch_too_large (a refusal) and
-// is measured separately. The destination is proved untouched by poisoning
-// every byte with 0x5A and sweeping as_bytes over the first row. CONTROL 2
+// is measured separately. The destination is poisoned first, then every row
+// must hold the declared defaults after malformed damage. CONTROL 2
 // disables the ragged arm (fixedform.go:1187) and the row must go RED: with the
 // arm gone the reader computes n := rest / record_bytes, reads one whole record
 // off a file with a byte too many, and REPORTS SUCCESS (malformed false).
@@ -48,7 +48,7 @@ func TestFixedFormRaggedTail(t *testing.T) {
 /// different answer and is measured separately. A clean read at the FULL length
 /// first proves the fixture, then every ragged tail must land malformed true,
 /// refused false, reason UNTOUCHED (TableFixedReason::None), the call None, all
-/// four counters zero, and not one destination byte written.
+/// four counters zero, and every destination row reset to its declared defaults.
 #[test]
 fn v_fixed_form_ragged_tail() {
     let data = std::fs::read(%q).expect("the reference's new_field_append.bin");
@@ -77,9 +77,8 @@ fn v_fixed_form_ragged_tail() {
         let mut ragged = data.clone();
         ragged.extend_from_slice(&vec![0u8; extra]);
         let mut values = vec![ROWTYPE::default(); 8];
-        // THE DESTINATION IS POISONED, NOT RESET: a zero fill looks exactly
-        // like a zero default, so only the nonzero 0x5A can prove no byte was
-        // written by a read that should refuse everything.
+        // Poison every caller row so unchanged storage cannot pass the reset
+        // check. The nonzero declared default w=77 also rejects zero-filling.
         unsafe {
             core::ptr::write_bytes(
                 values.as_mut_ptr() as *mut u8,
@@ -102,9 +101,11 @@ fn v_fixed_form_ragged_tail() {
             report.widened == 0 && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0,
             "a ragged tail moves no counter: {:?}", report
         );
-        for (i, &b) in as_bytes(&values[0]).iter().enumerate() {
-            assert!(b == 0x5A, "a {extra}-byte ragged read wrote a destination byte {i} = {b:#04x}");
-        }
+        // VNEW_field_append.schema declares x/y/z=0 and w=77.
+        assert!(
+            values.iter().all(|v| v.x == 0 && v.y == 0 && v.z == 0 && v.w == 77),
+            "a {extra}-byte ragged read did not restore every declared default"
+        );
     }
     // extra == record_bytes IS ONE MORE WHOLE RECORD, not a ragged tail: the
     // reader owes batch_too_large, a REFUSAL by name, and the damage flag

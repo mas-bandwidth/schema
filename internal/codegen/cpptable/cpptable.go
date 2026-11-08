@@ -4,10 +4,10 @@
 // measure/save/load codecs and reflection descriptors for the whole
 // TABLE CLOSURE (every table plus everything one references, transitively).
 //
-// The wire is neutral, evolution-tolerant TLV: field identity is the name
+// The wire is neutral, evolution-strict TLV: field identity is the name
 // hash, unknown fields skip, absent fields default, changed kinds skip
-// (never misdecode), out-of-range values clamp, framing damage stops the
-// decode with a partial result — and every event lands in the TableReport.
+// (never misdecode), out-of-range values clamp, damage discards the whole
+// load (docs/SPEC-TABLES.md §4) — and every event lands in the TableReport.
 // Plain byte code with no serialize dependency — a unit whose closure
 // declares a 128-bit field takes exactly one thing from serialize.h, the
 // 128-bit storage type — so a Table header is includable from any
@@ -312,6 +312,20 @@ func (g *tableGen) pf(format string, args ...any) {
 	g.body.WriteString(s)
 }
 
+// emitIfActions lays out an already-separated sequence of C++ statements.
+// The caller owns the statements; this only supplies the block and indentation.
+func (g *tableGen) emitIfActions(ind, condition string, actions ...string) {
+	if len(actions) == 1 {
+		g.pf("%sif ( %s ) { %s }\n", ind, condition, actions[0])
+		return
+	}
+	g.pf("%sif ( %s )\n%s{\n", ind, condition, ind)
+	for _, action := range actions {
+		g.pf("%s    %s\n", ind, action)
+	}
+	g.pf("%s}\n", ind)
+}
+
 func (g *tableGen) noteRef(name string) {
 	if base, ok := g.unit.DeclFile[name]; ok && base != g.file.Base {
 		g.includes[base] = true
@@ -558,9 +572,9 @@ const tableRefuseReasonLaterValues = `
     invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
     allocation_failed,     // an allocation the codec asked for was refused (§7.6)
     wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
-    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
-    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
-    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    malformed,             // a read that met a malformed body: a refusal reason, never a counted verdict (§4)
+    out_of_range,          // a value outside its declared bound: a refusal reason, the retired spelling's ordinal (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration: a refusal reason (§4)
     base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
     base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
     integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
@@ -718,7 +732,7 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 			"    // is NOT INSERTED: a key past the bound, or an arena that could not carve\n" +
 			"    // another segment. A LIST ignores the key and APPENDS, NULL at the arena\n" +
 			"    // or the int32 cap. NULL on every field that is neither.\n" +
-			"    void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
+			"    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
 	}
 	pointerFieldMember, pointerTypeMember, pointerForward := "", "", ""
 	if anyVariable {
@@ -732,8 +746,8 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 			"    // node it names, or NULL; `emplace` allocates one in a BUILDER's\n" +
 			"    // arena and points the slot at it. NULL on every field that is not\n" +
 			"    // a pointer, and emitted only in a unit that declares one.\n" +
-			"    const void * (*resolve)( const void * slot );\n" +
-			"    void * (*emplace)( TableWorker & worker, void * slot );"
+			"    const void * ( *resolve )( const void * slot );\n" +
+			"    void * ( *emplace )( TableWorker & worker, void * slot );"
 		pointerTypeMember = "\n    // the DERIVED mode (docs/SPEC-TABLES.md): false = fixed-size, a plain\n" +
 			"    // relocatable struct; true = variable-length, built through a Builder\n" +
 			"    // and read through a region root. Nobody declares it; the compiler\n" +
@@ -753,13 +767,12 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 #if defined( _MSC_VER )
 #define ` + forceInline + ` __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define ` + forceInline + ` inline __attribute__(( always_inline ))
+#define ` + forceInline + ` inline __attribute__( ( always_inline ) )
 #else
 #define ` + forceInline + ` inline
 #endif
 
 namespace ` + pkg + ` {
-
 ` + refuseReason + `
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -773,8 +786,8 @@ namespace ` + pkg + ` {
 // reason text rather than in the enum. They sit in a private high range so a
 // value Go appends later can never collide with them, which the enum's
 // int32_t underlying type keeps inside its own range.
-constexpr TableRefuseReason no_vocabulary        = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
-constexpr TableRefuseReason second_announcement  = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+constexpr TableRefuseReason no_vocabulary = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
+constexpr TableRefuseReason second_announcement = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
 constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
 
 // THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
@@ -799,29 +812,25 @@ struct TableMessageReason
 #define SCHEMA_HAS_FLOOR 1
 #endif
 
-// The table-wire read report — the permissive contract's ledger. Silence
+// The table-wire read report — the strict read's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
 {
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
-    int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     // a kind that GREW since the writer (docs/SPEC-TABLES.md §4): an integer
     // kind read into a wider one of the same signedness, or f32 into f64,
     // decoded EXACTLY. One count per field or per map. It is the one counter
     // that names no loss: the bytes were not the shape this reader declares,
     // and the number survived.
     int32_t widened = 0;
-    int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
-    int32_t duplicate = 0;
-    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
-    // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
-    // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
-    // the ONE node, never a copy per slot, and the strict read refuses
-    // blob_shared. The Go oracle is internal/codegen/gotable/gotable.go.
-    int32_t blob_shared = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
+    bool damaged = false;    // damage: the whole load is refused, nothing of it is used
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
     // zero counters and a false flag are what a clean read prints too, so the
@@ -833,10 +842,10 @@ struct TableReport
     TableMessageReason reason = newer_form;
     // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
     // integrity_mismatch is §2.14's checked-trailer damage. Read this member
-    // when malformed is true; the reason above remains the message refusal name.
+    // when damaged is true; the reason above remains the message refusal name.
     TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
-    // the reason duplicate is: a caller has one report type and not two. Both
+    // the reason repeated is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
     // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
@@ -848,7 +857,7 @@ struct TableReport
     // unknown, widened and retained alone leave it ok.
     TableRefuseReason refuse_reason = ok;
     // THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
-    // an infinity is refused on its raw bits by every read, the tolerant one
+    // an infinity is refused on its raw bits by every read, the strict one
     // included, so a read that moves this refuses as non_finite_float and
     // lands nothing. It is a count only so a read can tell its own refusal
     // from a caller's report that already held one.
@@ -986,27 +995,27 @@ inline const char TableDocNone[1] = "";
     // the vocabulary's names, indexed the same way enum_max bounds: an enum's
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
-    const char * (*enum_name)( uint64_t value );
+    const char * ( *enum_name )( uint64_t value );
     // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
-    uint64_t (*variant_id)( uint64_t value );
+    uint64_t ( *variant_id )( uint64_t value );
     // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
     // NULL on every other field.
     const char * key_type_name;
-    const char * (*key_name)( uint64_t value );
-    uint64_t (*key_id)( uint64_t value );
+    const char * ( *key_name )( uint64_t value );
+    uint64_t ( *key_id )( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
     // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
-    const TableUnionInfo * (*arms)();` + placeMember + `
+    const TableUnionInfo * ( *arms )();` + placeMember + `
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
     // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
@@ -1025,6 +1034,12 @@ inline const char TableDocNone[1] = "";
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -1038,7 +1053,7 @@ struct TableTypeInfo
     // absent field takes, and it holds no type to spell — this is the one
     // thing the descriptors could not express without it. Placement-new
     // value-init, exactly what the wire's read path does, and no temporary.
-    void (*reset)( void * storage );` + pointerTypeMember + `
+    void ( *reset )( void * storage );` + pointerTypeMember + `
     // the declaration's own doc and tags, on the same terms as a field's
     // (docs/SPEC-TABLES.md §8.1)
     const char * doc;
@@ -1064,13 +1079,25 @@ struct TableWriter
 
     ` + forceInline + ` void raw( const void * data, int64_t bytes )
     {
-        if ( offset + bytes > capacity ) { overflow = true; return; }
+        if ( offset + bytes > capacity )
+        {
+            overflow = true;
+            return;
+        }
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
-    ` + forceInline + ` void put8( uint8_t v )   { raw( &v, 1 ); }
-    ` + forceInline + ` void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
-    ` + forceInline + ` void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    ` + forceInline + ` void put8( uint8_t v ) { raw( &v, 1 ); }
+    ` + forceInline + ` void put16( uint16_t v )
+    {
+        uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) };
+        raw( b, 2 );
+    }
+    ` + forceInline + ` void put32( uint32_t v )
+    {
+        uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) };
+        raw( b, 4 );
+    }
     // THE SAME EIGHT BYTES two put32 wrote, assembled once and handed to raw
     // once: little-endian, lowest byte first. One capacity test rather than
     // two, and NOT ONE FEWER — raw still asks before it copies, so an
@@ -1078,7 +1105,7 @@ struct TableWriter
     ` + forceInline + ` void put64( uint64_t v )
     {
         uint8_t b[8] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ),
-                         uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
+            uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
     // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
@@ -1091,9 +1118,9 @@ struct TableWriter
     ` + forceInline + ` void put128( uint64_t lo, uint64_t hi )
     {
         uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
-                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
-                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
-                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+            uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+            uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+            uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
         raw( b, 16 );
     }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
@@ -1113,7 +1140,11 @@ struct TableWriter
     {
         uint8_t b[10];
         int64_t n = 0;
-        while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+        while ( v >= 0x80 )
+        {
+            b[n++] = uint8_t( v ) | 0x80;
+            v >>= 7;
+        }
         b[n++] = uint8_t( v );
         raw( b, n );
     }
@@ -1149,7 +1180,11 @@ struct TableWriter
 inline int64_t TableLebBytes( uint64_t v )
 {
     int64_t n = 1;
-    while ( v >= 0x80 ) { v >>= 7; n++; }
+    while ( v >= 0x80 )
+    {
+        v >>= 7;
+        n++;
+    }
     return n;
 }
 
@@ -1170,9 +1205,9 @@ struct TableIds
     static const int32_t kCapacity = ` + idCapacity + `;
     static const int32_t kBuckets = ` + idBuckets + `;
 
-    uint64_t ids[ kCapacity ];
-    int32_t chain[ kCapacity ];
-    int32_t head[ kBuckets ];
+    uint64_t ids[kCapacity];
+    int32_t chain[kCapacity];
+    int32_t head[kBuckets];
     // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
     // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
     // the unit's id vocabulary, the same ascending set kCapacity counts. slot
@@ -1181,15 +1216,20 @@ struct TableIds
     // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
     // The pair is what lets truncate undo the cache in O(popped) rather than
     // walking the whole vocabulary.
-    int32_t slot[ kCapacity ];
-    ` + ordinalType + ` ordinal_of[ kCapacity ];
+    int32_t slot[kCapacity];
+    ` + ordinalType + ` ordinal_of[kCapacity];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ )
+        {
+            slot[i] = -1;
+            ids[i] = 0;
+            chain[i] = -1;
+        }
     }
 
     static ` + forceInline + ` uint32_t bucket_of( uint64_t id )
@@ -1207,8 +1247,16 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
+        if ( count >= kCapacity )
+        {
+            overflow = true;
+            return 1;
+        }
+        ids[count] = id;
+        chain[count] = head[b];
+        ordinal_of[count] = -1;
+        head[b] = count;
+        count++;
         return uint64_t( count );
     }
 
@@ -1227,7 +1275,7 @@ struct TableIds
         // answered 1, which is not this id's reference (§3).
         if ( overflow ) { return r; }
         slot[ordinal] = int32_t( r ) - 1;
-        ordinal_of[ int32_t( r ) - 1 ] = ` + ordinalType + `( ordinal );
+        ordinal_of[int32_t( r ) - 1] = ` + ordinalType + `( ordinal );
         return r;
     }
 
@@ -1240,7 +1288,7 @@ struct TableIds
         while ( count > mark )
         {
             count--;
-            head[ bucket_of( ids[count] ) ] = chain[count];
+            head[bucket_of( ids[count] )] = chain[count];
             const int32_t o = ordinal_of[count];
             if ( o >= 0 ) { slot[o] = -1; }
         }
@@ -1272,7 +1320,7 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     if ( count > 0 )
     {
-        memcpy( dst, ids.ids, (size_t)( count * 8 ) );
+        memcpy( dst, ids.ids, (size_t) ( count * 8 ) );
     }
     const uint64_t n = uint64_t( count );
     memcpy( dst + count * 8, &n, 8 );
@@ -1335,11 +1383,30 @@ struct TableReader
     // it to int64 first turns 0xFFFFFFFFFFFFFFFF into -1, and a negative
     // length looks like room.
     ` + forceInline + ` bool room( uint64_t bytes ) const { return bytes <= (uint64_t) ( size - offset ); }
-    ` + forceInline + ` uint8_t get8()   { return buffer[offset++]; }
-    ` + forceInline + ` uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
-    ` + forceInline + ` uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
-    ` + forceInline + ` uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
-    ` + forceInline + ` void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
+    ` + forceInline + ` uint8_t get8() { return buffer[offset++]; }
+    ` + forceInline + ` uint16_t get16()
+    {
+        uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset + 1] ) << 8;
+        offset += 2;
+        return v;
+    }
+    ` + forceInline + ` uint32_t get32()
+    {
+        uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset + 1] ) << 8 | uint32_t( buffer[offset + 2] ) << 16 | uint32_t( buffer[offset + 3] ) << 24;
+        offset += 4;
+        return v;
+    }
+    ` + forceInline + ` uint64_t get64()
+    {
+        uint64_t lo = get32();
+        uint64_t hi = get32();
+        return lo | ( hi << 32 );
+    }
+    ` + forceInline + ` void get128( uint64_t & lo, uint64_t & hi )
+    {
+        lo = get64();
+        hi = get64();
+    }
 
     // ONE CANONICAL UNSIGNED LEB128 (docs/SPEC-TABLES.md §3), and a
     // non-minimal spelling is MALFORMED: 0x80 0x00 and 0x00 both spell zero,
@@ -1372,13 +1439,25 @@ struct TableReader
         uint32_t shift = 0;
         for ( int32_t i = 0; i < 10; i++ )
         {
-            if ( !has( 1 ) ) { offset = at; return false; }
+            if ( !has( 1 ) )
+            {
+                offset = at;
+                return false;
+            }
             const uint8_t b = get8();
-            if ( i == 9 && b > 1 ) { offset = at; return false; }
+            if ( i == 9 && b > 1 )
+            {
+                offset = at;
+                return false;
+            }
             value |= uint64_t( b & 0x7F ) << shift;
             if ( ( b & 0x80 ) == 0 )
             {
-                if ( i > 0 && b == 0 ) { offset = at; return false; } // a redundant continuation
+                if ( i > 0 && b == 0 )
+                {
+                    offset = at;
+                    return false;
+                } // a redundant continuation
                 return true;
             }
             shift += 7;
@@ -1408,21 +1487,47 @@ struct TableReader
         {
             // the fixed-width kinds, each by its width: 18-29 are the 128-bit integers and
             // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
-            case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
-            case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25: return has( 1 ) ? ( offset += 1, true ) : false;
+            case 3:
+            case 7:
+            case 21:
+            case 26: return has( 2 ) ? ( offset += 2, true ) : false;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27: return has( 4 ) ? ( offset += 4, true ) : false;
             // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
             // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
             // an unnamed or kind-mismatched timestamp skips cleanly, exactly
             // as internal/tablewire/timestamp_skip_test.go pins for Go.
-            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
-            case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
-            case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+            case 36: return has( 8 ) ? ( offset += 8, true ) : false;
+            case 18:
+            case 19:
+            case 24:
+            case 29: return has( 16 ) ? ( offset += 16, true ) : false;
+            case 17:
+            case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12: case 13: case 14: case 16: case 31: case 32: case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
+            case 12:
+            case 13:
+            case 14:
+            case 16:
+            case 31:
+            case 32:
+            case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1494,11 +1599,17 @@ static const int32_t kTableProbeShift = 51;   // 64 - 13, and 2^13 is kTableProb
 //   TableOpenBodyStopped  the form and the table were good and the ROOT BODY
 //                     could not be walked to its own terminator. What it
 //                     decoded before that is kept, as everywhere on this wire.
-enum TableOpenVerdict { TableOpenOk, TableOpenRefused, TableOpenDamaged, TableOpenBodyStopped };
+enum TableOpenVerdict
+{
+    TableOpenOk,
+    TableOpenRefused,
+    TableOpenDamaged,
+    TableOpenBodyStopped
+};
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -1543,8 +1654,8 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     // is touched at all.
     if ( table.count > 1 )
     {
-        uint64_t seen[ kTableProbeSlots ];
-        uint64_t used[ kTableProbeSlots / 64 ];
+        uint64_t seen[kTableProbeSlots];
+        uint64_t used[kTableProbeSlots / 64];
         for ( int32_t w = 0; w < kTableProbeSlots / 64; w++ ) { used[w] = 0; }
         for ( int64_t i = 0; i < table.count; i++ )
         {
@@ -1553,9 +1664,9 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
             for ( ;; )
             {
                 const uint64_t bit = 1ull << ( s & 63 );
-                if ( ( used[ s >> 6 ] & bit ) == 0 )
+                if ( ( used[s >> 6] & bit ) == 0 )
                 {
-                    used[ s >> 6 ] |= bit;
+                    used[s >> 6] |= bit;
                     seen[s] = id;
                     break;
                 }
@@ -1588,10 +1699,30 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
     }
 }
 
-` + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
-inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
-inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
-inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+` + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits )
+{
+    float f;
+    memcpy( &f, &bits, 4 );
+    return f;
+}
+inline uint32_t table_float_to_bits( float f )
+{
+    uint32_t b;
+    memcpy( &b, &f, 4 );
+    return b;
+}
+inline double table_bits_to_double( uint64_t bits )
+{
+    double d;
+    memcpy( &d, &bits, 8 );
+    return d;
+}
+inline uint64_t table_double_to_bits( double d )
+{
+    uint64_t b;
+    memcpy( &b, &d, 8 );
+    return b;
+}
 // the WRITER's half of the finite rule (§3.3): a NaN or an infinity is refused,
 // never written, and measure answers -1 for it as save answers false
 inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
@@ -1601,6 +1732,167 @@ inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_doubl
 
 #endif // ` + guard + `
 `
+}
+
+// declaresForms reports whether any table in the unit carries an explicit
+// `forms` declaration (docs/SPEC-TABLES.md §2.12). Synthesized map entries
+// are never the declaring table. The Go oracle is
+// internal/codegen/gotable/gotable.go's formAllowed.
+func declaresForms(u *ir.Unit) bool {
+	for _, t := range u.Tables {
+		if t != nil && !t.IsMapEntry() && t.DeclaredForms() {
+			return true
+		}
+	}
+	return false
+}
+
+// formAllowed reports whether the unit's tables let the named form be emitted
+// (docs/SPEC-TABLES.md §2.12), the C++ transcription of
+// internal/codegen/gotable/gotable.go's formAllowed: with no `forms`
+// declaration every form is allowed, and with one only a form some table
+// carries is emitted.
+func formAllowed(u *ir.Unit, form string) bool {
+	if !declaresForms(u) {
+		return true
+	}
+	for _, t := range u.Tables {
+		if t != nil && !t.IsMapEntry() && t.CarriesForm(form) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterFormsBlocks restricts the block layout surface to the fixed tables
+// that carry the `block` form (docs/SPEC-TABLES.md §2.12), the C++ mirror of
+// internal/codegen/gotable/gotable.go's filterBlocks. A unit with no
+// declaration is returned unchanged.
+func filterFormsBlocks(b *ir.BlockUnit) *ir.BlockUnit {
+	if b == nil {
+		return nil
+	}
+	restricted := false
+	for _, bl := range b.Tables {
+		if bl.Table != nil && !bl.Table.CarriesForm("block") {
+			restricted = true
+			break
+		}
+	}
+	if !restricted {
+		return b
+	}
+	out := &ir.BlockUnit{
+		Members: map[string]*ir.MemberLayout{},
+		Skipped: maps.Clone(b.Skipped),
+	}
+	var add func(name string)
+	add = func(name string) {
+		if _, done := out.Members[name]; done {
+			return
+		}
+		ml := b.Members[name]
+		if ml == nil {
+			return
+		}
+		out.Members[name] = ml
+		for _, fl := range ml.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	for _, bl := range b.Tables {
+		if bl.Table == nil || !bl.Table.CarriesForm("block") {
+			if bl.Table != nil {
+				out.Skipped[bl.Table.Name] = "it omits the block form in its forms declaration"
+			}
+			continue
+		}
+		out.Tables = append(out.Tables, bl)
+		for _, arr := range bl.Arrays {
+			add(arr.ElemName)
+		}
+		for _, fl := range bl.Projection.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok && !ir.BlockOutOfLine(fl.Field) {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	out.Order = make([]string, 0, len(out.Members))
+	for name := range out.Members {
+		out.Order = append(out.Order, name)
+	}
+	sort.Strings(out.Order)
+	return out
+}
+
+// cookClosure is every record a cook-carrying table's region can reach
+// (docs/SPEC-TABLES.md §2.12, §7): the union of the closures of the tables
+// that carry the `cook` form. A record reachable only from a table that omits
+// cook gets no cook body, which is what keeps the omitted surface out of the
+// header. The Go oracle is internal/codegen/gotable/cook.go's filtering.
+func cookClosure(u *ir.Unit) map[string]bool {
+	seen := map[string]bool{}
+	seenUnion := map[*ir.Union]bool{}
+	var walk func(name string)
+	var walkUnion func(un *ir.Union)
+	walkUnion = func(un *ir.Union) {
+		if seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	walk = func(name string) {
+		if seen[name] {
+			return
+		}
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			return
+		}
+		seen[name] = true
+		for _, f := range st.Fields {
+			if f.IsMap() {
+				walk(f.MapEntry.Name)
+				continue
+			}
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	for name, st := range u.Tables {
+		if st == nil || st.IsMapEntry() || !st.CarriesForm("cook") {
+			continue
+		}
+		walk(name)
+	}
+	return seen
 }
 
 // Generate emits <Base>Table.h for every unit file when the unit declares
@@ -1635,7 +1927,8 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	anyKeyed := unitHasKeyedArray(u, closure)
 	anyMap := unitHasMap(u, closure)
 	anyList := unitHasList(u, closure)
-	anyExtent := anyMap || anyList
+	anyTextList := ir.UnitHasTextLists(u)
+	anyExtent := anyMap || anyList || ir.UnitHasUnboundedText(u)
 	// WIDE TEXT is a unit-level fact, not a per-file one, because the
 	// primitives block sits behind ONE package-scoped guard: whichever
 	// <Base>Table.h a translation unit includes first defines the runtime for
@@ -1648,7 +1941,19 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	// kinds it DECLARES, and the list runtime's own extent term is one more
 	// call site for the width.
 	widen := unitWidenCensus(u, closure, anyList)
+	// A table's `forms` declaration narrows the block, cook and text surfaces
+	// (docs/SPEC-TABLES.md §2.12); the fixed, message and view surfaces are
+	// outside the forms vocabulary and stay governed by the generate call.
 	blocks := ir.Blocks(u)
+	blocks = filterFormsBlocks(blocks)
+	declares := declaresForms(u)
+	if declares && (blocks == nil || len(blocks.Tables) == 0) {
+		// a form no table in the unit carries emits no surface file at all
+		// (docs/SPEC-TABLES.md §2.12), so no <Base>Block.h is written
+		blocks = nil
+	}
+	cooks := cookClosure(u)
+	jsonAllowed := formAllowed(u, "json")
 
 	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
 	// <Base>Block.h and <Base>Block.cpp: nothing declares it, every fixed
@@ -1746,15 +2051,23 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			// there is no reason for a fixed-class root's answer to depend on
 			// what its neighbors in the unit happen to be.
 			g.emitRetainRefusals(members)
-			g.emitCookSurface(members)
-			g.emitCookWriteSurface(members)
+			// the cooked form is narrowed to the tables that carry it and the
+			// records they reach (docs/SPEC-TABLES.md §2.12)
+			cookMembers := make([]*ir.Struct, 0, len(members))
+			for _, st := range members {
+				if cooks[st.Name] {
+					cookMembers = append(cookMembers, st)
+				}
+			}
+			g.emitCookSurface(cookMembers)
+			g.emitCookWriteSurface(cookMembers)
 			g.emitRelocatabilityPreamble()
 			for _, st := range members {
 				g.pf("static_assert( __is_trivially_copyable( %s ), \"%s must stay relocatable\" );\n", st.Name, st.Name)
 				g.pf("static_assert( __is_standard_layout( %s ), \"%s must stay standard-layout for offsetof\" );\n", st.Name, st.Name)
 			}
 			g.pf("\n")
-			g.emitCookLayoutAsserts(members)
+			g.emitCookLayoutAsserts(cookMembers)
 			g.emitListAlignAsserts(members)
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----\n\n")
 			for _, st := range members {
@@ -1781,22 +2094,32 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			// they call live in <Base>Table.cpp, so a translation unit that
 			// includes this header for the wire codecs or the descriptors pays
 			// nothing for a form it never calls.
-			g.pf("// ---- the text form (docs/SPEC-TABLES.md §16) ----\n\n")
-			for _, st := range members {
-				g.emitJsonDeclarations(st)
+			if jsonAllowed {
+				g.pf("// ---- the text form (docs/SPEC-TABLES.md §16) ----\n\n")
+				for _, st := range members {
+					if !st.IsTable || st.CarriesForm("json") {
+						g.emitJsonDeclarations(st)
+					}
+				}
 			}
-			g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
-			// One document edit record for the whole package: every file's
-			// header is includable together and they all share this namespace.
-			editGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_TEXTFORM_EDIT"
-			g.pf("#ifndef %s\n#define %s\n", editGuard, editGuard)
-			g.pf("// TableTextFormEdit replaces one existing scalar value (§16.9.3): path\n")
-			g.pf("// names it as \"field\", \"field[2]\" or \"field.child\", and text is its\n")
-			g.pf("// replacement spelling, one token of this form.\n")
-			g.pf("struct TableTextFormEdit\n{\n    const char * path;\n    const char * text;\n};\n")
-			g.pf("#endif // %s\n\n", editGuard)
-			for _, st := range members {
-				g.emitTextFormDeclarations(st)
+			// §16.9's hand-editable text form has the JSON declaration gate above
+			// (docs/SPEC-TABLES.md §2.12).
+			if jsonAllowed {
+				g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
+				// One document edit record for the whole package: every file's
+				// header is includable together and they all share this namespace.
+				editGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_TEXTFORM_EDIT"
+				g.pf("#ifndef %s\n#define %s\n", editGuard, editGuard)
+				g.pf("// TableTextFormEdit replaces one existing scalar value (§16.9.3): path\n")
+				g.pf("// names it as \"field\", \"field[2]\" or \"field.child\", and text is its\n")
+				g.pf("// replacement spelling, one token of this form.\n")
+				g.pf("struct TableTextFormEdit\n{\n    const char * path;\n    const char * text;\n};\n")
+				g.pf("#endif // %s\n\n", editGuard)
+				for _, st := range members {
+					if !st.IsTable || st.CarriesForm("json") {
+						g.emitTextFormDeclarations(st)
+					}
+				}
 			}
 		} else {
 			for _, un := range unions {
@@ -1809,10 +2132,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n// your choice. See the LICENSE exception in the schema compiler; the compiler is\n// AGPL-3.0, its output is not.\n", f.Base)
 		fmt.Fprintf(&h, "// package %s — protocol id 0x%016x (packets only: tables version by field id, not by protocol id)\n", u.Package, u.ProtocolId)
 		if unitHas128(u, closure) {
-			h.WriteString("// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): includable from\n")
+			h.WriteString("// The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): includable from\n")
 			h.WriteString("// any TU — the one thing taken from serialize.h is the 128-bit storage type.\n\n")
 		} else {
-			h.WriteString("// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize\n")
+			h.WriteString("// The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize\n")
 			h.WriteString("// dependency — includable from any TU.\n\n")
 		}
 		// The C spellings, as serialize.h uses them: <stdint.h>, not <cstdint>.
@@ -1823,10 +2146,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
 		// them. A unit of plain scalars declares neither and gets no hook.
-		if !anyKeyed && !anyList && ir.TableFixedHasWriteBound(u) {
+		if !anyKeyed && !anyList && !anyTextList && ir.TableFixedHasWriteBound(u) {
 			h.WriteString(tableAssertHook)
 		}
-		if anyKeyed || anyList {
+		if anyKeyed || anyList || anyTextList {
 			// ENUM-KEYED arrays and UNBOUNDED arrays only: indexing a keyed array
 			// by None, or a list past its count, is a program error in EVERY
 			// configuration, and the accessor is where a runtime key or index can
@@ -1928,7 +2251,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// re-parsed by every translation unit that includes the header. A file
 		// with no table member has nothing to define and emits no file, because
 		// the generic-walk gate requires a walker in every generated .cpp.
-		if len(members) > 0 {
+		if len(members) > 0 && jsonAllowed {
 			var c strings.Builder
 			fmt.Fprintf(&c, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n// your choice. See the LICENSE exception in the schema compiler; the compiler is\n// AGPL-3.0, its output is not.\n", f.Base)
 			fmt.Fprintf(&c, "// package %s — the TABLE wire's text form (docs/SPEC-TABLES.md §16).\n", u.Package)
@@ -1948,10 +2271,14 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 
 				includes: map[string]bool{}, nativeIncludes: map[string]bool{}, idOrdinal: idOrdinal}
 			for _, st := range members {
-				cg.emitJsonDefinitions(st)
+				if !st.IsTable || st.CarriesForm("json") {
+					cg.emitJsonDefinitions(st)
+				}
 			}
 			for _, st := range members {
-				cg.emitTextFormDefinitions(st)
+				if !st.IsTable || st.CarriesForm("json") {
+					cg.emitTextFormDefinitions(st)
+				}
 			}
 			c.WriteString(cg.body.String())
 			fmt.Fprintf(&c, "} // namespace %s\n", u.Package)
@@ -1980,7 +2307,8 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	indeg := make([]int, n)
 	for i, st := range tables {
 		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
+			// Pointer storage is TableRef, so the target is not a by-value dependency.
+			if f.Type.Kind != ir.TNamed || f.Type.Pointer {
 				continue
 			}
 			edge := func(name string) {

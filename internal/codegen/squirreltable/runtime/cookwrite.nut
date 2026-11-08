@@ -74,15 +74,9 @@ local narrowF32 = function(x) {
   return (sign << 31) | ((e + 127) << 23) | (q & 0x007fffff);
 };
 local ciUp = function(v, a) { return (v + a - 1) & ~(a - 1); };
-local blobKey = function(kind, val) {
-  if (kind == "s") return "s:" + val;
-  local s = "";
-  for (local i = 0; i < val.len(); i++) s += format("%02x", val[i] & 0xff);
-  return "b:" + s;
-};
-
-local recordFields, joinField, elemDefault, armEdges, edgesOf, number, layout, indexOfTable, indexOfBlob, scalarWrite, writeField, recordWrite, elementWrite, unionForm, unionWrite;
-
+local recordFields, elemDefault, number, layout, indexOfTable, indexOfBlob, scalarWrite, writeField, recordWrite, elementWrite, unionForm, unionWrite;
+local hasExtent, fieldHasExtent, carveRecord, carveField, carveElement;
+local SAVE;
 // ONE FIELD: the cook layout facts the read side emits (docs/SPEC-TABLES.md
 // §7.2) joined with the descriptor's value shape. A cook field's `offset` is
 // its record offset; the arm and element forms use the same join.
@@ -93,7 +87,10 @@ local joinField = function(cf, fd) {
     isArray = cf.isArray, bound = cf.bound, countOffset = cf.countOffset,
     presentOffset = cf.presentOffset, isPointer = fd.shape == "ptr", variants = fd.variants,
     f32 = ("f32" in fd) && fd.f32, nf = ("nf" in fd) ? fd.nf : null, list = ("list" in fd) && fd.list,
-    counted = ("counted" in fd) && fd.counted
+    counted = ("counted" in fd) && fd.counted,
+    unbounded = ("unbounded" in fd) && fd.unbounded,
+    elemAlign = cf.elemAlign, entry = ("entry" in fd) ? fd.entry : null,
+    mapkey = ("mapkey" in fd) ? fd.mapkey : null
   };
 };
 recordFields = function(T, name) {
@@ -104,116 +101,153 @@ recordFields = function(T, name) {
   return out;
 };
 
-edgesOf = function(T, flds, inst, out) {
-  foreach (f in flds) {
-    if (f.optional && !inst[f.member + "Present"]) continue;
-    local val = inst[f.member];
-    if (f.shape == "ptr" || f.shape == "sblob" || f.shape == "bblob") {
-      if (val != null) {
-        if (f.shape == "ptr") out.append({ kind = "t", table = f.table, v = val });
-        else out.append({ kind = f.shape == "sblob" ? "s" : "b", v = val });
-      }
-    } else if (f.shape == "tab") {
-      edgesOf(T, recordFields(T, f.table), val, out);
-    } else if (f.shape == "union") {
-      armEdges(T, f.table, val, out);
-    } else if (f.shape == "arr") {
-      local e = f.elem;
-      local n = val == null ? 0 : val.len();
-      for (local i = 0; i < n; i++) {
-        if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
-          if (val[i] != null) {
-            if (e.shape == "ptr") out.append({ kind = "t", table = e.table, v = val[i] });
-            else out.append({ kind = e.shape == "sblob" ? "s" : "b", v = val[i] });
-          }
-        } else if (e.shape == "tab") {
-          edgesOf(T, recordFields(T, e.table), val[i], out);
-        } else if (e.shape == "union") {
-          armEdges(T, e.table, val[i], out);
-        }
-      }
-    }
-  }
-};
-armEdges = function(T, uname, inst, out) {
-  if (inst == null) return;
-  local t = inst.Type;
-  if (t == null || t == 0) return;
-  local u = T[uname + "Descriptor"];
-  local p = null;
-  foreach (a in u.arms) { if (a.tag == t) { p = a.payload; break; } }
-  if (p == null) return;
-  local val = inst[p.member];
-  if (p.shape == "ptr") { if (val != null) out.append({ kind = "t", table = p.table, v = val }); }
-  else if (p.shape == "sblob" || p.shape == "bblob") { if (val != null) out.append({ kind = p.shape == "sblob" ? "s" : "b", v = val }); }
-  else if (p.shape == "tab") { edgesOf(T, recordFields(T, p.table), val, out); }
-  else if (p.shape == "arr") {
-    local n = val.len();
-    for (local i = 0; i < n; i++) {
-      if (p.elem.shape == "ptr") { if (val[i] != null) out.append({ kind = "t", table = p.elem.table, v = val[i] }); }
-      else if (p.elem.shape == "sblob" || p.elem.shape == "bblob") { if (val[i] != null) out.append({ kind = p.elem.shape == "sblob" ? "s" : "b", v = val[i] }); }
-      else if (p.elem.shape == "tab") { edgesOf(T, recordFields(T, p.elem.table), val[i], out); }
-      else if (p.elem.shape == "union") { armEdges(T, p.elem.table, val[i], out); }
-    }
-  }
-};
-
+// Reuse the wire traversal for sorted map entries, composed guards and
+// pointer identity. Cook permits shared blobs and attributes each one once.
 number = function(T, rootName, root) {
+  local numbered = SAVE.numberForCook(T, rootName, root);
+  if (numbered == null) {
+    _M.CookReason <- SAVE.SaveReason;
+    return null;
+  }
   local form = T.cookForms[rootName];
-  local nodes = [{ id = T.Descriptors[rootName].typeId, kind = "t", form = form, v = root, key = null, size = form.size, align = form.align }];
-  local open = [root];
-  local stack = [];
-  local push = function(inst, flds) {
-    local edges = [];
-    edgesOf(T, flds, inst, edges);
-    stack.append({ v = inst, edges = edges, i = 0 });
-  };
-  push(root, recordFields(T, rootName));
-  while (stack.len() > 0) {
-    local top = stack[stack.len() - 1];
-    if (top.i >= top.edges.len()) { open.pop(); stack.pop(); continue; }
-    local e = top.edges[top.i];
-    top.i = top.i + 1;
-    if (e.kind == "s" || e.kind == "b") {
-      local key = blobKey(e.kind, e.v);
-      local found = false;
-      for (local i = 0; i < nodes.len(); i++) {
-        if (nodes[i].key == key) { found = true; break; }
-      }
-      if (!found) nodes.append({ id = e.kind == "s" ? STRING_BLOB_ID : BYTES_BLOB_ID, kind = e.kind, form = null, v = e.v, key = key, size = 8 + e.v.len() + (e.kind == "s" ? 1 : 0), align = 8 });
-      continue;
+  local nodes = [{ id = T.Descriptors[rootName].typeId, kind = "t", form = form, v = root, size = form.size, align = form.nodeAlign }];
+  foreach (e in numbered.nodes) {
+    if (e.kind == "t") {
+      local nf = T.cookForms[e.d.name];
+      nodes.append({ id = e.d.typeId, kind = "t", form = nf, v = e.v, size = nf.size, align = nf.nodeAlign });
+    } else {
+      nodes.append({ id = e.kind == "s" ? STRING_BLOB_ID : BYTES_BLOB_ID, kind = e.kind, form = null, v = e.v, size = 8 + e.v.len() + (e.kind == "s" ? 1 : 0), align = 8 });
     }
-    local target = e.v;
-    local isOpen = false;
-    foreach (o in open) { if (o == target) { isOpen = true; break; } }
-    if (isOpen) return null;
-    local found = false;
-    for (local i = 0; i < nodes.len(); i++) {
-      if (nodes[i].kind == "t" && nodes[i].v == target) { found = true; break; }
-    }
-    if (found) continue;
-    local nform = T.cookForms[e.table];
-    nodes.append({ id = T.Descriptors[e.table].typeId, kind = "t", form = nform, v = target, key = null, size = nform.size, align = nform.align });
-    open.append(target);
-    push(target, recordFields(T, e.table));
   }
   return nodes;
 };
 
-layout = function(nodes) {
-  local offsets = array(nodes.len());
-  offsets[0] = 0;
-  local cursor = nodes[0].size;
-  local align = nodes[0].align > 8 ? nodes[0].align : 8;
-  for (local k = 1; k < nodes.len(); k++) {
-    local a = nodes[k].align > 8 ? nodes[k].align : 8;
-    cursor = ciUp(cursor, a);
-    offsets[k] = cursor;
-    cursor += nodes[k].size;
-    if (a > align) align = a;
+fieldHasExtent = function(T, f) {
+  if (f.shape == "map" || (f.shape == "arr" && f.list)) return true;
+  if (f.shape == "str" && ("unbounded" in f) && f.unbounded) return true;
+  if (f.shape == "arr") return fieldHasExtent(T, f.elem);
+  if (f.shape == "tab") return hasExtent(T, f.table);
+  if (f.shape == "union") {
+    foreach (a in T[f.table + "Descriptor"].arms)
+      if (a.payload != null && fieldHasExtent(T, a.payload)) return true;
   }
-  local data = ciUp(cursor, align);
-  return { offsets = offsets, data = data, align = align };
+  return false;
+};
+hasExtent = function(T, name) {
+  foreach (f in T.Descriptors[name].fields) if (fieldHasExtent(T, f)) return true;
+  return false;
+};
+
+carveElement = function(T, f, value, at, extentBase, c, buf, regionBase, order, nodes, offsets) {
+  if (f.shape == "tab") return carveRecord(T, f.table, value, at, extentBase, c, buf, regionBase, order, nodes, offsets);
+  if (f.shape == "union") {
+    local uf = unionForm(T, f.table);
+    local tag = value == null ? 0 : value.Type;
+    if (tag == null || tag < 1 || tag > uf.arms.len()) return true;
+    local arm = uf.arms[tag - 1];
+    if (arm == null) return true;
+    return carveField(T, arm, value[arm.member], at + arm.offset, extentBase, c, buf, regionBase, order, nodes, offsets);
+  }
+  return true;
+};
+carveField = function(T, f, value, at, extentBase, c, buf, regionBase, order, nodes, offsets) {
+  if (f.shape == "str" && f.unbounded) {
+    // UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): a blob record in the
+    // holder's extent at eight-byte alignment, `u32 length`, `u32 zero`, the
+    // bytes and one zero byte, padded to the region's alignment; the slot is
+    // the self-relative delta to it, and the empty string's slot is null
+    local n = value == null ? 0 : value.len();
+    if (n == 0) return true;
+    c.at = ciUp(c.at, 8);
+    local start = c.at;
+    c.at += ciUp(8 + n + 1, T.TableRegionAlign);
+    if (buf != null) {
+      local blobAt = extentBase + start;
+      put(buf, at, blobAt - at, 8, order);
+      put(buf, blobAt, n, 4, order);
+      for (local i = 0; i < n; i++) buf[blobAt + 8 + i] = value[i] & 0xff;
+    }
+    return true;
+  }
+  if (f.shape == "map" || (f.shape == "arr" && f.list)) {
+    local isMap = f.shape == "map";
+    local indices = null;
+    local size = f.elemSize, align = f.elemAlign;
+    if (isMap) {
+      local ef = T.cookForms[f.entry];
+      size = ef.size; align = ef.align;
+      if (value != null) {
+        if (!(value in c.maps)) c.maps[value] <- SAVE.mapWriteOrder(value, f.mapkey.member);
+        indices = c.maps[value];
+      }
+    }
+    local n = value == null ? 0 : (isMap ? indices.len() : value.len());
+    c.at = ciUp(c.at, align);
+    local start = c.at;
+    c.at += n * size;
+    local arrayAt = extentBase + start;
+    if (buf != null) {
+      put(buf, at, n == 0 ? 0 : arrayAt - at, 8, order);
+      put(buf, at + 8, n, 4, order);
+    }
+    for (local i = 0; i < n; i++) {
+      local ev = value[isMap ? indices[i] : i];
+      local ea = arrayAt + i * size;
+      if (buf != null) {
+        local ok = isMap
+          ? recordWrite(T, recordFields(T, f.entry), ev, buf, regionBase, ea, order, nodes, offsets)
+          : elementWrite(T, f.elem, ev, buf, regionBase, ea, order, nodes, offsets, size);
+        if (!ok) return false;
+      }
+      if (isMap) {
+        if (!carveRecord(T, f.entry, ev, ea, extentBase, c, buf, regionBase, order, nodes, offsets)) return false;
+      } else if (!carveElement(T, f.elem, ev, ea, extentBase, c, buf, regionBase, order, nodes, offsets)) return false;
+    }
+    return true;
+  }
+  if (f.shape == "arr") {
+    local n = f.counted ? (value == null ? 0 : value.len()) : f.bound;
+    if (n > f.bound) n = f.bound;
+    for (local i = 0; i < n; i++) {
+      local ev = value != null && i < value.len() ? value[i] : elemDefault(T, f.elem);
+      if (!carveElement(T, f.elem, ev, at + i * f.elemSize, extentBase, c, buf, regionBase, order, nodes, offsets)) return false;
+    }
+    return true;
+  }
+  return carveElement(T, f, value, at, extentBase, c, buf, regionBase, order, nodes, offsets);
+};
+carveRecord = function(T, name, value, at, extentBase, c, buf, regionBase, order, nodes, offsets) {
+  foreach (f in recordFields(T, name)) {
+    local v = value[f.member];
+    if (f.optional && !value[f.member + "Present"]) {
+      if (f.shape == "map" && v != null && v.len() != 0) {
+        _M.CookReason <- "invalid_value";
+        return false;
+      }
+      continue;
+    }
+    if (!carveField(T, f, v, at + f.offset, extentBase, c, buf, regionBase, order, nodes, offsets)) return false;
+  }
+  return true;
+};
+
+layout = function(T, nodes) {
+  local offsets = array(nodes.len());
+  local maps = {};
+  local cursor = 0, align = 8;
+  foreach (k, nd in nodes) {
+    if (nd.align > align) align = nd.align;
+    cursor = ciUp(cursor, nd.align);
+    offsets[k] = cursor;
+    local size = nd.size;
+    if (nd.kind == "t" && hasExtent(T, nd.form.name)) {
+      local c = { at = 0, maps = maps };
+      if (!carveRecord(T, nd.form.name, nd.v, 0, 0, c, null, 0, 1, nodes, offsets)) return null;
+      size = nd.form.record + c.at;
+    }
+    cursor += size;
+  }
+  return { offsets = offsets, data = ciUp(cursor, align), align = align, maps = maps };
 };
 
 indexOfTable = function(nodes, root, val) {
@@ -225,9 +259,8 @@ indexOfTable = function(nodes, root, val) {
   return -1;
 };
 indexOfBlob = function(nodes, kind, val) {
-  local key = blobKey(kind, val);
   for (local i = 0; i < nodes.len(); i++) {
-    if (nodes[i].kind == kind && nodes[i].key == key) return i;
+    if (nodes[i].kind == kind && nodes[i].v == val) return i;
   }
   return -1;
 };
@@ -308,7 +341,12 @@ unionWrite = function(T, uname, val, buf, regionBase, at, order, nodes, offsets)
 };
 
 writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
-  if (f.optional) put(buf, at + f.presentOffset - f.offset, inst[f.member + "Present"] ? 1 : 0, 1, order);
+  if (f.optional) {
+    local present = inst[f.member + "Present"];
+    put(buf, at + f.presentOffset - f.offset, present ? 1 : 0, 1, order);
+  }
+  // the extent walk places maps, unbounded arrays and unbounded text
+  if (f.shape == "map" || (f.shape == "arr" && f.list) || (f.shape == "str" && f.unbounded)) return true;
   if (f.shape == "ptr" || f.shape == "sblob" || f.shape == "bblob") {
     local target = inst[f.member];
     if (target == null) { put(buf, at, 0, 8, order); return true; }
@@ -394,32 +432,36 @@ elementWrite = function(T, e, val, buf, regionBase, at, order, nodes, offsets, e
   return scalarWrite(buf, at, e, val, order) != false;
 };
 
-_M.CookMeasure <- function(T, root, value) {
+_M.CookMeasure <- function(T, save, root, value) {
   CUR = T;
+  SAVE = save;
   _M.CookReason <- null;
   local form = ("cookForms" in T) && (root in T.cookForms) ? T.cookForms[root] : null;
   if (form == null || value == null) return -1;
   local nodes = number(T, root, value);
   if (nodes == null) return -1;
-  local lay = layout(nodes);
+  local lay = layout(T, nodes);
+  if (lay == null) return -1;
   local dataOffset = ciUp(HEADER(), lay.align);
   local total = dataOffset + lay.data + nodes.len() * 16;
   // THE MEASURE REFUSES WHAT THE WRITE REFUSES (docs/SPEC-TABLES.md §3.3):
   // a NaN or an infinity anywhere in the value is -1 with the Cook's own
   // reason, non_finite_float: <Owner>.<field>, so measure and write never
   // disagree. The walk is the write itself, into scratch.
-  if (!_M.Cook(T, root, value, blob(total), 1)) return -1;
+  if (!_M.Cook(T, save, root, value, blob(total), 1)) return -1;
   return total;
 };
 
-_M.Cook <- function(T, root, value, buf, order) {
+_M.Cook <- function(T, save, root, value, buf, order) {
   CUR = T;
+  SAVE = save;
   _M.CookReason <- null;
   local form = ("cookForms" in T) && (root in T.cookForms) ? T.cookForms[root] : null;
   if (form == null || value == null || order < 1 || order > 2) return false;
   local nodes = number(T, root, value);
   if (nodes == null) return false;
-  local lay = layout(nodes);
+  local lay = layout(T, nodes);
+  if (lay == null) return false;
   local dataOffset = ciUp(HEADER(), lay.align);
   local total = dataOffset + lay.data + nodes.len() * 16;
   if (buf.len() < total) return false;
@@ -435,6 +477,10 @@ _M.Cook <- function(T, root, value, buf, order) {
     local at = dataOffset + lay.offsets[k];
     if (nd.kind == "t") {
       if (!recordWrite(CUR, recordFields(CUR, nd.form.name), nd.v, buf, dataOffset, at, order, nodes, lay.offsets)) return false;
+      if (hasExtent(T, nd.form.name)) {
+        local c = { at = 0, maps = lay.maps };
+        if (!carveRecord(T, nd.form.name, nd.v, at, at + nd.form.record, c, buf, dataOffset, order, nodes, lay.offsets)) return false;
+      }
     } else {
       put(buf, at, nd.v.len(), 4, order);
       for (local i = 0; i < nd.v.len(); i++) buf[at + 8 + i] = nd.v[i] & 0xff;

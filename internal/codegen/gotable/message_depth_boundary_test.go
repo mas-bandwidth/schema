@@ -225,14 +225,14 @@ func TestDepthBoundaryProbe(t *testing.T) {
 		var rep TableReport
 		n, ok := RootLoadMessages(values[:], &vocab, wire, &rep)
 		if expectOK {
-			if ok && n == 2 && !rep.Malformed && rep.Reason == "" && rep.Unknown == 1 && values[0].A == 42 && values[1].A == 99 {
+			if ok && n == 2 && !(rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") && rep.Reason == "" && rep.Unknown == 1 && values[0].A == 42 && values[1].A == 99 {
 				fmt.Println("PASS " + name)
 			} else {
 				fmt.Printf("FAIL %s: ok=%v n=%d rep=%+v v0=%d v1=%d\n", name, ok, n, rep, values[0].A, values[1].A)
 				failed = true
 			}
 		} else {
-			if !ok && n == 0 && rep.Malformed && rep.Reason == "" && (values[0].A == 0 || values[0].A == -7) && values[1].A == -7 {
+			if !ok && n == 0 && (rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") && (values[0].A == 0 || values[0].A == -7) && values[1].A == -7 {
 				fmt.Println("PASS " + name)
 			} else {
 				fmt.Printf("FAIL %s: ok=%v n=%d rep=%+v v0=%d v1=%d\n", name, ok, n, rep, values[0].A, values[1].A)

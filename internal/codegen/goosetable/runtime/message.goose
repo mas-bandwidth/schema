@@ -36,6 +36,7 @@ let MsgRefuseMessageFormAsFile: i64 = 5;
 let MsgRefuseBatchTooLarge: i64 = 6;
 let MsgRefuseNonFiniteFloat: i64 = 7;
 let MsgRefuseInvalidValue: i64 = 8;
+let MsgRefuseIntegrityMismatch: i64 = 9;
 
 fn msg_reason_name(code: i64) -> const u8[:] {
     match code {
@@ -48,6 +49,7 @@ fn msg_reason_name(code: i64) -> const u8[:] {
         6 => "batch_too_large",
         7 => "non_finite_float",
         8 => "invalid_value",
+        9 => "integrity_mismatch",
         _ => "???",
     }
 }
@@ -391,15 +393,15 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
         report.malformed = true;
         return false;
     }
+    // THE BOUNDED-WORK CONTRACT (§3), as for a file (wire_load.goose)
+    if ids_n > IdTableBound as! u64 {
+        report.malformed = true;
+        return false;
+    }
     let first = data.len - span;
-    for i in ids_n as! i64 {
-        let a = le_at(data, first + i * 8, 8);
-        for j in i {
-            if le_at(data, first + j * 8, 8) == a {
-                report.malformed = true;
-                return false;
-            }
-        }
+    if !ids_distinct(data, first, ids_n as! i64) {
+        report.malformed = true;
+        return false;
     }
     // the body's extent: a body that ENDED EARLY is malformed (§3)
     var off: i64 = 1;

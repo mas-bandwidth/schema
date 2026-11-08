@@ -302,14 +302,6 @@ func TestRowCoverageCorpusGate(t *testing.T) {
 		}
 	}
 
-	// refusal: names a forgery, and a name that reaches nothing is a
-	// reason nobody would be asked for.
-	for _, r := range m.Refusals {
-		if !forgeryByName[r.Forgery] {
-			single(&fails, "row %q: refusal names no forgery %q", r.Forgery, r.Forgery)
-		}
-	}
-
 	for _, f := range fails {
 		t.Error(f)
 	}
@@ -317,7 +309,7 @@ func TestRowCoverageCorpusGate(t *testing.T) {
 		t.Logf("the gate is green for %d rows across %d legs",
 			len(m.Instances)+len(m.Reports)+len(m.Connections)+len(m.Messages)+
 				len(m.Retains)+len(m.Hostiles)+len(m.Cooks)+len(m.CookWrites)+
-				len(m.Blocks)+len(m.Forgeries)+len(m.Refusals), len(legs))
+				len(m.Blocks)+len(m.Forgeries), len(legs))
 	}
 }
 

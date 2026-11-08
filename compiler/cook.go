@@ -57,9 +57,6 @@ type CookReport struct {
 // bytes so a caller can decide about the softer differences; anything that
 // damaged the framing is an error and nothing is written.
 func (c *Compiler) Cook(u *ir.Unit, root string, wire []byte, opts CookOptions) ([]byte, CookReport, TableReport, error) {
-	if err := refuseToolMaps(u); err != nil {
-		return nil, CookReport{}, TableReport{}, err
-	}
 	var rep CookReport
 	m := tabletext.NewModel(u)
 	st := m.Lookup(root)
@@ -70,9 +67,6 @@ func (c *Compiler) Cook(u *ir.Unit, root string, wire []byte, opts CookOptions) 
 	var wr tabletext.Report
 	if _, err := tablewire.Decode(m, inst, wire, &wr); err != nil {
 		return nil, rep, publicReport(wr), err
-	}
-	if wr.Malformed {
-		return nil, rep, publicReport(wr), fmt.Errorf("the wire is malformed: a region loaded from it would carry a hole, and a cook cannot (docs/SPEC-TABLES.md §7)")
 	}
 	out, err := tablecook.Cook(m, inst, tablecook.Options{Big: opts.Big, NoAttribution: opts.NoAttribution})
 	if err != nil {
@@ -144,9 +138,6 @@ func CookJoinAttribution(file, attribution []byte) ([]byte, error) {
 // no fact was lost in producing one. It is a tool's path and never a runtime's:
 // a runtime points at a cook where it lies.
 func (c *Compiler) Uncook(u *ir.Unit, root string, file []byte) ([]byte, error) {
-	if err := refuseToolMaps(u); err != nil {
-		return nil, err
-	}
 	m := tabletext.NewModel(u)
 	st := m.Lookup(root)
 	if st == nil || !st.IsTable {

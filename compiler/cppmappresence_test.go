@@ -126,9 +126,11 @@ int main()
         free( region );
         // THE JSON TEXT: absent omits the key, empty is {} (Go TestGoMapPresence)
         const int64_t jn = MToJsonMeasure( v );
-        CHECK( jn >= 0 );
+        CHECK( jn >= 0 && jn < 4096 );
+        if ( jn < 0 || jn >= 4096 ) { return 1; }
         char text[4096], packed[4096];
         CHECK( MToJson( v, text, sizeof( text ) ) == jn );
+        text[jn] = 0;
         compact( packed, text );
         CHECK( strcmp( packed, jsons[shape] ) == 0 );
         MBuilder jb;

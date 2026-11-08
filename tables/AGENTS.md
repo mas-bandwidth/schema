@@ -21,3 +21,4 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `stream/` | variable message-arm corpus | `make check` | `bin/schema check tables/stream` |
 | `vocab/` | wide-vocabulary corpus | `make check` | `bin/schema check tables/vocab` |
 | `vocab9/` | vocab-9 corpus | `make check` | `bin/schema check tables/vocab9` |
+| `widelist/` | wide-element list corpus (cook extent alignment) | `make check` | `bin/schema check tables/widelist` |

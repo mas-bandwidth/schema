@@ -43,9 +43,12 @@ func init() {
 // cookPackage is the unit's cook package module, <package>_cook, or "" for a
 // unit that declares no table and so has no cook.
 func cookPackage(u *ir.Unit) string {
+	blocks := ir.Blocks(u)
 	for _, f := range u.Files {
-		if len(f.Tables) > 0 {
-			return PackageModule(u, "cook")
+		for _, st := range f.Tables {
+			if st.CarriesForm("cook") || (st.CarriesForm("block") && blocks != nil && blocks.Block(st.Name) != nil) {
+				return PackageModule(u, "cook")
+			}
 		}
 	}
 	return ""
@@ -76,6 +79,9 @@ func emitCookPackage(g *goose.Gen) error {
 	g.Pf("// ---- each table's cook record: its place in CookRecords ----\n")
 	for _, f := range u.Files {
 		for _, st := range f.Tables {
+			if !st.CarriesForm("cook") {
+				continue
+			}
 			g.Declare(st.Name + "CookRecord")
 			g.Pf("let %sCookRecord: i64 = %d;\n", st.Name, index[st.Name])
 		}
@@ -111,7 +117,13 @@ func generateCookModules(u *ir.Unit, names map[string]string) (map[string][]byte
 		return nil, err
 	}
 	for _, f := range u.Files {
-		if len(f.Tables) == 0 {
+		var mine []*ir.Struct
+		for _, st := range f.Tables {
+			if st.CarriesForm("cook") {
+				mine = append(mine, st)
+			}
+		}
+		if len(mine) == 0 {
 			continue
 		}
 		g := goose.NewGen(u, f, names)
@@ -119,7 +131,7 @@ func generateCookModules(u *ir.Unit, names map[string]string) (map[string][]byte
 		g.Import(accelModule)
 		g.Import(cookModule)
 		g.Import(home)
-		for _, st := range f.Tables {
+		for _, st := range mine {
 			emitCookOpen(g, u, st)
 			emitCookRoot(g, u, st)
 		}

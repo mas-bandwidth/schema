@@ -326,13 +326,15 @@ func RootConfigSave(value *RootConfig, buffer []byte) int64 {
 
 func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 	RootConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -340,234 +342,176 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x8a67c9728746d394: // version_note
 			if kind != 12 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.version_note")
 				return false
 			}
-			if !tableUTF8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.VersionNote[:])
-				value.VersionNoteLength = 0
-				break
+			sub, ok := r.Body()
+			if !ok || !tableUTF8Valid(sub.Buffer) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 16 {
-				keep = tableUTF8Clamp(sub.Buffer, 16)
-				r.Report.Clamped++
+			if len(sub.Buffer) > 16 {
+				r.Report.Refuse(TableRefuseLengthOverBound, "RootConfig.version_note")
+				return false
 			}
 			clear(value.VersionNote[:])
-			copy(value.VersionNote[:keep], sub.Buffer)
-			value.VersionNoteLength = int32(keep)
+			copy(value.VersionNote[:], sub.Buffer)
+			value.VersionNoteLength = int32(len(sub.Buffer))
 		case 0x41cbd901b87fabb6: // weapons
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.weapons")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.weapons")
+					return false
+				}
+				if count > 8 {
+					r.Report.Refuse(TableRefuseCountOverBound, "RootConfig.weapons")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 8 {
-						keep = 8
-						r.Report.Clamped++
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					previous := value.WeaponsCount
-					decoded := int32(0)
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						WeaponConfigLoadBody(&elem, &value.Weapons[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							WeaponConfigReset(&value.Weapons[i])
-						}
-						decoded = int32(i + 1)
+					if !WeaponConfigLoadBody(&elem, &value.Weapons[i]) {
+						return false
 					}
-					for i := decoded; i < previous; i++ {
-						WeaponConfigReset(&value.Weapons[i])
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					value.WeaponsCount = decoded
+				}
+				value.WeaponsCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0x8181e61fc0436767: // profiles
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.profiles")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.profiles")
+					return false
+				}
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "RootConfig.profiles")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					previous := value.ProfilesCount
-					decoded := int32(0)
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						ProfileConfigLoadBody(&elem, &value.Profiles[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							ProfileConfigReset(&value.Profiles[i])
-						}
-						decoded = int32(i + 1)
+					if !ProfileConfigLoadBody(&elem, &value.Profiles[i]) {
+						return false
 					}
-					for i := decoded; i < previous; i++ {
-						ProfileConfigReset(&value.Profiles[i])
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					value.ProfilesCount = decoded
+				}
+				value.ProfilesCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// RootConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. RootConfigLoad is the strict read; call this one by name.
-func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		RootConfigReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !RootConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			RootConfigReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			RootConfigReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		RootConfigReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// RootConfigLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever RootConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. RootConfigLoadTolerant keeps a recovered value.
+// RootConfig also carries the FIXED form (form 3): RootConfigFixedLoad reads that one and
+// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
+// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// RootConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func RootConfigLoad(value *RootConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -575,24 +519,21 @@ func RootConfigLoad(value *RootConfig, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
-	ok := RootConfigLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !RootConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		RootConfigReset(value)
 		return false
 	}
 	return true
 }
 
-// RootConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// RootConfigReadStrict is RootConfigLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func RootConfigReadStrict(wire []byte) (*RootConfig, error) {
 	value := &RootConfig{}
 	var report TableReport
-	ok := RootConfigLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !RootConfigLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -848,6 +789,8 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 
 func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 	RootConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -855,7 +798,7 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -863,157 +806,166 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x8a67c9728746d394: // version_note
 			if kind != 12 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.version_note")
 				return false
 			}
-			if !tableUTF8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.VersionNote[:])
-				value.VersionNoteLength = 0
-				break
+			sub, ok := r.Body()
+			if !ok || !tableUTF8Valid(sub.Buffer) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 16 {
-				keep = tableUTF8Clamp(sub.Buffer, 16)
-				r.Report.Clamped++
+			if len(sub.Buffer) > 16 {
+				r.Report.Refuse(TableRefuseLengthOverBound, "RootConfig.version_note")
+				return false
 			}
 			clear(value.VersionNote[:])
-			copy(value.VersionNote[:keep], sub.Buffer)
-			value.VersionNoteLength = int32(keep)
+			copy(value.VersionNote[:], sub.Buffer)
+			value.VersionNoteLength = int32(len(sub.Buffer))
 		case 0x41cbd901b87fabb6: // weapons
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.weapons")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.weapons")
+					return false
+				}
+				r.Retain.discard(r.Path, true, 1)
+				if count > 8 {
+					r.Report.Refuse(TableRefuseCountOverBound, "RootConfig.weapons")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					r.Retain.discard(r.Path, true, 1)
-					keep := count
-					if keep > 8 {
-						keep = 8
-						r.Report.Clamped++
+					elem.Path = r.Path.step(1, uint32(i))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					previous := value.WeaponsCount
-					decoded := int32(0)
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						elem.Path = r.Path.step(1, uint32(i))
-						WeaponConfigLoadBodyRetain(&elem, &value.Weapons[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							WeaponConfigReset(&value.Weapons[i])
-						}
-						decoded = int32(i + 1)
+					if !WeaponConfigLoadBodyRetain(&elem, &value.Weapons[i]) {
+						return false
 					}
-					for i := decoded; i < previous; i++ {
-						WeaponConfigReset(&value.Weapons[i])
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					value.WeaponsCount = decoded
+				}
+				value.WeaponsCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0x8181e61fc0436767: // profiles
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.profiles")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.profiles")
+					return false
+				}
+				r.Retain.discard(r.Path, true, 2)
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "RootConfig.profiles")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					r.Retain.discard(r.Path, true, 2)
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
+					elem.Path = r.Path.step(2, uint32(i))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					previous := value.ProfilesCount
-					decoded := int32(0)
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						elem.Path = r.Path.step(2, uint32(i))
-						ProfileConfigLoadBodyRetain(&elem, &value.Profiles[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							ProfileConfigReset(&value.Profiles[i])
-						}
-						decoded = int32(i + 1)
+					if !ProfileConfigLoadBodyRetain(&elem, &value.Profiles[i]) {
+						return false
 					}
-					for i := decoded; i < previous; i++ {
-						ProfileConfigReset(&value.Profiles[i])
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					value.ProfilesCount = decoded
+				}
+				value.ProfilesCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "RootConfig") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -1207,13 +1159,15 @@ func WeaponConfigSave(value *WeaponConfig, buffer []byte) int64 {
 
 func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 	WeaponConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -1221,32 +1175,46 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x7f6308be8ab37fc0: // damage
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.damage")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.damage")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "WeaponConfig.damage")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Damage = v
@@ -1254,21 +1222,19 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 			}
 		case 0x1733055702acb1d2: // speed
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.speed")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.speed")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "WeaponConfig.speed")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Speed = v
@@ -1278,149 +1244,132 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
-						} else if v > 10 {
-							v = 10
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
+						if v < 0 || v > 10 {
+							r.Report.Refuse(TableRefuseOutOfRange, "WeaponConfig.penetration")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Penetration = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.penetration")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
-				} else if v > 10 {
-					v = 10
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
+				if v < 0 || v > 10 {
+					r.Report.Refuse(TableRefuseOutOfRange, "WeaponConfig.penetration")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Penetration = int32(v)
 			}
 		case 0xa5013e9ad5caeda4: // channel
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.channel")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
 				if v > 63 {
-					v = 63
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.channel")
+					r.Report.Refuse(TableRefuseOutOfRange, "WeaponConfig.channel")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Channel = uint32(v)
 			}
 		case 0xad6587bc602e3f59: // homing
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.homing")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: Homing"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Homing = b != 0
 			}
 		case 0x36c1c83b51f24394: // effect
 			if kind != 15 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.effect")
+				return false
 			}
 			{
 				payload9 := &value.Effect
 				armRef, ok := r.Leb()
 				if !ok {
-					r.Report.Malformed = true
+					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-				if armRef == 0 {
-					payload9.Type = EffectTypeNone
-				} else {
+				payload9.Type = EffectTypeNone
+				if armRef != 0 {
 					armID, ok := r.Resolve(armRef)
 					if !ok || !r.Has(1) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					armKind := r.Get8()
 					payload8, ok := r.Body()
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					payload9.Type = EffectTypeNone
+					if armKind == 13 || armKind == 14 || armKind == 16 {
+						payload8.Depth += 2
+					} else if armKind == 15 {
+						payload8.Depth++
+					}
+					if payload8.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					switch armID {
 					case 0xffb5be9be2e469cc:
 						if armKind != 13 {
-							r.Report.KindMismatch++
-							break
+							r.Report.Refuse(TableRefuseKindMismatch, "Effect.buff")
+							return false
 						}
 						payload9.Type = EffectTypeBuff
-						BuffLoadBody(&payload8, &payload9.Buff().Value)
+						if !BuffLoadBody(&payload8, &payload9.Buff().Value) {
+							return false
+						}
 						if payload8.Offset != int64(len(payload8.Buffer)) {
-							payload9.Type = EffectTypeNone
-							r.Report.Malformed = true
-							break
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					case 0x13cdc5ede73d2fd7:
 						if armKind != 13 {
-							r.Report.KindMismatch++
-							break
+							r.Report.Refuse(TableRefuseKindMismatch, "Effect.debuff")
+							return false
 						}
 						payload9.Type = EffectTypeDebuff
-						DebuffLoadBody(&payload8, &payload9.Debuff().Value)
+						if !DebuffLoadBody(&payload8, &payload9.Debuff().Value) {
+							return false
+						}
 						if payload8.Offset != int64(len(payload8.Buffer)) {
-							payload9.Type = EffectTypeNone
-							r.Report.Malformed = true
-							break
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					default:
 						r.Report.Unknown++
@@ -1429,89 +1378,22 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// WeaponConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. WeaponConfigLoad is the strict read; call this one by name.
-func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		WeaponConfigReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !WeaponConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			WeaponConfigReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			WeaponConfigReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		WeaponConfigReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// WeaponConfigLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever WeaponConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. WeaponConfigLoadTolerant keeps a recovered value.
+// WeaponConfig also carries the FIXED form (form 3): WeaponConfigFixedLoad reads that one and
+// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
+// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// WeaponConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func WeaponConfigLoad(value *WeaponConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -1519,24 +1401,21 @@ func WeaponConfigLoad(value *WeaponConfig, data []byte, report *TableReport) boo
 	} else {
 		*read = TableReport{}
 	}
-	ok := WeaponConfigLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !WeaponConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		WeaponConfigReset(value)
 		return false
 	}
 	return true
 }
 
-// WeaponConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// WeaponConfigReadStrict is WeaponConfigLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func WeaponConfigReadStrict(wire []byte) (*WeaponConfig, error) {
 	value := &WeaponConfig{}
 	var report TableReport
-	ok := WeaponConfigLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !WeaponConfigLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -1704,6 +1583,8 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 
 func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool {
 	WeaponConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -1711,7 +1592,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -1719,32 +1600,46 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x7f6308be8ab37fc0: // damage
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.damage")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.damage")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "WeaponConfig.damage")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Damage = v
@@ -1752,21 +1647,19 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 			}
 		case 0x1733055702acb1d2: // speed
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.speed")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.speed")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "WeaponConfig.speed")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Speed = v
@@ -1776,152 +1669,135 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
-						} else if v > 10 {
-							v = 10
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
+						if v < 0 || v > 10 {
+							r.Report.Refuse(TableRefuseOutOfRange, "WeaponConfig.penetration")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Penetration = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.penetration")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
-				} else if v > 10 {
-					v = 10
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.penetration")
+				if v < 0 || v > 10 {
+					r.Report.Refuse(TableRefuseOutOfRange, "WeaponConfig.penetration")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Penetration = int32(v)
 			}
 		case 0xa5013e9ad5caeda4: // channel
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.channel")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := r.Get8()
 				if v > 63 {
-					v = 63
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "WeaponConfig.channel")
+					r.Report.Refuse(TableRefuseOutOfRange, "WeaponConfig.channel")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Channel = uint32(v)
 			}
 		case 0xad6587bc602e3f59: // homing
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.homing")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: Homing"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Homing = b != 0
 			}
 		case 0x36c1c83b51f24394: // effect
 			if kind != 15 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.effect")
+				return false
 			}
 			r.Retain.discard(r.Path, true, 5)
 			{
 				payload7 := &value.Effect
 				armRef, ok := r.Leb()
 				if !ok {
-					r.Report.Malformed = true
+					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-				if armRef == 0 {
-					payload7.Type = EffectTypeNone
-				} else {
+				payload7.Type = EffectTypeNone
+				if armRef != 0 {
 					armID, ok := r.Resolve(armRef)
 					if !ok || !r.Has(1) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					armKind := r.Get8()
 					payload6, ok := r.Body()
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					payload7.Type = EffectTypeNone
+					if armKind == 13 || armKind == 14 || armKind == 16 {
+						payload6.Depth += 2
+					} else if armKind == 15 {
+						payload6.Depth++
+					}
+					if payload6.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					switch armID {
 					case 0xffb5be9be2e469cc:
 						if armKind != 13 {
-							r.Report.KindMismatch++
-							break
+							r.Report.Refuse(TableRefuseKindMismatch, "Effect.buff")
+							return false
 						}
 						payload7.Type = EffectTypeBuff
 						payload6.Path = r.Path.step(5, uint32(1))
-						BuffLoadBodyRetain(&payload6, &payload7.Buff().Value)
+						if !BuffLoadBodyRetain(&payload6, &payload7.Buff().Value) {
+							return false
+						}
 						if payload6.Offset != int64(len(payload6.Buffer)) {
-							payload7.Type = EffectTypeNone
-							r.Report.Malformed = true
-							break
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					case 0x13cdc5ede73d2fd7:
 						if armKind != 13 {
-							r.Report.KindMismatch++
-							break
+							r.Report.Refuse(TableRefuseKindMismatch, "Effect.debuff")
+							return false
 						}
 						payload7.Type = EffectTypeDebuff
 						payload6.Path = r.Path.step(5, uint32(2))
-						DebuffLoadBodyRetain(&payload6, &payload7.Debuff().Value)
+						if !DebuffLoadBodyRetain(&payload6, &payload7.Debuff().Value) {
+							return false
+						}
 						if payload6.Offset != int64(len(payload6.Buffer)) {
-							payload7.Type = EffectTypeNone
-							r.Report.Malformed = true
-							break
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					default:
 						r.Report.Unknown++
@@ -1934,7 +1810,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "WeaponConfig") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -2350,13 +2226,15 @@ func LoadoutConfigSave(value *LoadoutConfig, buffer []byte) int64 {
 
 func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 	LoadoutConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -2364,28 +2242,40 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x32a89b2977c48ad4: // grade
 			if kind != 30 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.grade")
+				return false
 			}
 			{
 				variantRef, ok := r.Leb()
 				if !ok {
-					r.Report.Malformed = true
+					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
 				if variantRef == 0 {
@@ -2393,7 +2283,7 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 				} else {
 					id, ok := r.Resolve(variantRef)
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					if !value.Grade.TableEnumValue(id) {
@@ -2403,126 +2293,122 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			}
 		case 0xd90a4e7682f799c5: // grades
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.grades")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 30 {
-						r.Report.KindMismatch++
-						break
-					}
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
-					}
-					previous := value.GradesCount
-					decoded := int32(0)
-					for i := range keep {
-						{
-							variantRef, ok := sub.Leb()
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 30 {
+					r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.grades")
+					return false
+				}
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.grades")
+					return false
+				}
+				for i := range count {
+					{
+						variantRef, ok := sub.Leb()
+						if !ok {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						if variantRef == 0 {
+							value.Grades[i] = GradeNone
+						} else {
+							id, ok := sub.Resolve(variantRef)
 							if !ok {
-								r.Report.Malformed = true
-								break
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
 							}
-							if variantRef == 0 {
-								value.Grades[i] = GradeNone
-							} else {
-								id, ok := sub.Resolve(variantRef)
-								if !ok {
-									r.Report.Malformed = true
-									break
-								}
-								if !value.Grades[i].TableEnumValue(id) {
-									r.Report.Unknown++
-								}
+							if !value.Grades[i].TableEnumValue(id) {
+								r.Report.Unknown++
 							}
 						}
-						decoded = int32(i + 1)
 					}
-					if decoded < previous {
-						clear(value.Grades[decoded:previous])
-					}
-					value.GradesCount = decoded
+				}
+				value.GradesCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xb46ff45a23d72549: // podium
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.podium")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 30 {
-						r.Report.KindMismatch++
-						break
-					}
-					keep := count
-					if keep > 3 {
-						keep = 3
-						r.Report.Clamped++
-					}
-					for i := range keep {
-						{
-							variantRef, ok := sub.Leb()
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 30 {
+					r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.podium")
+					return false
+				}
+				if count > 3 {
+					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.podium")
+					return false
+				}
+				for i := range count {
+					{
+						variantRef, ok := sub.Leb()
+						if !ok {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						if variantRef == 0 {
+							value.Podium[i] = GradeNone
+						} else {
+							id, ok := sub.Resolve(variantRef)
 							if !ok {
-								r.Report.Malformed = true
-								break
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
 							}
-							if variantRef == 0 {
-								value.Podium[i] = GradeNone
-							} else {
-								id, ok := sub.Resolve(variantRef)
-								if !ok {
-									r.Report.Malformed = true
-									break
-								}
-								if !value.Podium[i].TableEnumValue(id) {
-									r.Report.Unknown++
-								}
+							if !value.Podium[i].TableEnumValue(id) {
+								r.Report.Unknown++
 							}
 						}
 					}
+				}
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0x4b06f5847096e54a: // perks
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -2532,15 +2418,11 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.perks")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -2549,207 +2431,153 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			}
 		case 0xbf31137ff783e939: // primary
 			if kind != 13 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.primary")
+				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			WeaponConfigLoadBody(&sub, &value.Primary)
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			if !WeaponConfigLoadBody(&sub, &value.Primary) {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
-				r.Report.Malformed = true
-				WeaponConfigReset(&value.Primary)
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		case 0xde28f0f5118acc24: // backups
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.backups")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.backups")
+					return false
+				}
+				if count > 2 {
+					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.backups")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 2 {
-						keep = 2
-						r.Report.Clamped++
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						WeaponConfigLoadBody(&elem, &value.Backups[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							WeaponConfigReset(&value.Backups[i])
-						}
+					if !WeaponConfigLoadBody(&elem, &value.Backups[i]) {
+						return false
 					}
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+				}
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xf901aa0340249a41: // attachments
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.attachments")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.attachments")
+					return false
+				}
+				if count > 8 {
+					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.attachments")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 8 {
-						keep = 8
-						r.Report.Clamped++
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					previous := value.AttachmentsCount
-					decoded := int32(0)
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						AttachmentLoadBody(&elem, &value.Attachments[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							AttachmentReset(&value.Attachments[i])
-						}
-						decoded = int32(i + 1)
+					if !AttachmentLoadBody(&elem, &value.Attachments[i]) {
+						return false
 					}
-					for i := decoded; i < previous; i++ {
-						AttachmentReset(&value.Attachments[i])
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					value.AttachmentsCount = decoded
+				}
+				value.AttachmentsCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// LoadoutConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. LoadoutConfigLoad is the strict read; call this one by name.
-func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		LoadoutConfigReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !LoadoutConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			LoadoutConfigReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			LoadoutConfigReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		LoadoutConfigReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// LoadoutConfigLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever LoadoutConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. LoadoutConfigLoadTolerant keeps a recovered value.
+// LoadoutConfig also carries the FIXED form (form 3): LoadoutConfigFixedLoad reads that one and
+// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
+// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// LoadoutConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func LoadoutConfigLoad(value *LoadoutConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -2757,24 +2585,21 @@ func LoadoutConfigLoad(value *LoadoutConfig, data []byte, report *TableReport) b
 	} else {
 		*read = TableReport{}
 	}
-	ok := LoadoutConfigLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !LoadoutConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		LoadoutConfigReset(value)
 		return false
 	}
 	return true
 }
 
-// LoadoutConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// LoadoutConfigReadStrict is LoadoutConfigLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func LoadoutConfigReadStrict(wire []byte) (*LoadoutConfig, error) {
 	value := &LoadoutConfig{}
 	var report TableReport
-	ok := LoadoutConfigLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !LoadoutConfigLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -3205,6 +3030,8 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 
 func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) bool {
 	LoadoutConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -3212,7 +3039,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -3220,28 +3047,40 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x32a89b2977c48ad4: // grade
 			if kind != 30 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.grade")
+				return false
 			}
 			{
 				variantRef, ok := r.Leb()
 				if !ok {
-					r.Report.Malformed = true
+					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
 				if variantRef == 0 {
@@ -3249,7 +3088,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 				} else {
 					id, ok := r.Resolve(variantRef)
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					if !value.Grade.TableEnumValue(id) {
@@ -3262,134 +3101,130 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 		case 0xd90a4e7682f799c5: // grades
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.grades")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 30 {
-						r.Report.KindMismatch++
-						break
-					}
-					r.Retain.discard(r.Path, true, 1)
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
-					}
-					previous := value.GradesCount
-					decoded := int32(0)
-					for i := range keep {
-						{
-							variantRef, ok := sub.Leb()
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 30 {
+					r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.grades")
+					return false
+				}
+				r.Retain.discard(r.Path, true, 1)
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.grades")
+					return false
+				}
+				for i := range count {
+					{
+						variantRef, ok := sub.Leb()
+						if !ok {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						if variantRef == 0 {
+							value.Grades[i] = GradeNone
+						} else {
+							id, ok := sub.Resolve(variantRef)
 							if !ok {
-								r.Report.Malformed = true
-								break
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
 							}
-							if variantRef == 0 {
-								value.Grades[i] = GradeNone
-							} else {
-								id, ok := sub.Resolve(variantRef)
-								if !ok {
-									r.Report.Malformed = true
-									break
-								}
-								if !value.Grades[i].TableEnumValue(id) {
-									r.Report.Unknown++
-									if r.Retain != nil {
-										r.Report.RetainLost++
-									}
+							if !value.Grades[i].TableEnumValue(id) {
+								r.Report.Unknown++
+								if r.Retain != nil {
+									r.Report.RetainLost++
 								}
 							}
 						}
-						decoded = int32(i + 1)
 					}
-					if decoded < previous {
-						clear(value.Grades[decoded:previous])
-					}
-					value.GradesCount = decoded
+				}
+				value.GradesCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xb46ff45a23d72549: // podium
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.podium")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 30 {
-						r.Report.KindMismatch++
-						break
-					}
-					r.Retain.discard(r.Path, true, 2)
-					keep := count
-					if keep > 3 {
-						keep = 3
-						r.Report.Clamped++
-					}
-					for i := range keep {
-						{
-							variantRef, ok := sub.Leb()
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 30 {
+					r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.podium")
+					return false
+				}
+				r.Retain.discard(r.Path, true, 2)
+				if count > 3 {
+					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.podium")
+					return false
+				}
+				for i := range count {
+					{
+						variantRef, ok := sub.Leb()
+						if !ok {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
+						if variantRef == 0 {
+							value.Podium[i] = GradeNone
+						} else {
+							id, ok := sub.Resolve(variantRef)
 							if !ok {
-								r.Report.Malformed = true
-								break
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
 							}
-							if variantRef == 0 {
-								value.Podium[i] = GradeNone
-							} else {
-								id, ok := sub.Resolve(variantRef)
-								if !ok {
-									r.Report.Malformed = true
-									break
-								}
-								if !value.Podium[i].TableEnumValue(id) {
-									r.Report.Unknown++
-									if r.Retain != nil {
-										r.Report.RetainLost++
-									}
+							if !value.Podium[i].TableEnumValue(id) {
+								r.Report.Unknown++
+								if r.Retain != nil {
+									r.Report.RetainLost++
 								}
 							}
 						}
 					}
+				}
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0x4b06f5847096e54a: // perks
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -3399,15 +3234,11 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.perks")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -3416,131 +3247,144 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 		case 0xbf31137ff783e939: // primary
 			if kind != 13 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.primary")
+				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			sub.Path = r.Path.step(4, uint32(0))
-			WeaponConfigLoadBodyRetain(&sub, &value.Primary)
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			if !WeaponConfigLoadBodyRetain(&sub, &value.Primary) {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
-				r.Report.Malformed = true
-				WeaponConfigReset(&value.Primary)
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		case 0xde28f0f5118acc24: // backups
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.backups")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.backups")
+					return false
+				}
+				r.Retain.discard(r.Path, true, 5)
+				if count > 2 {
+					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.backups")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					r.Retain.discard(r.Path, true, 5)
-					keep := count
-					if keep > 2 {
-						keep = 2
-						r.Report.Clamped++
+					elem.Path = r.Path.step(5, uint32(i))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						elem.Path = r.Path.step(5, uint32(i))
-						WeaponConfigLoadBodyRetain(&elem, &value.Backups[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							WeaponConfigReset(&value.Backups[i])
-						}
+					if !WeaponConfigLoadBodyRetain(&elem, &value.Backups[i]) {
+						return false
 					}
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+				}
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xf901aa0340249a41: // attachments
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.attachments")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 13 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 13 {
+					r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.attachments")
+					return false
+				}
+				r.Retain.discard(r.Path, true, 6)
+				if count > 8 {
+					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.attachments")
+					return false
+				}
+				for i := range count {
+					elem, ok := sub.Body()
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					r.Retain.discard(r.Path, true, 6)
-					keep := count
-					if keep > 8 {
-						keep = 8
-						r.Report.Clamped++
+					elem.Path = r.Path.step(6, uint32(i))
+					elem.Depth += 1
+					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					previous := value.AttachmentsCount
-					decoded := int32(0)
-					for i := range keep {
-						elem, ok := sub.Body()
-						if !ok {
-							r.Report.Malformed = true
-							break
-						}
-						elem.Path = r.Path.step(6, uint32(i))
-						AttachmentLoadBodyRetain(&elem, &value.Attachments[i])
-						if elem.Offset != int64(len(elem.Buffer)) {
-							r.Report.Malformed = true
-							AttachmentReset(&value.Attachments[i])
-						}
-						decoded = int32(i + 1)
+					if !AttachmentLoadBodyRetain(&elem, &value.Attachments[i]) {
+						return false
 					}
-					for i := decoded; i < previous; i++ {
-						AttachmentReset(&value.Attachments[i])
+					if elem.Offset != int64(len(elem.Buffer)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					value.AttachmentsCount = decoded
+				}
+				value.AttachmentsCount = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "LoadoutConfig") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -3868,13 +3712,15 @@ func ProfileConfigSave(value *ProfileConfig, buffer []byte) int64 {
 
 func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 	ProfileConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -3882,99 +3728,99 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0xc4bcadba8e631b86: // name
 			if kind != 12 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.name")
 				return false
 			}
-			if !tableUTF8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
+			sub, ok := r.Body()
+			if !ok || !tableUTF8Valid(sub.Buffer) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 32 {
-				keep = tableUTF8Clamp(sub.Buffer, 32)
-				r.Report.Clamped++
+			if len(sub.Buffer) > 32 {
+				r.Report.Refuse(TableRefuseLengthOverBound, "ProfileConfig.name")
+				return false
 			}
 			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
+			copy(value.Name[:], sub.Buffer)
+			value.NameLength = int32(len(sub.Buffer))
 		case 0xdbff4cc56c2092f0: // icon
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.icon")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 6 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 6 {
+					r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.icon")
+					return false
+				}
+				if count > 16 {
+					r.Report.Refuse(TableRefuseLengthOverBound, "ProfileConfig.icon")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 16 {
-						keep = 16
-						r.Report.Clamped++
+					{
+						v := sub.Unsigned(elemKind)
+						value.Icon[i] = byte(v)
 					}
-					previous := value.IconLength
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							value.Icon[i] = byte(v)
-						}
-						decoded = int32(i + 1)
-					}
-					if decoded < previous {
-						clear(value.Icon[decoded:previous])
-					}
-					value.IconLength = decoded
+				}
+				value.IconLength = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xab8b6d521f80b969: // experience
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -3984,15 +3830,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.experience")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4001,15 +3843,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 		case 0x1e5088ef2e9bafc6: // tilt
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.tilt")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4020,7 +3858,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4030,15 +3868,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.heading")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4049,7 +3883,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4059,15 +3893,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.timestamp")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4076,15 +3906,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 		case 0x10bda981fe095518: // badge
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.badge")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4095,7 +3921,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4105,15 +3931,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.port")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4124,7 +3946,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4134,15 +3956,11 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.epoch")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4153,7 +3971,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			if kind != 11 {
 				if tableKindWidens(kind, 11) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4166,7 +3984,9 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
 						if !finite {
-							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "ProfileConfig.precision")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						} else {
 							value.Precision = v
 						}
@@ -4174,21 +3994,19 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.precision")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get64()
 				if b&0x7ff0000000000000 == 0x7ff0000000000000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "ProfileConfig.precision")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float64frombits(b)
 					value.Precision = v
@@ -4196,180 +4014,113 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 		case 0xb921eb8a3d0cb0f9: // ratings
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.ratings")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 10 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 10 {
+					r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.ratings")
+					return false
+				}
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "ProfileConfig.ratings")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
-					}
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
+					{
+						b := sub.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "ProfileConfig.ratings")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						} else {
+							v := math.Float32frombits(b)
+							value.Ratings[i] = v
 						}
-						{
-							b := sub.Get32()
-							if b&0x7f800000 == 0x7f800000 {
-								tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.ratings")
-							} else {
-								v := math.Float32frombits(b)
-								value.Ratings[i] = v
-							}
-						}
 					}
+				}
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xa06f5e0a148e253c: // has_loadout
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.has_loadout")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: HasLoadout"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.HasLoadout = b != 0
 			}
 		case 0x5759ce7586bbb5a3: // loadout
 			if kind != 13 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.loadout")
+				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			LoadoutConfigLoadBody(&sub, &value.Loadout)
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			if !LoadoutConfigLoadBody(&sub, &value.Loadout) {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
-				r.Report.Malformed = true
-				LoadoutConfigReset(&value.Loadout)
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// ProfileConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. ProfileConfigLoad is the strict read; call this one by name.
-func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		ProfileConfigReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !ProfileConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			ProfileConfigReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			ProfileConfigReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		ProfileConfigReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// ProfileConfigLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever ProfileConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. ProfileConfigLoadTolerant keeps a recovered value.
+// ProfileConfig also carries the FIXED form (form 3): ProfileConfigFixedLoad reads that one and
+// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
+// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// ProfileConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func ProfileConfigLoad(value *ProfileConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -4377,24 +4128,21 @@ func ProfileConfigLoad(value *ProfileConfig, data []byte, report *TableReport) b
 	} else {
 		*read = TableReport{}
 	}
-	ok := ProfileConfigLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !ProfileConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		ProfileConfigReset(value)
 		return false
 	}
 	return true
 }
 
-// ProfileConfigReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// ProfileConfigReadStrict is ProfileConfigLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func ProfileConfigReadStrict(wire []byte) (*ProfileConfig, error) {
 	value := &ProfileConfig{}
 	var report TableReport
-	ok := ProfileConfigLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !ProfileConfigLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -4715,6 +4463,8 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 
 func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) bool {
 	ProfileConfigReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -4722,7 +4472,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -4730,100 +4480,100 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0xc4bcadba8e631b86: // name
 			if kind != 12 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.name")
 				return false
 			}
-			if !tableUTF8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
+			sub, ok := r.Body()
+			if !ok || !tableUTF8Valid(sub.Buffer) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 32 {
-				keep = tableUTF8Clamp(sub.Buffer, 32)
-				r.Report.Clamped++
+			if len(sub.Buffer) > 32 {
+				r.Report.Refuse(TableRefuseLengthOverBound, "ProfileConfig.name")
+				return false
 			}
 			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
+			copy(value.Name[:], sub.Buffer)
+			value.NameLength = int32(len(sub.Buffer))
 		case 0xdbff4cc56c2092f0: // icon
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.icon")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 6 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 6 {
+					r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.icon")
+					return false
+				}
+				r.Retain.discard(r.Path, true, 1)
+				if count > 16 {
+					r.Report.Refuse(TableRefuseLengthOverBound, "ProfileConfig.icon")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					r.Retain.discard(r.Path, true, 1)
-					keep := count
-					if keep > 16 {
-						keep = 16
-						r.Report.Clamped++
+					{
+						v := sub.Unsigned(elemKind)
+						value.Icon[i] = byte(v)
 					}
-					previous := value.IconLength
-					decoded := int32(0)
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
-						}
-						{
-							v := sub.Unsigned(elemKind)
-							value.Icon[i] = byte(v)
-						}
-						decoded = int32(i + 1)
-					}
-					if decoded < previous {
-						clear(value.Icon[decoded:previous])
-					}
-					value.IconLength = decoded
+				}
+				value.IconLength = int32(count)
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xab8b6d521f80b969: // experience
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4833,15 +4583,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.experience")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4850,15 +4596,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 		case 0x1e5088ef2e9bafc6: // tilt
 			if kind != 2 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.tilt")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4869,7 +4611,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4879,15 +4621,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.heading")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4898,7 +4636,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4908,15 +4646,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.timestamp")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4925,15 +4659,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 		case 0x10bda981fe095518: // badge
 			if kind != 6 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.badge")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4944,7 +4674,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4954,15 +4684,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.port")
+				return false
 			}
 			if !r.Has(2) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -4973,7 +4699,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -4983,15 +4709,11 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.epoch")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
@@ -5002,7 +4724,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			if kind != 11 {
 				if tableKindWidens(kind, 11) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
@@ -5015,7 +4737,9 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
 						if !finite {
-							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "ProfileConfig.precision")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						} else {
 							value.Precision = v
 						}
@@ -5023,21 +4747,19 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.precision")
+				return false
 			}
 			if !r.Has(8) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get64()
 				if b&0x7ff0000000000000 == 0x7ff0000000000000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "ProfileConfig.precision")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float64frombits(b)
 					value.Precision = v
@@ -5045,101 +4767,101 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 		case 0xb921eb8a3d0cb0f9: // ratings
 			if kind != 14 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.ratings")
 				return false
 			}
-			if len(sub.Buffer) >= 2 {
-				header := sub
-				header.Buffer = r.Buffer[r.Offset-int64(len(sub.Buffer)):]
-				elemKind := header.Get8()
-				count, ok := header.Leb()
-				sub.Offset = header.Offset
+			{
+				sub, ok := r.Body()
+				if !ok || len(sub.Buffer) < 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				sub.Depth += 1
+				if sub.Depth > tableBinaryMaxDepth {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				elemKind := sub.Get8()
+				count, ok := sub.Leb()
 				if !ok {
-					r.Report.Malformed = true
-				} else {
-					if elemKind != 10 {
-						r.Report.KindMismatch++
-						break
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				if elemKind != 10 {
+					r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.ratings")
+					return false
+				}
+				r.Retain.discard(r.Path, true, 10)
+				if count > 4 {
+					r.Report.Refuse(TableRefuseCountOverBound, "ProfileConfig.ratings")
+					return false
+				}
+				for i := range count {
+					if !sub.Has(tableKindBytes(elemKind)) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
-					r.Retain.discard(r.Path, true, 10)
-					keep := count
-					if keep > 4 {
-						keep = 4
-						r.Report.Clamped++
-					}
-					for i := range keep {
-						if !sub.Has(tableKindBytes(elemKind)) {
-							r.Report.Malformed = true
-							break
+					{
+						b := sub.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "ProfileConfig.ratings")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						} else {
+							v := math.Float32frombits(b)
+							value.Ratings[i] = v
 						}
-						{
-							b := sub.Get32()
-							if b&0x7f800000 == 0x7f800000 {
-								tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.ratings")
-							} else {
-								v := math.Float32frombits(b)
-								value.Ratings[i] = v
-							}
-						}
 					}
+				}
+				if sub.Offset != int64(len(sub.Buffer)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 			}
 		case 0xa06f5e0a148e253c: // has_loadout
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.has_loadout")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: HasLoadout"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.HasLoadout = b != 0
 			}
 		case 0x5759ce7586bbb5a3: // loadout
 			if kind != 13 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.loadout")
+				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			sub.Path = r.Path.step(12, uint32(0))
-			LoadoutConfigLoadBodyRetain(&sub, &value.Loadout)
+			sub.Depth += 1
+			if sub.Depth > tableBinaryMaxDepth {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			if !LoadoutConfigLoadBodyRetain(&sub, &value.Loadout) {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
-				r.Report.Malformed = true
-				LoadoutConfigReset(&value.Loadout)
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "ProfileConfig") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -5238,13 +4960,15 @@ func AttachmentSave(value *AttachmentRow, buffer []byte) int64 {
 
 func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 	AttachmentReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -5252,12 +4976,28 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
@@ -5265,66 +5005,52 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
-						} else if v > 7 {
-							v = 7
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
+						if v < 0 || v > 7 {
+							r.Report.Refuse(TableRefuseOutOfRange, "Attachment.slot")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Slot = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Attachment.slot")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
-				} else if v > 7 {
-					v = 7
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
+				if v < 0 || v > 7 {
+					r.Report.Refuse(TableRefuseOutOfRange, "Attachment.slot")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Slot = int32(v)
 			}
 		case 0xeef9d1358ae7b4e6: // power
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Attachment.power")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Attachment.power")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "Attachment.power")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Power = v
@@ -5332,89 +5058,19 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// AttachmentLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. AttachmentLoad is the strict read; call this one by name.
-func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		AttachmentReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !AttachmentLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			AttachmentReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			AttachmentReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		AttachmentReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// AttachmentLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever AttachmentReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. AttachmentLoadTolerant keeps a recovered value.
+// AttachmentLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func AttachmentLoad(value *AttachmentRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -5422,24 +5078,21 @@ func AttachmentLoad(value *AttachmentRow, data []byte, report *TableReport) bool
 	} else {
 		*read = TableReport{}
 	}
-	ok := AttachmentLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !AttachmentLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		AttachmentReset(value)
 		return false
 	}
 	return true
 }
 
-// AttachmentReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// AttachmentReadStrict is AttachmentLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func AttachmentReadStrict(wire []byte) (*AttachmentRow, error) {
 	value := &AttachmentRow{}
 	var report TableReport
-	ok := AttachmentLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !AttachmentLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -5490,6 +5143,8 @@ func AttachmentSaveBodyFieldsRetain(w *TableRetainWriter, value *AttachmentRow) 
 
 func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 	AttachmentReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -5497,7 +5152,7 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -5505,12 +5160,28 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
@@ -5518,66 +5189,52 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
-						} else if v > 7 {
-							v = 7
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
+						if v < 0 || v > 7 {
+							r.Report.Refuse(TableRefuseOutOfRange, "Attachment.slot")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Slot = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Attachment.slot")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
-				} else if v > 7 {
-					v = 7
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Attachment.slot")
+				if v < 0 || v > 7 {
+					r.Report.Refuse(TableRefuseOutOfRange, "Attachment.slot")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Slot = int32(v)
 			}
 		case 0xeef9d1358ae7b4e6: // power
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Attachment.power")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Attachment.power")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "Attachment.power")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Power = v
@@ -5586,7 +5243,7 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "Attachment") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -5667,13 +5324,15 @@ func BuffSave(value *BuffRow, buffer []byte) int64 {
 
 func BuffLoadBody(r *TableReader, value *BuffRow) bool {
 	BuffReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -5681,32 +5340,46 @@ func BuffLoadBody(r *TableReader, value *BuffRow) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x9adc623a805c87c6: // multiplier
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Buff.multiplier")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Buff.multiplier")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "Buff.multiplier")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Multiplier = v
@@ -5714,89 +5387,19 @@ func BuffLoadBody(r *TableReader, value *BuffRow) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// BuffLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. BuffLoad is the strict read; call this one by name.
-func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		BuffReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !BuffLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			BuffReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			BuffReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		BuffReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// BuffLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever BuffReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. BuffLoadTolerant keeps a recovered value.
+// BuffLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func BuffLoad(value *BuffRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -5804,24 +5407,21 @@ func BuffLoad(value *BuffRow, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
-	ok := BuffLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !BuffLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		BuffReset(value)
 		return false
 	}
 	return true
 }
 
-// BuffReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// BuffReadStrict is BuffLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func BuffReadStrict(wire []byte) (*BuffRow, error) {
 	value := &BuffRow{}
 	var report TableReport
-	ok := BuffLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !BuffLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -5861,6 +5461,8 @@ func BuffSaveBodyFieldsRetain(w *TableRetainWriter, value *BuffRow) bool {
 
 func BuffLoadBodyRetain(r *TableRetainReader, value *BuffRow) bool {
 	BuffReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -5868,7 +5470,7 @@ func BuffLoadBodyRetain(r *TableRetainReader, value *BuffRow) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -5876,32 +5478,46 @@ func BuffLoadBodyRetain(r *TableRetainReader, value *BuffRow) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x9adc623a805c87c6: // multiplier
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Buff.multiplier")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Buff.multiplier")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "Buff.multiplier")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Multiplier = v
@@ -5910,7 +5526,7 @@ func BuffLoadBodyRetain(r *TableRetainReader, value *BuffRow) bool {
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "Buff") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -5991,13 +5607,15 @@ func DebuffSave(value *DebuffRow, buffer []byte) int64 {
 
 func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 	DebuffReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -6005,12 +5623,28 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
@@ -6018,134 +5652,52 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
-						} else if v > 100 {
-							v = 100
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
+						if v < 0 || v > 100 {
+							r.Report.Refuse(TableRefuseOutOfRange, "Debuff.amount")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Amount = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Debuff.amount")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
-				} else if v > 100 {
-					v = 100
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
+				if v < 0 || v > 100 {
+					r.Report.Refuse(TableRefuseOutOfRange, "Debuff.amount")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Amount = int32(v)
 			}
 		default:
 			r.Report.Unknown++
-			if !r.Skip(kind) {
-				r.Report.Malformed = true
+			if !tableWireSkipValue(r, kind) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// DebuffLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. DebuffLoad is the strict read; call this one by name.
-func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
-		}
-	}
-	if verdict != TableOpenOk {
-		DebuffReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !DebuffLoadBody(&r, value) || report.NonFiniteFloat != "" {
-		if tableNonFiniteRefused(report) {
-			DebuffReset(value)
-			return false
-		}
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			DebuffReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		DebuffReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
-// DebuffLoad is the plain read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it refuses
-// whatever DebuffReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
-// wire damage, build version, missing_required), resets value to its defaults and
-// answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. DebuffLoadTolerant keeps a recovered value.
+// DebuffLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
+// refuses with value at its defaults and false. A supplied report receives this
+// read's report, and on a refusal report.Err() is the typed reason. The open
+// checks every condition the wire alone decides; the body read checks this
+// declaration's (tla/ReadOrder.tla, OneVerdict).
 func DebuffLoad(value *DebuffRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -6153,24 +5705,21 @@ func DebuffLoad(value *DebuffRow, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
-	ok := DebuffLoadTolerant(value, data, read)
-	if !ok || read.Err() != nil {
+	r, verdict := tableOpenChecked(data, read)
+	if verdict != TableOpenOk || !DebuffLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		tableRefused(read)
 		DebuffReset(value)
 		return false
 	}
 	return true
 }
 
-// DebuffReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, one typed reason.
+// DebuffReadStrict is DebuffLoad under a second spelling (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the value, or the typed reason.
 func DebuffReadStrict(wire []byte) (*DebuffRow, error) {
 	value := &DebuffRow{}
 	var report TableReport
-	ok := DebuffLoadTolerant(value, wire, &report)
-	if err := report.Err(); err != nil || !ok {
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+	if !DebuffLoad(value, wire, &report) {
+		return nil, report.Err()
 	}
 	return value, nil
 }
@@ -6210,6 +5759,8 @@ func DebuffSaveBodyFieldsRetain(w *TableRetainWriter, value *DebuffRow) bool {
 
 func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 	DebuffReset(value)
+	var seen [64]byte
+	var seenHigh map[uint64]struct{}
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -6217,7 +5768,7 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -6225,12 +5776,28 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		if ref < 512 {
+			if seen[ref>>3]&(byte(1)<<(ref&7)) != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seen[ref>>3] |= byte(1) << (ref & 7)
+		} else {
+			if seenHigh == nil {
+				seenHigh = make(map[uint64]struct{})
+			}
+			if _, dup := seenHigh[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenHigh[ref] = struct{}{}
+		}
 		kind := r.Get8()
-		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || fieldID == 0xffffffffffffffff {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
@@ -6238,57 +5805,2437 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
-						} else if v > 100 {
-							v = 100
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
+						if v < 0 || v > 100 {
+							r.Report.Refuse(TableRefuseOutOfRange, "Debuff.amount")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Amount = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Debuff.amount")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
-				} else if v > 100 {
-					v = 100
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Debuff.amount")
+				if v < 0 || v > 100 {
+					r.Report.Refuse(TableRefuseOutOfRange, "Debuff.amount")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Amount = int32(v)
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "Debuff") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
+}
+
+// ---- THE FIXED FORM, form byte 3 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4) ----
+//
+// A record is an eight-byte hash of the writer's layout and then the values
+// in declared order, every field at its declared storage width. The writer is
+// constant-offset stores; the reader is ONE loop over ONE plan.
+
+func BuffFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(BuffRow{}.Multiplier))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func BuffFixedWriteBody(b []byte, value *BuffRow) {
+	tableFixedPutF32(b[0:], value.Multiplier)
+}
+
+func DebuffFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(DebuffRow{}.Amount))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func DebuffFixedWriteBody(b []byte, value *DebuffRow) {
+	tableFixedPut32(b[0:], uint32(value.Amount))
+}
+
+func WeaponConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(WeaponConfig{}.Damage))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(WeaponConfig{}.Speed))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 8
+		ed := dst + uint32(unsafe.Offsetof(WeaponConfig{}.Penetration))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 12
+		ed := dst + uint32(unsafe.Offsetof(WeaponConfig{}.Channel))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 16
+		ed := dst + uint32(unsafe.Offsetof(WeaponConfig{}.Homing))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	{
+		es := src + 17
+		ed := dst + uint32(unsafe.Offsetof(WeaponConfig{}.Effect))
+		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(EffectRow{}.Type)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
+		n++
+		{ // arm buff, ordinal 1
+			guardAt := n
+			n += BuffFixedLeaves(out[n:], links[n:], es+1, ed+uint32(4+unsafe.Offsetof(struct {
+				Value BuffRow
+			}{}.Value)))
+			for q := guardAt; q < n; q++ {
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 1, ArgW: 1})
+			}
+		}
+		{ // arm debuff, ordinal 2
+			guardAt := n
+			n += DebuffFixedLeaves(out[n:], links[n:], es+1, ed+uint32(4+unsafe.Offsetof(struct {
+				Value DebuffRow
+			}{}.Value)))
+			for q := guardAt; q < n; q++ {
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
+			}
+		}
+	}
+	return n
+}
+
+func WeaponConfigFixedWriteBody(b []byte, value *WeaponConfig) {
+	tableFixedPutF32(b[0:], value.Damage)
+	tableFixedPutF32(b[4:], value.Speed)
+	tableFixedPut32(b[8:], uint32(value.Penetration))
+	tableFixedPut32(b[12:], uint32(value.Channel))
+	{
+		p := uint8(0)
+		if value.Homing {
+			p = 1
+		}
+		tableFixedPut8(b[16:], p)
+	}
+	tableFixedPut8(b[17:], uint8(value.Effect.Type))
+	switch value.Effect.Type {
+	case EffectTypeBuff:
+		BuffFixedWriteBody(b[17:][1:], &value.Effect.Buff().Value)
+	case EffectTypeDebuff:
+		DebuffFixedWriteBody(b[17:][1:], &value.Effect.Debuff().Value)
+	}
+}
+
+func AttachmentFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(AttachmentRow{}.Slot))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(AttachmentRow{}.Power))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func AttachmentFixedWriteBody(b []byte, value *AttachmentRow) {
+	tableFixedPut32(b[0:], uint32(value.Slot))
+	tableFixedPutF32(b[4:], value.Power)
+}
+
+func LoadoutConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(LoadoutConfig{}.Grade))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	out[n] = TableFixedEntry{Src: src + 1, Dst: dst + uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), Size: 4, Aux: 1, Guard: tableFixedNoGuard, Op: tableFixedCount} // grades count
+	n++
+	for i := range uint32(4) {
+		es := src + 5 + i*1
+		ed := dst + uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)) + i*uint32(unsafe.Sizeof(Grade(0)))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	for i := range uint32(3) {
+		es := src + 9 + i*1
+		ed := dst + uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)) + i*uint32(unsafe.Sizeof(Grade(0)))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 12
+		ed := dst + uint32(unsafe.Offsetof(LoadoutConfig{}.Perks))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 20
+		ed := dst + uint32(unsafe.Offsetof(LoadoutConfig{}.Primary))
+		n += WeaponConfigFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	for i := range uint32(2) {
+		es := src + 42 + i*22
+		ed := dst + uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)) + i*uint32(unsafe.Sizeof(WeaponConfig{}))
+		n += WeaponConfigFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	out[n] = TableFixedEntry{Src: src + 86, Dst: dst + uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), Size: 8, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // attachments count
+	n++
+	for i := range uint32(8) {
+		es := src + 90 + i*8
+		ed := dst + uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)) + i*uint32(unsafe.Sizeof(AttachmentRow{}))
+		n += AttachmentFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	return n
+}
+
+func LoadoutConfigFixedWriteBody(b []byte, value *LoadoutConfig) {
+	tableFixedPut8(b[0:], uint8(value.Grade))
+	tableFixedPut32(b[1:], uint32(value.GradesCount))
+	{
+		livei := min(max(int64(value.GradesCount), 0), 4)
+		for i := range livei {
+			tableFixedPut8(b[5:][i*1:], uint8(value.Grades[i]))
+		}
+	}
+	for i := range int64(3) {
+		tableFixedPut8(b[9:][i*1:], uint8(value.Podium[i]))
+	}
+	tableFixedPut64(b[12:], uint64(value.Perks))
+	WeaponConfigFixedWriteBody(b[20:], &value.Primary)
+	for i := range int64(2) {
+		WeaponConfigFixedWriteBody(b[42:][i*22:], &value.Backups[i])
+	}
+	tableFixedPut32(b[86:], uint32(value.AttachmentsCount))
+	{
+		livei := min(max(int64(value.AttachmentsCount), 0), 8)
+		for i := range livei {
+			clear(b[90:][i*8 : i*8+8])
+			AttachmentFixedWriteBody(b[90:][i*8:], &value.Attachments[i])
+		}
+		clear(b[90:][livei*8 : 64])
+	}
+}
+
+func ProfileConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	out[n] = TableFixedEntry{Src: src + 0, Dst: dst + uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), Size: 32, Aux: dst + uint32(unsafe.Offsetof(ProfileConfig{}.Name)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // name
+	n++
+	out[n] = TableFixedEntry{Src: src + 36, Dst: dst + uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 3} // icon
+	n++
+	{
+		es := src + 56
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Experience))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 60
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Tilt))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 61
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Heading))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 2, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 63
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 71
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Badge))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 72
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Port))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 2, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 74
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Epoch))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 82
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Precision))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	for i := range uint32(4) {
+		es := src + 90 + i*4
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)) + i*uint32(unsafe.Sizeof(float32(0)))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 106
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	{
+		es := src + 107
+		ed := dst + uint32(unsafe.Offsetof(ProfileConfig{}.Loadout))
+		n += LoadoutConfigFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	return n
+}
+
+func ProfileConfigFixedWriteBody(b []byte, value *ProfileConfig) {
+	tableFixedPut32(b[0:], uint32(value.NameLength))
+	copy(b[0:][4:], value.Name[:min(uint32(value.NameLength), 32)])
+	tableFixedPut32(b[36:], uint32(value.IconLength))
+	copy(b[36:][4:], value.Icon[:min(uint32(value.IconLength), 16)])
+	tableFixedPut32(b[56:], uint32(value.Experience))
+	tableFixedPut8(b[60:], uint8(value.Tilt))
+	tableFixedPut16(b[61:], uint16(value.Heading))
+	tableFixedPut64(b[63:], uint64(value.Timestamp))
+	tableFixedPut8(b[71:], uint8(value.Badge))
+	tableFixedPut16(b[72:], uint16(value.Port))
+	tableFixedPut64(b[74:], uint64(value.Epoch))
+	tableFixedPutF64(b[82:], value.Precision)
+	for i := range int64(4) {
+		tableFixedPutF32(b[90:][i*4:], value.Ratings[i])
+	}
+	{
+		p := uint8(0)
+		if value.HasLoadout {
+			p = 1
+		}
+		tableFixedPut8(b[106:], p)
+	}
+	LoadoutConfigFixedWriteBody(b[107:], &value.Loadout)
+}
+
+func RootConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	out[n] = TableFixedEntry{Src: src + 0, Dst: dst + uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // version_note
+	n++
+	out[n] = TableFixedEntry{Src: src + 20, Dst: dst + uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), Size: 8, Aux: 22, Guard: tableFixedNoGuard, Op: tableFixedCount} // weapons count
+	n++
+	for i := range uint32(8) {
+		es := src + 24 + i*22
+		ed := dst + uint32(unsafe.Offsetof(RootConfig{}.Weapons)) + i*uint32(unsafe.Sizeof(WeaponConfig{}))
+		n += WeaponConfigFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	out[n] = TableFixedEntry{Src: src + 200, Dst: dst + uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), Size: 4, Aux: 261, Guard: tableFixedNoGuard, Op: tableFixedCount} // profiles count
+	n++
+	for i := range uint32(4) {
+		es := src + 204 + i*261
+		ed := dst + uint32(unsafe.Offsetof(RootConfig{}.Profiles)) + i*uint32(unsafe.Sizeof(ProfileConfig{}))
+		n += ProfileConfigFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	return n
+}
+
+func RootConfigFixedWriteBody(b []byte, value *RootConfig) {
+	tableFixedPut32(b[0:], uint32(value.VersionNoteLength))
+	copy(b[0:][4:], value.VersionNote[:min(uint32(value.VersionNoteLength), 16)])
+	tableFixedPut32(b[20:], uint32(value.WeaponsCount))
+	{
+		livei := min(max(int64(value.WeaponsCount), 0), 8)
+		for i := range livei {
+			clear(b[24:][i*22 : i*22+22])
+			WeaponConfigFixedWriteBody(b[24:][i*22:], &value.Weapons[i])
+		}
+		clear(b[24:][livei*22 : 176])
+	}
+	tableFixedPut32(b[200:], uint32(value.ProfilesCount))
+	{
+		livei := min(max(int64(value.ProfilesCount), 0), 4)
+		for i := range livei {
+			clear(b[204:][i*261 : i*261+261])
+			ProfileConfigFixedWriteBody(b[204:][i*261:], &value.Profiles[i])
+		}
+		clear(b[204:][livei*261 : 1044])
+	}
+}
+
+// Debuff's read-side bounds: each value outside them counts one in over.
+func DebuffFixedBoundsBody(value *DebuffRow, over *int32) {
+	_, _ = value, over
+	if value.Amount < 0 || value.Amount > 100 {
+		(*over)++
+	}
+}
+
+// WeaponConfig's read-side bounds: each value outside them counts one in over.
+func WeaponConfigFixedBoundsBody(value *WeaponConfig, over *int32) {
+	_, _ = value, over
+	if value.Penetration < 0 || value.Penetration > 10 {
+		(*over)++
+	}
+	if value.Channel > 63 {
+		(*over)++
+	}
+	if uint32(value.Effect.Type) > 2 {
+		(*over)++
+	}
+	switch value.Effect.Type {
+	case EffectTypeDebuff:
+		DebuffFixedBoundsBody(&value.Effect.Debuff().Value, over)
+	}
+}
+
+// Attachment's read-side bounds: each value outside them counts one in over.
+func AttachmentFixedBoundsBody(value *AttachmentRow, over *int32) {
+	_, _ = value, over
+	if value.Slot < 0 || value.Slot > 7 {
+		(*over)++
+	}
+}
+
+// LoadoutConfig's read-side bounds: each value outside them counts one in over.
+func LoadoutConfigFixedBoundsBody(value *LoadoutConfig, over *int32) {
+	_, _ = value, over
+	if uint64(value.Grade) > 3 {
+		(*over)++
+	}
+	for i := range int64(value.GradesCount) {
+		if uint64(value.Grades[i]) > 3 {
+			(*over)++
+		}
+	}
+	for i := range 3 {
+		if uint64(value.Podium[i]) > 3 {
+			(*over)++
+		}
+	}
+	WeaponConfigFixedBoundsBody(&value.Primary, over)
+	for i := range 2 {
+		WeaponConfigFixedBoundsBody(&value.Backups[i], over)
+	}
+	for i := range int64(value.AttachmentsCount) {
+		AttachmentFixedBoundsBody(&value.Attachments[i], over)
+	}
+}
+
+// ProfileConfig's read-side bounds: each value outside them counts one in over.
+func ProfileConfigFixedBoundsBody(value *ProfileConfig, over *int32) {
+	_, _ = value, over
+	LoadoutConfigFixedBoundsBody(&value.Loadout, over)
+}
+
+// RootConfig's read-side bounds: each value outside them counts one in over.
+func RootConfigFixedBoundsBody(value *RootConfig, over *int32) {
+	_, _ = value, over
+	for i := range int64(value.WeaponsCount) {
+		WeaponConfigFixedBoundsBody(&value.Weapons[i], over)
+	}
+	for i := range int64(value.ProfilesCount) {
+		ProfileConfigFixedBoundsBody(&value.Profiles[i], over)
+	}
+}
+
+// BuffFixedFiniteBody is Buff's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func BuffFixedFiniteBody(value *BuffRow) string {
+	if value.Multiplier-value.Multiplier != 0 {
+		return "Buff.multiplier"
+	}
+	return ""
+}
+
+// WeaponConfigFixedFiniteBody is WeaponConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func WeaponConfigFixedFiniteBody(value *WeaponConfig) string {
+	if value.Damage-value.Damage != 0 {
+		return "WeaponConfig.damage"
+	}
+	if value.Speed-value.Speed != 0 {
+		return "WeaponConfig.speed"
+	}
+	switch value.Effect.Type {
+	case EffectTypeBuff:
+		if why := BuffFixedFiniteBody(&value.Effect.Buff().Value); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
+// AttachmentFixedFiniteBody is Attachment's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func AttachmentFixedFiniteBody(value *AttachmentRow) string {
+	if value.Power-value.Power != 0 {
+		return "Attachment.power"
+	}
+	return ""
+}
+
+// LoadoutConfigFixedFiniteBody is LoadoutConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func LoadoutConfigFixedFiniteBody(value *LoadoutConfig) string {
+	if why := WeaponConfigFixedFiniteBody(&value.Primary); why != "" {
+		return why
+	}
+	for i := range 2 {
+		if why := WeaponConfigFixedFiniteBody(&value.Backups[i]); why != "" {
+			return why
+		}
+	}
+	for i := range min(int64(value.AttachmentsCount), 8) {
+		if why := AttachmentFixedFiniteBody(&value.Attachments[i]); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
+// ProfileConfigFixedFiniteBody is ProfileConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func ProfileConfigFixedFiniteBody(value *ProfileConfig) string {
+	if value.Precision-value.Precision != 0 {
+		return "ProfileConfig.precision"
+	}
+	for i := range 4 {
+		if value.Ratings[i]-value.Ratings[i] != 0 {
+			return "ProfileConfig.ratings"
+		}
+	}
+	if why := LoadoutConfigFixedFiniteBody(&value.Loadout); why != "" {
+		return why
+	}
+	return ""
+}
+
+// RootConfigFixedFiniteBody is RootConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func RootConfigFixedFiniteBody(value *RootConfig) string {
+	for i := range min(int64(value.WeaponsCount), 8) {
+		if why := WeaponConfigFixedFiniteBody(&value.Weapons[i]); why != "" {
+			return why
+		}
+	}
+	for i := range min(int64(value.ProfilesCount), 4) {
+		if why := ProfileConfigFixedFiniteBody(&value.Profiles[i]); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
+// Buff's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func BuffFixedCheckBody(value *BuffRow) bool {
+	_ = value
+	if value.Multiplier-value.Multiplier != 0 {
+		return false
+	}
+	return true
+}
+
+// Debuff's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func DebuffFixedCheckBody(value *DebuffRow) bool {
+	_ = value
+	if value.Amount < 0 || value.Amount > 100 {
+		return false
+	}
+	return true
+}
+
+// WeaponConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func WeaponConfigFixedCheckBody(value *WeaponConfig) bool {
+	_ = value
+	if value.Damage-value.Damage != 0 {
+		return false
+	}
+	if value.Speed-value.Speed != 0 {
+		return false
+	}
+	if value.Penetration < 0 || value.Penetration > 10 {
+		return false
+	}
+	if value.Channel > 63 {
+		return false
+	}
+	if uint32(value.Effect.Type) > 2 {
+		return false
+	}
+	switch value.Effect.Type {
+	case EffectTypeBuff:
+		if !BuffFixedCheckBody(&value.Effect.Buff().Value) {
+			return false
+		}
+	case EffectTypeDebuff:
+		if !DebuffFixedCheckBody(&value.Effect.Debuff().Value) {
+			return false
+		}
+	}
+	return true
+}
+
+// Attachment's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func AttachmentFixedCheckBody(value *AttachmentRow) bool {
+	_ = value
+	if value.Slot < 0 || value.Slot > 7 {
+		return false
+	}
+	if value.Power-value.Power != 0 {
+		return false
+	}
+	return true
+}
+
+// LoadoutConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func LoadoutConfigFixedCheckBody(value *LoadoutConfig) bool {
+	_ = value
+	if uint64(value.Grade) > 3 {
+		return false
+	}
+	if value.GradesCount < 0 || value.GradesCount > 4 {
+		return false
+	}
+	for i := int64(value.GradesCount) - 1; i >= 0; i-- {
+		if uint64(value.Grades[i]) > 3 {
+			return false
+		}
+	}
+	for i := range 3 {
+		if uint64(value.Podium[i]) > 3 {
+			return false
+		}
+	}
+	if !WeaponConfigFixedCheckBody(&value.Primary) {
+		return false
+	}
+	for i := range 2 {
+		if !WeaponConfigFixedCheckBody(&value.Backups[i]) {
+			return false
+		}
+	}
+	if value.AttachmentsCount < 0 || value.AttachmentsCount > 8 {
+		return false
+	}
+	for i := int64(value.AttachmentsCount) - 1; i >= 0; i-- {
+		if !AttachmentFixedCheckBody(&value.Attachments[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// ProfileConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func ProfileConfigFixedCheckBody(value *ProfileConfig) bool {
+	var z, hi uint64
+	if n := int(value.NameLength); uint(n) > 32 {
+		return false
+	} else {
+		p := value.Name[:n]
+		for len(p) >= 16 {
+			x, y := tableFixedGet64(p), tableFixedGet64(p[8:])
+			hi |= x | y
+			z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
+			p = p[16:]
+		}
+		if len(p) >= 8 {
+			x := tableFixedGet64(p)
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+			p = p[8:]
+		}
+		if len(p) > 0 {
+			var x uint64
+			if n >= 8 {
+				x = tableFixedGet64(value.Name[n-8:])
+			} else {
+				m := uint64(1)<<(8*uint(n)) - 1
+				x = tableFixedGet64(value.Name[:])&m | 0x0101010101010101&^m
+			}
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+		}
+	}
+	if value.IconLength < 0 || value.IconLength > 16 {
+		return false
+	}
+	if value.Precision-value.Precision != 0 {
+		return false
+	}
+	for i := range 4 {
+		if value.Ratings[i]-value.Ratings[i] != 0 {
+			return false
+		}
+	}
+	if !LoadoutConfigFixedCheckBody(&value.Loadout) {
+		return false
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	if hi&0x8080808080808080 != 0 {
+		return ProfileConfigFixedCheckBodyExact(value)
+	}
+	return true
+}
+
+// ProfileConfigFixedCheckBodyExact is ProfileConfigFixedCheckBody with each string asked by
+// tableFixedUTF8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+func ProfileConfigFixedCheckBodyExact(value *ProfileConfig) bool {
+	_ = value
+	if uint32(value.NameLength) > 32 || !tableFixedUTF8Ok(value.Name[:value.NameLength]) {
+		return false
+	}
+	if value.IconLength < 0 || value.IconLength > 16 {
+		return false
+	}
+	if value.Precision-value.Precision != 0 {
+		return false
+	}
+	for i := range 4 {
+		if value.Ratings[i]-value.Ratings[i] != 0 {
+			return false
+		}
+	}
+	if !LoadoutConfigFixedCheckBody(&value.Loadout) {
+		return false
+	}
+	return true
+}
+
+// RootConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func RootConfigFixedCheckBody(value *RootConfig) bool {
+	var z, hi uint64
+	if n := int(value.VersionNoteLength); uint(n) > 16 {
+		return false
+	} else {
+		p := value.VersionNote[:n]
+		for len(p) >= 16 {
+			x, y := tableFixedGet64(p), tableFixedGet64(p[8:])
+			hi |= x | y
+			z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
+			p = p[16:]
+		}
+		if len(p) >= 8 {
+			x := tableFixedGet64(p)
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+			p = p[8:]
+		}
+		if len(p) > 0 {
+			var x uint64
+			if n >= 8 {
+				x = tableFixedGet64(value.VersionNote[n-8:])
+			} else {
+				m := uint64(1)<<(8*uint(n)) - 1
+				x = tableFixedGet64(value.VersionNote[:])&m | 0x0101010101010101&^m
+			}
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+		}
+	}
+	if value.WeaponsCount < 0 || value.WeaponsCount > 8 {
+		return false
+	}
+	for i := int64(value.WeaponsCount) - 1; i >= 0; i-- {
+		if !WeaponConfigFixedCheckBody(&value.Weapons[i]) {
+			return false
+		}
+	}
+	if value.ProfilesCount < 0 || value.ProfilesCount > 4 {
+		return false
+	}
+	for i := int64(value.ProfilesCount) - 1; i >= 0; i-- {
+		if !ProfileConfigFixedCheckBody(&value.Profiles[i]) {
+			return false
+		}
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	if hi&0x8080808080808080 != 0 {
+		return RootConfigFixedCheckBodyExact(value)
+	}
+	return true
+}
+
+// RootConfigFixedCheckBodyExact is RootConfigFixedCheckBody with each string asked by
+// tableFixedUTF8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+func RootConfigFixedCheckBodyExact(value *RootConfig) bool {
+	_ = value
+	if uint32(value.VersionNoteLength) > 16 || !tableFixedUTF8Ok(value.VersionNote[:value.VersionNoteLength]) {
+		return false
+	}
+	if value.WeaponsCount < 0 || value.WeaponsCount > 8 {
+		return false
+	}
+	for i := int64(value.WeaponsCount) - 1; i >= 0; i-- {
+		if !WeaponConfigFixedCheckBody(&value.Weapons[i]) {
+			return false
+		}
+	}
+	if value.ProfilesCount < 0 || value.ProfilesCount > 4 {
+		return false
+	}
+	for i := int64(value.ProfilesCount) - 1; i >= 0; i-- {
+		if !ProfileConfigFixedCheckBody(&value.Profiles[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.6): a ranged scalar's declared min and max, and an ORDINAL's set — a
+// union tag past the arm count, an enum ordinal past the enum's top value.
+// Straight-line, after the copy, over STORAGE, so the identity plan and a
+// lineage plan are held by the same pass. A value outside them refuses the
+// load out_of_range; nothing is clamped. The pass walks LIVE elements only:
+// a counted array's live count, not its slack; an optional's payload only
+// when present; a union's set arm, not the others (tla/FixedLive.tla).
+func RootConfigFixedBounds(value *RootConfig) bool {
+	over := int32(0)
+	RootConfigFixedBoundsBody(value, &over)
+	return over == 0
+}
+
+// ---- RootConfig, the fixed form ----
+
+const RootConfigFixedBodyBytes = 1248
+const RootConfigFixedRecordBytes = 8 + RootConfigFixedBodyBytes
+const RootConfigFixedHash = 0xe444571ba7da4319
+
+var RootConfigFixedLayout = []byte{
+	0x49, 0x00, 0x00, 0x00, 0x87, 0x5e, 0xf4, 0xde, 0xf6, 0x43, 0x48, 0x5f, 0x0d, 0xe0, 0x04, 0x00,
+	0x00, 0x03, 0x00, 0x00, 0x00, 0x94, 0xd3, 0x46, 0x87, 0x72, 0xc9, 0x67, 0x8a, 0x0c, 0x14, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb6, 0xab, 0x7f, 0xb8, 0x01, 0xd9, 0xcb, 0x41, 0x0e, 0xb4,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d,
+	0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f,
+	0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33,
+	0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5,
+	0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a,
+	0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60,
+	0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2,
+	0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69,
+	0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6,
+	0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+	0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x67, 0x67, 0x43, 0xc0, 0x1f, 0xe6, 0x81, 0x81, 0x0e, 0x18, 0x04, 0x00, 0x00, 0x01,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x05, 0x01, 0x00, 0x00,
+	0x0d, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x24, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x14, 0x00,
+	0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab, 0x08,
+	0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50, 0x1e,
+	0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28,
+	0xb1, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33, 0x92,
+	0xdc, 0x5d, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x55, 0x09, 0xfe, 0x81,
+	0xa9, 0xbd, 0x10, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x3f, 0x93, 0xa8,
+	0x0d, 0xdb, 0x2c, 0x8c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x6b, 0x6e,
+	0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7, 0x05,
+	0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf9,
+	0xb0, 0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x3c, 0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0d, 0x9a, 0x00, 0x00, 0x00, 0x07,
+	0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00, 0x00, 0x00,
+	0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9, 0x0e,
+	0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92,
+	0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a,
+	0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e,
+	0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25, 0xd7, 0x23,
+	0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5,
+	0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
+	0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06,
+	0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01,
+	0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36,
+	0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5,
+	0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62,
+	0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed,
+	0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2,
+	0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xcc, 0x8a,
+	0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0xc0,
+	0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00,
+	0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00,
+	0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d,
+	0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81,
+	0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa, 0x01,
+	0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6, 0x18,
+	0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7, 0x8a,
+	0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
+
+var RootConfigFixedDst = []TableFixedDst{
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // RootConfig
+	{Dst: uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), Counted: 0, Arg: 1, Meta: 1},                            // version_note
+	{Dst: uint32(unsafe.Offsetof(RootConfig{}.Weapons)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), Counted: 1, Arg: 0, Meta: 0}, // weapons
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
+	{Dst: uint32(unsafe.Offsetof(RootConfig{}.Profiles)), Stride: uint32(unsafe.Sizeof(ProfileConfig{})), Aux: uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), Counted: 1, Arg: 0, Meta: 0},   // profiles
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.Name)), Counted: 0, Arg: 1, Meta: 1},                                         // name
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), Stride: 1, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), Counted: 1, Arg: 3, Meta: 3},                                         // icon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // u8
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Experience)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // experience
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Tilt)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // tilt
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Heading)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // heading
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // timestamp
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Badge)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // badge
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Port)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // port
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Epoch)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // epoch
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Precision)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // precision
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // ratings
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // has_loadout
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Loadout)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // loadout
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // grade
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), Counted: 1, Arg: 0, Meta: 0},        // grades
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                           // podium
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // perks
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // primary
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // backups
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                       // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), Stride: uint32(unsafe.Sizeof(AttachmentRow{})), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), Counted: 1, Arg: 0, Meta: 0}, // attachments
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                     // slot
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
+}
+
+var RootConfigFixedPlan = tableFixedBuildPlan(RootConfigFixedLeaves, 331)
+
+var RootConfigFixedKnown = []TableFixedKnownLayout{
+	{
+		Hash:        0xe444571ba7da4319,
+		LayoutBytes: 1245,
+		Record:      1256,
+		Layout: []byte{
+			0x49, 0x00, 0x00, 0x00, 0x87, 0x5e, 0xf4, 0xde, 0xf6, 0x43, 0x48, 0x5f, 0x0d, 0xe0, 0x04, 0x00,
+			0x00, 0x03, 0x00, 0x00, 0x00, 0x94, 0xd3, 0x46, 0x87, 0x72, 0xc9, 0x67, 0x8a, 0x0c, 0x14, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb6, 0xab, 0x7f, 0xb8, 0x01, 0xd9, 0xcb, 0x41, 0x0e, 0xb4,
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d,
+			0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f,
+			0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33,
+			0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5,
+			0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a,
+			0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60,
+			0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2,
+			0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69,
+			0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6,
+			0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+			0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x67, 0x67, 0x43, 0xc0, 0x1f, 0xe6, 0x81, 0x81, 0x0e, 0x18, 0x04, 0x00, 0x00, 0x01,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x05, 0x01, 0x00, 0x00,
+			0x0d, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x24, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x14, 0x00,
+			0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab, 0x08,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50, 0x1e,
+			0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28,
+			0xb1, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33, 0x92,
+			0xdc, 0x5d, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x55, 0x09, 0xfe, 0x81,
+			0xa9, 0xbd, 0x10, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x3f, 0x93, 0xa8,
+			0x0d, 0xdb, 0x2c, 0x8c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x6b, 0x6e,
+			0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7, 0x05,
+			0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf9,
+			0xb0, 0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x3c, 0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0d, 0x9a, 0x00, 0x00, 0x00, 0x07,
+			0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00, 0x00, 0x00,
+			0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9, 0x0e,
+			0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92,
+			0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a,
+			0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e,
+			0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25, 0xd7, 0x23,
+			0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5,
+			0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
+			0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06,
+			0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01,
+			0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36,
+			0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5,
+			0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62,
+			0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed,
+			0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2,
+			0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xcc, 0x8a,
+			0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0xc0,
+			0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00,
+			0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00,
+			0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d,
+			0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81,
+			0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa, 0x01,
+			0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6, 0x18,
+			0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7, 0x8a,
+			0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+}
+
+// The floor: below it a layout this build once served is retired, and
+// the answer is layout_unsupported rather than layout_unknown (§5.2).
+const RootConfigFixedFloor = 0
+
+// One plan per lineage entry, laid down from THE LOCK's bytes: nothing
+// compiles on the load path (§5.8 row 3).
+var RootConfigFixedLineagePlans = tableFixedLineagePlans(RootConfigFixedKnown, RootConfigFixedLayout, RootConfigFixedDst, RootConfigFixedHash)
+
+var RootConfigFixedResetImage = func() []byte {
+	var def RootConfig
+	RootConfigReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var RootConfigFixedHoles = tableFixedHoles(RootConfigFixedPlan.Entries, RootConfigFixedPlan.Count, uint32(len(RootConfigFixedResetImage)))
+
+var RootConfigFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(RootConfigFixedLineagePlans))
+	for i := range RootConfigFixedLineagePlans {
+		lane := &RootConfigFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(RootConfigFixedResetImage)))
+		}
+	}
+	return out
+}()
+
+// RootConfigFixedPlanMax is the plan capacity every layout this build reads needs:
+// the largest entry count over the identity plan and every lineage plan
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
+// refuses plan_too_large for a layout the lineage holds.
+var RootConfigFixedPlanMax = func() int32 {
+	m := RootConfigFixedPlan.Count
+	for _, lane := range RootConfigFixedLineagePlans {
+		if lane.Count > m {
+			m = lane.Count
+		}
+	}
+	return m
+}()
+
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
+func RootConfigFixedMeasure(count int64) int64 {
+	return TableFixedHeaderBytes + 4 + int64(len(RootConfigFixedLayout)) + count*RootConfigFixedRecordBytes
+}
+
+// RootConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
+// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+func RootConfigFixedSave(values []RootConfig, buffer []byte) int64 {
+	need := RootConfigFixedMeasure(int64(len(values)))
+	if int64(len(buffer)) < need {
+		return -1
+	}
+	for k := range values {
+		if !RootConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
+	}
+	clear(buffer[:TableFixedHeaderBytes])
+	buffer[0] = TableFixedForm
+	tableFixedPut64(buffer[TableFixedHashAt:], RootConfigFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(RootConfigFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], RootConfigFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(RootConfigFixedLayout):]
+	for k := range values {
+		tableFixedPut64(at, RootConfigFixedHash)
+		clear(at[8:28])
+		RootConfigFixedWriteBody(at[8:], &values[k])
+		at = at[RootConfigFixedRecordBytes:]
+	}
+	return need
+}
+
+func RootConfigFixedSaveReason(values []RootConfig, buffer []byte) (int64, error) {
+	if n := RootConfigFixedSave(values, buffer); n >= 0 {
+		return n, nil
+	}
+	if int64(len(buffer)) < RootConfigFixedMeasure(int64(len(values))) {
+		return -1, TableRefuseTruncated
+	}
+	return -1, TableRefuseInvalidValue
+}
+
+// RootConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
+// or -1 with every value it had written reset. A supplied report receives this read's report,
+// and report.Err() is the reason (tla/FixedLive.tla).
+func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	if report == nil {
+		var local TableReport
+		report = &local
+	}
+	*report = TableReport{}
+	if len(data) < 1 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	if data[0] != TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
+		}
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Refuse(TableRefuseWireDamaged, "")
+			report.Reason = TableRefuseReservedNotZero.Error()
+			return -1
+		}
+	}
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	hash := tableFixedGet64(data[TableFixedHashAt:])
+	pick := tableFixedSelect(RootConfigFixedKnown, hash)
+	if pick < 0 {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
+	}
+	if pick < RootConfigFixedFloor {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
+	}
+	known := &RootConfigFixedKnown[pick]
+	if int(layoutBytes) != len(known.Layout) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	for i := range layout {
+		if layout[i] != known.Layout[i] {
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+		}
+	}
+	entries := RootConfigFixedPlan.Entries
+	entryCount := RootConfigFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
+	holes := RootConfigFixedHoles
+	recordBytes := known.Record
+	censusUnknown := int32(0)
+	if hash != RootConfigFixedHash {
+		lane := &RootConfigFixedLineagePlans[pick]
+		if lane.Why != "" {
+			return tableFixedRefuse(report, lane.Why)
+		}
+		entries, entryCount = lane.Entries, lane.Count
+		holes = RootConfigFixedLineageHoles[pick]
+		// THE UNKNOWN CENSUS IS ONCE PER ENDPOINT and lands only on a read that
+		// returns (§5.4); an unlawful entry has no plan and refused above.
+		censusUnknown = lane.Unknown
+	}
+	if int64(entryCount) > int64(len(plan)) {
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	if recordBytes <= 8 || rest%recordBytes != 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	n := rest / recordBytes
+	if n > int64(len(values)) {
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
+	}
+	defBytes := RootConfigFixedResetImage
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+		if tableFixedGet64(scan) != hash {
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
+		}
+		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+	}
+	for k := range n {
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+		}
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		if why := RootConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				RootConfigReset(&values[j])
+			}
+			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
+			report.Field = why
+			return -1
+		}
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
+		if !RootConfigFixedBounds(&values[k]) {
+			for j := range k + 1 {
+				RootConfigReset(&values[j])
+			}
+			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+		}
+		at = at[recordBytes:]
+	}
+	report.Unknown += censusUnknown
+	return n
+}
+
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.6): a ranged scalar's declared min and max, and an ORDINAL's set — a
+// union tag past the arm count, an enum ordinal past the enum's top value.
+// Straight-line, after the copy, over STORAGE, so the identity plan and a
+// lineage plan are held by the same pass. A value outside them refuses the
+// load out_of_range; nothing is clamped. The pass walks LIVE elements only:
+// a counted array's live count, not its slack; an optional's payload only
+// when present; a union's set arm, not the others (tla/FixedLive.tla).
+func WeaponConfigFixedBounds(value *WeaponConfig) bool {
+	over := int32(0)
+	WeaponConfigFixedBoundsBody(value, &over)
+	return over == 0
+}
+
+// ---- WeaponConfig, the fixed form ----
+
+const WeaponConfigFixedBodyBytes = 22
+const WeaponConfigFixedRecordBytes = 8 + WeaponConfigFixedBodyBytes
+const WeaponConfigFixedHash = 0xd7c60dc6bdce60fe
+
+var WeaponConfigFixedLayout = []byte{
+	0x0b, 0x00, 0x00, 0x00, 0xc3, 0xb0, 0xc4, 0x86, 0x0d, 0x78, 0x77, 0x05, 0x0d, 0x16, 0x00, 0x00,
+	0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04,
+	0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5,
+	0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65,
+	0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8,
+	0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b,
+	0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80,
+	0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d,
+	0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69,
+	0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
+
+var WeaponConfigFixedDst = []TableFixedDst{
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // WeaponConfig
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // amount
+}
+
+var WeaponConfigFixedPlan = tableFixedBuildPlan(WeaponConfigFixedLeaves, 8)
+
+var WeaponConfigFixedKnown = []TableFixedKnownLayout{
+	{
+		Hash:        0xd7c60dc6bdce60fe,
+		LayoutBytes: 191,
+		Record:      30,
+		Layout: []byte{
+			0x0b, 0x00, 0x00, 0x00, 0xc3, 0xb0, 0xc4, 0x86, 0x0d, 0x78, 0x77, 0x05, 0x0d, 0x16, 0x00, 0x00,
+			0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5,
+			0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65,
+			0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8,
+			0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b,
+			0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80,
+			0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d,
+			0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69,
+			0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+}
+
+// The floor: below it a layout this build once served is retired, and
+// the answer is layout_unsupported rather than layout_unknown (§5.2).
+const WeaponConfigFixedFloor = 0
+
+// One plan per lineage entry, laid down from THE LOCK's bytes: nothing
+// compiles on the load path (§5.8 row 3).
+var WeaponConfigFixedLineagePlans = tableFixedLineagePlans(WeaponConfigFixedKnown, WeaponConfigFixedLayout, WeaponConfigFixedDst, WeaponConfigFixedHash)
+
+var WeaponConfigFixedResetImage = func() []byte {
+	var def WeaponConfig
+	WeaponConfigReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var WeaponConfigFixedHoles = tableFixedHoles(WeaponConfigFixedPlan.Entries, WeaponConfigFixedPlan.Count, uint32(len(WeaponConfigFixedResetImage)))
+
+var WeaponConfigFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(WeaponConfigFixedLineagePlans))
+	for i := range WeaponConfigFixedLineagePlans {
+		lane := &WeaponConfigFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(WeaponConfigFixedResetImage)))
+		}
+	}
+	return out
+}()
+
+// WeaponConfigFixedPlanMax is the plan capacity every layout this build reads needs:
+// the largest entry count over the identity plan and every lineage plan
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
+// refuses plan_too_large for a layout the lineage holds.
+var WeaponConfigFixedPlanMax = func() int32 {
+	m := WeaponConfigFixedPlan.Count
+	for _, lane := range WeaponConfigFixedLineagePlans {
+		if lane.Count > m {
+			m = lane.Count
+		}
+	}
+	return m
+}()
+
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
+func WeaponConfigFixedMeasure(count int64) int64 {
+	return TableFixedHeaderBytes + 4 + int64(len(WeaponConfigFixedLayout)) + count*WeaponConfigFixedRecordBytes
+}
+
+// WeaponConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
+// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+func WeaponConfigFixedSave(values []WeaponConfig, buffer []byte) int64 {
+	need := WeaponConfigFixedMeasure(int64(len(values)))
+	if int64(len(buffer)) < need {
+		return -1
+	}
+	for k := range values {
+		if !WeaponConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
+	}
+	clear(buffer[:TableFixedHeaderBytes])
+	buffer[0] = TableFixedForm
+	tableFixedPut64(buffer[TableFixedHashAt:], WeaponConfigFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(WeaponConfigFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], WeaponConfigFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(WeaponConfigFixedLayout):]
+	for k := range values {
+		tableFixedPut64(at, WeaponConfigFixedHash)
+		clear(at[8 : 8+WeaponConfigFixedBodyBytes])
+		WeaponConfigFixedWriteBody(at[8:], &values[k])
+		at = at[WeaponConfigFixedRecordBytes:]
+	}
+	return need
+}
+
+func WeaponConfigFixedSaveReason(values []WeaponConfig, buffer []byte) (int64, error) {
+	if n := WeaponConfigFixedSave(values, buffer); n >= 0 {
+		return n, nil
+	}
+	if int64(len(buffer)) < WeaponConfigFixedMeasure(int64(len(values))) {
+		return -1, TableRefuseTruncated
+	}
+	return -1, TableRefuseInvalidValue
+}
+
+// WeaponConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
+// or -1 with every value it had written reset. A supplied report receives this read's report,
+// and report.Err() is the reason (tla/FixedLive.tla).
+func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	if report == nil {
+		var local TableReport
+		report = &local
+	}
+	*report = TableReport{}
+	if len(data) < 1 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	if data[0] != TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
+		}
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Refuse(TableRefuseWireDamaged, "")
+			report.Reason = TableRefuseReservedNotZero.Error()
+			return -1
+		}
+	}
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	hash := tableFixedGet64(data[TableFixedHashAt:])
+	pick := tableFixedSelect(WeaponConfigFixedKnown, hash)
+	if pick < 0 {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
+	}
+	if pick < WeaponConfigFixedFloor {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
+	}
+	known := &WeaponConfigFixedKnown[pick]
+	if int(layoutBytes) != len(known.Layout) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	for i := range layout {
+		if layout[i] != known.Layout[i] {
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+		}
+	}
+	entries := WeaponConfigFixedPlan.Entries
+	entryCount := WeaponConfigFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
+	holes := WeaponConfigFixedHoles
+	recordBytes := known.Record
+	censusUnknown := int32(0)
+	if hash != WeaponConfigFixedHash {
+		lane := &WeaponConfigFixedLineagePlans[pick]
+		if lane.Why != "" {
+			return tableFixedRefuse(report, lane.Why)
+		}
+		entries, entryCount = lane.Entries, lane.Count
+		holes = WeaponConfigFixedLineageHoles[pick]
+		// THE UNKNOWN CENSUS IS ONCE PER ENDPOINT and lands only on a read that
+		// returns (§5.4); an unlawful entry has no plan and refused above.
+		censusUnknown = lane.Unknown
+	}
+	if int64(entryCount) > int64(len(plan)) {
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	if recordBytes <= 8 || rest%recordBytes != 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	n := rest / recordBytes
+	if n > int64(len(values)) {
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
+	}
+	defBytes := WeaponConfigFixedResetImage
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+		if tableFixedGet64(scan) != hash {
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
+		}
+		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+	}
+	for k := range n {
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+		}
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		if why := WeaponConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				WeaponConfigReset(&values[j])
+			}
+			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
+			report.Field = why
+			return -1
+		}
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
+		if !WeaponConfigFixedBounds(&values[k]) {
+			for j := range k + 1 {
+				WeaponConfigReset(&values[j])
+			}
+			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+		}
+		at = at[recordBytes:]
+	}
+	report.Unknown += censusUnknown
+	return n
+}
+
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.6): a ranged scalar's declared min and max, and an ORDINAL's set — a
+// union tag past the arm count, an enum ordinal past the enum's top value.
+// Straight-line, after the copy, over STORAGE, so the identity plan and a
+// lineage plan are held by the same pass. A value outside them refuses the
+// load out_of_range; nothing is clamped. The pass walks LIVE elements only:
+// a counted array's live count, not its slack; an optional's payload only
+// when present; a union's set arm, not the others (tla/FixedLive.tla).
+func LoadoutConfigFixedBounds(value *LoadoutConfig) bool {
+	over := int32(0)
+	LoadoutConfigFixedBoundsBody(value, &over)
+	return over == 0
+}
+
+// ---- LoadoutConfig, the fixed form ----
+
+const LoadoutConfigFixedBodyBytes = 154
+const LoadoutConfigFixedRecordBytes = 8 + LoadoutConfigFixedBodyBytes
+const LoadoutConfigFixedHash = 0x1907531031b66e4e
+
+var LoadoutConfigFixedLayout = []byte{
+	0x2b, 0x00, 0x00, 0x00, 0xa1, 0xcc, 0x8d, 0xa2, 0xae, 0x0c, 0xaa, 0xa6, 0x0d, 0x9a, 0x00, 0x00,
+	0x00, 0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00,
+	0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+	0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a,
+	0xd9, 0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39,
+	0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea,
+	0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32,
+	0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25,
+	0xd7, 0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+	0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00,
+	0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04,
+	0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5,
+	0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65,
+	0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8,
+	0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b,
+	0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80,
+	0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d,
+	0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69,
+	0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24,
+	0xcc, 0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00,
+	0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05,
+	0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d,
+	0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a,
+	0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd,
+	0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe,
+	0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03,
+	0xaa, 0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe,
+	0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4,
+	0xe7, 0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
+
+var LoadoutConfigFixedDst = []TableFixedDst{
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // LoadoutConfig
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // grade
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), Counted: 1, Arg: 0, Meta: 0}, // grades
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                           // podium
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // perks
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // primary
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // backups
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                       // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), Stride: uint32(unsafe.Sizeof(AttachmentRow{})), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), Counted: 1, Arg: 0, Meta: 0}, // attachments
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                     // slot
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
+}
+
+var LoadoutConfigFixedPlan = tableFixedBuildPlan(LoadoutConfigFixedLeaves, 51)
+
+var LoadoutConfigFixedKnown = []TableFixedKnownLayout{
+	{
+		Hash:        0x1907531031b66e4e,
+		LayoutBytes: 735,
+		Record:      162,
+		Layout: []byte{
+			0x2b, 0x00, 0x00, 0x00, 0xa1, 0xcc, 0x8d, 0xa2, 0xae, 0x0c, 0xaa, 0xa6, 0x0d, 0x9a, 0x00, 0x00,
+			0x00, 0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00,
+			0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+			0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a,
+			0xd9, 0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39,
+			0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea,
+			0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32,
+			0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25,
+			0xd7, 0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+			0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00,
+			0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5,
+			0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65,
+			0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8,
+			0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b,
+			0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80,
+			0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d,
+			0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69,
+			0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24,
+			0xcc, 0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00,
+			0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05,
+			0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d,
+			0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a,
+			0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd,
+			0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe,
+			0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03,
+			0xaa, 0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe,
+			0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4,
+			0xe7, 0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+}
+
+// The floor: below it a layout this build once served is retired, and
+// the answer is layout_unsupported rather than layout_unknown (§5.2).
+const LoadoutConfigFixedFloor = 0
+
+// One plan per lineage entry, laid down from THE LOCK's bytes: nothing
+// compiles on the load path (§5.8 row 3).
+var LoadoutConfigFixedLineagePlans = tableFixedLineagePlans(LoadoutConfigFixedKnown, LoadoutConfigFixedLayout, LoadoutConfigFixedDst, LoadoutConfigFixedHash)
+
+var LoadoutConfigFixedResetImage = func() []byte {
+	var def LoadoutConfig
+	LoadoutConfigReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var LoadoutConfigFixedHoles = tableFixedHoles(LoadoutConfigFixedPlan.Entries, LoadoutConfigFixedPlan.Count, uint32(len(LoadoutConfigFixedResetImage)))
+
+var LoadoutConfigFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(LoadoutConfigFixedLineagePlans))
+	for i := range LoadoutConfigFixedLineagePlans {
+		lane := &LoadoutConfigFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(LoadoutConfigFixedResetImage)))
+		}
+	}
+	return out
+}()
+
+// LoadoutConfigFixedPlanMax is the plan capacity every layout this build reads needs:
+// the largest entry count over the identity plan and every lineage plan
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
+// refuses plan_too_large for a layout the lineage holds.
+var LoadoutConfigFixedPlanMax = func() int32 {
+	m := LoadoutConfigFixedPlan.Count
+	for _, lane := range LoadoutConfigFixedLineagePlans {
+		if lane.Count > m {
+			m = lane.Count
+		}
+	}
+	return m
+}()
+
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
+func LoadoutConfigFixedMeasure(count int64) int64 {
+	return TableFixedHeaderBytes + 4 + int64(len(LoadoutConfigFixedLayout)) + count*LoadoutConfigFixedRecordBytes
+}
+
+// LoadoutConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
+// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+func LoadoutConfigFixedSave(values []LoadoutConfig, buffer []byte) int64 {
+	need := LoadoutConfigFixedMeasure(int64(len(values)))
+	if int64(len(buffer)) < need {
+		return -1
+	}
+	for k := range values {
+		if !LoadoutConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
+	}
+	clear(buffer[:TableFixedHeaderBytes])
+	buffer[0] = TableFixedForm
+	tableFixedPut64(buffer[TableFixedHashAt:], LoadoutConfigFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(LoadoutConfigFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], LoadoutConfigFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(LoadoutConfigFixedLayout):]
+	for k := range values {
+		tableFixedPut64(at, LoadoutConfigFixedHash)
+		clear(at[8:94])
+		LoadoutConfigFixedWriteBody(at[8:], &values[k])
+		at = at[LoadoutConfigFixedRecordBytes:]
+	}
+	return need
+}
+
+func LoadoutConfigFixedSaveReason(values []LoadoutConfig, buffer []byte) (int64, error) {
+	if n := LoadoutConfigFixedSave(values, buffer); n >= 0 {
+		return n, nil
+	}
+	if int64(len(buffer)) < LoadoutConfigFixedMeasure(int64(len(values))) {
+		return -1, TableRefuseTruncated
+	}
+	return -1, TableRefuseInvalidValue
+}
+
+// LoadoutConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
+// or -1 with every value it had written reset. A supplied report receives this read's report,
+// and report.Err() is the reason (tla/FixedLive.tla).
+func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	if report == nil {
+		var local TableReport
+		report = &local
+	}
+	*report = TableReport{}
+	if len(data) < 1 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	if data[0] != TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
+		}
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Refuse(TableRefuseWireDamaged, "")
+			report.Reason = TableRefuseReservedNotZero.Error()
+			return -1
+		}
+	}
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	hash := tableFixedGet64(data[TableFixedHashAt:])
+	pick := tableFixedSelect(LoadoutConfigFixedKnown, hash)
+	if pick < 0 {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
+	}
+	if pick < LoadoutConfigFixedFloor {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
+	}
+	known := &LoadoutConfigFixedKnown[pick]
+	if int(layoutBytes) != len(known.Layout) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	for i := range layout {
+		if layout[i] != known.Layout[i] {
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+		}
+	}
+	entries := LoadoutConfigFixedPlan.Entries
+	entryCount := LoadoutConfigFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
+	holes := LoadoutConfigFixedHoles
+	recordBytes := known.Record
+	censusUnknown := int32(0)
+	if hash != LoadoutConfigFixedHash {
+		lane := &LoadoutConfigFixedLineagePlans[pick]
+		if lane.Why != "" {
+			return tableFixedRefuse(report, lane.Why)
+		}
+		entries, entryCount = lane.Entries, lane.Count
+		holes = LoadoutConfigFixedLineageHoles[pick]
+		// THE UNKNOWN CENSUS IS ONCE PER ENDPOINT and lands only on a read that
+		// returns (§5.4); an unlawful entry has no plan and refused above.
+		censusUnknown = lane.Unknown
+	}
+	if int64(entryCount) > int64(len(plan)) {
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	if recordBytes <= 8 || rest%recordBytes != 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	n := rest / recordBytes
+	if n > int64(len(values)) {
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
+	}
+	defBytes := LoadoutConfigFixedResetImage
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+		if tableFixedGet64(scan) != hash {
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
+		}
+		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+	}
+	for k := range n {
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+		}
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		if why := LoadoutConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				LoadoutConfigReset(&values[j])
+			}
+			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
+			report.Field = why
+			return -1
+		}
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
+		if !LoadoutConfigFixedBounds(&values[k]) {
+			for j := range k + 1 {
+				LoadoutConfigReset(&values[j])
+			}
+			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+		}
+		at = at[recordBytes:]
+	}
+	report.Unknown += censusUnknown
+	return n
+}
+
+// THE READ-SIDE BOUNDS (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+// §4.6): a ranged scalar's declared min and max, and an ORDINAL's set — a
+// union tag past the arm count, an enum ordinal past the enum's top value.
+// Straight-line, after the copy, over STORAGE, so the identity plan and a
+// lineage plan are held by the same pass. A value outside them refuses the
+// load out_of_range; nothing is clamped. The pass walks LIVE elements only:
+// a counted array's live count, not its slack; an optional's payload only
+// when present; a union's set arm, not the others (tla/FixedLive.tla).
+func ProfileConfigFixedBounds(value *ProfileConfig) bool {
+	over := int32(0)
+	ProfileConfigFixedBoundsBody(value, &over)
+	return over == 0
+}
+
+// ---- ProfileConfig, the fixed form ----
+
+const ProfileConfigFixedBodyBytes = 261
+const ProfileConfigFixedRecordBytes = 8 + ProfileConfigFixedBodyBytes
+const ProfileConfigFixedHash = 0x29b2075dafa37f7f
+
+var ProfileConfigFixedLayout = []byte{
+	0x3a, 0x00, 0x00, 0x00, 0x78, 0xa7, 0x9d, 0x85, 0xb7, 0xfc, 0xff, 0x19, 0x0d, 0x05, 0x01, 0x00,
+	0x00, 0x0d, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x24, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x14,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06,
+	0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab,
+	0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50,
+	0x1e, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82,
+	0x28, 0xb1, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33,
+	0x92, 0xdc, 0x5d, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x55, 0x09, 0xfe,
+	0x81, 0xa9, 0xbd, 0x10, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x3f, 0x93,
+	0xa8, 0x0d, 0xdb, 0x2c, 0x8c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x6b,
+	0x6e, 0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7,
+	0x05, 0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xf9, 0xb0, 0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x3c, 0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0d, 0x9a, 0x00, 0x00, 0x00,
+	0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00, 0x00,
+	0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9,
+	0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77,
+	0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde,
+	0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d,
+	0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25, 0xd7,
+	0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91,
+	0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00, 0x00,
+	0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06,
+	0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad,
+	0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1,
+	0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe,
+	0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a,
+	0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7,
+	0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+	0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xcc,
+	0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+	0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00,
+	0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a,
+	0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13,
+	0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13,
+	0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa,
+	0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
+	0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
+	0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
+
+var ProfileConfigFixedDst = []TableFixedDst{
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // ProfileConfig
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.Name)), Counted: 0, Arg: 1, Meta: 1}, // name
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), Stride: 1, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), Counted: 1, Arg: 3, Meta: 3}, // icon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // u8
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Experience)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // experience
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Tilt)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // tilt
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Heading)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // heading
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // timestamp
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Badge)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // badge
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Port)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // port
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Epoch)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // epoch
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Precision)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // precision
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // ratings
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // has_loadout
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Loadout)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // loadout
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // grade
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), Counted: 1, Arg: 0, Meta: 0},        // grades
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                           // podium
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // perks
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // primary
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // backups
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value BuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	{Dst: uint32(4 + unsafe.Offsetof(struct {
+		Value DebuffRow
+	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                       // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), Stride: uint32(unsafe.Sizeof(AttachmentRow{})), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), Counted: 1, Arg: 0, Meta: 0}, // attachments
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                     // slot
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
+}
+
+var ProfileConfigFixedPlan = tableFixedBuildPlan(ProfileConfigFixedLeaves, 66)
+
+var ProfileConfigFixedKnown = []TableFixedKnownLayout{
+	{
+		Hash:        0x29b2075dafa37f7f,
+		LayoutBytes: 990,
+		Record:      269,
+		Layout: []byte{
+			0x3a, 0x00, 0x00, 0x00, 0x78, 0xa7, 0x9d, 0x85, 0xb7, 0xfc, 0xff, 0x19, 0x0d, 0x05, 0x01, 0x00,
+			0x00, 0x0d, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x24, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x14,
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06,
+			0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab,
+			0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50,
+			0x1e, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82,
+			0x28, 0xb1, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33,
+			0x92, 0xdc, 0x5d, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x55, 0x09, 0xfe,
+			0x81, 0xa9, 0xbd, 0x10, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x3f, 0x93,
+			0xa8, 0x0d, 0xdb, 0x2c, 0x8c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x6b,
+			0x6e, 0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7,
+			0x05, 0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0xf9, 0xb0, 0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x3c, 0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0d, 0x9a, 0x00, 0x00, 0x00,
+			0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00, 0x00,
+			0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9,
+			0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77,
+			0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde,
+			0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d,
+			0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25, 0xd7,
+			0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91,
+			0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00, 0x00,
+			0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad,
+			0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1,
+			0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe,
+			0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a,
+			0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7,
+			0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+			0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xcc,
+			0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+			0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00,
+			0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04,
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13,
+			0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13,
+			0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa,
+			0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
+			0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
+			0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+}
+
+// The floor: below it a layout this build once served is retired, and
+// the answer is layout_unsupported rather than layout_unknown (§5.2).
+const ProfileConfigFixedFloor = 0
+
+// One plan per lineage entry, laid down from THE LOCK's bytes: nothing
+// compiles on the load path (§5.8 row 3).
+var ProfileConfigFixedLineagePlans = tableFixedLineagePlans(ProfileConfigFixedKnown, ProfileConfigFixedLayout, ProfileConfigFixedDst, ProfileConfigFixedHash)
+
+var ProfileConfigFixedResetImage = func() []byte {
+	var def ProfileConfig
+	ProfileConfigReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var ProfileConfigFixedHoles = tableFixedHoles(ProfileConfigFixedPlan.Entries, ProfileConfigFixedPlan.Count, uint32(len(ProfileConfigFixedResetImage)))
+
+var ProfileConfigFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(ProfileConfigFixedLineagePlans))
+	for i := range ProfileConfigFixedLineagePlans {
+		lane := &ProfileConfigFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(ProfileConfigFixedResetImage)))
+		}
+	}
+	return out
+}()
+
+// ProfileConfigFixedPlanMax is the plan capacity every layout this build reads needs:
+// the largest entry count over the identity plan and every lineage plan
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
+// refuses plan_too_large for a layout the lineage holds.
+var ProfileConfigFixedPlanMax = func() int32 {
+	m := ProfileConfigFixedPlan.Count
+	for _, lane := range ProfileConfigFixedLineagePlans {
+		if lane.Count > m {
+			m = lane.Count
+		}
+	}
+	return m
+}()
+
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
+func ProfileConfigFixedMeasure(count int64) int64 {
+	return TableFixedHeaderBytes + 4 + int64(len(ProfileConfigFixedLayout)) + count*ProfileConfigFixedRecordBytes
+}
+
+// ProfileConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
+// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+func ProfileConfigFixedSave(values []ProfileConfig, buffer []byte) int64 {
+	need := ProfileConfigFixedMeasure(int64(len(values)))
+	if int64(len(buffer)) < need {
+		return -1
+	}
+	for k := range values {
+		if !ProfileConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
+	}
+	clear(buffer[:TableFixedHeaderBytes])
+	buffer[0] = TableFixedForm
+	tableFixedPut64(buffer[TableFixedHashAt:], ProfileConfigFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(ProfileConfigFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], ProfileConfigFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(ProfileConfigFixedLayout):]
+	for k := range values {
+		tableFixedPut64(at, ProfileConfigFixedHash)
+		clear(at[8 : 8+ProfileConfigFixedBodyBytes])
+		ProfileConfigFixedWriteBody(at[8:], &values[k])
+		at = at[ProfileConfigFixedRecordBytes:]
+	}
+	return need
+}
+
+func ProfileConfigFixedSaveReason(values []ProfileConfig, buffer []byte) (int64, error) {
+	if n := ProfileConfigFixedSave(values, buffer); n >= 0 {
+		return n, nil
+	}
+	if int64(len(buffer)) < ProfileConfigFixedMeasure(int64(len(values))) {
+		return -1, TableRefuseTruncated
+	}
+	return -1, TableRefuseInvalidValue
+}
+
+// ProfileConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
+// or -1 with every value it had written reset. A supplied report receives this read's report,
+// and report.Err() is the reason (tla/FixedLive.tla).
+func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	if report == nil {
+		var local TableReport
+		report = &local
+	}
+	*report = TableReport{}
+	if len(data) < 1 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	if data[0] != TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
+			return tableFixedRefuse(report, TableRefusePreviousForm.Error())
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, TableRefuseMessageFormAsFile.Error())
+		}
+		return tableFixedRefuse(report, TableRefuseNewerForm.Error())
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Refuse(TableRefuseWireDamaged, "")
+			report.Reason = TableRefuseReservedNotZero.Error()
+			return -1
+		}
+	}
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	hash := tableFixedGet64(data[TableFixedHashAt:])
+	pick := tableFixedSelect(ProfileConfigFixedKnown, hash)
+	if pick < 0 {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnknown.Error(), hash)
+	}
+	if pick < ProfileConfigFixedFloor {
+		return tableFixedRefuseHash(report, TableRefuseLayoutUnsupported.Error(), hash)
+	}
+	known := &ProfileConfigFixedKnown[pick]
+	if int(layoutBytes) != len(known.Layout) {
+		return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+	}
+	for i := range layout {
+		if layout[i] != known.Layout[i] {
+			return tableFixedRefuse(report, TableRefuseLayoutMalformed.Error())
+		}
+	}
+	entries := ProfileConfigFixedPlan.Entries
+	entryCount := ProfileConfigFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when an endpoint selects one. Nothing computes them per call.
+	holes := ProfileConfigFixedHoles
+	recordBytes := known.Record
+	censusUnknown := int32(0)
+	if hash != ProfileConfigFixedHash {
+		lane := &ProfileConfigFixedLineagePlans[pick]
+		if lane.Why != "" {
+			return tableFixedRefuse(report, lane.Why)
+		}
+		entries, entryCount = lane.Entries, lane.Count
+		holes = ProfileConfigFixedLineageHoles[pick]
+		// THE UNKNOWN CENSUS IS ONCE PER ENDPOINT and lands only on a read that
+		// returns (§5.4); an unlawful entry has no plan and refused above.
+		censusUnknown = lane.Unknown
+	}
+	if int64(entryCount) > int64(len(plan)) {
+		return tableFixedRefuse(report, TableRefusePlanTooLarge.Error())
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	if recordBytes <= 8 || rest%recordBytes != 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
+	n := rest / recordBytes
+	if n > int64(len(values)) {
+		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
+	}
+	defBytes := ProfileConfigFixedResetImage
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+		if tableFixedGet64(scan) != hash {
+			return tableFixedRefuse(report, TableRefuseNoLayout.Error())
+		}
+		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+	}
+	for k := range n {
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+		}
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		if why := ProfileConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				ProfileConfigReset(&values[j])
+			}
+			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
+			report.Field = why
+			return -1
+		}
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
+		if !ProfileConfigFixedBounds(&values[k]) {
+			for j := range k + 1 {
+				ProfileConfigReset(&values[j])
+			}
+			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+		}
+		at = at[recordBytes:]
+	}
+	report.Unknown += censusUnknown
+	return n
 }
 
 // ---- reflection descriptors (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
@@ -6341,7 +8288,7 @@ func init() {
 		return RootConfigSaveBodyRetain(w, (*RootConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RootConfigLoadBodyRetain(&r, (*RootConfig)(p))
-	}, CookSize: 1480, CookAlign: 8}
+	}, CycleIndex: 17, CycleType: tableCycleType, CookSize: 1480, CookAlign: 8}
 }
 
 // RootConfigTableType returns RootConfig's reflection descriptor.
@@ -6454,7 +8401,7 @@ func init() {
 		return WeaponConfigSaveBodyRetain(w, (*WeaponConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return WeaponConfigLoadBodyRetain(&r, (*WeaponConfig)(p))
-	}, CookSize: 28, CookAlign: 4}
+	}, CycleIndex: 22, CycleType: tableCycleType, CookSize: 28, CookAlign: 4}
 }
 
 // WeaponConfigTableType returns WeaponConfig's reflection descriptor.
@@ -6556,7 +8503,7 @@ func init() {
 		return LoadoutConfigSaveBodyRetain(w, (*LoadoutConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return LoadoutConfigLoadBodyRetain(&r, (*LoadoutConfig)(p))
-	}, CookSize: 176, CookAlign: 8}
+	}, CycleIndex: 10, CycleType: tableCycleType, CookSize: 176, CookAlign: 8}
 }
 
 // LoadoutConfigTableType returns LoadoutConfig's reflection descriptor.
@@ -6730,7 +8677,7 @@ func init() {
 		return ProfileConfigSaveBodyRetain(w, (*ProfileConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ProfileConfigLoadBodyRetain(&r, (*ProfileConfig)(p))
-	}, CookSize: 304, CookAlign: 8}
+	}, CycleIndex: 13, CycleType: tableCycleType, CookSize: 304, CookAlign: 8}
 }
 
 // ProfileConfigTableType returns ProfileConfig's reflection descriptor.
@@ -6772,7 +8719,7 @@ func init() {
 		return AttachmentSaveBodyRetain(w, (*AttachmentRow)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return AttachmentLoadBodyRetain(&r, (*AttachmentRow)(p))
-	}, CookSize: 8, CookAlign: 4}
+	}, CycleIndex: 2, CycleType: tableCycleType, CookSize: 8, CookAlign: 4}
 }
 
 // AttachmentTableType returns Attachment's reflection descriptor.
@@ -6798,7 +8745,7 @@ var BuffTableFields = []TableFieldInfo{
 var BuffTableInfo TableTypeInfo
 
 func init() {
-	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(BuffRow{})), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CookSize: 4, CookAlign: 4}
+	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(BuffRow{})), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CycleIndex: 3, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
 }
 
 // BuffTableType returns Buff's reflection descriptor.
@@ -6824,7 +8771,7 @@ var DebuffTableFields = []TableFieldInfo{
 var DebuffTableInfo TableTypeInfo
 
 func init() {
-	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(DebuffRow{})), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CookSize: 4, CookAlign: 4}
+	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(DebuffRow{})), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CycleIndex: 4, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
 }
 
 // DebuffTableType returns Debuff's reflection descriptor.

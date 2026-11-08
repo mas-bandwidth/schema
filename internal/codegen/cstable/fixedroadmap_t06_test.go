@@ -111,8 +111,8 @@ fixed table T {
 	if body == "" {
 		t.Fatal("C7: the ranged scalar carries no bounds pass")
 	}
-	t06Has(t, body, "if (value.X < -5) { value.X = -5; clamped++; }", "C7 the low end clamps and counts")
-	t06Has(t, body, "else if (value.X > 5) { value.X = 5; clamped++; }", "C7 the high end clamps and counts")
+	t06Has(t, body, "if (value.X < -5 || value.X > 5) { clamped++; }", "C7 a value outside the declared range counts for refusal")
+	t06Has(t, body, "if (value.X < -5 || value.X > 5) { clamped++; }", "C7 the bounds pass holds both ends in one refusal count")
 }
 
 // t06R30: cs/R30 [owed] "compressed float rides as the float" — in the FIXED
@@ -161,7 +161,7 @@ fixed table T {
 	if body == "" {
 		t.Fatal("C9: the union carries no bounds pass")
 	}
-	t06Has(t, body, "if ((ulong)value.P.Type > 2) { value.P.Type = (PickType)0; clamped++; }",
+	t06Has(t, body, "if ((ulong)value.P.Type > 2) { clamped++; }",
 		"C9 a union tag past the arm count lands None and counts")
 
 	// A tag past the last arm of a union whose tag is two bytes wide: 300 names
@@ -187,7 +187,7 @@ fixed table T {
 	if body == "" {
 		t.Fatal("C10: the enum carries no bounds pass")
 	}
-	t06Has(t, body, "if ((ulong)value.E > 3) { value.E = (Tier)0; clamped++; }",
+	t06Has(t, body, "if ((ulong)value.E > 3) { clamped++; }",
 		"C10 an enum ordinal past the top lands None and counts")
 }
 
@@ -357,8 +357,8 @@ func t06C1(t *testing.T) {
 	if end := strings.Index(op, "case Text:"); end > 0 {
 		op = op[:end]
 	}
-	t06Has(t, op, "if (v < 0) { v = 0; if (report != null) report.Clamped++; }",
-		"C1 a negative count clamps to zero and counts")
+	t06Has(t, op, "if (v < 0 || (uint)v > p.Size) { return \"count_over_bound\"; }",
+		"C1 a count outside the bound refuses the load")
 }
 
 // t06C2: cs/C2 [weak] "count clamp v>Max" — a count past the plan entry's bound
@@ -372,8 +372,8 @@ func t06C2(t *testing.T) {
 	if end := strings.Index(op, "case Text:"); end > 0 {
 		op = op[:end]
 	}
-	t06Has(t, op, "else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }",
-		"C2 a count past the bound clamps to it and counts")
+	t06Has(t, op, "if (v < 0 || (uint)v > p.Size) { return \"count_over_bound\"; }",
+		"C2 a count past the bound refuses the load")
 }
 
 // t06R11: cs/R11 [owed] "the plan carries the WRITER's bounds, per plan; the
@@ -390,8 +390,8 @@ func t06R11(t *testing.T) {
 	if end := strings.Index(op, "case Text:"); end > 0 {
 		op = op[:end]
 	}
-	t06Has(t, op, "else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }",
-		"R11 the count clamps against the plan entry's own size, the writer's bound")
+	t06Has(t, op, "if (v < 0 || (uint)v > p.Size) { return \"count_over_bound\"; }",
+		"R11 the count refuses against the plan entry's own size, the writer's bound")
 
 	u := unitFrom(t, `package probe
 fixed table T {
@@ -548,9 +548,18 @@ namespace Probe
             TableReport rep = new TableReport();
             TableFixedEntry[] plan = new TableFixedEntry[65536];
             long n = Schema.RootFixedLoad(back, buf, plan, rep);
-            if (n != 1 || rep.Refused || rep.Malformed)
+            if (!arm && !endpoint)
             {
-                return "tag " + tag + ": read n=" + n + " reason=" + rep.Reason + " malformed=" + rep.Malformed;
+                // The identity lane's bounds pass refuses an ordinal past the
+                // reader's own set. The compiled lane remaps through the
+                // writer's table: a tag no reader arm names lands None, the
+                // unknown-arm evolution answer, checked below.
+                if (n == -1 && rep.Refused) { return null; }
+                return "tag " + tag + ": a forged tag did not refuse the load: n=" + n + " reason=" + rep.Reason;
+            }
+            if (n != 1 || rep.Refused || rep.Damaged)
+            {
+                return "tag " + tag + ": read n=" + n + " reason=" + rep.Reason + " malformed=" + rep.Damaged;
             }
             if (back[0].Seq != 41) { return "tag " + tag + ": the scalar after the union is " + back[0].Seq; }
             int[] vals = ArmValues(back[0].Pick);

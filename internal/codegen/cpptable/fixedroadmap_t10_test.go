@@ -179,9 +179,9 @@ const cppEnumValuesBody = `
     TableReport r; memset( &r, 0, sizeof( r ) );
     Lineage got[4];
     int64_t n = LineageFixedLoad( got, 4, buffer, written, plan, 4096, NULL, &r );
-    if ( n != 4 ) { printf( "enum: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
-    if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.widened != 0 )
-        { printf( "enum: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d km=%d c=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.clamped, r.widened ); return 1; }
+    if ( n != 4 ) { printf( "enum: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
+    if ( r.damaged || r.refused || r.unknown != 0 || r.widened != 0 )
+        { printf( "enum: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d km=%d c=%d w=%d\n", (int) r.damaged, (int) r.refused, r.unknown, r.refused, r.refused, r.widened ); return 1; }
     for ( int64_t k = 0; k < 4; ++k )
         if ( got[k].tier != want[k].tier || got[k].seq != want[k].seq )
             { printf( "enum: record %lld lands tier=%d seq=%d, wrote tier=%d seq=%d\n", (long long) k, (int) got[k].tier, got[k].seq, (int) want[k].tier, want[k].seq ); return 1; }
@@ -224,9 +224,9 @@ const cppNestedKeyedBody = `
     TableReport r; memset( &r, 0, sizeof( r ) );
     Lineage got[3];
     int64_t n = LineageFixedLoad( got, 3, buffer, written, plan, 4096, NULL, &r );
-    if ( n != 3 ) { printf( "keyed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }
-    if ( r.malformed || r.refused || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.widened != 0 )
-        { printf( "keyed: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d km=%d c=%d w=%d\n", (int) r.malformed, (int) r.refused, r.unknown, r.kind_mismatch, r.clamped, r.widened ); return 1; }
+    if ( n != 3 ) { printf( "keyed: load n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
+    if ( r.damaged || r.refused || r.unknown != 0 || r.widened != 0 )
+        { printf( "keyed: a clean round-trip is not a refusal and moves no counter: malformed=%d refused=%d u=%d km=%d c=%d w=%d\n", (int) r.damaged, (int) r.refused, r.unknown, r.refused, r.refused, r.widened ); return 1; }
     for ( int64_t k = 0; k < 3; ++k )
     {
         if ( got[k].seq != want[k].seq ) { printf( "keyed: record %lld lands seq=%d, wrote %d\n", (long long) k, got[k].seq, want[k].seq ); return 1; }

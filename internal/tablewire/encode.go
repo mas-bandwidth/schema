@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"math"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -23,6 +24,16 @@ import (
 // that order. No magic, no content hash, no protocol id, no length prefix
 // around the whole.
 func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
+	// A WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (docs/SPEC-TABLES.md
+	// §5): it never clamps and never truncates (tabletext.CheckValue).
+	if err := m.CheckFileValue(inst); err != nil {
+		return nil, err
+	}
+	if FixedRoot(m, inst.Def) {
+		// A FIXED ROOT IS WRITTEN AS FORM 3 (docs/SPEC-TABLES.md §3.4): the
+		// bytes the reference's <T>FixedSave writes, never form 1
+		return EncodeFixed(m, inst)
+	}
 	out, _, err := encodeWith(m, inst, nil)
 	return out, err
 }
@@ -86,7 +97,15 @@ func encodeWith(m *tabletext.Model, inst *tabletext.Instance, rt *retainState) (
 			}
 		}
 	}
-	return binary.LittleEndian.AppendUint64(out, uint64(len(e.ids.ids))), e.retainLost, nil
+	out = binary.LittleEndian.AppendUint64(out, uint64(len(e.ids.ids)))
+	switch inst.Def.Integrity {
+	case "":
+	case "crc32c":
+		out = binary.LittleEndian.AppendUint32(out, crc32.Checksum(out, fileCRC32C))
+	default:
+		return nil, e.retainLost, fmt.Errorf("unsupported integrity %q", inst.Def.Integrity)
+	}
+	return out, e.retainLost, nil
 }
 
 // encoder is one save's context: the closure the walks run over, the
@@ -162,6 +181,9 @@ func encodeBodyFields(e *encoder, inst *tabletext.Instance) ([]byte, error) {
 		if terms, guarded := guards[fv.Def.Name]; guarded && !inst.GuardHolds(terms) {
 			continue
 		}
+		if err := tabletext.ValidateRequiredValue(fv); err != nil {
+			return nil, err
+		}
 		if err := encodeField(e, w, inst, fv); err != nil {
 			return nil, err
 		}
@@ -183,6 +205,9 @@ func (e *encoder) header(w *buf, id uint64, kind int) {
 }
 
 func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Field) error {
+	if err := tabletext.ValidateTextTotal(fv); err != nil {
+		return err
+	}
 	f := fv.Def
 	id := ir.TableFieldWireId(f)
 	kind := ir.TableWireScalarKind(f)
@@ -199,7 +224,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		if f.Type.Blob() {
 			index = e.g.BlobIndex(fv.Cell.Blob)
 		}
-		if index == ir.NodeWireIndexNull {
+		if !f.Required && index == ir.NodeWireIndexNull {
 			return nil
 		}
 		e.header(w, id, ir.TableKindPointer)
@@ -250,7 +275,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return encodeKeyed(e, w, fv, id, kind)
 
 	case f.Type.Kind == ir.TString:
-		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+		if !f.Required && bytes.Equal(fv.Cell.Str, f.DefBytes) {
 			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindString)
@@ -261,7 +286,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		// WIDE TEXT TAKES NO SPECIFIED DEFAULT (SPEC.md §4.12), so the empty
 		// value is what elides. `L` is a BYTE length like every `L` on this
 		// wire (§3), which is twice the code unit count.
-		if len(fv.Cell.Units) == 0 {
+		if !f.Required && len(fv.Cell.Units) == 0 {
 			return nil
 		}
 		e.header(w, id, ir.TableKindWstring)
@@ -270,7 +295,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return nil
 
 	case f.Type.Kind == ir.TBytes:
-		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+		if !f.Required && bytes.Equal(fv.Cell.Str, f.DefBytes) {
 			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindArray)
@@ -288,7 +313,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): the
 		// same kind 14 body, the same element kind, the same count, and the
 		// same elision of an empty one under §3's by-value elision rule.
-		if fv.Count == 0 {
+		if !f.Required && fv.Count == 0 {
 			return nil
 		}
 		return encodeArray(e, w, fv, id, kind, fv.Count)
@@ -308,7 +333,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 				break
 			}
 		}
-		if allDefault {
+		if !f.Required && allDefault {
 			return nil
 		}
 		return encodeArray(e, w, fv, id, kind, int(f.ArrayBound))
@@ -316,6 +341,10 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 	case kind == ir.TableKindUnion:
 		un := tabletext.UnionOf(f)
 		if fv.Cell.U == 0 {
+			if f.Required {
+				e.header(w, id, ir.TableKindUnion)
+				w.leb(0)
+			}
 			return nil // None elides — the absence of the field is the None
 		}
 		if int(fv.Cell.U) > len(un.Variants) {
@@ -342,7 +371,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		if err != nil {
 			return err
 		}
-		if len(body) <= 1 {
+		if !f.Required && len(body) <= 1 {
 			e.ids.rollback(mark) // an all-default nested table elides
 			return nil
 		}
@@ -353,7 +382,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return nil
 
 	default:
-		if cellIsDefault(e, f, &fv.Cell) {
+		if !f.Required && cellIsDefault(e, f, &fv.Cell) {
 			return nil
 		}
 		return encodeSimple(e, w, f, id, kind, &fv.Cell)
@@ -459,7 +488,7 @@ func encodeKeyed(e *encoder, w *buf, fv *tabletext.Field, id uint64, kind int) e
 		body.raw(elem)
 		pairs++
 	}
-	if pairs == 0 {
+	if pairs == 0 && !f.Required {
 		e.ids.rollback(mark)
 		return nil
 	}
@@ -747,7 +776,7 @@ func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 }
 
 // RefuseNonFinite is every writer's refusal of a NaN or an infinity
-// (docs/SPEC-TABLES.md §3, §3.3; Glenn, 2026-10-27, "tables go finite-only
+// (docs/SPEC-TABLES.md §3, §3.3; the maintainer, 2026-10-27, "tables go finite-only
 // too, same rule as packets"): neither is a value of the type, so no form
 // carries one, and a compressed float refuses one rather than clamping it. A
 // float32 held in a float64 cell narrows by the ordinary conversion, which is
@@ -764,10 +793,15 @@ func RefuseNonFinite(m *tabletext.Model, f *ir.Field, v float64) error {
 // element kind 13, an array of the generated `{ key, value }` entry. ITS
 // ENTRIES ARE WRITTEN IN ASCENDING KEY ORDER WITH NO KEY TWICE, and that is a
 // writer's rule — byte-identical output requires it, as it requires
-// declaration order. An EMPTY map elides, the by-value rule (§3).
+// declaration order. A plain empty map elides; an optional map rides exactly
+// when present, including its zero-entry body (§2.8).
 func encodeMap(e *encoder, w *buf, fv *tabletext.Field, id uint64) error {
 	f := fv.Def
-	if len(fv.Entries) == 0 {
+	if f.Type.Optional {
+		if !fv.Present {
+			return nil
+		}
+	} else if len(fv.Entries) == 0 && !f.Required {
 		return nil
 	}
 	order := MapEntryOrder(f, fv)

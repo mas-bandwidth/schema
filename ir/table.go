@@ -264,6 +264,8 @@ func FixedClosureBreaks(member func(string) *Struct, name string) []FixedBreak {
 			add("is an unbounded array"+where+", and its elements live in the arena on the authoring side and in the node's own extent in a region — the count is the data's, not the declaration's", kinds+", §2.9")
 		case f.Type.Blob():
 			add("is a byte buffer"+where+" at its used size, which is a pointer at a blob node — the bytes are the data's, not the declaration's; `string(N)` and `bytes(N)` are the bounded spellings and have a size the declaration states", kinds+", §2.5")
+		case f.Type.TextUnbounded():
+			add("is an unbounded string"+where+", whose UTF-8 bytes live in the arena on the authoring side and in the node's own extent in a region — the length is the data's, not the declaration's; `string(N)` is the bounded spelling", kinds+", §2.13.1")
 		case f.Type.Pointer:
 			add("is a pointer"+where+", and a pointer is an arena allocation and a node record — the lifecycle the fixed class exists to not pay for", kinds+", §2.1")
 		case f.Type.Kind != TNamed:

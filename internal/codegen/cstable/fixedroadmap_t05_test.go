@@ -344,8 +344,8 @@ func t05CsR19(t *testing.T) {
 // refusal reason.
 func t05CsE9(t *testing.T) {
 	_, src := t02Table(t, t02Flat)
-	if !strings.Contains(src, "public int Duplicate;") {
-		t.Fatal("E9: the report carries no Duplicate counter to hold at zero")
+	if strings.Contains(src, "public int Duplicate;") {
+		t.Fatal("E9: the report still carries a Duplicate counter; a repeated id or key refuses the whole load")
 	}
 	for _, bad := range []string{"report.Duplicate++", "report.Duplicate =", "report.Duplicate +="} {
 		if strings.Contains(tableFixedWireSource, bad) || strings.Contains(tableFixedRuntimeTypes, bad) {
@@ -373,12 +373,12 @@ func t05CsR16(t *testing.T) {
 	if !strings.Contains(run, "report.Widened += runs;") {
 		t.Error("R16: the folded wide run does not report its element count (§5.2 EMIT kind 14)")
 	}
-	if n := strings.Count(run, "report.KindMismatch++"); n != 0 {
-		t.Errorf("R16: the record loop counts KindMismatch %d times; that census is COMPILE's, once per endpoint", n)
+	if n := strings.Count(run, "report.KindChanged++"); n != 0 {
+		t.Errorf("R16: the record loop counts the kind census %d times; that census is COMPILE's, once per endpoint", n)
 	}
-	for _, op := range []string{"Count", "Text"} {
-		if !strings.Contains(t05OpBlock(t, op), "report.Clamped++") {
-			t.Errorf("R16: case %s does not clamp exactly once per entry", op)
+	for op, why := range map[string]string{"Count": "count_over_bound", "Text": "length_over_bound"} {
+		if !strings.Contains(t05OpBlock(t, op), "return \""+why+"\";") {
+			t.Errorf("R16: case %s does not refuse exactly once per entry", op)
 		}
 	}
 	if !strings.Contains(run, "if (!named && census && c.Report != null) { c.Report.Unknown++; }") {
@@ -426,12 +426,10 @@ func t05CsC3(t *testing.T) {
 	op := t05TextOp(t)
 	t05Has(t, op, "int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));",
 		"the length is read as a signed i32 (§4.5 THE TEXT OP)")
-	t05Has(t, op, "if (v < 0) { v = 0; if (report != null) report.Clamped++; }",
-		"a negative length clamps UP to zero and counts (§4.5 THE TEXT OP)")
-	t05Has(t, op, "else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }",
-		"a length past the cap clamps DOWN to it and counts (§4.5 THE TEXT OP)")
-	if n := strings.Count(op, "report.Clamped++"); n != 2 {
-		t.Errorf("C3: the text op counts clamped at %d sites, want the two clamp arms — once per field (§5.4)", n)
+	t05Has(t, op, "if (v < 0 || (uint)v > cap) { return \"length_over_bound\"; }",
+		"a length outside [0, cap] refuses the whole load (§4.5 THE TEXT OP)")
+	if n := strings.Count(op, "return \"length_over_bound\";"); n != 1 {
+		t.Errorf("C3: the text op refuses at %d sites, want the one refusal — once per field (§5.4)", n)
 	}
 }
 

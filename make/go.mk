@@ -149,7 +149,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema)
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
 	# The pointer corpus exercises the wire, region and cook read surfaces.
@@ -187,6 +187,10 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,blobs,blobdemo)
 	./bin/schema generate --lang go --out build/tables-generated-go/lists tables/lists
 	$(call go_table_module,lists,listdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/widelist tables/widelist
+	$(call go_table_module,widelist,widelistdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
+	$(call go_table_module,featurewitnesses,featurewitnesses)
 	./bin/schema generate --lang go --out build/tables-generated-go/maps tables/maps
 	$(call go_table_module,maps,mapdemo)
 	./bin/schema generate --lang go --out build/tables-generated-go/backend tables/backend
@@ -708,6 +712,23 @@ conformance-negative-control-go: build/conformance-harness build/conformance-go
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk
 
+# THE CANONICAL WRITER's control (docs/SPEC-TABLES.md §16.14, W6): the
+# generated Go text writer walks every map in DESCENDING key order, and the
+# map_key_order and map_text_order rows of json-write must go red while wire
+# and json-read stay green, which says the key order is what the gate holds.
+.PHONY: conformance-negative-control-go-key-order
+conformance-negative-control-go-key-order: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control key-order
+
+# THE WRITE REFUSAL's control (docs/SPEC-TABLES.md §16.14, W0): the generated
+# Go text writer writes ill-formed UTF-8 raw and an unpaired surrogate as
+# U+FFFD instead of refusing them, and the text_refuse_illformed and
+# text_refuse_unpaired rows of json-write must go red while wire and json-read
+# stay green.
+.PHONY: conformance-negative-control-go-text-refusal
+conformance-negative-control-go-text-refusal: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control text-refusal
+
 # THE FRAMING SURFACE's own control (docs/LAYERS/1-framing.md): the generated
 # Go reader's 4096 id-table entry cap is removed, and the framing row
 # frame_entries_4097 must go red while the wire surface stays green.
@@ -724,6 +745,8 @@ conformance-negative-control-go-framing: build/conformance-harness build/conform
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
+	$(MAKE) conformance-negative-control-go-key-order
+	$(MAKE) conformance-negative-control-go-text-refusal
 	$(MAKE) conformance-negative-control-go-framing
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
@@ -1258,3 +1281,59 @@ tables-go-message-form-negative-controls:
 		-run '^(TestGoMessageFormGoldensNegativeControl|TestGoMessageFormRefusalsNegativeControl|TestGoMessageFormStrictNegativeControl|TestGoMessageFormVersioningNegativeControl|TestGoMessageFormFixedOnlyNegativeControl|TestGoWireIntegrityMessageFormNegativeControl)$$'
 
 test-go: conformance-negative-control-go-message tables-go-message-form-negative-controls
+
+# THE OPEN-NODE REFUSAL's control (docs/SPEC-TABLES.md §3.1, §4): the generated
+# Go reader's cycle walk answers "no cycle", and the framing rows
+# node_cycle_self and node_cycle_to_root must go red while wire stays green.
+# It rebuilds only the driver over the generated tree, about 3 s.
+.PHONY: conformance-negative-control-go-cycle
+conformance-negative-control-go-cycle: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control cycle
+
+test-go: conformance-negative-control-go-cycle
+# DAMAGE DISCARDS THE WHOLE LOAD in the Go leg (docs/SPEC-TABLES.md §4): each
+# sabotage removes one discard guard from a COPY of the emitter, reached
+# through a Go overlay, and TestDamageDiscardsTheWholeLoadGo must go red on
+# that guard's own line: the fixed LoadTolerant's (read.go) hands back the
+# fixed value it decoded, and the region load's (regions.go) hands back its
+# root. Nothing tracked is written to.
+GO_DISCARD_NC := build/go-discard-nc
+.PHONY: tables-go-discard-negative-control
+tables-go-discard-negative-control:
+	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
+	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 {/if false {/' \
+		-e 's/n := rest \/ recordBytes/_ = rest; n := int64(1); for len(at) < int(recordBytes) { at = append(at, 0) }/' \
+		internal/codegen/gotable/fixedform.go > $(GO_DISCARD_NC)/fixedform.go.txt
+	@cmp -s internal/codegen/gotable/fixedform.go $(GO_DISCARD_NC)/fixedform.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/$(GO_DISCARD_NC)/fixedform.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/fixed.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+			./internal/codegen/gotable > $(GO_DISCARD_NC)/fixed.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Go fixed discard is gone and the gate stayed green"; \
+		cat $(GO_DISCARD_NC)/fixed.log; exit 1; \
+	fi
+	@grep -q "fixed: LoadTolerant answered true on damage" $(GO_DISCARD_NC)/fixed.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(GO_DISCARD_NC)/fixed.log; exit 1; }
+	@sed -e 's/if report.Refused(){clear(region);return nil}/if false{clear(region);return nil}/' -e 's/if root==nil||read.Refused()/if root==nil/' \
+		internal/codegen/gotable/regions.go > $(GO_DISCARD_NC)/regions.go.txt
+	@cmp -s internal/codegen/gotable/regions.go $(GO_DISCARD_NC)/regions.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/gotable/regions.go":"%s/$(GO_DISCARD_NC)/regions.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/region.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/region.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+			./internal/codegen/gotable > $(GO_DISCARD_NC)/region.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Go region discard is gone and the gate stayed green"; \
+		cat $(GO_DISCARD_NC)/region.log; exit 1; \
+	fi
+	@grep -q "variable: LoadTolerant handed back a root on damage" $(GO_DISCARD_NC)/region.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the region gate went red for some other reason"; \
+		  cat $(GO_DISCARD_NC)/region.log; exit 1; }
+	@echo "negative control: removing either Go discard guard turns TestDamageDiscardsTheWholeLoadGo RED"
+
+test-go: tables-go-discard-negative-control
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-go/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
