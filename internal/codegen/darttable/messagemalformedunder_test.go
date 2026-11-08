@@ -69,10 +69,7 @@ func goDecodeMalformed(t *testing.T, u *ir.Unit, root string, wire []byte) (tabl
 	}
 	inst := m.New(m.Lookup(root))
 	report := tabletext.Report{}
-	count, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, wire, vocab, &report)
-	if err != nil {
-		t.Fatalf("Go decode refused %s: %v", root, err)
-	}
+	count, _, _ := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, wire, vocab, &report)
 	return report, count
 }
 
@@ -89,15 +86,14 @@ func malformedUnderProbeBody(root string, ann, wire []byte) string {
   final values = <h.%s>[value];
   final loadRep = h.TableReport();
   final count = r.%sLoadMessages(values, msg, vocab, loadRep);
-  print('dart report unknown=${loadRep.unknown} kind=${loadRep.kindMismatch} '
-      'widened=${loadRep.widened} clamped=${loadRep.clamped} '
-      'duplicate=${loadRep.duplicate} malformed=${loadRep.malformed ? 1 : 0} '
+  print('dart report unknown=${loadRep.unknown} '
+      'widened=${loadRep.widened} '
       'refused=${loadRep.refused ? 1 : 0} count=$count');
 `, dartBytes(ann), dartBytes(wire), root, root, root, lower)
 }
 
 type malformedUnderDartReport struct {
-	unknown, kind, widened, clamped, duplicate, malformed, refused, count int
+	unknown, widened, refused, count int
 }
 
 // malformedUnderParseReport reads the one machine-readable line the probe
@@ -126,19 +122,14 @@ func malformedUnderParseReport(t *testing.T, out string) malformedUnderDartRepor
 		fields[key] = n
 	}
 	return malformedUnderDartReport{
-		unknown:   fields["unknown"],
-		kind:      fields["kind"],
-		widened:   fields["widened"],
-		clamped:   fields["clamped"],
-		duplicate: fields["duplicate"],
-		malformed: fields["malformed"],
-		refused:   fields["refused"],
-		count:     fields["count"],
+		unknown: fields["unknown"],
+		widened: fields["widened"],
+		refused: fields["refused"],
+		count:   fields["count"],
 	}
 }
 
 func TestMessageMalformedUnderflagDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	u := malformedUnderUnit(t)
 	ann := malformedUnderAnnounce(t)
@@ -160,14 +151,10 @@ func TestMessageMalformedUnderflagDart(t *testing.T) {
 			}
 			got := malformedUnderParseReport(t, out)
 			want := malformedUnderDartReport{
-				unknown:   goReport.Unknown,
-				kind:      0,
-				widened:   goReport.Widened,
-				clamped:   0,
-				duplicate: 0,
-				malformed: boolInt(goReport.Refused),
-				refused:   boolInt(goReport.Refused),
-				count:     goCount,
+				unknown: goReport.Unknown,
+				widened: goReport.Widened,
+				refused: boolInt(goReport.Refused),
+				count:   goCount,
 			}
 			if got != want {
 				t.Fatalf("%s Dart report %+v, want Go report %+v (docs/SPEC-TABLES.md §3.3, §4)\n%s",

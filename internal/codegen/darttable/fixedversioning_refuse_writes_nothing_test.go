@@ -28,9 +28,7 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
   check(n == -1, 'a record hash naming no layout refuses: n=$n ${why(report)}');
   check(name(report.refused) == 'no_layout',
       'a record hash naming no layout owes no_layout, not ${name(report.refused)}');
-  check(!report.malformed, 'a refusal by name never sets malformed too (the joint answer)');
-  check(report.clamped == 0 && report.unknown == 0 && report.kindMismatch == 0 &&
-      report.widened == 0 && report.duplicate == 0,
+  check(report.unknown == 0 && report.widened == 0,
       'REFUSE is total: no counter moves: ${why(report)}');
   for (var i = 0; i < plan.image.length; i++) {
     check(plan.image[i] == 0x5A, 'the prefill wrote into the poisoned image at $i: ${plan.image[i]}');

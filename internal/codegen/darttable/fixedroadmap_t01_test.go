@@ -51,7 +51,7 @@ const roadmapPrelude = `  final data = File(FILE).readAsBytesSync();
     return true;
   }
   bool quiet(t.TableFixedReport r) =>
-      r.unknown == 0 && r.kindMismatch == 0 && r.clamped == 0 && r.widened == 0 && r.duplicate == 0;
+      r.unknown == 0 && r.widened == 0;
   // one refusal, whole: the name, -1, never malformed too, no counter, no byte
   t.TableFixedReport refused(Uint8List file, int capacity, int want, String what, [int? len]) {
     poison();
@@ -59,7 +59,6 @@ const roadmapPrelude = `  final data = File(FILE).readAsBytesSync();
     final n = LOAD(values, capacity, file, len ?? file.length, plan, rep);
     check(n == -1, '$what: owes -1, not $n: ${why(rep)}');
     check(rep.refused == want, '$what: owes ${name(want)}, not ${name(rep.refused)}');
-    check(!rep.malformed, '$what: a refusal by name never sets malformed too: ${why(rep)}');
     check(quiet(rep), '$what: REFUSE is total, no counter moves: ${why(rep)}');
     check(untouched(), '$what: REFUSE writes not one destination byte');
     return rep;
@@ -102,14 +101,14 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 		// branch (length or byte compare) can be the one that refuses.
 		{"dart/F4", ownRun(roadmapPrelude + `
   final whole = LOAD(values, values.length, data, data.length, plan, report);
-  check(whole == 1 && report.refused == 0 && !report.malformed,
+  check(whole == 1 && report.refused == 0,
       'the whole file must read first: n=$whole ${why(report)}');
   final cut = t.TableFixedLimits.layoutAt + layoutBytes - 1;
-  final rep = refused(data, values.length, t.TableFixedRefusal.layoutMalformed,
+  final rep = refused(data, values.length, t.TableFixedRefusal.layoutDamaged,
       'F4 a file one byte short of 20+L', cut);
   check(rep.layoutHash == 0 && rep.hash == 0, 'F4 a truncated layout reports no hash: ${why(rep)}');
   for (var len = t.TableFixedLimits.layoutAt; len < cut; len++) {
-    refused(data, values.length, t.TableFixedRefusal.layoutMalformed, 'F4 a $len-byte prefix', len);
+    refused(data, values.length, t.TableFixedRefusal.layoutDamaged, 'F4 a $len-byte prefix', len);
   }`)},
 
 		// dart/F9 "batch_too_large": "If `rest / record_bytes` passes the
@@ -120,7 +119,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   poison();
   final fit = t.TableFixedReport();
   final n = LOAD(values, 3, three, three.length, plan, fit);
-  check(n == 3 && fit.refused == 0 && !fit.malformed, 'F9 n == capacity reads whole: n=$n ${why(fit)}');
+  check(n == 3 && fit.refused == 0, 'F9 n == capacity reads whole: n=$n ${why(fit)}');
   refused(three, 2, t.TableFixedRefusal.batchTooLarge, 'F9 three records into capacity two');
   refused(three, 0, t.TableFixedRefusal.batchTooLarge, 'F9 three records into capacity zero');
   refused(records(2), 1, t.TableFixedRefusal.batchTooLarge, 'F9 two records into capacity one');`)},
@@ -153,7 +152,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   }
   poison();
   final good = t.TableFixedReport();
-  check(LOAD(values, values.length, data, data.length, plan, good) == 1 && good.refused == 0 && !good.malformed,
+  check(LOAD(values, values.length, data, data.length, plan, good) == 1 && good.refused == 0,
       'R7 the unforged file takes the identity lane: ${why(good)}');
   check(good.hash == own, 'R7 the report carries the header\'s own hash');`)},
 
@@ -221,12 +220,12 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   cases['shorter by one byte'] = forge((f, v) => v.setUint32(t.TableFixedLimits.headerBytes, layoutBytes - 1, Endian.little));
   cases['second layout, one byte flipped in the last entry'] = forge((f, v) => f[at0 - 1] ^= 0xff);
   for (final c in cases.entries) {
-    final rep = refused(c.value, values.length, t.TableFixedRefusal.layoutMalformed, 'R9 ${c.key}');
+    final rep = refused(c.value, values.length, t.TableFixedRefusal.layoutDamaged, 'R9 ${c.key}');
     check(rep.layoutHash == 0 && rep.hash == 0, 'R9 ${c.key}: one name and nothing reported: ${why(rep)}');
   }
   poison();
   final after = t.TableFixedReport();
-  check(LOAD(values, values.length, data, data.length, plan, after) == 1 && after.refused == 0 && !after.malformed,
+  check(LOAD(values, values.length, data, data.length, plan, after) == 1 && after.refused == 0,
       'R9 the refusals changed nothing: the held file still reads: ${why(after)}');`)},
 
 		// dart/R13 "REFUSE is total: refused+reason and malformed are never both
@@ -247,12 +246,12 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   ByteData.sublistView(alien).setUint64(t.TableFixedLimits.hashAt, 0x0EADBEEFCAFEF00D, Endian.little);
   refused(alien, 1, t.TableFixedRefusal.layoutNewer, 'R13 a hash in no lineage entry');
   final lie = Uint8List.fromList(data)..[at0 - 1] ^= 0xff;
-  refused(lie, 1, t.TableFixedRefusal.layoutMalformed, 'R13 a known hash over other layout bytes');
+  refused(lie, 1, t.TableFixedRefusal.layoutDamaged, 'R13 a known hash over other layout bytes');
   poison();
   final ragged = t.TableFixedReport();
   final cut = Uint8List.fromList(data.sublist(0, data.length - 1));
   final n = LOAD(values, 1, cut, cut.length, plan, ragged);
-  check(n == -1 && ragged.malformed && ragged.refused == 0, 'R13 a malformed read is malformed and names no reason: ${why(ragged)}');
+  check(n == -1 && ragged.refused == t.TableFixedRefusal.damaged, 'R13 a damaged read refuses wire_damaged: ${why(ragged)}');
   check(quiet(ragged) && untouched(), 'R13 a malformed read moves no counter and writes no byte: ${why(ragged)}');`},
 			{"VNEW_field_append", []string{"VOLD_field_append"}, old, roadmapPrelude + `
   final bad = records(3);

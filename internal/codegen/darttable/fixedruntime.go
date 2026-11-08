@@ -160,7 +160,7 @@ abstract final class TableFixedRefusal {
   static const int newerForm = 3; // a byte no form defines
 
   static const int noLayout = 4; // a hash naming no layout this reader holds
-  static const int layoutMalformed = 5; // bytes that are not a layout at all
+  static const int layoutDamaged = 5; // bytes that are not a layout at all
   static const int layoutCountMismatch = 6;
   static const int layoutKindUnknown = 7;
   static const int layoutSizeMismatch = 8;
@@ -193,6 +193,10 @@ abstract final class TableFixedRefusal {
   /// read by name, the report naming the field, and nothing lands.
   static const int nonFiniteFloat = 18;
   static const int integrityMismatch = 19;
+  static const int damaged = 20; // file framing damage (§3)
+  static const int outOfRange = 21; // a value outside its declared range (§4)
+  static const int countOverBound = 22; // a count past its bound (§4)
+  static const int lengthOverBound = 23; // a length past its bound (§4)
 
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
@@ -207,8 +211,8 @@ abstract final class TableFixedRefusal {
         return 'newer_form';
       case noLayout:
         return 'no_layout';
-      case layoutMalformed:
-        return 'layout_malformed';
+      case layoutDamaged:
+        return 'layout_damaged';
       case layoutCountMismatch:
         return 'layout_count_mismatch';
       case layoutKindUnknown:
@@ -237,6 +241,14 @@ abstract final class TableFixedRefusal {
         return 'integrity_mismatch';
       case nonFiniteFloat:
         return 'non_finite_float';
+      case damaged:
+        return 'wire_damaged';
+      case outOfRange:
+        return 'out_of_range';
+      case countOverBound:
+        return 'count_over_bound';
+      case lengthOverBound:
+        return 'length_over_bound';
       default:
         return '???';
     }
@@ -246,13 +258,9 @@ abstract final class TableFixedRefusal {
 /// A REPORT is §4's six counters and the refusal beside them. The caller owns
 /// it and the codec never makes one.
 final class TableFixedReport {
-  bool malformed = false;
   int refused = TableFixedRefusal.none;
   int unknown = 0;
-  int kindMismatch = 0;
-  int clamped = 0;
   int widened = 0;
-  int duplicate = 0;
 
   /// the layout hash the record carried, so an application can ask an endpoint for
   /// the layout a 'no_layout' refusal names
@@ -270,13 +278,9 @@ final class TableFixedReport {
   int layoutHash = 0;
 
   void reset() {
-    malformed = false;
     refused = TableFixedRefusal.none;
     unknown = 0;
-    kindMismatch = 0;
-    clamped = 0;
     widened = 0;
-    duplicate = 0;
     hash = 0;
     layoutHash = 0;
     nonFiniteFloat = '';
@@ -687,7 +691,7 @@ final class TableFixedLayout {
     count = 0;
     refusal = TableFixedRefusal.none;
     if (length < TableFixedLimits.layoutHeaderBytes) {
-      refusal = TableFixedRefusal.layoutMalformed;
+      refusal = TableFixedRefusal.layoutDamaged;
       return false;
     }
     // 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY
@@ -866,9 +870,9 @@ int tableFixedSelect(List<TableFixedKnownLayout> known, int hash) {
 }
 
 /// ONE OLDER ENTRY'S PLAN, laid down from THE LOCK'S BYTES and never from a
-/// file's. 'unknown' and 'kindMismatch' are the COMPILE CENSUS — the plan's own
-/// numbers, carried onto a report ONCE after the record loop and only on a read
-/// that returns (§5.4, §5.9 #6). 'why' is the name an entry the lock got wrong
+/// file's. 'unknown' is the COMPILE CENSUS — the plan's own number, carried
+/// onto a report ONCE after the record loop and only on a read that returns
+/// (§5.4, §5.9 #6). 'why' is the name an entry the lock got wrong
 /// refuses by, so a bad entry still answers by name rather than by a throw
 /// (§5.9 #8).
 final class TableFixedLineagePlan {
@@ -879,7 +883,6 @@ final class TableFixedLineagePlan {
     this.fillCount,
     this.remap,
     this.unknown,
-    this.kindMismatch,
     this.why,
   );
 
@@ -889,7 +892,6 @@ final class TableFixedLineagePlan {
   final int fillCount;
   final Int32List remap;
   final int unknown;
-  final int kindMismatch;
   final int why;
 }
 
@@ -922,7 +924,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           0,
           empty,
           0,
-          0,
           TableFixedRefusal.none,
         ),
       );
@@ -937,7 +938,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
       empty,
       0,
       empty,
-      0,
       0,
       TableFixedRefusal.planTooLarge,
     );
@@ -958,8 +958,7 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           0,
           empty,
           0,
-          0,
-          TableFixedRefusal.layoutMalformed,
+          TableFixedRefusal.layoutDamaged,
         );
         break;
       }
@@ -985,7 +984,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           0,
           empty,
           0,
-          0,
           TableFixedRefusal.layoutRecordTooLarge,
         );
         break;
@@ -1002,7 +1000,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
         plan.fillCount,
         Int32List.fromList(plan.remap.sublist(0, plan.remapUsed)),
         census.unknown,
-        census.kindMismatch,
         TableFixedRefusal.none,
       );
       break;
@@ -1097,13 +1094,9 @@ int tableFixedRun(
         image.setRange(d, d + size, source, s);
         break;
       case TableFixedOp.count:
-        var counted = sourceView.getInt32(s, Endian.little);
-        if (counted < 0) {
-          counted = 0;
-          report.clamped++;
-        } else if (counted > size) {
-          counted = size;
-          report.clamped++;
+        final counted = sourceView.getInt32(s, Endian.little);
+        if (counted < 0 || counted > size) {
+          return TableFixedRefusal.countOverBound;
         }
         imageView.setInt32(d, counted, Endian.little);
         break;
@@ -1112,14 +1105,9 @@ int tableFixedRun(
             ? 2
             : 1;
         final cap = size ~/ unit;
-        var used = sourceView.getInt32(s, Endian.little);
-        var clampFired = false;
-        if (used < 0) {
-          used = 0;
-          clampFired = true;
-        } else if (used > cap) {
-          used = cap;
-          clampFired = true;
+        final used = sourceView.getInt32(s, Endian.little);
+        if (used < 0 || used > cap) {
+          return TableFixedRefusal.lengthOverBound;
         }
         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
         // violation REFUSES BY NAME (§4.5 fix 11): the length above clamps and
@@ -1132,9 +1120,6 @@ int tableFixedRun(
           s + 4,
         )) {
           return TableFixedRefusal.textIllFormed;
-        }
-        if (clampFired) {
-          report.clamped++;
         }
         imageView.setInt32(d, used, Endian.little);
         image.setRange(
@@ -1163,7 +1148,7 @@ int tableFixedRun(
         final remapAt = plan[b + TableFixedLane.aux];
         var landed = 0;
         if (raw < 0 || raw > remap[remapAt]) {
-          report.clamped++;
+          report.unknown++;
         } else if (raw != 0) {
           landed = remap[remapAt + raw];
         }
@@ -1216,7 +1201,7 @@ int tableFixedRun(
         if (value == 0 && arms != 0 && guard == tableFixedNoGuard) {
           final raw = tableFixedTagAt(source, s, size);
           if (raw < 0 || raw > arms) {
-            report.clamped++;
+            report.unknown++;
           }
         }
         break;
@@ -1626,8 +1611,8 @@ abstract final class TableFixedCompiler {
         );
         return;
       }
-      // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-      report.kindMismatch++;
+      // A KIND THAT MOVED IS NEVER REINTERPRETED (§4): the field reads
+      // its default and the compile census does not count it.
       return;
     }
     switch (myKind) {
@@ -1917,8 +1902,6 @@ abstract final class TableFixedCompiler {
             arg,
             mySize & 0xff,
           );
-        } else {
-          report.kindMismatch++;
         }
         break;
     }

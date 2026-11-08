@@ -127,12 +127,12 @@ void main(List<String> args) {
   for (final row in ['node_cycle_self', 'node_cycle_to_root', 'node_cycle_mid']) {
     final r = g.TableWireReport();
     final v = g.listNodeWireLoad(wire(row), r);
-    check(r.malformed, '$row: the load did not report the cycle as damage');
+    check(r.refused, '$row: the load did not refuse the cycle as damage');
     check(v.next == null, '$row: a refused load handed back a value');
     final rr = g.TableWireReport();
     final retain = g.TableRetain(1 << 16, List<int>.filled(1024, 0));
     final rv = g.listNodeWireLoadRetain(wire(row), retain, rr);
-    check(rr.malformed, '$row: the retaining load did not report the cycle as damage');
+    check(rr.refused, '$row: the retaining load did not refuse the cycle as damage');
     check(rv.next == null, '$row: a refused retaining load handed back a value');
     check(retain.used == 0 && retain.idUsed == 0, '$row: a refused retaining load left retained bytes or ids');
   }
@@ -143,11 +143,11 @@ void main(List<String> args) {
     unreached[9] = 0;
     final r = g.TableWireReport();
     final v = g.listNodeWireLoad(unreached, r);
-    check(r.malformed && v.next == null, 'unreached_cycle: did not refuse as damage');
+    check(r.refused && v.next == null, 'unreached_cycle: did not refuse as damage');
   }
-  // Overwritten self-edge in the same body: next = 1 (self) followed by next = 0 (null)
-  // in the root body must load cleanly with next == null because only final stored
-  // slots belong to the loaded graph (§3.1).
+  // Overwritten self-edge in the same body: next = 1 (self) followed by next = 0
+  // (null) restates one field id in one body, which the strict read refuses as
+  // damage (docs/plans/strict-only.md decision 5); the load lands nothing.
   {
     final base = wire('node_cycle_self');
     final over = Uint8List(base.length + 3);
@@ -162,21 +162,21 @@ void main(List<String> args) {
     }
     final r = g.TableWireReport();
     final v = g.listNodeWireLoad(over, r);
-    check(!r.malformed && v.next == null, 'overwritten_self_cycle: refused or next != null');
+    check(r.refused && v.next == null, 'overwritten_self_cycle: a restated field id must refuse');
   }
   {
     final r = g.TableWireReport();
     final v = g.listNodeWireLoad(wire('node_chain_two'), r);
-    check(!r.malformed && v.next != null, 'node_chain_two: a chain did not load clean');
+    check(!r.refused && v.next != null, 'node_chain_two: a chain did not load clean');
     final rr = g.TableWireReport();
     final rv = g.listNodeWireLoadRetain(wire('node_chain_two'), g.TableRetain(1 << 16, List<int>.filled(1024, 0)), rr);
-    check(!rr.malformed && rv.next != null, 'node_chain_two: a chain did not load clean through the retaining load');
+    check(!rr.refused && rv.next != null, 'node_chain_two: a chain did not load clean through the retaining load');
   }
   {
     final watch = Stopwatch()..start();
     final r = g.TableWireReport();
     g.sceneWireLoad(wire('node_diamond_chain'), r);
-    check(!r.malformed, 'node_diamond_chain: a diamond chain of shared nodes reported damage');
+    check(!r.refused, 'node_diamond_chain: a diamond chain of shared nodes refused');
     check(watch.elapsedMilliseconds < 10000, 'node_diamond_chain: the load took ${watch.elapsedMilliseconds} ms, past the 10 s a linear pass meets');
   }
   if (failed) exit(1);
@@ -310,13 +310,13 @@ void main() {
     final r = c.TableWireReport();
     final v = c.nodeWireLoad(wire, r);
     if (wantLoad) {
-      if (r.malformed || v.left == null) {
-        stderr.writeln('FAIL: $name did not load (malformed=${r.malformed})');
+      if (r.refused || v.left == null) {
+        stderr.writeln('FAIL: $name did not load (refused=${r.refused})');
         exit(1);
       }
     } else {
-      if (!r.malformed || v.left != null) {
-        stderr.writeln('FAIL: $name loaded (malformed=${r.malformed})');
+      if (!r.refused || v.left != null) {
+        stderr.writeln('FAIL: $name loaded (refused=${r.refused})');
         exit(1);
       }
     }

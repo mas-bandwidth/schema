@@ -412,12 +412,12 @@ void main(List<String> args) {
   final rep3 = TableTextReport();
   final long = List.filled(70, 'a').join();
   final c3 = cardFromJson('{"id":"$long"}', rep3);
-  check(c3.id.length == 64 && rep3.clamped == 1, 'over-bound string: len=${c3.id.length} clamped=${rep3.clamped}');
+  check(c3.id.isEmpty && rep3.refused, 'over-bound string refused: len=${c3.id.length} reason=${rep3.reason}');
 
   final rep4 = TableTextReport();
   final multi = List.filled(63, 'a').join() + '\u2192';
   final c4 = cardFromJson('{"id":"$multi"}', rep4);
-  check(c4.id == List.filled(63, 'a').join() && rep4.clamped == 1, 'multibyte cut: ${c4.id.length} clamped=${rep4.clamped}');
+  check(c4.id.isEmpty && rep4.refused, 'multibyte over bound refused: ${c4.id.length} reason=${rep4.reason}');
 
   stdout.writeln('ok');
 }
