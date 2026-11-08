@@ -16,8 +16,9 @@
 # disagreement no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a failure
 # too, so the list cannot rot into silence.
 #
-# The planted-bad-pattern control flips the load's stopped verdict in a copy
-# of the generated units, so a clean wire reads as damaged, and requires the
+# The planted-bad-pattern control inverts the variable walk's root body
+# verdict and makes the fixed read answer nothing, in a copy of the generated
+# units, so a clean wire of either form reads as damaged, and requires the
 # runner to go red naming the accepted wire case before the unplanted run is
 # green again.
 
@@ -33,7 +34,8 @@ test-lobster: schema-lobster-runs-hostile-corpus
 
 schema-lobster-runs-hostile-corpus-negative-control: schema-lobster-runs-hostile-corpus
 	@rm -rf $(LOBSTER_HOSTILE_BUILD)-plant && cp -R $(LOBSTER_HOSTILE_BUILD) $(LOBSTER_HOSTILE_BUILD)-plant
-	@sed -i.orig 's/report\.stopped = not body_at(/report.stopped = body_at(/' $(LOBSTER_HOSTILE_BUILD)-plant/*/load.lobster
+	@sed -i.orig -e 's/^        if not body_at(reader(st, 1, first), rec, false, false):$$/        if body_at(reader(st, 1, first), rec, false, false):/' \
+		-e 's/^        return fixed_record_codec(root)\.read_fixed(data, report)$$/        return nil/' $(LOBSTER_HOSTILE_BUILD)-plant/*/load.lobster
 	@if cmp -s $(LOBSTER_HOSTILE_BUILD)/tables_examples/load.lobster $(LOBSTER_HOSTILE_BUILD)-plant/tables_examples/load.lobster; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted reader bug did not apply'; exit 1; fi
 	@if go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_BUILD)-plant --no-generate \
