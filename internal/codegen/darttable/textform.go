@@ -222,11 +222,12 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 // U+0000 refuses the read, because no wire carries a zero in text. A string
 // the read only SKIPS (an unknown key's value) never reaches here.
 String _jsonText(String s) {
+  // a lone or inverted surrogate is not text (string_lone_surrogate, SPEC
+  // §16.3): the parser refuses one spelled as an escape, and this refuses one
+  // a caller's String carries raw
+  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');
   if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
-  // Lone or inverted JSON surrogate escapes normalize until the deferred
-  // string_lone_surrogate card lands (SPEC §16.3).
-  if (_wideValid(s.codeUnits)) return s;
-  return String.fromCharCodes(s.runes.map((r) => r >= 0xD800 && r <= 0xDFFF ? 0xFFFD : r));
+  return s;
 }
 
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
@@ -960,9 +961,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 		g.pf("\tfinal entries = _jsonEntries(obj);\n")
 	}
 	g.pf("\tif (entries == null) return;\n")
-	if len(st.Fields) > 0 {
-		g.pf("\tfinal seen = <String>{};\n")
-	}
+	g.pf("\tfinal seen = <String>{};\n")
 	g.pf("\tfor (final entry in entries) {\n")
 	g.pf("\t\tfinal key = entry.key;\n")
 	g.pf("\t\tfinal val = entry.value;\n")
@@ -971,7 +970,9 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	for _, f := range st.Fields {
 		g.emitTextFromJsonField(f)
 	}
-	g.pf("\t\t\tdefault:\n\t\t\t\tr.unknown++;\n")
+	// an unknown key is skipped and counted, and its repeat is damage like a
+	// known key's (§2.8)
+	g.pf("\t\t\tdefault:\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\tr.unknown++;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.emitRequiredCheck(st, false, "\t")

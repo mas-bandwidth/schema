@@ -218,6 +218,25 @@ final class _JParse {
     return _JNum(token);
   }
 
+  // four hex digits, exactly: no sign, no fewer
+  int hex4() {
+    if (i + 4 > s.length) throw const FormatException('short \\u escape');
+    var u = 0;
+    for (var k = 0; k < 4; k++) {
+      final c = s.codeUnitAt(i++);
+      final d = c >= 0x30 && c <= 0x39
+          ? c - 0x30
+          : c >= 0x41 && c <= 0x46
+              ? c - 0x37
+              : c >= 0x61 && c <= 0x66
+                  ? c - 0x57
+                  : -1;
+      if (d < 0) throw FormatException('bad \\u escape', s, i - 1);
+      u = (u << 4) | d;
+    }
+    return u;
+  }
+
   String str() {
     expect(0x22);
     final b = StringBuffer();
@@ -247,9 +266,22 @@ final class _JParse {
         case 0x74:
           b.writeCharCode(0x09);
         case 0x75:
-          if (i + 4 > s.length) throw const FormatException('short \\u escape');
-          b.writeCharCode(int.parse(s.substring(i, i + 4), radix: 16));
-          i += 4;
+          final u = hex4();
+          // a lone or inverted surrogate escape is not text (docs/SPEC-TABLES.md
+          // §16.3, string_lone_surrogate): a lead must be followed by a \\u trail
+          if (u >= 0xDC00 && u <= 0xDFFF) throw const FormatException('string_lone_surrogate');
+          if (u >= 0xD800 && u <= 0xDBFF) {
+            if (i + 2 > s.length || s.codeUnitAt(i) != 0x5C || s.codeUnitAt(i + 1) != 0x75) {
+              throw const FormatException('string_lone_surrogate');
+            }
+            i += 2;
+            final t = hex4();
+            if (t < 0xDC00 || t > 0xDFFF) throw const FormatException('string_lone_surrogate');
+            b.writeCharCode(u);
+            b.writeCharCode(t);
+          } else {
+            b.writeCharCode(u);
+          }
         default:
           throw FormatException('bad escape', s, i);
       }
@@ -480,9 +512,13 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   }
   final out = List<T>.generate(n, (_) => def());
   final seen = <int>{};
+  // an unknown key has no slot, so its repeat is caught by name; a known
+  // key's repeat is caught by slot (§2.8: a repeated key is damage)
+  Set<String>? unknownSeen;
   for (final entry in entries) {
     final slot = slots[entry.key];
     if (slot == null) {
+      if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
       r.unknown++;
       continue;
     }

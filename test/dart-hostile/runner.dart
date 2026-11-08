@@ -35,8 +35,15 @@
 // An accepted text or wire read's value is digested as the engine's is:
 // SHA-256 of the port's text writer with its one trailing newline removed (the
 // engine's canonical text, internal/tabletext.Model.Write, carries none). A
-// read that throws, or a report that says malformed, is the corpus's
-// `damaged`; a refusal is named by the port's own reason.
+// read that throws or refuses is the corpus's `damaged`, unless its refusal is
+// one the manifest names (corpusReason): the verdict is the contract, and why a
+// read refused is per-language detail (docs/SPEC-TABLES.md §6.5), so every other
+// reason folds into `damaged`, as the C and C++ harnesses answer.
+//
+// A FIXED root's wire carrier dispatches on the form byte (SPEC-TABLES §3.4):
+// form 3 goes to <root>FixedLoad and its fixed value is digested through the
+// variable class's text writer (the fixed class has none); every other byte
+// goes to <root>WireLoad, which names a form it does not carry.
 //
 // THE RUNNER RULES (docs/HOSTILE-CORPUS.md). Every case runs in its own isolate
 // (the VM's default isolate stack) under a time budget (5 s, or
@@ -56,6 +63,8 @@ import 'dart:typed_data';
 
 import '../../build/dart-hostile/dispatch.dart' as dispatch;
 import '../../build/dart-hostile/generated/tabledemo/TabledemoFixed.dart' as tabledemo_fixed;
+import '../../build/dart-hostile/generated/tabledemo/PackFixed.dart' as pack_fixed;
+import '../../build/dart-hostile/generated/tabledemo/TabledemoWire.dart' as tabledemo;
 import '../../build/dart-hostile/generated/messagedemo/MessagedemoWire.dart' as messagedemo;
 import '../../build/dart-hostile/generated/messagedemo/MessagedemoFixed.dart' as messagedemo_fixed;
 import '../../build/dart-hostile/generated/messagedemo/MessagesFixed.dart' as messages;
@@ -118,6 +127,7 @@ Answer _text(String schema, String table, Uint8List payload) {
   try {
     loaded = dispatch.textLoad(schema, table, text);
     if (loaded == null) return _unbound('text');
+    if (loaded.refused) return Answer('refuse', corpusReason(loaded.reason, payload));
     written = loaded.written();
   } catch (_) {
     return _damaged;
@@ -140,12 +150,74 @@ String wireRefusalReason(String reason, Uint8List payload) {
   return reason;
 }
 
+// The refusals the manifest names by name; every other refusal is `damaged`.
+const Set<String> _namedRefusals = <String>{
+  'newer_form',
+  'message_form_as_file',
+  'no_vocabulary',
+  'second_announcement',
+  'vocabulary_too_large',
+  'batch_too_large',
+  'count_refusal',
+  'non_finite_float',
+};
+
+String corpusReason(String reason, Uint8List payload) {
+  final named = wireRefusalReason(reason, payload);
+  return _namedRefusals.contains(named) ? named : 'damaged';
+}
+
+// ---- the fixed roots' form 3 (docs/SPEC-TABLES.md §3.4) ----
+
+String _fixedText(Uint8List bytes, int length) => utf8.decode(Uint8List.sublistView(bytes, 0, length));
+
+tabledemo.ShipEntry _shipEntryFromFixed(tabledemo_fixed.ShipEntry f) => tabledemo.ShipEntry()
+  ..displayName = _fixedText(f.displayName, f.displayNameLength)
+  ..health = f.health
+  ..mass = f.mass
+  ..hardpoints = List<int>.of(Int32List.sublistView(f.hardpoints, 0, f.hardpointsCount))
+  ..hasGunner = f.gunnerPresent
+  ..gunner = f.gunnerPresent
+      ? (tabledemo.GunnerSettings()
+        ..reaction = f.gunner.reaction
+        ..tracking = f.gunner.tracking
+        ..callsign = _fixedText(f.gunner.callsign, f.gunner.callsignLength))
+      : tabledemo.GunnerSettings();
+
+// The fixed refusal codes the manifest names; every other code is `damaged`.
+String _fixedRefusal(tabledemo_fixed.TableFixedReport r) {
+  if (r.nonFiniteFloat.isNotEmpty) return 'non_finite_float';
+  return switch (r.refused) {
+    tabledemo_fixed.TableFixedRefusal.messageFormAsFile => 'message_form_as_file',
+    tabledemo_fixed.TableFixedRefusal.newerForm => 'newer_form',
+    tabledemo_fixed.TableFixedRefusal.batchTooLarge => 'batch_too_large',
+    _ => 'damaged',
+  };
+}
+
+// null: no fixed root is bound for this (schema, table)
+Answer? _fixedWire(String schema, String table, Uint8List payload) {
+  if (schema != 'tables/examples' || table != 'ShipEntry') return null;
+  final values = <tabledemo_fixed.ShipEntry>[tabledemo_fixed.ShipEntry()];
+  final report = tabledemo_fixed.TableFixedReport();
+  final n = pack_fixed.shipEntryFixedLoad(values, 1, payload, payload.length, pack_fixed.shipEntryFixedNewPlan(), report);
+  if (n != 1 || report.refused != tabledemo_fixed.TableFixedRefusal.none) return Answer('refuse', _fixedRefusal(report));
+  final value = _shipEntryFromFixed(values[0]);
+  return _after(_accepted(tabledemo.shipEntryToJson(value)), 'FixedMeasure/FixedSave', () {
+    final out = Uint8List(pack_fixed.shipEntryFixedMeasure(1));
+    if (pack_fixed.shipEntryFixedSave(values, 1, out) < 0) throw StateError('the fixed writer refused the decoded value');
+  });
+}
+
 Answer _wire(String schema, String table, Uint8List payload, {required bool retain}) {
+  if (!retain && payload.isNotEmpty && payload[0] == tabledemo_fixed.tableFixedForm) {
+    final fixed = _fixedWire(schema, table, payload);
+    if (fixed != null) return fixed;
+  }
   final loaded =
       retain ? dispatch.wireLoadRetain(schema, table, payload) : dispatch.wireLoad(schema, table, payload);
   if (loaded == null) return _unbound(retain ? 'wire_retain' : 'wire');
-  if (loaded.refused) return Answer('refuse', wireRefusalReason(loaded.reason, payload));
-  if (loaded.malformed) return _damaged;
+  if (loaded.refused) return Answer('refuse', corpusReason(loaded.reason, payload));
   return _after(_accepted(loaded.written()), retain ? 'WireMeasureRetain/WireSaveRetain' : 'WireMeasure/WireSave',
       loaded.exercise);
 }
@@ -202,8 +274,8 @@ Answer _message(String table, Uint8List payload, {required bool announced}) {
   messagedemo_fixed.initToolMessage(value);
   final r = messagedemo_fixed.TableReport();
   final count = messages.toolMessageLoadMessages(<messagedemo_fixed.ToolMessage>[value], payload, vocab, r);
-  if (r.refused) return Answer('refuse', r.reason);
-  if (r.malformed || count != 1) return _damaged;
+  if (r.refused) return Answer('refuse', corpusReason(r.reason, payload));
+  if (count != 1) return _damaged;
   return _messageAccepted(value);
 }
 
@@ -220,8 +292,8 @@ Answer _announce(String carrier, Uint8List payload) {
   }
   final r = tabledemo_fixed.TableReport();
   final ok = tabledemo_fixed.announceRead(vocab, payload, r);
-  if (r.refused) return Answer('refuse', r.reason);
-  if (r.malformed || !ok) return _damaged;
+  if (r.refused) return Answer('refuse', corpusReason(r.reason, payload));
+  if (!ok) return _damaged;
   return const Answer('accept', '-');
 }
 
