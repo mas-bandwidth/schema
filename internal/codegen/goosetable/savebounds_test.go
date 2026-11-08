@@ -90,7 +90,7 @@ fn union_case() {
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
     let root = schema_rt::load_table(conformance_unit(), "Root", data, vals, nodes, report);
-    if root < 0 || report.malformed { write_stdout("union refused\n"); return; }
+    if root < 0 || report.body_damaged { write_stdout("union refused\n"); return; }
     let s = vals[root].first;
     if vals[s].shape != schema_rt::ShapeUnion || vals[s].state != schema_rt::ValPresent { write_stdout("union unset\n"); return; }
     vals[s].bits = schema_rt::Int128 { lo: 0xFFFFFFFFFFFFFFFF, hi: 0 };
@@ -118,7 +118,7 @@ fn pointer_case(name: const u8[:], lo: u64, past: bool) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
     let root = schema_rt::load_table(conformance_unit(), "Root", data, vals, nodes, report);
-    if root < 0 || report.malformed { write_stdout(str(name, " refused\n")); return; }
+    if root < 0 || report.body_damaged { write_stdout(str(name, " refused\n")); return; }
     let s = vals[root].first + 1;
     if vals[s].state != schema_rt::ValPresent { write_stdout(str(name, " unset\n")); return; }
     vals[s].bits = schema_rt::Int128 { lo: if past { (nodes.len + 2) as! u64 } else { lo }, hi: 0 };
@@ -150,7 +150,7 @@ fn retain_case(poison: const u8[:]) {
     var ids: u64[>..<] = [];
     var store = store_of(bytes, recs, ids);
     let root = schema_rt::load_table_retain(conformance_unit(), "Root", data, vals, nodes, report, store);
-    if root < 0 || report.malformed || store.recs.len != 1 { write_stdout("retain refused\n"); return; }
+    if root < 0 || report.body_damaged || store.recs.len != 1 { write_stdout("retain refused\n"); return; }
     var plain: u8[>..<] = [];
     let p = schema_rt::save_table(conformance_unit(), "Root", data, vals, nodes, root, plain);
     // the retained string's LEB128 length (32) is the byte before its first 'q'

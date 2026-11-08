@@ -3264,7 +3264,7 @@ tables-big-endian-negative-control: tables-big-endian
 .PHONY: tables-big-endian-control-only
 tables-big-endian-control-only:
 	@mkdir -p build
-	@sed 's|void put16( uint16_t v ) { uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }|void put16( uint16_t v ) { raw( \&v, 2 ); } // SABOTAGED: host order|' \
+	@sed 's|uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) };|uint8_t b[2]; memcpy( b, \&v, 2 ); // SABOTAGED: host order|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
 	@cmp -s build/cpptable-host-order.gotext internal/codegen/cpptable/cpptable.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
