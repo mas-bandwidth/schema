@@ -3,6 +3,7 @@ package luatable
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
@@ -16,6 +17,32 @@ import (
 // The wire comes from the Go engine, not the Lua writer under test.
 func TestLuaMessageCrossBuildSlots(t *testing.T) {
 	t.Parallel()
+	if err := messageCrossBuild(t, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestLuaMessageCrossBuildSlotsNegativeControl installs the announced entries
+// in reverse in the emitted message.lua, so the sender's slots name other
+// entries, and requires the cross-build read to go red.
+func TestLuaMessageCrossBuildSlotsNegativeControl(t *testing.T) {
+	t.Parallel()
+	const anchor = "    vocab[i] = e\n"
+	err := messageCrossBuild(t, func(src []byte) []byte {
+		if strings.Count(string(src), anchor) != 1 {
+			t.Fatalf("message.lua carries the anchor %d times, want 1", strings.Count(string(src), anchor))
+		}
+		return []byte(strings.Replace(string(src), anchor, "    vocab[#entries - i + 1] = e\n", 1))
+	})
+	if err == nil {
+		t.Fatal("the reversed announcement still reads the cross-build batch")
+	}
+}
+
+// messageCrossBuild runs the cross-build read, the emitted message.lua edited
+// by patch when set, and answers the probe's failure.
+func messageCrossBuild(t *testing.T, patch func([]byte) []byte) error {
+	t.Helper()
 	load := func(name, schema string) *ir.Unit {
 		path := filepath.Join(t.TempDir(), name+".schema")
 		writeFile(t, path, schema)
@@ -55,6 +82,9 @@ fixed table Root {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if patch != nil {
+		files["message.lua"] = patch(files["message.lua"])
+	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
 	writeFile(t, filepath.Join(dir, "main.lua"), fmt.Sprintf(`local T = require(%q)
@@ -67,5 +97,9 @@ local values = T.LoadMessages("Root", vocab, inputs.batch, report)
 assert(not report.damaged and values and #values == 2, "cross-build batch damaged")
 assert(values[1].z == 123456789 and values[2].z == 123456789, "cross-build field lost")
 `, ModuleName(receiver), len(ir.TableVocabulary(sender)), ir.TableMessageRefBits(len(ir.TableVocabulary(sender)))))
-	luarun.Run(t, dir, "main.lua", map[string][]byte{"announce": ir.TableAnnouncement(sender), "batch": batch})
+	_, stderr, err := luarun.Try(t, dir, "main.lua", map[string][]byte{"announce": ir.TableAnnouncement(sender), "batch": batch})
+	if err != nil {
+		return fmt.Errorf("%v: %s", err, stderr)
+	}
+	return nil
 }
