@@ -90,8 +90,8 @@ int main( int argc, char ** argv )
             return 1;
         }
     }
-    std::printf( "reference round trip: 64/64 identical; unknown %d kind_mismatch %d clamped %d widened %d\n",
-                 (int) report.unknown, (int) report.kind_mismatch, (int) report.clamped, (int) report.widened );
+    std::printf( "reference round trip: 64/64 identical; unknown %d widened %d\n",
+                 (int) report.unknown, (int) report.widened );
 
     // THE VALUE ORACLE, so another port checks its DECODED VALUES and not only
     // its bytes: a reader and a writer that share one offset mistake round trip

@@ -188,15 +188,15 @@ static bool spill( const std::string & dir, const std::string & name, const void
 
 // Each unit declares its OWN TableReport — the generated surface is namespaced
 // whole (§6.1) — so the driver carries one report shape of its own and each row
-// copies into it. Six counters is the whole of §4's report, and a row that
-// stopped copying one would be caught by the first case that counts it. The
-// REFUSAL VERDICT rides beside them (§3) and is not a counter.
+// copies into it. Every read has one outcome, the whole value or a refusal
+// (docs/SPEC-TABLES.md §4, §6.5), so the verdict is the refusal flag and the two
+// counters that survive the strict read ride beside it as diagnostics. The
+// harness compares the verdict, never a counter (test/conformance/README.md).
 struct Report
 {
-    int unknown, kind_mismatch, widened, clamped, duplicate;
-    bool malformed;
+    int unknown, widened;
     bool refused;
-    int blob_shared; // the extra slots that named a blob another slot named (§2.5)
+    bool blob_shared; // the refusal's reason was a blob two slots name (§2.5)
 };
 
 struct Codec
@@ -217,19 +217,24 @@ struct Codec
     bool ( *cook )( const void *, void *, uint64_t, int );
     void * ( *make )();
     void ( *reset )( void * );
+    // THE FORM-1 READ OF THE SAME DECLARATION, for the framing battery alone:
+    // its vectors are form-1 files and the rules they pin are the variable
+    // form's (docs/LAYERS/1-framing.md), so a root declared `fixed table` is
+    // read there as the oracle reads it, with its class variable
+    // (test/conformance/harness/generate.go, framingVariableUnit).
+    bool ( *load_form1 )( void *, const uint8_t *, int64_t, Report * );
 };
 
+// A read is refused when the plain name returned its false, -1 or NULL; the
+// report says so too, and either is enough, so a row cannot print `read` for a
+// read its report refused.
 template <typename T>
 static void copy_report( const T & from, Report * to )
 {
     to->unknown = from.unknown;
-    to->kind_mismatch = 0; // retired as a counter: a kind mismatch is a refusal (refuse_reason)
     to->widened = from.widened;
-    to->clamped = 0; // retired as a counter: an out-of-range value is a refusal (refuse_reason)
-    to->duplicate = 0; // retired: a repeated key or field is damage and refuses the whole load
-    to->malformed = from.damaged;
-    to->refused = from.refused;
-    to->blob_shared = ( (int) from.refuse_reason == 24 ) ? 1 : 0; // blob_shared is refusal reason 24 in the one vocabulary
+    to->refused = from.refused || from.damaged || (int) from.refuse_reason != 0;
+    to->blob_shared = (int) from.refuse_reason == 24; // blob_shared is reason 24 in the one vocabulary
 }
 
 template <typename T>
@@ -244,21 +249,29 @@ struct Erase
     static void reset( void * p ) { new ( p ) T(); }
 };
 
-// The surfaces ask what the TOLERANT read reports, so the codecs call the
-// named tolerant reads; the plain names are strict (docs/SPEC-TABLES.md
-// §16.11), as the Go driver rows call the plain strict entries too.
+// A FIXED root's file is FORM 3 (docs/SPEC-TABLES.md §3.4) and a reader that
+// expects a fixed table refuses every other form, so the codec reads and writes
+// it through the fixed-form names, one record: FixedLoad is the plain strict
+// read of that form (-1 refuses the whole load), and FixedSave the writer whose
+// bytes the wire goldens hold. The plan storage is the caller's (§3.4), roomy
+// enough for any writer's layout the corpus carries; no cache is shared.
+static const int32_t kFixedPlanCapacity = 4096;
+
 #define CODEC( unit_key, ns, type )                                                            \
     {                                                                                          \
         unit_key, #type,                                                                       \
         []( void * v, const uint8_t * b, int64_t n, Report * r ) {                             \
+            static std::vector<ns::TableFixedEntry> plan( (size_t) kFixedPlanCapacity );       \
             ns::TableReport inner;                                                             \
-            bool ok = ns::type##Load( *(ns::type *) v, b, n, &inner );                 \
+            const int64_t count = ns::type##FixedLoad( (ns::type *) v, 1, b, n, plan.data(),   \
+                                                       kFixedPlanCapacity, NULL, &inner );     \
             copy_report( inner, r );                                                           \
-            return ok;                                                                         \
+            if ( count != 1 ) r->refused = true;                                               \
+            return count == 1;                                                                 \
         },                                                                                     \
-        []( const void * v ) { return ns::type##Measure( *(const ns::type *) v ); },           \
+        []( const void * ) { return ns::type##FixedMeasure( 1 ); },                            \
         []( const void * v, uint8_t * b, int64_t n ) {                                         \
-            return ns::type##Save( *(const ns::type *) v, b, n );                              \
+            return ns::type##FixedSave( (const ns::type *) v, 1, b, n );                       \
         },                                                                                     \
         []( void * v, const char * t, int64_t n, Report * r ) {                                \
             ns::TableReport inner;                                                             \
@@ -276,14 +289,59 @@ struct Erase
                                    big ? ns::TableByteOrder::Big                               \
                                        : ns::TableByteOrder::Little );                         \
         },                                                                                     \
-        Erase<ns::type>::make, Erase<ns::type>::reset                                          \
+        Erase<ns::type>::make, Erase<ns::type>::reset,                                         \
+        []( void * v, const uint8_t * b, int64_t n, Report * r ) {                             \
+            ns::TableReport inner;                                                             \
+            bool ok = ns::type##Load( *(ns::type *) v, b, n, &inner );                         \
+            copy_report( inner, r );                                                           \
+            return ok;                                                                         \
+        }                                                                                      \
+    }
+
+// A FIXED root past §3.4's 65536-byte record bound HAS NO FILE FORM: no form 3
+// carries it, and a reader that expects a fixed table refuses every other form,
+// so every file read of it refuses and nothing is saved. The text and the cook
+// still reach it, which is the rest of the row.
+#define NOFILE_CODEC( unit_key, ns, type )                                                     \
+    {                                                                                          \
+        unit_key, #type,                                                                       \
+        []( void *, const uint8_t *, int64_t, Report * r ) {                                   \
+            *r = Report();                                                                     \
+            r->refused = true;                                                                 \
+            return false;                                                                      \
+        },                                                                                     \
+        []( const void * ) { return (int64_t) -1; },                                           \
+        []( const void *, uint8_t *, int64_t ) { return (int64_t) -1; },                       \
+        []( void * v, const char * t, int64_t n, Report * r ) {                                \
+            ns::TableReport inner;                                                             \
+            bool ok = ns::type##FromJson( *(ns::type *) v, t, n, &inner );                     \
+            copy_report( inner, r );                                                           \
+            return ok;                                                                         \
+        },                                                                                     \
+        []( const void * v ) { return ns::type##ToJsonMeasure( *(const ns::type *) v ); },     \
+        []( const void * v, char * t, int64_t n ) {                                            \
+            return ns::type##ToJson( *(const ns::type *) v, t, n );                            \
+        },                                                                                     \
+        []( const void * v ) { return ns::type##CookMeasure( *(const ns::type *) v ); },       \
+        []( const void * v, void * o, uint64_t c, int big ) {                                  \
+            return ns::type##Cook( *(const ns::type *) v, o, c,                                \
+                                   big ? ns::TableByteOrder::Big                               \
+                                       : ns::TableByteOrder::Little );                         \
+        },                                                                                     \
+        Erase<ns::type>::make, Erase<ns::type>::reset,                                         \
+        []( void * v, const uint8_t * b, int64_t n, Report * r ) {                             \
+            ns::TableReport inner;                                                             \
+            bool ok = ns::type##Load( *(ns::type *) v, b, n, &inner );                         \
+            copy_report( inner, r );                                                           \
+            return ok;                                                                         \
+        }                                                                                      \
     }
 
 static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, RootConfig ),
     CODEC( "tabledemo", tabledemo, ProfileConfig ),
     CODEC( "tabledemo", tabledemo, LoadoutConfig ),
-    CODEC( "tabledemo", tabledemo, WideBlob ),
+    NOFILE_CODEC( "tabledemo", tabledemo, WideBlob ),
     CODEC( "tabledemo", tabledemo, ArchiveConfig ),
     CODEC( "tabledemo", tabledemo, KeyedConfig ),
     CODEC( "tabledemo", tabledemo, PackConfig ),
@@ -492,6 +550,8 @@ struct RetainAnswer
     int32_t retain_lost = 0;
     int32_t unknown = 0;
     int32_t save_lost = 0;
+    bool read = false;          // the retaining read accepted the whole value
+    std::vector<char> text;     // the §16 text of the known value it read
     std::vector<uint8_t> saved; // the save's bytes
 };
 
@@ -515,7 +575,7 @@ static const int64_t kRetainRoomy = 1 << 20;
             std::vector<ns::TableRetain::Id> ids(                                               \
                 (size_t) ( id_capacity < 0 ? kRetainRoomy / 8 : id_capacity ) );                \
             int64_t need = ns::type##LoadMeasure( wire, n );                                    \
-            if ( need < 0 ) return false;                                                       \
+            if ( need < 0 ) return true; /* measured as a refusal: no value to answer */        \
             int64_t capacity = kRetainRoomy;                                                    \
             if ( short_buffer )                                                                 \
             {                                                                                   \
@@ -528,7 +588,7 @@ static const int64_t kRetainRoomy = 1 << 20;
                 probe.ids = ids.data();                                                         \
                 probe.id_capacity = (int32_t) ids.size();                                       \
                 ns::TableReport ignored;                                                        \
-                if ( ns::type##LoadRetain( probe_region.data(), need, wire, n, &probe, &ignored ) == NULL ) return false; \
+                if ( ns::type##LoadRetain( probe_region.data(), need, wire, n, &probe, &ignored ) == NULL ) return true; \
                 capacity = probe.used - 1;                                                      \
             }                                                                                   \
             std::vector<uint8_t> region( (size_t) need, 0 );                                    \
@@ -539,7 +599,13 @@ static const int64_t kRetainRoomy = 1 << 20;
             retain.id_capacity = (int32_t) ids.size();                                          \
             ns::TableReport load;                                                               \
             const ns::type * root = ns::type##LoadRetain( region.data(), need, wire, n, &retain, &load ); \
-            if ( root == NULL ) return false;                                                   \
+            if ( root == NULL ) return true; /* a refusal is an answer: `refused`, no value */   \
+            answer.read = true;                                                                 \
+            const int64_t text_size = ns::type##ToJsonMeasure( root );                           \
+            if ( text_size < 0 ) return false;                                                  \
+            answer.text.assign( (size_t) text_size + 1, 0 );                                    \
+            if ( ns::type##ToJson( root, answer.text.data(), text_size ) != text_size ) return false; \
+            answer.text.resize( (size_t) text_size );                                           \
             answer.retained = load.retained;                                                    \
             answer.retain_lost = load.retain_lost;                                              \
             answer.unknown = load.unknown;                                                      \
@@ -896,6 +962,26 @@ static bool block_dump( const std::string & name, const std::vector<uint8_t> & d
 
 static std::vector<uint8_t> scratch;
 
+// a wire the strict read refused has no bytes to save: the answer is
+// `<case>.absent` naming the refusal, which a `wire-refused` row expects
+static bool spill_refusal( const std::string & out, const std::string & name, const Report & report )
+{
+    const char * why = report.blob_shared ? "blob_shared" : "refused";
+    return spill( out, name + ".absent", why, strlen( why ) );
+}
+
+// THE VERDICT LINE of a `report`, `framing` and `json-hostile` answer: the
+// legacy seven fields the harness still reads, with the retired counters at
+// zero and the refusal flag the only thing that selects the verdict
+// (test/conformance/README.md, "Every read has one outcome").
+static std::vector<char> verdict_line( const Report & report, bool read )
+{
+    char text[128];
+    const int n = snprintf( text, sizeof( text ), "%d,0,%d,0,0,false,%s\n",
+                            report.unknown, report.widened, read ? "read" : "refused" );
+    return std::vector<char>( text, text + n );
+}
+
 static int surface_wire( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -910,19 +996,17 @@ static int surface_wire( const std::string & out )
             std::vector<uint8_t> region;
             Report report;
             const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
-            if ( root == NULL ) return 1;
-            int64_t size = variable->measure( root );
-            if ( size < 0 && report.blob_shared > 0 )
+            if ( root == NULL )
             {
-                // A blob two slots name has one owner too many, and every
-                // writer refuses it by name (docs/SPEC-TABLES.md §2.5): the
-                // row's answer is that refusal, as the Go driver's is.
-                std::string path = out + "/" + f[1] + ".absent";
-                FILE * file = fopen( path.c_str(), "wb" );
-                if ( file == NULL || fputs( "blob_shared", file ) < 0 ) { if ( file ) fclose( file ); return 1; }
-                fclose( file );
+                // A `wire-refused` instance (a blob two slots name, §2.5): the
+                // strict read refuses the whole load, so the row's answer is
+                // that refusal and no bytes, as the Go driver's is. A refusal
+                // of any other instance is the same answer, and the harness
+                // holds it against the row's flag.
+                if ( !spill_refusal( out, f[1], report ) ) return 1;
                 continue;
             }
+            int64_t size = variable->measure( root );
             if ( size < 0 ) return 1;
             scratch.assign( (size_t) size, 0 );
             if ( variable->save( root, scratch.data(), size ) != size ) return 1;
@@ -935,7 +1019,11 @@ static int surface_wire( const std::string & out )
         void * value = codec->make();
         codec->reset( value );
         Report report;
-        if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) return 1;
+        if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) )
+        {
+            if ( !spill_refusal( out, f[1], report ) ) return 1;
+            continue;
+        }
         int64_t size = codec->measure( value );
         if ( size < 0 ) return 1;
         scratch.assign( (size_t) size, 0 );
@@ -1011,10 +1099,14 @@ static int surface_retain( const std::string & out )
         if ( f[0] != "retain" ) continue;
         RetainAnswer answer;
         if ( !retain_row( f, answer ) ) return 1;
-        char text[128];
-        int n = snprintf( text, sizeof( text ), "%d,%d,%d %d\n",
-                          answer.retained, answer.retain_lost, answer.unknown, answer.save_lost );
-        if ( !spill( out, f[1], text, (size_t) n ) ) return 1;
+        // the whole KNOWN value or the refusal (test/conformance/README.md):
+        // the retention counters are this port's diagnostics, never compared
+        std::vector<char> text;
+        static const char read[] = "read\n", refused[] = "refused\n";
+        if ( answer.read ) text.insert( text.end(), read, read + sizeof( read ) - 1 );
+        else text.insert( text.end(), refused, refused + sizeof( refused ) - 1 );
+        text.insert( text.end(), answer.text.begin(), answer.text.end() );
+        if ( !spill( out, f[1], text.data(), text.size() ) ) return 1;
     }
     return 0;
 }
@@ -1044,6 +1136,59 @@ static bool codec_text( const Codec * codec, void * value, std::vector<char> & t
     return true;
 }
 
+// THE ONE READ AND ITS WRITE-BACK (test/conformance/README.md): an accepted row
+// owes the verdict line, the §16 text of the value, and the canonical wire the
+// value saves to in `<case>.wire`; a refused row owes `refused` and nothing
+// else. `with_value` is false for a framing row that says `no-value`, which
+// still owes its wire. The value is ONE value in two forms, so both come from
+// the same read. `form1` reads a by-value root through its form-1 read, which
+// only the framing battery asks for.
+static bool read_answer( const std::string & out, const std::string & name, const std::vector<uint8_t> & wire,
+                         const VarCodec * variable, const Codec * codec, bool with_value, bool form1 )
+{
+    Report report = Report();
+    std::vector<char> value_text;
+    std::vector<uint8_t> saved;
+    bool ok = false;
+    if ( variable != NULL )
+    {
+        std::vector<uint8_t> region;
+        const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
+        ok = root != NULL && !report.refused;
+        if ( ok )
+        {
+            if ( with_value && !variable->to_json( root, value_text ) ) return false;
+            const int64_t size = variable->measure( root );
+            if ( size < 0 ) return false;
+            saved.assign( (size_t) size, 0 );
+            if ( variable->save( root, saved.data(), size ) != size ) return false;
+        }
+    }
+    else
+    {
+        void * value = codec->make();
+        codec->reset( value );
+        ok = ( form1 ? codec->load_form1 : codec->load )( value, wire.data(), (int64_t) wire.size(), &report ) && !report.refused;
+        if ( ok )
+        {
+            if ( with_value && !codec_text( codec, value, value_text ) ) return false;
+            // the write-back is the root's OWN file form whichever form was
+            // read: the value is one value, and its canonical bytes are form 3
+            const int64_t size = codec->measure( value );
+            if ( size < 0 ) return false;
+            saved.assign( (size_t) size, 0 );
+            if ( codec->save( value, saved.data(), size ) != size ) return false;
+        }
+    }
+    std::vector<char> answer = verdict_line( report, ok );
+    if ( ok )
+    {
+        answer.insert( answer.end(), value_text.begin(), value_text.end() );
+        if ( !spill( out, name + ".wire", saved.data(), saved.size() ) ) return false;
+    }
+    return spill( out, name, answer.data(), answer.size() );
+}
+
 static int surface_report( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -1052,46 +1197,17 @@ static int surface_report( const std::string & out )
         if ( f[0] != "report" ) continue;
         std::vector<uint8_t> wire;
         if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
-        Report report;
-        bool ok = false;
-        std::vector<char> value_text;
         const VarCodec * variable = find_var_codec( f[2], f[3] );
-        if ( variable != NULL )
-        {
-            std::vector<uint8_t> region;
-            const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
-            ok = root != NULL;
-            if ( ok && !report.refused && !report.malformed && !variable->to_json( root, value_text ) ) return 1;
-        }
-        else
-        {
-            const Codec * codec = find_codec( f[2], f[3] );
-            if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
-            void * value = codec->make();
-            codec->reset( value );
-            ok = codec->load( value, wire.data(), (int64_t) wire.size(), &report );
-            if ( ok && !report.refused && !report.malformed && !codec_text( codec, value, value_text ) ) return 1;
-        }
-        // THE VERDICT RIDES BESIDE THE COUNTERS (docs/SPEC-TABLES.md §3): a
-        // form byte this reader does not carry moves none of them and reports
-        // no damage, and a clean read prints the same five zeros. A read that
-        // reads is followed by the §16 text of the value it left.
-        char text[128];
-        int n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%d,%s,%s\n",
-                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
-                          ( report.malformed || ( !ok && !report.refused ) ) ? "true" : "false",
-                          report.refused ? "refused" : "read" );
-        std::vector<char> answer( text, text + n );
-        answer.insert( answer.end(), value_text.begin(), value_text.end() );
-        if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
+        const Codec * codec = variable == NULL ? find_codec( f[2], f[3] ) : NULL;
+        if ( variable == NULL && codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+        if ( !read_answer( out, f[1], wire, variable, codec, true, false ) ) return 1;
     }
     return 0;
 }
 
-// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
-// `report` surface prints it, then the §16 text of the value the read left,
-// unless the row says `no-value` or the read was refused. A derived line is
-// `framing <case> <unit> <root> <wire> [no-value]`.
+// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the same answer as the
+// `report` surface, the value left out where the row says `no-value`. A
+// derived line is `framing <case> <unit> <root> <wire> [no-value]`.
 static int surface_framing( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -1101,47 +1217,16 @@ static int surface_framing( const std::string & out )
         const bool no_value = f.size() > 5 && f[5] == "no-value";
         std::vector<uint8_t> wire;
         if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
-        Report report;
-        bool ok = false;
-        std::vector<char> text;
         const VarCodec * variable = find_var_codec( f[2], f[3] );
-        if ( variable != NULL )
+        const Codec * codec = variable == NULL ? find_codec( f[2], f[3] ) : NULL;
+        if ( variable == NULL && codec == NULL )
         {
-            std::vector<uint8_t> region;
-            const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
-            ok = root != NULL;
-            if ( ok && !report.refused && !no_value && !variable->to_json( root, text ) ) return 1;
+            // a root this leg's table carries no codec for: absent per
+            // case, which the matrix counts against the reference leg
+            if ( !spill( out, f[1] + ".absent", "", 0 ) ) return 1;
+            continue;
         }
-        else
-        {
-            const Codec * codec = find_codec( f[2], f[3] );
-            if ( codec == NULL )
-            {
-                // a root this leg's table carries no codec for: absent per
-                // case, which the matrix counts against the reference leg
-                if ( !spill( out, f[1] + ".absent", "", 0 ) ) return 1;
-                continue;
-            }
-            void * value = codec->make();
-            codec->reset( value );
-            ok = codec->load( value, wire.data(), (int64_t) wire.size(), &report );
-            if ( !report.refused && !no_value )
-            {
-                int64_t size = codec->to_json_measure( value );
-                if ( size < 0 ) return 1;
-                text.resize( (size_t) size + 1 );
-                if ( codec->to_json( value, text.data(), size ) != size ) return 1;
-                text.resize( (size_t) size );
-            }
-        }
-        char head[128];
-        int n = snprintf( head, sizeof( head ), "%d,%d,%d,%d,%d,%s,%s\n",
-                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
-                          ( report.malformed || ( !ok && !report.refused ) ) ? "true" : "false",
-                          report.refused ? "refused" : "read" );
-        std::vector<char> answer( head, head + n );
-        answer.insert( answer.end(), text.begin(), text.end() );
-        if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
+        if ( !read_answer( out, f[1], wire, variable, codec, !no_value, true ) ) return 1;
     }
     return 0;
 }
@@ -1225,6 +1310,71 @@ static int surface_json_write( const std::string & out )
     return 0;
 }
 
+// A VALUE THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the line names
+// a wire that reads, and the damage the driver puts into it afterwards, which no
+// read can deliver: the bytes 61 FF 62 in a narrow text field, the units 0061
+// D800 0062 in a wide one (testdata/conformance/tables/FORMAT.md,
+// `json-write-refusal`), or `none` where the value is already past what a text
+// may carry. The answer is `refused`, never a text.
+static bool damage_text( const std::string & unit, const std::string & root, void * value, const std::string & damage )
+{
+    if ( damage == "none" ) return true;
+    if ( damage == "narrow:name" && unit == "tabledemo" && root == "ProfileConfig" )
+    {
+        tabledemo::ProfileConfig & v = *(tabledemo::ProfileConfig *) value;
+        v.name[0] = 0x61; v.name[1] = (char) 0xff; v.name[2] = 0x62;
+        v.name_length = 3;
+        return true;
+    }
+    if ( damage == "wide:label" && unit == "widedemo" && root == "Stamp" )
+    {
+        wide::Stamp & v = *(wide::Stamp *) value;
+        v.label[0] = 0x61; v.label[1] = 0xd800; v.label[2] = 0x62;
+        v.label_length = 3;
+        return true;
+    }
+    fprintf( stderr, "driver: damage %s names no text field of %s.%s\n", damage.c_str(), unit.c_str(), root.c_str() );
+    return false;
+}
+
+static int surface_json_write_refusal( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "json-write-refusal" ) continue;
+        if ( f.size() < 6 ) { fprintf( stderr, "driver: a json-write-refusal line is <case> <unit> <root> <wire> <damage>\n" ); return 1; }
+        std::vector<uint8_t> wire;
+        if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        Report report = Report();
+        std::vector<char> text;
+        bool wrote = false;
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            if ( f[5] != "none" ) { fprintf( stderr, "driver: %s: a region root takes no damage\n", f[1].c_str() ); return 1; }
+            std::vector<uint8_t> region;
+            const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
+            if ( root == NULL ) { fprintf( stderr, "driver: %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); return 1; }
+            wrote = variable->to_json( root, text );
+        }
+        else
+        {
+            const Codec * codec = find_codec( f[2], f[3] );
+            if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+            void * value = codec->make();
+            codec->reset( value );
+            if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) { fprintf( stderr, "driver: %s: load refused %s\n", f[1].c_str(), f[4].c_str() ); return 1; }
+            if ( !damage_text( f[2], f[3], value, f[5] ) ) return 1;
+            wrote = codec_text( codec, value, text );
+        }
+        static const char refused[] = "refused\n";
+        if ( !wrote ) text.assign( refused, refused + sizeof( refused ) - 1 );
+        if ( !spill( out, f[1] + ".json", text.data(), text.size() ) ) return 1;
+    }
+    return 0;
+}
+
 // json-text: the nightly's CROSS-READ of a port's text (test/conformance/
 // README.md, "The nightly"; docs/SPEC-TABLES.md §16). The harness hands a
 // substituted manifest whose lines name a PORT's JSON text,
@@ -1272,21 +1422,66 @@ static int surface_json_text( const std::string & out )
 }
 
 // cook-write: the runtime WRITES a cooked file and the bytes are the tool's
-// (docs/SPEC-TABLES.md §7.6), in BOTH byte orders. The instance arrives as the
-// wire — the format of record — so what this proves is the pair a cooked
-// artifact is addressed by: one wire, one build version, ONE file.
+// (docs/SPEC-TABLES.md §7.6), in BOTH byte orders. The value is CONSTRUCTED
+// (test/conformance/README.md, "Cook writes use explicit value construction"):
+// the derived line is
+//   cook-write <instance> <JSON input or -> <source field or -> <alias field or ->
+// and `-` as the input means the `no-text` instance's wire. A source and an
+// alias name two blobs that must share ONE in-memory object, which no wire
+// may carry (§2.5) and a builder may: the cook is where that sharing is legal.
 //
 // The two answers are written as <instance> and <instance>-be. The big-endian
 // half needs no big-endian host: the order is a parameter of the write, settled
 // at cook time for the target build, so every leg answers both on any machine.
+static bool cook_both( const std::string & out, const std::string & name, int64_t need,
+                       bool ( *cook )( const void *, void *, uint64_t, int ), const void * value )
+{
+    if ( need <= 0 ) return false;
+    std::vector<uint8_t> file( (size_t) need );
+    for ( int big = 0; big < 2; big++ )
+    {
+        if ( !cook( value, file.data(), (uint64_t) need, big ) ) return false;
+        if ( !spill( out, big ? name + "-be" : name, file.data(), (size_t) need ) ) return false;
+    }
+    return true;
+}
+
+// THE ONE SHARING RECIPE the corpus carries: blobdemo's Catalog with `alias`
+// naming the very blob `thumb` names, set on the builder after the text read
+static bool cook_shared( const std::string & out, const std::string & name, const std::vector<std::string> & inst,
+                         const std::vector<uint8_t> & text, const std::string & source, const std::string & alias )
+{
+    if ( inst[2] != "blobdemo" || inst[3] != "Catalog" || source != "thumb" || alias != "alias" )
+    {
+        fprintf( stderr, "driver: no sharing recipe for %s.%s %s:%s\n", inst[2].c_str(), inst[3].c_str(), source.c_str(), alias.c_str() );
+        return false;
+    }
+    blobdemo::CatalogBuilder builder;
+    blobdemo::TableReport report;
+    if ( !blobdemo::CatalogFromJson( builder, (const char *) text.data(), (int64_t) text.size(), &report ) ) return false;
+    blobdemo::Catalog * root = builder.GetRoot();
+    if ( root == NULL || root->thumb.value == 0 ) return false;
+    root->alias = root->thumb;
+    const int64_t need = blobdemo::CatalogCookMeasure( builder );
+    if ( need <= 0 ) return false;
+    std::vector<uint8_t> file( (size_t) need );
+    for ( int big = 0; big < 2; big++ )
+    {
+        if ( !blobdemo::CatalogCook( builder, file.data(), (uint64_t) need,
+                                     big ? blobdemo::TableByteOrder::Big : blobdemo::TableByteOrder::Little ) ) return false;
+        if ( !spill( out, big ? name + "-be" : name, file.data(), (size_t) need ) ) return false;
+    }
+    return true;
+}
+
 static int surface_cook_write( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "cook-write" ) continue;
-        // the line names an INSTANCE; that line carries the unit, the root and
-        // the wire, and none of them is repeated
+        if ( f.size() != 5 ) { fprintf( stderr, "driver: a cook-write line has five fields\n" ); return 1; }
+        // the line names an INSTANCE; that line carries the unit and the root
         const std::vector<std::string> * inst = NULL;
         for ( size_t j = 0; j < manifest_lines.size(); j++ )
         {
@@ -1294,42 +1489,48 @@ static int surface_cook_write( const std::string & out )
             if ( g[0] == "instance" && g[1] == f[1] ) { inst = &manifest_lines[j].field; break; }
         }
         if ( inst == NULL ) { fprintf( stderr, "driver: no instance %s\n", f[1].c_str() ); return 1; }
-        std::vector<uint8_t> wire;
-        if ( !slurp( ( *inst )[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", ( *inst )[4].c_str() ); return 1; }
+        const bool from_text = f[2] != "-";
+        std::vector<uint8_t> input;
+        const std::string & input_path = from_text ? f[2] : ( *inst )[4];
+        if ( !slurp( input_path.c_str(), input ) ) { fprintf( stderr, "driver: cannot read %s\n", input_path.c_str() ); return 1; }
+        if ( f[3] != "-" || f[4] != "-" )
+        {
+            if ( !from_text || f[3] == "-" || f[4] == "-" ) { fprintf( stderr, "driver: %s: a sharing recipe names an input and both fields\n", f[1].c_str() ); return 1; }
+            if ( !cook_shared( out, f[1], *inst, input, f[3], f[4] ) ) { fprintf( stderr, "driver: %s: the shared cook failed\n", f[1].c_str() ); return 1; }
+            continue;
+        }
 
         // a FIXED root is a value; a POINTERED root is a region and a root
         // pointer (§6.2), loaded exactly as the wire surface loads it
-        int64_t need = 0;
-        std::vector<uint8_t> file;
         const Codec * codec = find_codec( ( *inst )[2], ( *inst )[3] );
         const VarCodec * var = codec == NULL ? find_var_codec( ( *inst )[2], ( *inst )[3] ) : NULL;
         if ( codec == NULL && var == NULL ) return 2; // this backend writes no cook of this root
-        void * value = NULL;
-        std::vector<uint8_t> region;
-        Report report;
+        Report report = Report();
+        bool ok;
         if ( codec != NULL )
         {
-            value = codec->make();
+            void * value = codec->make();
             codec->reset( value );
-            if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) return 1;
-            need = codec->cook_measure( value );
+            ok = from_text ? codec->from_json( value, (const char *) input.data(), (int64_t) input.size(), &report )
+                           : codec->load( value, input.data(), (int64_t) input.size(), &report );
+            ok = ok && !report.refused && cook_both( out, f[1], codec->cook_measure( value ), codec->cook, value );
         }
         else
         {
-            value = (void *) var->load( region, wire.data(), (int64_t) wire.size(), &report );
-            if ( value == NULL ) return 1;
-            need = var->cook_measure( value );
+            std::vector<uint8_t> wire;
+            if ( from_text )
+            {
+                if ( !var->json_read( (const char *) input.data(), (int64_t) input.size(), &report, wire ) ) wire.clear();
+            }
+            else
+            {
+                wire = input;
+            }
+            std::vector<uint8_t> region;
+            const void * value = wire.empty() ? NULL : var->load( region, wire.data(), (int64_t) wire.size(), &report );
+            ok = value != NULL && !report.refused && cook_both( out, f[1], var->cook_measure( value ), var->cook, value );
         }
-        if ( need <= 0 ) return 1;
-        file.resize( (size_t) need );
-        for ( int big = 0; big < 2; big++ )
-        {
-            const bool ok = codec != NULL ? codec->cook( value, file.data(), (uint64_t) need, big )
-                                          : var->cook( value, file.data(), (uint64_t) need, big );
-            if ( !ok ) return 1;
-            const std::string name = big ? f[1] + "-be" : f[1];
-            if ( !spill( out, name, file.data(), (size_t) need ) ) return 1;
-        }
+        if ( !ok ) { fprintf( stderr, "driver: %s: the cook input did not read or did not cook\n", f[1].c_str() ); return 1; }
     }
     return 0;
 }
@@ -1383,21 +1584,21 @@ static int surface_json_hostile( const std::string & out )
         const std::string path = f[4] + "/" + f[3] + ".json";
         if ( !slurp( path.c_str(), text ) ) { fprintf( stderr, "driver: cannot read %s\n", path.c_str() ); return 1; }
 
-        Report report;
+        Report report = Report();
         bool ok = false;
         std::vector<char> value_text;
+        std::vector<uint8_t> saved;
         const VarCodec * variable = find_var_codec( f[2], f[3] );
         if ( variable != NULL )
         {
             // the builder's value reaches its text through its own saved bytes,
-            // which the region read takes back without an event
-            std::vector<uint8_t> bytes;
-            ok = variable->json_read( (const char *) text.data(), (int64_t) text.size(), &report, bytes );
-            if ( ok && !report.malformed )
+            // which are the write-back wire, and the region read takes them back
+            ok = variable->json_read( (const char *) text.data(), (int64_t) text.size(), &report, saved ) && !report.refused;
+            if ( ok )
             {
                 std::vector<uint8_t> region;
                 Report again;
-                const void * root = variable->load( region, bytes.data(), (int64_t) bytes.size(), &again );
+                const void * root = variable->load( region, saved.data(), (int64_t) saved.size(), &again );
                 if ( root == NULL || !variable->to_json( root, value_text ) ) return 1;
             }
         }
@@ -1407,18 +1608,22 @@ static int surface_json_hostile( const std::string & out )
             if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
             void * value = codec->make();
             codec->reset( value );
-            ok = codec->from_json( value, (const char *) text.data(), (int64_t) text.size(), &report );
-            if ( ok && !report.malformed && !codec_text( codec, value, value_text ) ) return 1;
+            ok = codec->from_json( value, (const char *) text.data(), (int64_t) text.size(), &report ) && !report.refused;
+            if ( ok )
+            {
+                if ( !codec_text( codec, value, value_text ) ) return 1;
+                const int64_t size = codec->measure( value );
+                if ( size < 0 ) return 1;
+                saved.assign( (size_t) size, 0 );
+                if ( codec->save( value, saved.data(), size ) != size ) return 1;
+            }
         }
-        char verdict[128];
-        int n;
-        if ( !ok || report.malformed )
-            n = snprintf( verdict, sizeof( verdict ), "refused\n" );
-        else
-            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,%d,false,read\n",
-                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate );
-        std::vector<char> answer( verdict, verdict + n );
-        if ( ok && !report.malformed ) answer.insert( answer.end(), value_text.begin(), value_text.end() );
+        std::vector<char> answer = verdict_line( report, ok );
+        if ( ok )
+        {
+            answer.insert( answer.end(), value_text.begin(), value_text.end() );
+            if ( !spill( out, f[1] + ".wire", saved.data(), saved.size() ) ) return 1;
+        }
         if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
     }
     return 0;
@@ -1693,7 +1898,7 @@ int main( int argc, char ** argv )
     if ( surface == "retain" ) return surface_retain( out );
     if ( surface == "retain-save" ) return surface_retain_save( out );
     if ( surface == "json-read" ) return surface_json_read( out );
-    if ( surface == "json-write" ) return surface_json_write( out );
+    if ( surface == "json-write" ) return surface_json_write( out ) || surface_json_write_refusal( out );
     if ( surface == "json-text" ) return surface_json_text( out );
     if ( surface == "json-hostile" ) return surface_json_hostile( out );
     if ( surface == "cook-write" ) return surface_cook_write( out );

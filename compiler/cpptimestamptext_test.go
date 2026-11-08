@@ -143,17 +143,17 @@ int main()
         const bool ok = RootFromJson( v, c.json, (int64_t) strlen( c.json ), &report );
         if ( ok != c.ok )
         {
-            printf( "%s: accepted=%d want %d malformed=%d\n", c.name, (int) ok, (int) c.ok, (int) report.malformed );
+            printf( "%s: accepted=%d want %d reason=%d\n", c.name, (int) ok, (int) c.ok, (int) report.refuse_reason );
             return 1;
         }
         if ( !c.ok )
         {
             // timestamp_not_rfc3339: the strict reader's named refusal (§2.11, §16.2)
-            if ( !report.malformed ) { printf( "%s: refused without malformed\n", c.name ); return 1; }
+            if ( report.refuse_reason != malformed ) { printf( "%s: refused as %d, not malformed\n", c.name, (int) report.refuse_reason ); return 1; }
             if ( v.at != 0 ) { printf( "%s: the refused spelling landed %lld\n", c.name, (long long) v.at ); return 1; }
             continue;
         }
-        if ( report.malformed ) { printf( "%s: accepted with malformed\n", c.name ); return 1; }
+        if ( report.damaged || report.refused || report.refuse_reason != TableRefuseReason::ok ) { printf( "%s: accepted with a refusal reason %d\n", c.name, (int) report.refuse_reason ); return 1; }
         if ( v.at != c.nanos ) { printf( "%s: landed %lld, want %lld\n", c.name, (long long) v.at, (long long) c.nanos ); return 1; }
 
         // the writer emits the canonical UTC spelling ("Z"), and the strict
@@ -165,7 +165,7 @@ int main()
         Root back;
         RootReset( back );
         TableReport again = {};
-        if ( !RootFromJson( back, buffer, n, &again ) || again.malformed || back.at != v.at )
+        if ( !RootFromJson( back, buffer, n, &again ) || again.refuse_reason != TableRefuseReason::ok || back.at != v.at )
         {
             printf( "%s: the written text does not read back: %s\n", c.name, buffer );
             return 1;

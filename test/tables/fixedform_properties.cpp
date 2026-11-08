@@ -5,11 +5,13 @@
 // and a KNOWN-RED list printed by name.
 //
 //   P1  the identity plan and a plan compiled from this build's own layout
-//       land the same fields and move the same counters
+//       land the same fields and reach the same report
 //   P2  write, read, write again: the bytes are identical
 //   P3  every byte of every record, mutated to {00,01,02,7f,80,ff}, both
 //       paths: every landed field is within its bound or the read is a
-//       named refusal, and a correction moves a counter. Under ASan+UBSan.
+//       named refusal, and a value past its bound REFUSES the read as
+//       out_of_range (docs/SPEC-TABLES.md §6.5: the strict read lands the whole
+//       value or nothing). Under ASan+UBSan.
 //
 // A listed known-red may fail and the run still ends green. A listed case
 // that starts PASSING turns the run red: delete it from known_red[] as part
@@ -56,8 +58,6 @@ struct KnownRed
 static KnownRed known_red[] = {
     { "optional/absent-payload-residue-is-copied",
       "the ?T payload gated on the present byte (§3.4: IGNORED on read)", 0, 0 },
-    { "ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant",
-      "identity and compiled must agree on an ordinal that names no variant", 0, 0 },
 };
 
 static KnownRed * find_red( const char * key )
@@ -170,16 +170,15 @@ static const int32_t kPlanCap = 8192;
 template<typename Report>
 static bool reports_eq( const Report & a, const Report & b )
 {
-    return a.unknown == b.unknown && a.kind_mismatch == b.kind_mismatch &&
-           a.widened == b.widened && a.clamped == b.clamped &&
-           a.malformed == b.malformed && a.refused == b.refused;
+    return a.unknown == b.unknown && a.widened == b.widened &&
+           a.damaged == b.damaged && a.refused == b.refused &&
+           a.refuse_reason == b.refuse_reason;
 }
 
 template<typename Report>
 static bool report_clean( const Report & r )
 {
-    return r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 &&
-           !r.malformed && !r.refused;
+    return r.unknown == 0 && r.widened == 0 && !r.damaged && !r.refused;
 }
 
 #define FIXED_TRAITS( NS, TYPE, TAG ) \
@@ -196,7 +195,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoadTolerant( v, cap, d, b, p, pc, NULL, r ); } \
+    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T & v, Report * r ) { NS::TYPE##FixedClamp( v, r ); } \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -213,6 +212,8 @@ struct TAG##Codec \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
     static constexpr Reason layout_unknown = NS::layout_unknown; \
+    static constexpr NS::TableRefuseReason out_of_range = NS::out_of_range; \
+    static constexpr NS::TableRefuseReason kind_mismatch = NS::kind_mismatch; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
                             uint32_t * fill_at, int32_t * fill_count, Report * r ) \
@@ -241,7 +242,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoadTolerant( v, cap, d, b, p, pc, NULL, r ); } \
+    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T &, Report * ) {} \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -258,6 +259,8 @@ struct TAG##Codec \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
     static constexpr Reason layout_unknown = NS::layout_unknown; \
+    static constexpr NS::TableRefuseReason out_of_range = NS::out_of_range; \
+    static constexpr NS::TableRefuseReason kind_mismatch = NS::kind_mismatch; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
                             uint32_t * fill_at, int32_t * fill_count, Report * r ) \
@@ -452,7 +455,7 @@ static void run_properties()
 
     const bool runcopy = plan_run_copy_17_31<F>();
 
-    // P1: identity == compiled, fields and counters.
+    // P1: identity == compiled, fields and report.
     {
         typename F::T id{}, co{};
         typename F::Report rid{}, rco{};
@@ -537,62 +540,67 @@ static void run_properties()
                 if ( !ico.bool_oob && !ico.unsafe ) { F::clamp( co, &rco ); ico = Issues{}; F::inspect( co, ico ); }
             }
 
-            const bool id_ok = ni == 1 && !rid.refused && !rid.malformed;
-            const bool co_ok = nc == 1 && !rco.refused && !rco.malformed;
+            const bool id_ok = ni == 1 && !rid.refused && !rid.damaged;
+            const bool co_ok = nc == 1 && !rco.refused && !rco.damaged;
 
             if ( ni < 0 )
             {
-                check( rid.refused || rid.malformed,
-                       "P3: a negative identity read is a named refusal or malformed" );
+                check( rid.refused || rid.damaged,
+                       "P3: a negative identity read is a named refusal or damage" );
             }
             if ( nc < 0 )
             {
-                check( rco.refused || rco.malformed,
-                       "P3: a negative compiled read is a named refusal or malformed" );
+                check( rco.refused || rco.damaged,
+                       "P3: a negative compiled read is a named refusal or damage" );
             }
 
-            if ( id_ok )
+            // A READ THAT LANDS holds every field in bound: the pass refused
+            // anything it would have had to correct, so a returned value past
+            // its bound is a pass that missed it.
+            if ( id_ok && iid.any() )
             {
-                if ( iid.any() )
+                std::snprintf( what, sizeof( what ), "P3 %s identity byte %zu poison 0x%02x: landed out of bound",
+                               F::name, at, kPoison[p] );
+                classify_issues( iid, what );
+            }
+            // A VALUE PAST ITS BOUND REFUSES THE READ (out_of_range), on the
+            // identity path whose pass runs over storage. The raw image is the
+            // loop alone, before the pass: when it holds a value out of bound,
+            // the read with the pass must be refused by that name and never land.
+            if ( ni == 1 && !rid.damaged && !iid.bool_oob && !iid.unsafe )
+            {
+                typename F::T raw{};
+                typename F::Report rr{};
+                load_unclamped<F>( raw, hit.data(), rr );
+                Issues before{};
+                F::inspect( raw, before );
+                if ( before.range_oob || before.enum_oob || before.tag_oob )
                 {
-                    std::snprintf( what, sizeof( what ), "P3 %s identity byte %zu poison 0x%02x: landed out of bound",
-                                   F::name, at, kPoison[p] );
-                    classify_issues( iid, what );
+                    std::snprintf( what, sizeof( what ),
+                                   "P3 %s identity byte %zu: a value past its bound did not refuse as out_of_range",
+                                   F::name, at );
+                    const bool refused_oor = rid.refused && rid.refuse_reason == F::out_of_range;
+                    if ( before.enum_oob )
+                    {
+                        check_red( refused_oor,
+                                   "ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant", what );
+                    }
+                    else if ( before.tag_oob )
+                    {
+                        check_red( refused_oor,
+                                   "ordinal-bound/paths-disagree/union-tag-past-the-last-arm", what );
+                    }
+                    else
+                    {
+                        check( refused_oor, what );
+                    }
                 }
-                else if ( !iid.bool_oob )
+                if ( before.utf8_bad && !rid.refused )
                 {
-                    typename F::T raw{};
-                    typename F::Report rr{};
-                    load_unclamped<F>( raw, hit.data(), rr );
-                    Issues before{};
-                    F::inspect( raw, before );
-                    if ( before.range_oob || before.enum_oob || before.tag_oob )
-                    {
-                        std::snprintf( what, sizeof( what ),
-                                       "P3 %s identity byte %zu: a bound correction did not move clamped",
-                                       F::name, at );
-                        if ( before.enum_oob )
-                        {
-                            check_red( rid.clamped > 0,
-                                       "ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant", what );
-                        }
-                        else if ( before.tag_oob )
-                        {
-                            check_red( rid.clamped > 0,
-                                       "ordinal-bound/paths-disagree/union-tag-past-the-last-arm", what );
-                        }
-                        else
-                        {
-                            check( rid.clamped > 0, what );
-                        }
-                    }
-                    if ( before.utf8_bad && !rid.refused )
-                    {
-                        std::snprintf( what, sizeof( what ),
-                                       "P3 %s identity byte %zu: invalid UTF-8 was not refused by name",
-                                       F::name, at );
-                        check( false, what );
-                    }
+                    std::snprintf( what, sizeof( what ),
+                                   "P3 %s identity byte %zu: invalid UTF-8 was not refused by name",
+                                   F::name, at );
+                    check( false, what );
                 }
             }
             if ( co_ok && ico.any() )
@@ -619,7 +627,7 @@ static void run_properties()
                     classify_issues( iss, what );
                     if ( !iss.any() )
                     {
-                        if ( !counters && rid.clamped != rco.clamped )
+                        if ( !counters && rid.refuse_reason != rco.refuse_reason )
                         {
                             check_red( false, "ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant", what );
                         }
@@ -1224,9 +1232,14 @@ struct F1 : F1Codec
 // P1's reverse direction under the new contract: the older reader given the
 // newer file refuses layout_unknown (SPEC-TABLES §21.3). The old contract compiled a stranger's
 // layout both ways; that test is retired, not bent. Forward (newer reads
-// older) is a lineage compile and returns one record.
+// older) is a lineage compile and returns one record — unless the pair MOVES A
+// KIND (V1 -> V2's `a`, int32 -> float32; Scalars -> Scalars2's `angle`,
+// fixed -> int32), which the strict read (docs/SPEC-TABLES.md §6.5) refuses
+// whole as kind_mismatch, landing nothing.
+enum PairForward { kForwardReads, kForwardKindMoves };
+
 template<typename Older, typename Newer>
-static void run_pair_p1()
+static void run_pair_p1( PairForward forward = kForwardReads )
 {
     typename Older::T ov;
     std::memset( (void *) &ov, 0, sizeof( ov ) );
@@ -1244,10 +1257,24 @@ static void run_pair_p1()
         std::vector<typename Newer::Entry> plan( (size_t) kPlanCap );
         std::memset( (void *) &back, 0, sizeof( back ) );
         const int64_t n = Newer::load( &back, 1, ofile.data(), oneed, plan.data(), kPlanCap, &r );
-        std::snprintf( what, sizeof( what ),
-                       "P1 %s reads older %s: compiled path through lineage, one record",
-                       Newer::name, Older::name );
-        check( n == 1 && !r.refused && !r.malformed, what );
+        if ( forward == kForwardKindMoves )
+        {
+            typename Newer::T defaults;
+            std::memset( (void *) &defaults, 0, sizeof( defaults ) );
+            Newer::reset( defaults );
+            std::snprintf( what, sizeof( what ),
+                           "P1 %s reads older %s: a moved kind refuses the whole read as kind_mismatch, landing nothing",
+                           Newer::name, Older::name );
+            check( n == -1 && r.refused && r.refuse_reason == Newer::kind_mismatch && !r.damaged &&
+                   Newer::same( back, defaults ), what );
+        }
+        else
+        {
+            std::snprintf( what, sizeof( what ),
+                           "P1 %s reads older %s: compiled path through lineage, one record",
+                           Newer::name, Older::name );
+            check( n == 1 && !r.refused && !r.damaged, what );
+        }
     }
 
     typename Newer::T nv;
@@ -1282,14 +1309,20 @@ static void probe_clamp_op()
     std::vector<uint8_t> file( (size_t) need + (size_t) file_slack(), 0 );
     check( scalardemo::SimStateFixedSave( &w, 1, file.data(), need ) == need, "probe clamp-op: save" );
 
-    scalardemo2::SimState back;
-    std::memset( (void *) &back, 0, sizeof( back ) );
+    scalardemo2::SimState defaults;
+    std::memset( (void *) &defaults, 0, sizeof( defaults ) );
+    scalardemo2::SimStateReset( defaults );
+    scalardemo2::SimState back = defaults;
+    back.position = 7; // poison: the refusal must put it back
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoadTolerant( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
-    check( n == 1, "probe clamp-op: Scalars2 reads Scalars" );
-    const bool clamped = back.position == 1000LL * 65536 && r.clamped >= 1;
-    check( clamped, "probe clamp-op: a value past the reader's max lands at max and counts" );
+    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
+    // THE READ IS STRICT (docs/SPEC-TABLES.md §6.5): a value past the reader's
+    // max refuses the whole read as out_of_range; it is never clamped to max.
+    check( n == -1 && r.refused && r.refuse_reason == scalardemo2::out_of_range,
+           "probe clamp-op: a value past the reader's max refuses the read as out_of_range" );
+    check( back.position == defaults.position,
+           "probe clamp-op: nothing lands — the destination is back at its default, not at max" );
 }
 
 static void probe_text_content()
@@ -1308,14 +1341,15 @@ static void probe_text_content()
     std::memset( (void *) &back, 0, sizeof( back ) );
     tblfx1::TableReport r;
     std::vector<tblfx1::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = tblfx1::FxRootFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                                plan.data(), kPlanCap, NULL, &r );
     // ILL-FORMED CONTENT IN THE USED BYTES REFUSES BY NAME (docs/FIXED-FORM-
     // ALGORITHM.md §4.5, fix 11): the verdict the packet reader gives, where the
-    // reference once set `malformed`. Nothing is decoded and no counter moves.
-    check( n == -1 && r.refused && !r.malformed && r.reason == tblfx1::text_ill_formed,
+    // reference once set `malformed` (now `damaged`). Nothing is decoded and no
+    // counter moves.
+    check( n == -1 && r.refused && !r.damaged && r.reason == tblfx1::text_ill_formed,
            "probe text-content: invalid UTF-8 in a string(N)'s used bytes refuses by name" );
-    check( r.clamped == 0 && r.widened == 0,
+    check( r.widened == 0,
            "probe text-content: the refusal moves no counter" );
 }
 
@@ -1340,7 +1374,7 @@ static void probe_absent_optional()
     std::memset( (void *) &back, 0, sizeof( back ) );
     tblp3::TableReport r;
     std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = tblp3::ChainFixedLoadTolerant( &back, 1, file.data(), (int64_t) file.size(),
+    const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                              plan.data(), kPlanCap, NULL, &r );
     check( n == 1 && !back.link_present, "probe absent-optional: the flag" );
     const bool ignored = back.link.value == 0 && back.link.tag_length == 0;
@@ -1385,7 +1419,7 @@ static void probe_ordinal_enum()
     load_compiled<FN1>( co, file.data(), (int64_t) tblfn1::FnRootFixedMeasure( 1 ), rco );
     FN1::clamp( co, &rco );
     const bool fields = std::memcmp( &id.tier, &co.tier, sizeof( id.tier ) ) == 0;
-    const bool counters = rid.clamped == rco.clamped;
+    const bool counters = rid.refuse_reason == rco.refuse_reason;
     const bool in_set = byte_of( &id.tier ) <= (uint8_t) tblfn1::Tier::Max &&
                         byte_of( &co.tier ) <= (uint8_t) tblfn1::Tier::Max;
     check_red( fields && counters && in_set,
@@ -1410,7 +1444,7 @@ static void probe_ordinal_tag()
     load_compiled<UT1>( co, file.data(), (int64_t) tblut1::UtRootFixedMeasure( 1 ), rco );
     UT1::clamp( co, &rco );
     const bool fields = std::memcmp( &id.pick.type, &co.pick.type, sizeof( id.pick.type ) ) == 0;
-    const bool counters = rid.clamped == rco.clamped;
+    const bool counters = rid.refuse_reason == rco.refuse_reason;
     const bool in_set = byte_of( &id.pick.type ) <= (uint8_t) tblut1::PickType::Max &&
                         byte_of( &co.pick.type ) <= (uint8_t) tblut1::PickType::Max;
     check_red( fields && counters && in_set,
@@ -1428,15 +1462,20 @@ static void probe_kind_mismatch()
     std::vector<uint8_t> file( (size_t) need + (size_t) file_slack(), 0 );
     check( scalardemo::SimStateFixedSave( &w, 1, file.data(), need ) == need, "probe kind-mismatch: save" );
 
-    scalardemo2::SimState back;
-    std::memset( (void *) &back, 0, sizeof( back ) );
+    scalardemo2::SimState defaults;
+    std::memset( (void *) &defaults, 0, sizeof( defaults ) );
+    scalardemo2::SimStateReset( defaults );
+    scalardemo2::SimState back = defaults;
+    back.angle = 7; // poison: the refusal must put it back
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoadTolerant( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
-    check( n == 1, "probe kind-mismatch: Scalars2 reads Scalars" );
-    const bool skipped = back.angle == 0 && r.kind_mismatch >= 1;
-    check_red( skipped, "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway",
-               "probe kind-mismatch: a moved kind is skipped, never misdecoded, counted" );
+    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
+    // A MOVED KIND REFUSES THE WHOLE READ (docs/SPEC-TABLES.md §6.5): never
+    // misdecoded, and never skipped around while the rest lands.
+    check( n == -1 && r.refused && r.refuse_reason == scalardemo2::kind_mismatch,
+           "probe kind-mismatch: a moved kind refuses the read as kind_mismatch" );
+    check( back.angle == defaults.angle,
+           "probe kind-mismatch: nothing lands — the moved field is at its default, never misdecoded" );
 }
 
 static void probe_runcopy_values()
@@ -1482,9 +1521,9 @@ int main()
     run_pair_p1<P1, P3>();
     run_pair_p1<FN1, FN2>();
     run_pair_p1<FM1, FM2>();
-    run_pair_p1<V1, V2>();
+    run_pair_p1<V1, V2>( kForwardKindMoves );
     run_pair_p1<UT1, UT2>();
-    run_pair_p1<Scalars, Scalars2>();
+    run_pair_p1<Scalars, Scalars2>( kForwardKindMoves );
 
     probe_clamp_op();
     probe_text_content();

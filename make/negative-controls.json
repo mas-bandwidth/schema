@@ -91,7 +91,6 @@
         "wide-no-align-negative-control",
         "wide-surrogate-negative-control",
         "wide-table-byte-length-negative-control",
-        "wide-table-clamp-negative-control",
         "wide-table-odd-length-negative-control",
         "wide-table-surrogate-negative-control",
         "wide-table-zero-unit-negative-control",
@@ -1664,8 +1663,7 @@
         "tables-reference-flags-negative-control",
         "tables-reference-alignment-negative-control",
         "tables-reference-include-negative-control",
-        "tables-reference-hidden-union-negative-control",
-        "tables-reference-counted-tail-negative-control"
+        "tables-reference-hidden-union-negative-control"
       ]
     },
     {

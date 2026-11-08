@@ -886,6 +886,10 @@ static void build_scene( graphdemo::SceneBuilder & builder )
     }
 }
 
+// A FIXED root's file is FORM 3 (docs/SPEC-TABLES.md §3.4), and the tool's
+// cook reads it as one and refuses a form-1 file as previous_form, so the two
+// fixed roots are written through FixedSave, one record; the pointered Scene
+// is the variable class and keeps its form-1 Save.
 static void mode_write( const Root * root, const char * path )
 {
     uint8_t buffer[4096];
@@ -896,8 +900,8 @@ static void mode_write( const Root * root, const char * path )
         settings.quality = SettingsQuality;
         snprintf( settings.label, sizeof( settings.label ), "%s", SettingsLabel );
         settings.label_length = (int32_t) strlen( SettingsLabel );
-        size = graphdemo::SettingsMeasure( settings );
-        if ( size <= 0 || size > (int64_t) sizeof( buffer ) || !graphdemo::SettingsSave( settings, buffer, size ) )
+        size = graphdemo::SettingsFixedMeasure( 1 );
+        if ( size <= 0 || size > (int64_t) sizeof( buffer ) || graphdemo::SettingsFixedSave( &settings, 1, buffer, size ) != size )
             fail( "could not write a Settings wire" );
     }
     else if ( strcmp( root->name, "Stamp" ) == 0 )
@@ -906,8 +910,8 @@ static void mode_write( const Root * root, const char * path )
         stamp.seq = StampSeq;
         snprintf( stamp.tag, sizeof( stamp.tag ), "%s", StampTag );
         stamp.tag_length = (int32_t) strlen( StampTag );
-        size = graphdemo::StampMeasure( stamp );
-        if ( size <= 0 || size > (int64_t) sizeof( buffer ) || !graphdemo::StampSave( stamp, buffer, size ) )
+        size = graphdemo::StampFixedMeasure( 1 );
+        if ( size <= 0 || size > (int64_t) sizeof( buffer ) || graphdemo::StampFixedSave( &stamp, 1, buffer, size ) != size )
             fail( "could not write a Stamp wire" );
     }
     else if ( strcmp( root->name, "Scene" ) == 0 )
@@ -1121,8 +1125,8 @@ static void mode_cookwrite_pointered( const char * little_path, const char * big
         uint8_t * region = (uint8_t *) malloc( (size_t) region_bytes );
         if ( region == NULL ) fail( "out of memory" );
         graphdemo::TableReport report;
-        const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_bytes, wire, wire_bytes, &report );
-        if ( loaded == NULL || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 )
+        const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_bytes, wire, wire_bytes, &report );
+        if ( loaded == NULL || report.damaged || report.refused || report.refuse_reason != graphdemo::ok || report.unknown != 0 )
             fail( "the graph's own wire did not load clean" );
         for ( int i = 0; i < 2; i++ )
         {
@@ -1955,7 +1959,7 @@ static const char * reason_name( graphdemo::TableRefuseReason reason )
         case graphdemo::allocation_failed: return "allocation_failed";
         case graphdemo::wire_damaged: return "wire_damaged";
         case graphdemo::malformed: return "malformed";
-        case graphdemo::clamped: return "clamped";
+        case graphdemo::out_of_range: return "out_of_range";
         case graphdemo::kind_mismatch: return "kind_mismatch";
         case graphdemo::base64_damaged: return "base64_damaged";
         case graphdemo::base64_not_canonical: return "base64_not_canonical";

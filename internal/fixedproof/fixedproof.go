@@ -1396,7 +1396,7 @@ static void fill_records( %[1]s * value )
 
 static bool clean( const TableReport & r )
 {
-    return !( r.clamped || r.unknown || r.kind_mismatch || r.widened || r.duplicate || r.malformed || r.refused );
+    return !( r.unknown || r.widened || r.damaged || r.refused || r.refuse_reason != ok );
 }
 
 int main( int argc, char ** argv )

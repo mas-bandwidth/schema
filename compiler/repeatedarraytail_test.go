@@ -11,7 +11,7 @@ import (
 // #725: a later array occurrence decodes no elements, and the wire is damaged.
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), so no read hands
 // back the first occurrence's list or anything else it decoded: the region read
-// answers no root and the builder read answers false, each reporting malformed.
+// answers no root and the builder read answers false, each reporting the damage.
 func TestRepeatedArrayTailDefaults(t *testing.T) {
 	paths, err := filepath.Glob("../tables/arms/*.schema")
 	if err != nil {
@@ -48,7 +48,7 @@ static const uint8_t wire[]={%s};
 			t.Fatal(err)
 		}
 		referenceCompileRun(t, files, common+`using namespace armdemo;
-int main(){TableReport report;int64_t n=HandLoadMeasure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc(n);const Hand * r=HandLoadTolerant(region,n,wire,sizeof(wire),&report);free(region);CHECK(!r);CHECK(report.malformed);HandBuilder b;TableReport built;CHECK(!HandLoadBuilderTolerant(b,wire,sizeof(wire),&built));CHECK(built.malformed);return 0;}`)
+int main(){TableReport report;int64_t n=HandLoadMeasure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc(n);const Hand * r=HandLoad(region,n,wire,sizeof(wire),&report);free(region);CHECK(!r);CHECK(report.damaged&&report.refuse_reason==wire_damaged);HandBuilder b;TableReport built;CHECK(!HandLoadBuilder(b,wire,sizeof(wire),&built));CHECK(built.damaged&&built.refuse_reason==wire_damaged);return 0;}`)
 	})
 	t.Run("c", func(t *testing.T) {
 		runCTableWireProbe(t, u, common+`

@@ -71,13 +71,13 @@ using namespace fixture;
 #define REQUIRE(x) do { if (!(x)) { fprintf(stderr,"wide closure failed at line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
 int main(){const uint8_t wire[]={%s}; RootBuilder builder; TableReport report;
 REQUIRE(builder.GetRoot()!=nullptr); REQUIRE(uintptr_t(builder.GetRoot()) %% kTableAlign == 0);
-REQUIRE(RootLoadBuilder(builder,wire,sizeof(wire),&report)); REQUIRE(!report.malformed);
+REQUIRE(RootLoadBuilder(builder,wire,sizeof(wire),&report)); REQUIRE(!report.damaged&&report.refuse_reason==ok);
 auto size=RootMeasure(builder); REQUIRE(size==sizeof(wire)); auto output=(uint8_t*)malloc(size);
 REQUIRE(RootSave(builder,output,size)==size); REQUIRE(memcmp(output,wire,size)==0);
 REQUIRE(builder.Lock()); REQUIRE(uintptr_t(builder.AsConst()) %% kTableAlign == 0);
 REQUIRE(RootMeasure(builder)==size); REQUIRE(RootSave(builder,output,size)==size); REQUIRE(memcmp(output,wire,size)==0);
 auto regionBytes=RootLoadMeasure(wire,sizeof(wire)); REQUIRE(regionBytes>0);auto region=(uint8_t*)malloc(regionBytes);
-REQUIRE(RootLoad(region,regionBytes,wire,sizeof(wire),&report)!=nullptr); REQUIRE(!report.malformed);
+REQUIRE(RootLoad(region,regionBytes,wire,sizeof(wire),&report)!=nullptr); REQUIRE(!report.damaged&&report.refuse_reason==ok);
 free(region); free(output); return 0;}
 `, cppWire(wire))
 					referenceCompileRun(t, files, probe)

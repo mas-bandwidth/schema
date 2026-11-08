@@ -1071,7 +1071,7 @@ int main(){
  retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;
  const int64_t need=RootLoadMeasure(wire,sizeof(wire));CHECK(need>0);uint8_t * region=(uint8_t *)malloc((size_t)need);CHECK(region);
  const Root * root=RootLoadRetain(region,need,wire,sizeof(wire),&retain,&report);
- CHECK(root!=NULL&&!report.malformed&&!report.refused&&report.unknown==1&&report.retained==%d&&report.retain_lost==%d);
+ CHECK(root!=NULL&&!report.damaged&&report.refuse_reason==ok&&!report.refused&&report.unknown==1&&report.retained==%d&&report.retain_lost==%d);
  const int64_t bytes=RootMeasureRetain(root,&retain);CHECK(bytes>=0);CHECK(RootSaveRetain(root,&retain,out,sizeof(out),&report)==bytes);
  free(region);
  return 0;}

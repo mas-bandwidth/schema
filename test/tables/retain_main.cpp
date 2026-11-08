@@ -50,6 +50,15 @@ static void check( bool ok, const char * what, int line )
     failures++;
 }
 
+// A WHOLE READ under the strict read (docs/SPEC-TABLES.md §4, §6.5): no damage,
+// no refusal, and no refusal reason. Each unit spells its own TableReport and
+// its own `ok`, which is the enum's zero in every one of them.
+template <typename R>
+static bool whole( const R & report )
+{
+    return !report.damaged && !report.refused && (int) report.refuse_reason == 0;
+}
+
 // ---- the retain corpus, pinned as ordinary wire goldens ----
 //
 // The rows below are the C++ reference's, and the same bytes are the ORACLE's
@@ -214,7 +223,7 @@ static void round_trip()
     const long long before = allocations;
     const tblrt1::Node * root = tblrt1::NodeLoadRetain( region.base, region.bytes, wire, n, &retain, &report );
     CHECK( root != NULL );
-    CHECK( !report.malformed );
+    CHECK( whole( report ) );
     // EIGHT BODIES carry an unknown FIELD: the root, `inner`, two elements of
     // `items`, a slot of `banks`, the union's arm body, a map entry's value and
     // a list element, and each is retained where it sat. The root carries a
@@ -299,9 +308,9 @@ static void round_trip()
     Region back;
     back.size( tblrt2::NodeLoadMeasure( out, w ) );
     tblrt2::TableReport read_report;
-    const tblrt2::Node * reread = tblrt2::NodeLoadTolerant( back.base, back.bytes, out, w, &read_report );
+    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
     CHECK( reread != NULL );
-    CHECK( !read_report.malformed );
+    CHECK( whole( read_report ) );
     CHECK( reread->extra == 11 );
     CHECK( reread->inner.future == 21 );
     CHECK( reread->items_count == 2 && reread->items[0].future == 31 && reread->items[1].future == 32 );
@@ -473,7 +482,7 @@ static void excluded_classes()
         Loaded l;
         l.load( wire, n );
         CHECK( l.root != NULL );
-        CHECK( !l.report.malformed );
+        CHECK( whole( l.report ) );
         if ( l.report.retain_lost != 1 || l.report.retained != 0 )
         {
             printf( "FAIL excluded class %d: retained=%d retain_lost=%d\n", which, l.report.retained, l.report.retain_lost );
@@ -512,7 +521,7 @@ static void unknown_node_record()
     Loaded l;
     l.load( wire, n );
     CHECK( l.root != NULL );
-    CHECK( !l.report.malformed );
+    CHECK( whole( l.report ) );
     CHECK( l.report.unknown == 1 );     // the record, counted once and not once per pointer
     CHECK( l.report.retain_lost == 1 ); // a whole node: nothing to append it to
     CHECK( l.report.retained == 0 );
@@ -556,8 +565,8 @@ static void capacities()
         // THE READ'S OWN COUNTERS ARE UNMOVED: a full buffer degrades to the
         // default behavior one field at a time
         CHECK( report.unknown == 11 );
-        CHECK( report.kind_mismatch == 0 && report.clamped == 0 && report.widened == 0 );
-        CHECK( !report.malformed );
+        CHECK( report.widened == 0 );
+        CHECK( whole( report ) );
         CHECK( retain.used <= used - 1 ); // and the truncated record was never written
     }
 
@@ -601,8 +610,8 @@ static void capacities()
         Region back;
         back.size( tblrt2::NodeLoadMeasure( out, w ) );
         tblrt2::TableReport read_report;
-        const tblrt2::Node * reread = tblrt2::NodeLoadTolerant( back.base, back.bytes, out, w, &read_report );
-        CHECK( reread != NULL && !read_report.malformed );
+        const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+        CHECK( reread != NULL && whole( read_report ) );
     }
 }
 
@@ -633,7 +642,7 @@ static void record_lifetime()
     Loaded l;
     l.load( wire, n );
     CHECK( l.root != NULL );
-    CHECK( !l.report.malformed );
+    CHECK( whole( l.report ) );
     CHECK( l.root->inner.hits == 2 );
     CHECK( l.report.unknown == 1 );
     CHECK( l.report.retained == 1 );    // counted when its bytes were kept
@@ -650,7 +659,7 @@ static void record_lifetime()
     Region back;
     back.size( tblrt2::NodeLoadMeasure( out, w ) );
     tblrt2::TableReport read_report;
-    const tblrt2::Node * reread = tblrt2::NodeLoadTolerant( back.base, back.bytes, out, w, &read_report );
+    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
     CHECK( reread != NULL );
     CHECK( reread->inner.hits == 2 );
     CHECK( reread->inner.future == 0 ); // and `7` was never resurrected beside it
@@ -659,7 +668,7 @@ static void record_lifetime()
 // ---- THE RESOLVING WALK'S VERDICT (docs/SPEC-TABLES.md §6.6) ----
 //
 // A retained field whose INNER structure is damaged inside sound outer
-// framing: retain_lost at one, malformed at ZERO, and every sibling field's
+// framing: retain_lost at one, the read WHOLE, and every sibling field's
 // value intact. Retention can lose a field; it can never turn a good read into
 // a bad one.
 static void damaged_inner_structure()
@@ -681,7 +690,7 @@ static void damaged_inner_structure()
     Loaded l;
     l.load( wire, n );
     CHECK( l.root != NULL );
-    CHECK( !l.report.malformed ); // THE OUTER FRAMING WAS SOUND
+    CHECK( whole( l.report ) ); // THE OUTER FRAMING WAS SOUND
     CHECK( l.root->name_length == 5 ); // and every sibling field's value is intact
     CHECK( l.report.unknown == 1 );
     CHECK( l.report.retained == 0 );
@@ -728,7 +737,7 @@ static void disjoint_occurrences()
     Loaded l;
     l.load( wire, n );
     CHECK( l.root != NULL );
-    CHECK( !l.report.malformed );
+    CHECK( whole( l.report ) );
     CHECK( l.root->banks.slots[0].hits == 4 );
     CHECK( l.root->banks.slots[1].hits == 5 ); // both slots landed, from different occurrences
     CHECK( l.report.retained == 2 );
@@ -745,8 +754,8 @@ static void disjoint_occurrences()
     Region back;
     back.size( tblrt2::NodeLoadMeasure( out, w ) );
     tblrt2::TableReport read_report;
-    const tblrt2::Node * reread = tblrt2::NodeLoadTolerant( back.base, back.bytes, out, w, &read_report );
-    CHECK( reread != NULL && !read_report.malformed );
+    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
+    CHECK( reread != NULL && whole( read_report ) );
     CHECK( reread->banks.slots[0].future == 41 );
     CHECK( reread->banks.slots[1].future == 42 );
 
@@ -775,7 +784,7 @@ static void disjoint_occurrences()
     Loaded l2;
     l2.load( inert, in );
     CHECK( l2.root != NULL );
-    CHECK( !l2.report.malformed );
+    CHECK( whole( l2.report ) );
     CHECK( l2.report.retained == 1 );
     CHECK( l2.report.retain_lost == 0 );
     CHECK( l2.retain.count == 1 ); // the inert repeat replaced nothing, and took nothing
@@ -845,7 +854,7 @@ static void walk_is_linear()
         const tblrt1::Node * root = tblrt1::NodeLoadRetain( region.base, region.bytes, wire, n, &retain, &report );
         const double ms = std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - began ).count();
         CHECK( root != NULL );
-        CHECK( !report.malformed );
+        CHECK( whole( report ) );
         CHECK( report.retained == 1 );
         CHECK( report.retain_lost == 0 );
         // AN ABSOLUTE BOUND, and not a ratio to noise: a walk linear in the
@@ -875,7 +884,7 @@ static void walk_is_linear()
         Loaded l;
         l.load( wire, n );
         CHECK( l.root != NULL );
-        CHECK( !l.report.malformed );
+        CHECK( whole( l.report ) );
         CHECK( l.report.retained == 0 );
         CHECK( l.report.retain_lost == 1 );
     }
@@ -885,7 +894,7 @@ static void walk_is_linear()
         Loaded l;
         l.load( wire, n );
         CHECK( l.root != NULL );
-        CHECK( !l.report.malformed );
+        CHECK( whole( l.report ) );
         CHECK( l.report.retained == 1 );
         CHECK( l.report.retain_lost == 0 );
     }

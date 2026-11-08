@@ -1,20 +1,21 @@
-// THE MESSAGE FORM'S CONTENT RULE AND CLAMP FOR string(N)
-// (docs/SPEC-TABLES.md §3.3).
+// THE MESSAGE FORM'S CONTENT RULE AND BOUND FOR string(N)
+// (docs/SPEC-TABLES.md §3.3, §4).
 //
 // §3's one content rule holds over a form-`2` body unchanged in what it
 // rejects: a kind `12` payload that is not well-formed UTF-8, or that carries
 // a zero byte among its bytes, is DAMAGE and not data. What differs is only
 // the recovery, which a bit stream does not have, so the damage is TERMINAL
-// for the batch. And A CLAMP IS NOT DAMAGE: a payload longer than this
-// reader's bound keeps what fits, CUTTING AT A CODE POINT BOUNDARY, and
-// counts one `clamped`.
+// for the batch. And A PAYLOAD PAST THE BOUND IS NOT DAMAGE: it is out of
+// range, and the strict read refuses the whole batch with that reason rather
+// than keeping a prefix. A payload exactly AT the bound, a multi-byte code
+// point ending on it included, lands whole.
 //
 // The instrument is a batch forged by hand over `backenddemo`'s
 // `StorePurchase.sku`, a `string(32)` whose length rides at
-// bits_required( 0, 32 ) = 6 bits, so a payload of 34 bytes is spellable and a
-// clamp is reachable. The program is green under the emitter this repository
-// ships and red under one that drops either rule, which is the whole of
-// `make tables-message-form-text-negative-control`.
+// bits_required( 0, 32 ) = 6 bits, so a payload of 34 bytes is spellable and
+// the bound is reachable. The program is green under the emitter this
+// repository ships and red under one that drops either rule, which is the
+// whole of `make tables-message-form-text-negative-control`.
 
 #include <cstdio>
 #include <cstring>
@@ -118,7 +119,7 @@ int main()
         const uint8_t text[5] = { 'p', 'a', 'c', 'k', 0xC3 };
         const int64_t bytes = forge( batch, sizeof( batch ), vocabulary, slot, length_bits, text, 5 );
         const read_back got = load( vocabulary, batch, bytes );
-        row( !got.loaded && got.report.malformed && !got.report.refused,
+        row( !got.loaded && got.report.damaged && !got.report.refused,
              "a truncated UTF-8 sequence on a message body is damage, and the batch ends there" );
     }
 
@@ -127,7 +128,7 @@ int main()
         const uint8_t text[5] = { 'p', 'a', 0x00, 'c', 'k' };
         const int64_t bytes = forge( batch, sizeof( batch ), vocabulary, slot, length_bits, text, 5 );
         const read_back got = load( vocabulary, batch, bytes );
-        row( !got.loaded && got.report.malformed && !got.report.refused,
+        row( !got.loaded && got.report.damaged && !got.report.refused,
              "a zero byte among a message body's text is damage, and the batch ends there" );
     }
 
@@ -137,36 +138,36 @@ int main()
         const uint8_t text[4] = { 'p', 0xC0, 0x80, 'k' };
         const int64_t bytes = forge( batch, sizeof( batch ), vocabulary, slot, length_bits, text, 4 );
         const read_back got = load( vocabulary, batch, bytes );
-        row( !got.loaded && got.report.malformed && !got.report.refused,
+        row( !got.loaded && got.report.damaged && !got.report.refused,
              "an overlong encoding on a message body is damage, and the batch ends there" );
     }
 
-    // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3.3): thirty ASCII bytes and one
-    // four-byte code point are thirty-four bytes, so the bound of thirty-two
-    // falls INSIDE the last code point and the clamp keeps thirty
+    // A PAYLOAD PAST THE BOUND REFUSES (§4): thirty ASCII bytes and one
+    // four-byte code point are thirty-four bytes against thirty-two, and no
+    // prefix of them lands, at a code point boundary or anywhere else
     {
         uint8_t text[34];
         memset( (void *) text, 'a', 30 );
         text[30] = 0xF0; text[31] = 0x9F; text[32] = 0x98; text[33] = 0x80; // U+1F600
         const int64_t bytes = forge( batch, sizeof( batch ), vocabulary, slot, length_bits, text, 34 );
         const read_back got = load( vocabulary, batch, bytes );
-        row( got.loaded && !got.report.malformed && got.report.clamped == 1 && got.value.sku_length == 30 &&
-                 memcmp( got.value.sku, text, 30 ) == 0,
-             "a clamp whose bound falls inside a code point cuts at the boundary before it" );
+        row( !got.loaded && !got.report.damaged && got.report.refuse_reason == backenddemo::out_of_range &&
+                 got.value.sku_length == 0,
+             "a payload past the bound whose last code point straddles it refuses as out_of_range" );
     }
 
-    // THE CLAMP IS STILL THE BOUND where the bound already sits on a boundary:
-    // thirty-four ASCII bytes keep thirty-two
+    // and the same where the bound sits on a boundary: thirty-four ASCII bytes
     {
         uint8_t text[34];
         memset( (void *) text, 'b', 34 );
         const int64_t bytes = forge( batch, sizeof( batch ), vocabulary, slot, length_bits, text, 34 );
         const read_back got = load( vocabulary, batch, bytes );
-        row( got.loaded && !got.report.malformed && got.report.clamped == 1 && got.value.sku_length == 32,
-             "a clamp whose bound sits on a boundary keeps the whole bound" );
+        row( !got.loaded && !got.report.damaged && got.report.refuse_reason == backenddemo::out_of_range &&
+                 got.value.sku_length == 0,
+             "a payload past the bound on a code point boundary refuses as out_of_range" );
     }
 
-    // AND A PAYLOAD AT THE BOUND DOES NOT CLAMP, code point or not: the last
+    // AND A PAYLOAD AT THE BOUND LANDS WHOLE, code point or not: the last
     // four bytes are one code point ending exactly at thirty-two
     {
         uint8_t text[32];
@@ -174,9 +175,9 @@ int main()
         text[28] = 0xF0; text[29] = 0x9F; text[30] = 0x98; text[31] = 0x80; // U+1F600
         const int64_t bytes = forge( batch, sizeof( batch ), vocabulary, slot, length_bits, text, 32 );
         const read_back got = load( vocabulary, batch, bytes );
-        row( got.loaded && !got.report.malformed && got.report.clamped == 0 && got.value.sku_length == 32 &&
+        row( got.loaded && !got.report.damaged && got.report.refuse_reason == backenddemo::ok && got.value.sku_length == 32 &&
                  memcmp( got.value.sku, text, 32 ) == 0,
-             "a payload at the bound lands whole and counts nothing" );
+             "a payload at the bound lands whole and refuses nothing" );
     }
 
     if ( failures != 0 )
@@ -184,6 +185,6 @@ int main()
         printf( "message text: %d row(s) red\n", failures );
         return 1;
     }
-    printf( "message text: the message form carries string(N)'s content rule and its clamp\n" );
+    printf( "message text: the message form carries string(N)'s content rule and its bound\n" );
     return 0;
 }
