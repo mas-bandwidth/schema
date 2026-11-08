@@ -1626,6 +1626,10 @@ end
 read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	local byId = fields_by_id(desc)
 	local seen: { [string]: boolean } = {}
+	-- every id that rode in this body, known or not: ONE ID TWICE IN ONE BODY
+	-- is damage, decidable from the wire alone (§3, §6.5;
+	-- internal/tablewire/wirecheck.go)
+	local rode: { [string]: boolean } = {}
 	while true do
 		local ref = r_leb(r)
 		if r.bad then
@@ -1656,6 +1660,11 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 		end
 		local kind = r_u8(r)
 		local id = _table[ref]
+		if rode[id] then
+			_report.bodyDamaged = true
+			return false
+		end
+		rode[id] = true
 		if id == BuildVersionId or id == MessageVocabularyId then
 			_report.bodyDamaged = true
 			return false
