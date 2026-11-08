@@ -2,6 +2,7 @@ package mootable_test
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -18,9 +19,11 @@ import (
 // (docs/SPEC-TABLES.md §3.3): the pinned batches of fixed roots — one body
 // each, and a batch of three — are mutated (every truncation, the form byte, the count byte, bytes after the
 // pad, every byte flipped three ways), and moo's LoadMessages must answer each
-// mutation as tablewire.DecodeMessages does: damaged input is refused whole,
-// with no values; otherwise the refusal by name, body count and evolution
-// counters agree. No partial result after damage is compared (§4).
+// mutation as tablewire.DecodeMessages does. THE VERDICT IS THE CONTRACT
+// (docs/rulings.json refusal-verdict-only): a batch is accepted whole, with
+// the same body count, or refused whole, with no values. Why it refused is
+// never compared; a batch above the caller's capacity also answers the
+// wire's count, which is the API's, not a reason.
 
 type batchCase struct {
 	name, conn, root, wire string
@@ -96,13 +99,20 @@ while at < buffer.len(cases) do
 	local rep: any = {}
 	if not MS.AnnounceRead(v, inputs.conn, rep) then print("ANNOUNCE " .. tostring(rep.reason)) return end
 	local n, values = MS.LoadMessages(v, %q, data, %d, rep)
-	if rep.damaged and #values ~= 0 then print("DAMAGE RETURNED VALUES") continue end
-	print(string.format("%%d %%d %%d,%%d,%%d,%%d,%%d,%%s,%%d %%s", i, n, rep.unknown, 0, rep.widened, 0, 0, tostring(rep.damaged), rep.blobShared or 0, tostring(rep.reason)))
+	local refused = rep.damaged or rep.refused or rep.reason ~= nil or n < 1
+	if refused and #values ~= 0 then print(i .. " A REFUSAL RETURNED VALUES") continue end
+	if refused then
+		print(if n > 0 then string.format("%%d refuse %%d", i, n) else string.format("%%d refuse", i))
+	else
+		print(string.format("%%d %%d %%d", i, n, #values))
+	end
 end
 `, g.requireAll(), root, capacity)
 }
 
-// goAnswer is the Go engine's answer to one mutation in moo's line format.
+// goAnswer is the Go engine's verdict on one mutation in moo's line format:
+// "refuse" (with the wire's count for batch_too_large, the API's answer), or
+// the body count twice (delivered, and values returned).
 func goAnswer(m *tabletext.Model, vocab *tablewire.Vocabulary, root string, capacity int, data []byte) string {
 	insts := make([]*tabletext.Instance, capacity)
 	for i := range insts {
@@ -111,41 +121,16 @@ func goAnswer(m *tabletext.Model, vocab *tablewire.Vocabulary, root string, capa
 	var rep tabletext.Report
 	n, _, err := tablewire.DecodeMessages(m, insts, data, vocab, &rep)
 	if err != nil {
-		var reason string
-		if r, ok := errors.AsType[*tablewire.MessageRefusal](err); ok {
-			reason = r.Reason.String()
-			if r.Reason != tablewire.ReasonBatchTooLarge {
-				n = -1
-			}
-		} else if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](err); ok {
-			reason = "non_finite_float"
-			n = 0
-		} else {
-			return "malformed" // §4: no other result of a damaged read is defined.
+		if r, ok := errors.AsType[*tablewire.MessageRefusal](err); ok && r.Reason == tablewire.ReasonBatchTooLarge {
+			return fmt.Sprintf("refuse %d", n)
 		}
-		return fmt.Sprintf("%d %s", n, reason)
+		return "refuse"
 	}
-	return fmt.Sprintf("%d %d,%d,%d,%d,%d,%v,%d", n, rep.Unknown, 0, rep.Widened, 0, 0, rep.Refused, 0)
+	return fmt.Sprintf("%d %d", n, n)
 }
 
-// mooAnswer reduces a moo line (without its index) to goAnswer's format.
-func mooAnswer(line string) string {
-	f := strings.SplitN(line, " ", 3)
-	if len(f) < 3 {
-		return line
-	}
-	if strings.Contains(f[1], ",true,") {
-		if f[0] != "0" && f[0] != "-1" {
-			return "malformed batch returned bodies: " + f[0]
-		}
-		return "malformed"
-	}
-	if f[2] != "nil" {
-		reason, _, _ := strings.Cut(f[2], ":")
-		return fmt.Sprintf("%s %s", f[0], reason)
-	}
-	return fmt.Sprintf("%s %s", f[0], f[1])
-}
+// mooAnswer is moo's line without its index.
+func mooAnswer(line string) string { return line }
 
 func runDamage(t *testing.T, capacity int, mutate func([]byte) [][]byte) {
 	t.Helper()
@@ -186,7 +171,6 @@ func runDamage(t *testing.T, capacity int, mutate func([]byte) [][]byte) {
 }
 
 func TestMooMessageBatchDamageMatchesTheGoEngine(t *testing.T) {
-	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	runDamage(t, 256, mutations)
@@ -257,11 +241,11 @@ func TestMooMessageBatchDamageNegativeControl(t *testing.T) {
 		t.Fatal(g.err)
 	}
 	src := string(g.files["table_message.moo"])
-	const anchor = "if got == count and (not ralign(r) or r.off ~= r.n) then"
+	const anchor = "\tif whole and (not ralign(r) or r.off ~= r.n) then\n\t\trep.damaged = true"
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the pad rule's anchor is not in table_message.moo exactly once")
 	}
-	if err := os.WriteFile(filepath.Join(g.dir, "table_message.moo"), []byte(strings.Replace(src, anchor, "if false then", 1)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(g.dir, "table_message.moo"), []byte(strings.Replace(src, anchor, "\tif false then\n\t\trep.damaged = true", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	conn := readRoot(t, "testdata/wire/tables/backend_conn.bin")
@@ -269,7 +253,7 @@ func TestMooMessageBatchDamageNegativeControl(t *testing.T) {
 	cases := [][]byte{append(append([]byte(nil), wire...), 0)}
 	out := g.run(t, damageProbe(g, "LoginRequest", 256), map[string][]byte{"conn": conn, "cases": packCases(cases)})
 	_, rest, _ := strings.Cut(out, " ")
-	if !strings.Contains(rest, ",false,") {
+	if strings.HasPrefix(rest, "refuse") {
 		t.Fatalf("the patched reader still answers the byte after the pad as malformed: %s", out)
 	}
 }
@@ -316,5 +300,49 @@ print("fixed-only-ok")
 `
 	if out := g.run(t, main, nil); !strings.Contains(out, "fixed-only-ok") {
 		t.Fatalf("the probe did not finish: %q", out)
+	}
+}
+
+// TestMooMessageRepeatedFieldIdNegativeControl: a field id twice in one body
+// is damage (docs/SPEC-TABLES.md §3.3; docs/plans/strict-only.md decision 5).
+// The batch below is the backend batch with one byte flipped so a body names
+// a field twice; the Go engine refuses it, the emitted reader refuses it, and
+// the reader with the repeated-id check patched out accepts it.
+func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
+	t.Parallel()
+	units, _ := readManifest(t)
+	g := generateUnit(t, units, "backenddemo")
+	if g.err != nil {
+		t.Fatal(g.err)
+	}
+	conn := readRoot(t, "testdata/wire/tables/backend_conn.bin")
+	wire, err := hex.DecodeString("02020419000000f19701000000841900000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := tabletext.NewModel(g.unit)
+	var vocab tablewire.Vocabulary
+	var arep tabletext.Report
+	if err := vocab.AnnounceRead(conn, &arep); err != nil {
+		t.Fatal(err)
+	}
+	if want := goAnswer(m, &vocab, "LoginRequest", 256, wire); want != "refuse" {
+		t.Fatalf("the Go engine does not refuse the repeated id: %s", want)
+	}
+	inputs := map[string][]byte{"conn": conn, "cases": packCases([][]byte{wire})}
+	if _, got, _ := strings.Cut(g.run(t, damageProbe(g, "LoginRequest", 256), inputs), " "); got != "refuse" {
+		t.Fatalf("the emitted reader does not refuse the repeated id: %s", got)
+	}
+	src := string(g.files["table_message.moo"])
+	const anchor = "if entry == nil or reserved(entry.id) or seen[entry.id] then"
+	if strings.Count(src, anchor) != 1 {
+		t.Fatal("the repeated-id anchor is not in table_message.moo exactly once")
+	}
+	if err := os.WriteFile(filepath.Join(g.dir, "table_message.moo"), []byte(strings.Replace(src, anchor, "if entry == nil or reserved(entry.id) then", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, got, _ := strings.Cut(g.run(t, damageProbe(g, "LoginRequest", 256), inputs), " "); got == "refuse" {
+		t.Fatal("the reader with the repeated-id check patched out still refuses")
 	}
 }

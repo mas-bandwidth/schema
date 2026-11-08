@@ -44,15 +44,15 @@ type textTotalProbe struct{ name, input, verdict, named, text string }
 
 var textTotalProbes = []textTotalProbe{
 	// the prefix: "abc" would carry 6 to 9, so it drops and "a" with it
-	{"prefix", `{"rules": ["abcdef", "abc", "a"]}`, "0,0,0,1,0", "clamped: Handover.rules", `{"rules":["abcdef"],"first":[]}`},
+	{"prefix", `{"rules": ["abcdef", "abc", "a"]}`, "0,0,0,1,0", "out_of_range: Handover.rules", `{"rules":["abcdef"],"first":[]}`},
 	// exactly the total: kept whole, clean
 	{"at", `{"rules": ["abcd", "abcd"]}`, "0,0,0,0,0", "-", `{"rules":["abcd","abcd"],"first":[]}`},
 	// the element clamps at M first (counted), then the total drops "a"
-	{"clamp", `{"rules": ["abcdefghij", "a"]}`, "0,0,0,2,0", "clamped: Handover.rules", `{"rules":["abcdefgh"],"first":[]}`},
+	{"clamp", `{"rules": ["abcdefghij", "a"]}`, "0,0,0,2,0", "out_of_range: Handover.rules", `{"rules":["abcdefgh"],"first":[]}`},
 	// a count past [..4] is clamped, and the kept four are within the total
 	{"count", `{"rules": ["a", "b", "c", "d", "e"]}`, "0,0,0,1,0", "-", `{"rules":["a","b","c","d"],"first":[]}`},
 	// an absent element counts zero; "abc" would carry 2 to 5
-	{"optional", `{"first": [null, "ab", null, "abc", "a"]}`, "0,0,0,1,0", "clamped: Handover.first", `{"rules":[],"first":[null,"ab",null]}`},
+	{"optional", `{"first": [null, "ab", null, "abc", "a"]}`, "0,0,0,1,0", "out_of_range: Handover.first", `{"rules":[],"first":[null,"ab",null]}`},
 }
 
 // textTotalPast is what the writes answer for a value past its total: the
@@ -210,10 +210,10 @@ fn text(name: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var r = schema_rt::json_report();
     let at = schema_rt::json_load_table(NS::TableUnit, NS::TextUnit, "Handover", text, data, vals, nodes, r);
-    if at < 0 || r.malformed { print("refused"); print("-"); print(""); return; }
-    print(r.unknown, ",", r.kind_mismatch, ",", r.widened, ",", r.clamped, ",", r.duplicate);
+    if at < 0 || r.damaged { print("refused"); print("-"); print(""); return; }
+    print(r.unknown, ",", r.mismatch, ",", r.widened, ",", r.oor, ",", r.repeated);
     var why: u8[>..] = [];
-    if schema_rt::json_clamped_reason(r, why) { print(why); } else { print("-"); }
+    if schema_rt::json_oor_reason(r, why) { print(why); } else { print("-"); }
     var out: u8[>..] = [];
     if schema_rt::json_save_table(NS::TableUnit, NS::TextUnit, "Handover", data, vals, nodes, at, out) != out.len { print("short"); }
     hex(out);
@@ -228,8 +228,8 @@ fn wire(name: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var r = schema_rt::LoadReport { .. };
     let at = schema_rt::load_table(NS::TableUnit, "Handover", data, vals, nodes, r);
-    if at < 0 || r.malformed || r.refused { print("refused"); print(""); return; }
-    print(r.unknown, ",", r.kind_mismatch, ",", r.widened, ",", r.clamped, ",", r.duplicate);
+    if at < 0 || r.body_damaged || r.refused { print("refused"); print(""); return; }
+    print(r.unknown, ",", r.mismatch, ",", r.widened, ",", r.oor, ",", r.repeated);
     var out: u8[>..] = [];
     if schema_rt::json_save_table(NS::TableUnit, NS::TextUnit, "Handover", data, vals, nodes, at, out) != out.len { print("short"); }
     hex(out);
@@ -245,7 +245,7 @@ fn past(name: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var r = schema_rt::json_report();
     let at = schema_rt::json_load_table(NS::TableUnit, NS::TextUnit, "Handover", text, data, vals, nodes, r);
-    if at < 0 || r.malformed { print("refused"); return; }
+    if at < 0 || r.damaged { print("refused"); return; }
     let list = vals[at].first;
     let rec = vals[list].first + 1;
     let fs = vals[rec].first;

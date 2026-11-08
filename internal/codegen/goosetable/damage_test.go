@@ -42,7 +42,7 @@ func TestGooseDamagedLoadNegativeControl(t *testing.T) {
 		t.Fatalf("control requires a clean refusing baseline:\n%s", baseline)
 	}
 	src := string(goosetable.Runtime()["wire_load.goose"])
-	const anchor = "    if report.malformed { return -1; }\n"
+	const anchor = "    if report.body_damaged { return -1; }\n"
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("discard control anchor must occur exactly once")
 	}
@@ -66,7 +66,7 @@ fn probe(name: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var rep = schema_rt::LoadReport { .. };
     let plain = schema_rt::load_table(conformance_unit(), "ListNode", data, vals, nodes, rep);
-    print(name, " plain ", (if plain >= 0 { 1 } else { 0 }), " ", (if rep.malformed { 1 } else { 0 }));
+    print(name, " plain ", (if plain >= 0 { 1 } else { 0 }), " ", (if rep.body_damaged { 1 } else { 0 }));
     var rv: schema_rt::LoadVal[>..] = [];
     var rn: schema_rt::LoadNode[>..] = [];
     var rr = schema_rt::LoadReport { .. };
@@ -75,7 +75,7 @@ fn probe(name: const u8[:]) {
     var ids: u64[>..<] = [];
     var store = schema_rt::RetainStore { capacity: -1, id_capacity: -1, used: 0, bytes: bytes, recs: recs, ids: ids };
     let retained = schema_rt::load_table_retain(conformance_unit(), "ListNode", data, rv, rn, rr, store);
-    print(name, " retain ", (if retained >= 0 { 1 } else { 0 }), " ", (if rr.malformed { 1 } else { 0 }));
+    print(name, " retain ", (if retained >= 0 { 1 } else { 0 }), " ", (if rr.body_damaged { 1 } else { 0 }));
 }
 `
 
@@ -126,11 +126,11 @@ func TestGooseCyclicWireIsDamage(t *testing.T) {
 func TestGooseCyclicWireNegativeControl(t *testing.T) {
 	t.Parallel()
 	src := string(goosetable.Runtime()["wire_load.goose"])
-	const anchor = " && !acyclic(c) { c.report.malformed = true; }"
+	const anchor = " && !acyclic(c) { c.report.body_damaged = true; }"
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("cycle control anchor must occur exactly once")
 	}
-	changed := strings.Replace(src, anchor, " && false { c.report.malformed = true; }", 1)
+	changed := strings.Replace(src, anchor, " && false { c.report.body_damaged = true; }", 1)
 	for _, v := range gooseCycleVectors {
 		got := gooseCycleProbe(t, v, map[string][]byte{"wire_load.goose": []byte(changed)})
 		want := v[2] + " plain 1 0\n" + v[2] + " retain 1 0"
