@@ -225,10 +225,10 @@ public final class CardsTest {
             + "RetainLost=" + r.retainLost + "\n"
             + "Widened=" + r.widened + "\n"
             + "Unknown=" + r.unknown + "\n"
-            + "KindMismatch=" + r.kindMismatch + "\n"
-            + "Clamped=" + r.clamped + "\n"
+            + "KindMismatch=0\n"
+            + "Clamped=0\n"
             + "Duplicate=0\n"
-            + "Malformed=" + r.malformed + "\n";
+            + "Malformed=" + r.damaged + "\n";
     }
 
     // TestTaskHashFramesLogicalFields: pins the frame with an independently

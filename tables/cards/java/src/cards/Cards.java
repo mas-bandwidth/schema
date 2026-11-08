@@ -63,7 +63,7 @@ public final class Cards {
     public static Record load(byte[] wire) throws Refusal {
         TableVariable.Report report = new TableVariable.Report();
         CardVariable.Value v = CardVariable.load(wire, report);
-        if (v == null || report.malformed) {
+        if (v == null || report.damaged || report.refused) {
             throw new Refusal("malformed");
         }
         checkValue(v);
@@ -76,10 +76,10 @@ public final class Cards {
     public static Record fromJSON(byte[] text) throws Refusal {
         TableVariable.Report report = new TableVariable.Report();
         CardVariable.Value v = CardVariable.fromJson(normalizeEnumNone(text), report);
-        if (report.malformed) {
+        if (v == null || report.damaged || report.refused) {
             throw new Refusal("malformed");
         }
-        if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0) {
+        if (report.unknown > 0) {
             throw new Refusal("unknown-present");
         }
         checkValue(v);
@@ -672,7 +672,7 @@ public final class Cards {
         TableVariable.Report report = new TableVariable.Report();
         TableRetain retain = new TableRetain(retainBytes, retainIDs);
         CardVariable.Value v = CardRetain.loadRetain(wire, retain, report);
-        if (v == null || report.malformed) {
+        if (v == null || report.damaged || report.refused) {
             throw new Refusal("malformed");
         }
         checkValue(v);
@@ -683,21 +683,23 @@ public final class Cards {
         if (report.retainLost > 0) {
             throw new Refusal("retain-lost");
         }
-        if (report.kindMismatch > 0 || report.clamped > 0 || report.malformed) {
+        if (report.damaged || report.refused) {
             throw new Refusal("malformed");
         }
         return new UpgradeResult(out, report);
     }
 
     // ReadStrict reads wire and refuses any data the current declaration cannot
-    // support: Unknown, KindMismatch, Clamped and Malformed (§4).
+    // support: Unknown, and any read the strict reader refuses or calls damage
+    // (§4; docs/plans/strict-only.md: a kind mismatch or an out-of-range value
+    // is a refusal, never a counted repair).
     public static Record readStrict(byte[] wire) throws Refusal {
         TableVariable.Report report = new TableVariable.Report();
         CardVariable.Value v = CardVariable.load(wire, report);
-        if (v == null || report.malformed) {
+        if (v == null || report.damaged || report.refused) {
             throw new Refusal("malformed");
         }
-        if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0) {
+        if (report.unknown > 0) {
             throw new Refusal("unknown-present");
         }
         checkValue(v);
@@ -715,11 +717,10 @@ public final class Cards {
     public static String taskHash(byte[] wire) throws Refusal {
         TableVariable.Report report = new TableVariable.Report();
         CardVariable.Value v = CardVariable.load(wire, report);
-        if (v == null || report.malformed) {
+        if (v == null || report.damaged || report.refused) {
             throw new Refusal("malformed");
         }
-        if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0
-                || report.retainLost > 0) {
+        if (report.unknown > 0 || report.retainLost > 0) {
             throw new Refusal("unknown-present");
         }
         MessageDigest h = sha256();
@@ -852,11 +853,10 @@ public final class Cards {
     static Record edit(byte[] wire, Consumer<CardVariable.Value> mutate) throws Refusal {
         TableVariable.Report report = new TableVariable.Report();
         CardVariable.Value v = CardVariable.load(wire, report);
-        if (v == null || report.malformed) {
+        if (v == null || report.damaged || report.refused) {
             throw new Refusal("malformed");
         }
-        if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0
-                || report.retainLost > 0) {
+        if (report.unknown > 0 || report.retainLost > 0) {
             throw new Refusal("unknown-present");
         }
         mutate.accept(v);
