@@ -37,6 +37,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // wireCorpus is the manifest's rows the four surfaces read, with their
@@ -158,7 +159,31 @@ func wireUnitFiles(t *testing.T, key string, paths []string, override map[string
 	for _, m := range mods {
 		fmt.Fprintf(&glue, "import .%s;\n", m)
 	}
-	fmt.Fprintf(&glue, "fn conformance_unit() -> schema_rt::LoadUnit { return %s::%s; }\n", goose.Namespace(u), goosetable.UnitName)
+	ns := goose.Namespace(u)
+	fmt.Fprintf(&glue, "fn conformance_unit() -> schema_rt::LoadUnit { return %s::%s; }\n", ns, goosetable.UnitName)
+	glue.WriteString("fn conformance_wire(root: const u8[:], data: const u8[:], out: u8[>..<]&) -> i64 {\n")
+	for _, st := range ir.TableFixedFormRoots(u) {
+		hasFixedLoad := false
+		for _, code := range tables {
+			if strings.Contains(string(code), "fn "+st.Name+"FixedLoad(") {
+				hasFixedLoad = true
+				break
+			}
+		}
+		if !hasFixedLoad {
+			continue
+		}
+		fmt.Fprintf(&glue, "    if root == %q {\n", st.Name)
+		fmt.Fprintf(&glue, "        var values: %s::%s[256] = [%s::%s { .. }; 256];\n", ns, st.Name, ns, st.Name)
+		glue.WriteString("        var rep = schema_rt::FixedReport { .. };\n")
+		fmt.Fprintf(&glue, "        let n = %s::%sFixedLoad(values[0..256], data, rep);\n", ns, st.Name)
+		glue.WriteString("        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -3; }\n")
+		glue.WriteString("        var saved: u8[>..] = [];\n")
+		fmt.Fprintf(&glue, "        if %s::%sFixedSave(values[0..n], saved) < 0 { return -4; }\n", ns, st.Name)
+		glue.WriteString("        out.append(saved);\n")
+		glue.WriteString("        return 0;\n    }\n")
+	}
+	glue.WriteString("    return -1;\n}\n")
 	// the message surface's arm (the shell driver writes one per root); these
 	// gates drive no message row, so the glue carries none
 	glue.WriteString("fn conformance_message(root: const u8[:], announce: const u8[:], wire: const u8[:], out: u8[>..]&) -> i64 { return -1; }\n")
@@ -223,7 +248,9 @@ func runWireSurfaces(t *testing.T, c *wireCorpus, surfaces []string, override ma
 							continue
 						}
 						if rest, absent := strings.CutPrefix(h, "absent"); absent {
-							got[s][name] = "absent " + strings.TrimPrefix(rest, " ")
+							if _, exists := got[s][name]; !exists {
+								got[s][name] = "absent " + strings.TrimPrefix(rest, " ")
+							}
 							continue
 						}
 						b, err := hex.DecodeString(h)
@@ -314,7 +341,7 @@ func TestGooseTableWireNegativeControl(t *testing.T) {
 		red                  string                       // the surface that must go red
 	}{
 		{"load-widened", "wire_load.goose",
-			"if !entry || i != 0 { c.report.widened += 1; }", "if !entry || i != 0 { }",
+			"if widened { c.report.widened += 1; }", "if widened { }",
 			map[string]func(string) bool{"report": widened}, "report"},
 		{"save-elided-id", "wire_save.goose",
 			"            cut(c, at, mark);\n            return;\n        }\n        frame(c, start);",

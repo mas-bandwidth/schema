@@ -63,7 +63,7 @@ fn identity(name: const u8[:], edit: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
     let root = schema_rt::load_table(conformance_unit(), "Root", data, vals, nodes, report);
-    if root < 0 || report.malformed { write_stdout(str(name, "/", edit, " refused\n")); return; }
+    if root < 0 || report.body_damaged { write_stdout(str(name, "/", edit, " refused\n")); return; }
     let a = vals[slot(vals, root, 0)].bits.lo as! i64;
     let b = vals[slot(vals, root, 1)].bits.lo as! i64;
     if edit == "view" {
@@ -87,7 +87,7 @@ fn identity(name: const u8[:], edit: const u8[:]) {
     var rids: u64[>..<] = [];
     var store = schema_rt::RetainStore { capacity: -1, id_capacity: -1, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
     let rroot = schema_rt::load_table_retain(conformance_unit(), "Root", data, rv, rn, rr, store);
-    if rroot < 0 || rr.malformed { write_stdout(str(name, "/retain refused\n")); return; }
+    if rroot < 0 || rr.body_damaged { write_stdout(str(name, "/retain refused\n")); return; }
     var out: u8[>..<] = [];
     let r = schema_rt::save_table_retain(conformance_unit(), "Root", data, rv, rn, rroot, store, rr, out);
     write_stdout(str(name, "/retain ", schema_rt::save_refusal_name(r), "_ ", hex(out), " ", schema_rt::save_refusal_name(r), "_ ", hex(out), "\n"));
