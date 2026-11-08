@@ -1,0 +1,9 @@
+# make/python-mypy.lock — the Python leg's analyzer, hash-locked
+# (make/python-toolchain.mk, dist-python). pip installs exactly these wheels
+# into the floor interpreter, offline, and refuses any whose sha256 differs.
+# Every dependency of mypy 1.18.2 on Python 3.11 is listed, so nothing is
+# resolved. The sha256 of each is the one PyPI publishes for that wheel.
+mypy==1.18.2 --hash=sha256:22a1748707dd62b58d2ae53562ffc4d7f8bcc727e8ac7cbc69c053ddc874d47e
+mypy-extensions==1.1.0 --hash=sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505
+typing-extensions==4.15.0 --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+pathspec==0.12.1 --hash=sha256:a0d503e138a4c123b27490a4f7beda6a01c6f288df0e4a8b79c7eb0dc7b4cc08

@@ -1,5 +1,5 @@
 // UNCOOK: a cook read back into the instance model, and from there onto the
-// tolerant wire.
+// wire.
 //
 // It is a TOOL and never a runtime path — a runtime points at a cook and reads
 // it where it lies (§7). It exists because the wire is the FORMAT OF RECORD: a
@@ -23,6 +23,12 @@ import (
 // is: the directory is what names each node's start and type, and a file that
 // carries none cannot be read back any more than it can be checked.
 func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instance, error) {
+	// ONE VERDICT ON BOTH READS OF A COOK (docs/SPEC-TABLES.md §4, §7): Uncook
+	// refuses every file Check refuses, a cycle and a reference to another
+	// node type included, so it asks Check first.
+	if _, err := Check(m, file); err != nil {
+		return nil, err
+	}
 	h, err := ReadHeader(file, ir.BuildVersion(m.Unit), ir.RecordLayout(m.Unit, root).Align)
 	if err != nil {
 		return nil, err

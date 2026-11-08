@@ -11,7 +11,7 @@ package cpptable
 // enough to carry one.
 //
 // WHAT GUARDS bytes == 0 ON THIS LEG: the emitted FixedLoad's step-1 line
-// `if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }`
+// `if ( data == NULL || bytes < 1 ) { report->damaged = true; return -1; }`
 // (fixedform.go, emitted just ABOVE the form-byte read), read verbatim, and it
 // gives the SAME five-part answer as bytes 1..19 — so the loop runs k = 0 ..
 // kTableFixedHeaderBytes + 4 exclusive, the constant (16) plus the layout's
@@ -37,8 +37,8 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
 
 	body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "under20: the full-length file did not read: n=%%lld reason=%%d\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.malformed || r.refused )
-        { printf( "under20: the full-length file must read clean: malformed=%%d refused=%%d\n", (int) r.malformed, (int) r.refused ); return 1; }
+    if ( r.damaged || r.refused )
+        { printf( "under20: the full-length file must read clean: malformed=%%d refused=%%d\n", (int) r.damaged, (int) r.refused ); return 1; }
     {
         %s fresh;
         memset( &fresh, 0, sizeof( fresh ) );
@@ -49,11 +49,11 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
             for ( int64_t s = 0; s < 8; ++s ) { memcpy( &back[s], &fresh, sizeof( fresh ) ); }
             n = %sFixedLoad( back, 8, data, k, plan, 4096, NULL, &r );
             if ( n != -1 ) { printf( "under20: at k=%%lld a file shorter than the header is malformed, not n=%%lld\n", (long long) k, (long long) n ); return 1; }
-            if ( r.malformed != 1 ) { printf( "under20: at k=%%lld malformed=%%d, not 1\n", (long long) k, (int) r.malformed ); return 1; }
+            if ( r.damaged != 1 ) { printf( "under20: at k=%%lld malformed=%%d, not 1\n", (long long) k, (int) r.damaged ); return 1; }
             if ( r.refused ) { printf( "under20: at k=%%lld a short file is the residue, never refused by name: refused=%%d\n", (long long) k, (int) r.refused ); return 1; }
             if ( r.reason != TableFixedReason::truncated ) { printf( "under20: at k=%%lld reason is %%d, not truncated\n", (long long) k, (int) r.reason ); return 1; }
-            if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
-                { printf( "under20: at k=%%lld MALFORMED is total: no counter moves (w=%%d u=%%d km=%%d c=%%d d=%%d)\n", (long long) k, r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
+            if ( r.widened != 0 || r.unknown != 0 )
+                { printf( "under20: at k=%%lld MALFORMED is total: no counter moves (w=%%d u=%%d km=%%d c=%%d d=%%d)\n", (long long) k, r.widened, r.unknown, r.refused, r.refused, r.refused ); return 1; }
             for ( int64_t s = 0; s < 8; ++s )
             {
                 if ( memcmp( &back[s], &fresh, sizeof( fresh ) ) != 0 ) { printf( "under20: at k=%%lld slot %%lld: a malformed read wrote destination bytes\n", (long long) k, (long long) s ); return 1; }

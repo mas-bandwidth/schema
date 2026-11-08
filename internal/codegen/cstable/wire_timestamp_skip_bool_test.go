@@ -26,7 +26,7 @@ table Probe
 	if want := "case 5: case 9: case 11: case 23: case 28: case 36: return 8;"; !strings.Contains(src, want) {
 		t.Errorf("the emitted Width does not give kind 36 its eight bytes: want %q", want)
 	}
-	want := "if (kind == 1) { if (raw > 1) { report.Malformed = true; } raw = raw == 0 ? 0ul : 1ul; }"
+	want := "if (kind == 1 && raw > 1) { return Damage(report); }"
 	if !strings.Contains(src, want) {
 		t.Errorf("the emitted bool read does not flag a byte above 1 as malformed: want %q", want)
 	}

@@ -1,23 +1,17 @@
 package mootable_test
 
-// THE LOAD'S REFUSAL REASONS, for moo (docs/SPEC-TABLES.md §6.5, §2.9, §3,
-// §4): a refused load names WHICH reason, by its spec name, and the name is
-// the reference's for the same bytes. The rows are the shared pin table,
-// internal/codegen/goosetable/testdata/load_refusal_reasons.tsv, whose
-// answers the Go leg's generated reader holds (gotable's
-// TestLoadRefusalReasonPins) and the Goose load holds
-// (goosetable's TestGooseLoadRefusalReasons).
+// THE LOAD'S VERDICTS ON THE SHARED REFUSAL PINS, for moo (docs/SPEC-TABLES.md
+// §6.5, §2.9, §3, §4). The rows are the shared pin table,
+// internal/codegen/goosetable/testdata/load_refusal_reasons.tsv. THE VERDICT
+// IS THE CONTRACT (docs/rulings.json refusal-verdict-only): moo's one read
+// (table_load.moo's ReadStrict) must return a value for every row the table
+// answers ok and refuse every other row. Which reason it names is a
+// per-language diagnostic and is not compared.
 //
-//	TestMooLoadRefusalReasons  every row, through table_load.moo's ReadStrict,
-//	    the read a form-1 file goes to. moo's strict read answers ONE name, on
-//	    report.reason: for a row whose form column pins the form refusal (Go's
-//	    TableReport.Reason, Goose's report.reason) that name is the form
-//	    column's, and for every other row it is the strict column's. The tolerant load
-//	    (loadTolerant) names the same form refusal on its report, as Go's
-//	    TableReport.Reason does
-//	TestMooLoadRefusalReasonsNegativeControl  breaks the strict read's
+//	TestMooLoadRefusalReasons  every row, through ReadStrict
+//	TestMooLoadRefusalReasonsNegativeControl  removes the strict read's
 //	    framing verdict, the value-only root's damage bit and the form-2
-//	    reason, each of which must turn exactly its own rows red
+//	    refusal, each of which must turn exactly its own rows red
 
 import (
 	"encoding/hex"
@@ -62,18 +56,12 @@ func reasonRows(t *testing.T) []reasonRow {
 	return rows
 }
 
-// reasonProbe prints, per row, ReadStrict's one answer: "ok" for a value,
-// else the reason's name before any ": <field>" suffix.
+// reasonProbe prints, per row, ReadStrict's verdict: "ok" for a value, else
+// "refused".
 const reasonProbe = `local function probe(name: string)
 	local rep = load.newReport()
 	local v = load.ReadStrict("Root", inputs[name], rep)
-	local answer = "ok"
-	if v == nil then
-		answer = string.split(tostring(rep.reason), ":")[1]
-	end
-	local tolerant = load.newReport()
-	load.loadTolerant("Root", inputs[name], tolerant)
-	print(name .. "\t" .. answer .. "\t" .. tostring(tolerant.reason))
+	print(name .. "\t" .. (if v ~= nil and rep.reason == nil then "ok" else "refused"))
 end
 `
 
@@ -111,21 +99,18 @@ func loadReasons(t *testing.T, mutate func(string) string) []string {
 			in[r.name] = wire
 			fmt.Fprintf(&main, "probe(%q)\n", r.name)
 		}
-		got, tolerant := map[string]string{}, map[string]string{}
+		got := map[string]string{}
 		for line := range strings.SplitSeq(g.run(t, main.String(), in), "\n") {
 			f := strings.Split(line, "\t")
-			if len(f) != 3 {
+			if len(f) != 2 {
 				t.Fatalf("the probe printed %q", line)
 			}
-			got[f[0]], tolerant[f[0]] = f[1], f[2]
+			got[f[0]] = f[1]
 		}
 		for _, r := range mine {
-			want := r.strict
-			if r.form != "-" {
-				want = r.form
-			}
-			if r.form != "-" && tolerant[r.name] != r.form {
-				bad = append(bad, fmt.Sprintf("%s: the tolerant load's report names %q, want %q", r.name, tolerant[r.name], r.form))
+			want := "refused"
+			if r.strict == "ok" && r.form == "-" {
+				want = "ok"
 			}
 			if got[r.name] != want {
 				bad = append(bad, fmt.Sprintf("%s: moo answers %q, want %q (pin: strict %s, form %s)", r.name, got[r.name], want, r.strict, r.form))
@@ -143,10 +128,8 @@ func TestMooLoadRefusalReasons(t *testing.T) {
 	for _, r := range rows {
 		answered[r.strict] = true
 	}
-	for _, want := range []string{"ok", "wire_damaged", "malformed", "unknown_form", "kind_mismatch", "clamped", "non_finite_float"} {
-		if !answered[want] {
-			t.Errorf("no pin row answers %s", want)
-		}
+	if !answered["ok"] || len(answered) < 2 {
+		t.Errorf("the pin table needs rows that read and rows that refuse: %v", answered)
 	}
 	for _, b := range loadReasons(t, nil) {
 		t.Error(b)
@@ -154,17 +137,12 @@ func TestMooLoadRefusalReasons(t *testing.T) {
 	t.Logf("%d pinned rows answered", len(rows))
 }
 
-// TestMooLoadRefusalReasonsNegativeControl:
+// TestMooLoadRefusalReasonsNegativeControl removes one refusal at a time
+// from the emitted table_load.moo and requires exactly the rows it guards to
+// go red (read where the pin refuses):
 //
-//   - the strict read's framing verdict names malformed instead of
-//     wire_damaged: the rows its frame-and-terminator check refuses (a form
-//     byte alone, a cut file, a terminator before the id table) go red, and
-//     only they;
-//   - a value-only root's walk that read past damage no longer marks the
-//     verdict's damage: the row whose bool byte is 2 answers malformed and
-//     goes red, and only it;
-//   - form 2 is named newer_form instead of message_form_as_file: the two
-//     form-2 rows go red, and only they.
+//   - the refusing counters (a value out of range, a kind mismatch). Damage
+//     is the walk's own discard, held by TestMooDamageDiscardNegativeControls.
 func TestMooLoadRefusalReasonsNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
@@ -172,18 +150,10 @@ func TestMooLoadRefusalReasonsNegativeControl(t *testing.T) {
 		name, from, to string
 		red            []string
 	}{
-		{"framing-verdict",
-			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.malformed = true\n\t\trep.reason = \"wire_damaged\"\n",
-			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.malformed = true\n\t\trep.reason = \"malformed\"\n",
-			[]string{"cut_last", "fixed_early_end", "form_only"}},
-		{"value-root-damage",
-			"\tif whole and report.malformed and not desc.variable then\n",
-			"\tif false then\n",
-			[]string{"fixed_bool_two"}},
-		{"form-2-reason",
-			"\tif form == 2 then\n\t\trep.reason = \"message_form_as_file\"\n",
-			"\tif form == 2 then\n\t\trep.reason = \"newer_form\"\n",
-			[]string{"form2", "form2_alone"}},
+		{"refusing-counters",
+			"local REFUSING = { \"missingRequired\", \"bodyDamaged\", \"blobShared\", \"outOfRange\", \"kindChanged\" }",
+			"local REFUSING = { \"missingRequired\", \"bodyDamaged\", \"blobShared\" }",
+			[]string{"fixed_clamped", "fixed_kind_mismatch", "values_f32"}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()

@@ -113,9 +113,9 @@ func TestTableRefusals(t *testing.T) {
 		// ordinary edit, and a name free before it must not become a collision
 		// after it.
 		{name: "a declaration colliding with the fixed form's read-side bounds", want: "generated TABLE-wire functions",
-			src: "package t\ntable Tab { x int32 }\ntype TabFixedClamp { y int32 }\n"},
+			src: "package t\ntable Tab { x int32 }\ntype TabFixedBounds { y int32 }\n"},
 		{name: "a declaration colliding with the fixed form's per-type bounds body", want: "generated TABLE-wire functions",
-			src: "package t\ntable Tab { x int32 }\ntype TabFixedClampBody { y int32 }\n"},
+			src: "package t\ntable Tab { x int32 }\ntype TabFixedBoundsBody { y int32 }\n"},
 		// THE PER-ENUM IDENTITY PAIR (docs/SPEC-TABLES.md §5, §11). C++ and C#
 		// overload the pair on the enum's own type; JavaScript has no
 		// overloading and no nested scope to hide it in, so each enum brings

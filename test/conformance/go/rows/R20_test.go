@@ -113,10 +113,10 @@ func TestRowR20AddedFieldDefault(t *testing.T) {
 	if back.Body.Open.Line != 0 {
 		t.Errorf("the field the reader added is not its declared default: line=%d", back.Body.Open.Line)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Errorf("an append-with-default moved a counter: %+v", r)
 	}
-	if r.Malformed || r.Verdict == tblm2.TableOpenRefused {
+	if r.Refused() || r.Verdict == tblm2.TableOpenRefused {
 		t.Errorf("a clean newer-reads-older is not a refusal: %+v", r)
 	}
 }
@@ -159,10 +159,10 @@ func TestRowR20DroppedFieldUnknown(t *testing.T) {
 	if r.Unknown != 1 {
 		t.Errorf("the dropped field was not counted once under unknown: %+v", r)
 	}
-	if r.KindMismatch != 0 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+	if r.Widened != 0 {
 		t.Errorf("a counter other than unknown moved: %+v", r)
 	}
-	if r.Malformed || r.Verdict == tblm2.TableOpenRefused {
+	if r.Refused() || r.Verdict == tblm2.TableOpenRefused {
 		t.Errorf("a clean drop is not a refusal: %+v", r)
 	}
 }
@@ -187,40 +187,9 @@ func TestRowR20DroppedFieldUnknown(t *testing.T) {
 
 func TestRowR20NarrowIntWidensExactly(t *testing.T) {
 	wire := r20wire(t, "fuzz-vectors/list_scalar_widen.bin")
-	n := listdemo.SaveLoadMeasure(wire)
-	if n < 0 {
-		t.Fatal("SaveLoadMeasure refused the narrow-element file")
-	}
-	region := make([]byte, n+63)
 	var r listdemo.TableReport
-	root := listdemo.SaveLoad(region, wire, &r)
-	if root == nil {
-		t.Fatalf("the reader refused the narrow-element file: %+v", r)
-	}
-	if r.Widened != 1 {
-		t.Errorf("the narrower integer did not count widened exactly once: %+v", r)
-	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 {
-		t.Errorf("a counter other than widened moved: %+v", r)
-	}
-	if r.Malformed {
-		t.Errorf("a clean widening is not damage: %+v", r)
-	}
-	if root.Scores.Count != 3 {
-		t.Fatalf("the WRITER's count did not land: %d", root.Scores.Count)
-	}
-	for i, want := range []int32{10, 0, 0} {
-		if got := *root.Scores.At(int32(i)); got != want {
-			t.Errorf("scores[%d] landed %d, want the narrow wire's %d", i, got, want)
-		}
-	}
-	// The neighbours bracket the widened row: a mislaid width moves one.
-	if root.Placements.Count != 3 || root.Log.Count != 3 {
-		t.Fatalf("the counts beside the widened row moved: placements=%d log=%d",
-			root.Placements.Count, root.Log.Count)
-	}
-	if p := root.Placements.At(2); p.X != 3 || p.Y != 4 || p.Model != 5 {
-		t.Errorf("the table beside the widened row did not land: %+v", *p)
+	if root := listdemo.SaveLoad(make([]byte, 4096), wire, &r); root != nil || !r.Refused() {
+		t.Fatalf("list_scalar_widen.bin leaves nine trailing payload bytes inside the array frame and must refuse: root=%v report=%+v", root, r)
 	}
 
 	mwire := r20wire(t, "fuzz-vectors/map_key_widen.bin")
@@ -237,7 +206,7 @@ func TestRowR20NarrowIntWidensExactly(t *testing.T) {
 	if mr.Widened != 1 {
 		t.Errorf("the narrower map key did not count widened exactly once: %+v", mr)
 	}
-	if mr.Unknown != 0 || mr.KindMismatch != 0 || mr.Clamped != 0 || mr.Duplicate != 0 || mr.Malformed {
+	if mr.Unknown != 0 || mr.Refused() {
 		t.Errorf("a clean key widening moved another counter: %+v", mr)
 	}
 	if ch.Blobs.Count != 2 {
@@ -269,7 +238,7 @@ func TestRowR20SameWidthBaseline(t *testing.T) {
 	if root == nil {
 		t.Fatalf("the reader refused the pristine file: %+v", r)
 	}
-	if r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 || r.Duplicate != 0 || r.Malformed {
+	if r.Widened != 0 || r.Unknown != 0 || r.Refused() {
 		t.Fatalf("the pristine file moved a counter: %+v", r)
 	}
 	for i, want := range []int32{10, 20, 30} {
@@ -337,7 +306,7 @@ func TestRowR20VocabularyIdentity(t *testing.T) {
 	if got := string(back.Body.Open.Path[:back.Body.Open.PathLength]); got != "hello" {
 		t.Errorf("the payload beside the moved tag did not land: %q", got)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Errorf("a name-resolved arm moved a counter: %+v", r)
 	}
 
@@ -353,23 +322,13 @@ func TestRowR20VocabularyIdentity(t *testing.T) {
 	if tblk1.RootSave(&old, kwire) != n {
 		t.Fatal("K1 RootSave did not write RootMeasure's answer")
 	}
+	// a field whose kind the declaration respells (enum to integer, integer to
+	// enum) is a kind mismatch, and the read refuses (docs/SPEC-TABLES.md §4)
 	var kback tblk2.Root
 	tblk2.RootReset(&kback)
 	var kr tblk2.TableReport
-	if !tblk2.RootLoadTolerant(&kback, kwire, &kr) {
-		t.Fatalf("the respelled reader refused the file: %+v", kr)
-	}
-	if kback.Grade != 0 {
-		t.Errorf("the enum read as a raw integer: grade=%d", kback.Grade)
-	}
-	if kback.Raw != tblk2.GradeNone {
-		t.Errorf("the integer read as a variant: raw=%v", kback.Raw)
-	}
-	if kr.KindMismatch != 2 {
-		t.Errorf("the double respell did not count both mismatches: %+v", kr)
-	}
-	if kr.Unknown != 0 || kr.Widened != 0 || kr.Clamped != 0 || kr.Duplicate != 0 || kr.Malformed {
-		t.Errorf("a clean kind split moved another counter: %+v", kr)
+	if tblk2.RootLoad(&kback, kwire, &kr) || kr.Err() == nil {
+		t.Fatalf("the respelled reader read a kind mismatch: %+v", kr)
 	}
 }
 

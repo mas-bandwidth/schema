@@ -14,16 +14,20 @@ for need in build/conformance-harness "$host" build/conformance-luau build/luau-
 	fi
 done
 
-# plant <vector> <perl substitution>: the fix reverted, the run red on <vector>
+# plant <vector> <perl substitution> [driver]: the fix reverted, the run red
+# on <vector>. The substitution lands in every generated schema_load.luau, or
+# in the copied wire-fuzz driver when the third word is `driver`.
 plant() {
-	name=$1 subst=$2
+	name=$1 subst=$2 where=${3:-units}
 	rm -rf "$out"
 	mkdir -p "$out/test/conformance/luau" "$out/build/luau-driver"
 	cp test/conformance/luau/wirefuzz.luau "$out/test/conformance/luau/"
 	cp build/luau-driver/units.luau "$out/build/luau-driver/"
 	cp -R build/conformance-luau "$out/build/conformance-luau"
 	planted=0
-	for f in "$out"/build/conformance-luau/*/schema_load.luau; do
+	targets="$out"/build/conformance-luau/*/schema_load.luau
+	[ "$where" = driver ] && targets="$out/test/conformance/luau/wirefuzz.luau"
+	for f in $targets; do
 		before=$(cksum < "$f")
 		perl -0pi -e "$subst" "$f"
 		if [ "$(cksum < "$f")" = "$before" ]; then
@@ -62,3 +66,9 @@ plant keyed_header_count_past_length \
 	's/local hdr = new_reader\(r\.b, r\.at, r\.e\)(\n(?:[^\n]*\n){4}\t\tif ek ~= fd\.ek then)/local hdr = new_reader(r.b, r.at, endpos)$1/'
 plant text_ill_formed_repeat_reads_default \
 	's/\t\t\t\tstore_bytes\(v, fd\.slot, buffer\.fromstring\(def\), 0, #def, #def\)\n//'
+plant list_count_cross_length \
+	's/\t\t\tif crossed then\n/\t\t\tif false then\n/'
+plant map_repeated_key_widen \
+	's/\t*kindBad = false -- this occurrence replaces the earlier key kind\n//'
+plant region_align_extent_uint128 \
+	's/math\.max\(layout\.record_layout\(v\)\.align, layout\.extent_align\(v, \{\}\)\)/layout.record_layout(v).align/' driver

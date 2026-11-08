@@ -1313,7 +1313,7 @@ if back == nil then
 	print("@refused " .. tostring(report.reason) .. " " .. tostring(report.field))
 	return
 end
-print(string.format("@ok %%d u%%d k%%d c%%d w%%d", #back, report.unknown, report.kindMismatch, report.clamped, report.widened))
+print(string.format("@ok %%d u%%d k%%d c%%d w%%d", #back, report.unknown, report.kindChanged, report.outOfRange, report.widened))
 for i, v in back do
 	dumpRecord(d, v, "r" .. int(i - 1))
 end

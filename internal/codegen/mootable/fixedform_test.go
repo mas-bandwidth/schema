@@ -226,10 +226,10 @@ local fixed = T.%[1]sFixed
 local report: any = {}
 local values = F.load(d, fixed, inputs.file, report)
 if values == nil then
-	print("refused " .. tostring(report.reason) .. " " .. tostring(report.field) .. " " .. tostring(report.malformed) .. " " .. (if report.layoutHash ~= nil then V.idHex(report.layoutHash) else "-"))
+	print("refused " .. tostring(report.reason) .. " " .. tostring(report.field) .. " " .. tostring(report.damaged) .. " " .. (if report.layoutHash ~= nil then V.idHex(report.layoutHash) else "-"))
 	return
 end
-print(string.format("ok %%d u%%d k%%d c%%d w%%d", #values, report.unknown, report.kindMismatch, report.clamped, report.widened))
+print(string.format("ok %%d u%%d k%%d c%%d w%%d", #values, report.unknown, report.kindChanged, report.outOfRange, report.widened))
 for i, v in values do
 	dumpRecord(d, v, "r" .. int(i - 1))
 end

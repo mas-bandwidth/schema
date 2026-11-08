@@ -67,16 +67,16 @@ func evoProbe(g *generatedUnit, mod, rootName string, capacity int) string {
 	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal F = require(\"./table_fixed\")\n" + g.requireAll() +
 		fmt.Sprintf("local T = require(\"./%s\")\n", mod) + fixedDumper + fmt.Sprintf(`local d = T.%[1]sDescriptor
 local fixed = T.%[1]sFixed
-local rep: any = { unknown = 99, kindMismatch = 99, clamped = 99, widened = 99, duplicate = 99, malformed = true, reason = "stale", field = "stale", layoutHash = "stale!!!" }
+local rep: any = { unknown = 99, kindChanged = 99, outOfRange = 99, widened = 99, repeatedKey = 99, damaged = true, reason = "stale", field = "stale", layoutHash = "stale!!!" }
 local values = F.load(d, fixed, inputs.file, rep, %[2]s)
 local function counters(): string
-	return string.format("u%%d k%%d c%%d w%%d d%%d", rep.unknown, rep.kindMismatch, rep.clamped, rep.widened, rep.duplicate)
+	return string.format("u%%d k%%d c%%d w%%d d%%d", rep.unknown, rep.kindChanged, rep.outOfRange, rep.widened, rep.repeatedKey)
 end
 local function hashOf(): string
 	return if rep.layoutHash ~= nil then V.idHex(rep.layoutHash) else "-"
 end
 if values == nil then
-	print("refused " .. tostring(rep.reason) .. " " .. tostring(rep.malformed) .. " " .. tostring(rep.field) .. " " .. hashOf() .. " " .. counters())
+	print("refused " .. tostring(rep.reason) .. " " .. tostring(rep.damaged) .. " " .. tostring(rep.field) .. " " .. hashOf() .. " " .. counters())
 	return
 end
 print(string.format("ok %%d ", #values) .. counters() .. " " .. hashOf())
@@ -304,7 +304,7 @@ for i = 20, %d do
 	buffer.copy(b, 0, inputs.file)
 	buffer.writeu8(b, i, bit32.bxor(buffer.readu8(b, i), 0x5a))
 	local rep: any = {}
-	if F.load(T.FxRootDescriptor, T.FxRootFixed, b, rep) ~= nil or rep.reason ~= "layout_malformed" or rep.clamped ~= 0 then
+	if F.load(T.FxRootDescriptor, T.FxRootFixed, b, rep) ~= nil or rep.reason ~= "layout_malformed" or rep.outOfRange ~= 0 then
 		bad += 1
 	end
 end
@@ -883,7 +883,7 @@ func TestMooFixedEvolutionReports(t *testing.T) {
 local rep: any = {}
 for _ = 1, 2 do
 	local v = F.load(T.%[1]sDescriptor, T.%[1]sFixed, inputs.file, rep)
-	print(#(v :: { any }), rep.unknown, rep.clamped, rep.widened, rep.duplicate)
+	print(#(v :: { any }), rep.unknown, rep.outOfRange, rep.widened, rep.repeatedKey)
 end
 `, rootOf(t, older))
 	if got := strings.Join(strings.Fields(gc.run(t, main, map[string][]byte{"file": corpusFile(t, corpus, "many_unknown_census.bin")})), " "); got != "3 1 0 0 0 3 1 0 0 0" {
@@ -1316,7 +1316,7 @@ for at = rec, n - 1 do
 		local rep: any = {}
 		local got = F.load(T.HostDescriptor, T.HostFixed, b, rep)
 		if got == nil then
-			if not F.Names[rep.reason] or rep.clamped ~= 0 or rep.widened ~= 0 then bad += 1 end
+			if not F.Names[rep.reason] or rep.outOfRange ~= 0 or rep.widened ~= 0 then bad += 1 end
 		elseif rep.reason ~= nil or not inBound((got :: any)[1]) then
 			bad += 1
 		end
@@ -1404,7 +1404,9 @@ func TestMooFixedEvolutionWriterRange(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	base := corpusFile(t, corpus, "old_range_widen.bin")
-	at := len(base) - 12 + 4 // lead, then v
+	older, newer := readTestSchema(t, "VOLD_range_widen"), readTestSchema(t, "VNEW_range_widen")
+	// the file's one record body is its last bytes, and v follows lead
+	at := len(base) - int(ir.TableFixedTypeBytes(ir.TableFixedFormRoots(older)[0])) + 4
 	forge := func(v int32) []byte {
 		b := clone(base)
 		binary.LittleEndian.PutUint32(b[at:], uint32(v))
@@ -1419,7 +1421,6 @@ func TestMooFixedEvolutionWriterRange(t *testing.T) {
 	if out, err := exec.Command("g++", "-std=c++17", "-ffp-contract=off", "-I"+headers, "-I"+filepath.Join(root, "..", "serialize"), filepath.Join(dir, "probe.cpp"), "-o", bin).CombinedOutput(); err != nil {
 		t.Fatalf("the C++ reference probe does not build: %v\n%s", err, out)
 	}
-	older, newer := readTestSchema(t, "VOLD_range_widen"), readTestSchema(t, "VNEW_range_widen")
 	lineage := lineageOf(t, []*ir.Unit{older}, 0)
 	g := fixedUnit(t, newer, lineage)
 	for _, c := range []struct {

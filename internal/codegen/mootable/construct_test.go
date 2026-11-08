@@ -79,7 +79,7 @@ func goOracleWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	}
 	inst := m.New(st)
 	var rep tabletext.Report
-	if !m.Read(inst, []byte(text), &rep) || rep.Malformed || rep.Clamped > 0 || rep.Unknown > 0 || rep.KindMismatch > 0 {
+	if !m.Read(inst, []byte(text), &rep) || rep.Refused || rep.Unknown > 0 {
 		t.Fatalf("the Go engine does not read the JSON cleanly: %+v", rep)
 	}
 	wire, err := tablewire.Encode(m, inst)

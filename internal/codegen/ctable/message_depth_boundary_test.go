@@ -282,21 +282,21 @@ static void check_case(const char * name, const TableVocabulary * vocab, const u
     int64_t count = 2;
     TableReport rep;
     memset(&rep, 0, sizeof(rep));
-    int ok = root_load_messages_tolerant(values, &count, vocab, wire, len, &rep);
+    int ok = root_load_messages(values, &count, vocab, wire, len, &rep);
     if (expect_ok) {
-        if (ok && count == 2 && !rep.malformed && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
+        if (ok && count == 2 && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
             printf("PASS %s\n", name);
         } else {
             printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d unknown=%d a0=%d a1=%d\n",
-                name, ok, (long long)count, rep.malformed, rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
+                name, ok, (long long)count, rep.refused, rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
             failed = 1;
         }
     } else {
-        if (!ok && count == 0 && rep.malformed && !rep.refused) {
+        if (!ok && count == 0 && rep.refused) {
             printf("PASS %s\n", name);
         } else {
             printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d a0=%d a1=%d\n",
-                name, ok, (long long)count, rep.malformed, rep.refused, (int)values[0].a, (int)values[1].a);
+                name, ok, (long long)count, rep.refused, rep.refused, (int)values[0].a, (int)values[1].a);
             failed = 1;
         }
     }
@@ -394,19 +394,19 @@ static void check_case(const char * name, const TableVocabulary & vocab, const u
     memset(&rep, 0, sizeof(rep));
     bool ok = RootLoadMessages(values, &count, vocab, wire, len, &rep);
     if (expect_ok) {
-        if (ok && count == 2 && !rep.malformed && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
+        if (ok && count == 2 && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
             printf("PASS %s\n", name);
         } else {
             printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d unknown=%d a0=%d a1=%d\n",
-                name, (int)ok, (long long)count, (int)rep.malformed, (int)rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
+                name, (int)ok, (long long)count, (int)rep.refused, (int)rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
             failed = true;
         }
     } else {
-        if (!ok && count == 0 && rep.malformed && !rep.refused) {
+        if (!ok && count == 0 && rep.refused) {
             printf("PASS %s\n", name);
         } else {
             printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d a0=%d a1=%d\n",
-                name, (int)ok, (long long)count, (int)rep.malformed, (int)rep.refused, (int)values[0].a, (int)values[1].a);
+                name, (int)ok, (long long)count, (int)rep.refused, (int)rep.refused, (int)values[0].a, (int)values[1].a);
             failed = true;
         }
     }
@@ -617,14 +617,14 @@ void main() {
     final rep = h.TableReport();
     final count = r.rootLoadMessages(values, Uint8List.fromList(raw), vocab, rep);
     if (expectOK) {
-      if (count == 2 && !rep.malformed && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
+      if (count == 2 && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
         print('PASS $name');
       } else {
         print('FAIL $name');
         failed = true;
       }
     } else {
-      if (count == 0 && rep.malformed && !rep.refused) {
+      if (count == 0 && rep.refused) {
         print('PASS $name');
       } else {
         print('FAIL $name');
@@ -847,11 +847,11 @@ func runAllRuntimesJava(t *testing.T, u *ir.Unit, ann []byte, cases []depthBound
         TableVocabulary.Report rep = new TableVocabulary.Report();
         int count = RootMessage.loadMessages(values, values.length, vocab, wire, rep);
         if (expectOK) {
-            if (!rep.malformed && !rep.refused && count == 2 && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99)
+            if (!rep.refused && count == 2 && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99)
                 System.out.println("PASS " + name);
             else { System.out.println("FAIL " + name); failed = true; }
         } else {
-            if (count == 0 && rep.malformed && !rep.refused)
+            if (count == 0 && rep.refused)
                 System.out.println("PASS " + name);
             else { System.out.println("FAIL " + name); failed = true; }
         }
@@ -992,14 +992,14 @@ fn check_case(name: &str, vocab: &TableVocabulary, wire: &[u8], expect_ok: bool,
     let mut rep = TableReport::default();
     let (count, ok) = root_load_messages(&mut values, vocab, wire, &mut rep);
     if expect_ok {
-        if ok && count == 2 && !rep.malformed && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99 {
+        if ok && count == 2 && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99 {
             println!("PASS {name}");
         } else {
             println!("FAIL {name}");
             *failed = true;
         }
     } else {
-        if !ok && count == 0 && rep.malformed && !rep.refused {
+        if !ok && count == 0 && rep.refused {
             println!("PASS {name}");
         } else {
             println!("FAIL {name}");

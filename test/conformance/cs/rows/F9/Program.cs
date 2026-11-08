@@ -97,9 +97,9 @@ unsafe class Program
                 report.Verdict);
             return false;
         }
-        if (report.Malformed)
+        if (report.Damaged)
         {
-            Console.Error.WriteLine("FAIL: CheckBatchTooLarge report.Malformed is true");
+            Console.Error.WriteLine("FAIL: CheckBatchTooLarge report.Damaged is true");
             return false;
         }
         Console.WriteLine("OK: 2 records into capacity 1 → batch_too_large, refused={0} reason=\"{1}\" verdict={2}",

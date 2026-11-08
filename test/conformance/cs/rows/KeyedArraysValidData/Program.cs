@@ -179,8 +179,8 @@ static class Program
             "the nested table after the keyed array lands: no slide");
         ok &= Check(back.StackCount == 1 && back.Stack[0].Weight == 55,
             "the counted array after the keyed array lands: no slide");
-        ok &= Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0
-            && !r.Malformed && !r.Refused,
+        ok &= Check(r.Unknown == 0 && r.Widened == 0
+            && !r.Damaged && !r.Refused,
             "a clean read moves no counter");
 
         // the law's identity: read a file and save it back; the bytes must be

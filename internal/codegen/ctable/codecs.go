@@ -100,7 +100,7 @@ func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
 // satisfy and the emitter drops it — the same "this check cannot fire" test
 // the bits(N) width clamp already applies when N is the storage width.
 // docs/SPEC-TABLES.md §4's semantics are untouched: an elided end is one
-// that could never have clamped or counted. It is also a build error to keep
+// that could never have out_of_range or counted. It is also a build error to keep
 // it, and the two compilers split the halves: gcc reds `decoded_v < 0ull`
 // (-Wtype-limits) and clang reds `decoded_v < -128`
 // (-Wtautological-type-limit-compare), neither catching the other's
@@ -483,9 +483,9 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	switch kind {
 	case tkBool:
 		// A BOOL BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §3): any other byte
-		// reads true and counts one malformed, and the body reads on
+		// reads true and counts one damaged, and the body reads on
 		g.pf("%s{\n%s    uint8_t bool_byte = table_reader_get8( &%s );\n", ind, ind, rdr)
-		g.pf("%s    if ( bool_byte > 1 ) { r->report->malformed = true; }\n", ind)
+		g.pf("%s    if ( bool_byte > 1 ) { r->report->refused = true; }\n", ind)
 		g.pf("%s    %s = bool_byte != 0;\n%s}\n", ind, lvalue, ind)
 	case tkF32:
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
@@ -499,8 +499,8 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 		if f.HasFloatRange {
 			g.pf("%s    else\n%s    {\n", ind, ind)
 			g.pf("%s        float decoded_f = table_bits_to_float( decoded_bits );\n", ind)
-			g.pf("%s        if ( decoded_f < %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
-			g.pf("%s        else if ( decoded_f > %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+			g.pf("%s        if ( decoded_f < %s ) { decoded_f = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
+			g.pf("%s        else if ( decoded_f > %s ) { decoded_f = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
 			g.pf("%s        %s = decoded_f;\n%s    }\n", ind, lvalue, ind)
 		} else {
 			g.pf("%s    else { %s = table_bits_to_float( decoded_bits ); }\n", ind, lvalue)
@@ -522,7 +522,7 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 			low, high := tableClampEnds(f, width)
 			if low {
 				lo := tableIntLit(rlo, signed, width)
-				g.pf("%s    if ( decoded_v < %s ) { decoded_v = %s; r->report->clamped++; }\n", ind, lo, lo)
+				g.pf("%s    if ( decoded_v < %s ) { decoded_v = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, lo, lo)
 			}
 			if high {
 				hi := tableIntLit(rhi, signed, width)
@@ -530,12 +530,12 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 				if low {
 					lead = "else if"
 				}
-				g.pf("%s    %s ( decoded_v > %s ) { decoded_v = %s; r->report->clamped++; }\n", ind, lead, hi, hi)
+				g.pf("%s    %s ( decoded_v > %s ) { decoded_v = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, lead, hi, hi)
 			}
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 			maxv := (uint64(1) << f.Type.Width) - 1
-			g.pf("%s    if ( decoded_v > %dull ) { decoded_v = %dull; r->report->clamped++; } /* bits(%d) width clamp */\n", ind, maxv, maxv, f.Type.Width)
+			g.pf("%s    if ( decoded_v > %dull ) { decoded_v = %dull; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; } /* bits(%d) width clamp */\n", ind, maxv, maxv, f.Type.Width)
 		}
 		g.pf("%s    %s = decoded_v;\n%s}\n", ind, lvalue, ind)
 	}
@@ -830,7 +830,7 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	rangeMin, rangeMax := "0.0", "0.0"
 	if f.Type.Kind == ir.TBits && !f.HasIntRange {
 		// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The codec has
-		// always clamped a read to it (docs/SPEC-TABLES.md §4); carrying it here
+		// always out_of_range a read to it (docs/SPEC-TABLES.md §4); carrying it here
 		// is what lets a generic walker apply the same bound without
 		// re-deriving it from the type name.
 		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))

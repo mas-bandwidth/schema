@@ -34,12 +34,16 @@ type FixedLineageEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	// Ranges are the WRITER's ranged integer leaves, on the raw scale
+	// (docs/FIXED-FORM-ALGORITHM.md §4.5): a record read under this entry is
+	// clamped to them first, then to this reader's own ranges.
+	Ranges []ir.TableFixedWriterRange
 }
 
 // FixedLineageOf computes the entry a unit's OWN build locks for table `name`:
 // its layout bytes, the wire hash over them and the definitions digest
-// (ir.TableFixedLayoutHash computes the digest AT the hash site, §5.9 #12), and
-// its record size. It is what a lock records at commit, and it is how a test —
+// (ir.TableFixedLayoutHash computes the digest AT the hash site, §5.9 #12), its
+// record size, and its ranged leaves. It is what a lock records at commit, and it is how a test —
 // or a build reading a sibling generation — states an older entry with no lock.
 func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 	for _, st := range ir.TableFixedRoots(u) {
@@ -51,6 +55,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
 			Record: 8 + ir.TableFixedTypeBytes(st),
+			Ranges: ir.TableFixedWriterRanges(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false
@@ -74,4 +79,26 @@ func (g *gen) fixedLineage(st *ir.Struct, own FixedLineageEntry) ([]FixedLineage
 		}
 	}
 	return entries, floor
+}
+
+// fixedWriterFields resolves each lineage entry's writer ranges onto this
+// reader's own fields (ir.TableFixedWriterField): per entry, the reader's
+// fields bounded by that writer's declared ranges. The identity entry holds
+// none, its writer being this reader.
+func fixedWriterFields(st *ir.Struct, entries []FixedLineageEntry, own uint64) [][]*ir.Field {
+	all := make([][]*ir.Field, len(entries))
+	for i, e := range entries {
+		if e.Wire == own {
+			continue
+		}
+		for _, r := range e.Ranges {
+			for _, f := range st.Fields {
+				if w, ok := ir.TableFixedWriterField(f, r); ok {
+					all[i] = append(all[i], w)
+					break
+				}
+			}
+		}
+	}
+	return all
 }

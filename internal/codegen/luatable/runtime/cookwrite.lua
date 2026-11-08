@@ -199,6 +199,8 @@ write_field_value = function(T, f, x, at, w, index)
     return write_ref(T, f, x, at, w, index)
   elseif s == "array" then
     return write_array(T, f, x, at, w, index)
+  elseif s == "string" and f.unbounded then
+    return true -- the extent walk carves its blob and writes its slot (§2.13.1)
   elseif s == "string" then
     local str = x or ""
     if f.bound and #str > f.bound then str = str:sub(1, f.bound) end
@@ -337,7 +339,9 @@ present_offset = function(T, f)
   local at = f.at
   local s = f.shape
   local cur
-  if s == "string" then
+  if s == "string" and f.unbounded then
+    cur = at + 8 -- the blob slot (§2.13.1)
+  elseif s == "string" then
     cur = align_up(at + (f.bound or 0) + 1, 4) + 4
   elseif s == "wstring" then
     cur = align_up(at + ((f.bound or 0) + 1) * 2, 4) + 4
@@ -395,6 +399,7 @@ union_has_extent = function(T, un)
 end
 field_has_extent = function(T, f)
   if f.shape == "map" or (f.shape == "array" and f.list) then return true end
+  if f.shape == "string" and f.unbounded then return true end
   if f.shape == "array" then return field_has_extent(T, f.elem) end
   if f.shape == "pointer" or f.shape == "string_blob" or f.shape == "bytes_blob" then return false end
   if f.shape == "table" then return record_has_extent(T, T.Tables[f.target]) end
@@ -427,6 +432,25 @@ end
 carve_field = function(T, f, x, recordBase, extentBase, cursor, w)
   local at = recordBase + (f.at or 0)
   local s = f.shape
+  if s == "string" and f.unbounded then
+    -- UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): a blob record in the
+    -- holder's extent at eight-byte alignment, `u32 length`, `u32 zero`, the
+    -- bytes and one zero byte, padded to the region's alignment; the slot is
+    -- the self-relative delta to it, and the empty string's slot is null
+    local n = type(x) == "string" and #x or 0
+    if n == 0 then
+      put_uint(w, at, 0, 8)
+      return true
+    end
+    cursor.at = align_up(cursor.at, BLOB_ALIGN)
+    local start = cursor.at
+    cursor.at = start + align_up(BLOB_HEADER + n + 1, T.RegionAlign)
+    local blob = extentBase + start
+    put_uint(w, at, blob - at, 8)
+    put_uint(w, blob, n, 4)
+    put(w, blob + BLOB_HEADER, x)
+    return true
+  end
   if s == "map" then
     local desc = T.Tables[f.entry]
     if desc == nil then return false end

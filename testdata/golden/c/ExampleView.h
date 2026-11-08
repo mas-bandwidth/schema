@@ -46,21 +46,50 @@
 #endif
 #endif
 
-/* The table-wire read report — the permissive contract's ledger. Silence
-   (all zero) means the data matched this reader's schema exactly. */
+
+typedef int example_table_refuse_reason_t;
+enum {
+    SCHEMA_EXAMPLE_TABLE_REFUSE_OK=0,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_NOT_A_COOK=1,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_FOREIGN_ORDER=2,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_BAD_ALIGNMENT=5,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_TRUNCATED=6,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_UNALIGNED_BASE=7,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_BAD_LAYOUT=8,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_UNKNOWN_FORM=9,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_DATA_CYCLE=13,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_INVALID_VALUE=14,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_ALLOCATION_FAILED=15,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_WIRE_DAMAGED=16,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_MALFORMED=17,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_OUT_OF_RANGE=18,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_KIND_MISMATCH=19,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_BASE64_DAMAGED=20,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_NON_FINITE_FLOAT=23,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_BLOB_SHARED=24,
+    SCHEMA_EXAMPLE_TABLE_REFUSE_MISSING_REQUIRED=25
+};
+
+
+/* The table-wire read report — the strict read's ledger. Silence
+   (all zero) means the data matched this reader's schema exactly. A read
+   returns the whole value or refuses the whole load: the refusal lands
+   in refused/refuse_reason below, never as a counter over a kept value. */
 typedef struct example_table_report_t
 {
     int32_t unknown;       /* unknown field ids skipped (newer data) */
-    int32_t kind_mismatch; /* known id, changed type — skipped, never misdecoded */
-    int32_t clamped;       /* out-of-range values clamped to declared bounds */
-    /* a key the TEXT form saw twice: last wins, and the repeat is counted
-       (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-       id twice is legal input whose last occurrence wins, silently (§3). */
-    int32_t duplicate;
-    int malformed;         /* framing damage; decode stopped, partial result kept */
+    /* required fields (docs/SPEC-TABLES.md §2.3) the body omitted. */
+    int32_t missing_required;
     int32_t widened;        /* exact widening of a known kind */
     /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
-       the tolerant read keeps the one node and counts each extra naming. */
+       the strict read keeps the one node and counts each extra naming. */
     int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* a refusal by name (reason), not framing damage */
@@ -68,11 +97,11 @@ typedef struct example_table_report_t
     /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
        TableRefuseReason, the same value a measure's -1 and a cook's open
        answer, set by every plain read name on its refusal and OK otherwise.
-       unknown, widened and retained alone leave it OK. The tolerant reads
-       never write it. */
+       unknown, widened and retained alone leave it OK. */
     int refuse_reason;
+    int damage_reason;
     /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
-       an infinity is refused on its raw bits by every read, the tolerant one
+       an infinity is refused on its raw bits by every read, the strict one
        included, so a read that moves this answers refused, reason
        SCHEMA_TABLE_NON_FINITE_FLOAT, and lands nothing. It is a count only so
        a read can tell its own refusal from a caller's report that already
@@ -160,6 +189,7 @@ typedef struct example_table_field_info_t
     int is_array;           /* fixed or counted array (bytes included) */
     int counted;            /* a _count/_length int32 companion exists (counted arrays, strings, bytes) */
     int optional;           /* a ?T field: a _present companion decides whether it rides */
+    int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
     uint32_t offset;        /* offsetof the storage member */
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
@@ -199,6 +229,8 @@ typedef struct example_table_field_info_t
     int32_t num_tags;
     const char * const * tags;
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
+    uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
+    int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
 } example_table_field_info_t;
 
@@ -219,6 +251,9 @@ typedef struct example_table_type_info_t
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    /* | json = "array" (docs/SPEC-TABLES.md §16.10): the one-field table
+       whose text form is that field's array directly */
+    int json_array;
 } example_table_type_info_t;
 
 
@@ -257,6 +292,45 @@ static SCHEMA_UNUSED int example_table_non_finite_refused( example_table_report_
     report->refused = 1;
     report->reason = SCHEMA_EXAMPLE_TABLE_NON_FINITE_FLOAT;
     return 1;
+}
+static SCHEMA_UNUSED uint32_t schema_example_table_crc32c_( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xffffffffu;
+    int64_t i;
+    int k;
+    for ( i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82f63b78u & mask );
+        }
+    }
+    return crc ^ 0xffffffffu;
+}
+static SCHEMA_UNUSED int schema_example_table_integrity_holds_( const uint8_t * data, int64_t bytes )
+{
+    int64_t n;
+    uint32_t got;
+    if ( data == NULL || bytes < 5 ) { return 0; }
+    n = bytes - 4;
+    got = (uint32_t) data[n] | ( (uint32_t) data[n + 1] << 8 ) | ( (uint32_t) data[n + 2] << 16 ) | ( (uint32_t) data[n + 3] << 24 );
+    return got == schema_example_table_crc32c_( data, n );
+}
+static SCHEMA_UNUSED int64_t schema_example_table_integrity_seal_( uint8_t * buffer, int64_t n )
+{
+    uint32_t crc;
+    if ( n < 0 ) { return -1; }
+    if ( buffer != NULL )
+    {
+        crc = schema_example_table_crc32c_( buffer, n );
+        buffer[n] = (uint8_t) crc;
+        buffer[n + 1] = (uint8_t) ( crc >> 8 );
+        buffer[n + 2] = (uint8_t) ( crc >> 16 );
+        buffer[n + 3] = (uint8_t) ( crc >> 24 );
+    }
+    return n + 4;
 }
 
 #endif /* SCHEMA_EXAMPLE_TABLE_PRIMITIVES */

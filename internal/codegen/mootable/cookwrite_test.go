@@ -23,9 +23,16 @@ func cookWriteProbe(g *generatedUnit, rootName string) string {
 	var b strings.Builder
 	b.WriteString("--!strict\n" + valueDump + moorunHex)
 	b.WriteString(g.requireAll())
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal R = require(\"./table_cookread\")\nlocal W = require(\"./table_cookwrite\")\n")
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal F = require(\"./table_fixed\")\nlocal St = require(\"./schema_tables\")\nlocal R = require(\"./table_cookread\")\nlocal W = require(\"./table_cookwrite\")\n")
 	fmt.Fprintf(&b, `local report = load.newReport()
-local value = load.loadTolerant(%[1]q, inputs.wire, report)
+local d = St.lookup(%[1]q)
+local value: any
+if d.fixed then
+	local vals = F.load(d, F.lookup(%[1]q) :: any, inputs.wire, report)
+	value = if vals ~= nil then vals[1] else nil
+else
+	value = load.load(%[1]q, inputs.wire, report)
+end
 local size, whyMeasure = W.measure(%[1]q, value)
 if size == nil then print("refuse " .. whyMeasure.name .. " " .. tostring(whyMeasure.field)) return end
 local le, whyLE = W.cook(%[1]q, value, false)
@@ -75,6 +82,9 @@ func cookWriteRows(t *testing.T) []cookWriteRow {
 		inst, ok := instances[f[1]]
 		if !ok {
 			t.Fatalf("cook-write %s names no instance", f[1])
+		}
+		if inst.blobShared {
+			continue
 		}
 		out = append(out, cookWriteRow{row: inst, le: f[2], be: f[3]})
 	}
@@ -207,8 +217,9 @@ func cookFromSource(t *testing.T, src, rootName, text string) (wire, le, be []by
 // cookConstructs is a unit of the constructs the manifest carries no
 // instance of: unbounded arrays at every depth (a list of tables that hold
 // lists, of scalars, of wide kinds, of enums, of text, of unions, of
-// pointers), a union arm that is a table holding a list, and a value that holds a
-// list beside a pointed-at holder. The tool cooks it (L1's shapes plus the
+// pointers), a union arm that is a table holding a list, a value that holds a
+// list beside a pointed-at holder, and unbounded text (§2.13.1) as list
+// elements and map keys, empty and absent values among them. The tool cooks it (L1's shapes plus the
 // element classes), and the runtime must write its bytes.
 const cookConstructs = `package cookprobe
 
@@ -227,6 +238,8 @@ table Row
     items []Sample
     label int32
     names []string(8)
+    lines []string
+    maybe []?string
 }
 
 table Wrap
@@ -255,12 +268,13 @@ table Save
     pinned *Row
     one    Item
     past   int32 | was = "after"
+    byname map[string]int32
 }
 `
 
 const cookConstructsJSON = `{
   "rows": [
-    {"items": [{"v": 1, "wide": 340282366920938463463374607431768211455, "fx": 2.5, "tag": "Write"}, {"v": -2, "fx": -999.25}], "label": 11, "names": ["a", "bcd"]},
+    {"items": [{"v": 1, "wide": 340282366920938463463374607431768211455, "fx": 2.5, "tag": "Write"}, {"v": -2, "fx": -999.25}], "label": 11, "names": ["a", "bcd"], "lines": ["", "an unbounded line"], "maybe": [null, "", "kept"]},
     {"items": [], "label": 12, "names": []},
     {"items": [{"v": 3}], "label": 13, "names": ["eight888"]}
   ],
@@ -271,7 +285,8 @@ const cookConstructsJSON = `{
   "linked": [{"items": [{"v": 21}], "label": 22, "names": ["z"]}, null],
   "pinned": {"items": [], "label": 31, "names": []},
   "one": {"wrap": {"run": [{"v": 41}], "n": 5}},
-  "past": 51
+  "past": 51,
+  "byname": {"a key well past any short bound": 2, "k": 1}
 }`
 
 // TestMooCookWriteConstructsMatchTheTool: the constructs no manifest instance
@@ -519,9 +534,11 @@ func TestMooCookWriteRefusals(t *testing.T) {
 // shared byte buffer refused as the wire refuses it, a wide string's code
 // units written low byte first in a big-endian cook, a map's slot delta one
 // slot long, the arrays a map's entries hold left uncarved, a map's entries
-// left in the value's order, a repeated key let through, and a field the save
-// elides carved as if it rode. The unsabotaged runs above are each control's
-// reversed witness.
+// left in the value's order, a repeated key let through, a field the save
+// elides carved as if it rode, an unbounded text's slot delta one slot long,
+// an empty unbounded text given a blob record instead of a null slot, and the
+// reader landing a present null slot as absent rather than the empty string.
+// The unsabotaged runs above are each control's reversed witness.
 func TestMooCookWriteNegativeControls(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
@@ -558,6 +575,9 @@ func TestMooCookWriteNegativeControls(t *testing.T) {
 		{"maporder", plant("table_cookwrite.moo", "pcall(Save.mapOrder, fd, val)", "pcall(table.clone, val)"), false, false, true},
 		{"maprepeat", plant("table_cookwrite.moo", "if not Save.keyLess(keyfd, order[i - 1], order[i]) then", "if false then"), false, false, true},
 		{"liveness", plant("table_cookwrite.moo", "if Save.guardHolds(fd, v) and (fd.present == nil or v[fd.present] == true) then", "if true then"), false, false, true},
+		{"textslot", plant("table_cookwrite.moo", "putNum64(ctx, at, blob - at)", "putNum64(ctx, at, blob - at + 8)"), true, true, false},
+		{"textnull", plant("table_cookwrite.moo", "if x == nil or x == \"\" then\n\t\treturn true", "if x == nil then\n\t\treturn true"), false, true, false},
+		{"textempty", plant("table_cookread.moo", "v[slot] = if blob == nil then \"\" else buffer.tostring(blob)", "v[slot] = if blob == nil then nil else buffer.tostring(blob)"), false, true, false},
 	} {
 		if c.manifest {
 			fails, _, _ := cookWriteFailures(t, cookWriteRows(t), c.mutate)

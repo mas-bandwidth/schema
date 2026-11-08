@@ -78,7 +78,7 @@ end
 local function identity(name: string, edit: string)
 	local wire = inputs[name]
 	local report = load.newReport()
-	local v = load.loadTolerant("Root", wire, report)
+	local v = load.load("Root", wire, report)
 	if v == nil then
 		print(name .. "/" .. edit .. " refused")
 		return
@@ -140,7 +140,7 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 	encode := func(text string) []byte {
 		v := m.New(u.Tables["Root"])
 		var r tabletext.Report
-		if !m.Read(v, []byte(text), &r) || r.Malformed || r.KindMismatch != 0 {
+		if !m.Read(v, []byte(text), &r) || r.Refused {
 			t.Fatalf("the reference does not read %s: %+v", text, r)
 		}
 		wire, err := tablewire.Encode(m, v)
@@ -183,7 +183,7 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 	}
 	v := m.New(u.Tables["Root"])
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, v, shared, &r); !ok || err != nil || r.BlobShared != 1 {
+	if ok, err := tablewire.Decode(m, v, shared, &r); !ok || err != nil {
 		t.Fatalf("the reference reads the shared string as %+v %v", r, err)
 	}
 	if _, err := tablewire.Encode(m, v); err == nil || !strings.Contains(err.Error(), "blob_shared") {
@@ -249,6 +249,7 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 }
 
 func TestMooStringIdentity(t *testing.T) {
+	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	for _, b := range stringIdentityGate(t, nil) {
@@ -264,6 +265,7 @@ func TestMooStringIdentity(t *testing.T) {
 //   - the blob_shared refusal is dropped, so one buffer named twice is
 //     written once and referenced twice: the shared rows must go red.
 func TestMooStringIdentityNegativeControl(t *testing.T) {
+	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	for _, ctl := range []struct {

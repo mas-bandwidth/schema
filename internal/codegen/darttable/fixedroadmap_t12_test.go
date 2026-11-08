@@ -425,7 +425,7 @@ fixed table Root
 	// dart/R27 "the corpus round trip" — the C++ reference's byte oracle is
 	// build/fixedform-corpus/manifest.txt; every record of every file the
 	// manifest names must survive a load and a byte-identical rewrite through
-	// this leg's own reader and writer. The four files whose bytes the
+	// this leg's own reader and writer. The files whose bytes the
 	// standard says a rewrite does not restore (a clamp, an older writer's
 	// layout) assert the cited bytes instead: fixedcorpus_roundtrip_test.go,
 	// fixedCorpusContracts, holds each with its section.

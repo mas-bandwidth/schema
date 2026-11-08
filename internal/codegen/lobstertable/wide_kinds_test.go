@@ -117,13 +117,16 @@ func wideRowWire(t *testing.T, row loadRow) []byte {
 func compareWideRows(t *testing.T, g *loadUnit, rows []loadRow, constructs []string, counts map[string]int, refusals map[string]int) {
 	t.Helper()
 	label := strings.Join(constructs, ", ")
+	all := compareReadOutcomes(t, g, rows)
 	var kept []loadRow
 	var want [][]byte
-	for _, row := range rows {
+	for i, row := range rows {
 		wire := wideRowWire(t, row)
 		saved, err := goSave(g, row.root, wire)
 		if err != nil {
-			t.Logf("%s %s: the Go writer refuses it and it is not compared: %v", label, row.name, err)
+			if all.goLine[i] == "read" {
+				t.Fatalf("%s: accepted value cannot save: %v", row.name, err)
+			}
 			for _, construct := range constructs {
 				refusals[construct]++
 			}
@@ -216,7 +219,7 @@ func wideUnitConstructs(u *ir.Unit) []string {
 	return out
 }
 
-// TestLobsterWideKinds carries the wide kinds across the variable table wire
+// TestLobsterWideKinds carries the wide kinds across each declared table wire
 // (docs/SPEC-TABLES.md §2.11, §3, §4; SPEC.md §4.13; docs/PORT-LOBSTER.md,
 // THE LOAD): a timestamp, both one-sided ranges, an enum, an escape and
 // wstring(N) on every manifest unit that uses them, plus the card's own
@@ -244,8 +247,7 @@ func TestLobsterWideKinds(t *testing.T) {
 		}
 		g, err := generateLoadUnit(t, paths)
 		if err != nil {
-			t.Logf("unit %s is refused, so its rows are not compared: %v", key, err)
-			continue
+			t.Fatalf("unit %s: %v", key, err)
 		}
 		constructs := wideUnitConstructs(g.u)
 		if len(constructs) == 0 {
@@ -258,7 +260,7 @@ func TestLobsterWideKinds(t *testing.T) {
 	if err := os.WriteFile(src, []byte(wideKindsSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, []string{src})
+	g, err := generateVariableFixtureUnit(t, []string{src})
 	if err != nil {
 		t.Fatalf("the surface refuses the wide-kind sample: %v", err)
 	}
@@ -277,7 +279,7 @@ func TestLobsterWideKinds(t *testing.T) {
 	labelUnits := []uint16{'A', 0xD83D, 0xDE00}
 	sample := func(name string, f float64) loadRow {
 		return loadRow{kind: "instance", name: name, unit: "widekinds", root: "Sample",
-			data: wideWire(t, g, opened, -5, 500, 2, labelUnits, f)}
+			data: wideWire(t, g, opened, 5, 50, 2, labelUnits, f)}
 	}
 	finite := []loadRow{
 		sample("negative_zero", math.Copysign(0, -1)),
@@ -288,11 +290,20 @@ func TestLobsterWideKinds(t *testing.T) {
 	// an infinity is refused by every read and the save (finite_test.go).
 	compareWideRows(t, g, finite, []string{"finite-float (-0, subnormal)", "timestamp", "one-sided-range (minimum and maximum)", "enum", "wstring"}, counts, refusals)
 
+	// Invalid reader values are made by damaging lawful writer output; the
+	// writer itself must never be asked to manufacture an out-of-range value.
+	below := sample("below_minimum", 1.0)
+	below.data = patch64(t, below.data, 5, ^uint64(4)) // -5 in two's complement
+	above := sample("above_maximum", 1.0)
+	above.data = patch32(t, above.data, 50, 500)
+	compareWideRows(t, g, []loadRow{below, above}, []string{"one-sided-range (minimum and maximum)"}, counts, refusals)
+
 	escape := sample("escape", 1.0)
+	_, originalDump := goLoad(g.u, "Sample", escape.data)
 	escape.data = withEscape(t, escape.data, []byte{0xde, 0xad, 0xbe, 0xef})
-	line, _ := goLoad(g.u, "Sample", escape.data)
-	if !strings.HasPrefix(line, "1,") {
-		t.Fatalf("the reference does not count the escape as one unknown field (%s): the wire does not exercise kind 31", line)
+	line, dump := goLoad(g.u, "Sample", escape.data)
+	if line != "read" || dump != originalDump {
+		t.Fatalf("valid unknown escape must preserve the complete value: %s", line)
 	}
 	compareWideRows(t, g, []loadRow{escape}, []string{"escape"}, counts, refusals)
 
@@ -307,7 +318,7 @@ func TestLobsterWideKinds(t *testing.T) {
 		refused += n
 	}
 	if refused > 0 {
-		t.Logf("%d manifest rows were refused by the Go writer and not compared", refused)
+		t.Logf("%d rows were checked as whole-load refusals", refused)
 	}
 }
 
@@ -320,7 +331,7 @@ func TestLobsterWideKindsNegativeControl(t *testing.T) {
 	if err := os.WriteFile(src, []byte(wideKindsSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, []string{src})
+	g, err := generateVariableFixtureUnit(t, []string{src})
 	if err != nil {
 		t.Fatalf("the surface refuses the wide-kind sample: %v", err)
 	}

@@ -135,9 +135,9 @@ func TestSpecGoS3WireAndFixedForm(t *testing.T) {
 			want: []string{
 				"THREE BOUNDS TAKE A DECLARED FIXED TABLE OUT OF FORM `3`, NOT ONE",
 				"PAST THE 4096-LEAF CAP IS A COMPILE ERROR",
-				"Go does not warn",
+				"carries form `3` in a\n  regional unit as in a plain one",
 			},
-			stale: []string{"The one thing that takes a declared fixed table out of form `3` is the RECORD"},
+			stale: []string{"The one thing that takes a declared fixed table out of form `3` is the RECORD", "keeps form `1` in a regional unit"},
 		},
 		{
 			// §3.4 OPS: Go's op set has no union op (gotable/fixedruntime.go,

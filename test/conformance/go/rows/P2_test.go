@@ -65,10 +65,10 @@ func TestRowP2(t *testing.T) {
 	plan := make([]tblp3.TableFixedEntry, 64)
 	var report tblp3.TableReport
 	n := tblp3.ChainFixedLoad(loaded, w1, plan, &report)
-	if n != int64(len(values)) || report.Malformed || report.Verdict != tblp3.TableOpenOk {
+	if n != int64(len(values)) || report.Refused() || report.Verdict != tblp3.TableOpenOk {
 		t.Fatalf("P2: the read of the first write is not clean: n=%d report=%+v", n, report)
 	}
-	if report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 || report.Duplicate != 0 {
+	if report.Unknown != 0 {
 		t.Fatalf("P2: a clean round trip moved a counter: %+v", report)
 	}
 	t.Logf("P2: the read of the first write is clean: n=%d, no counter moved", n)
@@ -93,7 +93,7 @@ func TestRowP2(t *testing.T) {
 		raw[i] = 0x5A
 	}
 	var poisonReport tblp3.TableReport
-	if n := tblp3.ChainFixedLoad(out, w1, plan, &poisonReport); n != int64(len(values)) || poisonReport.Malformed || poisonReport.Verdict != tblp3.TableOpenOk {
+	if n := tblp3.ChainFixedLoad(out, w1, plan, &poisonReport); n != int64(len(values)) || poisonReport.Refused() || poisonReport.Verdict != tblp3.TableOpenOk {
 		t.Fatalf("P2: the poisoned-storage read is not clean: n=%d report=%+v", n, poisonReport)
 	}
 	w3 := make([]byte, need)
@@ -109,7 +109,7 @@ func TestRowP2(t *testing.T) {
 	// W4: the same storage again, nothing reset between the passes (the
 	// gate's own second reuse).
 	var reuseReport tblp3.TableReport
-	if n := tblp3.ChainFixedLoad(out, w1, plan, &reuseReport); n != int64(len(values)) || reuseReport.Malformed || reuseReport.Verdict != tblp3.TableOpenOk {
+	if n := tblp3.ChainFixedLoad(out, w1, plan, &reuseReport); n != int64(len(values)) || reuseReport.Refused() || reuseReport.Verdict != tblp3.TableOpenOk {
 		t.Fatalf("P2: the reused-storage read is not clean: n=%d report=%+v", n, reuseReport)
 	}
 	w4 := make([]byte, need)

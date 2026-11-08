@@ -57,7 +57,7 @@ func TestCyclicWireIsDamageElixir(t *testing.T) {
 	canonical := func(name, table string) string {
 		value := model.New(model.Lookup(table))
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(model, value, read(name), &report); !ok || err != nil || report.Malformed {
+		if ok, err := tablewire.Decode(model, value, read(name), &report); !ok || err != nil || report.Refused {
 			t.Fatalf("canonical %s decode: ok=%v err=%v report=%+v", name, ok, err, report)
 		}
 		wire, err := tablewire.Encode(model, value)
@@ -365,7 +365,7 @@ func TestCycleSlotKindsElixir(t *testing.T) {
 					decoded := model.New(model.Lookup("Node"))
 					var r tabletext.Report
 					ok, err := tablewire.Decode(model, decoded, candidate, &r)
-					if !ok || err != nil || r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 {
+					if !ok || err != nil || r.Refused || r.Unknown != 0 {
 						continue
 					}
 					first, _ := decoded.FieldByKey("left")
@@ -389,7 +389,7 @@ func TestCycleSlotKindsElixir(t *testing.T) {
 			}
 			back := model.New(model.Lookup("Node"))
 			var report tabletext.Report
-			if ok, err := tablewire.Decode(model, back, twin, &report); !ok || err != nil || report.Malformed {
+			if ok, err := tablewire.Decode(model, back, twin, &report); !ok || err != nil || report.Refused {
 				t.Fatalf("%s clean twin is not valid: ok=%v err=%v report=%+v", kind, ok, err, report)
 			}
 			if bytes.Count(twin, pattern) != 1 {

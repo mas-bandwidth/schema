@@ -55,7 +55,7 @@ const tableVariableJsonSource = `
             f.SetChild(owner, index, null);
             if (label.Type != null)
             {
-                if (label.Type.Id != f.PointerTypeId) { input.Report.KindMismatch++; }
+                if (label.Type.Id != f.PointerTypeId) { RefuseText(ref input, "kind_mismatch"); }
                 else { f.SetChild(owner, index, label.Value); }
             }
             return true;
@@ -97,7 +97,7 @@ const tableVariableJsonSource = `
                 malformed = true;
             }
         }
-        if (malformed) { input.Report.KindMismatch++; return true; }
+        if (malformed) { return RefuseText(ref input, "kind_mismatch"); }
         byte[] bytes = new byte[symbols * 6 / 8];
         int count = 0, held = 0;
         uint accumulator = 0;

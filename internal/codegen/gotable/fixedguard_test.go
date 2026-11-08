@@ -11,8 +11,8 @@ import (
 )
 
 // ITEM 1. A union tag is compared WHOLE. A 256-arm union's tag is two bytes, so
-// a foreign 0x0101 is the ordinal 257 and names no arm; compared at ONE byte it
-// is 1 and fires arm 1.
+// a foreign 0x0101 is the ordinal 257 and names no arm, so the load refuses
+// out_of_range; compared at ONE byte it would be 1 and fire arm 1.
 func TestFixedGuardIsComparedAtItsFullWidth(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("package probe\ntype Cell { n int32 }\nunion Wide\n{\n")
@@ -38,17 +38,16 @@ func TestForeignTwoByteTagFiresNoArm(t *testing.T) {
 	got := make([]Host, 1)
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
-	if n := HostFixedLoadTolerant(got, buf, plan, &r); n != 1 {
-		t.Fatalf("load n=%d %+v", n, r)
+	if n := HostFixedLoad(got, buf, plan, &r); n != -1 || r.Reason != "out_of_range" {
+		t.Fatalf("a foreign two-byte tag landed: n=%d %+v", n, r)
 	}
-	if got[0].Pick.Type != WideTypeNone {
-		t.Fatalf("a foreign two-byte tag landed arm %d", got[0].Pick.Type)
+	if got[0].Pick.Type != WideTypeNone || got[0].Pick.A0.N != 0 {
+		t.Fatalf("the refused load wrote arm %d N=%d", got[0].Pick.Type, got[0].Pick.A0.N)
 	}
-	if got[0].Pick.A0.N != 0 {
-		t.Fatalf("arm 1 was filled by a tag that is not 1: N=%d", got[0].Pick.A0.N)
-	}
-	if r.Clamped != 1 {
-		t.Fatalf("a tag past the arm count counts clamped once, got %d (%+v)", r.Clamped, r)
+	// THE CONTROL: the tag 0x0001 is arm 1 at two bytes, and it lands
+	body[0], body[1] = 0x01, 0x00
+	if n := HostFixedLoad(got, buf, plan, &r); n != 1 || got[0].Pick.Type != WideTypeA0 || got[0].Pick.A0.N != 0x539 {
+		t.Fatalf("CONTROL: arm 1 did not land: n=%d %+v %+v", n, got[0].Pick, r)
 	}
 }
 `)
@@ -116,9 +115,9 @@ func TestForgedCountLandsTheWritersBound(t *testing.T) {
 `)
 }
 
-// ITEM 3. An ordinal past the writer's variant count lands None and COUNTS on
-// the compiled plan exactly as it does on the identity one (§5.4).
-func TestFixedForgedOrdinalCountsOnBothPlans(t *testing.T) {
+// ITEM 3. An ordinal past the writer's variant count refuses out_of_range on
+// the compiled plan exactly as it does on the identity one (§4.6).
+func TestFixedForgedOrdinalRefusesOnBothPlans(t *testing.T) {
 	runGenerated(t, `package probe
 enum Grade
 {
@@ -136,7 +135,7 @@ import (
 	"unsafe"
 )
 
-func TestForgedOrdinalCountsOnBothPlans(t *testing.T) {
+func TestForgedOrdinalRefusesOnBothPlans(t *testing.T) {
 	buf := make([]byte, HostFixedMeasure(1))
 	if n := HostFixedSave([]Host{{Tail: 7}}, buf); n != int64(len(buf)) {
 		t.Fatalf("save %d", n)
@@ -146,11 +145,8 @@ func TestForgedOrdinalCountsOnBothPlans(t *testing.T) {
 
 	got := make([]Host, 1)
 	var identity TableReport
-	if n := HostFixedLoadTolerant(got, buf, make([]TableFixedEntry, 256), &identity); n != 1 {
-		t.Fatalf("load n=%d %+v", n, identity)
-	}
-	if got[0].G != GradeNone || identity.Clamped != 1 {
-		t.Fatalf("identity plan: g=%d clamped=%d", got[0].G, identity.Clamped)
+	if n := HostFixedLoad(got, buf, make([]TableFixedEntry, 256), &identity); n != -1 || identity.Reason != "out_of_range" {
+		t.Fatalf("identity plan: a forged ordinal landed: n=%d %+v", n, identity)
 	}
 
 	parsed, why := tableFixedParseLayout(HostFixedLayout)
@@ -163,18 +159,19 @@ func TestForgedOrdinalCountsOnBothPlans(t *testing.T) {
 	if made <= 0 {
 		t.Fatalf("compile made %d", made)
 	}
+	// THE CHECK LOOP refuses the forged ordinal before the run lands a byte
+	if why := tableFixedTextRefusal(plan, made, record[8:]); why != "out_of_range" {
+		t.Fatalf("compiled plan: a forged ordinal is %q, want out_of_range", why)
+	}
+	record[8] = 2 // the control: Silver, ordinal 2
+	if why := tableFixedTextRefusal(plan, made, record[8:]); why != "" {
+		t.Fatalf("CONTROL: a lawful ordinal is %q", why)
+	}
 	var v Host
 	HostReset(&v)
 	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &compiled)
-	// THE FORGED ORDINAL'S COUNT IS THE BOUNDS PASS'S, NOT THE OP'S (§5.4, fix
-	// 27): the ordinal op lands None and moves nothing, and the generated read
-	// counts it in tableFixedForgedBounds, which this run must call too.
-	tableFixedForgedBounds(plan, made, record[8:], &compiled)
-	if v.G != GradeNone {
-		t.Fatalf("compiled plan: a forged ordinal landed %d", v.G)
-	}
-	if compiled.Clamped != 1 {
-		t.Fatalf("compiled plan: a forged ordinal counts clamped once, got %d", compiled.Clamped)
+	if v.G != GradeSilver {
+		t.Fatalf("CONTROL: a lawful ordinal landed %d", v.G)
 	}
 }
 `)
@@ -199,7 +196,7 @@ func TestPlanTooLargeOnTheIdentityLane(t *testing.T) {
 		t.Fatalf("save %d", n)
 	}
 	var r TableReport
-	if n := HostFixedLoadTolerant(make([]Host, 1), buf, make([]TableFixedEntry, 1), &r); n != -1 {
+	if n := HostFixedLoad(make([]Host, 1), buf, make([]TableFixedEntry, 1), &r); n != -1 {
 		t.Fatalf("a one-entry plan slice read n=%d", n)
 	}
 	if r.Reason != "plan_too_large" {
@@ -213,21 +210,21 @@ func TestARefusalHasCountersAllZeroAndAReportIsReusable(t *testing.T) {
 		t.Fatalf("save %d", n)
 	}
 	// A report carrying a previous read's counters, then a refusal.
-	r := TableReport{Clamped: 3, Unknown: 2, Widened: 1}
+	r := TableReport{Unknown: 2, Widened: 1}
 	form1 := make([]byte, len(buf))
 	copy(form1, buf)
 	form1[0] = 1
-	if n := HostFixedLoadTolerant(make([]Host, 1), form1, make([]TableFixedEntry, 256), &r); n != -1 {
+	if n := HostFixedLoad(make([]Host, 1), form1, make([]TableFixedEntry, 256), &r); n != -1 {
 		t.Fatalf("a form-1 file read n=%d", n)
 	}
 	if r.Reason != "previous_form" {
 		t.Fatalf("reason %q", r.Reason)
 	}
-	if r.Clamped != 0 || r.Unknown != 0 || r.Widened != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("a refusal by name has counters all zero: %+v", r)
 	}
 	// THE SAME REPORT, REUSED: a clean read reports clean.
-	if n := HostFixedLoadTolerant(make([]Host, 1), buf, make([]TableFixedEntry, 256), &r); n != 1 {
+	if n := HostFixedLoad(make([]Host, 1), buf, make([]TableFixedEntry, 256), &r); n != 1 {
 		t.Fatalf("the clean read n=%d %+v", n, r)
 	}
 	if r.Verdict == TableOpenRefused || r.Reason != "" {

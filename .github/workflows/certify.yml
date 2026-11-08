@@ -159,6 +159,10 @@ jobs:
       # The moo pin `make test-moo` requires (make/moo.mk), built once per
       # runner image and cached under the pin.
       - uses: ./.github/actions/moo
+      # The Python pins `make test-python` requires (make/python-toolchain.mk:
+      # two CPython interpreters and mypy), built once per runner image and
+      # cached under the pins.
+      - uses: ./.github/actions/python
       # The BEAM toolchain, same versions as the Makefile's dist/ pins
       # (generated Elixir is self-contained — Erlang/OTP + Elixir are the
       # only dependencies, so there is no serialize.elixir clone above).
@@ -375,6 +379,10 @@ jobs:
       # The moo pin `make test-moo` requires (make/moo.mk), built once per
       # runner image and cached under the pin.
       - uses: ./.github/actions/moo
+      # The Python pins `make test-python` requires (make/python-toolchain.mk:
+      # two CPython interpreters and mypy), built once per runner image and
+      # cached under the pins.
+      - uses: ./.github/actions/python
 
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
@@ -533,6 +541,10 @@ jobs:
       # The moo pin `make test-moo` requires (make/moo.mk), built once per
       # runner image and cached under the pin.
       - uses: ./.github/actions/moo
+      # The Python pins `make test-python` requires (make/python-toolchain.mk:
+      # two CPython interpreters and mypy), built once per runner image and
+      # cached under the pins.
+      - uses: ./.github/actions/python
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           otp-version: '29.0.5'
@@ -788,6 +800,12 @@ jobs:
       # caches it under the pin.
       - uses: ./.github/actions/moo
         if: matrix.moo != ''
+
+      # The Python pins (make/python-toolchain.mk), for a row naming `python`:
+      # .github/actions/python builds them once per runner image and caches
+      # them under the pins.
+      - uses: ./.github/actions/python
+        if: matrix.python != ''
 
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         if: matrix.otp != ''

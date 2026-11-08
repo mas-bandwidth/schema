@@ -7,7 +7,7 @@ until every technique on it is carried or cited in the port's column; and a
 blind read of the port reports two lists against it — methods the port uses
 that the register lacks, and methods the register has that the port lacks.
 
-The data lives under `testdata/conformance/tables` and names no language
+The data lives under `testdata/conformance/tables` and fixes one contract for every language
 (`FORMAT.md` there states every file shape). This page states what a language's
 DRIVER must do. Registering a port is one driver at `<lang>/driver`: the
 harness discovers it, and nothing lists it.
@@ -19,7 +19,7 @@ make conformance-pin                 rewrite the half the reference leg writes
 make conformance-negative-control    prove the harness can go red
 ```
 
-**Seven negative controls stand behind it, and each localises a different
+**Negative controls stand behind it, and each localises a different
 thing** — a harness that has never gone red is watching nothing, and one that
 goes red everywhere localises nothing:
 
@@ -34,9 +34,12 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
 | `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |
-| `conformance-negative-control-lua` | the load report's unknown counter in the Lua runtime, in the emitter | `lua / report`, `lua / retain` | `wire`, `json-read`, `retain-save` |
 | `conformance-negative-control-lua-walk` | the field-key match in the Lua `FromJson`, in the emitter | `lua / json-read`, `lua / json-hostile` | `json-write`, `wire`, `cook-write` |
 | `conformance-negative-control-rust-walk` | the field-key match in the Rust emitter's `json_fields` reader | `rust / json-read` | `json-write`, `wire` |
+
+A qualifying negative control changes an accepted value, canonical write-back,
+or a required acceptance/refusal. Changing a diagnostic counter or reason alone
+must not change the comparison.
 
 Two of those rows are the reason two surfaces exist at all. The row-dump one is
 why `block-dump` is separate from `block`: `Open` reads the prologue and the
@@ -90,6 +93,10 @@ language" below, where both shapes are stated.
 | 0 | the surface ran |
 | 2 | this backend does not implement it — the matrix prints ABSENT |
 | anything else | the driver failed; the matrix prints FAIL and the harness prints stderr |
+
+An expected semantic refusal scores PASS. A historical `.absent` file may
+transport that refusal; the feature-absence rules below apply only when the
+case requires an accepted value.
 
 **A CASE may be absent too, and it is said the same way.** A driver that
 cannot answer one case of a surface it otherwise implements writes
@@ -161,67 +168,67 @@ One process per surface, so a runtime starts once rather than once per case.
 | surface | for each | the driver writes | the harness compares against |
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
-| `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes; for a row whose message-form wire is `-` (a variable table), `<name>.absent` holding `variable table: the message form is fixed tables only (SPEC-TABLES §3.3)` | the message-form golden, or that exact reason |
-| `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value when the read reads (not refused, not malformed) | `reports.txt`, then `report-values/<case>.json` |
-| `framing` | `framing` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value unless the row says `no-value` or the read was refused | the verdict and the value file on the row (docs/LAYERS/1-framing.md) |
-| `retain` | `retain` | LoadRetain the wire at the row's two capacities, MeasureRetain, SaveRetain, the counters as `<retained>,<retain_lost>,<unknown> <save lost>\n` | the counters in the manifest |
+| `message` | `message` | AnnounceRead the connection, LoadMessages the entire batch, then SaveMessages of every accepted body; an explicit refusal for a row whose message wire is `-` | the complete message golden, or refusal |
+| `report` | `report` | `read\n` and the complete ToJson value in `<case>`, plus the canonical write-back wire in `<case>.wire`, or `refused\n` alone | `reports.txt`, then `report-values/<case>.json` and `save-wire/<case>.bin` for accepted reads |
+| `framing` | `framing` | the same verdict and value in `<case>`, and the wire in `<case>.wire` | the hand-authored verdict and value file, and `save-wire/<case>.bin` |
+| `retain` | `retain` | LoadRetain at the row's capacities, then `read\n` and the complete known ToJson value, or `refused\n` | `retain-values/<case>.json` after acceptance |
 | `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES | the pinned save |
-| `json-read` | `instance` | the TOLERANT text read (below) of `json/<name>.json`, Save, the bytes | the wire golden |
+| `json-read` | `instance` | the single text read of `json/<name>.json`, then Save of the accepted value | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
-| `json-hostile` | `json-hostile` | the TOLERANT text read of `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n` then ToJson of the value, or `refused\n` | the verdict in the manifest, then `<tree>.value.json`; the row's uncarried verdict alone for an exempt port |
+| `json-hostile` | `json-hostile` | the single text read of `<tree>/<root>.json`, then `read\n` and the complete value in `<case>` plus the wire in `<case>.wire`, or `refused\n` alone | the standard verdict for every port, then `<tree>.value.json` and `save-wire/<case>.bin` on acceptance |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
-| `cook-write` | `cook-write` | Load the instance's wire, `Cook` it in each byte order, the bytes, as `<instance>` and `<instance>-be` | the two files `schema cook` wrote |
+| `cook-write` | `cook-write` | construct the recipe's value, Cook it in both byte orders as `<instance>` and `<instance>-be` | the tool's two cooked files from the same construction |
 | `cook-foreign` | `cook` | byte-swap the file's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
 | `block` | `block` | Open the image, `open\n` or `refuse\n` | `open\n` |
 | `block-foreign` | `block` | byte-swap the image's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
 | `block-dump` | `block` | Open the image, the canonical ROW dump | `block/<name>.dump` |
 | `forgery` | `forgery` (`block`) | Open the forged file at the claimed extent, `open\n` or `refuse\n` | the verdict in the manifest |
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
-| `cook-reason` | `refusal` (`cook`) | Open the forged cook, the reason beside the null as the enum's value name, or `ok` | the reason in the manifest |
-| `block-reason` | `refusal` (`block`) | Open the forged block, the reason beside the false as the enum's value name, or `ok` | the reason in the manifest |
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
 
-**THE DECODED VALUE IS COMPARED, NOT ONLY THE COUNTERS.** A `report` row and a
-`json-hostile` row whose read reads owe the §16 text of the value the read
-left, after the report line, exactly as a `framing` row with a value does. Two
-legs can count the same events and land different values (a float32 token
-rounded twice, a uint64 past 2^63 clamped by a signed compare), and only the
-value says so. The expected text is the ORACLE's, written by
-`make conformance-generate` from internal/tablewire and internal/tabletext:
-`testdata/conformance/tables/report-values/<case>.json` for a report row, and
-`<tree>.value.json` beside the tree for a hostile row (beside it, never inside
-it, because the tree is what `schema pack` reads). A refused or damaged read
-owes no value. A port on a hostile row's `uncarried` verdict is held to that
-line alone. A leg with no text writer for a root answers the report line alone
-and `<case>.absent` beside it: the line is still compared, and the value
-counts as the missing feature it is. When the line agrees and the value does
-not, the failure names the value's first differing line.
+**Every read has one outcome: acceptance or refusal.** Binary, message,
+retaining and text readers return the complete value or refuse the whole read.
+An accepted `report`, `framing` or `json-hostile` row owes its complete canonical
+JSON value after `read\n` AND the canonical write-back wire in `<case>.wire`:
+the value is one value in two forms, and a leg that decodes the right JSON but
+saves different bytes has not returned it. `retain` owes its complete value and,
+where the row pins one, its retained save. Refused rows emit `refused\n` and no
+value and no wire. A message read and its write-back cover every body in the
+batch.
 
-**THE TEXT READ IS THE TOLERANT ONE, ON EVERY LEG.** `json-read` and
-`json-hostile` call one entry point: `<Root>FromJsonTolerant` where the leg's
-emitter names one (Go, C, C++, Lua, Luau, Squirrel, Goose), and the plain
-`FromJson` where the emitter has not taken docs/SPEC-TABLES.md §6.5 and its
-plain name is still its tolerant read (C#, Dart, Elixir, Java, JavaScript,
-MOO, Lobster, Rust). The tolerant read is the one whose value and counters a
-row can compare; a `json-read` instance is silent, so its answer is the same
-either way, and a driver that called the strict read there would be calling a
-different function than `json-hostile` holds to the oracle.
+The oracle generates `report-values/<case>.json`, `retain-values/<case>.json`
+and `<tree>.value.json`; framing values are authored from the rule. A leg with
+no text writer may supply the read verdict plus `<case>.absent`, but its missing
+value is incomplete coverage. A wrong verdict cannot be excused by that marker.
 
-**A `json-hostile` ROW MAY EXEMPT A PORT THAT HAS NOT TAKEN ITS RULE YET**
-(docs/SPEC-TABLES.md §16.3). The manifest line
-`json-hostile <case> <unit> <root> <tree> <verdict> carried-by=<ports> uncarried=<verdict>`
-states the standard's answer and the ports that carry it; a port named in
-`carried-by` owes `<verdict>`, and every other port still owes the `uncarried`
-verdict its behaviour gives, because the rule was held first in Go and every
-other backend keeps its behaviour until its port. The harness scores each port
-against the answer it owes and prints the exemption by name — it never skips
-the row. `str-illformed-at-bound` is the first such row: Go carries the
-`string_not_utf8` refusal and C++ keeps `0,0,0,1,0,false,read`. The zero-escape
-rows are the refusal pair: Go answers `refused` and another port keeps
-`0,0,0,0,0,false,read`, because it stores the zero byte as text. The mark is for
-reuse: the lone-surrogate rows take it as their ports land.
+Refusal reasons, detection order, counters, retention counts and allocation
+measurements are local diagnostics. Legacy seven-field report lines remain
+readable transport: an explicit refused or malformed flag means refusal, while
+repair counters never select the verdict. Drivers should emit the plain verdict.
+The retired tolerant/strict split is not an alternate conformance path.
+
+**#2778 IS NOT TAKEN, EXCEPT AS LAYER-4 WORK.** The six legs that pull request
+#2778 gives a strict read (cs, java, js, rust, dart, elixir) pair it with a
+`ReadStrict` driver entry and a `strict-reason` surface, and the verdict-only
+ruling (`refusal-verdict-only`) retires that surface: this harness compares no
+reason name, detection order or diagnostic text, and its row types and surfaces
+carry no such column. The harness therefore takes nothing from #2778. The
+`ReadStrict` entry is generated-code work: a leg's plain read becomes the only
+read when that leg's layer-4 card makes its generator emit the strict read, and
+binding a second strict entry before then would make those drivers demand a
+generated method their tree does not have, sitting beside the tolerant one the
+plan deletes. What the harness needs already exists in its one path: `report`,
+`framing`, `json-hostile` and `retain` read the whole value or refuse, then
+write the wire and the JSON/text forms back (`read\n` plus the complete value
+and `<case>.wire`; `wire` saves; `json-write` writes the text), so
+read-then-write is the existing surface, not a new entry beside it.
+
+Every port owes the same standard verdict. Legacy `carried-by` and `uncarried`
+metadata cannot permit an invalid acceptance. Counter-only and reason-only
+surfaces have no cross-language obligation; cook and block forgeries compare
+acceptance/refusal rather than a reason name or the first detected condition.
 
 **`message` IS THE ONE SURFACE THAT READS TWO FILES**, because a message's id
 table is somewhere else (docs/SPEC-TABLES.md §3.3): the CONNECTION's
@@ -232,39 +239,36 @@ driver joins the two by key and never derives a vocabulary of its own. **The
 verbs are PLURAL**, because the form's primitive is a BATCH of bodies of one
 root and a single message is the batch of one, so a `message` case whose batch
 wire holds one body still drives `LoadMessages` and `SaveMessages` with a count
-of one. The C++ reference answers the surface and the eight ports print ABSENT,
-which is the wire form's own absence one grain up: a port carries the VARIABLE form
-alone, and its `LoadMessages`, `MeasureMessages` and `SaveMessages` are the
-follow-on PORTING.md M20 already registers.
+of one. A driver without the required codec reports a feature absence, which
+remains incomplete coverage. An expected semantic refusal is an answered case
+and scores PASS, independently of its diagnostic text.
 
-**THE TWO RETAIN SURFACES ARE ONE ROUND TRIP AND TWO SHAPES**
-(docs/SPEC-TABLES.md §6.6): `retain` prints the COUNTERS and `retain-save`
-writes the BYTES, split for the reason the block surfaces are: a counter cannot
-see a record that moved out of a body, and a byte string cannot say which of the
-two stores was short. Both run the same pair, so a leg that answers one answers
-the other.
+**Retention keeps known values independent of its local storage layout.**
+`retain` compares the complete known value after a successful retaining read;
+`retain-save` additionally compares retained write-back bytes where the row
+pins them. The byte capacity is local: `full` must fit the input, and `short`
+means one byte less than this implementation used in a roomy load. The id-list
+capacity is a count. Neither retention counter is compared. Retain-store
+capacity does not change the schema's read verdict; they determine which unknown
+records can survive a later retaining save. The fuzz retention roster contains
+variable file roots only and uses roomy stores on both sides.
 
-**A ROW'S TWO CAPACITIES ARE RULES A DRIVER APPLIES, and one of them is the
-whole reason they are not numbers.** A retained record's byte cost is the port's
-own, so `short` means ONE BYTE SHORT OF THE LAST RECORD: the driver loads once
-at a roomy capacity, reads what its own buffer used, and loads again one byte
-under that. The ID LIST's capacity is a COUNT and travels as one. **The C++
-reference answers both surfaces and the eight ports print ABSENT**, which is the
-same absence the `message` and `wire` surfaces already carry one grain up: a
-port carries no retention at all, so `LoadRetain`, `MeasureRetain` and
-`SaveRetain` are a missing FEATURE and not a failing test, and §6.6's own
-backend status says so. Retention is the variable form's alone: the message
-form is fixed tables only (§3.3), so no row retains over a message.
+**Cook writes use explicit value construction.** The committed recipe names
+its instance and the two output pins, with optional `input=<JSON path>` and
+`share=<source>:<alias>` construction options. The derived driver line has
+exactly five fields:
 
-**`cook-write` IS THE ONE SURFACE WHERE A LANGUAGE WRITES AN ACCELERATOR RATHER
-THAN READING ONE, and the expectation is the TOOL's file.** Every other cook
-surface asks whether a reader agrees about bytes somebody else produced; this
-one asks whether a WRITER produces the bytes `schema cook` produces, in both
-byte orders, from the same wire (SPEC-TABLES.md §7.6). It needs no big-endian
-host on either side, because the order is a parameter of the write rather than a
-fact of the machine. A leg with no writer prints ABSENT, which is the whole
-point of the distinction: C++ answers it today and every other leg is missing a
-FEATURE rather than failing a test.
+```
+cook-write <instance> <JSON input or -> <source field or -> <alias field or ->
+```
+
+The harness resolves the input to the explicit JSON path or the instance's
+JSON; `-` means use the `no-text` instance's wire. After reading that value,
+the optional source and alias fields identify populated blobs that must share
+one in-memory object. A sharing recipe requires an explicit input. This lets a
+cook test legal in-memory sharing without loading binary data the wire reader
+must refuse. The driver writes both byte orders; golden output paths are never
+sent to it.
 
 **The two forgery surfaces are one shape and two KINDS**, split so the matrix
 can say which reader a backend has: a leg with a block reader and no cook reader
@@ -404,9 +408,8 @@ records the reference and port results together. Its
 `coverage --require-original-nine` gate requires C++, C, C#, Go, Rust, Java,
 JavaScript, Dart and Elixir to cover every manifest-defined surface/class and
 case count. The reference rows are checked independently against that shape,
-so a missing reference row cannot shrink the denominator. Answered cases and
-the manifest's named required refusals count as complete; missing, failed or
-uncarried cases do not. Each of the eight ports must also record a passing
+so a missing reference row cannot shrink the denominator. Accepted and refused observations both count as answered cases. Missing
+features, named absences, failures and uncarried cases do not count as complete. Each of the eight ports must also record a passing
 fixed-form gate. These corpus results are necessary, but they cannot by
 themselves certify a full implementation.
 
@@ -474,12 +477,13 @@ registration is refused rather than read as claiming nothing.
 
 ## The wire-fuzz driver
 
-`harness wire-fuzz` (docs/SPEC-TABLES.md §4.2) is the tolerant wire's fuzzer,
-and its leg is a different shape from the surface drivers above: ONE process
-for the whole run, on a pipe, that only reads. The harness generates every
-mutant and holds the oracle; the leg loads each mutant through the generated
-tolerant read, saves whatever it decoded, and answers what happened. It
-decides nothing about what a mutant means.
+`harness wire-fuzz` checks the single read contract in one process per leg.
+The harness generates every mutant and runs the independent oracle. The leg
+reports whether its generated reader accepted the whole input and, only after
+acceptance, the complete canonical write-back. The comparator checks that one
+verdict first, then exact accepted bytes. It never compares diagnostic reasons,
+counters, retention counts or measured allocation sizes. Every mutant is
+compared; `--finite-owed` is retired and rejected.
 
 ```
 make tables-wire-fuzz                      the C++ reference, plain and sanitized
@@ -501,15 +505,18 @@ driver is.
 | in | per mutant: `u32` roster index, `u32` length, the bytes | until EOF |
 | out | per mutant: `u8 loaded`; `i32 unknown, kind_mismatch, widened, clamped, duplicate`; `u8 malformed`; `u8 refused`; `i64 measure`; `i32 retained, retain_lost`; `i64 saved`, then that many bytes | one reply per mutant, flushed before the next is read |
 
-- **`loaded`** is whether a root came back. A FIXED root always loads — its
-  `Load` fills a value and reports — so the byte is `1` and the report says the
-  rest. A VARIABLE root's `Load` returns NULL when the caller's region was
-  wrong, and a `0` here fails the run: the leg sized the region from
-  `LoadMeasure`, so a refusal is the measure and the load disagreeing.
-- **`measure`** is what `LoadMeasure` asked for, region bytes in total; a FIXED
-  root answers `-1`. The harness holds it to the framing's bound (§4.2, §6.5).
-- **`saved`** is the length `Save` wrote, or `-1` when `Measure` or `Save`
-  refused the value. The bytes follow only when it is positive.
+The reply header remains 47 bytes for transport compatibility. Its semantic
+acceptance bit is `loaded && !refused && !malformed`; no counter affects it.
+
+- **`loaded`** is the reader's success result for every root class. Preserve it
+  if a later writer fails; a save failure must not disguise a read acceptance.
+- **`measure`** is diagnostic transport only. Local allocation checks and caller
+  resource limits belong outside the schema verdict. An allocation failure or
+  driver crash is an infrastructure failure, not a successful refusal.
+- **`saved`** is the canonical write-back length. After refusal it is `-1` and
+  no bytes follow; do not save defaults or partial state. After acceptance a
+  writer failure is also `-1`, which fails comparison because the accepted
+  value owes a complete write-back. Legacy negative reason codes are diagnostics.
 - **Every buffer is allocated at exactly its size** — the mutant, the region,
   the save — so that a sanitized build's redzone begins at the last byte a
   reader may touch, and **every reply is flushed before the next mutant is
@@ -517,16 +524,17 @@ driver is.
   ZERO bytes is the one exception to the sizing: it is allocated at one byte,
   because `malloc(0)` may answer null and null is how a leg reports an
   allocation that failed.
-- **The FORM is the wire's own byte** (docs/SPEC-TABLES.md §3, §3.3): `1` is a
-  file and `2` is a BATCH, and the two are separate roster entries over one
-  root, because they are two readers. A MESSAGE mutant resolves against the
+- **The FORM selects the read path**: `1` is the file path (whose input may
+  use form 1 or form 3 according to the declared root), and `2` is a batch.
+  They are separate roster entries over one root, because they are two readers. A MESSAGE mutant resolves against the
   CONNECTION's announced VOCABULARY, and the leg derives that vocabulary from
   its OWN unit's announcement, the compile-time constant its backend emits, read
   through the same `AnnounceRead` a receiver uses. The vocabulary is a pure
   function of the build version, so both sides derive the same one and the
   roster carries no announcement. **A form-`2` mutant is driven through
   `LoadMessages` and `SaveMessages`**, the plural verbs, because a batch is the
-  form's primitive and a mutant of one body is a batch of one. A leg with no
+  form's primitive. Every accepted body is saved, in order; body one alone
+  is incomplete even when all later bodies were validated. A leg with no
   message codec answers `0` for that entry, exactly as it does for a root it
   cannot name.
 - **The RETAIN byte says which path this entry is driven through**
@@ -540,13 +548,9 @@ driver is.
   `LoadRetain` is refused by name and a form-2 `SaveRetain` refuses by name
   (§6.6, §3.3), so those entries never carry a `1`, and the line says how many
   seeds sat outside the arm.
-- **`retained` and `retain_lost` ride EVERY reply**, and are zero on every
-  entry the roster did not mark. They are the two counters the retention arm
-  compares beside the six, and `retain_lost` at the end is the sum of what the
-  load could not keep and what the save could not place, so the leg zeroes one
-  report before `LoadRetain` and reads it after `SaveRetain` (§6.6). A leg with
-  no retention at all answers `0` in the roster for those entries and writes
-  two zeroes here.
+- **`retained` and `retain_lost`** remain in the header as local diagnostics.
+  They do not affect acceptance or the comparison. The retaining arm compares
+  complete accepted write-back bytes.
 - **A root the leg cannot name is a `0` in the roster and nothing more**: the
   harness never sends it a mutant, and the line it prints says how many seeds
   were absent. A port with no variable class registers its fixed roots and is
@@ -664,31 +668,17 @@ Named, with the reason, so a port knows what it is not being asked for:
   twin) and the cook's. A fuzzer is a search, not a case, and the finds it
   produces land here as forgery rows — `block_offset_overflow` is one.
 
-The optional `wire-fuzz --builder` arm compares mutable file readers with
-`tablewire.Decode`. Its roster contains variable-class file roots. The driver
-reports its load result in the existing loaded byte, the accumulated report,
-and canonical saved bytes only after a successful read. A failed read emits a
-save failure (`-1`); the partial value must be discarded. This arm does not
-preflight or compare region extents. In particular, an int32 list count-cap
-refusal stops without inventing the region reader's malformed-data event.
-`--builder --retain` uses the mutable retaining reader and checks both
-retention counters and canonical saved bytes. `--builder` cannot be combined
-with `--message`. The region profiles retain their measurement and bounds
-checks; native heap readers such as Dart use the builder profile and test
-region sizing separately.
+The optional `wire-fuzz --builder` arm uses mutable file readers over variable
+file roots. `--mixed-builder` preserves the full roster and uses the mutable
+oracle only for variable file roots, keeping fixed and message roots. These
+profiles share the same acceptance and exact write-back comparison. `--builder`
+cannot be combined with `--message` or `--mixed-builder`. `--retain` keeps the
+variable-file retention domain; no profile compares allocation or retention
+counters. Native resource and allocator tests remain separate gates.
 
-`wire-fuzz --mixed-builder` preserves the full default roster. It uses the
-mutable builder oracle only for variable-class file roots, and keeps the
-existing fixed-file and message oracles for those roots. This profile lets a
-heap-based variable reader qualify every file and message root in one pass.
-It cannot be combined with `--builder`. With `--retain`, the roster remains
-the existing variable-file retention domain; both retention counters are
-compared. The plain mixed profile reports no seeds outside its arm.
-
-For an instance with a Go writer refusal, the manifest may carry the
-go-refusal=<reason> marker. On that Go wire row the driver writes the
-case.absent file with the exact reason bytes, and the harness counts one named
-absence while rejecting emitted bytes or an empty/wrong reason. Other language
-legs keep comparing their wire bytes with the golden. The blob_shared row uses
-this marker because one blob node named from two slots is refused by Go
-writers (blob_shared, SPEC-TABLES sections 2.5 and 16.7).
+The `wire-refused` instance marker specifies refusal for every port. Legacy
+`go-refusal=<reason>` and `refused-by=<ports>` spellings are accepted as
+compatibility metadata; they do not select a language or a shared reason. Drivers may emit `refused` or the historical `<case>.absent` file; the
+file's diagnostic text is ignored. This expected semantic refusal scores PASS.
+Emitting value bytes, or emitting nothing at all, fails. An ordinary absence
+for a missing codec remains incomplete coverage.

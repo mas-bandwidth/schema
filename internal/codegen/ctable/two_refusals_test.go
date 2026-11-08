@@ -17,7 +17,7 @@ const twoRefusalsSchema = "package probe\n table Root { f float32\n values []int
 // TestTwoRefusalsFirstNamesTheReadC holds the C builder reads to the float rows
 // of the shared pin table: a read that meets a NaN and a count above the int32
 // storage cap is named by the refusal it meets first (docs/SPEC-TABLES.md
-// §2.9). root_load_builder_tolerant's reason (the report's reason enum) and root_load_builder's
+// §2.9). root_load_builder's reason (the report's reason enum) and root_load_builder's
 // refuse_reason each answer the pin's strict column.
 func TestTwoRefusalsFirstNamesTheReadC(t *testing.T) {
 	slowtest.Gate(t, "the C compiler (cc)")
@@ -50,7 +50,7 @@ func TestTwoRefusalsFirstNamesTheReadC(t *testing.T) {
         int kept, read;
         if (!root_builder_init(&builder)) { return 1; }
         memset(&tolerant_report, 0, sizeof(tolerant_report));
-        kept = root_load_builder_tolerant(&builder, wire, (int64_t)sizeof(wire), &tolerant_report);
+        kept = root_load_builder(&builder, wire, (int64_t)sizeof(wire), &tolerant_report);
         printf("%s tolerant %%s\n", kept ? "ok" : reason_name(tolerant_report.reason));
         memset(&plain_report, 0, sizeof(plain_report));
         read = root_load_builder(&builder, wire, (int64_t)sizeof(wire), &plain_report);

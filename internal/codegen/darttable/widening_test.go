@@ -407,7 +407,7 @@ func engineLine(t *testing.T, m *tabletext.Model, st *ir.Struct, wire []byte, fi
 	reason := "ok"
 	if report.Refused {
 		reason = "unknown_form"
-	} else if report.Malformed {
+	} else if report.Refused {
 		reason = "wire_damaged"
 	}
 	for i := range inst.Fields {

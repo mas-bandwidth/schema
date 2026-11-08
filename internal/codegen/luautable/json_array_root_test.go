@@ -76,7 +76,7 @@ print(tostring(report.malformed) .. "|" .. report.reason .. "|" .. tostring(repo
 		name string
 		text string
 	}{
-		{"empty_array_exact_bytes_no_trailing_lf", `[]`},
+		{"empty_array_exact_bytes", `[]`},
 		{"one_goal_exact_bytes_no_padding", `[{"x":1}]`},
 		{"three_goals_exact_bytes_no_padding", `[{"x":1},{"x":2},{"x":3}]`},
 	} {
@@ -90,6 +90,9 @@ print(tostring(report.malformed) .. "|" .. report.reason .. "|" .. tostring(repo
 			if err != nil {
 				t.Fatal(err)
 			}
+			// the canonical text ends with exactly one newline (§16.1), the
+			// array root's as every root's; model.Write is the value alone
+			wantText = append(wantText, '\n')
 			wantWire, err := tablewire.Encode(model, inst)
 			if err != nil {
 				t.Fatal(err)
@@ -116,7 +119,7 @@ print(tostring(report.malformed) .. "|" .. report.reason .. "|" .. tostring(repo
 	const object = `{"goals":[]}`
 	inst := model.New(st)
 	var wantReport tabletext.Report
-	if model.Read(inst, []byte(object), &wantReport) || !wantReport.Malformed || wantReport.Reason != "json_root_not_array: GoalList" {
+	if model.Read(inst, []byte(object), &wantReport) || !wantReport.Refused || wantReport.Reason != "json_root_not_array: GoalList" {
 		t.Fatalf("Go oracle root-shape verdict: %+v", wantReport)
 	}
 	out := strings.TrimRight(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": []byte(object)})), "\n")

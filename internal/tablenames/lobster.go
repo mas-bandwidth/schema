@@ -13,11 +13,14 @@ import "sort"
 // TestLobsterTableRuntimeNamesAreClaimed holds it to the emitted runtime both
 // ways, and TestLobsterRuntimeNameScanGoesRed is its control.
 //
-// The claimable Lobster spellings are the two the emitter refuses by name
+// The claimable Lobster spellings are those the emitter refuses by name
 // instead: the namespace itself (a package named schema_rt) and a runtime
 // module's FILE name, because a Lobster import names a file beside the module
-// (a schema file named for a runtime module is refused beside a table and
-// kept in a table-free unit, TestLobsterRuntimeFileNamesAreClaimed).
+// (a schema file named for an emitted runtime module is refused; table-free
+// units emit only descriptor dependencies: TestLobsterRuntimeFileNamesAreClaimed).
+// Package names that match runtime bindings are additionally refused by
+// lobstertable/runtime_package_names.go, which derives its inventory from
+// embedded sources rather than this namespace-level list.
 
 // lobsterRuntimeNames is every name the Lobster table runtime defines at
 // namespace scope (a def, a class, a let or a var at column zero), by the
@@ -35,8 +38,8 @@ var lobsterRuntimeNames = map[string][]string{
 		"_collections_arr", "_collections_map", "_collections_ptr", "collection_construct",
 	},
 	"cook.lobster": {
-		"CookCarve", "CookDump", "CookField", "CookGraph", "CookNode", "CookOut", "CookRead", "CookTable",
-		"CookUnion", "CookWrite", "cc_elem", "cc_extent", "cc_field", "cc_has_field", "cc_list", "cc_map", "cc_record",
+		"CookCarve", "CookDump", "CookField", "CookGraph", "CookNode", "CookOut", "CookRange", "CookRead", "CookTable",
+		"CookUnion", "CookWrite", "cc_elem", "cc_extent", "cc_field", "cc_has_field", "cc_list", "cc_map", "cc_record", "cc_text",
 		"cd_emit", "cd_field", "cd_find", "cd_node", "cd_scalar", "cd_storage", "cd_text", "cg_add_blob",
 		"cg_add_rec", "cg_blob_index", "cg_place", "cg_rec_index", "cg_visit_edges", "cg_visit_union",
 		"cg_visit_value", "co_bytes", "co_u16", "co_u32", "co_u64", "co_u8", "cook_align_up", "cook_bswap16",
@@ -44,8 +47,8 @@ var lobsterRuntimeNames = map[string][]string{
 		"cook_dump", "cook_f32frombits", "cook_header_bytes", "cook_magic", "cook_magic_swapped", "cook_measure",
 		"cook_open", "cook_open_named", "cook_open_reason", "cook_plan", "cook_read", "cook_table",
 		"cook_table_of", "cook_tables", "cook_union_named", "cook_union_of", "cook_unions", "cook_wide",
-		"cook_word", "cook_word32", "cook_write", "cr_array", "cr_count", "cr_elem", "cr_entry", "cr_field",
-		"cr_container", "cr_int", "cr_list", "cr_map", "cr_record", "cr_ref", "cr_scalar_int", "cr_text", "cr_union", "cr_units", "cr_wide", "cr_wide_at",
+		"cook_word", "cook_word32", "cook_write", "cr_array", "cr_claim", "cr_count", "cr_elem", "cr_entry", "cr_extent", "cr_field",
+		"cr_container", "cr_int", "cr_list", "cr_map", "cr_record", "cr_ref", "cr_scalar_int", "cr_text", "cr_unbounded_text", "cr_union", "cr_units", "cr_wide", "cr_wide_at",
 		"cr_word", "cr_word32", "cw_array", "cw_elem", "cw_field", "cw_int", "cw_record", "cw_ref", "cw_ref_blob",
 		"cw_str", "cw_union", "cw_units", "cw_wide",
 	},
@@ -55,13 +58,16 @@ var lobsterRuntimeNames = map[string][]string{
 		"retired_variants", "save_strict", "variant_retired",
 	},
 	"descriptors.lobster": {
-		"DeprecatedEnumShape", "DeprecatedName", "FieldAnnotation", "KeyEnumName", "MapEntryName", "UnitView",
-		"ViewConstant", "ViewType", "ViewVariant", "ViewVocabulary", "_descriptors_enum", "deprecated_names",
+		"DeprecatedName", "FieldAnnotation", "KeyEnumName", "MapEntryName", "UnitView",
+		"ViewConstant", "ViewType", "ViewVariant", "ViewVocabulary", "deprecated_names",
 		"deprecated_variant", "enum_default", "field_annotation", "field_annotations", "field_doc", "field_tags",
 		"is_deprecated_variant", "key_enums", "keyed_enum", "keyed_enum_of", "keyed_slot", "map_entries", "map_entry",
 		"map_entry_of", "set_unit", "unit_view", "variant_name", "view_constant", "view_constants", "view_enums",
 		"view_flags", "view_package", "view_protocol", "view_table", "view_tables", "view_type", "view_types",
-		"view_unions", "view_vocabulary",
+		"view_unions", "view_union_arm", "view_vocabulary", "view_name_before", "view_sorted_types", "view_sorted_vocabulary", "view_sorted_constants",
+	},
+	"descriptors_load.lobster": {
+		"DeprecatedEnumShape", "_descriptors_enum",
 	},
 	"fixed.lobster": {
 		"fixed_file", "fixed_record",
@@ -78,26 +84,26 @@ var lobsterRuntimeNames = map[string][]string{
 		"TableRefuseLayoutSizeMismatch", "TableRefuseLayoutTooDeep", "TableRefuseLayoutTreeUnclosed",
 		"TableRefuseLayoutUnknown", "TableRefuseLayoutUnsupported", "TableRefuseLengthOverBound",
 		"TableRefuseMessageFormAsFile", "TableRefuseNewerForm", "TableRefuseNoLayout", "TableRefuseNonFiniteFloat",
-		"TableRefusePlanTooLarge", "TableRefusePreviousForm", "TableRefuseReservedNotZero",
+		"TableRefuseOutOfRange", "TableRefusePlanTooLarge", "TableRefusePreviousForm", "TableRefuseReservedNotZero",
 		"TableRefuseTextIllFormed", "TableRefuseTruncated", "TableRefuseUnknownForm", "TableReport",
 		"fixed_arg_width", "fixed_build_plan", "fixed_chain_holds", "fixed_chains_equal", "fixed_check_entry",
 		"fixed_check_fail", "fixed_clone_entry", "fixed_compile", "fixed_compile_entry", "fixed_copy_run",
-		"fixed_crc32c", "fixed_entry_at", "fixed_forged_bounds", "fixed_holes", "fixed_integrity_holds",
+		"fixed_crc32c", "fixed_entry_at", "fixed_dead_at", "fixed_holes", "fixed_integrity_holds",
 		"fixed_integrity_seal", "fixed_kind_known", "fixed_land", "fixed_lay_guards", "fixed_lay_table",
 		"fixed_leaf_size", "fixed_lineage_holes", "fixed_lineage_plans", "fixed_match_children",
 		"fixed_ordinal_width", "fixed_parse_layout", "fixed_partition", "fixed_plan_max", "fixed_prefill_holes",
 		"fixed_push", "fixed_refuse", "fixed_refuse_hash", "fixed_refuse_non_finite", "fixed_report_equal",
 		"fixed_report_err", "fixed_reset_report", "fixed_run", "fixed_runs", "fixed_select", "fixed_signed_kind",
 		"fixed_src_end", "fixed_subtree", "fixed_tag_at", "fixed_tag_bytes", "fixed_text_ill_formed",
-		"fixed_text_refusal", "fixed_union_arm_bytes", "fixed_utf8_valid_no_nul", "fixed_wide_ill_formed",
+		"fixed_value_refusal", "fixed_union_arm_bytes", "fixed_utf8_valid_no_nul", "fixed_wide_ill_formed",
 		"fixed_widens", "i128_lt", "tableFixedBool", "tableFixedCheck", "tableFixedCompiler", "tableFixedConst",
 		"tableFixedCopy", "tableFixedCount", "tableFixedDstDeprecated", "tableFixedEntryBytes",
 		"tableFixedLayoutHeaderBytes", "tableFixedMaxDepth", "tableFixedNoGuard", "tableFixedOrdinal",
-		"tableFixedRecordMaxBytes", "tableFixedRemapMax", "tableFixedTag", "tableFixedText", "tableFixedTextBytes",
+		"tableFixedPresent", "tableFixedRecordMaxBytes", "tableFixedRemapMax", "tableFixedTag", "tableFixedText", "tableFixedTextBytes",
 		"tableFixedTextUtf8", "tableFixedTextWide", "tableFixedWiden", "tableFixedWidenF", "u128_lt",
 	},
 	"json.lobster": {
-		"JsonBlobCount", "JsonFlags", "JsonGuard", "JsonInt", "JsonLabel", "JsonNodeCount", "JsonReader",
+		"JsonBlobCount", "JsonFlags", "JsonGuard", "JsonInt", "JsonLabel", "JsonNodeCount", "JsonReader", "JsonTextTotal",
 		"JsonWriter", "j_array_count", "j_b64", "j_b64_alphabet", "j_b64_table", "j_bn_add", "j_bn_add_small",
 		"j_bn_cmp", "j_bn_copy", "j_bn_divmod_small", "j_bn_from_dec", "j_bn_lanes", "j_bn_low", "j_bn_mask",
 		"j_bn_mul_pow10", "j_bn_mul_pow5", "j_bn_mul_small", "j_bn_norm", "j_bn_of_lanes", "j_bn_pow2", "j_bn_shl",
@@ -111,19 +117,20 @@ var lobsterRuntimeNames = map[string][]string{
 		"j_node_entry", "j_pad", "j_parse_f32", "j_parse_wide", "j_peek", "j_place_float", "j_place_integer",
 		"j_place_map_key", "j_place_wide", "j_raw", "j_read_array", "j_read_base64", "j_read_blob", "j_read_field",
 		"j_read_flags", "j_read_keyed", "j_read_map", "j_read_map_value", "j_read_pointer_cell", "j_read_scalar",
-		"j_read_table", "j_read_table_keys", "j_read_text_list", "j_read_union", "j_rfc3339_format",
+		"j_key_once", "j_refuse", "j_required", "j_read_table", "j_read_table_keys", "j_read_text_list", "j_read_union", "j_rfc3339_format",
 		"j_rfc3339_parse", "j_round", "j_scale", "j_scan_label", "j_scan_number", "j_scan_stored", "j_scan_string",
 		"j_scan_text", "j_scan_unit", "j_scan_wstring", "j_shape", "j_skip_container", "j_skip_string",
-		"j_skip_value", "j_skipped_ampersand", "j_sorted_entries", "j_space", "j_storage_bytes", "j_strip_zeros",
+		"j_skip_value", "j_skipped_ampersand", "j_sorted_entries", "j_space", "j_storage_bytes", "j_strip_zeros", "j_text_total_of",
 		"j_takes_null", "j_token_decimal", "j_two", "j_two128", "j_u64_float", "j_utf8", "j_utf8_sequence",
 		"j_value_shape", "j_walk_number", "j_wide_signed", "j_write_base64", "j_write_field", "j_write_fields",
 		"j_write_keyed", "j_write_map", "j_write_pointer", "j_write_scalar", "j_write_string", "j_write_value",
 		"j_write_wstring", "j_zeros_text", "json_array_registry", "json_array_table", "json_fd_of", "json_flags",
 		"json_flags_of", "json_flags_registry", "json_guard", "json_guard_holds", "json_guard_registry",
 		"json_is_array_table", "json_max_depth", "json_max_key", "json_read", "json_read_into", "json_text_list",
-		"json_text_list_registry", "json_write",
+		"json_text_list_registry", "json_text_total", "json_text_total_registry", "json_write",
 	},
 	"load.lobster": {
+		"FixedRecordCodec", "fixed_record_codecs", "fixed_record_codec", "register_fixed_record_codec",
 		"ArrayShape", "EnumShape", "KeyedKeys", "KeyedShape", "LoadReport", "LoadState", "MapShape", "Node",
 		"NodeRecord", "PointerShape", "Reader", "Record", "RetainCapture", "RetainedField", "Shape", "Slot",
 		"StringShape", "TableShape", "TextListShape", "UnionShape", "Value", "WideShape", "active_retain_capture",
@@ -133,7 +140,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"finite_f32", "finite_f32_bits", "finite_f64", "finite_f64_bits", "float_out_of_range", "float_owner",
 		"forget", "forget_cell", "forget_slot", "forget_value", "has", "hex64", "i128_lt", "i128_shl",
 		"key_is_string", "keyed_keys", "keyed_registry", "keyed_shape", "keyed_variants", "kind_signed",
-		"kind_wide", "kind_width", "leb", "load", "load_tolerant", "load_walk", "map_key", "map_key_fits",
+		"kind_wide", "kind_width", "leb", "load", "load_cyclic", "load_walk",
 		"map_key_id", "map_key_order", "map_shape", "mark_seen", "message_vocabulary_id", "nested_body",
 		"new_record", "new_slot", "node_table_bytes", "node_table_id", "parse_float64", "pointer_shape",
 		"read_leb", "read_raw", "reader", "rec_edges", "refill", "refuse_non_finite", "register_retain_capture",
@@ -143,11 +150,12 @@ var lobsterRuntimeNames = map[string][]string{
 		"string_shape", "sub", "sub_to", "table_of", "table_shape", "text_boundary", "text_list_shape",
 		"text_valid", "trailer", "u8", "union_cell", "union_shape", "unlink_unreached", "value_edges",
 		"wide_boundary", "wide_shape", "wide_units", "wide_valid", "widens",
+		"read_refuse", "read_reset", "WireCheck", "binary_max_depth", "wire_scalar", "wire_payload", "wire_content", "wire_content_at", "wire_body", "wire_graph", "wire_check",
 	},
 	"message.lobster": {
 		"MessageBits", "MessageEntry", "MessageRead", "MessageShape", "MessageSlots", "MessageUnitFacts",
 		"MessageVocabulary", "MessageWriter", "announce", "announce_inner", "announce_measure", "announce_read",
-		"is_message_root", "load_messages", "load_messages_into", "load_messages_tolerant", "mb_align", "mb_get",
+		"is_message_root", "load_messages", "load_messages_into", "mb_align", "mb_get",
 		"mb_skip", "measure_messages", "message_arm_slots", "message_array", "message_batch_max",
 		"message_batch_ok", "message_bits", "message_body", "message_build_version", "message_bytes",
 		"message_cell", "message_compatible", "message_count", "message_entries_here", "message_entry",
@@ -185,6 +193,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"so_u32", "so_u64", "so_u8",
 	},
 	"schema_tables.lobster": {
+		"wire_crc32c", "wire_crc32c_table", "wire_integrity_body",
 		"EnumVariant", "FieldDescriptor", "TableDescriptor", "UnionDescriptor", "lookup_table", "lookup_union",
 		"registered_tables", "registered_unions", "table", "table_registry", "union_of", "union_registry",
 	},
@@ -194,7 +203,7 @@ var lobsterRuntimeNames = map[string][]string{
 	"text_form.lobster": {
 		"TNode", "TextDec", "TextDoc", "TextFlags", "TextParser", "TextSpan", "i128_add", "i128_bit", "i128_cmp",
 		"i128_div_small", "i128_mul_small", "i128_neg", "i128_setbit", "t_b64_val", "t_base64", "t_dec",
-		"t_dec_value", "t_field_of", "t_fill", "t_fixed_token", "t_gap", "t_int", "t_int_store", "t_int_token",
+		"t_dec_value", "t_field_of", "t_fill", "t_fill_record", "t_pointer", "t_fixed_token", "t_gap", "t_int", "t_int_store", "t_int_token",
 		"t_key_text", "t_name_char", "t_parse_value", "t_set_fail", "t_set_flags", "t_set_keyed", "t_set_scalar",
 		"t_set_union", "t_string", "t_value_into", "text_edit", "text_flags", "text_flags_of",
 		"text_flags_registry", "text_load", "text_save",

@@ -54,8 +54,8 @@ const cppTimestampVariableProbe = `
         Root back;
         TableReport rr;
         memset( &rr, 0, sizeof( rr ) );
-        if ( !RootLoad( back, wire, n, &rr ) ) { printf( "variable: load failed at case %d malformed=%d\n", k, (int) rr.malformed ); return 1; }
-        if ( rr.malformed || rr.refused || rr.kind_mismatch != 0 || rr.widened != 0 ) { printf( "variable: counters at case %d m=%d x=%d km=%d w=%d\n", k, (int) rr.malformed, (int) rr.refused, rr.kind_mismatch, rr.widened ); return 1; }
+        if ( !RootLoad( back, wire, n, &rr ) ) { printf( "variable: load failed at case %d malformed=%d\n", k, (int) rr.damaged ); return 1; }
+        if ( rr.damaged || rr.refused || rr.refused != 0 || rr.widened != 0 ) { printf( "variable: counters at case %d m=%d x=%d km=%d w=%d\n", k, (int) rr.damaged, (int) rr.refused, rr.refused, rr.widened ); return 1; }
         if ( back.at != nanos[ k ] || back.tag != k + 1 ) { printf( "variable: value moved at case %d at=%lld tag=%d\n", k, (long long) back.at, back.tag ); return 1; }
 
         // THE FIELD HEADER'S KIND IS 36 AND THE PAYLOAD IS THE EIGHT-BYTE
@@ -115,8 +115,8 @@ const cppTimestampVariableProbe = `
         Root back;
         TableReport rr;
         memset( &rr, 0, sizeof( rr ) );
-        if ( !RootLoadTolerant( back, bytes, n, &rr ) ) { printf( "mismatch: load stopped\n" ); return 1; }
-        if ( rr.kind_mismatch != 2 || rr.widened != 0 ) { printf( "mismatch: kind_mismatch=%d widened=%d, want 2 / 0\n", rr.kind_mismatch, rr.widened ); return 1; }
+        if ( RootLoad( back, bytes, n, &rr ) ) { printf( "mismatch: a kind-mismatched read was accepted\n" ); return 1; }
+        if ( !rr.refused || rr.refuse_reason != kind_mismatch || rr.widened != 0 ) { printf( "mismatch: refused=%d reason=%d widened=%d, want a kind_mismatch refusal\n", (int) rr.refused, (int) rr.refuse_reason, rr.widened ); return 1; }
         if ( back.at != 0 || back.tag != 0 ) { printf( "mismatch: a skipped field landed a value at=%lld tag=%d\n", (long long) back.at, back.tag ); return 1; }
     }
 `
@@ -161,7 +161,7 @@ const cppTimestampFixedProbe = `
         TableReport rr;
         memset( &rr, 0, sizeof( rr ) );
         if ( RootFixedLoad( &back, 1, file, wrote, plan, 64, NULL, &rr ) != 1 ) { printf( "fixed: load refused at case %d reason=%d\n", k, (int) rr.reason ); return 1; }
-        if ( rr.malformed || rr.refused || rr.kind_mismatch != 0 || rr.widened != 0 ) { printf( "fixed: counters at case %d\n", k ); return 1; }
+        if ( rr.damaged || rr.refused || rr.refused != 0 || rr.widened != 0 ) { printf( "fixed: counters at case %d\n", k ); return 1; }
         if ( back.at != nanos[ k ] || back.tag != k + 1 ) { printf( "fixed: value moved at case %d\n", k ); return 1; }
     }
 `
@@ -196,7 +196,7 @@ const cppTimestampMessageProbe = `
         TableReport rr;
         memset( &rr, 0, sizeof( rr ) );
         if ( !RootLoadMessages( back, &count, vocabulary, wire, n, &rr ) || count != 1 ) { printf( "message: load failed at case %d count=%lld reason=%d\n", k, (long long) count, (int) rr.reason ); return 1; }
-        if ( rr.malformed || rr.refused ) { printf( "message: counters at case %d\n", k ); return 1; }
+        if ( rr.damaged || rr.refused ) { printf( "message: counters at case %d\n", k ); return 1; }
         if ( back[ 0 ].at != nanos[ k ] || back[ 0 ].tag != k + 1 ) { printf( "message: value moved at case %d at=%lld\n", k, (long long) back[ 0 ].at ); return 1; }
     }
 `

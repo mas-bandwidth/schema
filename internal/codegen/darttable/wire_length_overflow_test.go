@@ -45,7 +45,7 @@ func TestDartWireLengthOverflow(t *testing.T) {
 			}
 			var report tabletext.Report
 			ok, err := tablewire.Decode(model, model.New(def), data, &report)
-			if ok || err != nil || !report.Malformed {
+			if ok || !tablewire.ReadRefusal(err) || !report.Refused {
 				t.Fatalf("independent damage contract: ok%v err%v report%+v", ok, err, report)
 			}
 			if tc.node {

@@ -13,6 +13,8 @@ const Squirrel Backend = 1 << 12 // 1<<9 is Lua's and 1<<10 is Luau's, on their 
 
 func init() {
 	define(Squirrel,
+		Name{Name: "noteStringOrigin", What: "decoded string identity bookkeeping", Scoped: true},
+		Name{Name: "stringIdentity", What: "decoded string identity bookkeeping", Scoped: true},
 		Name{Name: "ReadStrict", What: "the strict read over the tolerant load, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
 		Name{Name: "ReadStrictNames", What: "the strict read's refusal vocabulary, by name (§11, §6.5)", Scoped: true},
 		Name{Name: "loadTolerant", What: "the tolerant load, keeping the recovered value and its counters (docs/SPEC-TABLES.md §6.5)", Scoped: true},
@@ -29,6 +31,7 @@ func init() {
 		Name{Name: "Cook", What: "the cooked form's Open (docs/SPEC-TABLES.md §7)", Scoped: true},
 		Name{Name: "CookMeasure", What: "the cooked form's write measure (docs/SPEC-TABLES.md §7.6)", Scoped: true},
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name (§7)"},
+		Name{Name: "TableRegionAlign", What: "the region alignment an unbounded text blob in a cook is padded to (§2.13.1)"},
 		Name{Name: "TableCookHeaderBytes", What: "§7.1's 64-byte header", RustConst: true},
 		Name{Name: "Block", What: "the block form's Open (docs/SPEC-TABLES.md §19.2)", Scoped: true},
 		Name{Name: "TableDocNone", What: "the one shared empty doc of the reflection view (docs/SPEC-TABLES.md §8.1)"},
@@ -70,19 +73,20 @@ var squirrelModuleKeys = map[string][]string{
 		"Descriptors", "Keyed", "Package", "Roots", "TableBlockAlign", "TableBlockByteOrderBytes",
 		"TableBlockMagicBytes", "TableCookByteOrderBytes", "TableCookHeaderBytes", "TableCookMagicBytes",
 		"TableCookMaxAlign", "TableDocNone", "TableMessageAnnouncement", "TableMessageBatchMax",
-		"TableMessageEntriesHere", "TableMessageIds", "TableMessageRefBitsHere", "TableRetainKnown",
+		"TableMessageEntriesHere", "TableMessageIds", "TableMessageRefBitsHere", "TableRegionAlign", "TableRetainKnown",
 		"TableTagsNone", "TableUnitView", "UnitView", "blockBegin", "blockBytes", "blockCreate",
 		"blockDestroy", "blockForms", "blockKeyed", "blockOpen", "blockRecords", "blockRows", "blockSet",
 		"cookForms", "cookOpen", "cookWriteUnions",
 	},
 	"the runtime files (schema_table_*.nut), each its own module table": {
+		"noteStringOrigin", "stringIdentity",
 		"AnnounceRead", "Begin", "Block", "BuildVersion", "Bytes", "Cook", "CookMeasure", "Create",
-		"DefaultLimits", "Destroy", "EditTextForm", "FromJson", "FromJsonTolerant", "LoadMessages",
+		"DefaultLimits", "Destroy", "EditTextForm", "FixedWidened", "FromJson", "FromJsonTolerant", "LoadMessages",
 		"LoadRetain", "LoadText", "LoadTextForm", "MeasureMessages", "MeasureRetain", "Names", "ReadStrict",
 		"ReadStrictNames", "Rows", "SaveMessages", "SaveRetain", "SaveText", "SaveTextForm",
-		"Set", "ToJson", "ToJsonMeasure", "blobOf", "blobOfHex", "get", "getF32", "getF64", "geti32", "keyed",
-		"link", "load", "loadTolerant", "mapWriteOrder", "measure", "numberForCook", "put", "putF32", "putF64", "puti32", "report", "save",
-		"textIllFormed", "u32le", "u64le", "wideUnits",
+		"Set", "ToJson", "ToJsonMeasure", "blobOf", "blobOfHex", "cyclic", "get", "getF32", "getF64", "geti32", "getu", "keyed",
+		"link", "load", "loadTolerant", "mapWriteOrder", "measure", "noteStringOrigin", "numberForCook", "put", "putF32", "putF64", "puti32", "report", "save",
+		"stringIdentity", "textIllFormed", "u32le", "u64le", "wideUnits",
 	},
 }
 

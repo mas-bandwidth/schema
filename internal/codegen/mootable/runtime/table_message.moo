@@ -24,7 +24,7 @@
 -- on bit patterns through serialize.moo's own soft-float (serialize_float),
 -- the arithmetic serialize.moo's compressed float runs, so the index a message
 -- carries is the index a packet carries (SPEC.md §4.3). A NaN or an infinity
--- is REFUSED on write, never clamped, and refused on read (§3.3, 2026-10-27).
+-- is REFUSED on write, never saturated, and refused on read (§3.3, 2026-10-27).
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
@@ -527,15 +527,12 @@ function MS.NewVocabulary(): any
 end
 
 local function resetReport(report: any)
-	report.malformed = false
+	report.damaged = false
 	report.refused = false
 	report.reason = nil
 	report.field = nil
 	report.unknown = 0
-	report.kindMismatch = 0
 	report.widened = 0
-	report.clamped = 0
-	report.duplicate = 0
 	report.nonFinite = 0
 	report.nonFiniteField = nil
 end
@@ -556,7 +553,7 @@ local ID_TABLE_BOUND = 4096
 local function announceRead(v: any, data: buffer, report: any): boolean
 	local len = buffer.len(data)
 	if len < 1 then
-		report.malformed = true
+		report.damaged = true
 		return false
 	end
 	local form = buffer.readu8(data, 0)
@@ -564,13 +561,13 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 		return refuse(report, if form == 2 then "message_form_as_file" else "newer_form")
 	end
 	if len < 9 then
-		report.malformed = true
+		report.damaged = true
 		return false
 	end
 	local lo = buffer.readu32(data, len - 8)
 	local hi = buffer.readu32(data, len - 4)
 	if hi ~= 0 or lo > ID_TABLE_BOUND or lo > (len - 9) // 8 then
-		report.malformed = true
+		report.damaged = true
 		return false
 	end
 	local start = len - 8 - lo * 8
@@ -587,19 +584,19 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	while true do
 		local ref, next = V.leb(data, at, start)
 		if ref == nil then
-			report.malformed = true
+			report.damaged = true
 			return false
 		end
 		at = next
 		if ref == 0 then
 			if at ~= start then
-				report.malformed = true
+				report.damaged = true
 				return false
 			end
 			break
 		end
 		if ref > #ids or at >= start then
-			report.malformed = true
+			report.damaged = true
 			return false
 		end
 		local kind = buffer.readu8(data, at)
@@ -607,7 +604,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 		local id = ids[ref]
 		if id == VERSION_ID then
 			if kind ~= 9 or at + 8 > start then
-				report.malformed = true
+				report.damaged = true
 				return false
 			end
 			version = buffer.readstring(data, at, 8)
@@ -617,18 +614,18 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 			local n
 			n, at = V.leb(data, at, start)
 			if kind ~= 14 or n == nil or at + n > start then
-				report.malformed = true
+				report.damaged = true
 				return false
 			end
 			local bodyAt, bodyEnd = at, at + n
 			at = bodyEnd
 			if bodyAt >= bodyEnd or buffer.readu8(data, bodyAt) ~= 6 then
-				report.malformed = true
+				report.damaged = true
 				return false
 			end
 			local m, wordsAt = V.leb(data, bodyAt + 1, bodyEnd)
 			if m == nil or wordsAt + m ~= bodyEnd then
-				report.malformed = true
+				report.damaged = true
 				return false
 			end
 			if m > maxBytes then
@@ -644,7 +641,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 			local w = V.width(kind)
 			if w > 0 then
 				if at + w > start then
-					report.malformed = true
+					report.damaged = true
 					return false
 				end
 				at += w
@@ -652,7 +649,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 				local n
 				n, at = V.leb(data, at, start)
 				if n == nil or at + n > start then
-					report.malformed = true
+					report.damaged = true
 					return false
 				end
 				at += n
@@ -660,18 +657,18 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 				local n
 				n, at = V.leb(data, at, start)
 				if n == nil then
-					report.malformed = true
+					report.damaged = true
 					return false
 				end
 			elseif kind ~= 0 and kind ~= 32 then
-				report.malformed = true
+				report.damaged = true
 				return false
 			end
 		end
 	end
 	v.buildVersion = version
 	if versions ~= 1 or vocabs ~= 1 or words == nil then
-		report.malformed = true
+		report.damaged = true
 		return false
 	end
 	local wb = words :: buffer
@@ -682,30 +679,30 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	local p = 0
 	while p < we do
 		if p + 9 > we then
-			report.malformed = true
+			report.damaged = true
 			return false
 		end
 		local id = buffer.readstring(wb, p, 8)
 		local kind = buffer.readu8(wb, p + 8)
 		if id == VERSION_ID or id == VOCAB_ID or not knownKind(kind) then
-			report.malformed = true
+			report.damaged = true
 			return false
 		end
 		if id == NODE_ID then
 			nodeTables += 1
 			if nodeTables > 1 then
-				report.malformed = true
+				report.damaged = true
 				return false
 			end
 		end
 		local shape, next = readShape(wb, p + 9, we, kind)
 		if next == nil then
-			report.malformed = true
+			report.damaged = true
 			return false
 		end
 		local key = buffer.readstring(wb, p, next - p)
 		if seen[key] then
-			report.malformed = true
+			report.damaged = true
 			return false
 		end
 		seen[key] = true
@@ -724,7 +721,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 end
 
 -- AnnounceRead resolves one announcement into the caller's vocabulary
--- (§3.3: the announcement reads tolerantly with exactly two strict checks; a
+-- (§3.3: the announcement reads with exactly two strict checks; a
 -- refusal is terminal, and a second announcement is second_announcement).
 function MS.AnnounceRead(v: any, data: buffer, report: any?): boolean
 	local rep: any = report or {}
@@ -898,6 +895,11 @@ local function encodeValue(c: any, e: any, kind: number, shape: any, val: any, n
 		if not V.finite64(val[1], val[2]) then
 			return fail(c, "non_finite_float", named)
 		end
+		-- A FINITE VALUE OFF ITS DECLARED RANGE IS REFUSED, never pulled in
+		-- (docs/plans/strict-only.md decision 8)
+		if e.flo ~= nil and (V.cmp64(val[1], val[2], e.flo[1], e.flo[2]) < 0 or V.cmp64(val[1], val[2], e.fhi[1], e.fhi[2]) > 0) then
+			return fail(c, "invalid_value", named)
+		end
 		put(w, val[1], 32)
 		put(w, val[2], 32)
 		return true
@@ -907,6 +909,14 @@ local function encodeValue(c: any, e: any, kind: number, shape: any, val: any, n
 		end
 		if not V.finite32(val) then
 			return fail(c, "non_finite_float", named)
+		end
+		-- A FINITE VALUE OFF ITS DECLARED RANGE IS REFUSED, never pulled in
+		-- (docs/plans/strict-only.md decision 8)
+		if e.flo ~= nil then
+			local lo, hi = V.f32to64(val)
+			if V.cmp64(lo, hi, e.flo[1], e.flo[2]) < 0 or V.cmp64(lo, hi, e.fhi[1], e.fhi[2]) > 0 then
+				return fail(c, "invalid_value", named)
+			end
 		end
 		if shape.packing == 2 then
 			-- THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3)
@@ -1342,8 +1352,19 @@ local decodeBody: any
 local skipEntry: any
 local decodeArm: any
 
+-- THE ONE READ (docs/SPEC-TABLES.md §3.3, §4, §6.5): a kind mismatch, a value
+-- outside the reader's range and a count or a length past its bound REFUSE the
+-- whole batch; nothing is pulled into range, kept in part or skipped. The first one met
+-- is the diagnostic; the verdict is the only contract.
+local function refuseRead(t: any, why: string): boolean
+	if t.refusal == nil then
+		t.refusal = why
+	end
+	return false
+end
+
 local function dmal(t: any): boolean
-	t.report.malformed = true
+	t.report.damaged = true
 	return false
 end
 
@@ -1366,7 +1387,7 @@ end
 local function nameAt(t: any, ref: number): any
 	local e = entryAt(t, ref)
 	if e == nil or reserved(e.id) or e.kind ~= 0 then
-		t.report.malformed = true
+		t.report.damaged = true
 		return nil
 	end
 	return e
@@ -1375,7 +1396,7 @@ end
 local function armAt(t: any, ref: number): any
 	local e = entryAt(t, ref)
 	if e == nil or reserved(e.id) or e.kind == 0 then
-		t.report.malformed = true
+		t.report.damaged = true
 		return nil
 	end
 	return e
@@ -1515,7 +1536,7 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 			end
 			if r.off == at then
 				if n - i > left(r) then
-					t.report.malformed = true
+					t.report.damaged = true
 					return false
 				end
 				return true
@@ -1544,7 +1565,8 @@ end
 
 -- one integer decoded at the announced shape and landed in fd's kind and
 -- storage: ranged values are offset + base, raw ones sign-extend by this
--- build's signedness; the declared range and bits(N) clamp (scalar)
+-- build's signedness; a value outside the declared range or bits(N) refuses
+-- out_of_range (scalar)
 local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, boolean)
 	local width = valueBits(kind, shape)
 	if width < 0 then
@@ -1557,7 +1579,7 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 	local mykw = fd.kw or kindWidth(kind)
 	local signed = fd.signed == true
 	if kindWidth(kind) == 16 or fixedKind(kind) then
-		-- the 128-bit and fixed family: a big value, then the field's clamp
+		-- the 128-bit and fixed family: a big value, then the field's range
 		if shape.packing == 1 then
 			x = add4(x, shape.base or { 0, 0, 0, 0 })
 		elseif kindWidth(kind) < 16 then
@@ -1583,20 +1605,15 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 	local lo, hi = fd.lo, fd.hi
 	if lo ~= nil then
 		local Cmp = if mykw == 16 then C else (if signed then Int64 else Uint64)
-		if Cmp.cmp(value, lo) < 0 then
-			value = lo
-			t.report.clamped += 1
-		elseif Cmp.cmp(value, hi) > 0 then
-			value = hi
-			t.report.clamped += 1
+		if Cmp.cmp(value, lo) < 0 or Cmp.cmp(value, hi) > 0 then
+			return nil, refuseRead(t, "out_of_range")
 		end
 	end
 	if fd.bits ~= nil and fd.bits < 64 then
 		local cap = Uint64.sub(Uint64.lsh(Uint64.fromNumber(1), fd.bits), Uint64.fromNumber(1))
 		local uv = if type(value) == "number" then value else (if Int64.is(value) then Int64.toUint64(value) else value)
 		if Uint64.cmp(uv, cap) > 0 then
-			value = cap
-			t.report.clamped += 1
+			return nil, refuseRead(t, "out_of_range")
 		end
 	end
 	-- narrow to the kind's raw domain
@@ -1625,7 +1642,7 @@ end
 
 -- one float32 at the announced shape: a quantized index dequantized, or the
 -- raw bits (refused when not finite); landed in fd (widened into f64, or
--- clamped to fd's range with -0 as +0)
+-- refused out_of_range outside fd's range, with -0 as +0)
 local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boolean)
 	local bits: number
 	if shape.packing == 2 then
@@ -1655,12 +1672,8 @@ local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boo
 	end
 	if fd.flo ~= nil then
 		local lo, hi = V.f32to64(bits)
-		if V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 then
-			t.report.clamped += 1
-			return fd.flo32, true
-		elseif V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then
-			t.report.clamped += 1
-			return fd.fhi32, true
+		if V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 or V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then
+			return nil, refuseRead(t, "out_of_range")
 		elseif bits == 0x80000000 then
 			return 0, true
 		end
@@ -1695,7 +1708,7 @@ local function decodeScalar(t: any, fd: any, kind: number, shape: any, named: an
 	end
 	local v, ok = decodeInteger(t, fd, kind, shape)
 	if not ok then
-		return nil, dmal(t)
+		return nil, t.refusal ~= nil or dmal(t)
 	end
 	return v, true
 end
@@ -1725,7 +1738,7 @@ local function decodeEnum(t: any, e: any, element: boolean): (any, boolean)
 end
 
 -- string(N) / bytes(N): the length at its width, the align, the bytes; a
--- payload past this build's bound keeps what fits and counts clamped
+-- payload past this build's bound refuses length_over_bound
 local function decodeText(t: any, fd: any, entry: any, holder: any): boolean
 	local r = t.r
 	local shape = entry.shape
@@ -1740,11 +1753,10 @@ local function decodeText(t: any, fd: any, entry: any, holder: any): boolean
 	if not isBytes and not V.utf8(r.b, at, n) then
 		return dmal(t)
 	end
-	local keep = n
-	if fd.bound ~= nil and keep > fd.bound then
-		keep = if isBytes then fd.bound else V.clampUtf8(r.b, at, fd.bound)
-		t.report.clamped += 1
+	if fd.bound ~= nil and n > fd.bound then
+		return refuseRead(t, "length_over_bound")
 	end
+	local keep = n
 	if isBytes then
 		local dst = holder[fd.slot]
 		if type(dst) ~= "buffer" or buffer.len(dst) < keep then
@@ -1775,11 +1787,10 @@ local function decodeWide(t: any, fd: any, entry: any, holder: any): boolean
 	if not V.wide(units, 0, n * 2) then
 		return dmal(t)
 	end
-	local keep = n
-	if fd.bound ~= nil and keep > fd.bound then
-		keep = V.clampWide(units, 0, fd.bound)
-		t.report.clamped += 1
+	if fd.bound ~= nil and n > fd.bound then
+		return refuseRead(t, "length_over_bound")
 	end
+	local keep = n
 	local dst = holder[fd.slot]
 	if type(dst) ~= "buffer" or buffer.len(dst) < keep * 2 then
 		dst = buffer.create(math.max(keep, fd.bound or keep) * 2)
@@ -1833,7 +1844,7 @@ local function decodeElement(t: any, fd: any, shape: any, dst: any, i: number, k
 end
 
 -- a positional array (array): the count, the align, the elements; a count past
--- this build's bound keeps the first N and counts clamped
+-- this build's bound refuses count_over_bound
 local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
 	local r = t.r
 	local shape = entry.shape
@@ -1849,28 +1860,17 @@ local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
 	if aligns(entry.kind, shape) and not ralign(r) then
 		return dmal(t)
 	end
-	local inner = shape.inner or {}
-	local run = runBits(entry.kind, shape.elem, inner)
-	local kept = n
 	if n > fd.bound then
-		kept = fd.bound
-		t.report.clamped += 1
+		return refuseRead(t, "count_over_bound")
 	end
 	local dst = holder[fd.slot]
-	local walk = n
-	if run >= 0 and walk > kept then
-		walk = kept
-	end
-	for i = 1, walk do
-		if not decodeElement(t, fd, shape, dst, i, i <= kept) then
+	for i = 1, n do
+		if not decodeElement(t, fd, shape, dst, i, true) then
 			return false
 		end
 	end
-	if walk < n and not skipRun(r, n - walk, run) then
-		return dmal(t)
-	end
 	if fd.array == "counted" then
-		holder[fd.slot .. "Count"] = kept
+		holder[fd.slot .. "Count"] = n
 	end
 	if fd.present ~= nil then
 		holder[fd.present] = true
@@ -1886,6 +1886,8 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 		return dmal(t)
 	end
 	local dst = holder[fd.slot]
+	-- A KEYED SLOT TWICE IS DAMAGE (§3.3; docs/plans/strict-only.md decision 5)
+	local seen: { [string]: boolean } = {}
 	for _ = 1, n do
 		local ref, rok = reference(t)
 		if not rok then
@@ -1895,6 +1897,10 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 		if key == nil then
 			return false
 		end
+		if seen[key.id] then
+			return dmal(t)
+		end
+		seen[key.id] = true
 		local at = 0
 		for i, kv in fd.keyvs do
 			if kv[2] == key.id then
@@ -1907,8 +1913,7 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 			t.report.unknown += 1
 			keep = false
 		elseif at > fd.bound then
-			t.report.clamped += 1
-			keep = false
+			return refuseRead(t, "out_of_range")
 		end
 		if not decodeElement(t, fd, shape, if keep then dst else {}, if keep then at else 1, keep) then
 			return false
@@ -1957,7 +1962,7 @@ end
 
 -- one union value (unionCell): the arm's reference, then the payload a field
 -- of the arm's type carries; an arm this build cannot name reads None and
--- counts unknown, a retyped one kind_mismatch
+-- counts unknown, a retyped one refuses kind_mismatch
 decodeArm = function(t: any, fd: any): (any, boolean)
 	local un = S.lookup(fd.t)
 	local u = un.new()
@@ -1987,8 +1992,7 @@ decodeArm = function(t: any, fd: any): (any, boolean)
 	local mine = mineEntry(slotOf(un, tag))
 	if entry.kind ~= mine.kind or entry.shape.elem ~= mine.shape.elem then
 		if not widens(entry, mine.kind, mine.shape.elem) then
-			t.report.kindMismatch += 1
-			return u, skipEntry(t, entry.kind, entry.shape)
+			return u, refuseRead(t, "kind_mismatch")
 		end
 		t.report.widened += 1
 	end
@@ -2007,6 +2011,9 @@ end
 -- one body: fields until the zero reference (body)
 decodeBody = function(t: any, d: any, v: any): boolean
 	local byId = fieldsById(d)
+	-- A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
+	-- name it or not (docs/plans/strict-only.md decision 5)
+	local seen: { [string]: boolean } = {}
 	while true do
 		local ref, ok = reference(t)
 		if not ok then
@@ -2016,9 +2023,10 @@ decodeBody = function(t: any, d: any, v: any): boolean
 			return true
 		end
 		local entry = entryAt(t, ref)
-		if entry == nil or reserved(entry.id) then
+		if entry == nil or reserved(entry.id) or seen[entry.id] then
 			return dmal(t)
 		end
+		seen[entry.id] = true
 		local hit = byId[entry.id]
 		if hit == nil then
 			t.report.unknown += 1
@@ -2040,11 +2048,8 @@ decodeBody = function(t: any, d: any, v: any): boolean
 				end
 				continue
 			end
-			t.report.kindMismatch += 1
-			if not skipEntry(t, entry.kind, entry.shape) then
-				return dmal(t)
-			end
-			continue
+			-- THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT and refuses
+			return refuseRead(t, "kind_mismatch")
 		end
 		if not decodeField(t, fd, entry, v) then
 			return false
@@ -2058,16 +2063,18 @@ end
 -- LoadMessages decodes a batch of root against the announced vocabulary v
 -- (DecodeMessages) and answers how many bodies it delivered and the values.
 -- -1 with report.reason is a refusal (newer_form, no_vocabulary,
--- integrity_mismatch, non_finite_float); a count above capacity is
+-- integrity_mismatch, kind_mismatch, out_of_range, count_over_bound,
+-- length_over_bound; non_finite_float answers 0); a count above capacity is
 -- batch_too_large and returns the wire's M. Damage anywhere discards the
--- whole batch: zero bodies, no values, with report.malformed set (§4).
+-- whole batch: zero bodies, no values, with report.damaged set (§4). Every
+-- refusal returns no values: the whole batch or nothing.
 function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, { any })
 	local d = messageRoot(root)
 	local rep: any = report or {}
 	resetReport(rep)
 	local len = buffer.len(data)
 	if len < 1 then
-		rep.malformed = true
+		rep.damaged = true
 		return 0, {}
 	end
 	if buffer.readu8(data, 0) ~= 2 then
@@ -2077,7 +2084,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local n = len
 		if n < 6 or buffer.readu32(data, n - 4) ~= V.crc32c(data, n - 4) then
-			rep.malformed = true
+			rep.damaged = true
 			rep.reason = "integrity_mismatch"
 			return -1, {}
 		end
@@ -2096,7 +2103,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	local r = newReader(data, 1, (len - 1) * 8)
 	local raw, ok = get(r, 8)
 	if not ok then
-		rep.malformed = true
+		rep.damaged = true
 		return 0, {}
 	end
 	local count = raw + 1
@@ -2106,29 +2113,35 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	local t: any = { r = r, v = v, report = rep, indexBits = 0 }
 	local values = {}
-	local got = count
+	local whole = true
 	for i = 1, count do
 		local value = d.new()
-		local bok = decodeBody(t, d, value)
-		if not bok then
-			rep.malformed = true
-			got = i - 1
+		if not decodeBody(t, d, value) then
+			whole = false
 			break
 		end
 		values[i] = value
+	end
+	if t.refusal ~= nil then
+		rep.damaged = false
+		refuse(rep, t.refusal)
+		return -1, {}
+	end
+	if not whole then
+		rep.damaged = true
 	end
 	if rep.nonFinite > 0 then
 		rep.reason = "non_finite_float: " .. tostring(rep.nonFiniteField)
 		rep.field = rep.nonFiniteField
 		return 0, {}
 	end
-	if got == count and (not ralign(r) or r.off ~= r.n) then
-		rep.malformed = true
+	if whole and (not ralign(r) or r.off ~= r.n) then
+		rep.damaged = true
 	end
-	if rep.malformed then
+	if rep.damaged then
 		return 0, {}
 	end
-	return got, values
+	return count, values
 end
 
 return table.freeze(MS)

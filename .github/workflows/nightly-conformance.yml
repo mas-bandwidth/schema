@@ -66,10 +66,17 @@ jobs:
   registry:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # measured on the last 25 runs: 5-19 s, 72 s at worst
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     outputs:
       ports: ${{ steps.discover.outputs.ports }}
     steps:
       - name: never the host named space
+        # before the checkout, so tools/pgroup is not there yet
+        shell: bash
         run: |
           if [ "$(hostname -s)" = space ]; then
             echo "::error::space is the game server and never runs CI"; exit 1
@@ -90,8 +97,19 @@ jobs:
   cpp-writes:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # measured: 120-296 s green on the old fleet; on a hetzner runner sharing
+    # its host with a second job the C++ driver builds alone ran past 15
+    # minutes; the reds ran 18-35 min (main, 2026-11-02..04), inside the
+    # shared regression step, whose go test is bounded as well, so the bound
+    # is 50
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - name: never the host named space
+        # before the checkout, so tools/pgroup is not there yet
+        shell: bash
         run: |
           if [ "$(hostname -s)" = space ]; then
             echo "::error::space is the game server and never runs CI"; exit 1
@@ -104,10 +122,13 @@ jobs:
         run: |
           set -euo pipefail
           cd ..
-          rm -rf serialize serialize.cs serialize.go
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
@@ -122,8 +143,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/nightly/shared-regressions
-          go test -json -timeout=0 -count=1 ./internal/tabletext ./internal/tablewire ./tools/fixedtwin 2>&1 | tee build/nightly/shared-regressions/packages.jsonl
-          go test -json -timeout=0 -count=1 ./test/conformance/harness -run '^TestUnboundedTextOracle' 2>&1 | tee build/nightly/shared-regressions/corpus.jsonl
+          go test -json -timeout=10m -count=1 ./internal/tabletext ./internal/tablewire ./tools/fixedtwin 2>&1 | tee build/nightly/shared-regressions/packages.jsonl
+          go test -json -timeout=10m -count=1 ./test/conformance/harness -run '^TestUnboundedTextOracle' 2>&1 | tee build/nightly/shared-regressions/corpus.jsonl
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -198,10 +219,19 @@ jobs:
             exit 1
           fi
 
+      # the readiness gate's prerequisites build the Dart driver, and its
+      # compiler package runs the Luau and Squirrel testgen tests: the pinned
+      # Luau and Squirrel come from make/<lang>.mk, Dart is the runner's own
+      - name: install the Luau and Squirrel pins the C++ readiness gate runs
+        if: ${{ !cancelled() }}
+        run: make dist-luau dist-squirrel
+
       - name: the C++ original-nine readiness gate
         if: ${{ !cancelled() }}
         run: |
           set -uo pipefail
+          # the runner's own Dart, where it has one; make/dart.mk's dist path otherwise
+          if command -v dart >/dev/null 2>&1; then DART="$(command -v dart)"; export DART; fi
           mkdir -p build/nightly/reference-report
           record=build/nightly/reference-report/readiness-cpp.txt
           echo fail > "$record"
@@ -236,11 +266,20 @@ jobs:
     if: ${{ !cancelled() && needs.registry.result == 'success' }}
     name: port (${{ matrix.lang }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # measured: 25-229 s per language green; the red elixir row runs its
+    # whole readiness gate in 31-33 min (main, 2026-11-03..04), so the bound
+    # is 50
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.registry.outputs.ports) }}
     steps:
       - name: never the host named space
+        # before the checkout, so tools/pgroup is not there yet
+        shell: bash
         run: |
           if [ "$(hostname -s)" = space ]; then
             echo "::error::space is the game server and never runs CI"; exit 1
@@ -433,8 +472,15 @@ jobs:
     needs: [cpp-writes, port]
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # measured: 11-38 s
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - name: never the host named space
+        # before the checkout, so tools/pgroup is not there yet
+        shell: bash
         run: |
           if [ "$(hostname -s)" = space ]; then
             echo "::error::space is the game server and never runs CI"; exit 1

@@ -33,19 +33,19 @@ func TestCFixedFormUnder20Bytes(t *testing.T) {
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_field_append")
 	file := filepath.Join(corpus, "new_field_append.bin")
-	load := ir.RustSnake(cFixedRootName(t, cUnitOf(t, newer))) + "_fixed_load_tolerant"
+	load := ir.RustSnake(cFixedRootName(t, cUnitOf(t, newer))) + "_fixed_load"
 
 	body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "under20: the full-length file did not read: n=%%lld reason=%%d\n", (long long) n, r.reason ); return 1; }
-    if ( r.malformed || r.refused || r.reason != 0 )
-        { printf( "under20: the full-length file must read clean: malformed=%%d refused=%%d reason=%%d\n", r.malformed, r.refused, r.reason ); return 1; }
+    if ( r.refused || r.refused || r.reason != 0 )
+        { printf( "under20: the full-length file must read clean: malformed=%%d refused=%%d reason=%%d\n", r.refused, r.refused, r.reason ); return 1; }
     for ( k = 0; k < kTableFixedHeaderBytes + 4; ++k )
     {
         memset( &r, 0, sizeof( r ) );
         memcpy( &back[0], &fresh, sizeof( fresh ) ); /* the sentinel: the reader's own default image */
         n = %s( back, 8, data, k, plan, 4096, NULL, &r );
         if ( n != -1 ) { printf( "under20: at k=%%d a file shorter than the header is malformed, not n=%%lld\n", k, (long long) n ); return 1; }
-        if ( r.malformed != 1 ) { printf( "under20: at k=%%d malformed=%%d, not 1\n", k, r.malformed ); return 1; }
+        if ( r.refused != 1 ) { printf( "under20: at k=%%d malformed=%%d, not 1\n", k, r.refused ); return 1; }
         if ( r.refused ) { printf( "under20: at k=%%d a short file is the residue, never refused by name: refused=%%d\n", k, r.refused ); return 1; }
         if ( r.reason != 0 ) { printf( "under20: at k=%%d reason stays untouched, not %%d\n", k, r.reason ); return 1; }
         if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )

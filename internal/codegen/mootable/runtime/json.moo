@@ -1424,11 +1424,11 @@ local MAX_KEY = 255
 
 export type Report = {
 	unknown: number,
-	kindMismatch: number,
+	kindChanged: number,
 	widened: number,
-	clamped: number,
-	duplicate: number,
-	malformed: boolean,
+	outOfRange: number,
+	repeatedKey: number,
+	damaged: boolean,
 	reason: string?,
 	blobShared: number,
 	missingRequired: number,
@@ -1582,7 +1582,11 @@ local function scanUnit(r: Reader): (string?, boolean)
 			end
 		end
 		if code >= 0xD800 and code <= 0xDFFF then
-			code = 0xFFFD
+			if r.report.reason == nil then
+				r.report.reason = "string_lone_surrogate: <root>"
+			end
+			r.bad = true
+			return nil, false
 		end
 		return utf8Encode(code), false
 	end
@@ -1620,9 +1624,9 @@ local function scanUnit(r: Reader): (string?, boolean)
 end
 
 -- scanText(r, capacity, store): one JSON string, ONE CODE POINT AT A TIME, so
--- a string longer than capacity (bytes; < 0 unbounded) is clamped at a code
+-- a string longer than capacity (bytes; < 0 unbounded) is bounded at a code
 -- point boundary; store says the text lands in text storage, where a zero
--- refuses the read (§16.3). Returns the text, whether it clamped, and ok.
+-- refuses the read (§16.3). Returns the text, whether it exceeded capacity, and ok.
 local function scanText(r: Reader, capacity: number, store: boolean): (string, boolean, boolean)
 	if peek(r) ~= 34 then
 		r.bad = true
@@ -1632,7 +1636,7 @@ local function scanText(r: Reader, capacity: number, store: boolean): (string, b
 	local t = r.t
 	local parts: { string } = {}
 	local length = 0
-	local clamped = false
+	local overBound = false
 	while true do
 		-- a run of plain ASCII is one code point a byte: placed whole
 		local at = string.find(t, "[%z\1-\31\"\\\128-\255]", r.pos)
@@ -1643,12 +1647,12 @@ local function scanText(r: Reader, capacity: number, store: boolean): (string, b
 		end
 		if at > r.pos then
 			local run = at - r.pos
-			if not clamped then
+			if not overBound then
 				if capacity >= 0 and length + run > capacity then
 					local fit = capacity - length
 					table.insert(parts, string.sub(t, r.pos, r.pos + fit - 1))
 					length += fit
-					clamped = true
+					overBound = true
 				else
 					table.insert(parts, string.sub(t, r.pos, at - 1))
 					length += run
@@ -1668,14 +1672,14 @@ local function scanText(r: Reader, capacity: number, store: boolean): (string, b
 			r.bad = true
 			return "", false, false
 		end
-		if clamped or (capacity >= 0 and length + #unit > capacity) then
-			clamped = true
+		if overBound or (capacity >= 0 and length + #unit > capacity) then
+			overBound = true
 		else
 			table.insert(parts, unit)
 			length += #unit
 		end
 	end
-	return table.concat(parts), clamped, true
+	return table.concat(parts), overBound, true
 end
 
 local function scanString(r: Reader, capacity: number): (string, boolean, boolean)
@@ -1687,7 +1691,7 @@ local function scanStored(r: Reader, capacity: number): (string, boolean, boolea
 end
 
 -- scanWString(r, capacity): one JSON string as UTF-16 code units, appended
--- one code point at a time so a clamp never splits a pair
+-- one code point at a time so a bound never splits a pair
 local function scanWString(r: Reader, capacity: number): ({ number }, boolean, boolean)
 	if peek(r) ~= 34 then
 		r.bad = true
@@ -1695,7 +1699,7 @@ local function scanWString(r: Reader, capacity: number): ({ number }, boolean, b
 	end
 	r.pos += 1
 	local out: { number } = {}
-	local clamped = false
+	local overBound = false
 	while true do
 		local unit, done = scanUnit(r)
 		if done then
@@ -1721,8 +1725,8 @@ local function scanWString(r: Reader, capacity: number): ({ number }, boolean, b
 			return {}, false, false
 		end
 		local need = if code < 0x10000 then 1 else 2
-		if clamped or (capacity >= 0 and #out + need > capacity) then
-			clamped = true
+		if overBound or (capacity >= 0 and #out + need > capacity) then
+			overBound = true
 		elseif need == 1 then
 			table.insert(out, code)
 		else
@@ -1731,7 +1735,7 @@ local function scanWString(r: Reader, capacity: number): ({ number }, boolean, b
 			table.insert(out, 0xDC00 + rest % 1024)
 		end
 	end
-	return out, clamped, true
+	return out, overBound, true
 end
 
 -- walkNumber: the cursor over ONE RFC 8259 number, and whether it was
@@ -2196,7 +2200,7 @@ local function readPointerCell(r: Reader, holder: any, key: any, t: string?, dep
 		if e.t == nil then
 			return true -- a definition the reader dropped names no node
 		elseif e.t ~= t then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 		else
 			holder[key] = e.node
 		end
@@ -2272,14 +2276,14 @@ local function placeFloat(r: Reader, fd: any, holder: any, key: any, token: stri
 	if fd.f32 then
 		local bits = J.parseFloat32(token)
 		if bits % TWO31 >= 0x7F800000 then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			return true
 		end
 		hi, lo = widen32(bits)
 	else
 		hi, lo = J.parseFloat64(token)
 		if hi % TWO31 >= 0x7FF00000 then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			return true
 		end
 	end
@@ -2287,10 +2291,10 @@ local function placeFloat(r: Reader, fd: any, holder: any, key: any, token: stri
 		local flo, fhi = fd.flo, fd.fhi
 		if dcmp(hi, lo, flo[2], flo[1]) < 0 then
 			hi, lo = flo[2], flo[1]
-			r.report.clamped += 1
+			r.report.outOfRange += 1
 		elseif dcmp(hi, lo, fhi[2], fhi[1]) > 0 then
 			hi, lo = fhi[2], fhi[1]
-			r.report.clamped += 1
+			r.report.outOfRange += 1
 		elseif hi % TWO31 == 0 and lo == 0 then
 			hi, lo = 0, 0 -- a compressed float's -0 lands as +0, uncounted
 		end
@@ -2298,7 +2302,7 @@ local function placeFloat(r: Reader, fd: any, holder: any, key: any, token: stri
 	if fd.f32 then
 		local bits = narrow64(hi, lo)
 		if bits % TWO31 >= 0x7F800000 then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			return true
 		end
 		holder[key] = bits
@@ -2337,11 +2341,11 @@ end
 local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: string, integral: boolean): boolean
 	local finite, fractional, saturated, negative, mag = interpretInteger(token, integral)
 	if not finite or fractional then
-		r.report.kindMismatch += 1
+		r.report.kindChanged += 1
 		return true
 	end
 	if saturated then
-		r.report.clamped += 1
+		r.report.outOfRange += 1
 	end
 	-- THE DECLARED RANGE FIRST, compared as the doubles the engine compares
 	local bn, bm = negative, mag
@@ -2351,10 +2355,10 @@ local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: st
 		local dlo, dhi = dblRound(lm), dblRound(hm)
 		if cmpSigned(negative, scale, ln, dlo) < 0 then
 			bn, bm = ln and #dlo > 0, dlo
-			r.report.clamped += 1
+			r.report.outOfRange += 1
 		elseif cmpSigned(negative, scale, hn, dhi) > 0 then
 			bn, bm = hn and #dhi > 0, dhi
-			r.report.clamped += 1
+			r.report.outOfRange += 1
 		end
 		if bnCmp(bm, MAX64) > 0 then
 			bm = table.clone(MAX64)
@@ -2367,7 +2371,7 @@ local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: st
 	end
 	local vn, vm, moved = inDomain(bn, bm, fd.signed, bytes)
 	if moved then
-		r.report.clamped += 1
+		r.report.outOfRange += 1
 	end
 	storeInteger(fd, holder, key, vn, vm)
 	return true
@@ -2376,11 +2380,11 @@ end
 local function placeWide(r: Reader, fd: any, holder: any, key: any, token: string): boolean
 	local exact, negative, mag, saturated = parseWide(token, fd.signed, fd.fbits or 0)
 	if not exact then
-		r.report.kindMismatch += 1
+		r.report.kindChanged += 1
 		return true
 	end
 	if saturated then
-		r.report.clamped += 1
+		r.report.outOfRange += 1
 	end
 	if fd.lo ~= nil then
 		local n = if fd.kw == 16 then 4 else 2
@@ -2388,10 +2392,10 @@ local function placeWide(r: Reader, fd: any, holder: any, key: any, token: strin
 		local hn, hm = signedOf(fd.hi, fd.signed, n)
 		if cmpSigned(negative, mag, ln, lm) < 0 then
 			negative, mag = ln, lm
-			r.report.clamped += 1
+			r.report.outOfRange += 1
 		elseif cmpSigned(negative, mag, hn, hm) > 0 then
 			negative, mag = hn, hm
-			r.report.clamped += 1
+			r.report.outOfRange += 1
 		end
 	end
 	local cls = fd.cls
@@ -2442,7 +2446,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 		end
 	elseif arm.s == "void" then
 		if valueShape(r) ~= "z" then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
 			end
@@ -2455,7 +2459,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 	elseif arm.s == "tab" and arm.array == nil then
 		-- a BODY arm: the declared type's object
 		if valueShape(r) ~= "o" then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
 			end
@@ -2477,7 +2481,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 			end
 			u.Type = arm.tag
 		elseif s ~= shape(arm) then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
 			end
@@ -2519,7 +2523,7 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 			return false
 		end
 		if c ~= 34 then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
 			end
@@ -2655,25 +2659,25 @@ local function readBase64Into(r: Reader, b: buffer, bound: number): (boolean, nu
 	if not ok then
 		return false, 0
 	end
-	local out, n, clamped = decodeBase64(raw, bound)
+	local out, n, overBound = decodeBase64(raw, bound)
 	if out == nil then
-		r.report.kindMismatch += 1
+		r.report.kindChanged += 1
 		return true, 0
 	end
-	if clamped then
-		r.report.clamped += 1
+	if overBound then
+		r.report.outOfRange += 1
 	end
 	buffer.copy(b, 0, out :: buffer, 0, n)
 	return true, n
 end
 
 local function readWStringInto(r: Reader, b: buffer, bound: number): (boolean, number)
-	local units, clamped, ok = scanWString(r, bound)
+	local units, overBound, ok = scanWString(r, bound)
 	if not ok then
 		return false, 0
 	end
-	if clamped then
-		r.report.clamped += 1
+	if overBound then
+		r.report.outOfRange += 1
 	end
 	buffer.fill(b, 0, 0)
 	for i, u in units do
@@ -2736,7 +2740,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 		end
 		local s = valueShape(r)
 		if placed >= bound then
-			r.report.clamped += 1
+			r.report.outOfRange += 1
 			if not skipValue(r, depth + 1) then
 				return false
 			end
@@ -2747,7 +2751,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 			arr[placed + 1] = if list then false else nil
 			placed += 1
 		elseif s ~= want then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
 			end
@@ -2786,8 +2790,8 @@ end
 -- §16.2), internal/tabletext's readTextList case for case. A plain list's
 -- element is its string, as the value model stores it; an optional list's is
 -- the element record, whose presence frames it. An unbounded element
--- (tl.bound < 0) is never clamped. A list with a total keeps the prefix whose
--- bytes fit it: the first element past the total is dropped, counted clamped
+-- (tl.bound < 0) is never bounded. A list with a total keeps the prefix whose
+-- bytes fit it: the first element past the total is dropped, counted outOfRange
 -- once, and every later element skipped, an element past [..N] still counted.
 local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number): boolean
 	if peek(r) ~= 91 then
@@ -2836,13 +2840,13 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 		if full then
 			-- the total dropped this element; one past [..N] is counted as well
 			if seen > bound then
-				r.report.clamped += 1
+				r.report.outOfRange += 1
 			end
 			if not skipValue(r, depth + 1) then
 				return false
 			end
 		elseif placed >= bound then
-			r.report.clamped += 1
+			r.report.outOfRange += 1
 			if not skipValue(r, depth + 1) then
 				return false
 			end
@@ -2852,18 +2856,18 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 			end
 			placed += 1
 		elseif s ~= "s" then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
 			end
 			placed += 1
 		else
-			local out, clamped, ok = scanStored(r, tl.bound)
+			local out, overBound, ok = scanStored(r, tl.bound)
 			if not ok then
 				return false
 			end
-			if clamped then
-				r.report.clamped += 1
+			if overBound then
+				r.report.outOfRange += 1
 			end
 			if plain then
 				arr[placed + 1] = out
@@ -2880,9 +2884,9 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 			if n <= fd.total - spent then
 				spent += n
 			else
-				r.report.clamped += 1
+				r.report.outOfRange += 1
 				if r.report.reason == nil then
-					r.report.reason = "clamped: " .. fd.owner .. "." .. fd.name
+					r.report.reason = "out_of_range: " .. fd.owner .. "." .. fd.name
 				end
 				placed -= 1
 				full = true
@@ -2956,7 +2960,7 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 		end
 		if at > 0 then
 			if seen[at] then
-				r.report.duplicate += 1
+				r.report.repeatedKey += 1
 			end
 			seen[at] = true
 		end
@@ -2966,7 +2970,7 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 				return false
 			end
 		elseif valueShape(r) ~= want then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			if not skipValue(r, depth + 1) then
 				return false
 			end
@@ -3049,7 +3053,7 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 					numberOk = walked and probe.pos == #name + 1
 				end
 				if not numberOk then
-					placed = "malformed"
+					placed = "damaged"
 				else
 					local fractional, saturated, negative, mag = interpretIntegerExact(name)
 					if fractional or saturated then
@@ -3065,27 +3069,27 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 				end
 			end
 		end
-		if placed == "malformed" then
-			r.report.malformed = true
+		if placed == "damaged" then
+			r.report.damaged = true
 			r.bad = true
 			return false
 		end
 		if over then
 			if stringKey then
-				r.report.clamped += 1
+				r.report.outOfRange += 1
 			else
-				r.report.kindMismatch += 1
+				r.report.kindChanged += 1
 			end
 			if not skipValue(r, depth) then
 				return false
 			end
 		elseif placed == "mismatch" then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			if not skipValue(r, depth) then
 				return false
 			end
 		elseif kd.s == "str" and #name > kd.bound then
-			r.report.clamped += 1
+			r.report.outOfRange += 1
 			if not skipValue(r, depth) then
 				return false
 			end
@@ -3108,7 +3112,7 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 			local id = keyId(entry[kd.slot])
 			local i = at[id]
 			if i ~= nil then
-				r.report.duplicate += 1
+				r.report.repeatedKey += 1
 				entries[i] = entry
 			else
 				table.insert(entries, entry)
@@ -3153,7 +3157,7 @@ readField = function(r: Reader, d: any, fd: any, rec: any, depth: number): boole
 		end
 		local out = decodeBase64(raw, -1)
 		if out == nil then
-			r.report.kindMismatch += 1
+			r.report.kindChanged += 1
 			return true
 		end
 		rec[slot] = out
@@ -3169,12 +3173,12 @@ readField = function(r: Reader, d: any, fd: any, rec: any, depth: number): boole
 			rec[slot .. "Length"] = n
 			return true
 		end
-		local out, clamped, ok = scanStored(r, fd.bound)
+		local out, overBound, ok = scanStored(r, fd.bound)
 		if not ok then
 			return false
 		end
-		if clamped then
-			r.report.clamped += 1
+		if overBound then
+			r.report.outOfRange += 1
 		end
 		rec[slot] = out
 		return true
@@ -3249,7 +3253,7 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 			end
 		else
 			if seen[i] then
-				r.report.duplicate += 1
+				r.report.repeatedKey += 1
 			end
 			seen[i] = true
 			local fd = d.fields[i]
@@ -3261,7 +3265,7 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 				resetField(d, fd, rec)
 			else
 				if s ~= shape(fd) then
-					r.report.kindMismatch += 1
+					r.report.kindChanged += 1
 					if not skipValue(r, depth + 1) then
 						return false
 					end
@@ -3322,11 +3326,11 @@ end
 
 local function resetReport(report: any)
 	report.unknown = 0
-	report.kindMismatch = 0
+	report.kindChanged = 0
 	report.widened = 0
-	report.clamped = 0
-	report.duplicate = 0
-	report.malformed = false
+	report.outOfRange = 0
+	report.repeatedKey = 0
+	report.damaged = false
 	report.reason = nil
 	report.blobShared = 0
 	report.missingRequired = 0
@@ -3334,7 +3338,7 @@ end
 
 -- fromJson(d, rec, text, report): FromJson (docs/SPEC-TABLES.md §16.1): ONE
 -- instance from ONE text. A text that is not JSON (or refuses by name) makes
--- the read return false with report.malformed set, and the instance is reset
+-- the read return false with report.damaged set, and the instance is reset
 -- to its declared defaults (§6.5). The report receives THIS read's counts.
 function J.fromJson(d: any, rec: any, text: any, report: any?): boolean
 	local rep: any = report or {}
@@ -3352,9 +3356,22 @@ function J.fromJson(d: any, rec: any, text: any, report: any?): boolean
 			r.bad = true -- data after the root object is not one text
 		end
 	end
-	if r.bad or not ok then
+	if r.bad or not ok or rep.outOfRange > 0 or rep.kindChanged > 0 or rep.repeatedKey > 0 or rep.blobShared > 0 or rep.missingRequired > 0 then
 		-- a missing required field refuses by name (§2.3), not as damage
-		rep.malformed = r.bad or rep.missingRequired == 0
+		rep.damaged = r.bad or rep.missingRequired == 0
+		if rep.reason == nil then
+			if rep.outOfRange > 0 then
+				rep.reason = "out_of_range"
+			elseif rep.kindChanged > 0 then
+				rep.reason = "kind_mismatch"
+			elseif rep.repeatedKey > 0 then
+				rep.reason = "repeated_key"
+			elseif rep.blobShared > 0 then
+				rep.reason = "blob_shared"
+			else
+				rep.reason = "wire_damaged"
+			end
+		end
 		local fresh = d.new()
 		for k, v in fresh do
 			rec[k] = v

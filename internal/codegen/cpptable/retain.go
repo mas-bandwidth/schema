@@ -904,9 +904,9 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
 //
 // The occurrences are four, and each is a body the wire lets a writer put down
 // again: a repeated TABLE field, by value or under ?, a UNION whose arm is
-// written again, a MAP's duplicate key, and a KEYED-ARRAY slot written again.
+// written again, a MAP's repeated key, and a KEYED-ARRAY slot written again.
 // The FIELD form covers the three where the field itself is read again, arm
-// switches and shrinking arrays included; the BODY form covers a duplicate key
+// switches and shrinking arrays included; the BODY form covers a repeated key
 // inside one occurrence of a map, where the field is read once and the entry
 // twice.
 inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,

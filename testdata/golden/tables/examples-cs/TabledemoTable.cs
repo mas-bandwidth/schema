@@ -149,38 +149,32 @@ namespace Tabledemo
         }
     }
 
-    // The table-wire read report — the permissive contract's ledger. Silence
-    // (all zero) means the data matched this reader's schema exactly.
+    // The table-wire read report — the one read's ledger. Silence
+    // (all zero) means the data matched this reader's schema exactly. A read
+    // returns the whole value or refuses the whole load (docs/SPEC-TABLES.md
+    // §4, §6.5): damage, a changed kind, an out-of-range value, a count or a
+    // length past its bound, a repeated id or key and broken framing each
+    // refuse, and no counter records them. The counters that remain are the
+    // evolution diagnostics — per-language, never compared across legs.
     public sealed class TableReport
     {
         public int Unknown;        // unknown field ids skipped (newer data)
-        public int KindMismatch;   // known id, changed type — skipped, never misdecoded
-        public int Clamped;        // out-of-range values clamped to declared bounds
-        // duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
-        // (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
-        // whose last occurrence wins, silently. It rides on this struct because a
-        // caller has one report type, not two — so a wire read always leaves it
-        // zero, and <Name>FromJson is what raises it.
-        public int Duplicate;
-        public int Widened;
-        public int MissingRequired;
-        // blob_shared counts each extra slot that names a blob record another slot
-        // already names (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
-        // node, and every writer refuses the value by that name.
-        public int BlobShared;
+        public int Widened;        // a compatible wider kind decoded exactly
         public int Retained, RetainLost;
         public bool Refused;
         public string Reason;
-        public string ClampedField;
         // NonFiniteFloat names the float a read found to be a NaN or an infinity
         // on its raw bits, as <Table>.<field> (docs/SPEC-TABLES.md §3.3): the
-        // field is not written, and the load, the tolerant one too, refuses as
+        // field is not written, and the load refuses as
         // non_finite_float and lands nothing. The first name wins; null on every
         // other read.
         public string NonFiniteFloat;
         internal string NonFiniteReason;
         public Schema.TableWire.Verdict Verdict;
-        public bool Malformed;     // framing damage; decode stopped, partial result kept
+        internal bool Damaged;     // framing damage; the whole load is discarded
+        internal int KindChanged;  // the fixed form's compile census only: a writer
+        // field whose kind changed, counted once per endpoint while a lineage
+        // plan is compiled — never a read counter on a returned load
         // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
         // a member at the end rather than a field inserted among the counters,
         // because the report is a type callers already hold. layout_newer reports
@@ -268,13 +262,13 @@ namespace Tabledemo
         public Func<object, bool> WireGuard;
         public int[] NativeGuardOffsets;
         public bool[] NativeGuardValues;
-        public Func<ulong, TableReport, ulong> ClampRaw;
-        public Func<ulong, TableReport, ulong> ClampJsonInteger;
+        public Func<ulong, TableReport, ulong> RangeRaw;
+        public Func<ulong, TableReport, ulong> RangeJsonInteger;
         public Func<ulong, bool> RequiredValidRaw;
         public UInt128 DefaultWide;
         public int FracBits;
         public bool WideSigned;
-        public Func<UInt128, TableReport, UInt128> ClampWide;
+        public Func<UInt128, TableReport, UInt128> RangeWide;
         public Func<UInt128, bool> RequiredValidWide;
         public Func<object, int, UInt128> GetWide;
         public Action<object, int, UInt128> SetWide;
@@ -621,7 +615,7 @@ namespace Tabledemo
     }
 
     // TableFixedLineagePlan is ONE older entry's plan, laid down once from THE
-    // LOCK'S bytes. Unknown and KindMismatch are the COMPILE CENSUS: a writer field
+    // LOCK'S bytes. Unknown and KindChanged are the COMPILE CENSUS: a writer field
     // no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4),
     // and LOAD carries them onto the report after the record loop, on a read that
     // returns (§5.9 #6). Why is the name a load refuses by when the entry itself
@@ -633,7 +627,7 @@ namespace Tabledemo
         public int Count;
         public int Split; // THE SPLIT (§5.9 #42): the number of UNGUARDED entries, the index the guarded half starts at
         public int Unknown;
-        public int KindMismatch;
+        public int KindChanged;
         public string Why;
     }
 
@@ -857,7 +851,7 @@ namespace Tabledemo
                     saturated = true;
                     raw = negative ? (f.WideSigned ? sign : 0) : (f.WideSigned ? sign - 1 : UInt128.MaxValue);
                 }
-                else if (point < -40) { input.Report.KindMismatch++; return true; }
+                else if (point < -40) { return RefuseText(ref input, "kind_mismatch"); }
                 else
                 {
                     Span<byte> fractionDigits = stackalloc byte[MaxNumber + 48];
@@ -871,7 +865,7 @@ namespace Tabledemo
                         for (int k = fn - 1; k >= 0; k--) { int d = fractionDigits[k] * 2 + carry; fractionDigits[k] = (byte)(d % 10); carry = d / 10; }
                         fraction = (fraction << 1) | (uint)carry;
                     }
-                    for (int k = 0; k < fn; k++) { if (fractionDigits[k] != 0) { input.Report.KindMismatch++; return true; } }
+                    for (int k = 0; k < fn; k++) { if (fractionDigits[k] != 0) { return RefuseText(ref input, "kind_mismatch"); } }
                     UInt128 whole = 0;
                     for (int k = start; k < start + point && !saturated; k++)
                     {
@@ -893,8 +887,8 @@ namespace Tabledemo
                         if (negative && raw != 0) { raw = 0; saturated = true; }
                     }
                 }
-                if (saturated) { input.Report.Clamped++; }
-                if (f.ClampWide != null) { raw = f.ClampWide(raw, input.Report); }
+                if (saturated) { return RefuseText(ref input, "out_of_range"); }
+                if (f.RangeWide != null) { raw = f.RangeWide(raw, input.Report); if (input.Report.Refused) { input.Bad = true; return false; } }
                 f.SetWide(owner, index, raw); return true;
             }
 
@@ -1662,7 +1656,7 @@ namespace Tabledemo
                     f.SetChild(owner, index, null);
                     if (label.Type != null)
                     {
-                        if (label.Type.Id != f.PointerTypeId) { input.Report.KindMismatch++; }
+                        if (label.Type.Id != f.PointerTypeId) { RefuseText(ref input, "kind_mismatch"); }
                         else { f.SetChild(owner, index, label.Value); }
                     }
                     return true;
@@ -1704,7 +1698,7 @@ namespace Tabledemo
                         malformed = true;
                     }
                 }
-                if (malformed) { input.Report.KindMismatch++; return true; }
+                if (malformed) { return RefuseText(ref input, "kind_mismatch"); }
                 byte[] bytes = new byte[symbols * 6 / 8];
                 int count = 0, held = 0;
                 uint accumulator = 0;
@@ -1782,7 +1776,6 @@ namespace Tabledemo
                 {
                     byte c = Peek(text, ref input);
                     if (c == '}') { input.Pos++; return true; }
-                    int beforeClamp = input.Report.Clamped;
                     input.TextField = mapField;
                     scoped ReadOnlySpan<byte> actual; int used;
                     if(key.Unbounded)
@@ -1792,18 +1785,15 @@ namespace Tabledemo
                         used=actual.Length;
                     }
                     else {if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual=spelling.Slice(0,used);}
-                    bool over = input.Report.Clamped != beforeClamp;
-                    input.Report.Clamped = beforeClamp;
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     object entry = f.Table.Create();
                     bool drop = false;
                     if (key.Kind == 12)
                     {
-                        if (over || used > key.ArrayBound) { input.Report.Clamped++; drop = true; }
+                        if (used > key.ArrayBound) { return RefuseText(ref input, "length_over_bound"); }
                         else { if(key.Unbounded){key.EnsureCount(entry,used);} actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
                     }
-                    else if (over) { input.Report.KindMismatch++; drop = true; }
                     else
                     {
                         In probe = new In { Report = new TableReport() };
@@ -1811,7 +1801,7 @@ namespace Tabledemo
                         Space(token, ref probe);
                         if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
                         { input.Bad = true; return false; }
-                        if (probe.Report.Clamped != 0 || probe.Report.KindMismatch != 0) { input.Report.KindMismatch++; drop = true; }
+                        if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
                     }
                     if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
                     else
@@ -1830,15 +1820,14 @@ namespace Tabledemo
                             if (field.Optional) { field.SetPresent(entry, true); }
                             if (shape != Shape(field))
                             {
-                                input.Report.KindMismatch++;
-                                if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                                return RefuseText(ref input, "kind_mismatch");
                             }
                             else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
                         }
                         int at = 0;
                         while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }
                         if (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) == 0)
-                        { f.SetChild(owner, at, entry); input.Report.Duplicate++; }
+                        { return RefuseText(ref input, "duplicate"); }
                         else
                         {
                             f.EnsureCount(owner, count + 1);
@@ -2166,7 +2155,7 @@ namespace Tabledemo
                                     // UTF-8 encoding: encoding it anyway would manufacture
                                     // CESU-8 — invalid UTF-8 — out of input that was valid
                                     // JSON, so it reads as the replacement character
-                                    if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+                                    if (code >= 0xd800 && code <= 0xdfff) { return RefuseText(ref input, "malformed: string_lone_surrogate"); }
                                     unitLength = EncodeUtf8(code, unit);
                                     break;
                                 }
@@ -2225,7 +2214,7 @@ namespace Tabledemo
                         }
                     }
                 }
-                if (clamped) { input.Report.Clamped++; }
+                if (clamped) { return RefuseText(ref input, "length_over_bound"); }
                 length = placed;
                 return true;
             }
@@ -2462,8 +2451,7 @@ namespace Tabledemo
                     object child=f.GetChild(owner,index);TableFieldInfo field=f.Table.Fields[0];f.Table.Reset(child);
                     if(field.Optional&&ValueShape(text,ref input)=='z'){return Literal(text,ref input,"null");}
                     if(field.Optional){field.SetPresent(child,true);}
-                    int before=input.Report.Clamped;bool good=ReadField(text,ref input,child,field,depth);
-                    if(input.Report.Clamped!=before){TableWire.TextClamp(input.Report,f);}return good;
+                    return ReadField(text,ref input,child,field,depth);
                 }
                 if (f.Kind == 36) { return ReadTimestamp(text, ref input, owner, f, index); }
                 if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
@@ -2498,8 +2486,7 @@ namespace Tabledemo
                         char wanted = payload == null ? 'z' : Shape(payload);
                         if (ValueShape(text, ref input) != wanted && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
                         {
-                            input.Report.KindMismatch++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            return RefuseText(ref input, "kind_mismatch");
                         }
                         else
                         {
@@ -2565,8 +2552,7 @@ namespace Tabledemo
                         if (c == 0) { input.Bad = true; return false; }
                         if (c != '"')
                         {
-                            input.Report.KindMismatch++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            return RefuseText(ref input, "kind_mismatch");
                         }
                         else
                         {
@@ -2623,21 +2609,18 @@ namespace Tabledemo
                     // reads clean writes back.
                     if (!Finite(value))
                     {
-                        input.Report.KindMismatch++;
-                        return true;
+                        return RefuseText(ref input, "kind_mismatch");
                     }
                     if (f.HasRange)
                     {
-                        if (value < f.RangeMin) { value = f.RangeMin; input.Report.Clamped++; }
-                        else if (value > f.RangeMax) { value = f.RangeMax; input.Report.Clamped++; }
+                        if (value < f.RangeMin || value > f.RangeMax) { return RefuseText(ref input, "out_of_range"); }
                     }
                     if (single)
                     {
                         float narrow = (float)value;
                         if (!Finite(narrow))
                         {
-                            input.Report.KindMismatch++;
-                            return true;
+                            return RefuseText(ref input, "kind_mismatch");
                         }
                         f.SetRaw(owner, index, TableFloatToBits(narrow));
                     }
@@ -2664,14 +2647,13 @@ namespace Tabledemo
                     double d = TokenDouble(token.Slice(0, length), false);
                     if (!Finite(d))
                     {
-                        input.Report.KindMismatch++;
-                        return true;
+                        return RefuseText(ref input, "kind_mismatch");
                     }
                     if (isSigned)
                     {
                         if (d >= 9223372036854775808.0) { value2 = long.MaxValue; saturated = true; }
                         else if (d < -9223372036854775808.0) { value2 = long.MinValue; saturated = true; }
-                        else if (d != (double)(long)d) { input.Report.KindMismatch++; return true; }
+                        else if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
                         else { value2 = (long)d; }
                     }
                     else
@@ -2680,20 +2662,20 @@ namespace Tabledemo
                         {
                             // a negative for an unsigned field clamps to zero, as the
                             // exact digit path already does
-                            if (d != (double)(long)d) { input.Report.KindMismatch++; return true; }
+                            if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
                             value2 = 0;
                             saturated = true;
                         }
                         else if (d >= 18446744073709551616.0) { value2 = unchecked((long)ulong.MaxValue); saturated = true; }
-                        else if (d != (double)(ulong)d) { input.Report.KindMismatch++; return true; }
+                        else if (d != (double)(ulong)d) { return RefuseText(ref input, "kind_mismatch"); }
                         else { value2 = unchecked((long)(ulong)d); }
                     }
                 }
-                if (saturated) { input.Report.Clamped++; }
+                if (saturated) { return RefuseText(ref input, "out_of_range"); }
                 // Exact typed bounds preserve integers above 2^53 and unsigned values
                 // above Int64.MaxValue. The field's storage-width clamp follows this.
-                if (f.ClampJsonInteger != null)
-                { value2 = unchecked((long)f.ClampJsonInteger(unchecked((ulong)value2), input.Report)); }
+                if (f.RangeJsonInteger != null)
+                { value2 = unchecked((long)f.RangeJsonInteger(unchecked((ulong)value2), input.Report)); if (input.Report.Refused) { input.Bad = true; return false; } }
                 // the field's own storage width is the last bound: a value past it
                 // clamps rather than wrapping, which is what the wire does too
                 if (f.ElemWidth < 8)
@@ -2702,8 +2684,7 @@ namespace Tabledemo
                     {
                         long high = (1L << (f.ElemWidth * 8 - 1)) - 1;
                         long low = -high - 1;
-                        if (value2 > high) { value2 = high; input.Report.Clamped++; }
-                        else if (value2 < low) { value2 = low; input.Report.Clamped++; }
+                        if (value2 > high || value2 < low) { return RefuseText(ref input, "out_of_range"); }
                     }
                     else
                     {
@@ -2714,10 +2695,9 @@ namespace Tabledemo
                             // negative long, lands the field's CEILING: the domain is
                             // established before any cast, so the saturation is one
                             // clamp and the domain bound is the other
-                            value2 = (long)high;
-                            input.Report.Clamped++;
+                            return RefuseText(ref input, "out_of_range");
                         }
-                        else if ((ulong)value2 > high) { value2 = (long)high; input.Report.Clamped++; }
+                        else if ((ulong)value2 > high) { return RefuseText(ref input, "out_of_range"); }
                     }
                 }
                 // at eight bytes the storage IS the parser's width, and an unsigned
@@ -2816,8 +2796,7 @@ namespace Tabledemo
                     {
                         // a body that is not base64 is the wrong shape for the kind:
                         // the field keeps its default and the event is counted
-                        input.Report.KindMismatch++;
-                        return true;
+                        return RefuseText(ref input, "kind_mismatch");
                     }
                     byte[] storage = f.GetBuffer(value);
                     Array.Clear(storage, 0, f.ArrayBound);
@@ -2845,7 +2824,7 @@ namespace Tabledemo
                             }
                         }
                     }
-                    if (clamped) { input.Report.Clamped++; }
+                    if (clamped) { return RefuseText(ref input, "length_over_bound"); }
                     PutCount(value, f, placed);
                     return true;
                 }
@@ -2887,7 +2866,7 @@ namespace Tabledemo
                         if (slot >= 0)
                         {
                             ulong bit = 1ul << (slot & 63);
-                            if ((seen[slot >> 6] & bit) != 0) { input.Report.Duplicate++; }
+                            if ((seen[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
                             seen[slot >> 6] |= bit;
                         }
                         if (slot < 0)
@@ -2897,8 +2876,7 @@ namespace Tabledemo
                         }
                         else if (ValueShape(text, ref input) != shape)
                         {
-                            input.Report.KindMismatch++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            return RefuseText(ref input, "kind_mismatch");
                         }
                         else if (!ReadScalar(text, ref input, value, f, slot, depth + 1))
                         {
@@ -2924,27 +2902,20 @@ namespace Tabledemo
                     // re-establishment a nested table and a union arm already get.
                     ResetSlots(value, f);
                     PutCount(value, f, 0);
-                    int placed = 0; long textSpent = 0; bool textFull = false;
+                    int placed = 0; long textSpent = 0;
                     char shape = ElementShape(f);
                     for (; ; )
                     {
                         byte c = Peek(text, ref input);
                         if (c == ']') { input.Pos++; break; }
                         if (c == 0) { input.Bad = true; return false; }
-                        if (textFull) { if (!SkipValue(text,ref input,depth+1)) { return false; } }
-                        else if (placed >= f.ArrayBound)
+                        if (placed >= f.ArrayBound)
                         {
-                            // more elements than the reader's bound: the bounded prefix
-                            // is kept and the excess counts, the wire's rule (§4)
-                            input.Report.Clamped++; TableWire.TextClamp(input.Report,f);
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            return RefuseText(ref input, "count_over_bound");
                         }
                         else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                         {
-                            if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
-                            input.Report.KindMismatch++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
-                            placed++;
+                            return RefuseText(ref input, "kind_mismatch");
                         }
                         else
                         {
@@ -2953,9 +2924,9 @@ namespace Tabledemo
                             if(f.TextTotal>0){
                                 object child=f.GetChild(value,placed);TableFieldInfo element=f.Table.Fields[0];
                                 int length=element.Optional&&!element.GetPresent(child)?0:Count(child,element);
-                                if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){f.Table.Reset(child);textFull=true;}
+                                if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){return false;}
                             }
-                            if(!textFull){placed++;}
+                            placed++;
                         }
                         c = Peek(text, ref input);
                         if (c == ',') { input.Pos++; continue; }
@@ -3013,7 +2984,7 @@ namespace Tabledemo
                         // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
                         // 16.7): never a field this build lacks, always a construct it
                         // cannot honor. MALFORMED and refused, never counted as unknown.
-                        input.Report.Malformed = true;
+                        input.Report.Damaged = true;
                         input.Bad = true;
                         return false;
                     }
@@ -3029,7 +3000,7 @@ namespace Tabledemo
                         if (index < info.NumFields)
                         {
                             ulong bit = 1ul << (index & 63);
-                            if ((seen[index >> 6] & bit) != 0) { input.Report.Duplicate++; }
+                            if ((seen[index >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
                             seen[index >> 6] |= bit;
                         }
                         // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this
@@ -3052,8 +3023,7 @@ namespace Tabledemo
                             {
                                 // the wrong JSON type for the kind: skipped, never
                                 // coerced
-                                input.Report.KindMismatch++;
-                                if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                                return RefuseText(ref input, "kind_mismatch");
                             }
                             else if (!ReadField(text, ref input, value, f, depth))
                             {
@@ -3105,7 +3075,7 @@ namespace Tabledemo
                 {
                     // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
                     // the walk placed before the damage is handed back.
-                    input.Report.Malformed = true;
+                    input.Report.Damaged = true;
                     info.Reset(value);
                     return false;
                 }
@@ -3456,16 +3426,16 @@ namespace Tabledemo
                     if (index == 1)
                     {
                         if (f.PointerTypeId == RootType.Id && f.BlobKind == 0) { return Root; }
-                        report.KindMismatch++; return null;
+                        Refuse(report, "kind_mismatch"); return null;
                     }
                     if (index - 2 >= (ulong)Nodes.Count) { Damage(report); return null; }
                     Node node = Nodes[(int)(index - 2)];
                     if (node.Value == null) { return null; }
-                    if (node.TypeId != f.PointerTypeId) { report.KindMismatch++; return null; }
+                    if (node.TypeId != f.PointerTypeId) { Fail(report, "kind_mismatch"); return null; }
                     if (f.BlobKind != 0)
                     {
                         blobsNamed ??= new System.Collections.Generic.HashSet<ulong>();
-                        if (!blobsNamed.Add(index)) { report.BlobShared++; }
+                        if (!blobsNamed.Add(index)) { Fail(report, "blob_shared"); }
                     }
                     return node.Value;
                 }
@@ -3831,10 +3801,12 @@ namespace Tabledemo
                 if (bytes.Length < 9) { return -1; }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { return -1; }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed.
+                if (count > 4096) { return -1; }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-                for (int i = 0; i < ids.Length; i += 8)
-                { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { return -1; } } }
+                if (!DistinctVocabulary(ids)) { return -1; }
                 Reader root = new Reader(bytes.Slice(1, end - 1), ids);
                 if (EndsEarly(root)) { return -1; }
                 long extent = 0;
@@ -3907,7 +3879,7 @@ namespace Tabledemo
                 Reader header = headerTail.IsEmpty ? a : new Reader(headerTail, a.Vocabulary) { Offset = 1 };
                 if (!header.Var(out ulong count)) { Damage(report); return true; }
                 a.Offset = Math.Min(a.Buffer.Length, header.Offset);
-                if (kind != 13) { report.KindMismatch++; return true; }
+                if (kind != 13) { return Fail(report, "kind_mismatch"); }
                 if (count > int.MaxValue) { return CollectionCap(report); }
                 f.ResetField(value);
                 int landed = 0; bool widened = false; MapKey last = default;
@@ -3917,9 +3889,9 @@ namespace Tabledemo
                     if (!a.Slice(out Reader body)) { Damage(report); break; }
                     bool keyOk = ScanMapKey(body, f, out MapKey key, out bool mismatch, out bool entryWidened);
                     if (entryWidened && !widened) { widened = true; report.Widened++; }
-                    if (mismatch) { report.KindMismatch++; landed = 0; break; }
+                    if (mismatch) { return Fail(report, "kind_mismatch"); }
                     if (!keyOk) { Damage(report); break; }
-                    if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { report.Clamped++; continue; }
+                    if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
                     int order = landed == 0 ? -1 : KeyOrder(last, key, keyField);
                     if (order > 0) { Damage(report); break; }
                     int slot = order == 0 ? landed - 1 : landed;
@@ -3927,7 +3899,7 @@ namespace Tabledemo
                     object entry = f.Table.Create(); f.SetChild(value, slot, entry);
                     ReadBody(ref body, entry, f.Table, report, true);
                     if (CountRefused(report)) { return false; }
-                    if (order == 0) { report.Duplicate++; }
+                    if (order == 0) { return Fail(report, "duplicate"); }
                     else { last = KeyOf(entry, keyField); landed++; }
                 }
                 f.SetCount(value, landed); return true;
@@ -4003,10 +3975,12 @@ namespace Tabledemo
                 if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed.
+                if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-                for (int i = 0; i < ids.Length; i += 8)
-                { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { Damage(report); return Finish(report, Verdict.Damaged); } } }
+                if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), ids);
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader payload = default; int versions = 0, vocabularies = 0; bool terminated = false;
@@ -4251,7 +4225,7 @@ namespace Tabledemo
                     if (field == null)
                     { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
                     if (!MessageCompatible(entry, field, out bool widened))
-                    { d.Report.KindMismatch++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
+                    { return Fail(d.Report, "kind_mismatch"); }
                     if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
                     if (widened && !field.MapKey) { d.Report.Widened++; }
                     if (field.Optional && value != null) { field.SetPresent(value, true); }
@@ -4264,8 +4238,8 @@ namespace Tabledemo
                     if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || !r.Align()) { return false; }
                     ulong n = (ulong)raw;
                     if (n > (ulong)((r.End - r.At) / 8)) { return false; }
-                    int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
-                    if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
+                    if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+                    int kept = (int)n;
                     if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
                     r.At += (long)n * 8; return true;
                 }
@@ -4287,8 +4261,8 @@ namespace Tabledemo
                         if (c >= 0xd800 && c <= 0xdbff)
                         { if (++i == (int)length || !check.Get(16, out UInt128 low) || low < 0xdc00 || low > 0xdfff) { return false; } }
                     }
-                    int keep = Math.Min((int)length, f.ArrayBound);
-                    if (length > (uint)f.ArrayBound) { d.Report.Clamped++; }
+                    if (length > (uint)f.ArrayBound) { return Fail(d.Report, "length_over_bound: " + f.Name); }
+                    int keep = (int)length;
                     char last = default;
                     for (int i = 0; i < keep; i++) { r.Get(16, out UInt128 raw); last = (char)(uint)raw; if (value != null) { f.GetChars(value)[i] = last; } }
                     if (keep > 0 && keep < (int)length && char.IsHighSurrogate(last)) { keep--; }
@@ -4311,8 +4285,8 @@ namespace Tabledemo
                         return true;
                     }
                     int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
-                    int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
-                    if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
+                    if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+                    int kept = (int)n;
                     int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
                     // A FLOAT PAST THE BOUND IS STILL TESTED (docs/SPEC-TABLES.md §3.3):
                     // the stream walks every element, the dropped tail into no slot, so
@@ -4357,7 +4331,7 @@ namespace Tabledemo
                     TableFieldInfo arm = f.Arms.Arms[tag].Field;
                     bool widened = false;
                     if (arm == null ? entry.Kind != 32 : !MessageCompatible(entry, arm, out widened))
-                    { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.KindMismatch++; return MessageSkip(ref r, d, entry.Kind, entry.Shape, depth + 1); }
+                    { if (union != null) { f.Arms.SetTag(union, 0); } return Fail(d.Report, "kind_mismatch"); }
                     if (widened) { d.Report.Widened++; }
                     if (union != null) { f.Arms.SetTag(union, (ulong)tag); }
                     if (arm == null) { return true; }
@@ -4378,7 +4352,7 @@ namespace Tabledemo
                     // refused on its raw bits, kept or dropped (docs/SPEC-TABLES.md §3.3)
                     else if (NonFiniteBits(10, (ulong)bits)) { NonFinite(f, d.Report); return true; }
                     ulong raw = f.Kind == 11 ? WidenFloat((uint)bits) : (uint)bits;
-                    if (f.Kind != 11 && f.ClampRaw != null) { raw = f.ClampRaw(raw, d.Report); }
+                    if (f.Kind != 11 && f.RangeRaw != null) { raw = f.RangeRaw(raw, d.Report); if (d.Report.Refused) { return false; } }
                     if (keep) { f.SetRaw(value, index, raw); }
                     return true;
                 }
@@ -4411,8 +4385,7 @@ namespace Tabledemo
                         if (!negative && unchecked((Int128)f.MessageMin) > 0 && stored < f.MessageMin) { low = true; }
                     }
                     else { low = negative || stored < f.MessageMin; high = above || !negative && stored > f.MessageMax; }
-                    if (low) { stored = f.MessageMin; d.Report.Clamped++; }
-                    else if (high) { stored = f.MessageMax; d.Report.Clamped++; }
+                    if (low || high) { return Fail(d.Report, "out_of_range: " + f.Name); }
                 }
                 if (keep)
                 {
@@ -4441,8 +4414,8 @@ namespace Tabledemo
                 if (report.Refused) { return Finish(report, Verdict.Refused); }
                 if (total == 0) { return Finish(report, Verdict.Damaged); }
                 if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
-                bool malformedBefore = report.Malformed;
-                report.Malformed = false;
+                bool damagedBefore = report.Damaged;
+                report.Damaged = false;
                 BitReader r = new BitReader(bytes); r.At = 16;
                 for (; count < total; count++)
                 {
@@ -4452,11 +4425,12 @@ namespace Tabledemo
                     // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
                     // §3.3), outranking damage met after it: no body is delivered.
                     if (NonFiniteRefused(report))
-                    { report.Malformed |= malformedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-                    if (!good || report.Malformed) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
+                    { report.Damaged |= damagedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+                    if (report.Refused) { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+                    if (!good || report.Damaged) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
                 }
                 if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
-                report.Malformed = malformedBefore;
+                report.Damaged = damagedBefore;
                 return Finish(report, Verdict.Ok);
             }
             // DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): every body
@@ -5114,17 +5088,21 @@ namespace Tabledemo
                 report.Refused = true; report.Reason = report.NonFiniteReason;
                 return true;
             }
+            internal static bool Fail(TableReport report, string reason)
+            { if (!report.Refused) { report.Refused = true; report.Reason = reason; } return false; }
+            internal static bool FailRange(TableReport report, TableFieldInfo f)
+            { return Fail(report, "out_of_range: " + f.Name); }
             static bool Compatible(byte from, byte to, TableReport report)
             {
                 if (from == to) { return true; }
                 if (Widen(from, to)) { report.Widened++; return true; }
-                report.KindMismatch++; return false;
+                return Fail(report, "kind_mismatch");
             }
             internal static bool CountRefused(TableReport report)
             { return report.Refused && report.Reason == "count_over_extent_cap"; }
             static bool CollectionCap(TableReport report)
             { report.Refused = true; report.Reason = "count_over_extent_cap"; return false; }
-            static bool Damage(TableReport report) { report.Malformed = true; return false; }
+            static bool Damage(TableReport report) { report.Damaged = true; return false; }
             static bool EndsEarly(Reader r)
             {
                 while (r.Ref(out ulong reference, out _))
@@ -5154,7 +5132,7 @@ namespace Tabledemo
                     if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
                     else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
                     { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
-                    if (f.ClampWide != null) { wide = f.ClampWide(wide, report); }
+                    if (f.RangeWide != null) { wide = f.RangeWide(wide, report); if (report.Refused) { return false; } }
                     f.SetWide(value, index, wide); return true;
                 }
                 ulong raw;
@@ -5174,10 +5152,10 @@ namespace Tabledemo
                     { int shift = 64 - width * 8; raw = unchecked((ulong)((long)(raw << shift) >> shift)); }
                     // A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on the
                     // tolerant read (docs/SPEC-TABLES.md §6.5), as the Go oracle counts it.
-                    if (kind == 1) { if (raw > 1) { report.Malformed = true; } raw = raw == 0 ? 0ul : 1ul; }
+                    if (kind == 1 && raw > 1) { return Damage(report); }
                     if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw)) { NonFinite(f, report); return true; }
                     if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
-                    if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
+                    if (f.RangeRaw != null) { raw = f.RangeRaw(raw, report); if (report.Refused) { return false; } }
                 }
                 if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)raw; }
                 else { f.SetRaw(value, index, raw); }
@@ -5189,8 +5167,7 @@ namespace Tabledemo
                 {
                     Reader text = r; if (framed && !r.Slice(out text)) { return Damage(report); }
                     if (!framed) { r.Offset = r.Buffer.Length; }
-                    int before = report.Clamped; bool good = ReadText(text.Buffer, f.GetChild(value,index), f.Table.Fields[0], report);
-                    if (report.Clamped != before) { TextClamp(report,f); } return good;
+                    return ReadText(text.Buffer, f.GetChild(value,index), f.Table.Fields[0], report);
                 }
                 if (kind == 17)
                 {
@@ -5202,8 +5179,7 @@ namespace Tabledemo
                     Reader sub = r;
                     if (framed && !r.Slice(out sub)) { return Damage(report); }
                     object child = f.GetChild(value, index);
-                    int before = report.Clamped; ReadBody(ref sub, child, f.Table, report, true);
-                    if (f.TextList && report.Clamped != before) { TextClamp(report,f); }
+                    ReadBody(ref sub, child, f.Table, report, true);
                     if (report.Refused) { return false; }
                     if (sub.Offset != sub.Buffer.Length) { f.Table.Reset(child); Damage(report); }
                     if (!framed) { r.Offset = r.Buffer.Length; }
@@ -5336,7 +5312,7 @@ namespace Tabledemo
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
                     if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
                     int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                    if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
+                    if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
                     int decoded = 0;
                     for (int i = 0; i < keep; i++)
                     {
@@ -5354,11 +5330,7 @@ namespace Tabledemo
             {
                 if (!TextValid(text)) { return Damage(report); }
                 int keep = text.Length;
-                if (keep > f.ArrayBound)
-                {
-                    keep = f.ArrayBound; report.Clamped++;
-                    while (keep > 0 && (text[keep] & 0xc0) == 0x80) { keep--; }
-                }
+                if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
                 if (value != null) { if(f.Unbounded){f.EnsureCount(value,keep);} text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
                 return true;
             }
@@ -5378,17 +5350,13 @@ namespace Tabledemo
                     }
                 }
                 int keep = text.Length / 2;
-                if (keep > f.ArrayBound)
-                {
-                    keep = f.ArrayBound; report.Clamped++;
-                    if (keep > 0 && (text[keep * 2 - 1] & 0xfc) == 0xd8) { keep--; }
-                }
+                if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
                 char[] storage = f.GetChars(value);
                 for (int i = 0; i < keep; i++) { storage[i] = (char)(text[i * 2] | text[i * 2 + 1] << 8); }
                 f.SetCount(value, keep); return true;
             }
-            internal static void TextClamp(TableReport report, TableFieldInfo field)
-            { if (field.TextList && report.ClampedField == null) { report.ClampedField = field.TextField; } }
+            internal static bool TextTotalRefuse(TableReport report, TableFieldInfo field)
+            { return Fail(report, "length_over_bound: " + field.TextField); }
             internal static bool TextValid(ReadOnlySpan<byte> text)
             {
                 for (int i = 0; i < text.Length;)
@@ -5447,7 +5415,7 @@ namespace Tabledemo
                     else
                     {
                         int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                        if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
+                        if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
                         int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                         int decoded = 0; long textSpent = 0;
                         for (int i = 0; i < keep; i++)
@@ -5516,7 +5484,7 @@ namespace Tabledemo
             internal static bool RequiredMissing(TableReport report, string missing)
             {
                 if (missing == null) { return !report.Refused; }
-                if (!report.Refused) { report.MissingRequired++; report.Reason = "missing_required: " + missing; }
+                if (!report.Refused) { report.Reason = "missing_required: " + missing; }
                 report.Refused = true;
                 return false;
             }
@@ -5559,43 +5527,31 @@ namespace Tabledemo
                     }
                     int beforeWidened = report.Widened;
                     if (Widen(kind, Kind(field)) && !r.Has(Width(kind))) { return Damage(report); }
-                    if (!Compatible(kind, Kind(field), report))
-                    {
-                        if (!r.Skip(kind)) { return Damage(report); }
-                        continue;
-                    }
+                    if (!Compatible(kind, Kind(field), report)) { return false; }
                     if (field.MapKey) { report.Widened = beforeWidened; }
                     if (!ReadField(ref r, value, field, kind, report, out bool placed)) { return false; }
                     if (field.Required && placed) { seen[field.Ordinal >> 6] |= 1ul << (field.Ordinal & 63); }
                     if (field.Optional && placed) { field.SetPresent(value, true); }
                 }
             }
+            // DistinctVocabulary proves the id table's entries distinct (docs/SPEC-TABLES.md
+            // §3, THE DISTINCTNESS CHECK IS BOUNDED WORK); every caller has refused a
+            // table above 4096 entries first. Under sixteen entries a pairwise scan is
+            // at most 120 comparisons. From sixteen up the ids are copied to a stack
+            // array of at most 32 KiB and sorted (MemoryExtensions.Sort, introsort:
+            // O(n log n) whatever the ids are), and a repeat sits beside its twin. A
+            // hash probe would let ids crafted onto one slot cost n(n-1)/2.
             static bool DistinctVocabulary(ReadOnlySpan<byte> vocabulary)
             {
                 int count = vocabulary.Length / 8;
                 if (count >= 16)
                 {
-                    // Slots store ordinal+1, so the identity zero remains an ordinary
-                    // identity. At most 4096 entries occupy 8192 slots: even deliberately
-                    // colliding identities reach an empty slot after at most 4096
-                    // occupied probes, so the whole walk is bounded and allocation-free
-                    // (docs/SPEC-TABLES.md §3, the bounded-work contract).
-                    Span<ushort> slots = stackalloc ushort[8192];
-                    slots.Clear();
-                    for (int i = 0; i < count; i++)
-                    {
-                        ulong id = Read64(vocabulary, i * 8);
-                        int slot = (int)(unchecked(id * 0x9e3779b97f4a7c15ul) >> 51);
-                        while (slots[slot] != 0)
-                        {
-                            if (id == Read64(vocabulary, (slots[slot] - 1) * 8)) { return false; }
-                            slot = (slot + 1) & 8191;
-                        }
-                        slots[slot] = (ushort)(i + 1);
-                    }
+                    Span<ulong> ids = stackalloc ulong[count];
+                    for (int i = 0; i < count; i++) { ids[i] = Read64(vocabulary, i * 8); }
+                    ids.Sort();
+                    for (int i = 1; i < count; i++) { if (ids[i] == ids[i - 1]) { return false; } }
                     return true;
                 }
-                // Tiny vocabularies avoid scratch initialization.
                 for (int i = 0; i < vocabulary.Length; i += 8)
                 {
                     ulong id = Read64(vocabulary, i);
@@ -5630,21 +5586,21 @@ namespace Tabledemo
                 if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
-                bool malformedBefore = report.Malformed;
-                report.Malformed = false;
+                bool damagedBefore = report.Damaged;
+                report.Damaged = false;
                 // Managed collections grow only after each bounded element. The actual
                 // read chooses a storage-cap refusal and earns preceding events; the
                 // region extent scan can visit map values their keys would not admit.
                 if (type.Variable) { r.Graph = ReadGraph(r, value, type, report); }
                 bool complete = ReadBody(ref r, value, type, report, false);
-                if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
-                if (report.Refused) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
+                if (NonFiniteRefused(report)) { report.Damaged |= damagedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
+                if (report.Refused) { report.Damaged |= damagedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
                 // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
-                if (r.Graph != null && r.Graph.Good && !report.Malformed && Cyclic(r.Graph, value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); }
+                if (r.Graph != null && r.Graph.Good && !report.Damaged && Cyclic(r.Graph, value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); }
                 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the
                 // walk decoded is handed back, and the verdict is the damage.
-                if (report.Malformed) { type.Reset(value); return Finish(report, Verdict.Damaged); }
-                report.Malformed = malformedBefore;
+                if (report.Damaged) { type.Reset(value); return Finish(report, Verdict.Damaged); }
+                report.Damaged = damagedBefore;
                 if (!complete) { type.Reset(value); return Finish(report, Verdict.BodyStopped); }
                 return Finish(report, Verdict.Ok);
             }
@@ -5663,7 +5619,7 @@ namespace Tabledemo
             internal static bool TextTotalKeep(TableFieldInfo field, int length, ref long spent, TableReport report)
             {
                 if(field.TextTotal==0){return true;}spent+=length;
-                if(spent<=field.TextTotal){return true;}report.Clamped++;TextClamp(report,field);return false;
+                if(spent<=field.TextTotal){return true;}TextTotalRefuse(report,field);return false;
             }
             public static ReadOnlySpan<byte> TextAt(object value, TableFieldInfo field, int index, out bool present)
             {
@@ -6182,7 +6138,7 @@ namespace Tabledemo
                         c.Push(e);
                         return;
                     }
-                    if (c.Report != null) { c.Report.KindMismatch++; }
+                    if (c.Report != null) { c.Report.KindChanged++; }
                     return;
                 }
                 // T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the
@@ -6263,7 +6219,7 @@ namespace Tabledemo
                                     break;
                                 }
                                 // A KIND THAT MOVED IS REPORTED, NEVER REINTERPRETED (§5.2).
-                                if (c.Report != null) { c.Report.KindMismatch++; }
+                                if (c.Report != null) { c.Report.KindChanged++; }
                                 break;
                             }
                             for (uint i = 0; i < n; ++i)
@@ -6412,7 +6368,7 @@ namespace Tabledemo
                             }
                             else if (c.Report != null)
                             {
-                                c.Report.KindMismatch++;
+                                c.Report.KindChanged++;
                             }
                             break;
                         }
@@ -6590,7 +6546,7 @@ namespace Tabledemo
                         lane.Count = made;
                         lane.Split = split;
                         lane.Unknown = census.Unknown;
-                        lane.KindMismatch = census.KindMismatch;
+                        lane.KindChanged = census.KindChanged;
                         break;
                     }
                 }
@@ -6885,8 +6841,7 @@ namespace Tabledemo
                         case Count:
                             {
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                                if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                                else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                                if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
                                 break;
                             }
@@ -6895,8 +6850,7 @@ namespace Tabledemo
                                 uint unit = (p.Meta == TextWide) ? 2u : 1u;
                                 uint cap = p.Size / unit;
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                                if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                                else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                                if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                                 ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                                 // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING
                                 // ELSE, and a violation REFUSES BY NAME, the verdict the
@@ -6946,8 +6900,8 @@ namespace Tabledemo
                                     // remap to None is the BOUNDS PASS's to count, on BOTH
                                     // plans, so the op records the forge in the caller's
                                     // forgedOrdinal lane and the bounds step, not this op,
-                                    // turns it into Clamped (§5.4, §5.8 row 12).
-                                    if (raw > count) { forgedOrdinal++; }
+                                    // turns it into an out_of_range refusal (§5.4, §5.8 row 12).
+                                    if (raw > count) { return "out_of_range"; }
                                 }
                                 if (slots[(int)p.Dst].SetRaw != null)
                                 {

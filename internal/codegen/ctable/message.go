@@ -233,45 +233,45 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
  if(!table_wire_open(&r,buffer,bytes,report))return 0;
  for(;;){
   uint64_t ref,id;uint8_t kind;
-  if(!table_reader_leb(&r,&ref))goto malformed;
+  if(!table_reader_leb(&r,&ref))goto damaged;
   if(ref==0)break;
-  if(ref>r.id_count||!table_reader_has(&r,1))goto malformed;
+  if(ref>r.id_count||!table_reader_has(&r,1))goto damaged;
   id=table_reader_id_at(&r,ref);kind=table_reader_get8(&r);
   if(id==UINT64_C(0xfffffffffffffffe)){
-   if(kind!=9||!table_reader_has(&r,8))goto malformed;
+   if(kind!=9||!table_reader_has(&r,8))goto damaged;
    v->build_version=table_reader_get64(&r);seen_version++;continue;
   }
   if(id==UINT64_C(0xfffffffffffffffd)){
    TableReader field;uint64_t n;
-   if(kind!=14||!table_reader_span(&r,&field)||!table_reader_has(&field,1)||table_reader_get8(&field)!=6)goto malformed;
-   if(!table_reader_leb(&field,&n)||!table_reader_room(&field,n)||n!=(uint64_t)(field.size-field.offset))goto malformed;
+   if(kind!=14||!table_reader_span(&r,&field)||!table_reader_has(&field,1)||table_reader_get8(&field)!=6)goto damaged;
+   if(!table_reader_leb(&field,&n)||!table_reader_room(&field,n)||n!=(uint64_t)(field.size-field.offset))goto damaged;
    if(v->max_bytes<0 || n>(uint64_t)v->max_bytes){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;return 0;}
    words=field.buffer+field.offset;words_bytes=(int64_t)n;seen_words++;continue;
   }
-  report->unknown++;if(!table_reader_skip(&r,kind))goto malformed;
+  report->unknown++;if(!table_reader_skip(&r,kind))goto damaged;
  }
- if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto malformed;
+ if(seen_version!=1||seen_words!=1||r.offset!=r.size)goto damaged;
  while(at<words_bytes){
   TableMessageEntry * entry;int64_t i,began=at;
   if(v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;goto refused;}
   if(count>=v->max_entries){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
   entry=&v->entries[count];touched=count+1;
-  if(!table_message_entry_read(words,words_bytes,&at,entry))goto malformed;
-  if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto malformed;
-  if(entry->id==UINT64_MAX && nodes++>0)goto malformed;
+  if(!table_message_entry_read(words,words_bytes,&at,entry))goto damaged;
+  if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto damaged;
+  if(entry->id==UINT64_MAX && nodes++>0)goto damaged;
   /* Declared canonical bytes identify a shape. Resolved quantization facts
      alone can collapse different triples (#722). Until validation finishes,
      min/max temporarily hold the source span; no announcement pointer escapes. */
   for(i=0;i<count;i++){int64_t start=v->entries[i].min,length=v->entries[i].max-start;
-   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto malformed;}
+   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto damaged;}
   entry->min=began;entry->max=at;
   count++;
  }
  /* Resolve the accepted spans into the caller's final 96-byte entries. */
- at=0;{int64_t i;for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto malformed;}
+ at=0;{int64_t i;for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;}
  v->count=count;v->ref_bits=table_bits_required(0,count);v->announced=1;return 1;
-malformed:
- report->malformed=1;
+damaged:
+ report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;
 refused:
  if(touched)memset(v->entries,0,(size_t)touched*sizeof(*v->entries));return 0;
 }

@@ -23,6 +23,7 @@ package goosetable
 import (
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -159,9 +160,7 @@ func runTextTotal(t *testing.T, sabotage func(map[string][]byte)) (map[string]st
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	carried := false
 	for _, data := range files {
 		carried = carried || strings.Contains(string(data), "text_total: 8")
@@ -183,7 +182,7 @@ func runTextTotal(t *testing.T, sabotage func(map[string][]byte)) (map[string]st
 			t.Fatal(err)
 		}
 		wire, _, report, err := tablepack.Pack(writer, "Handover", tree)
-		if err != nil || report.Clamped != 0 {
+		if err != nil || report.Refused {
 			t.Fatalf("%s: the writer's pack: %v %+v", p.name, err, report)
 		}
 		inputs[p.name+".bin"] = wire

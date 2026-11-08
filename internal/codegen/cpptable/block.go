@@ -535,7 +535,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("// runs past the caller's bytes, and unaligned_base. The reason is written\n")
 	g.pf("// on the refusal path only.\n")
 	g.pf("//\n")
-	g.pf("// There is ONE entry point, and no tolerant twin: the block form is same-build\n")
+	g.pf("// There is ONE entry point, and no strict twin: the block form is same-build\n")
 	g.pf("// by construction — both sides are generated from one declaration at one build\n")
 	g.pf("// and ship together — so a consumer older than its producer is not a case. A\n")
 	g.pf("// mismatch is a refusal; regenerate both sides. Data that must outlive the\n")

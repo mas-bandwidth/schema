@@ -1,6 +1,8 @@
 package tablewire_test
 
 import (
+	"bytes"
+	"encoding/binary"
 	"math"
 	"testing"
 
@@ -68,27 +70,47 @@ func TestOracleCompressedFloatSpecialValuesVariable(t *testing.T) {
 		name    string
 		in      uint32
 		a, b    uint32
-		clamped int
+		refused bool
 	}{
-		{"minus_zero", 0x80000000, 0x00000000, 0x00000000, 0},
-		{"plus_zero", 0x00000000, 0x00000000, 0x00000000, 0},
-		{"above_max", 0x40000000, 0x3F800000, 0x3F800000, 2},
-		{"below_min", 0xC0000000, 0x00000000, 0xBF800000, 2},
+		{"minus_zero", 0x80000000, 0x00000000, 0x00000000, false},
+		{"plus_zero", 0x00000000, 0x00000000, 0x00000000, false},
+		{"above_max", 0x40000000, 0, 0, true},
+		{"below_min", 0xC0000000, 0, 0, true},
 	} {
 		inst := m.New(m.Lookup("Reading"))
 		v := float64(math.Float32frombits(c.in))
+		if c.refused {
+			// A WRITER REFUSES A VALUE PAST AN END (§5), so the row's wire is
+			// an in-range one whose float bits are then replaced: a value past
+			// an end is the READ's to refuse out_of_range (§4)
+			v = 0.75
+		}
 		oracleField(t, inst, "a").Cell.F = v
 		oracleField(t, inst, "b").Cell.F = v
 		oracleField(t, inst, "plain").Cell.F = v
-		// the encoder writes the field whole; a value past an end is the
-		// READ's to clamp (§4), which is what this row exercises
 		wire, err := tablewire.Encode(m, inst)
 		if err != nil {
 			t.Fatalf("%s: encode: %v", c.name, err)
 		}
+		if c.refused {
+			var from, to [4]byte
+			binary.LittleEndian.PutUint32(from[:], math.Float32bits(0.75))
+			binary.LittleEndian.PutUint32(to[:], c.in)
+			if bytes.Count(wire, from[:]) != 3 {
+				t.Fatalf("%s: the three floats are not where this row patches them", c.name)
+			}
+			wire = bytes.ReplaceAll(wire, from[:], to[:])
+		}
 		back := m.New(m.Lookup("Reading"))
 		var report tabletext.Report
-		if _, err := tablewire.Decode(m, back, wire, &report); err != nil {
+		ok, err := tablewire.Decode(m, back, wire, &report)
+		if c.refused {
+			if ok || tablewire.RefusalReason(err) != tablewire.ReasonOutOfRange {
+				t.Errorf("%s: a value past the range read: %v %v", c.name, ok, err)
+			}
+			continue
+		}
+		if err != nil {
 			t.Fatalf("%s: decode: %v", c.name, err)
 		}
 		if got := f32of(t, back, "a"); got != c.a {
@@ -96,9 +118,6 @@ func TestOracleCompressedFloatSpecialValuesVariable(t *testing.T) {
 		}
 		if got := f32of(t, back, "b"); got != c.b {
 			t.Errorf("%s: B [-1, 1] landed %#08x, want %#08x", c.name, got, c.b)
-		}
-		if report.Clamped != c.clamped {
-			t.Errorf("%s: clamped %d, want %d", c.name, report.Clamped, c.clamped)
 		}
 		// THE CONTROL: a plain float carries its finite pattern whole (§3).
 		if got := f32of(t, back, "plain"); got != c.in {
@@ -123,8 +142,8 @@ func TestOracleCompressedFloatSpecialValuesVariable(t *testing.T) {
 		bad := replaced(t, wire, le32(math.Float32bits(marker)), le32(bits))
 		var report tabletext.Report
 		ok, err := tablewire.Decode(m, m.New(m.Lookup("Reading")), bad, &report)
-		if ok || report.Clamped != 0 {
-			t.Errorf("%#08x: the read landed or clamped it: %v %+v", bits, ok, report)
+		if ok {
+			t.Errorf("%#08x: the read landed it: %+v", bits, report)
 		}
 		refusedAs(t, "compressed", err, report, "Reading.a")
 	}
@@ -137,7 +156,7 @@ func TestOracleCompressedFloatSpecialValuesText(t *testing.T) {
 	if !m.Read(inst, []byte("{\"a\": -0, \"b\": -0.0, \"plain\": -0}\n"), &report) {
 		t.Fatalf("the text did not read: %+v", report)
 	}
-	if report.Clamped != 0 || report.KindMismatch != 0 {
+	if !report.Silent() {
 		t.Errorf("a -0 counted: %+v", report)
 	}
 	for _, name := range []string{"a", "b"} {

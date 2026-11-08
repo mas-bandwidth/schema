@@ -130,8 +130,8 @@ class Program
 
         // normalization is silent: the hostile load moves no counter (the
         // counting half of the sentence is cs/R17, another card's item).
-        return Check(r0.Unknown == 0 && r0.Clamped == 0 && !r0.Malformed && !r0.Refused &&
-                     r2.Unknown == 0 && r2.Clamped == 0 && !r2.Malformed && !r2.Refused,
+        return Check(r0.Unknown == 0 && !r0.Damaged && !r0.Refused &&
+                     r2.Unknown == 0 && !r2.Damaged && !r2.Refused,
                      "reader: hostile loads move no counter");
     }
 

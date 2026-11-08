@@ -1,6 +1,8 @@
 package tablewire_test
 
 import (
+	"errors"
+	"github.com/mas-bandwidth/schema/v2/ir"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -29,8 +31,17 @@ func TestCorpusEmptyRoundTrip(t *testing.T) {
 	}
 	for _, name := range tables {
 		t.Run(name, func(t *testing.T) {
-			inst := m.New(m.Lookup(name))
+			t.Parallel()
+			st := m.Lookup(name)
+			inst := m.New(st)
 			wire, err := tablewire.Encode(m, inst)
+			if st.FixedDeclared && ir.TableFixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
+				var refusal *tablewire.FixedRefusal
+				if !errors.As(err, &refusal) || refusal.Reason != "layout_unsupported" || len(wire) != 0 {
+					t.Fatalf("oversized fixed corpus root must have no file form: %x %v", wire, err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}

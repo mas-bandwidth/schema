@@ -120,7 +120,13 @@ local function skip_gap(st)
         local b = t:byte(st.p)
         if b == 10 then break end
         if b == 13 then break end
-        st.p = st.p + 1
+        if b < 0x80 then
+          st.p = st.p + 1
+        else
+          local n = utf8_seq(t, st.p)
+          if n < 0 then fail("text_encoding", st.p) end
+          st.p = st.p + n
+        end
       end
     else
       return

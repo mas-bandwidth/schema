@@ -86,10 +86,10 @@ fixed table T { q float32 | min = 0.0, max = 1.0, resolution = 0.01 }
 	t02Has(t, src, "public float Q;", "compressed-floats: the declaration is stored as a float32")
 	t02Has(t, t02Norm(src), "public const long TFixedBodyBytes = 4;", "compressed-floats: the body is the float's four bytes")
 	body := csFn(src, "public static void TFixedClampBody(T value, ref int clamped)")
-	t02Has(t, t02Norm(body), "if (value.Q < 0.0f) { value.Q = 0.0f; clamped++; }",
-		"compressed-floats: the read clamps below the declared min")
-	t02Has(t, t02Norm(body), "else if (value.Q > 1.0f) { value.Q = 1.0f; clamped++; }",
-		"compressed-floats: the read clamps above the declared max")
+	t02Has(t, t02Norm(body), "if (value.Q < 0.0f || value.Q > 1.0f) { clamped++; }",
+		"compressed-floats: the read counts a value below the declared min for refusal")
+	t02Has(t, t02Norm(body), "if (value.Q < 0.0f || value.Q > 1.0f) { clamped++; }",
+		"compressed-floats: the read counts a value above the declared max for refusal")
 }
 
 // t09Flags: flags-values [capability] "Flags masks" (SPEC-TABLES §3.4: a flags

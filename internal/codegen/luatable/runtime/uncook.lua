@@ -93,7 +93,9 @@ local function present_offset(T, f)
   local at = f.at
   local s = f.shape
   local cur
-  if s == "string" then
+  if s == "string" and f.unbounded then
+    cur = at + 8 -- the blob slot (§2.13.1)
+  elseif s == "string" then
     cur = align_up(at + (f.bound or 0) + 1, 4) + 4
   elseif s == "wstring" then
     cur = align_up(at + ((f.bound or 0) + 1) * 2, 4) + 4
@@ -126,6 +128,8 @@ local function present_offset(T, f)
     cur = at + enum_width(f)
   elseif s == "int" then
     cur = at + f.width
+  elseif s == "wide" then
+    cur = at + 16
   else
     cur = at
   end
@@ -186,6 +190,17 @@ read_field = function(ctx, f, base)
       end
       v = string.unpack("<d", ctx.data, at + 1)
     end
+  elseif s == "string" and f.unbounded then
+    -- UNBOUNDED TEXT (§2.13.1): the slot's self-relative delta names a blob
+    -- record, `u32 length`, `u32 zero`, the bytes; a null slot is the empty
+    -- string
+    local delta = i64(ctx, at)
+    if delta == 0 then
+      v = ""
+    else
+      local blob = at + delta
+      v = string.sub(ctx.data, blob + 9, blob + 8 + u32(ctx, blob))
+    end
   elseif s == "string" or s == "bytes" then
     local n = i32(ctx, at + f.companion)
     if n < 0 then n = 0 end
@@ -224,6 +239,8 @@ read_field = function(ctx, f, base)
     v = read_map(ctx, f, at)
   elseif s == "array" then
     v = read_array(ctx, f, at)
+  elseif s == "wide" then
+    v = { lo = i64(ctx, at), hi = i64(ctx, at + 8) }
   end
   return v, true
 end
@@ -245,6 +262,7 @@ local function zero_elem(T, e)
     return {}
   end
   if s == "union" then return { tag = 0 } end
+  if s == "wide" then return { lo = 0, hi = 0 } end
   return false
 end
 

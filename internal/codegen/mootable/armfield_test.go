@@ -32,7 +32,7 @@ import (
 // mooArmPayloadReaders are the calls a per-shape payload reader makes: if
 // read_arm named one, the payload would be read there and not in read_field.
 var mooArmPayloadReaders = []string{
-	"V.utf8(", "V.wide(", "V.clampUtf8(", "V.clampWide(", "store_buffer(", "buffer.readstring(",
+	"V.utf8(", "V.wide(", "store_buffer(", "buffer.readstring(",
 	"enum_read(", "array_body(", "read_array(", "read_keyed(", "read_map(", "read_body(", "scalar_at(",
 }
 

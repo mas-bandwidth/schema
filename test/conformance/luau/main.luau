@@ -323,6 +323,30 @@ local function surfaceJsonRead(lines: { { string } })
 	end
 end
 
+-- damageText puts into a fixed root's top-level text field what no read
+-- delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the bytes
+-- 61 FF 62 in a narrow field, the UTF-16 units 0061 D800 0062 (little-endian
+-- in the field's buffer) in a wide one. The field is its exported slot and the
+-- slot's Length.
+local function damageText(v: any, damage: string)
+	if damage == "none" then
+		return
+	end
+	local form, name = string.match(damage, "^(%a+):(.+)$")
+	if form == nil or name == nil then
+		error("driver: damage " .. damage .. " is not one this driver knows")
+	end
+	local slot = string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2)
+	if form == "narrow" then
+		v[slot] = buffer.fromstring("a\xffb")
+	elseif form == "wide" then
+		v[slot] = buffer.fromstring("a\x00\x00\xd8b\x00")
+	else
+		error("driver: damage " .. damage .. " is not one this driver knows")
+	end
+	v[slot .. "Length"] = 3
+end
+
 local function surfaceJsonWrite(lines: { { string } })
 	for _, f in kind(lines, "instance") do
 		if not noText(f) then
@@ -341,6 +365,24 @@ local function surfaceJsonWrite(lines: { { string } })
 				end
 				say(f[2] .. ".json", text)
 			end
+		end
+	end
+	-- THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
+	-- wire, then the line's damage put into storage in code, then ToJson,
+	-- which must refuse. The Luau writer has no separate measure: ToJson is
+	-- the one call.
+	for _, f in kind(lines, "json-write-refusal") do
+		local u = unit(f[3])
+		if u == nil or rootOf(u, f[4]) == nil then
+			say(f[2] .. ".json", nil)
+		else
+			local v = u.load.loadTolerant(f[4], file(f[5]), report())
+			if v == nil then
+				error(f[2] .. ": load refused " .. f[5])
+			end
+			damageText(v, f[6])
+			local text = u.json.ToJson(f[4], v, report())
+			say(f[2] .. ".json", text or buffer.fromstring("refused\n"))
 		end
 	end
 end

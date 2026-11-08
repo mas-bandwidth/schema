@@ -1,9 +1,9 @@
 // The text form's READ half (docs/SPEC-TABLES.md §16.2): one JSON text into one
-// instance, over the IR. Every rule here is §16's and mirrors the generated
-// C++ walk — unknown keys skipped and counted, duplicates last-wins and
-// counted, a wrong JSON type skipped rather than coerced, numbers clamped at
-// the declared bounds and then at the storage width, strings clamped at a code
-// point boundary, trailing commas and comments accepted on read and never written.
+// instance, over the IR. It is the one read (§6.5): an unknown key is skipped
+// and counted, and everything else that is not the declaration refuses the
+// whole text: a repeated key, a wrong JSON type, a number outside the declared
+// range or the storage width, a string, array or map past its bound. Trailing
+// commas and comments are accepted on read and never written.
 package tabletext
 
 import (
@@ -33,7 +33,8 @@ type reader struct {
 	text   []byte
 	pos    int
 	report *Report
-	bad    bool // the text is not JSON: the walk stops and keeps what it placed
+	bad    bool   // the read refuses: the walk stops
+	reason string // the refusal's diagnostic, the first one met
 	m      *Model
 	// graph is the VARIABLE class's label map (docs/SPEC-TABLES.md §16.7): the
 	// node each `&node` defined, keyed by the label. nil for a fixed root,
@@ -58,26 +59,11 @@ type labelEntry struct {
 	open bool // the definition has not closed yet: a reference here is a cycle
 }
 
-// Read fills one instance from one JSON text (docs/SPEC-TABLES.md §16.1).
-// DAMAGE DISCARDS THE WHOLE LOAD (§4): false with report.Malformed means the
-// text is not JSON or a value could not be placed, and the instance is back at
-// its declared defaults with nothing the read placed.
+// Read fills one instance from one JSON text (docs/SPEC-TABLES.md §16.1). It
+// is THE ONE READ (§6.5): true with the value, or false with the report
+// refused, its reason as diagnostic text, and the instance back at its
+// declared defaults with nothing the read placed.
 func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
-	priorMalformed := report.Malformed
-	missingBefore := report.MissingRequired
-	report.Malformed = false
-	ok := m.read(inst, text, report)
-	if !ok || report.Malformed {
-		report.Malformed = priorMalformed || report.Malformed || report.MissingRequired == missingBefore
-		m.Clear(inst)
-		return false
-	}
-	report.Malformed = priorMalformed
-	return true
-}
-
-func (m *Model) read(inst *Instance, text []byte, report *Report) bool {
-	missingBefore := report.MissingRequired
 	in := &reader{text: text, report: report, m: m}
 	if m.IsVariable(inst.Def.Name) {
 		in.graph = map[uint64]labelEntry{}
@@ -87,12 +73,41 @@ func (m *Model) read(inst *Instance, text []byte, report *Report) bool {
 	if ok {
 		in.space()
 		if in.pos != len(in.text) {
-			in.bad = true // trailing rubbish is not one text
+			ok = in.fail("malformed: trailing input after the value")
 		}
 	}
-	if in.bad || !ok {
-		report.Malformed = in.bad || report.MissingRequired == missingBefore
+	if !ok || in.bad {
+		m.Clear(inst)
+		report.Refuse(in.why())
 		return false
+	}
+	return true
+}
+
+// fail ends the read with a refusal; reason is its diagnostic, and the first
+// one met is the one the report carries.
+func (in *reader) fail(reason string) bool {
+	in.bad = true
+	if in.reason == "" {
+		in.reason = reason
+	}
+	return false
+}
+
+// why is the refusal's diagnostic: the reason the walk named, or `malformed`
+// for a text that is not JSON in this form's dialect (§16.2).
+func (in *reader) why() string {
+	if in.reason != "" {
+		return in.reason
+	}
+	return "malformed"
+}
+
+// require closes one object: a required field the text did not name refuses
+// (§2.3).
+func (in *reader) require(inst *Instance, seen func(int) bool) bool {
+	if missing := MissingFields(inst, seen); missing != "" {
+		return in.fail("missing_required: " + missing)
 	}
 	return true
 }
@@ -342,12 +357,12 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 						in.pos = mark // a lone lead surrogate never found its partner
 					}
 				}
-				// a surrogate half that never found its partner has no UTF-8
-				// encoding: encoding it anyway would manufacture CESU-8 —
-				// invalid UTF-8 — out of input that was valid JSON, so it
-				// reads as the replacement character (docs/SPEC-TABLES.md §16.3)
+				// A LONE OR OUT-OF-ORDER SURROGATE ESCAPE REFUSES
+				// (docs/SPEC-TABLES.md §16.3): it has no UTF-8 encoding, and
+				// a replacement character would make two texts one value
 				if code >= 0xd800 && code <= 0xdfff {
-					code = 0xfffd
+					in.fail("malformed: string_lone_surrogate")
+					return nil, false, false
 				}
 				unit = encodeUTF8(code)
 			default:
@@ -382,14 +397,9 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 			// A SEQUENCE THAT IS NOT A CODE POINT IS REFUSED BY NAME
 			// (§16.3): RFC 8259 requires a JSON text to be valid UTF-8, and
 			// a silent U+FFFD would make two different texts one value.
-			// The lone-surrogate escape above still reads as U+FFFD; that is
-			// the sibling card schema-go-json-refuses-lone-surrogates.
 			if !utf8.Valid(unit) {
 				in.utf8 = true
-				if in.report.Reason == "" {
-					in.report.Reason = "string_not_utf8: <root>"
-				}
-				in.bad = true
+				in.fail("string_not_utf8: <root>")
 				return nil, false, false
 			}
 		}
@@ -398,10 +408,9 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 }
 
 // scanString reads one JSON string, appending ONE CODE POINT AT A TIME — an
-// escape's encoding, or a UTF-8 sequence read whole — so a string longer than
-// the field is clamped AT A CODE POINT BOUNDARY and never cut through a
-// multi-byte character. capacity < 0 is unbounded; the returned bool is
-// whether the scan succeeded, and clamped whether anything was dropped.
+// escape's encoding, or a UTF-8 sequence read whole. capacity < 0 is
+// unbounded; the returned bool is whether the scan succeeded, and over whether
+// the string is longer than capacity, which the caller refuses.
 // scanString is for a string the walk only COMPARES or SKIPS — an object key,
 // an enum, flag or union name, a skipped value — and stores nothing.
 func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
@@ -609,6 +618,9 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 	}
 	in.pos++ // the opening bracket
 	first := true
+	// a skipped object's keys are held to the layer's rule too: a repeated
+	// key refuses in every object of the text (§16.2, §16.12)
+	var keys map[string]struct{}
 	for {
 		c := in.peek()
 		if c == close {
@@ -634,6 +646,13 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 				return false
 			}
 			in.pos++
+			if keys == nil {
+				keys = map[string]struct{}{}
+			}
+			if _, repeated := keys[string(key)]; repeated {
+				return in.fail("malformed: a repeated key")
+			}
+			keys[string(key)] = struct{}{}
 			if len(key) > 0 && key[0] == '&' && in.graph != nil {
 				if !first || !in.skippedAmpersand(string(key)) {
 					in.bad = true
@@ -672,7 +691,7 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 }
 
 // readTable places ONE table object: keys are field keys, unknown ones are
-// skipped and counted, a repeated key is last-wins and counted. The instance
+// skipped and counted, a repeated key refuses the read. The instance
 // is already at its declared defaults, so a key the text never mentions keeps
 // the default an absent field takes on the wire (§4).
 func (in *reader) readTable(inst *Instance, depth int) bool {
@@ -683,17 +702,13 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 	if inst.Def.JsonArray {
 		// THE ARRAY ROOT (docs/SPEC-TABLES.md §16.10): the table's text is its
 		// one field's array. Any other top-level value is refused by name —
-		// the report is Malformed and its Reason is `json_root_not_array: <Table>`.
+		// the read refuses with `json_root_not_array: <Table>`.
 		if len(inst.Fields) != 1 {
 			in.bad = true
 			return false
 		}
 		if in.valueShape() != 'a' {
-			if in.report.Reason == "" {
-				in.report.Reason = "json_root_not_array: " + inst.Def.Name
-			}
-			in.bad = true
-			return false
+			return in.fail("json_root_not_array: " + inst.Def.Name)
 		}
 		if !in.readField(&inst.Fields[0], depth) {
 			in.nameZero(inst.Def.Name, &inst.Fields[0])
@@ -716,6 +731,7 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 // this places it before scanning the rest.
 func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool {
 	seen := make(map[int]bool, len(inst.Fields))
+	seenKeys := map[string]bool{}
 	for {
 		var key []byte
 		var c byte
@@ -725,16 +741,19 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			c = in.peek()
 			if c == '}' {
 				in.pos++
-				return in.report.RequireSeen(inst, func(i int) bool { return seen[i] })
+				return in.require(inst, func(i int) bool { return seen[i] })
 			}
 			if c == 0 {
 				in.bad = true
 				return false
 			}
-			var ok bool
-			key, _, ok = in.scanString(maxJsonKey)
+			var ok, tooLong bool
+			key, tooLong, ok = in.scanString(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			if in.peek() != ':' {
 				in.bad = true
@@ -742,6 +761,10 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			}
 			in.pos++
 		}
+		if seenKeys[string(key)] {
+			return in.fail("malformed: a repeated key")
+		}
+		seenKeys[string(key)] = true
 		if len(key) > 0 && key[0] == '&' {
 			// THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
 			// §16.7). No declaration may take a key beginning with it, so this
@@ -761,7 +784,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			}
 		} else {
 			if seen[index] {
-				in.report.Duplicate++
+				return in.fail("malformed: a repeated key")
 			}
 			seen[index] = true
 			fv := &inst.Fields[index]
@@ -779,10 +802,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			default:
 				if shape != Shape(fv.Def) {
 					// the wrong JSON type for the kind: skipped, never coerced
-					in.report.KindMismatch++
-					if !in.skipValue(depth + 1) {
-						return false
-					}
+					return in.fail("kind_mismatch: " + fv.Def.Name)
 				} else if !in.readField(fv, depth) {
 					in.nameZero(inst.Def.Name, fv)
 					return false
@@ -804,7 +824,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 		}
 		if c == '}' {
 			in.pos++
-			return in.report.RequireSeen(inst, func(i int) bool { return seen[i] })
+			return in.require(inst, func(i int) bool { return seen[i] })
 		}
 		in.bad = true
 		return false
@@ -815,8 +835,8 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 // text storage (docs/SPEC-TABLES.md §16.3): `text_holds_zero: <Table>.<field>`.
 // A nested table names its own field first, so an outer one never overwrites it.
 func (in *reader) nameZero(table string, fv *Field) {
-	if in.zero && in.report.Reason == "" {
-		in.report.Reason = "text_holds_zero: " + table + "." + fv.Def.Name
+	if in.zero && (in.reason == "" || in.reason == "malformed") {
+		in.reason = "text_holds_zero: " + table + "." + fv.Def.Name
 	}
 }
 
@@ -855,7 +875,7 @@ func (in *reader) readField(fv *Field, depth int) bool {
 			return false
 		}
 		if clamped {
-			in.report.Clamped++
+			return in.fail("length_over_bound: " + f.Name)
 		}
 		fv.Cell.Str = out
 		fv.Count = len(out)
@@ -868,7 +888,7 @@ func (in *reader) readField(fv *Field, depth int) bool {
 			return false
 		}
 		if clamped {
-			in.report.Clamped++
+			return in.fail("length_over_bound: " + f.Name)
 		}
 		fv.Cell.Units = units
 		fv.Count = len(units)
@@ -917,9 +937,8 @@ func (in *reader) scanLabel() (uint64, bool) {
 
 // readBlob places a BYTE BUFFER's string (docs/SPEC-TABLES.md §2.5, §16.2): a
 // `*string`'s bytes are the string's, a `*bytes`'s are its base64 decoded, at
-// exactly the length that gives, with no bound to clamp against. A `*bytes`
-// body that is not base64 is the wrong shape for the kind: the reference stays
-// null and the event is counted, as a `bytes(N)` field keeps its default. The
+// exactly the length that gives, with no bound. A `*bytes` body that is not
+// base64 refuses, as a `bytes(N)` field's does. The
 // same walk in the generated C++ allocates the node in the builder's arena;
 // here it is a Blob.
 func (in *reader) readBlob(fv *Field) bool {
@@ -932,16 +951,12 @@ func (in *reader) readBlob(fv *Field) bool {
 		fv.Cell.Blob = &Blob{Data: out}
 		return true
 	}
-	before := in.report.KindMismatch
 	if !in.readBase64(fv) {
 		return false
 	}
 	data := fv.Cell.Str
 	fv.Cell.Str = nil
 	fv.Count = 0
-	if in.report.KindMismatch != before {
-		return true // not base64: counted, the reference left null
-	}
 	if data == nil {
 		data = []byte{}
 	}
@@ -981,15 +996,18 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		// an empty object: a node at its defaults, named once
 		in.pos++
 		cell.Node = in.m.New(st)
-		return in.report.RequireSeen(cell.Node, func(int) bool { return false })
+		return in.require(cell.Node, func(int) bool { return false })
 	}
 	if c == 0 {
 		in.bad = true
 		return false
 	}
-	key, _, ok := in.scanString(maxJsonKey)
+	key, tooLong, ok := in.scanString(maxJsonKey)
 	if !ok {
 		return false
+	}
+	if tooLong {
+		return in.fail("length_over_bound: JSON key")
 	}
 	if in.peek() != ':' {
 		in.bad = true
@@ -1043,7 +1061,7 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		switch {
 		case entry.st == nil:
 		case entry.st != st:
-			in.report.KindMismatch++
+			return in.fail("kind_mismatch: a reference to a node of another table")
 		default:
 			cell.Node = entry.node
 		}
@@ -1086,9 +1104,8 @@ func (in *reader) skippedAmpersand(key string) bool {
 // readBase64 decodes a `bytes(N)` body six bits at a time with the padding
 // grammar of docs/SPEC-TABLES.md §16.2: standard-alphabet symbols, then zero,
 // one or two `=`, and nothing after; a padded body's length is a multiple of
-// four, and a lone final symbol is not base64. A body outside that grammar is
-// the wrong SHAPE for the kind, so the field keeps its default and the event
-// is counted — exactly as the generated walk does.
+// four, and a lone final symbol is not base64. A body outside that grammar
+// refuses, and so does one that decodes to more bytes than the field's bound.
 //
 // A bytes field is a JSON string whose decoded value is base64 (§16.2), so the
 // string's JSON escapes are undone first and BOTH passes below run over the
@@ -1145,8 +1162,7 @@ func (in *reader) readBase64(fv *Field) bool {
 		}
 	}
 	if malformed {
-		in.report.KindMismatch++
-		return true
+		return in.fail("base64_damaged: " + fv.Def.Name)
 	}
 	var out []byte
 	var accumulator uint32
@@ -1175,7 +1191,7 @@ func (in *reader) readBase64(fv *Field) bool {
 		}
 	}
 	if clamped {
-		in.report.Clamped++
+		return in.fail("length_over_bound: " + fv.Def.Name)
 	}
 	fv.Cell.Str = out
 	fv.Count = len(out)
@@ -1224,12 +1240,8 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 		}
 		switch {
 		case placed >= bound:
-			// more elements than the reader's bound: the bounded prefix is
-			// kept and the excess counts, the wire's rule (§4)
-			in.report.Clamped++
-			if !in.skipValue(depth + 1) {
-				return false
-			}
+			// more elements than the reader's bound refuses, the wire's rule (§4)
+			return in.fail("count_over_bound: " + f.Name)
 		case f.Type.Pointer && in.valueShape() == 'z':
 			// a null element of an array of pointers is a null slot (§16.2)
 			if !in.literal("null") {
@@ -1238,11 +1250,7 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 			fv.Elems[placed] = Cell{}
 			placed++
 		case in.valueShape() != shape:
-			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
-				return false
-			}
-			placed++
+			return in.fail("kind_mismatch: " + f.Name)
 		default:
 			if !in.readScalar(&fv.Elems[placed], f, depth+1) {
 				return false
@@ -1269,11 +1277,10 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 
 // readTextList places a TEXT LIST's elements (docs/SPEC-TABLES.md §2.13,
 // §16.2): a plain array of strings — `null` for an absent `?string(M)` element
-// and the string for a present one, `""` included. The bounds are the variable
-// wire's tolerance: an element past `N` drops and counts `clamped`, an element
-// past `M` clamps at a code point boundary and counts `clamped`, and an
-// element that is not a string (or `null` for the optional spelling) is
-// `kind_mismatch`, skipped and counted.
+// and the string for a present one, `""` included. The bounds are the wire's:
+// an element past `N` refuses `count_over_bound`, an element past `M` or a sum
+// past `| total` refuses `length_over_bound`, and an element that is not a
+// string (or `null` for the optional spelling) refuses `kind_mismatch`.
 func (in *reader) readTextList(fv *Field, depth int) bool {
 	f := fv.Def
 	if in.peek() != '[' {
@@ -1289,8 +1296,6 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 	fv.Count = 0
 	placed := 0
 	var spent int64
-	full := false
-	seen := 0 // the elements the text has spelled so far
 	bound := int(f.ArrayBound)
 	if f.Array == ir.ArrayList {
 		bound = math.MaxInt32
@@ -1312,44 +1317,26 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		if !full && f.Array == ir.ArrayList && placed == len(fv.Elems) {
+		if f.Array == ir.ArrayList && placed == len(fv.Elems) {
 			fv.Elems = append(fv.Elems, in.m.elementZero(f))
 		}
-		before := placed
-		seen++
 		switch {
-		case full:
-			// the total dropped this element; one past [..N] is counted all the
-			// same, as the wire counts both its count clamp and the total (§2.13)
-			if seen > bound {
-				in.report.Clamped++
-			}
-			if !in.skipValue(depth + 1) {
-				return false
-			}
 		case placed >= bound:
-			in.report.Clamped++
-			if !in.skipValue(depth + 1) {
-				return false
-			}
+			return in.fail("count_over_bound: " + f.Name)
 		case optional && in.valueShape() == 'z':
 			if !in.literal("null") {
 				return false
 			}
 			placed++
 		case in.valueShape() != 's':
-			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
-				return false
-			}
-			placed++
+			return in.fail("kind_mismatch: " + f.Name)
 		default:
 			out, clamped, ok := in.scanStored(boundM)
 			if !ok {
 				return false
 			}
 			if clamped {
-				in.report.Clamped++
+				return in.fail("length_over_bound: " + f.Name)
 			}
 			rec := fv.Elems[placed].Tab
 			rec.Fields[0].Cell.Str = out
@@ -1359,12 +1346,8 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 			}
 			placed++
 		}
-		if placed > before && !in.m.KeepTextTotal(fv, placed-1, &spent, in.report) {
-			placed--
-			full = true
-			if f.Array == ir.ArrayList {
-				fv.Elems = fv.Elems[:placed]
-			}
+		if !TextTotalFits(fv, placed-1, &spent) {
+			return in.fail("length_over_bound: " + f.TextListElem().MapEntryOf)
 		}
 		c = in.peek()
 		if c == ',' {
@@ -1410,6 +1393,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 	}
 	shape := ElementShape(f)
 	seen := map[int]bool{}
+	seenKeys := map[string]bool{}
 	for {
 		c := in.peek()
 		if c == '}' {
@@ -1420,19 +1404,26 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, _, ok := in.scanString(maxJsonKey)
+		key, tooLong, ok := in.scanString(maxJsonKey)
 		if !ok {
 			return false
+		}
+		if tooLong {
+			return in.fail("length_over_bound: JSON key")
 		}
 		if in.peek() != ':' {
 			in.bad = true
 			return false
 		}
 		in.pos++
+		if seenKeys[string(key)] {
+			return in.fail("malformed: a repeated key")
+		}
+		seenKeys[string(key)] = true
 		slot := KeyedValueSlot(f, EnumValue(f.KeyEnumRef, string(key)))
 		if slot >= 0 {
 			if seen[slot] {
-				in.report.Duplicate++
+				return in.fail("malformed: a repeated key")
 			}
 			seen[slot] = true
 		}
@@ -1443,10 +1434,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 				return false
 			}
 		case in.valueShape() != shape:
-			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
-				return false
-			}
+			return in.fail("kind_mismatch: " + f.Name)
 		default:
 			if !in.readScalar(&fv.Elems[slot], f, depth+1) {
 				return false
@@ -1564,9 +1552,7 @@ func (in *reader) readTimestamp(cell *Cell, f *ir.Field) bool {
 	}
 	nanos, named := rfc3339.Parse(text)
 	if !named {
-		in.report.Reason = "timestamp_not_rfc3339: " + f.Name
-		in.bad = true
-		return false
+		return in.fail("timestamp_not_rfc3339: " + f.Name)
 	}
 	cell.I = nanos
 	cell.U = uint64(cell.I)
@@ -1597,28 +1583,21 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 		return false
 	}
 	if math.IsInf(value, 0) || math.IsNaN(value) {
-		in.report.KindMismatch++
-		return true
+		return in.fail("out_of_range: " + f.Name)
 	}
 	if f.HasFloatRange {
-		switch {
-		case value < f.FMin:
-			value = f.FMin
-			in.report.Clamped++
-		case value > f.FMax:
-			value = f.FMax
-			in.report.Clamped++
-		case value == 0:
-			// a compressed float's -0 lands as +0, uncounted (§3.3, the
-			// special values); a NaN or an infinity never reaches here
+		if value < f.FMin || value > f.FMax {
+			return in.fail("out_of_range: " + f.Name)
+		}
+		if value == 0 {
+			// a compressed float's -0 lands as +0 (§3.3, the special values)
 			value = 0
 		}
 	}
 	if single {
 		narrow := float32(value)
 		if math.IsInf(float64(narrow), 0) {
-			in.report.KindMismatch++
-			return true
+			return in.fail("out_of_range: " + f.Name)
 		}
 		value = float64(narrow)
 	}
@@ -1635,14 +1614,13 @@ func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral b
 	signed := kind >= ir.TableKindI8 && kind <= ir.TableKindI64
 	number := interpretInteger(token, integral)
 	if !number.finite || number.fractional {
-		in.report.KindMismatch++
-		return true
+		return in.fail("kind_mismatch: " + f.Name)
 	}
 	if number.saturated {
-		in.report.Clamped++ // past what sixty-four bits hold
+		return in.fail("out_of_range: " + f.Name) // past what sixty-four bits hold
 	}
-	// THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
-	// so a text and a wire loaded from the same data land the same instance.
+	// THE DECLARED RANGE, THEN THE STORAGE WIDTH (§4): a value outside either
+	// refuses, and nothing clamps.
 	bounded := number
 	var lo, hi jsonInteger
 	hasRange := f.HasIntRange
@@ -1654,17 +1632,13 @@ func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral b
 		hasRange = true
 	}
 	if hasRange {
-		if compareInteger(number, lo) < 0 {
-			bounded = lo
-			in.report.Clamped++
-		} else if compareInteger(number, hi) > 0 {
-			bounded = hi
-			in.report.Clamped++
+		if compareInteger(number, lo) < 0 || compareInteger(number, hi) > 0 {
+			return in.fail("out_of_range: " + f.Name)
 		}
 	}
 	value, moved := integerInDomain(bounded, signed, StorageBytes(f))
 	if moved {
-		in.report.Clamped++
+		return in.fail("out_of_range: " + f.Name)
 	}
 	cell.I = value
 	cell.U = uint64(value)
@@ -1710,10 +1684,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 	} else if arm := un.Variants[tag-1]; arm.Void() {
 		// A PAYLOAD-FREE ARM'S VALUE IS null (§2.6): the arm name selects it
 		if in.valueShape() != 'z' {
-			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
-				return false
-			}
+			return in.fail("kind_mismatch: " + un.Name)
 		} else {
 			if !in.literal("null") {
 				return false
@@ -1728,10 +1699,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		if in.valueShape() != shape {
 			// the wrong JSON type for the arm's row: the union reads None,
 			// the event is counted, and the enclosing object continues (§16.2)
-			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
-				return false
-			}
+			return in.fail("kind_mismatch: " + un.Name)
 		} else {
 			payload := in.m.New(arm.Ref)
 			if !in.readTable(payload, depth+1) {
@@ -1755,10 +1723,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			cell.U = uint64(tag)
 			cell.Arm = fv
 		case shape != Shape(arm.F):
-			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
-				return false
-			}
+			return in.fail("kind_mismatch: " + un.Name)
 		default:
 			if !in.readField(fv, depth+1) {
 				return false
@@ -1798,10 +1763,7 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 			return false
 		}
 		if c != '"' {
-			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
-				return false
-			}
+			return in.fail("kind_mismatch: " + fl.Name)
 		} else {
 			name, _, ok := in.scanString(maxJsonKey)
 			if !ok {
@@ -1810,6 +1772,11 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 			found := false
 			for bit, v := range fl.Variants {
 				if v == string(name) {
+					// A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a
+					// repeated name is a repeated key, and refuses malformed
+					if bits&(uint64(1)<<uint(bit)) != 0 {
+						return in.fail("malformed: " + fl.Name + " repeats " + v)
+					}
 					bits |= uint64(1) << uint(bit)
 					found = true
 					break
@@ -2081,7 +2048,6 @@ func integerInDomain(n jsonInteger, signed bool, bytes int) (int64, bool) {
 // checked before the value is placed, presence of the FILE is presence for a
 // `?T`, and nothing is coerced.
 func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
-	missingBefore := report.MissingRequired
 	in := &reader{text: text, report: report, m: m}
 	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	m.reset(fv)
@@ -2091,11 +2057,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 		// `null` is the absence, not a value (docs/SPEC-TABLES.md §16.2)
 		ok = in.literal("null")
 	case shape != Shape(fv.Def):
-		report.KindMismatch++
-		ok = in.skipValue(0)
-		if ok && fv.Def.Type.Optional {
-			fv.Present = true
-		}
+		ok = in.fail("kind_mismatch: " + fv.Def.Name)
 	default:
 		ok = in.readField(fv, 0)
 		if ok && fv.Def.Type.Optional {
@@ -2105,13 +2067,13 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	if ok {
 		in.space()
 		if in.pos != len(in.text) {
-			in.bad = true // trailing rubbish is not one text
+			ok = in.fail("malformed: trailing input after the value")
 		}
 	}
 	if in.bad || !ok {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
 		m.reset(fv)
-		report.Malformed = report.Malformed || in.bad || report.MissingRequired == missingBefore
+		report.Refuse(in.why())
 		return false
 	}
 	return true
@@ -2121,7 +2083,6 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 // `<Variant>.json` under an enum-keyed field's directory, or one of the files
 // that become a bounded array's elements in name order.
 func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bool {
-	missingBefore := report.MissingRequired
 	in := &reader{text: text, report: report, m: m}
 	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	fv.Elems[slot] = m.elementZero(fv.Def)
@@ -2130,8 +2091,7 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 	case fv.Def.IsTextList():
 		ok = in.readTextListElement(fv, slot, 0)
 	case in.valueShape() != ElementShape(fv.Def):
-		report.KindMismatch++
-		ok = in.skipValue(0)
+		ok = in.fail("kind_mismatch: " + fv.Def.Name)
 	default:
 		ok = in.readScalar(&fv.Elems[slot], fv.Def, 0)
 	}
@@ -2144,7 +2104,7 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 	if in.bad || !ok {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
 		fv.Elems[slot] = m.elementZero(fv.Def)
-		report.Malformed = report.Malformed || in.bad || report.MissingRequired == missingBefore
+		report.Refuse(in.why())
 		return false
 	}
 	return true
@@ -2166,15 +2126,14 @@ func (in *reader) readTextListElement(fv *Field, slot int, depth int) bool {
 	case optional && in.valueShape() == 'z':
 		return in.literal("null")
 	case in.valueShape() != 's':
-		in.report.KindMismatch++
-		return in.skipValue(depth)
+		return in.fail("kind_mismatch: " + f.Name)
 	}
 	out, clamped, ok := in.scanStored(boundM)
 	if !ok {
 		return false
 	}
 	if clamped {
-		in.report.Clamped++
+		return in.fail("length_over_bound: " + f.Name)
 	}
 	rec := fv.Elems[slot].Tab
 	rec.Fields[0].Cell.Str = out
@@ -2188,22 +2147,21 @@ func (in *reader) readTextListElement(fv *Field, slot int, depth int) bool {
 // placeWide converts a number token into a wide kind's raw storage
 // (docs/SPEC-TABLES.md §16.2): a 128-bit integer takes any token whose value
 // is integral, a fixed field any token whose value is EXACTLY representable
-// in its Q I.F — a finer fraction is the wrong shape for the field, counted
-// as a kind mismatch and never rounded, the rule SPEC.md §4.6 gives a fixed
-// default. A magnitude past the storage saturates and counts as a clamp;
-// the declared range clamps after it, as it does for every bounded scalar.
+// in its Q I.F — a finer fraction is the wrong shape for the field, a kind
+// mismatch, never rounded, the rule SPEC.md §4.6 gives a fixed default. A
+// magnitude past the storage, or outside the declared range, refuses
+// `out_of_range`.
 func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) bool {
 	raw, exact, saturated := ParseWide(token, kind, f.Type.FracBits)
 	if !exact {
-		in.report.KindMismatch++
-		return true
+		return in.fail("kind_mismatch: " + f.Name)
 	}
 	if saturated {
-		in.report.Clamped++
+		return in.fail("out_of_range: " + f.Name)
 	}
-	raw, clamped := WideClamp(raw, f)
-	if clamped {
-		in.report.Clamped++
+	raw, outside := WideClamp(raw, f)
+	if outside {
+		return in.fail("out_of_range: " + f.Name)
 	}
 	cell.Wide = raw
 	return true
@@ -2215,9 +2173,8 @@ func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) boo
 // of digits, and a key that is not one is the wrong shape for the kind —
 // counted, the entry skipped, never coerced.
 //
-// KEYS NEVER CLAMP: a key past the declaration's capacity drops its whole
-// entry and counts `clamped`, because a clamped key would merge two identities
-// into one. A repeated key is `duplicate` and the LAST occurrence wins whole.
+// A key past the declaration's capacity refuses `length_over_bound`, and a
+// repeated key refuses: the text form spells no value the wire cannot.
 func (in *reader) readMap(fv *Field, depth int) bool {
 	f := fv.Def
 	if in.peek() != '{' {
@@ -2261,52 +2218,28 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			placed = in.placeMapKey(entry, keyField, key)
 		}
 		if placed == mapKeyMalformed {
-			// A MALFORMED KEY STOPS THE READ where §16.1's rule stops it, with
-			// the instance holding what was placed before the stop.
-			in.report.Malformed = true
-			in.bad = true
-			return false
+			return in.fail("malformed: a map key that is not a number")
 		}
 		switch {
-		// A KEY THIS SCAN COULD NOT HOLD WHOLE IS NOT A SHORTER KEY (§2.8):
-		// truncating one there inserts an identity the text never spelled and
-		// merges two keys that share its prefix, so the entry drops instead. A
-		// string key counts `clamped`, the event a key past its bound already
-		// raises. An integer key counts `kind_mismatch`: the bytes kept are a
-		// PREFIX, and a prefix is a different token, so no value is read from
-		// them. The length alone does not settle it, because a token that long
-		// can still spell a number an integer kind holds.
+		// A KEY THIS SCAN COULD NOT HOLD WHOLE (§2.8): a string key past its
+		// bound refuses `length_over_bound`; an integer key that long is a
+		// token no integer kind holds.
 		case over && MapKeyIsString(f):
-			in.report.Clamped++
-			if !in.skipValue(depth) {
-				return false
-			}
-		case over:
-			in.report.KindMismatch++
-			if !in.skipValue(depth) {
-				return false
-			}
-		case placed == mapKeyMismatch:
-			in.report.KindMismatch++ // a value the key kind does not hold
-			if !in.skipValue(depth) {
-				return false
-			}
+			return in.fail("length_over_bound: " + f.Name)
+		case over, placed == mapKeyMismatch:
+			return in.fail("kind_mismatch: " + f.Name)
 		case !MapKeyFits(f, MapKeyOf(f, entry)):
-			in.report.Clamped++ // the entry is dropped WHOLE: keys never clamp
-			if !in.skipValue(depth) {
-				return false
-			}
+			return in.fail("length_over_bound: " + f.Name)
 		case !in.readMapValue(&entry.Fields[1], depth):
 			return false
 		default:
 			id := identityOf(f, MapKeyOf(f, entry))
-			if at, ok := seen[id]; ok {
-				in.report.Duplicate++
-				fv.Entries[at] = Cell{Tab: entry}
-			} else {
-				seen[id] = len(fv.Entries)
-				fv.Entries = append(fv.Entries, Cell{Tab: entry})
+			if _, ok := seen[id]; ok {
+				// A REPEATED KEY IS DAMAGE (§16.2): no writer produces it
+				return in.fail("malformed: a repeated map key")
 			}
+			seen[id] = len(fv.Entries)
+			fv.Entries = append(fv.Entries, Cell{Tab: entry})
 		}
 		c = in.peek()
 		if c == ',' {
@@ -2342,15 +2275,7 @@ func (in *reader) readMapValue(fv *Field, depth int) bool {
 		return true
 	}
 	if in.valueShape() != Shape(fv.Def) {
-		in.report.KindMismatch++
-		if !in.skipValue(depth + 1) {
-			return false
-		}
-		// Null is the only absent optional map value (§16.2).
-		if fv.Def.Type.Optional {
-			fv.Present = true
-		}
-		return true
+		return in.fail("kind_mismatch: " + fv.Def.Name)
 	}
 	if !in.readField(fv, depth) {
 		return false
