@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — the variable form's tolerant load and canonical save for table BenchPacket
+// package bench — the variable form's strict load and canonical save for table BenchPacket
 // (docs/SPEC-TABLES.md §3, §4)
 
 package bench;
@@ -252,7 +252,7 @@ public final class BenchPacketVariable {
                 return false;
             }
             if (!r.has(1)) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             int kind = r.get8();
@@ -262,7 +262,7 @@ public final class BenchPacketVariable {
                         if (r.has(4)) {
                             v.a = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -270,7 +270,7 @@ public final class BenchPacketVariable {
                             v.a = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -278,7 +278,7 @@ public final class BenchPacketVariable {
                             v.a = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -288,11 +288,11 @@ public final class BenchPacketVariable {
                         } else {
                             v.a = 100;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_b) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -300,7 +300,7 @@ public final class BenchPacketVariable {
                         if (r.has(4)) {
                             v.b = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -308,7 +308,7 @@ public final class BenchPacketVariable {
                             v.b = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -316,7 +316,7 @@ public final class BenchPacketVariable {
                             v.b = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -326,11 +326,11 @@ public final class BenchPacketVariable {
                         } else {
                             v.b = 65535;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_c) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -338,7 +338,7 @@ public final class BenchPacketVariable {
                         if (r.has(4)) {
                             v.c = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -346,7 +346,7 @@ public final class BenchPacketVariable {
                             v.c = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -354,7 +354,7 @@ public final class BenchPacketVariable {
                             v.c = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -364,11 +364,11 @@ public final class BenchPacketVariable {
                         } else {
                             v.c = 1000000;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_bits7) {
                 if (kind == 6) {
@@ -376,17 +376,17 @@ public final class BenchPacketVariable {
                         if (r.has(1)) {
                             v.bits7 = r.get8();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.bits7 & 0xffffffffL) > 127L) {
                         v.bits7 = (int) 127L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_bits13) {
                 if (kind == 7 || kind == 6) {
@@ -394,7 +394,7 @@ public final class BenchPacketVariable {
                         if (r.has(2)) {
                             v.bits13 = r.get16();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -402,17 +402,17 @@ public final class BenchPacketVariable {
                             v.bits13 = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.bits13 & 0xffffffffL) > 8191L) {
                         v.bits13 = (int) 8191L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_bits23) {
                 if (kind == 8 || kind == 6 || kind == 7) {
@@ -420,7 +420,7 @@ public final class BenchPacketVariable {
                         if (r.has(4)) {
                             v.bits23 = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -428,7 +428,7 @@ public final class BenchPacketVariable {
                             v.bits23 = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 7) {
@@ -436,33 +436,33 @@ public final class BenchPacketVariable {
                             v.bits23 = r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.bits23 & 0xffffffffL) > 8388607L) {
                         v.bits23 = (int) 8388607L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_flag) {
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
                         if (bv > 1) {
-                            report.malformed = true;
+                            report.damaged = true;
                         }
                         v.flag = bv != 0;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_x) {
                 if (kind == 10) {
@@ -474,12 +474,12 @@ public final class BenchPacketVariable {
                             v.x = Float.intBitsToFloat(fbits);
                         }
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_y) {
                 if (kind == 10) {
@@ -491,12 +491,12 @@ public final class BenchPacketVariable {
                             v.y = Float.intBitsToFloat(fbits);
                         }
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_z) {
                 if (kind == 10) {
@@ -508,12 +508,12 @@ public final class BenchPacketVariable {
                             v.z = Float.intBitsToFloat(fbits);
                         }
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_big) {
                 if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
@@ -521,7 +521,7 @@ public final class BenchPacketVariable {
                         if (r.has(8)) {
                             v.big = r.get64();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -529,7 +529,7 @@ public final class BenchPacketVariable {
                             v.big = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 7) {
@@ -537,7 +537,7 @@ public final class BenchPacketVariable {
                             v.big = r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 8) {
@@ -545,13 +545,13 @@ public final class BenchPacketVariable {
                             v.big = ((long) r.get32()) & 0xffffffffL;
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == F_blob) {
                 if (kind == 14) {
@@ -562,11 +562,11 @@ public final class BenchPacketVariable {
                             long n = ar.count(r.limit);
                             if (ar.fail) {
                             } else if (!(ek == 6)) {
-                                report.kindMismatch++;
+                                report.refuse("kind_mismatch");
                             } else {
                                 if (n < 0 || n > 17) {
                                     n = 17;
-                                    report.clamped++;
+                                    report.refuse("out_of_range");
                                 }
                                 if (ek != 6) {
                                     report.widened++;
@@ -584,17 +584,17 @@ public final class BenchPacketVariable {
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
                     r.skip(kind);
                 } else {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             } else {
                 r.skip(kind);
@@ -780,7 +780,7 @@ public final class BenchPacketVariable {
             for (TableVariable.NodeRecord rec : nt.recs) {
                 if (rec.typeId == TableVariable.STRING_ID) {
                     if (!TableVariable.textValid(rec.body, 0, rec.body.length)) {
-                        report.malformed = true;
+                        report.damaged = true;
                         rec.typeId = 0;
                     } else {
                         rec.value = new String(rec.body, StandardCharsets.UTF_8);
@@ -827,18 +827,18 @@ public final class BenchPacketVariable {
             }
         }
         // DAMAGE DISCARDS THE WHOLE LOAD (§4)
-        if (report.malformed) {
+        if (report.damaged) {
             return null;
         }
         // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
         if (TableVariable.cyclic(nt)) {
-            report.malformed = true;
+            report.damaged = true;
             return null;
         }
         return v;
     }
 
-    // loadMeasure sizes the region a tolerant load would need (docs/SPEC-TABLES.md §6.5).
+    // loadMeasure sizes the region a strict load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 72;
 
@@ -1003,13 +1003,13 @@ public final class BenchPacketVariable {
         Value v = new Value();
         jsonReadFields(in, v);
         if (in.bad) {
-            report.malformed = true;
+            report.damaged = true;
         }
         if (report.refused) {
             return null;
         }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
-        if (report.malformed) {
+        if (report.damaged) {
             return null;
         }
         return v;
@@ -1180,7 +1180,7 @@ public final class BenchPacketVariable {
         }
         if (in.peek() != '{') {
             in.skipValue();
-            in.rep.kindMismatch++;
+            in.rep.refuse("kind_mismatch");
             return null;
         }
         int start = in.p;
@@ -1219,7 +1219,7 @@ public final class BenchPacketVariable {
                 return null;
             }
             if (entry.typeId != targetTypeId) {
-                in.rep.kindMismatch++;
+                in.rep.refuse("kind_mismatch");
                 return null;
             }
             return (Value) entry.value;
@@ -1283,13 +1283,13 @@ public final class BenchPacketVariable {
             if ("a".equals(key)) {
                 boolean repeated = seenField[0];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[0] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(true, -100, 100);
@@ -1298,19 +1298,19 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("b".equals(key)) {
                 boolean repeated = seenField[1];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[1] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(true, 0, 65535);
@@ -1319,19 +1319,19 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("c".equals(key)) {
                 boolean repeated = seenField[2];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[2] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(true, -1000000, 1000000);
@@ -1340,19 +1340,19 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("bits7".equals(key)) {
                 boolean repeated = seenField[3];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[3] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(false, 0L, 0x7fL);
@@ -1361,19 +1361,19 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("bits13".equals(key)) {
                 boolean repeated = seenField[4];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[4] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(false, 0L, 0x1fffL);
@@ -1382,19 +1382,19 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("bits23".equals(key)) {
                 boolean repeated = seenField[5];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[5] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(false, 0L, 0x7fffffL);
@@ -1403,18 +1403,18 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("flag".equals(key)) {
                 boolean repeated = seenField[6];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[6] = true;
                 if (in.peek() != 'n' && !((in.peek() == 't' || in.peek() == 'f'))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == 't') {
                         in.lit("true");
@@ -1424,19 +1424,19 @@ public final class BenchPacketVariable {
                         v.flag = false;
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("x".equals(key)) {
                 boolean repeated = seenField[7];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[7] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         float placed = in.number32();
@@ -1445,19 +1445,19 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("y".equals(key)) {
                 boolean repeated = seenField[8];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[8] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         float placed = in.number32();
@@ -1466,19 +1466,19 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("z".equals(key)) {
                 boolean repeated = seenField[9];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[9] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         float placed = in.number32();
@@ -1487,19 +1487,19 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("big".equals(key)) {
                 boolean repeated = seenField[10];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[10] = true;
                 if (in.peek() != 'n'
                         && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         long placed = in.integer(false, 0L, 0xffffffffffffffffL);
@@ -1508,18 +1508,18 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else if ("blob".equals(key)) {
                 boolean repeated = seenField[11];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[11] = true;
                 if (in.peek() != 'n' && !(in.peek() == '[')) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (repeated && in.peek() != 'n') {
                         v.blob = new ArrayList<>();
@@ -1539,14 +1539,14 @@ public final class BenchPacketVariable {
                                 break;
                             }
                             if (ab >= 0 && idx >= ab) {
-                                in.rep.clamped++;
+                                in.rep.refuse("count_over_bound");
                                 in.skipValue();
                             } else {
                                 if (ec == '-' || (ec >= '0' && ec <= '9')) {
                                     v.blob.add((int) in.integer(false, 0L, 0xffL));
                                 } else {
                                     in.skipValue();
-                                    in.rep.kindMismatch++;
+                                    in.rep.refuse("kind_mismatch");
                                 }
                                 idx++;
                             }
@@ -1564,7 +1564,7 @@ public final class BenchPacketVariable {
                         }
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else {

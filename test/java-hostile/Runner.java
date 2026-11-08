@@ -73,18 +73,22 @@ public final class Runner {
 
     // The manifest names a unit by its schema path; the generated classes live
     // in the unit's schema package.
+    // tables/examples/Guarded.schema is a file of the tabledemo package, so
+    // its Patrol root is generated into the tabledemo unit with the rest of
+    // tables/examples.
     private static final Map<String, String> PACKAGES =
-            Map.of(
-                    "tables/examples", "tabledemo",
-                    "tables/messages", "messagedemo",
-                    "tables/blobs", "blobdemo",
-                    "tables/pointers", "graphdemo",
-                    "tables/scalars", "scalardemo",
-                    "tables/stream", "streamdemo",
-                    "tables/maps", "mapdemo",
-                    "tables/lists", "listdemo",
-                    "schemas/probe.schema", "probe",
-                    "testdata/conformance/feature-witnesses/full/Features.schema", "featurewitnesses");
+            Map.ofEntries(
+                    Map.entry("tables/examples", "tabledemo"),
+                    Map.entry("tables/examples/Guarded.schema", "tabledemo"),
+                    Map.entry("tables/messages", "messagedemo"),
+                    Map.entry("tables/blobs", "blobdemo"),
+                    Map.entry("tables/pointers", "graphdemo"),
+                    Map.entry("tables/scalars", "scalardemo"),
+                    Map.entry("tables/stream", "streamdemo"),
+                    Map.entry("tables/maps", "mapdemo"),
+                    Map.entry("tables/lists", "listdemo"),
+                    Map.entry("schemas/probe.schema", "probe"),
+                    Map.entry("testdata/conformance/feature-witnesses/full/Features.schema", "featurewitnesses"));
 
     // A verdict: "accept <digest>" or "refuse <reason>"; anything else (a
     // throw, a value the runner cannot canonicalise) is its own text and never
@@ -94,10 +98,35 @@ public final class Runner {
     }
 
     private static String refuse(String reason) {
-        if (reason != null && reason.startsWith("non_finite_float:")) {
-            reason = "non_finite_float";
-        }
         return "refuse " + reason;
+    }
+
+    // THE VERDICT IS THE CONTRACT (docs/rulings.json `refusal-verdict-only`):
+    // why a read refused is the port's own diagnostic, never compared. The
+    // corpus names a refusal only where the condition is a named boundary of
+    // the format (a form, the vocabulary, a batch or extent cap, a non-finite
+    // float); every other refusal is `damaged`. A port's reason may carry the
+    // field after a colon ("length_over_bound: Root.labels"), dropped here.
+    private static final java.util.Set<String> NAMED =
+            java.util.Set.of(
+                    "newer_form",
+                    "message_form_as_file",
+                    "no_vocabulary",
+                    "second_announcement",
+                    "vocabulary_too_large",
+                    "batch_too_large",
+                    "non_finite_float");
+
+    private static String refusal(String reason) {
+        if (reason == null) {
+            return refuse("damaged");
+        }
+        int colon = reason.indexOf(':');
+        String r = (colon >= 0 ? reason.substring(0, colon) : reason).trim();
+        if (r.equals("count_over_extent_cap")) {
+            return refuse("count_refusal");
+        }
+        return refuse(NAMED.contains(r) ? r : "damaged");
     }
 
     private static boolean accepted(String verdict) {
@@ -186,16 +215,14 @@ public final class Runner {
             return accept(sha256(Arrays.copyOf(text, n)));
         }
 
-        // A read's verdict off its report: a named refusal is its reason, a
-        // malformed read (no name) is the corpus's `damaged`, and a clean read
-        // is accepted with the digest of its canonical text.
+        // A read's verdict off its report: a refusal is its corpus name (see
+        // refusal), damage or no value is `damaged`, and a clean read is
+        // accepted with the digest of its canonical text.
         String verdict(Object value, Object report) throws ReflectiveOperationException, NoSuchAlgorithmException {
             if (flag(report, "refused")) {
-                String r = reason(report);
-                // the corpus names a count past the int32 storage cap count_refusal
-                return refuse(r == null || r.isEmpty() ? "damaged" : r.equals("count_over_extent_cap") ? "count_refusal" : r);
+                return refusal(reason(report));
             }
-            if (flag(report, "malformed") || value == null) {
+            if (flag(report, "damaged") || value == null) {
                 return refuse("damaged");
             }
             return digest(value);
@@ -247,6 +274,159 @@ public final class Runner {
         }
     }
 
+    // A FIXED-DECLARED ROOT's wire is a form 3 file (docs/SPEC-TABLES.md §3.4),
+    // read by its generated <Table>Fixed class, which the form byte selects as
+    // the conformance driver does (test/conformance/java/src/Driver.java). A
+    // file holds one record, so the read is handed room for one. The Java
+    // fixed class carries no text form, so an accepted record is copied field
+    // by field into the variable value of the same table and digested through
+    // that table's text writer; a field the copy cannot place is the case's
+    // error, never a silent accept.
+    private static final class Fixed {
+        final Class<?> codec;
+        final Class<?> tableFixed;
+        final Class<?> reportType;
+        final Class<?> valueType;
+        final Variable variable;
+
+        Fixed(String pkg, String table) throws ReflectiveOperationException {
+            codec = Class.forName(pkg + "." + table + "Fixed");
+            tableFixed = Class.forName(pkg + ".TableFixed");
+            reportType = Class.forName(pkg + ".TableFixed$Report");
+            valueType = Class.forName(pkg + "." + table + "Fixed$Value");
+            variable = new Variable(pkg, table);
+        }
+
+        // Only a root declared fixed has a <Table>Fixed root `load`; a variable
+        // root's fixed class (a nested record's) has none.
+        static Fixed of(String pkg, String table) throws ReflectiveOperationException {
+            try {
+                Fixed f = new Fixed(pkg, table);
+                f.loadMethod();
+                return f;
+            } catch (ClassNotFoundException | NoSuchMethodException absent) {
+                return null;
+            }
+        }
+
+        // A unit with no fixed root emits no TableFixed: no input is its form.
+        static boolean isForm(String pkg, byte[] data) throws ReflectiveOperationException {
+            Class<?> runtime;
+            try {
+                runtime = Class.forName(pkg + ".TableFixed");
+            } catch (ClassNotFoundException none) {
+                return false;
+            }
+            return data.length > 0 && data[0] == runtime.getField("form").getByte(null);
+        }
+
+        Method loadMethod() throws ReflectiveOperationException {
+            Class<?> values = java.lang.reflect.Array.newInstance(valueType, 0).getClass();
+            Class<?> plan = java.lang.reflect.Array.newInstance(Class.forName(tableFixed.getName() + "$Entry"), 0).getClass();
+            return codec.getMethod("load", values, int.class, byte[].class, plan, short[].class, byte[].class, reportType);
+        }
+
+        String wire(byte[] data) throws ReflectiveOperationException, NoSuchAlgorithmException {
+            Object values = java.lang.reflect.Array.newInstance(valueType, 1);
+            java.lang.reflect.Array.set(values, 0, valueType.getConstructor().newInstance());
+            Object report = reportType.getConstructor().newInstance();
+            Object plan = tableFixed.getMethod("plan", int.class).invoke(null, 1 << 14);
+            Object image = codec.getMethod("image").invoke(null);
+            int n = (int) loadMethod().invoke(null, values, 1, data, plan, new short[1 << 14], image, report);
+            if (reportType.getField("refused").getBoolean(report)) {
+                return refusal(snake(String.valueOf(reportType.getField("reason").get(report))));
+            }
+            if (reportType.getField("damaged").getBoolean(report) || n != 1) {
+                return refuse("damaged");
+            }
+            Object record = java.lang.reflect.Array.get(values, 0);
+            Object value;
+            try {
+                value = bridge(record, variable.valueType);
+            } catch (IllegalArgumentException unplaced) {
+                return "error: " + unplaced.getMessage();
+            }
+            String verdict = variable.digest(value);
+            // Measure and Save the decoded record back through the fixed writer.
+            return after(verdict, "measure/save/toJson", () -> {
+                int size = (int) codec.getMethod("measure", int.class).invoke(null, 1);
+                codec.getMethod("save", values.getClass(), int.class, byte[].class)
+                        .invoke(null, values, 1, new byte[Math.max(size, 0)]);
+                variable.toJson(value);
+            });
+        }
+    }
+
+    // newerForm -> newer_form: the fixed report's reason enum, in the corpus's spelling
+    private static String snake(String camel) {
+        StringBuilder b = new StringBuilder(camel.length() + 8);
+        for (char c : camel.toCharArray()) {
+            if (Character.isUpperCase(c)) {
+                b.append('_').append(Character.toLowerCase(c));
+            } else {
+                b.append(c);
+            }
+        }
+        return b.toString();
+    }
+
+    // A fixed record into the variable value of the same table: a bounded
+    // string is a buffer and its <name>Length, a bounded array is a buffer and
+    // its <name>Count, a nested record is a <T>Fixed.Value; everything else is
+    // the same field. Every field of both sides must be placed.
+    private static Object bridge(Object fixed, Class<?> target) throws ReflectiveOperationException {
+        Object out = target.getConstructor().newInstance();
+        Class<?> from = fixed.getClass();
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (java.lang.reflect.Field t : target.getFields()) {
+            if (java.lang.reflect.Modifier.isStatic(t.getModifiers())) {
+                continue;
+            }
+            String name = t.getName();
+            java.lang.reflect.Field f;
+            try {
+                f = from.getField(name);
+            } catch (NoSuchFieldException none) {
+                throw new IllegalArgumentException(from.getName() + " has no field " + name);
+            }
+            used.add(name);
+            Object v = f.get(fixed);
+            Class<?> tt = t.getType();
+            if (tt == String.class && v instanceof byte[]) {
+                int len = from.getField(name + "Length").getInt(fixed);
+                used.add(name + "Length");
+                t.set(out, new String((byte[]) v, 0, len, StandardCharsets.UTF_8));
+            } else if (List.class.isAssignableFrom(tt) && v != null && v.getClass().isArray()) {
+                int count = from.getField(name + "Count").getInt(fixed);
+                used.add(name + "Count");
+                java.lang.reflect.Type et = ((java.lang.reflect.ParameterizedType) t.getGenericType()).getActualTypeArguments()[0];
+                List<Object> list = new ArrayList<>(count);
+                for (int i = 0; i < count; i++) {
+                    Object e = java.lang.reflect.Array.get(v, i);
+                    if (et instanceof Class<?> ec && ec.getName().endsWith("Variable$Value")) {
+                        e = bridge(e, ec);
+                    } else if (et instanceof Class<?> ec && !ec.isInstance(e)) {
+                        throw new IllegalArgumentException(from.getName() + "." + name + " element is " + e.getClass().getName() + ", want " + ec.getName());
+                    }
+                    list.add(e);
+                }
+                t.set(out, list);
+            } else if (tt.getName().endsWith("Variable$Value") && v != null && v.getClass().getName().endsWith("Fixed$Value")) {
+                t.set(out, bridge(v, tt));
+            } else if (tt.isPrimitive() ? tt == f.getType() : (v == null || tt.isInstance(v))) {
+                t.set(out, v);
+            } else {
+                throw new IllegalArgumentException(from.getName() + "." + name + " is " + f.getType().getName() + ", want " + tt.getName());
+            }
+        }
+        for (java.lang.reflect.Field f : from.getFields()) {
+            if (!java.lang.reflect.Modifier.isStatic(f.getModifiers()) && !used.contains(f.getName())) {
+                throw new IllegalArgumentException(from.getName() + "." + f.getName() + " has no place in " + target.getName());
+            }
+        }
+        return out;
+    }
+
     private static final class Vocabulary {
         final Class<?> vocabType;
         final Class<?> reportType;
@@ -284,8 +464,7 @@ public final class Runner {
         }
 
         String refusal(Object report) throws ReflectiveOperationException {
-            String r = (String) reportType.getField("reason").get(report);
-            return refuse(r == null || r.isEmpty() ? "damaged" : r);
+            return Runner.refusal((String) reportType.getField("reason").get(report));
         }
 
         String announceVerdict(Object vocab, byte[] data) throws ReflectiveOperationException {
@@ -294,7 +473,7 @@ public final class Runner {
             if (!ok || flag(report, "refused")) {
                 return refusal(report);
             }
-            if (flag(report, "malformed")) {
+            if (flag(report, "damaged")) {
                 return refuse("damaged");
             }
             return accept("-");
@@ -308,7 +487,7 @@ public final class Runner {
         if (announced) {
             vocab = vocabulary.fresh();
             Object ar = vocabulary.report();
-            if (!vocabulary.read(vocab, vocabulary.own(), ar) || vocabulary.flag(ar, "malformed")) {
+            if (!vocabulary.read(vocab, vocabulary.own(), ar) || vocabulary.flag(ar, "damaged")) {
                 return "error: the unit's own announcement was refused";
             }
         }
@@ -328,7 +507,7 @@ public final class Runner {
         if (vocabulary.flag(report, "refused")) {
             return vocabulary.refusal(report);
         }
-        if (vocabulary.flag(report, "malformed") || n != 1) {
+        if (vocabulary.flag(report, "damaged") || n != 1) {
             return refuse("damaged");
         }
         // The batch's one body is a fixed-class value; the port's text writer
@@ -443,6 +622,12 @@ public final class Runner {
         switch (carrier) {
             case "text":
             case "wire": {
+                if (carrier.equals("wire") && Fixed.isForm(pkg, payload)) {
+                    Fixed fixed = Fixed.of(pkg, table);
+                    if (fixed != null) {
+                        return fixed.wire(payload);
+                    }
+                }
                 Variable codec = new Variable(pkg, table);
                 Object report = codec.report();
                 boolean text = carrier.equals("text");

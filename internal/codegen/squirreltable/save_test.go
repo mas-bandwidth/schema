@@ -22,10 +22,14 @@ local run = function(unit, mod, root, key) {
   local L = schema.require("schema_table_load");
   local S = schema.require("schema_table_save");
   local report = {
-    unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false
+    unknown = 0, mismatch = 0, widened = 0, oor = 0,
+    repeated = 0, bodyDamaged = false, refused = false
   };
-  local v = L.loadTolerant(T, root, inputs[key], report);
+  local v = L.loadWalk(T, root, inputs[key], report);
+  // a wire the reader refuses (a blob two slots name, docs/SPEC-TABLES.md
+  // §2.5) hands the writer nothing; its own refusal is pinned in
+  // blobshared_test.go
+  if (v == null) { print(key + " null -1\n"); return; }
   local b = S.save(T, root, v);
   local m = S.measure(T, root, v);
   if (b == null) { print(key + " null -1\n"); return; }

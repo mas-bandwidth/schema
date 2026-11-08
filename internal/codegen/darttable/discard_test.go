@@ -147,19 +147,19 @@ void main() {
   final fixed = Uint8List.fromList(%[2]s);
   final rf = TableWireReport();
   final f = rootWireLoad(fixed, rf);
-  if (!rf.malformed) fail('fixed: the report does not say malformed');
+  if (!rf.refused || rf.reason != 'wire_damaged') fail('fixed: the report does not refuse wire_damaged');
   if (f.a != 0 || f.b != 0 || f.inner.n != 0) fail('fixed: WireLoad handed back a=${f.a} b=${f.b} n=${f.inner.n} on damage');
 
   final variable = Uint8List.fromList(%[3]s);
   final rg = TableWireReport();
   final g = graphWireLoad(variable, rg);
-  if (!rg.malformed) fail('variable: the report does not say malformed');
+  if (!rg.refused || rg.reason != 'wire_damaged') fail('variable: the report does not refuse wire_damaged');
   if (g.a != 0 || g.b != 0 || g.inner.n != 0 || g.next != null) fail('variable: WireLoad handed back a=${g.a} b=${g.b} n=${g.inner.n} on damage');
 
   final retain = TableRetain(1 << 16, List<int>.filled(64, 0));
   final rr = TableWireReport();
   final k = graphWireLoadRetain(variable, retain, rr);
-  if (!rr.malformed) fail('retain: the report does not say malformed');
+  if (!rr.refused || rr.reason != 'wire_damaged') fail('retain: the report does not refuse wire_damaged');
   if (k.a != 0 || k.b != 0 || k.inner.n != 0) fail('retain: WireLoadRetain handed back a=${k.a} b=${k.b} n=${k.inner.n} on damage');
   if (retain.used != 0 || retain.records.isNotEmpty) fail('retain: the store kept used=${retain.used} records=${retain.records.length}');
   print('ok');
@@ -181,7 +181,7 @@ void main() {
   final values = <h.Root>[h.Root()];
   final rep = h.TableReport();
   final count = r.rootLoadMessages(values, Uint8List.fromList(%s), vocab, rep);
-  check(rep.malformed, 'messages: the report does not say malformed');
+  check(rep.refused && rep.reason == 'wire_damaged', 'messages: the report does not refuse wire_damaged');
   check(count == 0, 'messages: LoadMessages answered $count bodies on damage');
   check(values[0].a == 0 && values[0].b == 0 && values[0].inner.n == 0,
       'messages: LoadMessages handed back a=${values[0].a} b=${values[0].b} n=${values[0].inner.n} on damage');

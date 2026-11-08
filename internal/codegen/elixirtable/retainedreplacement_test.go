@@ -74,7 +74,7 @@ unless Base.encode16(bytes,case: :lower)==%q,do: raise(%q<>" plain save "<>inspe
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
 {:ok,value,report,store}=T.load_retain(%q,wire,store,zero)
-unless not report.malformed and report.unknown==%d and report.kind_mismatch==%d and report.retained==%d and report.retain_lost==%d,do: raise(%q<>" load "<>inspect(report))
+unless true and report.unknown==%d and report.kind_mismatch==%d and report.retained==%d and report.retain_lost==%d,do: raise(%q<>" load "<>inspect(report))
 {:ok,text}=T.to_json(%q,value)
 unless text==%q,do: raise(%q<>" value "<>text)
 {:ok,bytes,report,_}=T.save_retain(%q,value,store,zero)

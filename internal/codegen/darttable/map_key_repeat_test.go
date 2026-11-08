@@ -53,10 +53,10 @@ func dartMapKeyCase(t *testing.T, b *strings.Builder, m *tabletext.Model, def *i
 		fmt.Fprintf(b, `{final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));
 for(var repeat=0;repeat<2;repeat++){
  final r=w.TableWireReport();final v=%s;
- check(!r.malformed&&!r.refused&&r.unknown==%d&&r.kindMismatch==%d&&r.widened==%d&&r.clamped==%d&&r.duplicate==%d&&r.retained==%d&&r.retainLost==%d,%q);
+ check(!r.refused&&r.unknown==%d&&r.widened==%d&&r.retained==%d&&r.retainLost==%d,%q);
  check(w.%sToJson(v)==%q,%q);
  check(hex(w.%sWireSave(v))==%q,%q);
-`, hex.EncodeToString(data), load, r.Unknown, 0, r.Widened, 0, 0, r.Retained, r.RetainLost, name+" report", fn, string(text)+"\n", name+" values", fn, hex.EncodeToString(saved), name+" bytes")
+`, hex.EncodeToString(data), load, r.Unknown, r.Widened, r.Retained, r.RetainLost, name+" report", fn, string(text)+"\n", name+" values", fn, hex.EncodeToString(saved), name+" bytes")
 		if retaining {
 			fmt.Fprintf(b, ` final sr=w.TableWireReport();final saved=w.%sWireSaveRetain(v,store,sr);
  check(hex(saved)==%q&&sr.retainLost==%d,%q);
@@ -66,8 +66,39 @@ for(var repeat=0;repeat<2;repeat++){
 	}
 }
 
+// dartMapKeyRefused pins a repeated or wrong-kind map key as a whole-load
+// refusal on both legs (docs/plans/strict-only.md decisions 5 and 6).
+func dartMapKeyRefused(t *testing.T, b *strings.Builder, m *tabletext.Model, def *ir.Struct, name string, data []byte) {
+	t.Helper()
+	for _, retaining := range []bool{false, true} {
+		v := m.New(def)
+		var r tabletext.Report
+		store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
+		var ok bool
+		var err error
+		if retaining {
+			ok, err = tablewire.DecodeRetain(m, v, data, store, &r)
+		} else {
+			ok, err = tablewire.Decode(m, v, data, &r)
+		}
+		if ok || !r.Refused {
+			t.Fatalf("%s oracle must refuse: ok=%v report%+v err%v", name, ok, r, err)
+		}
+		fn := dartName(def.Name)
+		load := fmt.Sprintf("w.%sWireLoad(data,r)", fn)
+		if retaining {
+			load = fmt.Sprintf("w.%sWireLoadRetain(data,store,r)", fn)
+		}
+		fmt.Fprintf(b, `{final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));
+for(var repeat=0;repeat<2;repeat++){
+ final r=w.TableWireReport();final v=%s;
+ check(r.refused,%q);
+}}
+`, hex.EncodeToString(data), load, name+" refused")
+	}
+}
+
 func TestDartMapRepeatedKeyLastKindWins(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	u := unitFrom(t, "package probe\ntable Root { entries map[uint32]int32 }\n")
 	m := tabletext.NewModel(u)
@@ -94,14 +125,13 @@ func TestDartMapRepeatedKeyLastKindWins(t *testing.T) {
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableFieldWireId(u.Tables["Root"].Fields[0]))
 		wire = binary.LittleEndian.AppendUint64(wire, ir.MapKeyWireId)
 		wire = binary.LittleEndian.AppendUint64(wire, 2)
-		dartMapKeyCase(t, &b, m, u.Tables["Root"], tc.name, wire, tc.count, 0, 1, tc.widened)
+		dartMapKeyRefused(t, &b, m, u.Tables["Root"], tc.name, wire)
 	}
 	b.WriteString("}\n")
 	runFormsProbe(t, files, b.String())
 }
 
 func TestDartMapRepeatedKeyWidenGlobalVector(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	schemas, err := filepath.Glob("../../../tables/maps/*.schema")
 	if err != nil || len(schemas) == 0 {
@@ -120,7 +150,7 @@ func TestDartMapRepeatedKeyWidenGlobalVector(t *testing.T) {
 	}
 	var b strings.Builder
 	b.WriteString(strings.Replace(dartClosurePrelude, "ProbeWire.dart", "MapdemoWire.dart", 1))
-	dartMapKeyCase(t, &b, m, u.Tables["Pairs"], "map_repeated_key_widen", wire, 2, 2, 1, 1)
+	dartMapKeyRefused(t, &b, m, u.Tables["Pairs"], "map_repeated_key_widen", wire)
 	b.WriteString("}\n")
 	runFormsProbe(t, files, b.String())
 }

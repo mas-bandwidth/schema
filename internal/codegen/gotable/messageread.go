@@ -12,7 +12,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
 	// or unknown: the ids this body has carried are held in a stack buffer.
 	g.pf("var seenIDs [64]uint64;seen:=seenIDs[:0]\n")
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};for _,id:=range seen{if id==entry.ID{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}};seen=append(seen,entry.ID);switch entry.ID {\n")
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if slices.Contains(seen,entry.ID){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};seen=append(seen,entry.ID);switch entry.ID {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
@@ -131,7 +131,7 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	if f.KeyEnum != "" {
 		// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md §3.2, §3.3)
 		g.pf("var seenKeys [64]uint64;seenKey:=seenKeys[:0]\n")
-		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};for _,k:=range seenKey{if k==id{%s}};seenKey=append(seenKey,id);var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1]}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f))
+		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if slices.Contains(seenKey,id){%s};seenKey=append(seenKey,id);var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1]}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f))
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
 		g.pf("}\n")
 	} else {
@@ -139,7 +139,7 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		if f.Type.Kind == ir.TBytes {
 			over = "TableRefuseLengthOverBound"
 		}
-		g.pf("if n>%d{%s};for i:=uint64(0);i<n;i++ {p:=&base[i]\n", bound, refuse(over, g.floatOwner(f), "return false"))
+		g.pf("if n>%d{%s};for i:=range n {p:=&base[i]\n", bound, refuse(over, g.floatOwner(f), "return false"))
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
 		g.pf("}\n")
 		if counted {

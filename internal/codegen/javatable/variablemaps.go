@@ -64,7 +64,7 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		if rawKey.Type.Kind == ir.TString {
 			rawKey.Type.Size = 2147483647
 		}
-		fmt.Fprintf(b, "    static void readMapKey_%s(TableVariable.Reader r, %s v, TableVariable.Report report) {\n        while(true) {long ref=r.leb();if(r.fail||ref==0)return;long id=r.resolve(ref);if(r.fail||!r.has(1)){report.malformed=true;return;}int kind=r.get8();if(id==0x%016xL){\n", m, entry, ir.TableFieldWireId(key))
+		fmt.Fprintf(b, "    static void readMapKey_%s(TableVariable.Reader r, %s v, TableVariable.Report report) {\n        while(true) {long ref=r.leb();if(r.fail||ref==0)return;long id=r.resolve(ref);if(r.fail||!r.has(1)){report.damaged=true;return;}int kind=r.get8();if(id==0x%016xL){\n", m, entry, ir.TableFieldWireId(key))
 		// The key scan mirrors the oracle's mapKey (docs/SPEC-TABLES.md §2.8):
 		// a key under another kind is SKIPPED and marked, never counted, and the
 		// LAST occurrence decides the mark. A correct key clears it, so a bad
@@ -78,20 +78,17 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		// exact and compatible widened kinds clear an earlier incompatible kind.
 		// A final incompatible kind sets the flag for the caller's map reset.
 		kr = strings.Replace(kr,
-			"                } else { r.skip(kind); report.kindMismatch++; }",
-			"                    report.kindMismatch = 0;\n                } else { r.skip(kind); report.kindMismatch = 1; }", 1)
-		kr = strings.Replace(kr,
-			"                else { r.skip(kind); report.kindMismatch++; }",
-			"                else { r.skip(kind); report.kindMismatch = 1; }", 1)
+			"                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }",
+			"                    report.refused = false; report.reason = null;\n                } else { r.skip(kind); report.refuse(\"kind_mismatch\"); }", 1)
 		kr = strings.Replace(kr,
 			fmt.Sprintf("if (kind == %d) {", variableWireKind(&rawKey)),
-			fmt.Sprintf("if (kind == %d) { report.kindMismatch = 0;", variableWireKind(&rawKey)), 1)
+			fmt.Sprintf("if (kind == %d) { report.refused = false; report.reason = null;", variableWireKind(&rawKey)), 1)
 		b.WriteString(kr)
 		// A KEY THE READ JUDGES MALFORMED ENDS THE SCAN (§2.8; the oracle's
 		// mapKey returns at the first key its string read refuses): the map is
 		// malformed, a damaged load, and no later occurrence of the key can
 		// turn it into a kind mismatch.
-		b.WriteString("        }else{r.skip(kind);}if(r.fail||report.malformed)return;}\n    }\n")
+		b.WriteString("        }else{r.skip(kind);}if(r.fail||report.damaged)return;}\n    }\n")
 	}
 }
 
@@ -129,7 +126,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 		if key.Type.TextUnbounded() {
 			b.WriteString("                    entry.key=mapKey;\n")
 		} else {
-			fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.clamped++;}\n", key.Type.Size)
+			fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.refuse(\"length_over_bound\");}\n", key.Type.Size)
 		}
 	} else {
 		// A key is parsed at arbitrary precision before narrowing: unsigned 64-bit
@@ -144,11 +141,11 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 		if key.Type.Width > 32 {
 			cast = "longValue"
 		}
-		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(StandardCharsets.UTF_8),new TableVariable.Report()); String token=number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length||mapKey.isEmpty()||Character.isWhitespace(mapKey.charAt(0))){in.bad=true;return;} try {java.math.BigInteger n=new java.math.BigDecimal(token).toBigIntegerExact(); if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.kindMismatch++;}else entry.key=n.%s();}catch(ArithmeticException|NumberFormatException invalid){accepted=false;in.rep.kindMismatch++;}\n", min, max, cast)
+		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(StandardCharsets.UTF_8),new TableVariable.Report()); String token=number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length||mapKey.isEmpty()||Character.isWhitespace(mapKey.charAt(0))){in.bad=true;return;} try {java.math.BigInteger n=new java.math.BigDecimal(token).toBigIntegerExact(); if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();}catch(ArithmeticException|NumberFormatException invalid){accepted=false;in.rep.refuse(\"kind_mismatch\");}\n", min, max, cast)
 	}
 	b.WriteString("                    if(!accepted){in.skipValue();}else {\n")
 	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry);\n", st.Name, m)
-	fmt.Fprintf(b, "                    if(in.bad)return; int found=-1;for(int i=0;i<v.%s.size();i++)if("+st.Name+"Variable.compare_%s(v.%s.get(i),entry)==0){found=i;break;} if(found>=0){v.%s.set(found,entry);in.rep.duplicate++;}else v.%s.add(entry); }\n", m, m, m, m, m)
+	fmt.Fprintf(b, "                    if(in.bad)return; int found=-1;for(int i=0;i<v.%s.size();i++)if("+st.Name+"Variable.compare_%s(v.%s.get(i),entry)==0){found=i;break;} if(found>=0){v.%s.set(found,entry);in.rep.refuse(\"text_damaged\");}else v.%s.add(entry); }\n", m, m, m, m, m)
 	b.WriteString("                    int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return; } in.p++;\n")
 }
 
@@ -168,7 +165,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
-	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ek!=13?ar.count(r.limit):ar.leb();if(!ar.fail){if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else if(n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
+	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ek!=13?ar.count(r.limit):ar.leb();if(!ar.fail){if(ek!=13){report.refuse(\"kind_mismatch\");}else if(n<0||n>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else if(n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
 	if retain {
 		fmt.Fprintf(b, "                    retain.discardField(path,depth,%d);\n", ordinal)
 	}
@@ -183,17 +180,17 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	// discard retained records (§6.6, record lifetime): the records held under
 	// the entries read before it keep their paths, and the save counts each one
 	// retain_lost when its path names no body.
-	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m)
+	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.refused){report.refuse(keyReport.reason);v.%s.clear();break;}if(keyReport.damaged||kr.fail||kr.off!=kr.limit){report.damaged=true;break;}\n", m)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString && !key.Type.TextUnbounded() {
-		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)
+		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.refuse(\"length_over_bound\");continue;}\n", key.Type.Size)
 	}
-	fmt.Fprintf(b, "                    int order=v.%s.isEmpty()?-1:"+st.Name+"Variable.compare_%s(v.%s.get(v.%s.size()-1),keyValue);if(order>0){report.malformed=true;break;} %s decoded=new %s();int priorWidened=report.widened;\n", m, m, m, m, entry, entry)
+	fmt.Fprintf(b, "                    int order=v.%s.isEmpty()?-1:"+st.Name+"Variable.compare_%s(v.%s.get(v.%s.size()-1),keyValue);if(order>0){report.damaged=true;break;} %s decoded=new %s();int priorWidened=report.widened;\n", m, m, m, m, entry, entry)
 	if retain {
 		fmt.Fprintf(b, "                    path[2*depth]=%d;path[2*depth+1]=v.%s.size()-(order==0?1:0);if(order==0)retain.discardPath(path,depth+1);%sRetain.readFieldsRetain(er,decoded,nt,retain,report,path,depth+1);\n", ordinal, m, f.MapEntry.Name)
 	} else {
 		fmt.Fprintf(b, "                    %sVariable.readFields(er,decoded,nt,report);\n", f.MapEntry.Name)
 	}
-	fmt.Fprintf(b, "                    report.widened=priorWidened+Math.max(0,report.widened-priorWidened-keyReport.widened);if(er.off!=er.limit){report.malformed=true;}if(order==0){v.%s.set(v.%s.size()-1,decoded);report.duplicate++;}else v.%s.add(decoded);\n", m, m, m)
-	b.WriteString("                    } } } }}else{r.skip(kind);report.kindMismatch++;}\n")
+	fmt.Fprintf(b, "                    report.widened=priorWidened+Math.max(0,report.widened-priorWidened-keyReport.widened);if(er.off!=er.limit){report.damaged=true;}if(order==0){v.%s.set(v.%s.size()-1,decoded);report.refuse(\"wire_damaged\");}else v.%s.add(decoded);\n", m, m, m)
+	b.WriteString("                    } } } }}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n")
 }

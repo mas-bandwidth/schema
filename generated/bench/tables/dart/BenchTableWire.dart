@@ -37,56 +37,56 @@ bool _requiredCollectionKind(TableWireReader r, int expected) {
 int tableTextByteLength(String value) => utf8.encode(value).length;
 bool tableTextValueValid(String value,int bound) =>
     _wideValid(value.codeUnits) && (utf8.encode(value).length <= (bound < 0 ? 0xffffffff : bound));
-// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
-// widened, clamped, duplicate) and the refusal verdict (§3). malformed and
-// refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
-// with Go's last-wins whole semantics.
+// The report the one strict read fills (docs/plans/strict-only.md): the
+// evolution counters unknown, widened, retained and retainLost, and the
+// refusal verdict (§3). There is no partial value beside a counter: damage,
+// a kind mismatch, a repeated key or slot, a shared blob record and a value,
+// count or length out of its bound each refuse the whole load through
+// refuse(), and the load answers the type's defaults.
 final class TableWireReport {
   int unknown = 0;
-  int kindMismatch = 0;
   int widened = 0;
-  int clamped = 0;
-  String clampedField = '';
-  int duplicate = 0;
-  int blobShared = 0;
-  bool malformed = false;
   bool integrityMismatch = false;
   bool refused = false;
+  String refusal = '';
   bool _countRefused = false;
-  int missingRequired = 0;
   String missingFields = '';
   int retained = 0;
   int retainLost = 0;
 
   // nonFiniteFloat is the STORED refusal of a float whose raw bits are a NaN
   // or an infinity (docs/SPEC-TABLES.md §3.3): the <Table>.<field> the read
-  // met first, '' when it met none. Every read refuses one, the tolerant one
-  // too: refused rises with it and the load lands nothing, answering the
-  // type's defaults.
+  // met first, '' when it met none. Every read refuses one: refused rises
+  // with it and the load lands nothing, answering the type's defaults.
   String nonFiniteFloat = '';
+
+  // refuse records the read's whole-load refusal by name (a per-language
+  // diagnostic, never compared across legs): the first refusal stands.
+  void refuse(String r) {
+    if (refusal.isEmpty) refusal = r;
+    refused = true;
+  }
 
   void refuseNonFiniteFloat(String field) {
     if (nonFiniteFloat.isEmpty) nonFiniteFloat = field;
-    refused = true;
+    refuse('non_finite_float');
   }
 
   // reason is the read's refusal BY NAME, in the reference leg's vocabulary
   // (internal/codegen/gotable/refusal.go, the TableRefuse* Error() strings;
   // docs/SPEC-TABLES.md §3, §4): a non-finite float is non_finite_float naming
   // the field, and it outranks every later verdict; a form byte this reader
-  // does not carry is unknown_form, framing the reader cannot follow is
-  // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
-  // leg's measure gives its two verdicts. It is DERIVED from the flags and the
-  // stored field; _countRefused records a builder storage refusal without
-  // adding a malformed event. Earlier report events remain available.
-  // A widened, clamped or unknown field is not a refusal: the read answers ok.
+  // does not carry is unknown_form, and a read that kept its verdict is ok.
+  // It is DERIVED from the stored refusal; _countRefused records a builder
+  // storage refusal. A widened or unknown field is not a refusal: the read
+  // answers ok.
   String get reason {
     if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
     if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
+    if (refusal.isNotEmpty) return refusal;
     if (refused) return 'unknown_form';
-    if (malformed) return 'wire_damaged';
     return 'ok';
   }
 }
@@ -573,6 +573,15 @@ final class TableWireReader {
   int owner = 1;
   final List<int> edges;
   final Map<Object, int> nodeIndex;
+  // reachedNodes holds every node index (record k at k + 2) some pointer or
+  // blob slot the load resolved named: a placed record no slot reaches is
+  // damage (docs/SPEC-TABLES.md §3.1, §4).
+  final Set<int> reachedNodes;
+  // trailingBodies holds records whose body loader stopped before the
+  // record's last byte; that is damage only when a pointer reaches the
+  // record (a record no slot targets is never walked, exactly as in
+  // internal/tablewire's body walk).
+  final Set<int> trailingBodies;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -585,6 +594,8 @@ final class TableWireReader {
       namedBlobs = <int>{},
       edges = <int>[],
       nodeIndex = Map<Object, int>.identity(),
+      reachedNodes = <int>{},
+      trailingBodies = <int>{},
       report = TableWireReport();
 
   // A sub-reader shares the parent's resolved id table, node records and
@@ -612,6 +623,8 @@ final class TableWireReader {
       rootType = parent.rootType,
       owner = parent.owner,
       edges = parent.edges,
+      reachedNodes = parent.reachedNodes,
+      trailingBodies = parent.trailingBodies,
       nodeIndex = parent.nodeIndex;
 
   // over reads one node-record body against the parent's numbering. The bytes
@@ -638,6 +651,8 @@ final class TableWireReader {
       rootType = parent.rootType,
       owner = parent.owner,
       edges = parent.edges,
+      reachedNodes = parent.reachedNodes,
+      trailingBodies = parent.trailingBodies,
       nodeIndex = parent.nodeIndex;
 
   bool has(int n) => n >= 0 && n <= limit - pos;
@@ -674,11 +689,11 @@ final class TableWireReader {
   }
 
   // readBool reads a bool payload: any nonzero byte reads true, and a byte
-  // above 1 is malformed (docs/SPEC-TABLES.md §3, internal/tablewire scalarAt).
+  // above 1 is damage (docs/SPEC-TABLES.md §3, internal/tablewire scalarAt).
   bool readBool() {
     final v = data[pos];
     pos++;
-    if (v > 1) report.malformed = true;
+    if (v > 1) report.refuse('wire_damaged');
     return v != 0;
   }
 
@@ -781,7 +796,7 @@ final class TableWireReader {
   // body decodes, it walks the body's field headers on its own cursor,
   // decoding nothing and counting nothing. The low two bits answer 0 when the
   // body frames whole to its terminator, 1 when it does not (the MAP is
-  // malformed), and 2 when the LAST occurrence of the key rides a kind the
+  // damaged), and 2 when the LAST occurrence of the key rides a kind the
   // declaration neither is nor widens from (the MAP is a kind mismatch, which
   // outranks damage after it). A string key that is not well-formed text is
   // damage (§2.8). Bit 4 is set when the scan met an occurrence of the key
@@ -791,7 +806,8 @@ final class TableWireReader {
   // (docs/SPEC-TABLES.md §2.8, §4; internal/tablewire mapKey and mapField).
   // Bit 8 is set when the LAST occurrence the scan keeps of the key is a
   // string(N) whose wire length is over the declaration's bound N: KEYS
-  // NEVER CLAMP, the entry is dropped whole and counted one clamped
+  // past its bound refuses the whole load (length_over_bound): keys are
+  // never truncated to fit
   // (docs/SPEC-TABLES.md §2.8; internal/tabletext MapKeyFits). keySize is
   // the string bound, or -1 for a key that is not a bounded string.
   int mapKeyAt = -1;
@@ -801,11 +817,11 @@ final class TableWireReader {
     final s = TableWireReader.sub(this, pos, limit);
     var kindBad = false;
     var widened = 0;
-    var clamped = 0;
+    var overLen = 0;
     while (true) {
       final ref = s.readLeb();
       if (ref == null) return (kindBad ? 2 : 1) | widened;
-      if (ref == 0) return (kindBad ? 2 : (s.pos == s.limit ? 0 : 1)) | widened | clamped;
+      if (ref == 0) return (kindBad ? 2 : (s.pos == s.limit ? 0 : 1)) | widened | overLen;
       final id = s.refToId[ref];
       if (id == null || !s.has(1)) return (kindBad ? 2 : 1) | widened;
       final kind = s.readByte();
@@ -821,7 +837,7 @@ final class TableWireReader {
         if (!kindBad && kind == 12) {
           final n = s.readLeb();
           if (n == null || !s.has(n) || !_lebValid(s.data, s.pos, n)) return 1 | widened;
-          clamped = (keySize >= 0 && n > keySize) ? 8 : 0;
+          overLen = (keySize >= 0 && n > keySize) ? 8 : 0;
           s.pos += n;
           continue;
         }
@@ -833,7 +849,7 @@ final class TableWireReader {
   // resolveBlob turns a kind-17 node index into the blob bytes it names
   // (§3.1): 0 is null; 1 is the ROOT, which a blob can never be, so it is a
   // kind mismatch; records 2.. are the node table's blob records. An index
-  // above node_count + 1 is malformed, and a record whose type id this reader
+  // above node_count + 1 is damage, and a record whose type id this reader
   // cannot name reads null — the unknown was counted once at the node table,
   // not once per pointer (§3.1). recognized is the flag that gates whether
   // this root reaches that blob kind at all. A PLACED record of another kind
@@ -844,18 +860,19 @@ final class TableWireReader {
     if (!nodeTableGood) return null;
     if (idx == 0) return null;
     if (idx == 1) {
-      report.kindMismatch++;
+      report.refuse('kind_mismatch');
       return null;
     }
     final rec = idx - 2;
     if (rec < 0 || rec >= nodes.length) {
-      report.malformed = true;
+      report.refuse('wire_damaged');
       return null;
     }
+    reachedNodes.add(idx);
     final tid = nodeTypes[rec];
     if (!_placedNode(tid)) return null;
     if (!recognized || tid != wantTypeId) {
-      report.kindMismatch++;
+      report.refuse('kind_mismatch');
       return null;
     }
     return Uint8List.fromList(nodes[rec]);
@@ -880,7 +897,7 @@ final class TableWireReader {
       WireState._stringBlobOrigins[owner]?.remove(field);
       return null;
     }
-    if (!namedBlobs.add(idx)) report.blobShared++;
+    if (!namedBlobs.add(idx)) report.refuse('blob_shared');
     final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
     slots[field] = (value: value, token: stringBlobTokens.putIfAbsent(rec, Object.new));
     return value;
@@ -891,14 +908,14 @@ final class TableWireReader {
     if (rec >= 0 && rec < decoded.length) {
       final have = decoded[rec];
       if (have is Uint8List) {
-        if (!namedBlobs.add(idx)) report.blobShared++;
+        if (!namedBlobs.add(idx)) report.refuse('blob_shared');
         return have;
       }
     }
     final b = resolveBlob(idx, _kBytesBlobId, bytesBlob);
     if (b != null) {
       decoded[rec] = b;
-      if (!namedBlobs.add(idx)) report.blobShared++;
+      if (!namedBlobs.add(idx)) report.refuse('blob_shared');
     }
     return b;
   }
@@ -923,16 +940,17 @@ final class TableWireReader {
     if (idx == 0) return null;
     if (idx == 1) {
       if (wantType != rootType) {
-        report.kindMismatch++;
+        report.refuse('kind_mismatch');
         return null;
       }
       return rootObj;
     }
     final rec = idx - 2;
     if (rec < 0 || rec >= nodes.length) {
-      report.malformed = true;
+      report.refuse('wire_damaged');
       return null;
     }
+    reachedNodes.add(idx);
     // A RECORD WHOSE TYPE ID THIS READER CANNOT PLACE IS NOT A MISMATCH
     // (docs/SPEC-TABLES.md §3.1, §4): the node table scan counted the unknown
     // once at the record, and every pointer naming it reads null — the same
@@ -942,16 +960,16 @@ final class TableWireReader {
     // edge of that kind carries no table id, yet the scan counted no unknown
     // for it, and resolveCell counts one kind_mismatch for a *T slot naming a
     // node whose Blob is set. Only an unplaced record — an unknown, or a text
-    // blob the scan refused as malformed (type 0), which Go leaves empty —
+    // blob the scan refused as damage (type 0), which Go leaves empty —
     // reads null silently.
     if (!_placedNode(nodeTypes[rec])) return null;
     if (nodeTypes[rec] != wantType) {
-      report.kindMismatch++;
+      report.refuse('kind_mismatch');
       return null;
     }
     final have = decoded[rec];
     if (have != null) return have;
-    report.kindMismatch++;
+    report.refuse('kind_mismatch');
     return null;
   }
 
@@ -987,7 +1005,7 @@ final class TableWireReader {
     final count = readU64(data, data.length - 8);
     if (count < 0 || count > (data.length - 9) ~/ 8) return 2;
     // THE ENTRY COUNT HAS A MAXIMUM (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
-    // CHECK): a table above 4096 entries is malformed on the whole-wire rule,
+    // CHECK): a table above 4096 entries is damage on the whole-wire rule,
     // whatever the buffer would hold.
     if (count > 4096) return 2;
     final start = data.length - 8 - count * 8;
@@ -1020,17 +1038,17 @@ final class TableWireReader {
   // §3.1, §3.3): the reserved id's LAST well-framed kind-12 occurrence is the
   // table, and it REPLACES the payload an earlier occurrence supplied. A
   // node-table field under any other kind, or with a length past the body, is
-  // malformed before a later occurrence is read, and the whole table reads
-  // nothing — every pointer in the save is null, one malformed counts (§3.1).
+  // damaged before a later occurrence is read, and the whole table reads
+  // nothing — every pointer in the save is null, one damage count (§3.1).
   // Framing damage to the root body elsewhere — an id this reader cannot name,
   // a field it cannot skip — stops the gather and keeps the table found so far,
   // as nodeTableBytes does. Only the gathered payload is scanned, on its own
   // length: a count the scan does not match, a type reference of 0 or above the
-  // entry count, or a record length past the payload is malformed and reads
+  // entry count, or a record length past the payload is damage and reads
   // nothing (§3.1). A record whose type id is the *string blob stores its
   // bytes; any other type id keeps its index, counts one unknown at the
   // record, and every pointer naming it reads null (§3.1). A string blob that
-  // is not well-formed UTF-8 without NUL is malformed and reads null too.
+  // is not well-formed UTF-8 without NUL is damage and reads null too.
   void scanNodeTable() {
     pos = 1;
     var present = false;
@@ -1047,13 +1065,13 @@ final class TableWireReader {
       if (id == _kNodeTableId) {
         present = true;
         if (kind != 12) {
-          report.malformed = true;
+          report.refuse('wire_damaged');
           nodeTableGood = false;
           return;
         }
         final len = readLeb();
         if (len == null || !has(len)) {
-          report.malformed = true;
+          report.refuse('wire_damaged');
           nodeTableGood = false;
           return;
         }
@@ -1074,7 +1092,7 @@ final class TableWireReader {
     final count = readLeb();
     if (count == null) {
       limit = bodyLimit;
-      report.malformed = true;
+      report.refuse('wire_damaged');
       nodeTableGood = false;
       return;
     }
@@ -1102,7 +1120,7 @@ final class TableWireReader {
       read++;
     }
     if (!framed || pos != tableEnd || read != count) {
-      report.malformed = true;
+      report.refuse('wire_damaged');
       nodeTableGood = false;
     } else {
       for (var i = 0; i < scanTypes.length; i++) {
@@ -1112,7 +1130,7 @@ final class TableWireReader {
           if (_lebValid(bytes, 0, bytes.length)) {
             nodeTypes.add(typeId);
           } else {
-            report.malformed = true;
+            report.refuse('wire_damaged');
             nodeTypes.add(0);
           }
         } else if (typeId == _kBytesBlobId && bytesBlob) {
@@ -1159,6 +1177,12 @@ final class TableWireReader {
       if (obj == null) continue;
       final sub = TableWireReader.over(nodes[rec], this)..owner = rec + 2;
       _loadNodeBody(sub, nodeTypes[rec], obj);
+      // Bytes after the body's terminator inside its record length are
+      // damage (docs/SPEC-TABLES.md §4): the whole load refuses. Blob
+      // records carry no body and are not checked here.
+      if (nodeTypes[rec] != _kStringBlobId && nodeTypes[rec] != _kBytesBlobId && sub.pos != sub.limit) {
+        trailingBodies.add(rec + 2);
+      }
     }
   }
 
@@ -1199,6 +1223,33 @@ final class TableWireReader {
       }
     }
     return taken != count - 1;
+  }
+
+  // A RECORD NO POINTER REACHES IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4;
+  // internal/tablewire/wirecheck.go): every placed table record must be
+  // named by some pointer or blob slot the load resolved.
+  bool trailingReached() {
+    final named = <int>{...reachedNodes};
+    for (var i = 1; i < edges.length; i += 2) {
+      named.add(edges[i]);
+    }
+    for (final idx in trailingBodies) {
+      if (named.contains(idx)) return true;
+    }
+    return false;
+  }
+
+  bool unreachedNode() {
+    final named = <int>{...reachedNodes};
+    for (var i = 1; i < edges.length; i += 2) {
+      named.add(edges[i]);
+    }
+    for (var rec = 0; rec < nodes.length; rec++) {
+      if (knownTypes.contains(nodeTypes[rec]) && !named.contains(rec + 2)) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -2091,7 +2142,7 @@ void _tableEventSaveArm(TableWireWriter w, TableEvent v) {
 bool _tableEventArm1(TableWireReader p, TableEvent v, int kind) {
   final b = TableHitEvent();
   tableHitEventWireLoadBody(p, b, true);
-  if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  if (p.pos != p.limit) { p.report.refuse('wire_damaged'); return false; }
   p.retain?.forget(v.hit);
   v.hit = b;
   return true;
@@ -2100,7 +2151,7 @@ bool _tableEventArm1(TableWireReader p, TableEvent v, int kind) {
 bool _tableEventArm2(TableWireReader p, TableEvent v, int kind) {
   final b = TableChatEvent();
   tableChatEventWireLoadBody(p, b, true);
-  if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  if (p.pos != p.limit) { p.report.refuse('wire_damaged'); return false; }
   p.retain?.forget(v.chat);
   v.chat = b;
   return true;
@@ -2109,7 +2160,7 @@ bool _tableEventArm2(TableWireReader p, TableEvent v, int kind) {
 bool _tableEventArm3(TableWireReader p, TableEvent v, int kind) {
   final b = TablePickupEvent();
   tablePickupEventWireLoadBody(p, b, true);
-  if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  if (p.pos != p.limit) { p.report.refuse('wire_damaged'); return false; }
   p.retain?.forget(v.pickup);
   v.pickup = b;
   return true;
@@ -2117,13 +2168,13 @@ bool _tableEventArm3(TableWireReader p, TableEvent v, int kind) {
 
 bool _tableEventLoadArm(TableWireReader r, TableEvent v) {
   final ref = r.readLeb();
-  if (ref == null) { r.report.malformed = true; return false; }
+  if (ref == null) { r.report.refuse('wire_damaged'); return false; }
   if (ref == 0) { r.retain?.forget(v); v.armTag = 0; return true; }
   final armId = r.refToId[ref];
-  if (armId == null || !r.has(1)) { r.report.malformed = true; return false; }
+  if (armId == null || !r.has(1)) { r.report.refuse('wire_damaged'); return false; }
   final kind = r.readByte();
   final n = r.readLeb();
-  if (n == null || !r.has(n)) { r.report.malformed = true; return false; }
+  if (n == null || !r.has(n)) { r.report.refuse('wire_damaged'); return false; }
   r.retain?.forget(v);
   v.armTag = 0;
   final p = TableWireReader.sub(r, r.pos, r.pos + n);
@@ -2132,21 +2183,21 @@ bool _tableEventLoadArm(TableWireReader r, TableEvent v) {
       if (kind == 13) {
         if (_tableEventArm1(p, v, kind)) v.armTag = 1;
       } else {
-        r.report.kindMismatch++;
+        r.report.refuse('kind_mismatch');
       }
       break;
     case -962770241226853237:
       if (kind == 13) {
         if (_tableEventArm2(p, v, kind)) v.armTag = 2;
       } else {
-        r.report.kindMismatch++;
+        r.report.refuse('kind_mismatch');
       }
       break;
     case -6943525758045472923:
       if (kind == 13) {
         if (_tableEventArm3(p, v, kind)) v.armTag = 3;
       } else {
-        r.report.kindMismatch++;
+        r.report.refuse('kind_mismatch');
       }
       break;
     default:
@@ -2560,41 +2611,41 @@ void tableMixedWireSaveBody(TableWireWriter w, TableMixed v) {
 }
 
 void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
-    if (ref == null) { r.report.malformed = true; return; }
+    if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
-    if (id == null) { r.report.malformed = true; return; }
-    if (!r.has(1)) { r.report.malformed = true; return; }
+    if (id == null) { r.report.refuse('wire_damaged'); return; }
+    if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
     final kind = r.readByte();
-    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
+    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.refuse('wire_damaged'); return; }
+    if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case 2593226102015223570:
         {
           var value = v.entityId;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
               value = raw;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 4095)) { value = 4095; r.report.clamped++; }
+          if (_u64Above(value, 4095)) { r.report.refuse('out_of_range'); return; }
           v.entityId = value;
         }
         break;
@@ -2603,14 +2654,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.posX;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -2618,16 +2669,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < -16383) { value = -16383; r.report.clamped++; }
-          if (value > 16383) { value = 16383; r.report.clamped++; }
+          if (value < -16383) { r.report.refuse('out_of_range'); return; }
+          if (value > 16383) { r.report.refuse('out_of_range'); return; }
           v.posX = value;
         }
         break;
@@ -2636,14 +2685,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.posY;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -2651,16 +2700,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < -16383) { value = -16383; r.report.clamped++; }
-          if (value > 16383) { value = 16383; r.report.clamped++; }
+          if (value < -16383) { r.report.refuse('out_of_range'); return; }
+          if (value > 16383) { r.report.refuse('out_of_range'); return; }
           v.posY = value;
         }
         break;
@@ -2669,14 +2716,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.posZ;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -2684,16 +2731,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < -16383) { value = -16383; r.report.clamped++; }
-          if (value > 16383) { value = 16383; r.report.clamped++; }
+          if (value < -16383) { r.report.refuse('out_of_range'); return; }
+          if (value > 16383) { r.report.refuse('out_of_range'); return; }
           v.posZ = value;
         }
         break;
@@ -2702,25 +2747,23 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.yaw;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
               value = raw;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 511)) { value = 511; r.report.clamped++; }
+          if (_u64Above(value, 511)) { r.report.refuse('out_of_range'); return; }
           v.yaw = value;
         }
         break;
@@ -2729,25 +2772,23 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.pitch;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
               value = raw;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 511)) { value = 511; r.report.clamped++; }
+          if (_u64Above(value, 511)) { r.report.refuse('out_of_range'); return; }
           v.pitch = value;
         }
         break;
@@ -2756,14 +2797,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.velX;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -2771,16 +2812,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < -2048) { value = -2048; r.report.clamped++; }
-          if (value > 2047) { value = 2047; r.report.clamped++; }
+          if (value < -2048) { r.report.refuse('out_of_range'); return; }
+          if (value > 2047) { r.report.refuse('out_of_range'); return; }
           v.velX = value;
         }
         break;
@@ -2789,14 +2828,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.velY;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -2804,16 +2843,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < -2048) { value = -2048; r.report.clamped++; }
-          if (value > 2047) { value = 2047; r.report.clamped++; }
+          if (value < -2048) { r.report.refuse('out_of_range'); return; }
+          if (value > 2047) { r.report.refuse('out_of_range'); return; }
           v.velY = value;
         }
         break;
@@ -2822,14 +2859,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.velZ;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -2837,16 +2874,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < -2048) { value = -2048; r.report.clamped++; }
-          if (value > 2047) { value = 2047; r.report.clamped++; }
+          if (value < -2048) { r.report.refuse('out_of_range'); return; }
+          if (value > 2047) { r.report.refuse('out_of_range'); return; }
           v.velZ = value;
         }
         break;
@@ -2855,14 +2890,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.health;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -2870,27 +2905,25 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < 0) { value = 0; r.report.clamped++; }
-          if (value > 1000) { value = 1000; r.report.clamped++; }
+          if (value < 0) { r.report.refuse('out_of_range'); return; }
+          if (value > 1000) { r.report.refuse('out_of_range'); return; }
           v.health = value;
         }
         break;
       case -6866282850657997311:
-        if (kind != 30) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
+        if (kind != 30) { r.report.refuse('kind_mismatch'); return; }
         {
           final ref2 = r.readLeb();
-          if (ref2 == null) { r.report.malformed = true; return; }
+          if (ref2 == null) { r.report.refuse('wire_damaged'); return; }
           if (ref2 == 0) { v.weapon = TableWeapon.none; break; }
           final vid = r.refToId[ref2];
-          if (vid == null) { r.report.malformed = true; return; }
+          if (vid == null) { r.report.refuse('wire_damaged'); return; }
           switch (vid) {
             case -6372330821933150452: v.weapon = TableWeapon.fists;
             case -6935561395390217098: v.weapon = TableWeapon.pistol;
@@ -2916,14 +2949,14 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
           var value = v.damage;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -2931,7 +2964,7 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               r.report.widened++;
               break;
             case 8:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -2941,32 +2974,30 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               r.report.widened++;
               break;
             case 9:
-              if (!r.has(8)) { r.report.malformed = true; return; }
+              if (!r.has(8)) { r.report.refuse('wire_damaged'); return; }
               value = readU64(r.data, r.pos); r.pos += 8;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           v.damage = value;
         }
         break;
       case 1271228688681418151:
-        if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
-        if (!r.has(1)) { r.report.malformed = true; return; }
+        if (kind != 1) { r.report.refuse('kind_mismatch'); return; }
+        if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
         v.moving = r.readBool();
         break;
       case 8535675692938965450:
-        if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
-        if (!r.has(1)) { r.report.malformed = true; return; }
+        if (kind != 1) { r.report.refuse('kind_mismatch'); return; }
+        if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
         v.firing = r.readBool();
         break;
       default:
         r.report.unknown++;
         if (r.retain != null) {
           final start = r.pos;
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
           if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
               (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
             r.report.refuseNonFiniteFloat(_retainedFloatName('TableEntity', id));
@@ -2989,38 +3020,38 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
             }
           }
         } else {
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
         }
     }
   }
 }
 
 void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
-    if (ref == null) { r.report.malformed = true; return; }
+    if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
-    if (id == null) { r.report.malformed = true; return; }
-    if (!r.has(1)) { r.report.malformed = true; return; }
+    if (id == null) { r.report.refuse('wire_damaged'); return; }
+    if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
     final kind = r.readByte();
-    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
+    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.refuse('wire_damaged'); return; }
+    if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case -9175110139929313435:
         {
           var value = v.statId;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               value = r.readByte();
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 255)) { value = 255; r.report.clamped++; }
+          if (_u64Above(value, 255)) { r.report.refuse('out_of_range'); return; }
           v.statId = value;
         }
         break;
@@ -3029,14 +3060,14 @@ void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
           var value = v.delta;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3044,16 +3075,14 @@ void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < -512) { value = -512; r.report.clamped++; }
-          if (value > 511) { value = 511; r.report.clamped++; }
+          if (value < -512) { r.report.refuse('out_of_range'); return; }
+          if (value > 511) { r.report.refuse('out_of_range'); return; }
           v.delta = value;
         }
         break;
@@ -3061,7 +3090,7 @@ void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
         r.report.unknown++;
         if (r.retain != null) {
           final start = r.pos;
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
           if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
               (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
             r.report.refuseNonFiniteFloat(_retainedFloatName('TableStat', id));
@@ -3084,48 +3113,48 @@ void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
             }
           }
         } else {
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
         }
     }
   }
 }
 
 void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
-    if (ref == null) { r.report.malformed = true; return; }
+    if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
-    if (id == null) { r.report.malformed = true; return; }
-    if (!r.has(1)) { r.report.malformed = true; return; }
+    if (id == null) { r.report.refuse('wire_damaged'); return; }
+    if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
     final kind = r.readByte();
-    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
+    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.refuse('wire_damaged'); return; }
+    if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case -5207116919359778736:
         {
           var value = v.targetId;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
               value = raw;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 4095)) { value = 4095; r.report.clamped++; }
+          if (_u64Above(value, 4095)) { r.report.refuse('out_of_range'); return; }
           v.targetId = value;
         }
         break;
@@ -3134,14 +3163,14 @@ void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) 
           var value = v.damage;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3149,16 +3178,14 @@ void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) 
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < 0) { value = 0; r.report.clamped++; }
-          if (value > 4095) { value = 4095; r.report.clamped++; }
+          if (value < 0) { r.report.refuse('out_of_range'); return; }
+          if (value > 4095) { r.report.refuse('out_of_range'); return; }
           v.damage = value;
         }
         break;
@@ -3167,14 +3194,14 @@ void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) 
           var value = v.hitKind;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3182,29 +3209,27 @@ void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) 
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < 0) { value = 0; r.report.clamped++; }
-          if (value > 7) { value = 7; r.report.clamped++; }
+          if (value < 0) { r.report.refuse('out_of_range'); return; }
+          if (value > 7) { r.report.refuse('out_of_range'); return; }
           v.hitKind = value;
         }
         break;
       case 1324453635955533101:
-        if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
-        if (!r.has(1)) { r.report.malformed = true; return; }
+        if (kind != 1) { r.report.refuse('kind_mismatch'); return; }
+        if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
         v.crit = r.readBool();
         break;
       default:
         r.report.unknown++;
         if (r.retain != null) {
           final start = r.pos;
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
           if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
               (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
             r.report.refuseNonFiniteFloat(_retainedFloatName('TableHitEvent', id));
@@ -3227,37 +3252,39 @@ void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) 
             }
           }
         } else {
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
         }
     }
   }
 }
 
 void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
-    if (ref == null) { r.report.malformed = true; return; }
+    if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
-    if (id == null) { r.report.malformed = true; return; }
-    if (!r.has(1)) { r.report.malformed = true; return; }
+    if (id == null) { r.report.refuse('wire_damaged'); return; }
+    if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
     final kind = r.readByte();
-    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
+    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.refuse('wire_damaged'); return; }
+    if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case -6556890747741999708:
         {
           var value = v.channel;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3265,16 +3292,14 @@ void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < 0) { value = 0; r.report.clamped++; }
-          if (value > 3) { value = 3; r.report.clamped++; }
+          if (value < 0) { r.report.refuse('out_of_range'); return; }
+          if (value > 3) { r.report.refuse('out_of_range'); return; }
           v.channel = value;
         }
         break;
@@ -3283,25 +3308,23 @@ void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested
           var value = v.speaker;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
               value = raw;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 4095)) { value = 4095; r.report.clamped++; }
+          if (_u64Above(value, 4095)) { r.report.refuse('out_of_range'); return; }
           v.speaker = value;
         }
         break;
@@ -3309,7 +3332,7 @@ void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested
         r.report.unknown++;
         if (r.retain != null) {
           final start = r.pos;
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
           if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
               (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
             r.report.refuseNonFiniteFloat(_retainedFloatName('TableChatEvent', id));
@@ -3332,48 +3355,48 @@ void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested
             }
           }
         } else {
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
         }
     }
   }
 }
 
 void tablePickupEventWireLoadBody(TableWireReader r, TablePickupEvent v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
-    if (ref == null) { r.report.malformed = true; return; }
+    if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
-    if (id == null) { r.report.malformed = true; return; }
-    if (!r.has(1)) { r.report.malformed = true; return; }
+    if (id == null) { r.report.refuse('wire_damaged'); return; }
+    if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
     final kind = r.readByte();
-    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
+    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.refuse('wire_damaged'); return; }
+    if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case -7025667724851298986:
         {
           var value = v.itemId;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
               value = raw;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 1023)) { value = 1023; r.report.clamped++; }
+          if (_u64Above(value, 1023)) { r.report.refuse('out_of_range'); return; }
           v.itemId = value;
         }
         break;
@@ -3382,14 +3405,14 @@ void tablePickupEventWireLoadBody(TableWireReader r, TablePickupEvent v, bool ne
           var value = v.amount;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3397,16 +3420,14 @@ void tablePickupEventWireLoadBody(TableWireReader r, TablePickupEvent v, bool ne
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < 0) { value = 0; r.report.clamped++; }
-          if (value > 255) { value = 255; r.report.clamped++; }
+          if (value < 0) { r.report.refuse('out_of_range'); return; }
+          if (value > 255) { r.report.refuse('out_of_range'); return; }
           v.amount = value;
         }
         break;
@@ -3414,7 +3435,7 @@ void tablePickupEventWireLoadBody(TableWireReader r, TablePickupEvent v, bool ne
         r.report.unknown++;
         if (r.retain != null) {
           final start = r.pos;
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
           if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
               (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
             r.report.refuseNonFiniteFloat(_retainedFloatName('TablePickupEvent', id));
@@ -3437,19 +3458,19 @@ void tablePickupEventWireLoadBody(TableWireReader r, TablePickupEvent v, bool ne
             }
           }
         } else {
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
         }
     }
   }
 }
 
 bool _tableMixedLoadoutFixed(TableWireReader p, TableMixed v, int elemKind, int count) {
-  if (elemKind != 6) { p.report.kindMismatch++; return true; }
+  if (elemKind != 6) { p.report.refuse('kind_mismatch'); return true; }
   final out = <int>[];
   var keep = count;
-  if (keep > 4 || keep < 0) { keep = 4; p.report.clamped++; }
+  if (keep > 4 || keep < 0) { p.report.refuse('count_over_bound'); keep = 0; }
   for (var i = 0; i < keep; i++) {
-    if (!p.has(1)) { p.report.malformed = true; break; }
+    if (!p.has(1)) { p.report.refuse('wire_damaged'); break; }
     var raw = 0;
     for (var b = 0; b < 1; b++) { raw |= p.readByte() << (8 * b); }
     out.add(raw);
@@ -3462,39 +3483,39 @@ bool _tableMixedLoadoutFixed(TableWireReader p, TableMixed v, int elemKind, int 
 }
 
 void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
+  final seenRefs = <int>{};
   while (true) {
     final ref = r.readLeb();
-    if (ref == null) { r.report.malformed = true; return; }
+    if (ref == null) { r.report.refuse('wire_damaged'); return; }
     if (ref == 0) return;
+    if (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }
     final id = r.refToId[ref];
-    if (id == null) { r.report.malformed = true; return; }
-    if (!r.has(1)) { r.report.malformed = true; return; }
+    if (id == null) { r.report.refuse('wire_damaged'); return; }
+    if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
     final kind = r.readByte();
-    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
+    if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.refuse('wire_damaged'); return; }
+    if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case 7663561793681298941:
         {
           var value = v.protocolMagic;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
               value = raw;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           v.protocolMagic = value;
         }
@@ -3504,25 +3525,23 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.sequence;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
               value = raw;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 65535)) { value = 65535; r.report.clamped++; }
+          if (_u64Above(value, 65535)) { r.report.refuse('out_of_range'); return; }
           v.sequence = value;
         }
         break;
@@ -3531,14 +3550,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.ackSequence;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3546,16 +3565,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < 0) { value = 0; r.report.clamped++; }
-          if (value > 65535) { value = 65535; r.report.clamped++; }
+          if (value < 0) { r.report.refuse('out_of_range'); return; }
+          if (value > 65535) { r.report.refuse('out_of_range'); return; }
           v.ackSequence = value;
         }
         break;
@@ -3564,14 +3581,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.ackBits;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3579,15 +3596,13 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 8:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = readU32(r.data, r.pos); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 4294967295)) { value = 4294967295; r.report.clamped++; }
+          if (_u64Above(value, 4294967295)) { r.report.refuse('out_of_range'); return; }
           v.ackBits = value;
         }
         break;
@@ -3596,14 +3611,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.sessionId;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3611,7 +3626,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 8:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3621,13 +3636,11 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 9:
-              if (!r.has(8)) { r.report.malformed = true; return; }
+              if (!r.has(8)) { r.report.refuse('wire_damaged'); return; }
               value = readU64(r.data, r.pos); r.pos += 8;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           v.sessionId = value;
         }
@@ -3637,14 +3650,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.clientId;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3652,13 +3665,11 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 8:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = readU32(r.data, r.pos); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           v.clientId = value;
         }
@@ -3668,14 +3679,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.nonce;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3683,7 +3694,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 8:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3693,16 +3704,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 9:
-              if (!r.has(8)) { r.report.malformed = true; return; }
+              if (!r.has(8)) { r.report.refuse('wire_damaged'); return; }
               value = readU64(r.data, r.pos); r.pos += 8;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Below(value, 1)) { value = 1; r.report.clamped++; }
-          if (_u64Above(value, 9223372036854775807)) { value = 9223372036854775807; r.report.clamped++; }
+          if (_u64Below(value, 1)) { r.report.refuse('out_of_range'); return; }
+          if (_u64Above(value, 9223372036854775807)) { r.report.refuse('out_of_range'); return; }
           v.nonce = value;
         }
         break;
@@ -3711,14 +3720,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.worldTime;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3726,7 +3735,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3736,16 +3745,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 5:
-              if (!r.has(8)) { r.report.malformed = true; return; }
+              if (!r.has(8)) { r.report.refuse('wire_damaged'); return; }
               value = readU64(r.data, r.pos); r.pos += 8;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < -1000000000000) { value = -1000000000000; r.report.clamped++; }
-          if (value > 1000000000000) { value = 1000000000000; r.report.clamped++; }
+          if (value < -1000000000000) { r.report.refuse('out_of_range'); return; }
+          if (value > 1000000000000) { r.report.refuse('out_of_range'); return; }
           v.worldTime = value;
         }
         break;
@@ -3754,14 +3761,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.frameTick;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3769,7 +3776,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 8:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -3779,15 +3786,13 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 9:
-              if (!r.has(8)) { r.report.malformed = true; return; }
+              if (!r.has(8)) { r.report.refuse('wire_damaged'); return; }
               value = readU64(r.data, r.pos); r.pos += 8;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 281474976710655)) { value = 281474976710655; r.report.clamped++; }
+          if (_u64Above(value, 281474976710655)) { r.report.refuse('out_of_range'); return; }
           v.frameTick = value;
         }
         break;
@@ -3796,45 +3801,43 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var d = v.serverTime;
           switch (kind) {
             case 10:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               d = r.readF32(r.pos, 'TableMixed.server_time'); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < 0) { d = 0; r.report.clamped++; }
-          if (d > 65535) { d = 65535; r.report.clamped++; }
+          if (d < 0) { r.report.refuse('out_of_range'); return; }
+          if (d > 65535) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.serverTime = d;
         }
         break;
       case -7828083326636031446:
-        if (kind != 14) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
+        if (kind != 14) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
-          if (len == null || !r.has(len)) { r.report.malformed = true; return; }
+          if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
           final end = r.pos + len;
           if (end - r.pos < 2) { r.pos = end; break; }
           final elemKind = r.readByte();
           final count = r.readLeb();
-          if (count == null) { r.report.malformed = true; r.pos = end; break; }
-          if (elemKind != 13) { r.report.kindMismatch++; r.pos = end; break; }
+          if (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }
+          if (elemKind != 13) { r.report.refuse('kind_mismatch'); r.pos = end; break; }
           if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <TableEntity>[];
           var keep = count;
-          if (keep < 0 || keep > 8) { keep = 8; r.report.clamped++; }
+          if (keep < 0 || keep > 8) { r.report.refuse('count_over_bound'); return; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           for (var i = 0; i < keep; i++) {
             final elen = arr.readLeb();
-            if (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }
+            if (elen == null || !arr.has(elen)) { r.report.refuse('wire_damaged'); break; }
             var e = TableEntity();
             final sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);
             sub.path = [...r.path, 10, i];
             tableEntityWireLoadBody(sub, e, true);
-            if (sub.pos != sub.limit) { r.report.malformed = true; e = TableEntity(); }
+            if (sub.pos != sub.limit) { r.report.refuse('wire_damaged'); e = TableEntity(); }
             arr.pos = arr.pos + elen;
             v.entities.add(e);
           }
@@ -3842,29 +3845,29 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
         }
         break;
       case -1268998401975805620:
-        if (kind != 14) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
+        if (kind != 14) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
-          if (len == null || !r.has(len)) { r.report.malformed = true; return; }
+          if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
           final end = r.pos + len;
           if (end - r.pos < 2) { r.pos = end; break; }
           final elemKind = r.readByte();
           final count = r.readLeb();
-          if (count == null) { r.report.malformed = true; r.pos = end; break; }
-          if (elemKind != 13) { r.report.kindMismatch++; r.pos = end; break; }
+          if (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }
+          if (elemKind != 13) { r.report.refuse('kind_mismatch'); r.pos = end; break; }
           if (r.retain != null) { for (final old in v.stats) { r.retain!.forget(old); } }
           v.stats = <TableStat>[];
           var keep = count;
-          if (keep < 0 || keep > 80) { keep = 80; r.report.clamped++; }
+          if (keep < 0 || keep > 80) { r.report.refuse('count_over_bound'); return; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           for (var i = 0; i < keep; i++) {
             final elen = arr.readLeb();
-            if (elen == null || !arr.has(elen)) { r.report.malformed = true; break; }
+            if (elen == null || !arr.has(elen)) { r.report.refuse('wire_damaged'); break; }
             var e = TableStat();
             final sub = TableWireReader.sub(arr, arr.pos, arr.pos + elen);
             sub.path = [...r.path, 11, i];
             tableStatWireLoadBody(sub, e, true);
-            if (sub.pos != sub.limit) { r.report.malformed = true; e = TableStat(); }
+            if (sub.pos != sub.limit) { r.report.refuse('wire_damaged'); e = TableStat(); }
             arr.pos = arr.pos + elen;
             v.stats.add(e);
           }
@@ -3872,52 +3875,52 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
         }
         break;
       case 3329809749115557776:
-        if (kind != 15) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
-        if (!_tableEventLoadArm(r, v.gameEvent)) { r.report.malformed = true; return; }
+        if (kind != 15) { r.report.refuse('kind_mismatch'); return; }
+        if (!_tableEventLoadArm(r, v.gameEvent)) { r.report.refuse('wire_damaged'); return; }
         break;
       case 6294288958393922979:
-        if (kind != 14) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
+        if (kind != 14) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
-          if (len == null || !r.has(len)) { r.report.malformed = true; return; }
+          if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
           final end = r.pos + len;
           if (end - r.pos < 2) { r.pos = end; break; }
           final elemKind = r.readByte();
           final count = r.readLeb();
-          if (count == null) { r.report.malformed = true; r.pos = end; break; }
+          if (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }
           _tableMixedLoadoutFixed(TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end), v, elemKind, count);
           r.pos = end;
         }
         break;
       case 1415871171432867950:
-        if (kind != 12) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
+        if (kind != 12) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
-          if (len == null || !r.has(len)) { r.report.malformed = true; return; }
-          if (!_lebValid(r.data, r.pos, len)) { r.report.malformed = true; v.playerName = ''; r.pos += len; break; }
+          if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
+          if (!_lebValid(r.data, r.pos, len)) { r.report.refuse('wire_damaged'); v.playerName = ''; r.pos += len; break; }
           final keep = _textBoundary(r.data, r.pos, len, 15);
-          if (keep != len) r.report.clamped++;
+          if (keep != len) { r.report.refuse('length_over_bound'); return; }
           v.playerName = utf8.decode(r.data.sublist(r.pos, r.pos + keep));
           r.pos += len;
         }
         break;
       case -3478843999652550171:
-        if (kind != 14) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
+        if (kind != 14) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
-          if (len == null || !r.has(len)) { r.report.malformed = true; return; }
+          if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
           final end = r.pos + len;
           if (end - r.pos < 2) { r.pos = end; break; }
           final elemKind = r.readByte();
           final count = r.readLeb();
-          if (count == null) { r.report.malformed = true; r.pos = end; break; }
-          if (elemKind != 6) { r.report.kindMismatch++; r.pos = end; break; }
+          if (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }
+          if (elemKind != 6) { r.report.refuse('kind_mismatch'); r.pos = end; break; }
           var keep = count;
-          if (keep > 16 || keep < 0) { keep = 16; r.report.clamped++; }
+          if (keep > 16 || keep < 0) { r.report.refuse('count_over_bound'); return; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           var take = keep;
           if (take > arr.limit - arr.pos) take = arr.limit - arr.pos;
-          if (take < keep) r.report.malformed = true;
+          if (take < keep) r.report.refuse('wire_damaged');
           v.payload = latin1.decode(arr.data.sublist(arr.pos, arr.pos + take));
           r.pos = end;
         }
@@ -3927,17 +3930,15 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var d = v.aimX;
           switch (kind) {
             case 10:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               d = r.readF32(r.pos, 'TableMixed.aim_x'); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { d = -1; r.report.clamped++; }
-          if (d > 1) { d = 1; r.report.clamped++; }
+          if (d < -1) { r.report.refuse('out_of_range'); return; }
+          if (d > 1) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimX = d;
         }
@@ -3947,17 +3948,15 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var d = v.aimY;
           switch (kind) {
             case 10:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               d = r.readF32(r.pos, 'TableMixed.aim_y'); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { d = -1; r.report.clamped++; }
-          if (d > 1) { d = 1; r.report.clamped++; }
+          if (d < -1) { r.report.refuse('out_of_range'); return; }
+          if (d > 1) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimY = d;
         }
@@ -3967,17 +3966,15 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var d = v.aimZ;
           switch (kind) {
             case 10:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               d = r.readF32(r.pos, 'TableMixed.aim_z'); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { d = -1; r.report.clamped++; }
-          if (d > 1) { d = 1; r.report.clamped++; }
+          if (d < -1) { r.report.refuse('out_of_range'); return; }
+          if (d > 1) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimZ = d;
         }
@@ -3987,13 +3984,11 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var d = v.recoil;
           switch (kind) {
             case 10:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               d = r.readF32(r.pos, 'TableMixed.recoil'); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
           v.recoil = d;
@@ -4004,18 +3999,16 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var d = v.drift;
           switch (kind) {
             case 11:
-              if (!r.has(8)) { r.report.malformed = true; return; }
+              if (!r.has(8)) { r.report.refuse('wire_damaged'); return; }
               d = r.readF64(r.pos, 'TableMixed.drift'); r.pos += 8;
               break;
             case 10:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               d = r.readF32(r.pos, 'TableMixed.drift'); r.pos += 4;
               r.report.widened++;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
           v.drift = d;
@@ -4026,14 +4019,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.wideKey;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -4041,7 +4034,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 8:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -4051,13 +4044,11 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 9:
-              if (!r.has(8)) { r.report.malformed = true; return; }
+              if (!r.has(8)) { r.report.refuse('wire_damaged'); return; }
               value = readU64(r.data, r.pos); r.pos += 8;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           v.wideKey = value;
         }
@@ -4067,14 +4058,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.flux;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -4082,7 +4073,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -4092,16 +4083,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 5:
-              if (!r.has(8)) { r.report.malformed = true; return; }
+              if (!r.has(8)) { r.report.refuse('wire_damaged'); return; }
               value = readU64(r.data, r.pos); r.pos += 8;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < -1000000000000000000) { value = -1000000000000000000; r.report.clamped++; }
-          if (value > 1000000000000000000) { value = 1000000000000000000; r.report.clamped++; }
+          if (value < -1000000000000000000) { r.report.refuse('out_of_range'); return; }
+          if (value > 1000000000000000000) { r.report.refuse('out_of_range'); return; }
           v.flux = value;
         }
         break;
@@ -4110,17 +4099,15 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var d = v.ping;
           switch (kind) {
             case 10:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               d = r.readF32(r.pos, 'TableMixed.ping'); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < 0) { d = 0; r.report.clamped++; }
-          if (d > 250) { d = 250; r.report.clamped++; }
+          if (d < 0) { r.report.refuse('out_of_range'); return; }
+          if (d > 250) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.ping = d;
         }
@@ -4130,14 +4117,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.crcHint;
           switch (kind) {
             case 6:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = raw;
               r.report.widened++;
               break;
             case 7:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -4145,21 +4132,19 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 8:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = readU32(r.data, r.pos); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (_u64Above(value, 16777215)) { value = 16777215; r.report.clamped++; }
+          if (_u64Above(value, 16777215)) { r.report.refuse('out_of_range'); return; }
           v.crcHint = value;
         }
         break;
       case -4574933642144545166:
-        if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
-        if (!r.has(1)) { r.report.malformed = true; return; }
+        if (kind != 1) { r.report.refuse('kind_mismatch'); return; }
+        if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
         v.hasExtra = r.readBool();
         break;
       case -204370544148493463:
@@ -4167,14 +4152,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.extra;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -4182,16 +4167,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < 0) { value = 0; r.report.clamped++; }
-          if (value > 255) { value = 255; r.report.clamped++; }
+          if (value < 0) { r.report.refuse('out_of_range'); return; }
+          if (value > 255) { r.report.refuse('out_of_range'); return; }
           v.extra = value;
         }
         break;
@@ -4200,14 +4183,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           var value = v.idleTicks;
           switch (kind) {
             case 2:
-              if (!r.has(1)) { r.report.malformed = true; return; }
+              if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               value = _signExtend(raw, 1);
               r.report.widened++;
               break;
             case 3:
-              if (!r.has(2)) { r.report.malformed = true; return; }
+              if (!r.has(2)) { r.report.refuse('wire_damaged'); return; }
               var raw = 0;
               raw |= r.readByte() << 0;
               raw |= r.readByte() << 8;
@@ -4215,16 +4198,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.widened++;
               break;
             case 4:
-              if (!r.has(4)) { r.report.malformed = true; return; }
+              if (!r.has(4)) { r.report.refuse('wire_damaged'); return; }
               value = _signExtend(readU32(r.data, r.pos), 4); r.pos += 4;
               break;
             default:
-              r.report.kindMismatch++;
-              if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-              break;
+              r.report.refuse('kind_mismatch'); return;
           }
-          if (value < 0) { value = 0; r.report.clamped++; }
-          if (value > 15) { value = 15; r.report.clamped++; }
+          if (value < 0) { r.report.refuse('out_of_range'); return; }
+          if (value > 15) { r.report.refuse('out_of_range'); return; }
           v.idleTicks = value;
         }
         break;
@@ -4232,7 +4213,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
         r.report.unknown++;
         if (r.retain != null) {
           final start = r.pos;
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
           if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
               (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
             r.report.refuseNonFiniteFloat(_retainedFloatName('TableMixed', id));
@@ -4255,7 +4236,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
             }
           }
         } else {
-          if (!r.skipKind(kind)) { r.report.malformed = true; return; }
+          if (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }
         }
     }
   }
@@ -4329,7 +4310,7 @@ Uint8List tableEntityWireSave(TableEntity v) {
 TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableEntity();
   report ??= TableWireReport();
-  if (report.integrityMismatch) report.malformed = false;
+  if (report.integrityMismatch) { report.refusal = ''; report.refused = false; }
   report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
@@ -4340,11 +4321,12 @@ TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.refused = false;
+  r.report.refusal = '';
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
+  if (verdict == 2) { r.report.refuse('wire_damaged'); return TableEntity(); }
   try {
     r.pos = 1;
     tableEntityWireLoadBody(r, v, false);
@@ -4358,10 +4340,11 @@ TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableEntity();
   _collectNodeEdges(r);
   if (r.cyclic()) {
-    r.report.malformed = true;
+    r.report.refuse('wire_damaged');
     return TableEntity();
   }
-  if (r.report.malformed) return TableEntity();
+  if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
+  if (r.report.refused) return TableEntity();
   return v;
 }
 
@@ -4489,7 +4472,7 @@ Uint8List tableStatWireSave(TableStat v) {
 TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableStat();
   report ??= TableWireReport();
-  if (report.integrityMismatch) report.malformed = false;
+  if (report.integrityMismatch) { report.refusal = ''; report.refused = false; }
   report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
@@ -4500,11 +4483,12 @@ TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.refused = false;
+  r.report.refusal = '';
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
+  if (verdict == 2) { r.report.refuse('wire_damaged'); return TableStat(); }
   try {
     r.pos = 1;
     tableStatWireLoadBody(r, v, false);
@@ -4518,10 +4502,11 @@ TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableStat();
   _collectNodeEdges(r);
   if (r.cyclic()) {
-    r.report.malformed = true;
+    r.report.refuse('wire_damaged');
     return TableStat();
   }
-  if (r.report.malformed) return TableStat();
+  if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
+  if (r.report.refused) return TableStat();
   return v;
 }
 
@@ -4637,7 +4622,7 @@ Uint8List tableMixedWireSave(TableMixed v) {
 TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableMixed();
   report ??= TableWireReport();
-  if (report.integrityMismatch) report.malformed = false;
+  if (report.integrityMismatch) { report.refusal = ''; report.refused = false; }
   report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
@@ -4648,11 +4633,12 @@ TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.refused = false;
+  r.report.refusal = '';
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
+  if (verdict == 2) { r.report.refuse('wire_damaged'); return TableMixed(); }
   try {
     r.pos = 1;
     tableMixedWireLoadBody(r, v, false);
@@ -4666,10 +4652,11 @@ TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableMixed();
   _collectNodeEdges(r);
   if (r.cyclic()) {
-    r.report.malformed = true;
+    r.report.refuse('wire_damaged');
     return TableMixed();
   }
-  if (r.report.malformed) return TableMixed();
+  if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
+  if (r.report.refused) return TableMixed();
   return v;
 }
 
@@ -4873,7 +4860,7 @@ int? _timestampNanos(String s) {
 }
 
 int _timestampField(dynamic value,TableTextReport report,[int previous=0]){
-  if(value is! String){report.kindMismatch++;return previous;}
+  if(value is! String){report.refuse('kind_mismatch');return previous;}
   final nanos=_timestampNanos(value);
   if(nanos==null)throw const FormatException('timestamp_not_rfc3339');
   return nanos;
@@ -4891,33 +4878,42 @@ String _timestampText(int nanos){
 }
 
 List<T> _jsonTextList<T>(dynamic val,TableTextReport r,int bound,String field,T Function(dynamic) read,int total,int Function(T) length,[List<T>? fallback]) {
- if(val is! List){r.kindMismatch++;return fallback??<T>[];}
- final before=r.clamped;
+ if(val is! List){r.refuse('kind_mismatch');return fallback??<T>[];}
  final out=<T>[];
  var spent=0;
  for(var i=0;i<val.length;i++){
-  if(bound>=0&&i>=bound){r.clamped+=val.length-i;break;}
+  if(bound>=0&&i>=bound){r.refuse('count_over_bound');break;}
   final e=read(val[i]);
-  if(total>0){spent+=length(e);if(spent>total){r.clamped++;if(bound>=0&&val.length>bound)r.clamped+=val.length-bound;break;}}
+  if(total>0){spent+=length(e);if(spent>total){r.refuse('length_over_bound');break;}}
   out.add(e);
  }
- if(r.clamped!=before&&r.clampedField.isEmpty)r.clampedField=field;
  return out;
 }
 // ---- the JSON text form (docs/SPEC-TABLES.md §16) ----
 
-// TableTextReport is a tolerant text read's report (§16.3): the three events
-// the card's constructs can move — an unknown property, a kind mismatch, a
-// clamp.
+// TableTextReport is the one strict text read's report (§16.3): the
+// evolution counter unknown, and the refusal verdict. A kind mismatch, a
+// repeated key, and a value, count or length out of its bound refuse the
+// whole load through refuse(); the read answers the type's defaults.
 final class TableTextReport {
   int unknown = 0;
-  int kindMismatch = 0;
-  int clamped = 0;
-  String clampedField = '';
-  int duplicate = 0;
-  int missingRequired = 0;
+  bool refused = false;
+  String refusal = '';
   String missingFields = '';
   final Set<int> textLabels = <int>{};
+
+  // refuse records the read's whole-load refusal by name (a per-language
+  // diagnostic, never compared across legs): the first refusal stands.
+  void refuse(String r) {
+    if (refusal.isEmpty) refusal = r;
+    refused = true;
+  }
+
+  String get reason {
+    if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
+    if (refusal.isNotEmpty) return refusal;
+    return 'ok';
+  }
 }
 
 // _JOut is the writer's sink (§16.1): raw text and the two-space indent.
@@ -4991,37 +4987,30 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 // U+0000 refuses the read, because no wire carries a zero in text. A string
 // the read only SKIPS (an unknown key's value) never reaches here.
 String _jsonText(String s) {
+  // a lone or inverted surrogate is not text (string_lone_surrogate, SPEC
+  // §16.3): the parser refuses one spelled as an escape, and this refuses one
+  // a caller's String carries raw
+  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');
   if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
-  // Lone or inverted JSON surrogate escapes normalize until the deferred
-  // string_lone_surrogate card lands (SPEC §16.3).
-  if (_wideValid(s.codeUnits)) return s;
-  return String.fromCharCodes(s.runes.map((r) => r >= 0xD800 && r <= 0xDFFF ? 0xFFFD : r));
+  return s;
 }
 
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
-// mismatch; a string past N is clamped at a CODE POINT boundary and counted,
+// mismatch; a string past N refuses the whole load,
 // never cut through a multi-byte character (§16.3).
 String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   }
   val = _jsonText(val);
   if (utf8.encode(val).length <= bound || bound < 0) return val;
-  final kept = StringBuffer();
-  var used = 0;
-  for (final rune in val.runes) {
-    final len = utf8.encode(String.fromCharCode(rune)).length;
-    if (used + len > bound) break;
-    kept.write(String.fromCharCode(rune));
-    used += len;
-  }
-  r.clamped++;
-  return kept.toString();
+  r.refuse('length_over_bound');
+  return def;
 }
 
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
-// float, placed and range-clamped; anything else is a kind mismatch. lo and hi
+// float, placed and range-checked; anything else is a kind mismatch. lo and hi
 // are the declared range, or the storage width below 64 bits; an unsigned
 // field's bounds are 64-bit patterns. A token an int holds is placed by int
 // compares. Every other integral value (a token at or past +-2^63, a negative
@@ -5033,11 +5022,11 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
   if (val is int && (!unsigned || val >= 0)) {
     var v = val;
     if (unsigned) {
-      if (lo != null && _u64Below(v, lo)) { v = lo; r.clamped++; }
-      if (hi != null && _u64Above(v, hi)) { v = hi; r.clamped++; }
+      if (lo != null && _u64Below(v, lo)) { r.refuse('out_of_range'); return def; }
+      if (hi != null && _u64Above(v, hi)) { r.refuse('out_of_range'); return def; }
     } else {
-      if (lo != null && v < lo) { v = lo; r.clamped++; }
-      if (hi != null && v > hi) { v = hi; r.clamped++; }
+      if (lo != null && v < lo) { r.refuse('out_of_range'); return def; }
+      if (hi != null && v > hi) { r.refuse('out_of_range'); return def; }
     }
     return v;
   }
@@ -5049,31 +5038,31 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
   } else {
     final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
     if (!d.isFinite || d != d.truncateToDouble()) {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return def;
     }
     wide = d.abs() >= 18446744073709551616.0 ? (d.isNegative ? -_jsonU64Span : _jsonU64Span) : BigInt.from(d);
   }
   if (wide.abs() > _jsonU64Max) {
-    wide = wide.isNegative ? -_jsonU64Max : _jsonU64Max;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   BigInt bound(int b) => unsigned ? BigInt.from(b).toUnsigned(64) : BigInt.from(b);
   if (lo != null && wide < bound(lo)) {
-    wide = bound(lo);
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   } else if (hi != null && wide > bound(hi)) {
-    wide = bound(hi);
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   if (unsigned) {
-    if (wide.isNegative) { wide = BigInt.zero; r.clamped++; }
+    if (wide.isNegative) { r.refuse('out_of_range'); return def; }
   } else if (wide < _jsonI64Min) {
-    wide = _jsonI64Min;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   } else if (wide > _jsonI64Max) {
-    wide = _jsonI64Max;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   return wide.toSigned(64).toInt();
 }
@@ -5267,7 +5256,7 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
   if (val == null) return null;
   final entries = _jsonEntries(val);
   if (entries == null) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   }
   var hasNode = false;
@@ -5288,7 +5277,7 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
         if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
         throw const FormatException('undefined node label');
       }
-      if (have.runtimeType != make().runtimeType) { r.kindMismatch++; return null; }
+      if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
     final have = sh.defined[raw];
@@ -5417,11 +5406,11 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
     final narrowed = _narrowF32(d, token);
     if (narrowed != null) return narrowed;
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 // §16.2: comments and trailing commas are layout, not values. The
-// duplicate count is taken before jsonDecode folds an object's repeated key.
+// a repeated key is judged before jsonDecode folds an object's repeated key.
 // String tokens are copied byte-for-byte so comment marks inside them stay text.
 String _jsonPrepare(String text, TableTextReport r) {
   final source = text.codeUnits;
@@ -5668,6 +5657,25 @@ final class _JParse {
     return _JNum(token);
   }
 
+  // four hex digits, exactly: no sign, no fewer
+  int hex4() {
+    if (i + 4 > s.length) throw const FormatException('short \\u escape');
+    var u = 0;
+    for (var k = 0; k < 4; k++) {
+      final c = s.codeUnitAt(i++);
+      final d = c >= 0x30 && c <= 0x39
+          ? c - 0x30
+          : c >= 0x41 && c <= 0x46
+              ? c - 0x37
+              : c >= 0x61 && c <= 0x66
+                  ? c - 0x57
+                  : -1;
+      if (d < 0) throw FormatException('bad \\u escape', s, i - 1);
+      u = (u << 4) | d;
+    }
+    return u;
+  }
+
   String str() {
     expect(0x22);
     final b = StringBuffer();
@@ -5697,9 +5705,22 @@ final class _JParse {
         case 0x74:
           b.writeCharCode(0x09);
         case 0x75:
-          if (i + 4 > s.length) throw const FormatException('short \\u escape');
-          b.writeCharCode(int.parse(s.substring(i, i + 4), radix: 16));
-          i += 4;
+          final u = hex4();
+          // a lone or inverted surrogate escape is not text (docs/SPEC-TABLES.md
+          // §16.3, string_lone_surrogate): a lead must be followed by a \\u trail
+          if (u >= 0xDC00 && u <= 0xDFFF) throw const FormatException('string_lone_surrogate');
+          if (u >= 0xD800 && u <= 0xDBFF) {
+            if (i + 2 > s.length || s.codeUnitAt(i) != 0x5C || s.codeUnitAt(i + 1) != 0x75) {
+              throw const FormatException('string_lone_surrogate');
+            }
+            i += 2;
+            final t = hex4();
+            if (t < 0xDC00 || t > 0xDFFF) throw const FormatException('string_lone_surrogate');
+            b.writeCharCode(u);
+            b.writeCharCode(t);
+          } else {
+            b.writeCharCode(u);
+          }
         default:
           throw FormatException('bad escape', s, i);
       }
@@ -5746,7 +5767,7 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
   } else if (val is double) {
     token = val.toString();
   } else {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   }
   var i = 0;
@@ -5797,10 +5818,10 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
   if (digits.isEmpty) {
     raw = BigInt.zero;
   } else if (point > 40) {
-    raw = negative ? domainLo : domainHi;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   } else if (point < -40) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   } else {
     final scale = point - digits.length;
@@ -5810,34 +5831,31 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     } else {
       final den = BigInt.from(10).pow(-scale);
       if (v.remainder(den) != BigInt.zero) {
-        r.kindMismatch++;
+        r.refuse('kind_mismatch');
         return def;
       }
       v = v ~/ den;
     }
     raw = negative ? -v : v;
-    if (raw < domainLo) {
-      raw = domainLo;
-      r.clamped++;
-    } else if (raw > domainHi) {
-      raw = domainHi;
-      r.clamped++;
+    if (raw < domainLo || raw > domainHi) {
+      r.refuse('out_of_range');
+      return def;
     }
   }
   if (lo != null && raw < lo) {
-    raw = lo;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   if (hi != null && raw > hi) {
-    raw = hi;
-    r.clamped++;
+    r.refuse('out_of_range');
+    return def;
   }
   return raw;
 }
 
 bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
   if (val is bool) return val;
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 
@@ -5846,23 +5864,23 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = 
     try {
       final b = base64Decode(base64.normalize(val));
       if (b.length > bound) {
-        r.clamped++;
-        return latin1.decode(b.sublist(0, bound));
+        r.refuse('length_over_bound');
+        return def;
       }
       return latin1.decode(b);
     } on FormatException {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return '';
     }
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 
 String? _jsonStringBlob(dynamic val, TableTextReport r, [String? def]) {
   if (val == null) return null;
   if (val is String) return _jsonText(val);
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 
@@ -5872,40 +5890,36 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
     try {
       return base64Decode(base64.normalize(val));
     } on FormatException {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return null;
     }
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def;
 }
 
 // _jsonWStringField reads wide text (docs/SPEC-TABLES.md §16.2): a string,
-// clamped at its bound in CODE UNITS and never through a surrogate pair.
+// past its bound in CODE UNITS refuses the whole load.
 String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return def;
   }
   val = _jsonText(val);
   if (val.length <= bound) return val;
-  var keep = bound;
-  if (keep > 0 && (val.codeUnitAt(keep - 1) & 0xFC00) == 0xD800 && (val.codeUnitAt(keep) & 0xFC00) == 0xDC00) {
-    keep--;
-  }
-  r.clamped++;
-  return val.substring(0, keep);
+  r.refuse('length_over_bound');
+  return def;
 }
 
 List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynamic) f, [List<T>? fallback]) {
   if (val is! List) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return fallback ?? <T>[];
   }
   final out = <T>[];
   for (final item in val) {
     if (bound >= 0 && out.length >= bound) {
-      r.clamped += val.length - out.length;
+      r.refuse('count_over_bound');
       break;
     }
     out.add(f(item));
@@ -5915,13 +5929,13 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
 
 List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return fallback ?? List<T>.generate(n, (_) => def());
   }
   final out = List<T>.generate(n, (_) => def());
   for (var i = 0; i < val.length; i++) {
     if (i >= n) {
-      r.clamped += val.length - i;
+      r.refuse('count_over_bound');
       break;
     }
     out[i] = f(val[i], out[i]);
@@ -5932,18 +5946,22 @@ List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T
 List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, Map<String, int> slots, T Function(dynamic, T) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return fallback ?? List<T>.generate(n, (_) => def());
   }
   final out = List<T>.generate(n, (_) => def());
   final seen = <int>{};
+  // an unknown key has no slot, so its repeat is caught by name; a known
+  // key's repeat is caught by slot (§2.8: a repeated key is damage)
+  Set<String>? unknownSeen;
   for (final entry in entries) {
     final slot = slots[entry.key];
     if (slot == null) {
+      if (!(unknownSeen ??= <String>{}).add(entry.key)) r.refuse('text_damaged');
       r.unknown++;
       continue;
     }
-    if (!seen.add(slot)) r.duplicate++;
+    if (!seen.add(slot)) r.refuse('text_damaged');
     out[slot] = f(entry.value, out[slot]);
   }
   return out;
@@ -5952,7 +5970,7 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
 List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return fallback ?? <T>[];
   }
   final out = <T>[];
@@ -5963,7 +5981,7 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
     final k = keyOf(item);
     final at = seen[k];
     if (at != null) {
-      r.duplicate++;
+      r.refuse('text_damaged');
       out[at] = item;
     } else {
       seen[k] = out.length;
@@ -5977,7 +5995,7 @@ String? _jsonStringKey(String k, int bound, TableTextReport r) {
   k = _jsonText(k);
   final len = utf8.encode(k).length;
   if (bound >= 0 && (len > bound || len > 255)) {
-    r.clamped++;
+    r.refuse('length_over_bound');
     return null;
   }
   return k;
@@ -5986,7 +6004,7 @@ String? _jsonStringKey(String k, int bound, TableTextReport r) {
 int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
   _jsonText(k);
   if (utf8.encode(k).length > 255) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return null;
   }
   var i = 0;
@@ -6045,20 +6063,20 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     mag = BigInt.zero;
     negative = false;
   } else if (point < digits.length || point > 20) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return null;
   } else {
     mag = BigInt.parse(digits) * BigInt.from(10).pow(point - digits.length);
   }
   if (unsigned) {
     if (negative) {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return null;
     }
     final minU = lo != null ? BigInt.from(lo).toUnsigned(64) : BigInt.zero;
     final maxU = hi != null ? BigInt.from(hi).toUnsigned(64) : (BigInt.one << 64) - BigInt.one;
     if (mag < minU || mag > maxU) {
-      r.kindMismatch++;
+      r.refuse('kind_mismatch');
       return null;
     }
     final signed = mag > BigInt.from(9223372036854775807) ? mag - (BigInt.one << 64) : mag;
@@ -6068,7 +6086,7 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
   final minS = lo != null ? BigInt.from(lo) : -(BigInt.one << 63);
   final maxS = hi != null ? BigInt.from(hi) : (BigInt.one << 63) - BigInt.one;
   if (val < minS || val > maxS) {
-    r.kindMismatch++;
+    r.refuse('kind_mismatch');
     return null;
   }
   return val.toInt();
@@ -6097,7 +6115,7 @@ String tableWeaponName(int v) {
 }
 
 TableWeapon tableWeaponFromName(dynamic val, TableTextReport r, [TableWeapon? def]) {
-  if (val is! String) { r.kindMismatch++; return def ?? TableWeapon.none; }
+  if (val is! String) { r.refuse('kind_mismatch'); return def ?? TableWeapon.none; }
   switch (val) {
     case "None": return TableWeapon.none;
     case "Fists": return TableWeapon.fists;
@@ -6138,7 +6156,7 @@ void _tableDamageToJson(_JOut out, int bits, int depth) {
 }
 
 int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
-  if (val is! List) { r.kindMismatch++; return def; }
+  if (val is! List) { r.refuse('kind_mismatch'); return def; }
   var bits = 0;
   for (final item in val) {
     switch (item) {
@@ -6194,7 +6212,7 @@ void _tableEventToJson(_JOut out, TableEvent v, int depth, _Share sh) {
 
 TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [TableEvent? def]) {
   final entries = _jsonEntries(val);
-  if (entries == null) { r.kindMismatch++; return def ?? TableEvent(); }
+  if (entries == null) { r.refuse('kind_mismatch'); return def ?? TableEvent(); }
   final v = TableEvent();
   if (entries.isEmpty) return v;
   if (entries.length != 1) throw const FormatException('union has two keys');
@@ -6205,21 +6223,21 @@ TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [Table
         v.armTag = 1;
         v.hit = _tableHitEventFromJsonValue(item, r, sh, v.hit);
       } else {
-        r.kindMismatch++;
+        r.refuse('kind_mismatch');
       }
     case "chat":
       if (_jsonEntries(item) != null) {
         v.armTag = 2;
         v.chat = _tableChatEventFromJsonValue(item, r, sh, v.chat);
       } else {
-        r.kindMismatch++;
+        r.refuse('kind_mismatch');
       }
     case "pickup":
       if (_jsonEntries(item) != null) {
         v.armTag = 3;
         v.pickup = _tablePickupEventFromJsonValue(item, r, sh, v.pickup);
       } else {
-        r.kindMismatch++;
+        r.refuse('kind_mismatch');
       }
     default:
       r.unknown++;
@@ -6247,7 +6265,7 @@ TableEntity _tableEntityFromJsonValue(dynamic val, TableTextReport r, _Share sh,
     tableEntityFromJsonFields(v, val, r, sh);
     return v;
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def ?? TableEntity();
 }
 
@@ -6257,7 +6275,7 @@ TableStat _tableStatFromJsonValue(dynamic val, TableTextReport r, _Share sh, [Ta
     tableStatFromJsonFields(v, val, r, sh);
     return v;
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def ?? TableStat();
 }
 
@@ -6267,7 +6285,7 @@ TableHitEvent _tableHitEventFromJsonValue(dynamic val, TableTextReport r, _Share
     tableHitEventFromJsonFields(v, val, r, sh);
     return v;
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def ?? TableHitEvent();
 }
 
@@ -6277,7 +6295,7 @@ TableChatEvent _tableChatEventFromJsonValue(dynamic val, TableTextReport r, _Sha
     tableChatEventFromJsonFields(v, val, r, sh);
     return v;
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def ?? TableChatEvent();
 }
 
@@ -6287,7 +6305,7 @@ TablePickupEvent _tablePickupEventFromJsonValue(dynamic val, TableTextReport r, 
     tablePickupEventFromJsonFields(v, val, r, sh);
     return v;
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def ?? TablePickupEvent();
 }
 
@@ -6297,7 +6315,7 @@ TableMixed _tableMixedFromJsonValue(dynamic val, TableTextReport r, _Share sh, [
     tableMixedFromJsonFields(v, val, r, sh);
     return v;
   }
-  r.kindMismatch++;
+  r.refuse('kind_mismatch');
   return def ?? TableMixed();
 }
 
@@ -6414,62 +6432,63 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "entity_id":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.entityId = _jsonIntField(val, r, null, 4095, true, v.entityId);
         break;
       case "pos_x":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.posX = _jsonIntField(val, r, -16383, 16383, false, v.posX);
         break;
       case "pos_y":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.posY = _jsonIntField(val, r, -16383, 16383, false, v.posY);
         break;
       case "pos_z":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.posZ = _jsonIntField(val, r, -16383, 16383, false, v.posZ);
         break;
       case "yaw":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.yaw = _jsonIntField(val, r, null, 511, true, v.yaw);
         break;
       case "pitch":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.pitch = _jsonIntField(val, r, null, 511, true, v.pitch);
         break;
       case "vel_x":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.velX = _jsonIntField(val, r, -2048, 2047, false, v.velX);
         break;
       case "vel_y":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.velY = _jsonIntField(val, r, -2048, 2047, false, v.velY);
         break;
       case "vel_z":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.velZ = _jsonIntField(val, r, -2048, 2047, false, v.velZ);
         break;
       case "health":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.health = _jsonIntField(val, r, 0, 1000, false, v.health);
         break;
       case "weapon":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.weapon = tableWeaponFromName(val, r, v.weapon);
         break;
       case "damage":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.damage = _tableDamageFromJson(val, r, v.damage);
         break;
       case "moving":
-        if (!seen.add(key)) r.duplicate++;
-        if (val is bool) { v.moving = val; } else { r.kindMismatch++; }
+        if (!seen.add(key)) r.refuse('text_damaged');
+        if (val is bool) { v.moving = val; } else { r.refuse('kind_mismatch'); }
         break;
       case "firing":
-        if (!seen.add(key)) r.duplicate++;
-        if (val is bool) { v.firing = val; } else { r.kindMismatch++; }
+        if (!seen.add(key)) r.refuse('text_damaged');
+        if (val is bool) { v.firing = val; } else { r.refuse('kind_mismatch'); }
         break;
       default:
+        if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
     }
   }
@@ -6516,14 +6535,15 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "stat_id":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.statId = _jsonIntField(val, r, null, 255, true, v.statId);
         break;
       case "delta":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.delta = _jsonIntField(val, r, -512, 511, false, v.delta);
         break;
       default:
+        if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
     }
   }
@@ -6582,22 +6602,23 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "target_id":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.targetId = _jsonIntField(val, r, null, 4095, true, v.targetId);
         break;
       case "damage":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.damage = _jsonIntField(val, r, 0, 4095, false, v.damage);
         break;
       case "hit_kind":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.hitKind = _jsonIntField(val, r, 0, 7, false, v.hitKind);
         break;
       case "crit":
-        if (!seen.add(key)) r.duplicate++;
-        if (val is bool) { v.crit = val; } else { r.kindMismatch++; }
+        if (!seen.add(key)) r.refuse('text_damaged');
+        if (val is bool) { v.crit = val; } else { r.refuse('kind_mismatch'); }
         break;
       default:
+        if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
     }
   }
@@ -6644,14 +6665,15 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "channel":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.channel = _jsonIntField(val, r, 0, 3, false, v.channel);
         break;
       case "speaker":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.speaker = _jsonIntField(val, r, null, 4095, true, v.speaker);
         break;
       default:
+        if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
     }
   }
@@ -6698,14 +6720,15 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "item_id":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.itemId = _jsonIntField(val, r, null, 1023, true, v.itemId);
         break;
       case "amount":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.amount = _jsonIntField(val, r, 0, 255, false, v.amount);
         break;
       default:
+        if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
     }
   }
@@ -6950,142 +6973,143 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "protocol_magic":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.protocolMagic = _jsonIntField(val, r, 0, 65535, true, v.protocolMagic);
         break;
       case "sequence":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.sequence = _jsonIntField(val, r, null, 65535, true, v.sequence);
         break;
       case "ack_sequence":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.ackSequence = _jsonIntField(val, r, 0, 65535, false, v.ackSequence);
         break;
       case "ack_bits":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.ackBits = _jsonIntField(val, r, null, 4294967295, true, v.ackBits);
         break;
       case "session_id":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.sessionId = _jsonIntField(val, r, null, null, true, v.sessionId);
         break;
       case "client_id":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.clientId = _jsonIntField(val, r, 0, 4294967295, true, v.clientId);
         break;
       case "nonce":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.nonce = _jsonIntField(val, r, 1, 9223372036854775807, true, v.nonce);
         break;
       case "world_time":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.worldTime = _jsonIntField(val, r, -1000000000000, 1000000000000, false, v.worldTime);
         break;
       case "frame_tick":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.frameTick = _jsonIntField(val, r, null, 281474976710655, true, v.frameTick);
         break;
       case "server_time":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.serverTime = _jsonFloatField(val, r, true, v.serverTime);
         break;
       case "entities":
-        if (!seen.add(key)) r.duplicate++;
-        if (val is! List) { r.kindMismatch++; break; }
+        if (!seen.add(key)) r.refuse('text_damaged');
+        if (val is! List) { r.refuse('kind_mismatch'); break; }
         v.entities = <TableEntity>[];
         for (var index = 0; index < val.length; index++) {
-          if (v.entities.length >= 8) { r.clamped += val.length - index; break; }
+          if (v.entities.length >= 8) { r.refuse('count_over_bound'); break; }
           final item = val[index];
           final e = TableEntity();
           if (_jsonEntries(item) != null) {
             tableEntityFromJsonFields(e, item, r, sh);
           } else {
-            r.kindMismatch++;
+            r.refuse('kind_mismatch');
           }
           v.entities.add(e);
         }
         break;
       case "stats":
-        if (!seen.add(key)) r.duplicate++;
-        if (val is! List) { r.kindMismatch++; break; }
+        if (!seen.add(key)) r.refuse('text_damaged');
+        if (val is! List) { r.refuse('kind_mismatch'); break; }
         v.stats = <TableStat>[];
         for (var index = 0; index < val.length; index++) {
-          if (v.stats.length >= 80) { r.clamped += val.length - index; break; }
+          if (v.stats.length >= 80) { r.refuse('count_over_bound'); break; }
           final item = val[index];
           final e = TableStat();
           if (_jsonEntries(item) != null) {
             tableStatFromJsonFields(e, item, r, sh);
           } else {
-            r.kindMismatch++;
+            r.refuse('kind_mismatch');
           }
           v.stats.add(e);
         }
         break;
       case "game_event":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.gameEvent = _tableEventFromJson(val, r, sh, v.gameEvent);
         break;
       case "loadout":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.loadout = _jsonFixed<int>(val, r, 4, () => 0, (i1, p1) => _jsonIntField(i1, r, 0, 255, true, p1), v.loadout);
         break;
       case "player_name":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.playerName = _jsonStringField(val, 15, r, v.playerName);
         break;
       case "payload":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.payload = _jsonBytesField(val, r, 16, v.payload);
         break;
       case "aim_x":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.aimX = _jsonFloatField(val, r, true, v.aimX);
         break;
       case "aim_y":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.aimY = _jsonFloatField(val, r, true, v.aimY);
         break;
       case "aim_z":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.aimZ = _jsonFloatField(val, r, true, v.aimZ);
         break;
       case "recoil":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.recoil = _jsonFloatField(val, r, true, v.recoil);
         break;
       case "drift":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.drift = _jsonFloatField(val, r, false, v.drift);
         break;
       case "wide_key":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.wideKey = _jsonIntField(val, r, null, null, true, v.wideKey);
         break;
       case "flux":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.flux = _jsonIntField(val, r, -1000000000000000000, 1000000000000000000, false, v.flux);
         break;
       case "ping":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.ping = _jsonFloatField(val, r, true, v.ping);
         break;
       case "crc_hint":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.crcHint = _jsonIntField(val, r, null, 16777215, true, v.crcHint);
         break;
       case "has_extra":
-        if (!seen.add(key)) r.duplicate++;
-        if (val is bool) { v.hasExtra = val; } else { r.kindMismatch++; }
+        if (!seen.add(key)) r.refuse('text_damaged');
+        if (val is bool) { v.hasExtra = val; } else { r.refuse('kind_mismatch'); }
         break;
       case "extra":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.extra = _jsonIntField(val, r, 0, 255, false, v.extra);
         break;
       case "idle_ticks":
-        if (!seen.add(key)) r.duplicate++;
+        if (!seen.add(key)) r.refuse('text_damaged');
         v.idleTicks = _jsonIntField(val, r, 0, 15, false, v.idleTicks);
         break;
       default:
+        if (!seen.add(key)) r.refuse('text_damaged');
         r.unknown++;
     }
   }
@@ -7109,6 +7133,10 @@ TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   if (_jsonEntries(root) != null) {
     tableEntityFromJsonFields(v, root, r, _Share());
   }
+  if (r.refused) {
+    if (report == null) throw FormatException(r.reason);
+    return TableEntity();
+  }
   return v;
 }
 
@@ -7130,6 +7158,10 @@ TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   if (_jsonEntries(root) != null) {
     tableStatFromJsonFields(v, root, r, _Share());
   }
+  if (r.refused) {
+    if (report == null) throw FormatException(r.reason);
+    return TableStat();
+  }
   return v;
 }
 
@@ -7150,6 +7182,10 @@ TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableMixed');
   if (_jsonEntries(root) != null) {
     tableMixedFromJsonFields(v, root, r, _Share());
+  }
+  if (r.refused) {
+    if (report == null) throw FormatException(r.reason);
+    return TableMixed();
   }
   return v;
 }

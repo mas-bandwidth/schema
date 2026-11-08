@@ -12,6 +12,7 @@ package tabledemo
 
 import (
 	"math"
+	"slices"
 	"unsafe"
 )
 
@@ -121,11 +122,9 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -427,11 +426,9 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -578,7 +575,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 						r.Report.Refuse(TableRefuseCountOverBound, "ShipEntry.hardpoints")
 						return false
 					}
-					for i := uint64(0); i < n; i++ {
+					for i := range n {
 						p := &base[i]
 						{
 							var raw [16]byte
@@ -810,11 +807,9 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -955,7 +950,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 						r.Report.Refuse(TableRefuseCountOverBound, "GlobalSettings.spawn_delays")
 						return false
 					}
-					for i := uint64(0); i < n; i++ {
+					for i := range n {
 						p := &base[i]
 						{
 							var raw [16]byte
@@ -1233,11 +1228,9 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -1323,11 +1316,9 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						for _, k := range seenKey {
-							if k == id {
-								r.Report.Refuse(TableRefuseWireDamaged, "")
-								return false
-							}
+						if slices.Contains(seenKey, id) {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						seenKey = append(seenKey, id)
 						var key ShipType
@@ -1381,11 +1372,9 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						for _, k := range seenKey {
-							if k == id {
-								r.Report.Refuse(TableRefuseWireDamaged, "")
-								return false
-							}
+						if slices.Contains(seenKey, id) {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						seenKey = append(seenKey, id)
 						var key Difficulty
@@ -1452,7 +1441,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						r.Report.Refuse(TableRefuseCountOverBound, "PackConfig.reserves")
 						return false
 					}
-					for i := uint64(0); i < n; i++ {
+					for i := range n {
 						p := &base[i]
 						if !ShipEntryLoadMessageBody(r, &(*p)) {
 							return false

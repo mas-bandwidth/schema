@@ -115,17 +115,52 @@ func javaVariableFixtures(t *testing.T, schema string, fixtures []javaVariableFi
 		}
 		sources = append(sources, path)
 	}
+	// A root declared fixed is a FORM 3 file (docs/SPEC-TABLES.md §5): its
+	// committed wire is read and re-written whole by <Root>Fixed, and the form
+	// 1 reader refuses it. The form byte tells the rows apart.
+	formThree := map[string]bool{}
+	for _, row := range fixtures {
+		data, err := os.ReadFile(row.wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		formThree[row.name] = len(data) > 0 && data[0] == 3
+	}
+	seenFixed := map[string]bool{}
+	for _, row := range fixtures {
+		if !formThree[row.name] || seenFixed[row.root] {
+			continue
+		}
+		seenFixed[row.root] = true
+		path := filepath.Join(dir, "FixedDriver_"+row.root+".java")
+		if err := os.WriteFile(path, []byte(fixedRoundTripDriver(pkg, row.root)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, path)
+	}
 	seen := map[string]bool{}
 	for _, row := range fixtures {
-		if seen[row.root] {
+		if formThree[row.name] || seen[row.root] {
 			continue
 		}
 		seen[row.root] = true
 		name := "MapsDriver_" + row.root
 		path := filepath.Join(dir, name+".java")
 		source := strings.ReplaceAll(variableRoundTripDriver(pkg, row.root), "Driver", name)
-		source = strings.Replace(source, "if (report.malformed || report.refused)", "if (report.malformed || report.refused || report.unknown != 0 || report.kindMismatch != 0 || report.clamped != 0 || report.widened != 0 || report.duplicate != 0)", 1)
-		source = strings.Replace(source, `fail("load reported malformed/refused");`, `fail("load reported malformed="+report.malformed+" refused="+report.refused+" unknown="+report.unknown+" kindMismatch="+report.kindMismatch+" clamped="+report.clamped+" value="+new String(`+pkg+`.`+row.root+`Variable.toJson(v),StandardCharsets.UTF_8));`, 1)
+		// A clean read of the reference moves no counter: not damaged, not
+		// refused, nothing unknown and nothing widened. The shared driver may
+		// spell the damage flag either way while the leg is re-pinned.
+		strict := "if (report.damaged || report.refused || report.unknown != 0 || report.widened != 0)"
+		says := `fail("load reported damaged="+report.damaged+" refused="+report.refused+" reason="+report.reason+" unknown="+report.unknown+" widened="+report.widened+" value="+(v == null ? "null" : new String(` + pkg + `.` + row.root + `Variable.toJson(v),StandardCharsets.UTF_8)));`
+		for _, guard := range []string{"if (report.malformed || report.refused)", "if (report.damaged || report.refused)"} {
+			source = strings.Replace(source, guard, strict, 1)
+		}
+		for _, msg := range []string{`fail("load reported malformed/refused");`, `fail("load reported damaged/refused");`} {
+			source = strings.Replace(source, msg, says, 1)
+		}
+		if !strings.Contains(source, strict) || !strings.Contains(source, "load reported damaged=") {
+			t.Fatalf("the round-trip driver no longer carries the guard this test tightens")
+		}
 		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -138,13 +173,70 @@ func javaVariableFixtures(t *testing.T, schema string, fixtures []javaVariableFi
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	for _, row := range fixtures {
-		out, err := exec.Command(java, "-ea", "-cp", classes, "MapsDriver_"+row.root, row.wire, row.json).CombinedOutput()
+		class := "MapsDriver_" + row.root
+		if formThree[row.name] {
+			class = "FixedDriver_" + row.root
+		}
+		out, err := exec.Command(java, "-ea", "-cp", classes, class, row.wire, row.json).CombinedOutput()
 		if err != nil || !strings.Contains(string(out), "ok") {
 			t.Errorf("%s: %v\n%s", row.name, err, out)
 		} else {
 			t.Logf("%s: wire and JSON match the reference", row.name)
 		}
 	}
+}
+
+// fixedRoundTripDriver holds a fixed-declared root's committed FORM 3 file:
+// the form 1 reader refuses it whole, <Root>Fixed.load reads it with no
+// counter moved, <Root>Fixed.save writes it back byte for byte, and the
+// committed text reads clean and writes back byte for byte.
+func fixedRoundTripDriver(pkg, root string) string {
+	return strings.NewReplacer("PKG", pkg, "ROOT", root).Replace(`import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Arrays;
+
+public final class FixedDriver_ROOT {
+    private FixedDriver_ROOT() {}
+
+    static void fail(String what) {
+        System.out.println("FAILED: " + what);
+        System.exit(1);
+    }
+
+    public static void main(String[] args) throws Exception {
+        byte[] wire = Files.readAllBytes(Paths.get(args[0]));
+        byte[] golden = Files.readAllBytes(Paths.get(args[1]));
+
+        PKG.TableVariable.Report vr = new PKG.TableVariable.Report();
+        if (PKG.ROOTVariable.load(wire, vr) != null || !vr.refused || vr.damaged) {
+            fail("the form 1 reader kept a form 3 file: refused=" + vr.refused + " damaged=" + vr.damaged);
+        }
+
+        PKG.ROOTFixed.Value[] values = { new PKG.ROOTFixed.Value() };
+        PKG.TableFixed.Report fr = new PKG.TableFixed.Report();
+        int read = PKG.ROOTFixed.load(values, 1, wire, PKG.TableFixed.plan(1 << 14), new short[1 << 14], PKG.ROOTFixed.image(), fr);
+        if (read != 1 || fr.refused || fr.damaged || fr.unknown != 0 || fr.widened != 0) {
+            fail("fixed load: read=" + read + " refused=" + fr.refused + " damaged=" + fr.damaged + " reason=" + fr.reason + " unknown=" + fr.unknown + " widened=" + fr.widened);
+        }
+        byte[] saved = new byte[PKG.ROOTFixed.measure(1)];
+        int wrote = PKG.ROOTFixed.save(values, 1, saved);
+        if (wrote != saved.length || !Arrays.equals(saved, wire)) {
+            fail("fixed re-save differs at byte " + Arrays.mismatch(saved, wire) + " (wire " + wire.length + " saved " + wrote + ")");
+        }
+
+        PKG.TableVariable.Report tr = new PKG.TableVariable.Report();
+        PKG.ROOTVariable.Value v = PKG.ROOTVariable.fromJson(golden, tr);
+        if (v == null || tr.refused || tr.damaged || tr.unknown != 0 || tr.widened != 0) {
+            fail("text load: refused=" + tr.refused + " damaged=" + tr.damaged + " reason=" + tr.reason + " unknown=" + tr.unknown);
+        }
+        byte[] text = PKG.ROOTVariable.toJson(v);
+        if (!Arrays.equals(golden, text)) {
+            fail("text re-write differs at byte " + Arrays.mismatch(golden, text));
+        }
+        System.out.println("ok");
+    }
+}
+`)
 }
 
 func TestJavaVariableMapValues(t *testing.T) {

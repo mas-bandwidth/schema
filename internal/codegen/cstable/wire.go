@@ -1448,7 +1448,7 @@ public static partial class TableWire
         if (kind == 14)
         {
             ResetArm(value, f);
-            if (!r.Has(2)) { return true; } // an inert short arm still selects
+            if (!r.Has(2)) { return Damage(report); } // the header lies inside the arm's L
             byte elementKind = r.Byte();
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
@@ -1463,7 +1463,9 @@ public static partial class TableWire
                 decoded++;
             }
             if (f.Counted) { f.SetCount(value, decoded); }
-            return true; // damaged elements preserve the selected arm's prefix
+            // bytes left inside the arm's L after its payload are damage
+            if (!report.Damaged && !report.Refused && r.Offset != r.Buffer.Length) { return Damage(report); }
+            return true;
         }
         if (!ReadScalar(ref r, value, f, 0, kind, report)) { return false; }
         return r.Offset == r.Buffer.Length || Damage(report);
@@ -1521,7 +1523,7 @@ public static partial class TableWire
     static bool ReadField(ref Reader r, object value, TableFieldInfo f, byte kind, TableReport report, out bool placed)
     {
         placed = true;
-        if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report, r.Buffer.Slice(r.Offset - map.Buffer.Length)); }
+        if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report); }
         if (kind == 12 || kind == 33)
         {
             if (!r.Slice(out Reader text)) { return Damage(report); }
@@ -1532,14 +1534,12 @@ public static partial class TableWire
         if (kind == 14 || kind == 16)
         {
             if (!r.Slice(out Reader array)) { return Damage(report); }
-            if (array.Buffer.Length < 2) { return true; } // inert, including under a repeat
+            // THE HEADER LIES INSIDE ITS OWN L (docs/SPEC-TABLES.md §3,
+            // tla/Framing.tla): an L too short for it, or a count that crosses
+            // it, is damage, as the Go oracle's arrayBody and keyed say.
+            if (array.Buffer.Length < 2) { return Damage(report); }
             byte elementKind = array.Byte();
-            // Match the reference's header cursor: the count is read at the
-            // enclosing cursor, then all elements are bounded by the array's L.
-            // A count spilling past L can clamp, but cannot invent an element.
-            Reader header = new Reader(r.Buffer.Slice(r.Offset - array.Buffer.Length + 1), r.Vocabulary);
-            if (!header.Var(out ulong count)) { Damage(report); return true; }
-            array.Offset = Math.Min(array.Buffer.Length, 1 + header.Offset);
+            if (!array.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { placed = false; return true; }
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
             if (kind == 16)
@@ -1552,6 +1552,8 @@ public static partial class TableWire
                     if (slot == 0) { report.Unknown++; continue; }
                     ReadElement(ref element, value, f, slot - 1, elementKind, report, false);
                     if (report.Refused) { return false; }
+                    // bytes left inside a keyed slot after its element are damage
+                    if (element.Offset != element.Buffer.Length) { return Damage(report); }
                 }
             }
             else
@@ -1573,6 +1575,8 @@ public static partial class TableWire
                 }
                 if (f.Counted) { ResetCountedTail(value, f, previous, decoded); }
             }
+            // bytes left inside the array's L after its elements are damage
+            if (!report.Damaged && !report.Refused && array.Offset != array.Buffer.Length) { return Damage(report); }
             return true;
         }
         return ReadElement(ref r, value, f, 0, kind, report, true);

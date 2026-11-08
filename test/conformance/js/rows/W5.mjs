@@ -100,9 +100,9 @@ const back = [new PaddedRow()];
 const report = new TableFixedReport();
 TableFixedResetReport(report);
 const n = PaddedRowFixedLoad(back, 1, file, file.length, plan, report);
-assert(n === 1 && !report.malformed && report.refused === 0,
+assert(n === 1 && !report.damaged && report.refused === 0,
   "the record still reads: a caller contract violation is not a refusal");
-assert(back[0].labelLength === 15 && report.clamped === 1,
+assert(back[0].labelLength === 15 && report.oor === 1,
   "the read side checks the same number in every build: it clamps 20 to the declared bound 15 and counts exactly one clamp");
 let live = true;
 for (let i = 0; i < 15; i++) { if (back[0].label[i] !== 0x41 + i) { live = false; } }

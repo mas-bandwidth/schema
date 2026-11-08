@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — the variable form's tolerant load and canonical save for table FixedTable
+// package bench — the variable form's strict load and canonical save for table FixedTable
 // (docs/SPEC-TABLES.md §3, §4)
 
 package bench;
@@ -231,7 +231,7 @@ public final class FixedTableVariable {
                 return false;
             }
             if (!r.has(1)) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             int kind = r.get8();
@@ -242,24 +242,24 @@ public final class FixedTableVariable {
                         v.value = new BenchMixedVariable.Value();
                         BenchMixedVariable.readFields(br, v.value, nt, report);
                         if (br.off != br.limit) {
-                            report.malformed = true;
+                            report.damaged = true;
                             v.value = new BenchMixedVariable.Value();
                         } // §4: reset a nested body that did not fill its length.
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (r.rootBody) {
                     r.skip(kind);
                     report.unknown++;
                 } else {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             } else {
                 r.skip(kind);
@@ -382,13 +382,13 @@ public final class FixedTableVariable {
             return null;
         }
         // DAMAGE DISCARDS THE WHOLE LOAD (§4)
-        if (report.malformed) {
+        if (report.damaged) {
             return null;
         }
         return v;
     }
 
-    // loadMeasure sizes the region a tolerant load would need (docs/SPEC-TABLES.md §6.5).
+    // loadMeasure sizes the region a strict load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 1376;
 
@@ -542,13 +542,13 @@ public final class FixedTableVariable {
         Value v = new Value();
         jsonReadFields(in, v);
         if (in.bad) {
-            report.malformed = true;
+            report.damaged = true;
         }
         if (report.refused) {
             return null;
         }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
-        if (report.malformed) {
+        if (report.damaged) {
             return null;
         }
         return v;
@@ -614,7 +614,7 @@ public final class FixedTableVariable {
         }
         if (in.peek() != '{') {
             in.skipValue();
-            in.rep.kindMismatch++;
+            in.rep.refuse("kind_mismatch");
             return null;
         }
         int start = in.p;
@@ -653,7 +653,7 @@ public final class FixedTableVariable {
                 return null;
             }
             if (entry.typeId != targetTypeId) {
-                in.rep.kindMismatch++;
+                in.rep.refuse("kind_mismatch");
                 return null;
             }
             return (Value) entry.value;
@@ -717,12 +717,12 @@ public final class FixedTableVariable {
             if ("value".equals(key)) {
                 boolean repeated = seenField[0];
                 if (repeated) {
-                    in.rep.duplicate++;
+                    in.rep.refuse("text_damaged");
                 }
                 seenField[0] = true;
                 if (in.peek() != 'n' && !(in.peek() == '{')) {
                     in.skipValue();
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                 } else {
                     if (repeated && in.peek() != 'n') {
                         v.value = new BenchMixedVariable.Value();
@@ -731,7 +731,7 @@ public final class FixedTableVariable {
                         BenchMixedVariable.jsonReadFields(in, v.value);
                     } else {
                         in.skipValue();
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                     }
                 }
             } else {

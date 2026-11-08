@@ -175,7 +175,7 @@ for (let path = 0; path < 2; path++) {
     const r = new TableFixedReport();
     const n = RootFixedLoad(back, 1, file, file.length, RootFixedNewPlan(4096, 4096), r);
     const which = path === 0 ? "identity" : "compiled";
-    if (n !== 1 || r.refused !== 0 || r.malformed) { fail(which + " poison " + poison + ": n=" + n + " refused=" + r.refused); continue; }
+    if (n !== 1 || r.refused !== 0 || r.damaged) { fail(which + " poison " + poison + ": n=" + n + " refused=" + r.refused); continue; }
     const x = back[0].o.m.i.a.x;
     if (poison === 0 && x !== 42) { fail(which + ": the record as written did not land its deepest leaf"); }
     if (poison > 0 && x === 42) { fail(which + ": the deepest leaf landed while tag " + (poison - 1) + " names another arm"); }

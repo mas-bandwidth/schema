@@ -51,7 +51,7 @@ func TestWireCountRefusalDartNegativeControl(t *testing.T) {
 			const from = "throw const _TableWireCountRefusal();"
 			if strings.Contains(text, from) {
 				changed += strings.Count(text, from)
-				files[name] = []byte(strings.ReplaceAll(text, from, "{ r.report.malformed = true; r.pos = end; break; }"))
+				files[name] = []byte(strings.ReplaceAll(text, from, "{ r.report.refuse('wire_damaged'); r.pos = end; break; }"))
 			}
 		}
 		if changed == 0 {
@@ -195,9 +195,12 @@ import 'dart:typed_data';
 import 'CountprobeWire.dart' as w;
 bool failed=false;
 void check(bool ok,String label) { if(!ok){stderr.writeln('FAIL: $label');failed=true;} }
-w.TableWireReport seeded(bool damage) => w.TableWireReport()
- ..unknown=3 ..kindMismatch=4 ..widened=5 ..clamped=6 ..duplicate=7
- ..retained=8 ..retainLost=9 ..malformed=damage;
+w.TableWireReport seeded(bool damage) {
+ final r = w.TableWireReport();
+ r.unknown = 3; r.widened = 5; r.retained = 8; r.retainLost = 9;
+ if (damage) r.refuse('wire_damaged');
+ return r;
+}
 bool defaults(w.Root v) => v.marker==7 && v.items.isEmpty && v.entries.isEmpty &&
  v.children.isEmpty && v.child.items.isEmpty && v.pick.armTag==0 && v.ptr==null && v.bounded.isEmpty;
 void refused(String label,Uint8List wire,int unknown) {
@@ -207,18 +210,18 @@ void refused(String label,Uint8List wire,int unknown) {
    final store=w.TableRetain(4096,List<int>.filled(512,0));
    final v=retain?w.rootWireLoadRetain(wire,store,r):w.rootWireLoad(wire,r);
    check(r.refused && r.reason=='count_over_extent_cap','$label named refusal retain=$retain');
-   check(r.malformed==priorDamage,'$label fabricated damage retain=$retain');
+   check(r.reason!='wire_damaged','$label fabricated damage does not survive the read retain=$retain');
    check(defaults(v),'$label partial destination retain=$retain');
-   check(r.unknown==3+unknown && r.kindMismatch==4 && r.widened==5 &&
-     r.clamped==6 && r.duplicate==7 && r.retainLost==9 &&
+   check(r.unknown==3+unknown && r.widened==5 &&
+     r.retainLost==9 &&
      r.retained==8+(retain?unknown:0),'$label event history retain=$retain');
    check(store.used==0 && store.idUsed==0 && store.records.isEmpty,'$label retained state');
    if(!priorDamage) {
     final good=retain?w.rootWireLoadRetain(VALID,store,r):w.rootWireLoad(VALID,r);
-    check(good.marker==99 && !r.malformed,'$label reused report poisoned valid load');
+    check(good.marker==99 && !r.refused,'$label reused report poisoned valid load');
     final other=Uint8List.fromList([2]);
     if(retain){w.rootWireLoadRetain(other,store,r);}else{w.rootWireLoad(other,r);}
-    check(r.refused && r.reason=='unknown_form' && !r.malformed,
+    check(r.refused && r.reason=='unknown_form',
       '$label old count reason replaced another refusal');
    }
   }
@@ -229,7 +232,7 @@ void damaged(String label,Uint8List wire) {
   final r=seeded(false);
   final store=w.TableRetain(4096,List<int>.filled(512,0));
   final v=retain?w.rootWireLoadRetain(wire,store,r):w.rootWireLoad(wire,r);
-  check(r.malformed && !r.refused && r.reason=='wire_damaged','$label remains damage');
+  check(r.refused && r.reason=='wire_damaged','$label remains damage');
   check(defaults(v) && store.used==0 && store.records.isEmpty,'$label discard');
  }
 }
@@ -238,9 +241,9 @@ CASES
  damaged('body-short',SHORT);
  final boundedReport=w.TableWireReport();
  final bounded=w.rootWireLoad(BOUNDED,boundedReport);
- check(!boundedReport.malformed && !boundedReport.refused && boundedReport.clamped==1 &&
-   bounded.bounded.length==2 && bounded.bounded[0]==23 && bounded.bounded[1]==24,
-   'bounded array keeps its independent clamp rule');
+ check(boundedReport.refused && boundedReport.reason=='count_over_bound' &&
+   bounded.bounded.isEmpty,
+   'bounded array past its bound refuses the whole load');
  if(failed)exit(1);
  stdout.writeln('count refusal/default/history/retention/body-short/bounded controls pass');
 }

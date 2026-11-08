@@ -91,11 +91,11 @@ func TestLuauMessageFormIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tablewire.EncodeMessages(Ledger): %v", err)
 	}
-	if !bytes.Equal(plainWire, ledgerWire) {
-		t.Fatalf("the keyless and declaring batches differ before the trailer: %x vs %x", plainWire, ledgerWire)
+	wantPlainWithCrc := binary.LittleEndian.AppendUint32(append([]byte(nil), plainWire...), crc32.Checksum(plainWire, crc32.MakeTable(crc32.Castagnoli)))
+	if !bytes.Equal(wantPlainWithCrc, ledgerWire) {
+		t.Fatalf("the declaring batch is not the keyless batch plus trailer: %x vs %x", wantPlainWithCrc, ledgerWire)
 	}
 	wantLedger := append([]byte(nil), ledgerWire...)
-	wantLedger = binary.LittleEndian.AppendUint32(wantLedger, crc32.Checksum(ledgerWire, crc32.MakeTable(crc32.Castagnoli)))
 
 	main := `local M = require("./schema_message")
 local T = require("./ProbeTable")

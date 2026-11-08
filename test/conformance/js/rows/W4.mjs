@@ -96,10 +96,10 @@ function readRecord(bytes) {
 }
 
 const clean = readRecord(file);
-const countersOf = (r) => [r.clamped, r.unknown, r.widened, r.duplicate, r.kindMismatch];
-check(clean.n === 1 && !clean.r.malformed && clean.r.refused === 0 &&
+const countersOf = (r) => [r.oor, r.unknown, r.widened, r.repeated, r.mismatch];
+check(clean.n === 1 && !clean.r.damaged && clean.r.refused === 0 &&
   JSON.stringify(countersOf(clean.r)) === JSON.stringify([0, 0, 0, 0, 0]),
-  `baseline: the zeroed-slack record reads clean (n=${clean.n}, clamped=${clean.r.clamped})`);
+  `baseline: the zeroed-slack record reads clean (n=${clean.n}, clamped=${clean.r.oor})`);
 
 // ---- read 2: the same record with every slack range STAINED ----
 // 0xC3 0x28 0xFF is not valid UTF-8: a content rule run over the full
@@ -127,10 +127,10 @@ const dirty = readRecord(stained);
 // THE LAW, clause by clause.
 check(dirty.n === 1,
   `reads correctly: a peer that leaves garbage in the slack still loads (n=${dirty.n}, never a refusal)`);
-check(!dirty.r.malformed && dirty.r.refused === 0,
-  `not a refusal: non-zero slack is not malformed and refuses nothing (malformed=${dirty.r.malformed}, refused=${dirty.r.refused})`);
-check(dirty.r.clamped === 0,
-  `moves no counter: clamped stays 0, not one per dead slot past the live count (got ${dirty.r.clamped})`);
+check(!dirty.r.damaged && dirty.r.refused === 0,
+  `not a refusal: non-zero slack is not malformed and refuses nothing (malformed=${dirty.r.damaged}, refused=${dirty.r.refused})`);
+check(dirty.r.oor === 0,
+  `moves no counter: clamped stays 0, not one per dead slot past the live count (got ${dirty.r.oor})`);
 check(JSON.stringify(countersOf(dirty.r)) === JSON.stringify(countersOf(clean.r)),
   `moves no counter: every counter of the stained read equals the clean read (${JSON.stringify(countersOf(dirty.r))})`);
 

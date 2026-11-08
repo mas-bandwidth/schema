@@ -182,7 +182,7 @@ if (b == null || T.PongMeasure(v) != b.len()) throw "PongSave/PongMeasure mismat
 hexline(b);
 local r = {};
 local v2 = T.PongLoad(b, r);
-if (v2 == null || r.malformed || r.refused || v2.X != 42 || v2.Rate != 1.5 || v2.Items.len() != 2 || v2.Items[0] != 7 || v2.Items[1] != 9) {
+if (v2 == null || r.bodyDamaged || r.refused || v2.X != 42 || v2.Rate != 1.5 || v2.Items.len() != 2 || v2.Items[0] != 7 || v2.Items[1] != 9) {
   throw "PongLoad round-trip mismatch";
 }
 hexline(T.PongSave(v2));
@@ -195,7 +195,7 @@ for (local i = 0; i < j.len(); i++) jb[i] = j[i] & 0xff;
 hexline(jb);
 local jr = {};
 local v3 = T.PongFromJson(j, jr);
-if (v3 == null || jr.malformed || jr.refused) throw "PongFromJson failed";
+if (v3 == null || jr.bodyDamaged || jr.refused) throw "PongFromJson failed";
 hexline(T.PongSave(v3));
 `)
 			} else {

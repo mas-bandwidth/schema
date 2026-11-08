@@ -82,17 +82,25 @@ func TestMooFixedVersioningLineageMerge(t *testing.T) {
 	}
 }
 
-// TestMooFixedVersioningUnknownCensusMany (§5.4): the compile census lands
-// once per endpoint and never per record: three records, unknown exactly 1.
+// TestMooFixedVersioningUnknownCensusMany (§5.4, §5.9 #30): there is no
+// compile census to land. VNEW_unknown_census against VOLD_unknown_census is a
+// DELIBERATELY UNLAWFUL lineage entry (Item.drop removed), so the newer reader
+// lays no plan for it and its three-record file refuses layout_malformed,
+// nothing landed; the older reader, whose own entry it is, reads the same
+// three records whole.
 func TestMooFixedVersioningUnknownCensusMany(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	older, newer := readTestSchema(t, "VOLD_unknown_census"), readTestSchema(t, "VNEW_unknown_census")
+	file := corpusFile(t, corpus, "many_unknown_census.bin")
 	g := fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
-	got := runFixedLoad(t, g, "VNEW_unknown_censusTable", rootOf(t, older), corpusFile(t, corpus, "many_unknown_census.bin"))
-	if !strings.HasPrefix(got.head, "ok 3 u1 k0 c0 w0") {
-		t.Fatalf("three records, one endpoint: %s", got.head)
+	if got := runFixedLoad(t, g, "VNEW_unknown_censusTable", rootOf(t, older), file); got.head != "refused layout_malformed nil false -" {
+		t.Fatalf("an unlawful entry over three records: %s", got.head)
+	}
+	got := runFixedLoad(t, fixedUnit(t, older, nil), "VOLD_unknown_censusTable", rootOf(t, older), file)
+	if !strings.HasPrefix(got.head, "ok 3 u0 k0 c0 w0") {
+		t.Fatalf("the control, the writer's own reader: %s", got.head)
 	}
 	for i, want := range [3][4]int{{10, 11, 12, 13}, {20, 21, 22, 23}, {30, 31, 32, 33}} {
 		if got.dump[fmt.Sprintf("r%d.lead", i)] != "1" || got.dump[fmt.Sprintf("r%d.trail", i)] != "2" {
@@ -106,9 +114,9 @@ func TestMooFixedVersioningUnknownCensusMany(t *testing.T) {
 	}
 }
 
-// TestMooFixedForgedOrdinalBothPlans (§5.8 row 12): the same forged ordinal
-// read by the identity plan and a compiled one lands the zero ordinal and
-// counts clamped exactly once.
+// TestMooFixedForgedOrdinalBothPlans (§4.6, §5.8 row 12; fix 14): the same
+// forged ordinal read by the identity plan and a compiled one REFUSES THE
+// WHOLE LOAD out_of_range on both, nothing landed; the unforged file lands.
 func TestMooFixedForgedOrdinalBothPlans(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -129,20 +137,21 @@ func TestMooFixedForgedOrdinalBothPlans(t *testing.T) {
 		if name == "identity" {
 			mod = "VOLD_enum_appendTable"
 		}
-		got := runFixedLoad(t, g, mod, "Lineage", forged)
-		if !strings.HasPrefix(got.head, "ok 1 u0 k0 c1 w0") || got.dump["r0.tier"] != "0" || got.dump["r0.seq"] != "9" {
+		if got := runFixedLoad(t, g, mod, "Lineage", forged); got.head != "refused out_of_range Lineage.tier false -" {
 			t.Errorf("%s plan: %s %v", name, got.head, got.dump)
 		}
-		if clean := runFixedLoad(t, g, mod, "Lineage", data); !strings.HasPrefix(clean.head, "ok 1 u0 k0 c0 w0") {
+		if clean := runFixedLoad(t, g, mod, "Lineage", data); !strings.HasPrefix(clean.head, "ok 1 u0 k0 c0 w0") || clean.dump["r0.seq"] != "9" {
 			t.Errorf("%s plan, the control, the unforged file: %s", name, clean.head)
 		}
 	}
 }
 
-// TestMooFixedVersioningCfloatRangeWidenBounds: the bounds pass is the
-// READER's. The hostile file (aim forged to 1.5, past the old writer's max
-// and inside the new reader's) lands whole with clamped 0; the past file
-// (aim 5.0) clamps to the reader's own max 2.0, counted exactly once.
+// TestMooFixedVersioningCfloatRangeWidenBounds: a compressed float's range is
+// the READER's on this form (the plan carries no writer range for a float,
+// FIXED-FORM-ALGORITHM.md §5.8 row 4), and the bounds pass refuses, never
+// clamps. The hostile file (aim forged to 1.5, past the old writer's max and
+// inside the new reader's) lands whole; the past file (aim 5.0, outside the
+// reader's range too) refuses the whole load out_of_range.
 func TestMooFixedVersioningCfloatRangeWidenBounds(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -150,14 +159,12 @@ func TestMooFixedVersioningCfloatRangeWidenBounds(t *testing.T) {
 	manifest := readFixedManifest(t, corpus)
 	older, newer := readTestSchema(t, "VOLD_cfloat_range_widen"), readTestSchema(t, "VNEW_cfloat_range_widen")
 	g := fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
-	for _, c := range []struct{ file, aim, head string }{
-		{"hostile_cfloat_range_widen.bin", "0x3FC00000", "ok 1 u0 k0 c0 w0"},
-		{"past_cfloat_range_widen.bin", "0x40000000", "ok 1 u0 k0 c1 w0"},
-	} {
-		got := runFixedLoad(t, g, "VNEW_cfloat_range_widenTable", "CfloatRangeWiden", corpusFile(t, corpus, c.file))
-		if got.head != c.head || got.dump["r0.aim"] != c.aim || got.dump["r0.lead"] != "1" || got.dump["r0.trail"] != "2" {
-			t.Errorf("%s: %s %v, want %s aim %s", c.file, got.head, got.dump, c.head, c.aim)
-		}
+	got := runFixedLoad(t, g, "VNEW_cfloat_range_widenTable", "CfloatRangeWiden", corpusFile(t, corpus, "hostile_cfloat_range_widen.bin"))
+	if got.head != "ok 1 u0 k0 c0 w0" || got.dump["r0.aim"] != "0x3FC00000" || got.dump["r0.lead"] != "1" || got.dump["r0.trail"] != "2" {
+		t.Errorf("hostile_cfloat_range_widen.bin: %s %v, want ok aim 0x3FC00000", got.head, got.dump)
+	}
+	if got := runFixedLoad(t, g, "VNEW_cfloat_range_widenTable", "CfloatRangeWiden", corpusFile(t, corpus, "past_cfloat_range_widen.bin")); got.head != "refused out_of_range CfloatRangeWiden.aim false -" {
+		t.Errorf("past_cfloat_range_widen.bin: %s, want the whole load refused out_of_range", got.head)
 	}
 	// the hostile file's forged value is the manifest's own
 	if want := manifest["hostile_cfloat_range_widen.bin"]; want.records != 1 {
@@ -195,18 +202,23 @@ print(table.concat(parts))
 	return b
 }
 
-// TestMooFixedHostileBoolBytes (§4.5): a bool or present byte that is not 0 or
-// 1 normalises to a true, silently — no counter moves — and the neighbours
-// stand, on the identity plan and on a compiled one.
+// TestMooFixedHostileBoolBytes (§4.5, fix 2): a bool or present byte that is
+// not 0 or 1 REFUSES THE WHOLE LOAD wire_damaged, nothing landed and nothing
+// counted, on the identity plan and on a compiled one; the same record with
+// those bytes 0 and 1 lands.
 func TestMooFixedHostileBoolBytes(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	older, newer := readTestSchema(t, "VOLD_hostile_bool"), readTestSchema(t, "VNEW_hostile_bool")
 	file := hostileBoolFile(t, older)
+	clean := cleanBoolFile(file)
 	check := func(name string, g *generatedUnit, mod string) {
-		got := runFixedLoad(t, g, mod, "Hbb", file)
+		if got := runFixedLoad(t, g, mod, "Hbb", file); got.head != "refused wire_damaged Hbb.flag true -" {
+			t.Errorf("%s: a hostile bool byte: %s", name, got.head)
+		}
+		got := runFixedLoad(t, g, mod, "Hbb", clean)
 		if !strings.HasPrefix(got.head, "ok 1 u0 k0 c0 w0") {
-			t.Errorf("%s: a hostile bool byte is not an event: %s", name, got.head)
+			t.Errorf("%s: the control, bytes of 0 and 1: %s", name, got.head)
 			return
 		}
 		for k, want := range map[string]string{
@@ -222,24 +234,91 @@ func TestMooFixedHostileBoolBytes(t *testing.T) {
 	check("compiled", fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0)), "VNEW_hostile_boolTable")
 }
 
-// TestMooFixedHostileBoolNegativeControl breaks the bool read to `== 1` and
-// requires the hostile file's flag to land false: the nonzero test is what
-// the gate holds.
+// cleanBoolFile is hostileBoolFile with every forged byte put back to 1
+// (flag, link's present byte, flags[0], flags[2], flags[3]).
+func cleanBoolFile(file []byte) []byte {
+	b := append([]byte(nil), file...)
+	body := b[len(b)-22:]
+	body[0], body[1] = 1, 1
+	body[10], body[12], body[13] = 1, 1, 1
+	return b
+}
+
+// TestMooFixedHostileBoolNegativeControl drops the bool and present checks
+// and requires the hostile file to land: the 0-or-1 test is what the gate
+// holds.
 func TestMooFixedHostileBoolNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	older := readTestSchema(t, "VOLD_hostile_bool")
 	file := hostileBoolFile(t, older)
 	g := fixedUnit(t, older, nil)
-	const anchor = "\t\treturn buffer.readu8(rec, off) ~= 0\n"
 	src := string(g.files["table_fixed.moo"])
-	if strings.Count(src, anchor) != 1 {
-		t.Fatal("the bool-read anchor is not in table_fixed.moo exactly once")
+	for _, anchor := range []string{
+		"\t\tif b > 1 then\n\t\t\trefuse(\"wire_damaged\", true, fieldName(named))\n",
+		"\t\t\t\tif b > 1 then\n\t\t\t\t\trefuse(\"wire_damaged\", true, fieldName(f))\n",
+	} {
+		if strings.Count(src, anchor) != 1 {
+			t.Fatalf("the anchor %q is not in table_fixed.moo exactly once", anchor)
+		}
+		src = strings.Replace(src, anchor, strings.Replace(anchor, "if b > 1 then", "if false then", 1), 1)
 	}
-	if err := os.WriteFile(filepath.Join(g.dir, "table_fixed.moo"), []byte(strings.Replace(src, anchor, "\t\treturn buffer.readu8(rec, off) == 1\n", 1)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(g.dir, "table_fixed.moo"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := runFixedLoad(t, g, "VOLD_hostile_boolTable", "Hbb", file); got.dump["r0.flag"] != "0" {
-		t.Fatalf("the broken bool read still lands the hostile byte true: %v", got.dump)
+	if got := runFixedLoad(t, g, "VOLD_hostile_boolTable", "Hbb", file); !strings.HasPrefix(got.head, "ok 1 ") {
+		t.Fatalf("without the 0-or-1 checks the hostile file still refuses: %s", got.head)
+	}
+}
+
+// TestMooFixedCfgPresentByteMutant is the wire fuzzer's tblv1.Cfg mutant
+// (testdata/fixed_cfg_present_mutant.bin): the conformance instance v1_cfg
+// with two bytes of its record forged, one of them a present byte of 0x8D.
+// The engine refuses it wire_damaged (internal/tablewire/fixed.go, a present
+// byte other than 0 or 1), so the strict moo read refuses it whole; the
+// untouched instance it was cut from lands.
+func TestMooFixedCfgPresentByteMutant(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
+	t.Parallel()
+	mutant, err := os.ReadFile(filepath.Join("testdata", "fixed_cfg_present_mutant.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clean, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "wire", "v1_cfg.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := fixedUnit(t, readTestSchema(t, "V1"), nil)
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", mutant); got.head != "refused wire_damaged Cfg.tier true -" {
+		t.Errorf("the forged present byte: %s", got.head)
+	}
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", clean); !strings.HasPrefix(got.head, "ok 1 ") {
+		t.Errorf("the control, v1_cfg as written: %s", got.head)
+	}
+}
+
+// TestMooFixedCfgPresentByteMutantNegativeControl takes the present byte's
+// 0-or-1 check out of the emitted runtime and requires the same mutant to
+// LAND: the vector bites on exactly that check, the one the moo fixed read
+// skipped before the strict cut (a present byte was read as `~= 0`).
+func TestMooFixedCfgPresentByteMutantNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
+	t.Parallel()
+	mutant, err := os.ReadFile(filepath.Join("testdata", "fixed_cfg_present_mutant.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := fixedUnit(t, readTestSchema(t, "V1"), nil)
+	src := string(g.files["table_fixed.moo"])
+	const anchor = "\t\t\t\tif b > 1 then\n\t\t\t\t\trefuse(\"wire_damaged\", true, fieldName(f))\n"
+	if strings.Count(src, anchor) != 1 {
+		t.Fatal("the present byte's anchor is not in table_fixed.moo exactly once")
+	}
+	src = strings.Replace(src, anchor, strings.Replace(anchor, "if b > 1 then", "if false then", 1), 1)
+	if err := os.WriteFile(filepath.Join(g.dir, "table_fixed.moo"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", mutant); !strings.HasPrefix(got.head, "ok 1 ") {
+		t.Fatalf("without the present byte's 0-or-1 check the mutant still refuses: %s", got.head)
 	}
 }

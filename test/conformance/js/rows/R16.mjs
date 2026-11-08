@@ -63,9 +63,9 @@ function test_copy() {
   const dv = new DataView(dst.buffer);
   TableFixedRun(mk(O.Copy, 0, 0, 3), 1, src, dv, 0, dst, dv, null, report);
   ok(report.unknown === 0, "copy: unknown === 0");
-  ok(report.kindMismatch === 0, "copy: kindMismatch === 0");
+  ok(report.mismatch === 0, "copy: kindMismatch === 0");
   ok(report.widened === 0, "copy: widened === 0");
-  ok(report.clamped === 0, "copy: clamped === 0");
+  ok(report.oor === 0, "copy: clamped === 0");
 }
 
 // ---- TEST 2: widened once per entry per record ----
@@ -77,7 +77,7 @@ function test_widen() {
   TableFixedRun(mk(O.Widen, 0, 0, 1, 0, 0, 4 | (1 << 8), 1),
     1, src, dv, 0, dst, dv, null, report);
   ok(report.widened === 1, "widen: widened === 1 (once per entry)");
-  ok(report.clamped === 0, "widen: clamped === 0");
+  ok(report.oor === 0, "widen: clamped === 0");
   ok(dv.getInt32(0, true) === -1, "widen: value sign-extended to -1");
 }
 
@@ -90,7 +90,7 @@ function test_count_clamp_negative() {
   const dv = new DataView(dst.buffer);
   TableFixedRun(mk(O.Count, 0, 0, 4, 0, 0, 0, 1),
     1, src, dv, 0, dst, dv, null, report);
-  ok(report.clamped >= 1, "count negative: clamped >= 1 (u32 > bound 4)");
+  ok(report.oor >= 1, "count negative: clamped >= 1 (u32 > bound 4)");
   ok(dv.getUint32(0, true) <= 4, "count negative: value clamped to ≤ 4");
   ok(report.widened === 0, "count negative: widened === 0");
 }
@@ -103,7 +103,7 @@ function test_count_clamp_above() {
   const dv = new DataView(dst.buffer);
   TableFixedRun(mk(O.Count, 0, 0, 2, 0, 0, 0, 1),
     1, src, dv, 0, dst, dv, null, report);
-  ok(report.clamped === 1, "count above: clamped === 1 (100 > 2)");
+  ok(report.oor === 1, "count above: clamped === 1 (100 > 2)");
   ok(dv.getUint32(0, true) === 2, "count above: clamped to 2");
 }
 
@@ -117,7 +117,7 @@ function test_text_clamp() {
   // Text: UTF8, cap=size=3, count=overflow → clamped to 3
   TableFixedRun(mk(O.Text, 0, 4, 3, 7, 0, 0, 1),
     1, src, dv, 0, dst, dv, null, report);
-  ok(report.clamped === 1, "text clamp: clamped === 1");
+  ok(report.oor === 1, "text clamp: clamped === 1");
 }
 
 // ---- TEST 6: forged ordinal clamped on compiled plan ----
@@ -130,7 +130,7 @@ function test_forged_ordinal_compiled() {
   remap[0] = 2; // writer extent = 2 (valid ordinals: 0,1,2)
   TableFixedRun(mk(O.Ordinal, 0, 0, 4, 0, 0, 0, 4),
     1, src, dv, 0, dst, dv, remap, report);
-  ok(report.clamped === 1, "forged ordinal: clamped === 1 (5 > 2)");
+  ok(report.oor === 1, "forged ordinal: clamped === 1 (5 > 2)");
   ok(dv.getUint32(0, true) === 0, "forged ordinal: remapped to None (0)");
   ok(report.widened === 0, "forged ordinal: widened === 0");
 }
@@ -158,9 +158,9 @@ function test_forged_ordinal_const_path() {
   TableFixedRun(mk(O.Const, 0, 0, 4, 0, 0, 2, 1),
     1, src, revA, 0, dstA, revA, remapC, reportConst);
 
-  ok(reportCompiled.clamped >= 1, "forged ordinal (compiled): clamped >= 1");
-  ok(reportConst.clamped >= 1, "forged ordinal (const): clamped >= 1");
-  ok(reportCompiled.clamped === reportConst.clamped,
+  ok(reportCompiled.oor >= 1, "forged ordinal (compiled): clamped >= 1");
+  ok(reportConst.oor >= 1, "forged ordinal (const): clamped >= 1");
+  ok(reportCompiled.oor === reportConst.oor,
      "forged ordinal: CLAMPED EQUAL ON BOTH PLANS");
 }
 
@@ -174,7 +174,7 @@ function test_valid_ordinal() {
   remap[0] = 2; // valid range: 0,1,2
   TableFixedRun(mk(O.Ordinal, 0, 0, 4, 0, 0, 0, 4),
     1, src, dv, 0, dst, dv, remap, report);
-  ok(report.clamped === 0, "valid ordinal: clamped === 0 (1 <= 2)");
+  ok(report.oor === 0, "valid ordinal: clamped === 0 (1 <= 2)");
   ok(report.widened === 0, "valid ordinal: widened === 0");
 }
 
@@ -188,7 +188,7 @@ function test_widenf() {
   TableFixedRun(mk(O.WidenF, 0, 0, 4, 0, 0, 0, 1),
     1, src, dv, 0, dst, dv, null, report);
   ok(report.widened === 1, "widenf: widened === 1");
-  ok(report.clamped === 0, "widenf: clamped === 0");
+  ok(report.oor === 0, "widenf: clamped === 0");
 }
 
 // ---- TEST 10: in-range ordinal through const does not clamp ----
@@ -202,7 +202,7 @@ function test_const_in_range() {
   const dv = new DataView(dst.buffer);
   TableFixedRun(mk(O.Const, 0, 0, 4, 0, 0, 2, 1),
     1, src, dv, 0, dst, dv, null, report);
-  ok(report.clamped === 0, "const in range: clamped === 0 (raw=1 ≤ 2)");
+  ok(report.oor === 0, "const in range: clamped === 0 (raw=1 ≤ 2)");
 }
 
 // ---- Main ----

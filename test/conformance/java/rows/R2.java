@@ -75,9 +75,9 @@ public final class R2 {
         TableFixed.Report rpt = new TableFixed.Report();
         int n = GunnerConfigFixed.load(out, 1, file, TableFixed.plan(64),
                 new short[64], GunnerConfigFixed.image(), rpt);
-        check(n == 1 && !rpt.refused && !rpt.malformed,
+        check(n == 1 && !rpt.refused && !rpt.damaged,
                 "load returned " + n + " records, refused=" + rpt.refused
-                        + " malformed=" + rpt.malformed);
+                        + " malformed=" + rpt.damaged);
         check(Float.floatToRawIntBits(out[0].reaction) == Float.floatToRawIntBits(v.reaction),
                 "round-trip reaction: " + out[0].reaction + " == " + v.reaction);
         check(out[0].tracking == v.tracking,
@@ -95,7 +95,7 @@ public final class R2 {
         TableFixed.Report rpt2 = new TableFixed.Report();
         int n2 = GunnerConfigFixed.load(out2, 2, file2, TableFixed.plan(64),
                 new short[64], GunnerConfigFixed.image(), rpt2);
-        check(n2 == 2 && !rpt2.refused && !rpt2.malformed,
+        check(n2 == 2 && !rpt2.refused && !rpt2.damaged,
                 "two-record load: " + n2 + " records");
         check(Float.floatToRawIntBits(out2[0].reaction) == Float.floatToRawIntBits(v.reaction)
                 && Float.floatToRawIntBits(out2[1].reaction) == Float.floatToRawIntBits(v2.reaction),

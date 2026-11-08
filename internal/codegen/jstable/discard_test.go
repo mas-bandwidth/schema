@@ -178,24 +178,24 @@ for (const root of ["Root", "Graph"]) {
   const base = root === "Root" ? "fixed" : "graph";
   const good = new m.TableVariableReport();
   const gv = m[root + "Load"](wire(base + ".bin"), good);
-  if (gv === null || good.malformed || gv.a !== 5 || gv.b !== 9 || gv.inner.n !== 3) {
+  if (gv === null || good.damaged || gv.a !== 5 || gv.b !== 9 || gv.inner.n !== 3) {
     fail(root + ": the clean wire did not load: " + JSON.stringify(good));
   }
   const r = new m.TableVariableReport();
   const v = m[root + "Load"](wire(base + "-damaged.bin"), r);
   if (v !== null) { fail(root + ": Load handed back a value on damage: a=" + v.a + " b=" + v.b); }
-  if (!r.malformed) { fail(root + ": Load's report does not say malformed"); }
+  if (!r.damaged) { fail(root + ": Load's report does not say malformed"); }
   const retain = new m.TableVariableRetain(new Uint8Array(1 << 12), new Array(64));
   const rr = new m.TableVariableReport();
   const rv = m[root + "LoadRetain"](wire(base + "-damaged.bin"), retain, rr);
   if (rv !== null) { fail(root + ": LoadRetain handed back a value on damage"); }
-  if (!rr.malformed || retain.used !== 0 || retain.count !== 0) {
-    fail(root + ": LoadRetain kept a store on damage: malformed=" + rr.malformed + " used=" + retain.used + " count=" + retain.count);
+  if (!rr.damaged || retain.used !== 0 || retain.count !== 0) {
+    fail(root + ": LoadRetain kept a store on damage: malformed=" + rr.damaged + " used=" + retain.used + " count=" + retain.count);
   }
   const tr = new m.TableVariableReport();
   const tv = m[root + "FromJson"]('{"a":5,"inner":{"n":3},"b":9', tr);
   if (tv !== null) { fail(root + ": FromJson handed back a value on text that does not read"); }
-  if (!tr.malformed) { fail(root + ": FromJson's report does not say malformed"); }
+  if (!tr.damaged) { fail(root + ": FromJson's report does not say malformed"); }
 }
 // the retaining read keeps the unknown field on the clean wire, so an empty
 // store after the damaged read is the discard and not a store never filled
@@ -269,13 +269,13 @@ for (const row of %s) {
   const r = new m.TableVariableReport();
   const v = m[row.root + "Load"](wire, r);
   if (v !== null) { fail(row.case + ": Load handed back a value on damage"); }
-  if (!r.malformed) { fail(row.case + ": Load's report does not say malformed"); }
+  if (!r.damaged) { fail(row.case + ": Load's report does not say malformed"); }
   const retain = new m.TableVariableRetain(new Uint8Array(1 << 16), new Array(256));
   const rr = new m.TableVariableReport();
   const rv = m[row.root + "LoadRetain"](wire, retain, rr);
   if (rv !== null) { fail(row.case + ": LoadRetain handed back a value on damage"); }
-  if (!rr.malformed || retain.used !== 0 || retain.count !== 0) {
-    fail(row.case + ": LoadRetain kept a store on damage: malformed=" + rr.malformed + " used=" + retain.used + " count=" + retain.count);
+  if (!rr.damaged || retain.used !== 0 || retain.count !== 0) {
+    fail(row.case + ": LoadRetain kept a store on damage: malformed=" + rr.damaged + " used=" + retain.used + " count=" + retain.count);
   }
 }
 `, js))
@@ -354,13 +354,13 @@ for (const row of %s) {
   const rr = new m.TableVariableReport();
   const rv = m[row.root + "LoadRetain"](wire, retain, rr);
   if (row.load) {
-    if (v === null || r.malformed) { fail(row.case + ": an acyclic wire did not load: " + JSON.stringify(r)); }
-    if (rv === null || rr.malformed) { fail(row.case + ": an acyclic wire did not load retained: " + JSON.stringify(rr)); }
+    if (v === null || r.damaged) { fail(row.case + ": an acyclic wire did not load: " + JSON.stringify(r)); }
+    if (rv === null || rr.damaged) { fail(row.case + ": an acyclic wire did not load retained: " + JSON.stringify(rr)); }
     continue;
   }
-  if (v !== null || !r.malformed) { fail(row.case + ": a cyclic wire loaded (malformed=" + r.malformed + ")"); }
-  if (rv !== null || !rr.malformed || retain.used !== 0 || retain.count !== 0) {
-    fail(row.case + ": a cyclic wire loaded retained (malformed=" + rr.malformed + " used=" + retain.used + ")");
+  if (v !== null || !r.damaged) { fail(row.case + ": a cyclic wire loaded (malformed=" + r.damaged + ")"); }
+  if (rv !== null || !rr.damaged || retain.used !== 0 || retain.count !== 0) {
+    fail(row.case + ": a cyclic wire loaded retained (malformed=" + rr.damaged + " used=" + retain.used + ")");
   }
 }
 // Unreached cycle: zero the root's next pointer (byte 9: 2 -> 0) in node_cycle_mid
@@ -371,7 +371,7 @@ for (const row of %s) {
   unreached[9] = 0;
   const r = new m.TableVariableReport();
   const v = m.ListNodeLoad(unreached, r);
-  if (v !== null || !r.malformed) { fail("unreached_cycle: loaded (malformed=" + r.malformed + ")"); }
+  if (v !== null || !r.damaged) { fail("unreached_cycle: loaded (malformed=" + r.damaged + ")"); }
 }
 // Overwritten self-edge in the same body: next = 1 (self) followed by next = 0 (null)
 // in the root body must load cleanly with next === null because only final stored
@@ -394,7 +394,7 @@ for (const row of %s) {
   }
   const r = new m.TableVariableReport();
   const v = m.ListNodeLoad(over, r);
-  if (v === null || r.malformed || v.next !== null) {
+  if (v === null || r.damaged || v.next !== null) {
     fail("overwritten_self_cycle: refused or next !== null: " + JSON.stringify(r));
   }
 }
@@ -494,9 +494,9 @@ for (const [name, wantLoad] of [
   const r = new m.TableVariableReport();
   const v = m.NodeLoad(wire, r);
   if (wantLoad) {
-    if (v === null || r.malformed) { fail(name + ": did not load: " + JSON.stringify(r)); }
+    if (v === null || r.damaged) { fail(name + ": did not load: " + JSON.stringify(r)); }
   } else {
-    if (v !== null || !r.malformed) { fail(name + ": a cyclic wire loaded (malformed=" + r.malformed + ")"); }
+    if (v !== null || !r.damaged) { fail(name + ": a cyclic wire loaded (malformed=" + r.damaged + ")"); }
   }
 }
 `)

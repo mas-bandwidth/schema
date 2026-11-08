@@ -758,7 +758,7 @@ export function roundTripFixed(make, mut, measure, save, load, newPlan, makeRepo
   const rrep = makeReport();
   const count = load(dst, 1, buf, written, plan, rrep);
   assert.strictEqual(count, 1);
-  assert.strictEqual(rrep.malformed, false);
+  assert.strictEqual(rrep.damaged, false);
   assert.strictEqual(rrep.refused, 0);
   assert.deepStrictEqual(dst[0], src);
 }
@@ -769,7 +769,7 @@ export function roundTripVariable(make, save, load, makeReport) {
   assert.ok(bytes instanceof Uint8Array && bytes.length > 0, "save wrote nothing");
   const rrep = makeReport();
   const dst = load(bytes, rrep);
-  assert.strictEqual(rrep.malformed, false);
+  assert.strictEqual(rrep.damaged, false);
   assert.strictEqual(rrep.refused, 0);
   assert.deepStrictEqual(dst, src);
 }

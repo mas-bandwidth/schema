@@ -235,13 +235,12 @@ const tableRegionSource = `
             }
         }
     }
-    static unsafe bool NativeReadMapBody(ref NativeState state, ref Reader a, NativeValue value, TableFieldInfo f, TableReport report, ReadOnlySpan<byte> headerTail = default)
+    static unsafe bool NativeReadMapBody(ref NativeState state, ref Reader a, NativeValue value, TableFieldInfo f, TableReport report)
     {
-        if (!a.Has(2)) { return true; }
+        // THE HEADER LIES INSIDE THE MAP'S OWN L (docs/SPEC-TABLES.md §2.8, §3)
+        if (!a.Has(2)) { return Damage(report); }
         byte kind = a.Byte();
-        Reader header = headerTail.IsEmpty ? a : new Reader(headerTail, a.Vocabulary) { Offset = 1 };
-        if (!header.Var(out ulong count)) { Damage(report); return true; }
-        a.Offset = Math.Min(a.Buffer.Length, header.Offset);
+        if (!a.Var(out ulong count)) { return Damage(report); }
         if (kind != 13) { return Fail(report, "kind_mismatch"); }
         // A REGION READ WHOSE COUNT THE FRAMED STORAGE CANNOT HOLD reports
         // damage and resumes after the map's L, as the Go oracle's
@@ -266,7 +265,9 @@ const tableRegionSource = `
             if (state.Refused || report.Refused) { return false; }
             if (order == 0) { return Fail(report, "duplicate"); } else { last = key; landed++; }
         }
-        value.SetCount(f, landed); return true;
+        value.SetCount(f, landed);
+        // bytes left inside the map's L after its entries are damage
+        return report.Damaged || report.Refused || a.Offset == a.Buffer.Length || Damage(report);
     }
     static bool NativeReadScalar(ref NativeState state, ref Reader r, NativeValue value, TableFieldInfo f, int index, byte kind, TableReport report)
     {
@@ -420,7 +421,7 @@ const tableRegionSource = `
         if (kind == 14)
         {
             NativeResetArm(value, f);
-            if (!r.Has(2)) { return true; } // an inert short arm still selects
+            if (!r.Has(2)) { return Damage(report); } // the header lies inside the arm's L
             byte elementKind = r.Byte();
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
@@ -435,7 +436,9 @@ const tableRegionSource = `
                 decoded++;
             }
             if (f.Counted) { value.SetCount(f, decoded); }
-            return true; // damaged elements preserve the selected arm's prefix
+            // bytes left inside the arm's L after its payload are damage
+            if (!report.Damaged && !report.Refused && r.Offset != r.Buffer.Length) { return Damage(report); }
+            return true;
         }
         if (!NativeReadScalar(ref state, ref r, value, f, 0, kind, report)) { return false; }
         return r.Offset == r.Buffer.Length || Damage(report);
@@ -481,7 +484,7 @@ const tableRegionSource = `
     static bool NativeReadField(ref NativeState state, ref Reader r, NativeValue value, TableFieldInfo f, byte kind, TableReport report, out bool placed)
     {
         placed = true;
-        if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return NativeReadMapBody(ref state, ref map, value, f, report, r.Buffer.Slice(r.Offset - map.Buffer.Length)); }
+        if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return NativeReadMapBody(ref state, ref map, value, f, report); }
         if (kind == 12 || kind == 33)
         {
             if (!r.Slice(out Reader text)) { return Damage(report); }
@@ -492,14 +495,12 @@ const tableRegionSource = `
         if (kind == 14 || kind == 16)
         {
             if (!r.Slice(out Reader array)) { return Damage(report); }
-            if (array.Buffer.Length < 2) { return true; } // inert, including under a repeat
+            // THE HEADER LIES INSIDE ITS OWN L (docs/SPEC-TABLES.md §3,
+            // tla/Framing.tla): an L too short for it, or a count that crosses
+            // it, is damage, as the Go oracle's arrayBody and keyed say.
+            if (array.Buffer.Length < 2) { return Damage(report); }
             byte elementKind = array.Byte();
-            // Match the reference's header cursor: the count is read at the
-            // enclosing cursor, then all elements are bounded by the array's L.
-            // A count spilling past L can clamp, but cannot invent an element.
-            Reader header = new Reader(r.Buffer.Slice(r.Offset - array.Buffer.Length + 1), r.Vocabulary);
-            if (!header.Var(out ulong count)) { Damage(report); return true; }
-            array.Offset = Math.Min(array.Buffer.Length, 1 + header.Offset);
+            if (!array.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { placed = false; return false; }
             if (kind == 16)
             {
@@ -510,6 +511,9 @@ const tableRegionSource = `
                     int slot = FindVariant(f, id, true);
                     if (slot == 0) { report.Unknown++; continue; }
                     NativeReadElement(ref state, ref element, value, f, slot - 1, elementKind, report, false);
+                    if (state.Refused || report.Refused) { return false; }
+                    // bytes left inside a keyed slot after its element are damage
+                    if (element.Offset != element.Buffer.Length) { return Damage(report); }
                 }
             }
             else
@@ -534,6 +538,8 @@ const tableRegionSource = `
                 }
                 if (f.Counted) { NativeResetCountedTail(value, f, previous, decoded); }
             }
+            // bytes left inside the array's L after its elements are damage
+            if (!report.Damaged && !report.Refused && array.Offset != array.Buffer.Length) { return Damage(report); }
             return true;
         }
         return NativeReadElement(ref state, ref r, value, f, 0, kind, report, true);

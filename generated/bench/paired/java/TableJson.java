@@ -9,10 +9,9 @@ package bench;
 // The TEXT FORM's runtime (docs/SPEC-TABLES.md §16): pretty JSON in and out.
 // A text is one table as one object; the writer is pretty-printed (one entry
 // per line, two-space indent) and ends with exactly one newline (§16.1); the
-// reader accepts whitespace and // and /* */ comments, tolerates unknown keys
-// (skipped and counted), a key of the wrong shape (counted), a string longer
-// than its bound (clamped at a code point boundary and counted) and a number
-// outside its range (clamped and counted) (§16.2).
+// reader accepts whitespace and // and /* */ comments, skips and counts unknown
+// keys, and refuses a key of the wrong shape, a string longer than its bound,
+// or a number outside its range (§16.2).
 public final class TableJson {
     private TableJson() {}
 
@@ -33,7 +32,7 @@ public final class TableJson {
     static Long readFlags(In in, String[] names) {
         if (in.peek() != '[') {
             in.skipValue();
-            in.rep.kindMismatch++;
+            in.rep.refuse("kind_mismatch");
             return null;
         }
         in.p++;
@@ -44,7 +43,7 @@ public final class TableJson {
                 return null;
             }
             if (in.peek() != '"') {
-                in.rep.kindMismatch++;
+                in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
                 String name = in.scanString();
@@ -476,7 +475,7 @@ public final class TableJson {
         }
 
         // space skips whitespace and both comment forms (§16.2). An unclosed
-        // block comment is malformed, as an unclosed string is.
+        // block comment is damaged, as an unclosed string is.
         void space() {
             while (true) {
                 if (p >= t.length) {
@@ -549,7 +548,7 @@ public final class TableJson {
             // shape for the kind, never stored as an infinity the writer
             // would refuse.
             if (!Double.isFinite(value)) {
-                rep.kindMismatch++;
+                rep.refuse("kind_mismatch");
                 rejected = true;
                 return 0.0;
             }
@@ -579,7 +578,7 @@ public final class TableJson {
             // at or past the float32 overflow midpoint into an infinity; that
             // is the wrong shape for the kind (§16.3).
             if (!Float.isFinite(value)) {
-                rep.kindMismatch++;
+                rep.refuse("kind_mismatch");
                 rejected = true;
                 return 0.0f;
             }
@@ -636,9 +635,9 @@ public final class TableJson {
         }
 
         // scanString reads one JSON string, decoding escapes into a String. A
-        // raw control character in the body, an invalid escape, or a lone
-        // surrogate half is malformed (§16.2); a surrogate half that never met
-        // its partner reads as the replacement character (§16.3).
+        // raw control character in the body, an invalid escape, or a lone or
+        // out-of-order surrogate escape is damaged and refuses the whole read
+        // (§16.2, §16.3; docs/plans/strict-only.md decision 9): no U+FFFD.
         public String scanString() {
             space();
             if (p >= t.length || t[p] != '"') {
@@ -701,18 +700,16 @@ public final class TableJson {
                                         && p + 2 <= t.length
                                         && t[p] == '\\'
                                         && t[p + 1] == 'u') {
-                                    int mark = p;
                                     p += 2;
                                     int lo = hex4();
                                     if (lo >= 0xdc00 && lo <= 0xdfff) {
                                         b.appendCodePoint(
                                                 0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00));
                                     } else {
-                                        p = mark;
-                                        b.append('\ufffd');
+                                        return loneSurrogate();
                                     }
                                 } else if (hi >= 0xd800 && hi <= 0xdfff) {
-                                    b.append('\ufffd');
+                                    return loneSurrogate();
                                 } else {
                                     b.append((char) hi);
                                 }
@@ -741,6 +738,16 @@ public final class TableJson {
                     b.appendCodePoint(cp);
                 }
             }
+        }
+
+        // loneSurrogate refuses a string whose u-escape is a surrogate half
+        // with no partner after it, as damage (strict-only decision 9).
+        String loneSurrogate() {
+            bad = true;
+            if (rep.reason == null) {
+                rep.reason = "string_lone_surrogate: <root>";
+            }
+            return null;
         }
 
         // utf8 reads one UTF-8 sequence whose lead byte is c (>= 0x80). -1 is a
@@ -784,7 +791,7 @@ public final class TableJson {
 
         // scanNumber reads one JSON number token (RFC 8259 §6) and reports
         // whether it is an integral spelling: no fraction, no exponent (§16.2).
-        // A token that is not a JSON number is malformed.
+        // A token that is not a JSON number is damaged.
         public String scanNumber(boolean[] integral) {
             space();
             int start = p;
@@ -850,13 +857,13 @@ public final class TableJson {
                     try {
                         v = Long.parseLong(tok);
                     } catch (NumberFormatException e) {
-                        rep.clamped++;
+                        rep.refuse("out_of_range");
                         return tok.charAt(0) == '-' ? min : max;
                     }
                 } else {
                     if (tok.charAt(0) == '-') {
                         if (!"-0".equals(tok)) {
-                            rep.clamped++;
+                            rep.refuse("out_of_range");
                             return min;
                         }
                         v = 0;
@@ -864,7 +871,7 @@ public final class TableJson {
                         try {
                             v = Long.parseUnsignedLong(tok);
                         } catch (NumberFormatException e) {
-                            rep.clamped++; // past what sixty-four bits hold
+                            rep.refuse("out_of_range"); // past what sixty-four bits hold
                             // the largest unsigned magnitude; the range checks below add
                             // a second clamp when the bound is narrower than uint64
                             v = -1L;
@@ -881,23 +888,23 @@ public final class TableJson {
                 }
                 if (signed) {
                     if (!Double.isFinite(d) || d != (double) (long) d) {
-                        rep.kindMismatch++;
+                        rep.refuse("kind_mismatch");
                         rejected = true;
                         return 0;
                     }
                     v = (long) d;
                 } else {
                     if (!Double.isFinite(d) || Math.rint(d) != d) {
-                        rep.kindMismatch++;
+                        rep.refuse("kind_mismatch");
                         rejected = true;
                         return 0;
                     }
                     if (d < 0.0) {
-                        rep.clamped++;
+                        rep.refuse("out_of_range");
                         return min;
                     }
                     if (d >= 18446744073709551616.0) {
-                        rep.clamped++;
+                        rep.refuse("out_of_range");
                         return max;
                     }
                     v =
@@ -908,20 +915,20 @@ public final class TableJson {
             }
             if (signed) {
                 if (v < min) {
-                    rep.clamped++;
+                    rep.refuse("out_of_range");
                     return min;
                 }
                 if (v > max) {
-                    rep.clamped++;
+                    rep.refuse("out_of_range");
                     return max;
                 }
             } else {
                 if (Long.compareUnsigned(v, min) < 0) {
-                    rep.clamped++;
+                    rep.refuse("out_of_range");
                     return min;
                 }
                 if (Long.compareUnsigned(v, max) > 0) {
-                    rep.clamped++;
+                    rep.refuse("out_of_range");
                     return max;
                 }
             }
@@ -960,7 +967,7 @@ public final class TableJson {
             if (b.length <= bound) {
                 return s;
             }
-            rep.clamped++;
+            rep.refuse("length_over_bound");
             int keep = bound;
             // back off to a code point boundary
             while (keep > 0 && (b[keep] & 0xc0) == 0x80) {
@@ -1095,7 +1102,7 @@ public final class TableJson {
         int c = in.peek();
         if (c != '-' && (c < '0' || c > '9')) {
             in.skipValue();
-            in.rep.kindMismatch++;
+            in.rep.refuse("kind_mismatch");
             return null;
         }
         String token = in.scanNumber(new boolean[1]);
@@ -1117,10 +1124,10 @@ public final class TableJson {
                 java.math.BigDecimal value = new java.math.BigDecimal(token);
                 long point = (long) value.precision() - value.scale();
                 if (point > 40) {
-                    in.rep.clamped++;
+                    in.rep.refuse("out_of_range");
                     raw = token.charAt(0) == '-' ? domainLo : domainHi;
                 } else if (point < -40) {
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                     return null;
                 } else {
                     try {
@@ -1131,7 +1138,7 @@ public final class TableJson {
                                                                 fraction)))
                                         .toBigIntegerExact();
                     } catch (ArithmeticException finer) {
-                        in.rep.kindMismatch++;
+                        in.rep.refuse("kind_mismatch");
                         return null;
                     }
                     raw = TableVariable.clampInteger(raw, domainLo, domainHi, in.rep);
@@ -1139,10 +1146,10 @@ public final class TableJson {
             } catch (NumberFormatException exponent) {
                 int e = Math.max(token.indexOf('e'), token.indexOf('E'));
                 if (e >= 0 && e + 1 < token.length() && token.charAt(e + 1) == '-') {
-                    in.rep.kindMismatch++;
+                    in.rep.refuse("kind_mismatch");
                     return null;
                 }
-                in.rep.clamped++;
+                in.rep.refuse("out_of_range");
                 raw = token.charAt(0) == '-' ? domainLo : domainHi;
             }
         }

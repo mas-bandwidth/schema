@@ -14,7 +14,7 @@
 //
 // The oracle is the card's: no crash, no hang, no assert, and a refusal is a
 // clean typed error. Wire readers answer malformed bytes by setting the
-// report's `refused`/`malformed` flags, never by throwing. JSON readers REFUSE
+// report's `refused` flag, never by throwing. JSON readers REFUSE
 // invalid text with a FormatException, which is their documented typed error;
 // any other escaping exception is a finding, and so is a strict save that its
 // own reader refuses.
@@ -141,12 +141,9 @@ Uint8List mutate(Uint8List source, Rng rng, int pass) {
   return out;
 }
 
-bool wireReportClean(dynamic report) =>
-    !(report.refused || report.malformed) &&
-    report.unknown == 0 &&
-    report.kindMismatch == 0 &&
-    report.widened == 0 &&
-    report.clamped == 0;
+// The strict report (docs/SPEC-TABLES.md §4): a read lands whole or refuses,
+// and the counters left are unknown and widened.
+bool wireReportClean(dynamic report) => !report.refused && report.unknown == 0 && report.widened == 0;
 
 String? evaluate(Table t, Uint8List data, int target) {
   try {

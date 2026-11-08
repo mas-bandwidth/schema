@@ -16,13 +16,13 @@ import (
 )
 
 // The minimal damaged MatchResult FILE (form 1) of this cause: a random mutant
-// of the match_full corpus seed that both engines read as malformed.
+// of the match_full corpus seed that both engines refuse.
 const matchResultFileDamagedMutant = "0101090101010101010101020ed1010d0a110309e8030000000000000404d204000000140309e90300000000000004041f05000005060200140309ea0300000000000004046c05000005060300140309eb030000000000000404b905000005060400140309ec03000000000000040406060000050fd3060500140309ed0300000000000004045306000005060600140309ee030000000000000404a006000005060700140309ef030000000000000404ed06000005060800140309f00300000000000004043a07000005060900140309f10300000000000004048707000005060a0000266814ba79e336f3298b551875ace39838c48d74ffe34ac1f524f6e7fb630ec1204a75304802a3980500000000000000"
 
 // TestJavaFixMatchResultFileDamageRefused pins the Java FILE read of
 // backenddemo.MatchResult on a damaged input: DAMAGE DISCARDS THE WHOLE LOAD
-// (docs/SPEC-TABLES.md §4), so the leg owes the refusal, malformed, and no
-// counter or saved byte is compared.
+// (docs/SPEC-TABLES.md §4), so the leg owes the refusal (no value, the report refused or damaged),
+// and no counter or saved byte is compared.
 func TestJavaFixMatchResultFileDamageRefused(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
@@ -107,7 +107,7 @@ func TestJavaFixMatchResultFileDamageRefused(t *testing.T) {
 			if err != nil {
 				t.Fatalf("java driver: %v\n%s", err, out)
 			}
-			if !strings.Contains(string(out), "malformed=true") {
+			if !strings.Contains(string(out), "rejected=true value=null") {
 				t.Errorf("Java MatchResult did not refuse a damaged load: %q", strings.TrimSpace(string(out)))
 			}
 		})
@@ -130,7 +130,7 @@ public final class Driver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         ` + pkg + `.TableVariable.Report report = new ` + pkg + `.TableVariable.Report();
         ` + pkg + `.MatchResultVariable.Value v = ` + pkg + `.MatchResultVariable.load(wire, report);
-        System.out.println("malformed=" + report.malformed);
+        System.out.println("rejected=" + (report.damaged || report.refused) + " value=" + (v == null ? "null" : "present"));
         if (v == null) { return; }
         byte[] saved = ` + pkg + `.MatchResultVariable.save(v);
         StringBuilder sb = new StringBuilder();
@@ -139,7 +139,7 @@ public final class Driver {
             if (x < 16) { sb.append('0'); }
             sb.append(Integer.toHexString(x));
         }
-        System.out.println("saveHex=" + sb + " kindMismatch=" + report.kindMismatch + " malformed=" + report.malformed);
+        System.out.println("saveHex=" + sb + " unknown=" + report.unknown + " widened=" + report.widened);
     }
 }
 `

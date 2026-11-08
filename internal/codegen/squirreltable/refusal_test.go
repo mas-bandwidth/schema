@@ -35,7 +35,7 @@ local run = function(unit, mod, root, key, form, integrity) {
   local nn = function(x) { return x == null ? "-" : x; };
   print(key + "|" + (report.reason == null ? "ok" : report.reason) + "|" + nn(report.field) + "|" +
         report.unknown + ":" + nn(report.unknownField) + "|" +
-        report.duplicate + ":" + nn(report.duplicateField) + "\n");
+        report.repeated + ":" + nn(report.repeatedField) + "\n");
 };
 `
 
@@ -58,6 +58,14 @@ type refusalCase struct {
 // widened decoded exactly). "ok" is a clean read.
 func strictName(t *testing.T, row, pinned string) string {
 	t.Helper()
+	// THE CORPUS PINS THE VERDICT ONLY (docs/plans/strict-only.md decision
+	// 3): a refused row's name is this leg's own diagnostic, never compared
+	switch pinned {
+	case "read":
+		return "ok"
+	case "refused":
+		return "refused"
+	}
 	f := strings.Split(pinned, ",")
 	if len(f) != 7 {
 		t.Fatalf("%s: pinned report %q is not u,k,w,c,d,m,verdict", row, pinned)
@@ -68,11 +76,20 @@ func strictName(t *testing.T, row, pinned string) string {
 	case f[5] == "true":
 		return "wire_damaged"
 	case f[3] != "0":
-		return "clamped"
+		return "out_of_range"
 	case f[1] != "0":
 		return "kind_mismatch"
 	}
 	return "ok"
+}
+
+// strictNameMatches: a pinned "refused" is met by any refusal name; every
+// other want is this leg's own name, checked exactly.
+func strictNameMatches(reason, want string) bool {
+	if want == "refused" {
+		return reason != "ok" && reason != "-" && reason != ""
+	}
+	return reason == want
 }
 
 // formName is ReadStrict's form-byte refusal for a file whose first byte is b
@@ -194,16 +211,20 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		if want == "ok" || want == "wire_damaged" {
 			field = "-"
 		}
+		if want == "refused" && field == "" {
+			// a pinned refusal's name and field are this leg's diagnostics
+			field = "*"
+		}
 		cases = append(cases, refusalCase{key: r.name, unit: r.unit, root: r.root, input: r.name, form: -1, integrity: parsed[r.unit].Tables[r.root].Integrity != "", want: want, field: field})
 		compared++
 	}
 	if compared == 0 {
 		t.Fatal("no report row reached a generated unit")
 	}
-	// every counter §6.5 refuses on does so on at least one pinned row
-	for _, name := range []string{"kind_mismatch", "clamped", "malformed"} {
+	// the pinned rows hold both verdicts (docs/plans/strict-only.md decision 3)
+	for _, name := range []string{"refused", "ok"} {
 		if moved[name] == 0 {
-			t.Errorf("no generated report row refuses as %s", name)
+			t.Errorf("no generated report row answers %s", name)
 		}
 	}
 
@@ -233,9 +254,8 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		}
 		return b
 	}
-	// the field id twice: legal input, the last wins silently, and duplicate
-	// stays zero (docs/SPEC-TABLES.md §4: a wire read never raises it for a
-	// field id)
+	// the field id twice: no writer produces it, so it is damage and the
+	// strict read refuses (docs/plans/strict-only.md decision 5)
 	dup := []byte{1, 1, kind, 1, 0, 0, 0, 1, kind, 2, 0, 0, 0, 0}
 	inputs["dup"] = append(dup, idTable(wid)...)
 	// a known field, then an id Feed cannot name: skipped by its kind, counted
@@ -289,8 +309,8 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 	cases = append(cases,
 		// a repeated field and an unknown one READ (§6.5, §4: last wins;
 		// unknown is evolution); unknown is counted with its field, and a
-		// repeated field id counts no duplicate at all (§4)
-		refusalCase{key: "duplicate", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "ok", field: "-", side: "duplicate:0:-"},
+		// a repeated field id is damage (decision 5)
+		refusalCase{key: "repeated", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "malformed", field: "-"},
 		refusalCase{key: "unknown", unit: "streamdemo", root: "Feed", input: "unknown", form: -1, want: "ok", field: "-", side: fmt.Sprintf("unknown:#%016x", unknownId)},
 		refusalCase{key: "clean", unit: "streamdemo", root: "Feed", input: "clean_plain", form: -1, want: "ok", field: "-"},
 		refusalCase{key: "integrity_ok", unit: "streamdemo", root: "Feed", input: "integrity_ok", form: -1, integrity: true, want: "ok", field: "-"},
@@ -353,12 +373,13 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			t.Fatalf("probe line %q is not case %s's input, reason and field", lines[i], c.key)
 		}
 		reason, field := parts[1], parts[2]
-		if reason != c.want {
+		if !strictNameMatches(reason, c.want) {
 			t.Errorf("%s: strict read refuses %q, want %q", c.key, reason, c.want)
 			continue
 		}
 		names[reason]++
 		switch {
+		case c.field == "*":
 		case c.field != "" && field != c.field:
 			t.Errorf("%s: %s names field %q, want %q", c.key, reason, field, c.field)
 		case c.field == "" && field == "-":
@@ -372,7 +393,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 				wantSide = f
 			}
 			got := parts[3]
-			if counter == "duplicate" {
+			if counter == "repeated" {
 				got = parts[4]
 			}
 			if got != wantSide {
@@ -380,7 +401,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
+	for _, name := range []string{"malformed", "wire_damaged",
 		"message_form_as_file", "newer_form", "integrity_mismatch", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
@@ -401,8 +422,8 @@ local run = function(unit, mod, root, key) {
   local v = R.ReadStrict(T, root, inputs[key], report);
   print(key + "|" + (v == null ? "null" : "root") + "|" +
         (report.reason == null ? "-" : report.reason) + "|" +
-        report.unknown + "," + report.kindMismatch + "," + report.widened + "," +
-        report.clamped + "," + report.duplicate + "\n");
+        report.unknown + "," + report.mismatch + "," + report.widened + "," +
+        report.oor + "," + report.repeated + "\n");
 };
 `
 
@@ -440,7 +461,7 @@ func TestSquirrelStrictReadReadsFormOneAtFixedRoot(t *testing.T) {
 		t.Fatalf("v1_cfg.bin carries form byte %d, want 1 (the variable form)", data[0])
 	}
 	pinned := readReportCounts(t, filepath.Join(root, "testdata", "conformance", "tables", "reports.txt"))["v1_cfg_as_v2"]
-	const wantReport = "0,0,0,0,0,false,refused"
+	const wantReport = "refused"
 	if pinned != wantReport {
 		t.Fatalf("v1_cfg_as_v2 pinned report %q, want %q", pinned, wantReport)
 	}

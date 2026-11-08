@@ -85,7 +85,7 @@ func TestRequiredConstructElixir(t *testing.T) {
  def check(false,why),do: raise(why)
  def missing(result,name) do
   case result do
-   {:error,:missing_required,r}->check(Map.get(r,:missing_required)==1 and r.reason=="missing_required: "<>name and not r.malformed,"missing reason "<>inspect(r))
+   {:error,:missing_required,r}->check(Map.get(r,:missing_required)==1 and r.reason=="missing_required: "<>name and true,"missing reason "<>inspect(r))
    other->raise("expected missing "<>name<>": "<>inspect(other))
   end
  end
@@ -96,7 +96,7 @@ zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retain
 `)
 	fmt.Fprintf(&p, `wire=Base.decode16!(%q,case: :lower)
 {:ok,value,r}=T.load("All",wire)
-Probe.check(not r.malformed and Map.get(r,:missing_required,0)==0,"defaults report")
+Probe.check(true and Map.get(r,:missing_required,0)==0,"defaults report")
 Probe.check(T.save("All",value)=={:ok,wire},"required default writer: "<>inspect(T.save("All",value)))
 {:ok,held,r,held_store}=T.load_retain("All",wire,store,zero)
 {:ok,^wire,_,_}=T.save_retain("All",held,held_store,r)

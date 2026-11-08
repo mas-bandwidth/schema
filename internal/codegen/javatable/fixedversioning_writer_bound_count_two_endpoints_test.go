@@ -7,9 +7,11 @@ package javatable
 // VMID_array_bounded_grow ([..6]int32), the distractor, which did not. The count
 // word is forged to 7 exactly as the landed single-endpoint test forges it.
 //
-// The number that makes this test worth having is 6: a reader that clamps to its
-// own bound lands 8, a reader that clamps to whichever endpoint it saw last lands 6,
-// and only a plan that carries the WRITING endpoint's bound lands 4.
+// The number that makes this test worth having is 6. Under the strict read
+// (docs/plans/strict-only.md) a count past the bound REFUSES the load, so a
+// second forge sets the count to 5: a reader that holds its own bound (8) or
+// whichever endpoint it saw last (6) reads it, and only a plan that carries
+// the WRITING endpoint's bound (4) refuses it as countOverBound.
 import (
 	"bytes"
 	"os"
@@ -42,37 +44,23 @@ func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 	if err := os.WriteFile(hostile, forged, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// THE DISCRIMINATING FORGE: 4 -> 5, inside the distractor's 6 and the
+	// reader's 8, past only the WRITING endpoint's 4.
+	five := append([]byte(nil), raw...)
+	five[at+4] = 0x05
+	hostileFive := filepath.Join(t.TempDir(), "hostile5_array_bounded_grow.bin")
+	if err := os.WriteFile(hostileFive, five, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	_, classes := buildRow(t, t.TempDir(), "array_bounded_grow", []sideSpec{
 		{key: "reads", schema: "VNEW_array_bounded_grow.schema", older: []string{"VOLD_array_bounded_grow.schema", "VMID_array_bounded_grow.schema"}},
 		{key: "refuses", schema: "VOLD_array_bounded_grow.schema"},
 	})
 
-	r := runProbe(t, classes, "Probe_reads", hostile)
-
-	if r.n != 1 {
-		t.Errorf("n=%d, want 1", r.n)
-	}
-	if r.refused || r.malformed {
-		t.Errorf("a clean hostile read refused: refused=%v reason=%s malformed=%v", r.refused, r.reason, r.malformed)
-	}
-	if got := r.value["valsCount"]; got != "4" {
-		t.Errorf("valsCount=%s, want the WRITER's 4 — never the distractor's 6, never the reader's 8 and never the forged 7", got)
-	}
-	if got := r.value["vals"]; got != "list:1000,1001,1002,1003,0,0,0,0" {
-		t.Errorf("vals=%s, want list:1000,1001,1002,1003 then the reader's declared default 0 in the grown slots", got)
-	}
-	if got := r.value["lead"]; got != "-1431655766" {
-		t.Errorf("lead=%s, want 0xAAAAAAAA", got)
-	}
-	if got := r.value["trail"]; got != "-1145324613" {
-		t.Errorf("trail=%s, want 0xBBBBBBBB", got)
-	}
-	if r.clamped != 1 {
-		t.Errorf("clamped=%d, want 1 exactly — the bounds pass counts once per entry per record (§5.4)", r.clamped)
-	}
-	if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 {
-		t.Errorf("counters moved on a clean hostile read: unknown=%d kindMismatch=%d widened=%d, want all 0",
-			r.unknown, r.kindMismatch, r.widened)
-	}
+	// 7 is past the writer's 4 and the distractor's 6: the load refuses.
+	requireNamedRefusal(t, "count 7", runProbe(t, classes, "Probe_reads", hostile), "countOverBound")
+	// 5 refuses ONLY against the writing endpoint's 4: a plan that held the
+	// distractor's 6 or the reader's own 8 would read it.
+	requireNamedRefusal(t, "count 5", runProbe(t, classes, "Probe_reads", hostileFive), "countOverBound")
 }
