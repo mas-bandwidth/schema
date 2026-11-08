@@ -266,18 +266,21 @@ encode_table = function(T, name, v)
   return table.concat(parts)
 end
 
--- The read's tallies (docs/SPEC-TABLES.md §3.4, §5.4 of the
--- fixed-form algorithm): a value the record states past its declared bound
--- counts outOfRange (and the strict read refuses it), and a union tag naming no arm lands
--- None and counts unknown, as the engine's fixed decode counts them. One
--- tally serves the read in flight; the readers return it.
-local clamp_tally = nil
-local read_strict = false
-local function count_clamp()
-  if clamp_tally ~= nil and not read_strict then clamp_tally.outOfRange = clamp_tally.outOfRange + 1 end
+-- THE BOUNDS PASS REFUSES, IT NEVER CLAMPS (docs/FIXED-FORM-ALGORITHM.md
+-- §4.6, docs/plans/strict-only.md): a ranged scalar, a bits(N), a compressed
+-- float, an enum ordinal past the writer's top variant and a union tag past
+-- the writer's arm count each refuse the whole read as out_of_range.
+local function refuse_out_of_range()
+  error("out_of_range", 0)
 end
-local function count_unknown()
-  if clamp_tally ~= nil then clamp_tally.unknown = clamp_tally.unknown + 1 end
+
+-- A BOOL OR A PRESENT BYTE IS 0 OR 1 (docs/FIXED-FORM-ALGORITHM.md §4.5): no
+-- writer emits another byte, so any other refuses wire_damaged and is never
+-- normalized.
+local function bool_byte(buf, pos)
+  local b = buf:byte(pos)
+  if b > 1 then error("wire_damaged", 0) end
+  return b == 1
 end
 
 decode_value = function(T, d, buf, pos, size, elemSize)
@@ -289,27 +292,21 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     if d.lo ~= nil and d.hi ~= nil and type(v) == "number" then
       -- unsigned storage compares by math.ult, as the variable walk's
       -- less_than does: an eight-byte raw value's high bit is not a sign
-      local below, above
       if d.signed then
-        below, above = v < d.lo, v > d.hi
-      else
-        below, above = math.ult(v, d.lo), math.ult(d.hi, v)
-      end
-      if below then
-        count_clamp()
-      elseif above then
-        count_clamp()
+        if v < d.lo or v > d.hi then refuse_out_of_range() end
+      elseif math.ult(v, d.lo) or math.ult(d.hi, v) then
+        refuse_out_of_range()
       end
     end
-    -- a bits(N) field clamps to its mask and counts it (§3.4); a declared
-    -- range on the same field already counted the same landing
+    -- a bits(N) field past its mask refuses (§4.6); a declared range on the
+    -- same field already held it
     if d.lo == nil and d.bits ~= nil and d.bits > 0 and d.bits < w * 8 and type(v) == "number" and v > (1 << d.bits) - 1 then
-      count_clamp()
+      refuse_out_of_range()
     end
     return v, pos + w
   elseif s == "wide" then
     local v = unpack_wide(buf, pos)
-    -- a 128-bit range clamps on its raw halves and counts it (§3.4), the
+    -- a 128-bit range is held on its raw halves and refuses (§4.6), the
     -- halves compared as the variable walk's less_than compares them
     if d.lo ~= nil and d.hi ~= nil then
       local function lt128(a, b)
@@ -320,26 +317,20 @@ decode_value = function(T, d, buf, pos, size, elemSize)
         if a.hi ~= b.hi then return math.ult(a.hi, b.hi) end
         return math.ult(a.lo, b.lo)
       end
-      if lt128(v, d.lo) then
-        count_clamp()
-      elseif lt128(d.hi, v) then
-        count_clamp()
-      end
+      if lt128(v, d.lo) or lt128(d.hi, v) then refuse_out_of_range() end
     end
     return v, pos + size
   elseif s == "bool" then
-    return buf:byte(pos) ~= 0, pos + size
+    return bool_byte(buf, pos), pos + size
   elseif s == "float" then
     local v, nxt = unpack_float(d.f32, buf, pos)
-    -- a ranged float32 clamps to its bound and counts it (§3.4); a -0
-    -- lands as +0, uncounted (§3.3, the special values)
+    -- a ranged float past an end refuses (§4.6); a -0 lands as +0,
+    -- uncounted (§3.3, the special values)
     if d.fmin ~= nil and d.fmax ~= nil then
-      if v < d.fmin then
-        count_clamp()
-      elseif v > d.fmax then
-        count_clamp()
+      if v < d.fmin or v > d.fmax then
+        refuse_out_of_range()
       elseif v == 0 then
-        v = 0
+        v = 0.0
       end
     end
     return v, nxt
@@ -363,8 +354,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
     local raw = unpack_int(buf, pos, w, false)
-    -- a forged ordinal lands None and counts outOfRange (§5.4)
-    if raw > #d.variants then count_clamp() end
+    -- an ordinal past the top variant refuses (§4.6)
+    if raw > #d.variants then refuse_out_of_range() end
     local v = nil
     -- a retired variant reads the declared default (docs/SPEC-TABLES.md §2.15)
     local var = raw ~= 0 and d.variants[raw] or nil
@@ -385,10 +376,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
   elseif s == "union" then
     local ud = T.FixedUnions[d.target]
     local tag = unpack_int(buf, pos, ud.tag, false)
-    if tag > #ud.arms then
-      tag = 0
-      count_unknown()
-    end
+    if tag > #ud.arms then refuse_out_of_range() end
     local v = { tag = tag }
     if tag ~= 0 then
       local arm = ud.arms[tag]
@@ -445,7 +433,7 @@ decode_table = function(T, name, buf, pos, writerSize)
     local fs = f.fixed_size
     if cursor - pos + fs <= writerSize then
       if f.optional then
-        local present = buf:byte(cursor) ~= 0
+        local present = bool_byte(buf, cursor)
         v[f.name .. "_present"] = present
         if present then v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, f.fixed_elem) end
         cursor = cursor + fs
@@ -522,6 +510,49 @@ end
 
 local decode_old_value
 
+-- THE UNKNOWN CENSUS (docs/SPEC-TABLES.md §4, §6.5): a field an older writer
+-- carried that this reader does not declare is skipped and counted unknown,
+-- once per declared field however many records or elements carry it. It is
+-- a property of the (writer layout, reader) pair, so F.prepare counts it once
+-- per known entry and the read only returns it.
+local function census_value(T, d, node)
+  if d == nil or node == nil then return 0 end
+  local s = d.shape
+  if s == "table" then
+    local desc = T.Tables[d.target]
+    if desc == nil or node.kind ~= 13 then return 0 end
+    local byId = {}
+    for _, f in ipairs(desc.fields) do
+      if f.id ~= nil then byId[f.id] = f end
+    end
+    local n = 0
+    for _, child in ipairs(node.children) do
+      local f = child.id ~= nil and byId[child.id] or nil
+      if f == nil then
+        n = n + 1
+      elseif f.optional and child.kind == 35 then
+        n = n + census_value(T, f, child.children[1])
+      else
+        n = n + census_value(T, f, child)
+      end
+    end
+    return n
+  elseif s == "array" then
+    local elem = node.kind == 16 and node.children[2] or node.children[1]
+    return census_value(T, d.elem, elem)
+  elseif s == "union" then
+    local un = T.Unions[d.target]
+    if un == nil or node.kind ~= 15 then return 0 end
+    local n = 0
+    for k, armNode in ipairs(node.children) do
+      local arm = un.arms[k]
+      if arm ~= nil and arm.field ~= nil then n = n + census_value(T, arm.field, armNode) end
+    end
+    return n
+  end
+  return 0
+end
+
 local function compat_old(d, node)
   if d == nil or node == nil then return false end
   local s = d.shape
@@ -583,7 +614,7 @@ local function decode_old_table(T, name, node, buf, pos, rep)
       local child, cpos = hit.node, hit.pos
       if f.optional then
         if child.kind == 35 then
-          local present = buf:byte(cpos) ~= 0
+          local present = bool_byte(buf, cpos)
           v[f.name .. "_present"] = present
           if present and child.children[1] ~= nil and compat_old(f, child.children[1]) then
             v[f.name] = decode_old_value(T, f, child.children[1], buf, cpos + 1, rep)
@@ -613,7 +644,7 @@ decode_old_value = function(T, d, node, buf, pos, rep)
   elseif s == "wide" then
     return { lo = unpack_int(buf, pos, 8, false), hi = unpack_int(buf, pos + 8, 8, false) }
   elseif s == "bool" then
-    return buf:byte(pos) ~= 0
+    return bool_byte(buf, pos)
   elseif s == "float" then
     -- an older writer's float32 widens into a float64 field by the ordinary
     -- conversion, exact for every finite float32 (§3.3)
@@ -641,6 +672,8 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local w = T.FixedEnums[d.enum] or 4
     if rep and node.size < w then rep.widened = rep.widened + 1 end
     local raw = unpack_int(buf, pos, node.size, false)
+    -- THE WRITER'S VARIANT COUNT GOVERNS (§4.6): an ordinal past it refuses
+    if raw > #node.children then refuse_out_of_range() end
     local var = raw ~= 0 and d.variants[raw] or nil
     if var ~= nil then
       -- a retired variant reads the declared default (docs/SPEC-TABLES.md §2.15)
@@ -656,7 +689,9 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local nArms = #node.children
     local w = (nArms <= 255 and 1) or (nArms <= 65535 and 2) or 4
     local tag = unpack_int(buf, pos, w, false)
-    if tag > nArms or tag > #T.Unions[d.target].arms then tag = 0 end
+    -- THE WRITER'S ARM COUNT GOVERNS (§4.6): a tag past it refuses
+    if tag > nArms then refuse_out_of_range() end
+    if tag > #T.Unions[d.target].arms then tag = 0 end
     local v = { tag = tag }
     if tag ~= 0 then
       local armNode = node.children[tag]
@@ -807,24 +842,20 @@ local function read_impl(T, name, buf, strict)
   local value
   if entry ~= nil and entry.hash ~= fixed.hash then
     value = decode_old_table(T, name, entry.tree, buf, at + 8)
+    -- the identity walk refuses its bounds as it decodes; an older writer's
+    -- plan is held to them after (§4.6)
+    if strict then strict_value(T, { shape = "table", target = name }, value) end
   else
     value = decode_table(T, name, buf, at + 8, rootSize)
   end
-  if strict then strict_value(T, { shape = "table", target = name }, value) end
   return value, hash, layout
 end
 
--- F.read is one record's read: the value, its layout hash and bytes, and
--- the read's outOfRange and unknown tallies.
+-- F.read is one record's read: the value and its layout hash and bytes.
 function F.read(T, name, buf, strict)
-  clamp_tally = { outOfRange = 0, unknown = 0 }
-  read_strict = strict and true or false
   local ok, v, h, l = pcall(read_impl, T, name, buf, strict)
-  read_strict = false
-  local out_of_range, unknown = clamp_tally.outOfRange, clamp_tally.unknown
-  clamp_tally = nil
   if not ok then error(v, 0) end
-  return v, h, l, out_of_range, unknown
+  return v, h, l
 end
 
 -- F.write writes the header and ONE record (docs/FIXED-FORM-ALGORITHM.md §2,
@@ -934,6 +965,7 @@ local function load_impl(T, name, buf, strict, cap)
   cap = cap or maxRecords
   if nRec > cap then error("batch_too_large", 0) end
   local rep = (entry ~= nil and entry.hash ~= fixed.hash) and { widened = 0 } or nil
+  local unknown = rep ~= nil and entry.unknown or 0
   local out = {}
   for k = 1, nRec do
     local at = 21 + layoutLen + (k - 1) * recSize
@@ -941,26 +973,23 @@ local function load_impl(T, name, buf, strict, cap)
     local v
     if rep ~= nil then
       v = decode_old_table(T, name, entry.tree, buf, at + 8, rep)
+      -- the identity walk refuses its bounds as it decodes; an older
+      -- writer's plan is held to them after (§4.6)
+      if strict then strict_value(T, { shape = "table", target = name }, v) end
     else
       v = decode_table(T, name, buf, at + 8, rootSize)
     end
-    if strict then strict_value(T, { shape = "table", target = name }, v) end
     out[k] = v
   end
-  return out, hash, layout, rep and rep.widened or 0
+  return out, hash, layout, rep and rep.widened or 0, unknown
 end
 
 -- F.load is a whole file's read: the records, the layout hash and bytes,
--- the widened count, and the read's outOfRange and unknown tallies.
+-- and the widened and unknown counts.
 function F.load(T, name, buf, strict, cap)
-  clamp_tally = { outOfRange = 0, unknown = 0 }
-  read_strict = strict and true or false
-  local ok, out, h, l, w = pcall(load_impl, T, name, buf, strict, cap)
-  read_strict = false
-  local out_of_range, unknown = clamp_tally.outOfRange, clamp_tally.unknown
-  clamp_tally = nil
+  local ok, out, h, l, w, u = pcall(load_impl, T, name, buf, strict, cap)
   if not ok then error(out, 0) end
-  return out, h, l, w, out_of_range, unknown
+  return out, h, l, w, u
 end
 
 -- F.prepare builds, once, every derived fact the fixed form reads from a
@@ -994,6 +1023,10 @@ function F.prepare(T)
     fixed.hashPrefix = pack_uint(fixed.hash, 8)
     for _, entry in ipairs(fixed.known or {}) do
       entry.tree = layout_tree(entry.layout) or false
+      entry.unknown = 0
+      if entry.tree and not entry.tree.refusal then
+        entry.unknown = census_value(T, { shape = "table", target = fixed.table }, entry.tree)
+      end
     end
   end
 end
