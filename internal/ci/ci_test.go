@@ -713,6 +713,11 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 		}
 		lhs = strings.TrimSpace(lhs)
 		want := strings.Trim(strings.TrimSpace(rhs), `"'`)
+		if lhs == "needs.plan.outputs.legs" {
+			// the plan's legs are a JSON array of strings; a leg is in it
+			// when its quoted name is
+			return strings.Contains(ev.PlanLegs, `"`+want+`"`), nil
+		}
 		if lhs != "github.event.pull_request.labels.*.name" {
 			return false, fmt.Errorf("unsupported contains() collection %q", lhs)
 		}
@@ -984,6 +989,18 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", streamToDevPR); ok {
 		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate below main")
 	}
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-lobster", streamToDevPR); ok {
+		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-lobster below main")
+	}
+	// the Lobster rows run exactly when the plan selects the Lobster leg
+	lobsterIntoMain := sameRepoMainUnlabeled
+	lobsterIntoMain.PlanLegs = `["lobster"]`
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-lobster", lobsterIntoMain); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("same-repo PR into main selecting the Lobster leg did not run ci-fast.yml:leg-gate-lobster (err=%v)", err))
+	}
+	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-lobster", sameRepoMainUnlabeled); ok {
+		errs = append(errs, "ci-fast.yml:leg-gate-lobster ran with no Lobster leg in the plan")
+	}
 	for _, job := range []string{"generated", "pins", "cs-tables"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], job, streamToDevPR); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-full.yml:%s (err=%v)", job, err))
@@ -1090,12 +1107,14 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	// 8. workflow_dispatch runs every self-hosted job of a workflow it can
 	// start, except a job whose own if: is an explicit list of events that
 	// does not name it (a push-and-pull-request replay, say).
+	// The plan here selects the Lobster leg too, whose rows are a job of
+	// their own (ci-fast.yml leg-gate-lobster) gated on that selection.
 	dispatchEv := ciEvent{
 		Name:     "workflow_dispatch",
 		Branch:   "main",
 		Repo:     repo,
 		PlanPkgs: planPkgs,
-		PlanLegs: planLegs,
+		PlanLegs: `["go","lobster"]`,
 	}
 	for _, sh := range shJobs {
 		if !workflowTriggersOn(wfs[sh.Workflow], dispatchEv) {
@@ -1147,6 +1166,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:block-gate",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:leg-gate",
+		"ci-fast.yml:leg-gate-lobster",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
 		"ci-full.yml:conformance",
