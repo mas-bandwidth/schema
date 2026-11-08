@@ -29,11 +29,11 @@ fixed table RangedWidths
 	// THE CLAMP: a narrower-than-lane bits(N) is held to 2^N - 1 on the high
 	// side only, and counts one clamped when the forgery is real.
 	for _, want := range []string{
-		"*clamped += (value.b8 > 255) as i32; // bits(8)'s own width",
+		"*oor += (value.b8 > 255) as i32; // bits(8)'s own width",
 		"value.b8 = value.b8.min(255);",
-		"*clamped += (value.b12 > 4095) as i32; // bits(12)'s own width",
+		"*oor += (value.b12 > 4095) as i32; // bits(12)'s own width",
 		"value.b12 = value.b12.min(4095);",
-		"*clamped += (value.b48 > 281474976710655) as i32; // bits(48)'s own width",
+		"*oor += (value.b48 > 281474976710655) as i32; // bits(48)'s own width",
 		"value.b48 = value.b48.min(281474976710655);",
 	} {
 		if !strings.Contains(body, want) {

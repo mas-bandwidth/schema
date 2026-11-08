@@ -135,7 +135,7 @@ fn t13_refused_malformed(data: &[u8], why: &str) -> bool {
         && report.refused
         && report.reason == TableFixedReason::LayoutMalformed
         && report.reason.name() == "layout_malformed"
-        && !report.malformed
+        && !report.damaged
         && report.layout_hash == 0
         && t13_untouched(&values)
 }
@@ -165,7 +165,7 @@ fn main() {
         "valid-reads",
         n == Some(1)
             && !report.refused
-            && !report.malformed
+            && !report.damaged
             && report.reason == TableFixedReason::None,
         "the known layout's own file did not read clean",
     );
