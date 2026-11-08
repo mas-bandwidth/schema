@@ -57,6 +57,7 @@ let TableRefuseLayoutTreeUnclosed = "layout_tree_unclosed"
 let TableRefuseLayoutTooDeep = "layout_too_deep"
 let TableRefuseLayoutRecordTooLarge = "layout_record_too_large"
 let TableRefusePlanTooLarge = "plan_too_large"
+let tableFixedPlanMaxEntries = 4096
 let TableRefuseNoLayout = "no_layout"
 let TableRefuseBatchTooLarge = "batch_too_large"
 let TableRefuseTextIllFormed = "text_ill_formed"
@@ -1033,6 +1034,12 @@ def fixed_lineage_plans(known:[TableFixedKnownLayout], my_layout:string, dst:[Ta
             let parsed, why = fixed_parse_layout(known[i].layout)
             if why != "":
                 lane.why = TableRefuseLayoutMalformed
+            elif parsed.count > tableFixedPlanMaxEntries:
+                // THE PLAN BOUND (ir.TableFixedLeafCap, SPEC-TABLES "PAST THE
+                // 4096-LEAF CAP"): a lineage layout longer than the plan the
+                // reference lays down refuses by name on its own lane, as the
+                // Lua and Luau legs bound it (#layout > 4096)
+                lane.why = TableRefusePlanTooLarge
             else:
                 var room = 256
                 var done = false
@@ -1174,8 +1181,10 @@ def fixed_value_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:
                 for(p.size) k:
                     if not fixed_dead_at(dead, p.src + k):
                         let v = read_uint8_le(src, src_base + p.src + k)
+                        // a bool or present byte other than 0 or 1 is
+                        // wire damage (SPEC-TABLES §6.5; Go's tableFixedBool)
                         if v > 1:
-                            return TableRefuseInvalidValue
+                            return "wire_damaged"
                         if p.meta == tableFixedPresent and v == 0:
                             push(dead, TableFixedHole { off: p.src + 1, size: p.aux })
             elif p.op == tableFixedTag:
