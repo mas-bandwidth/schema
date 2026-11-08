@@ -2,12 +2,12 @@
 #include "RT1Table.h"
 
 /* The root owns its bounded byte store and retained-ID list. */
-int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes)
+int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes)
 {
  enum { roomy=1<<20 };
  tblrt1_table_retain_t retain;const tblrt1_node_t * root;tblrt1_table_report_t report={0},save={0};
  uint8_t * region=NULL;int64_t need,size;int ok=0;
- memset(&retain,0,sizeof(retain));*output=NULL;*output_bytes=0;
+ memset(&retain,0,sizeof(retain));*output=NULL;*output_bytes=0;*text=NULL;*text_bytes=0;
  if(id_capacity<0)id_capacity=roomy/8;
  if(id_capacity>INT32_MAX)return 0;
  need=tblrt1_node_load_measure(wire,bytes);
@@ -18,6 +18,9 @@ int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64
  counters[0]=report.retained;counters[1]=report.retain_lost;counters[2]=report.unknown;
  size=tblrt1_node_measure_retain(root,&retain);if(size<0)goto done;*output=(uint8_t *)malloc((size_t)(size?size:1));if(!*output)goto done;
  if(tblrt1_node_save_retain(root,&retain,*output,size,&save)!=size)goto done;
- counters[3]=save.retain_lost;*output_bytes=size;ok=1;
- done:free(retain.bytes);free(retain.ids);free(region);if(!ok){free(*output);*output=NULL;}return ok;
+ counters[3]=save.retain_lost;*output_bytes=size;
+ /* the known value the retaining read returned, as the §16 text */
+ *text_bytes=tblrt1_node_to_json_measure(root);if(*text_bytes<0)goto done;*text=(char *)malloc((size_t)*text_bytes+1);if(!*text)goto done;
+ if(tblrt1_node_to_json(root,*text,*text_bytes)!=*text_bytes)goto done;ok=1;
+ done:free(retain.bytes);free(retain.ids);free(region);if(!ok){free(*output);*output=NULL;free(*text);*text=NULL;}return ok;
 }

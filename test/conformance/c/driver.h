@@ -25,11 +25,10 @@
 
 /* Each unit declares its OWN report type (<package>_table_report_t), so the
  * driver carries one report shape of its own and each row copies into it.
- * Five counters is the whole of §4's report. */
+ * The verdict is the whole contract; the counters are local diagnostics. */
 typedef struct ConformanceReport
 {
-    int unknown, kind_mismatch, clamped, duplicate;
-    int malformed, refused, widened, retained, retain_lost;
+    int unknown, refused, widened, retained, retain_lost;
     int blob_shared; /* §2.5: extra namings of one blob, which every writer refuses */
 } ConformanceReport;
 
@@ -56,6 +55,15 @@ typedef struct ConformanceCodec
        json-write-refusal): 0 when the root has no such text field, NULL for a
        variable root */
     int (*damage)(void * value,const char * field,int wide);
+    /* THE VARIABLE-FORM READ of a fixed root, which the framing rows use: a
+       framing vector is read as form 1 and written back as the root's own
+       form (docs/rulings.json fixed-root-refuses-form1). NULL: `load`. */
+    int ( *load_variable )( void * value, const uint8_t * bytes, int64_t size, ConformanceReport * report );
+    /* A COOK RECIPE'S SHARED BLOB (FORMAT.md, `cook-write ... <source> <alias>`):
+       point the alias slot of a constructed graph root at the source slot's
+       node, the in-memory sharing a cook packs as it finds it and no wire read
+       delivers (docs/SPEC-TABLES.md §2.5). NULL for a root with no node slots. */
+    int ( *share )( void * value, const char * source, const char * alias );
 } ConformanceCodec;
 
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing
@@ -87,7 +95,7 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
     conformance_text_raw( out, s, strlen( s ) );
 }
 
-int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes);
+int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
 
 /* the per-unit entry points, each defined in that unit's own translation unit */
 const ConformanceCodec * conformance_codecs_armdemo(int * count);
