@@ -193,8 +193,8 @@ API.hashOf <- function(bytes, from, to) {
 
 API.newReport <- function() {
     return {
-        unknown = 0, kind_mismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-        malformed = false, refused = false, reason = null,
+        unknown = 0, kind_mismatch = 0, widened = 0, oor = 0, repeated = 0,
+        bodyDamaged = false, refused = false, reason = null,
     };
 };
 
@@ -202,8 +202,8 @@ API.newReport <- function() {
 // "<unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>".
 API.reportRow <- function(report) {
     return ::format("%d,%d,%d,%d,%d,%s,%s",
-        report.unknown, report.kind_mismatch, report.widened, report.clamped,
-        report.duplicate, report.malformed ? "true" : "false",
+        report.unknown, report.kind_mismatch, report.widened, report.oor,
+        report.repeated, report.bodyDamaged ? "true" : "false",
         report.refused ? "refused" : "read");
 };
 
@@ -454,7 +454,7 @@ API.fieldByName <- function(layout, name) {
 // reader holds refused by name as no_layout.
 //
 // A refusal answers { refused = true, reason = <name>, report } with every
-// counter unmoved; damage answers report.malformed and no refusal. Nothing
+// counter unmoved; damage answers report.bodyDamaged and no refusal. Nothing
 // throws and nothing is swallowed.
 // ---------------------------------------------------------------------------
 
@@ -492,7 +492,7 @@ API.open <- function(bytes) {
     local recordBytes = API.RECORD_HASH_BYTES + layout.rootBody;
     local rest = n - API.LAYOUT_AT - layoutLen;
     if ((rest % recordBytes) != 0) {
-        report.malformed = true; // bytes left over: the two ends of the file have met
+        report.bodyDamaged = true; // bytes left over: the two ends of the file have met
         return { refused = false, reason = null, report = report, hash = hash, layout = layout, records = null };
     }
 

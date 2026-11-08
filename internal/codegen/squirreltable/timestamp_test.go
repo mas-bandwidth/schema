@@ -34,12 +34,12 @@ local hexOf = function(b) {
   return s;
 };
 foreach (c in cases) {
-  local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
-  local v = J.FromJsonTolerant(M, "Root", inputs[c[1]], r);
+  local r = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+    bodyDamaged = false, refused = false };
+  local v = J.fromJsonWalk(M, "Root", inputs[c[1]], r);
   local reason = ("reason" in r) ? r.reason : "-";
   local count = "null", text = "null", wire = "null";
-  if (!r.malformed) {
+  if (!r.bodyDamaged) {
     count = v.At.tostring();
     text = hexOf(J.ToJson(M, "Root", v));
     wire = hexOf(S.save(M, "Root", v));

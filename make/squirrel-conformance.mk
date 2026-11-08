@@ -13,7 +13,7 @@
 .PHONY: conformance-negative-control-squirrel
 conformance-negative-control-squirrel: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@sh test/conformance/squirrel/negative-control load load.nut \
-		's/report.kindMismatch = report.kindMismatch + 1;/report.kindMismatch = report.kindMismatch;/g' \
+		's/report.mismatch = report.mismatch + 1;/report.mismatch = report.mismatch;/g' \
 		report wire
 
 # THE WALK CONTROL, one per port with a text form (test/conformance/README.md):

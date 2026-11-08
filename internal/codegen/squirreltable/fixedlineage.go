@@ -384,6 +384,8 @@ func emitFixedPlanStruct(m *Module, st *ir.Struct, node *fixedLayoutNode, baseAt
 					off = fmt.Sprintf("%d + %s", cAt, dyn)
 				}
 				m.Printf("%sif (at + %s + %d <= lim) {\n", ind, off, child.size)
+				// a present byte other than 0 or 1 is damage (§3.4)
+				m.Printf("%s  if (b[at + %s] > 1) return \"wire_damaged\";\n", ind, off)
 				m.Printf("%s  %sPresent = b[at + %s] != 0;\n", ind, fExpr, off)
 				m.Printf("%s  if (%sPresent) {\n", ind, fExpr)
 				emitFixedPlanDecodeValue(m, f, inner, cAt+1, fExpr, ind+"    ", dyn, false)
@@ -584,11 +586,14 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 		m.Printf("%s  if (x == null) { _M.FixedField <- %s; return \"non_finite_float\"; }\n", ind, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
 		if fixedPlanLeafWidens(f, node) {
 			m.Printf("%s  _M.FixedWidened <- _M.FixedWidened + 1;\n", ind)
+		} else {
+			fixedEmitRangeGuard(m, f, "x", ind+"  ", fixedStorageBytes(f.Type))
 		}
 		m.Printf("%s  %s = x;\n%s}\n", ind, expr, ind)
 		return
 	}
 	if f.Type.Kind == ir.TBool {
+		m.Printf("%sif (b[at + %s] > 1) return \"wire_damaged\";\n", ind, off)
 		m.Printf("%s%s = b[at + %s] != 0;\n", ind, expr, off)
 		return
 	}
@@ -597,10 +602,12 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			m.Printf("%s_M.FixedWidened <- _M.FixedWidened + 1;\n", ind)
 		}
 		m.Printf("%s%s = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, node.size)
+		fixedEmitRangeGuard(m, f, expr, ind, node.size)
 		return
 	}
 	if fixedPlanLeafWidens(f, node) {
 		m.Printf("%s_M.FixedWidened <- _M.FixedWidened + 1;\n", ind)
 	}
 	m.Printf("%s%s = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, node.size)
+	fixedEmitRangeGuard(m, f, expr, ind, node.size)
 }

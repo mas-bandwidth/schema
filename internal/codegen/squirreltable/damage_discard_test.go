@@ -10,9 +10,9 @@ import (
 	"testing"
 )
 
-const squirrelFileDiscard = `  if (report.malformed) {
+const squirrelFileDiscard = `  if (report.bodyDamaged) {
     // The strict witness distinguishes body damage from an unopened file,
-    // without requiring this tolerant API to hand it a partial record.
+    // without requiring this walk API to hand it a partial record.
     local frame = ::getstackinfos(2);
     if (frame != null && ("_strictFrame" in frame.locals)) frame.locals.store.walkDamaged = true;
     return null;
@@ -45,17 +45,23 @@ func squirrelDamageProbe(t *testing.T, patchFile, anchor string) string {
 		if strings.Count(string(data), anchor) != 1 {
 			t.Fatalf("discard anchor in %s must occur once", patchFile)
 		}
-		writeFile(t, path, []byte(strings.Replace(string(data), anchor, "", 1)))
+		patched := strings.Replace(string(data), anchor, "", 1)
+		if strings.HasSuffix(patchFile, "schema_table_load.nut") {
+			// the wire-alone check refuses the same damage after the walk:
+			// the control takes both defences out
+			patched = withoutWireCheck(t, patched)
+		}
+		writeFile(t, path, []byte(patched))
 	}
 	program := fmt.Sprintf(`local I=dofile("inputs.nut",true);
 local S=dofile("messages/schema_module.nut",true); local T=S.require(%q); local L=S.require("schema_table_load");
-local fr={unknown=0,kindMismatch=0,widened=0,clamped=0,duplicate=0,malformed=false,refused=false};local value=L.loadTolerant(T,"ToolMessage",I["bad"],fr);
-print(fr.malformed && value==null ? "file discarded\n" : "file kept\n");
+local fr={unknown=0,mismatch=0,widened=0,oor=0,repeated=0,bodyDamaged=false,refused=false};local value=L.loadWalk(T,"ToolMessage",I["bad"],fr);
+print(fr.bodyDamaged && value==null ? "file discarded\n" : "file kept\n");
 local B=dofile("backend/schema_module.nut",true).require(%q); local v={};local ar={};B.AnnounceRead(v,I["ann"],ar);
 local storage=[B.Envelope(),B.Envelope(),B.Envelope()];local mr={};local n=B.EnvelopeLoadMessages(storage,v,I["wire"],mr);
-print(mr.malformed && n==0 && storage[0].Payload.Type==0 && storage[1].Payload.Type==0 ? "batch discarded\n" : "batch kept\n");
+print(mr.bodyDamaged && n==0 && storage[0].Payload.Type==0 && storage[1].Payload.Type==0 ? "batch discarded\n" : "batch kept\n");
 local tailValues=[B.LoginRequest()];local previous=tailValues[0];local tr={};local delivered=B.LoginRequestLoadMessages(tailValues,v,I["tail"],tr);
-print(tr.malformed && delivered==0 && tailValues[0]!=previous ? "tail discarded\n" : "tail kept\n");`, mod, back)
+print(tr.bodyDamaged && delivered==0 && tailValues[0]!=previous ? "tail discarded\n" : "tail kept\n");`, mod, back)
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(program))
 	bad, err := hex.DecodeString(unionElemResetMutant)
 	if err != nil {
