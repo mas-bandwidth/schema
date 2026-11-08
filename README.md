@@ -7,7 +7,7 @@
 
 ![Schema — architectural pieces sharing one design](images/schema.png)
 
-Schema is a data language where you define your constants, enums, flags, types and tables for your game, then from this one definition, schema generates code in multiple languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript, Lua and Rust.
+Schema is a data language where you define your constants, enums, flags, types and tables for your game, then from this one definition, it generates code in multiple languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript, Lua and Rust.
 
 Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
 
@@ -19,6 +19,7 @@ Schema is designed to support the following use-cases in game development:
 
 * Packets sent between a client and server.
 * Messages sent between your server and backend.
+* Asset file formats and recursive data structures.
 * Save game files that must load in a future game build.
 * Game assets cooked to an efficient runtime binary format.
 * Render data written in one language and read in another - sixty times per-second.
@@ -64,8 +65,6 @@ type ShipState
     }
 }
 ```
-
-Write your data types once and generate bit-packed serialization code to read and write them. Best for client/server messages and state where the client speaks the same binary protocol as the server or won't be allowed to connect.
 
 ## Performance
 
