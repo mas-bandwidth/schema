@@ -1364,7 +1364,7 @@ func withGooseCrossCheck(mainBody, root string, count int) string {
     let cppN = probe::%[1]sFixedLoad(cppBack, cppIn, cppRep);
     var cppReOut: u8[>..] = [];
     let cppW = probe::%[1]sFixedSave(cppBack, cppReOut);
-    print(cppN == %[2]d && cppRep.reason == 0 && cppRep.clamped == 0 && cppW == out.len);
+    print(cppN == %[2]d && cppRep.reason == 0 && cppRep.oor == 0 && cppW == out.len);
     hex(cppReOut);
 }
 `, root, count)
@@ -1415,7 +1415,6 @@ func TestGooseFixedProofSuiteValues(t *testing.T) {
 				tc.root + "FixedMeasure",
 				tc.root + "FixedSave",
 				tc.root + "FixedLoad",
-				tc.root + "FixedLoadTolerant",
 			} {
 				if !strings.Contains(tableSrc, sym) {
 					t.Fatalf("%s: ProbeTable.goose missing %s", tc.id, sym)

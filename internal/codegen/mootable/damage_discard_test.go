@@ -24,7 +24,9 @@ func TestMooDamageDiscardNegativeControls(t *testing.T) {
 		if !before.malformed || before.value {
 			t.Fatalf("control needs a refused damaged load: %+v", before)
 		}
-		removeMooDiscard(t, g, "table_load.moo", "\tif report.bodyDamaged then\n\t\treturn nil\n\tend\n")
+		// the walk's discard and the one read's: both return no value on damage
+		removeMooDiscard(t, g, "table_load.moo", "\tif report.bodyDamaged then\n\t\treturn nil\n\tend\n", "",
+			"\t\t\t\trep.field = witness(root, b, k)\n\t\t\t\treturn nil\n\t\t\tend\n\t\t\tif k == \"missingRequired\"", "\t\t\t\trep.field = witness(root, b, k)\n\t\t\t\treturn v\n\t\t\tend\n\t\t\tif k == \"missingRequired\"")
 		after := mooRetain(t, g, "Node", wire, retainFull, -1)
 		if !after.malformed || !after.value {
 			t.Fatalf("removing the runtime discard did not expose the partial load: %+v", after)
@@ -42,24 +44,32 @@ func TestMooDamageDiscardNegativeControls(t *testing.T) {
 		probe := damageProbe(g, "LoginRequest", 256)
 		before := g.run(t, probe, inputs)
 		_, rest, _ := strings.Cut(before, " ")
-		if mooAnswer(rest) != "malformed" {
+		if mooAnswer(rest) != "refuse" {
 			t.Fatalf("control needs a refused batch: %s", before)
 		}
-		removeMooDiscard(t, g, "table_message.moo", "\tif rep.damaged then\n\t\treturn 0, {}\n\tend\n")
+		removeMooDiscard(t, g, "table_message.moo", "\tif rep.damaged then\n\t\treturn 0, {}\n\tend\n", "")
 		after := g.run(t, probe, inputs)
-		if !strings.Contains(after, "DAMAGE RETURNED VALUES") {
+		if !strings.Contains(after, "A REFUSAL RETURNED VALUES") {
 			t.Fatalf("removing the runtime discard did not expose the partial batch: %s", after)
 		}
 	})
 }
 
-func removeMooDiscard(t *testing.T, g *generatedUnit, file, anchor string) {
+// removeMooDiscard replaces each anchor (old, new pairs) in one emitted file,
+// each matched exactly once.
+func removeMooDiscard(t *testing.T, g *generatedUnit, file string, pairs ...string) {
 	t.Helper()
 	src := string(g.files[file])
-	if strings.Count(src, anchor) != 1 {
-		t.Fatalf("%s: discard anchor must occur exactly once", file)
+	if len(pairs)%2 != 0 {
+		t.Fatalf("%s: anchors come in (old, new) pairs", file)
 	}
-	if err := os.WriteFile(filepath.Join(g.dir, file), []byte(strings.Replace(src, anchor, "", 1)), 0o644); err != nil {
+	for i := 0; i < len(pairs); i += 2 {
+		if strings.Count(src, pairs[i]) != 1 {
+			t.Fatalf("%s: discard anchor must occur exactly once: %q", file, pairs[i])
+		}
+		src = strings.Replace(src, pairs[i], pairs[i+1], 1)
+	}
+	if err := os.WriteFile(filepath.Join(g.dir, file), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
