@@ -36,7 +36,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 			var body strings.Builder
 			_ = leaves
 			if want.Clamped > 0 {
-				fmt.Fprintf(&body, "    if ( n != -1 || !r.refused || r.refuse_reason != out_of_range ) { printf( \"%s: strict read did not refuse out_of_range: n=%%lld refused=%%d reason=%%d\n\", (long long) n, (int) r.refused, (int) r.refuse_reason ); return 1; }\n", vec.Name)
+				fmt.Fprintf(&body, "    if ( n != -1 || !r.refused || r.refuse_reason != out_of_range ) { printf( \"%s: strict read did not refuse out_of_range: n=%%lld refused=%%d reason=%%d\\n\", (long long) n, (int) r.refused, (int) r.refuse_reason ); return 1; }\n", vec.Name)
 			} else {
 				fmt.Fprintf(&body, "    if ( n != 1 || r.refused ) { printf( \"%s: clean widen did not read one record\n\" ); return 1; }\n", vec.Name)
 			}
