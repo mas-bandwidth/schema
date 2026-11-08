@@ -393,9 +393,14 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
 	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
+	// EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS
+	// (docs/FIXED-FORM-ALGORITHM.md §5.3; FIXED-FORM-VERSIONING-TESTS row 9):
+	// a forged hash on the LAST record refuses no_layout with not one
+	// destination byte written, exactly as on the first.
+	m.Printf("  for (local k = 0; k < count; k++)\n")
+	m.Printf("    if (_rt_fixed.u64le(b, 20 + L + k * rb) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
 	m.Printf("  for (local k = 0; k < count; k++) {\n")
 	m.Printf("    local at = 20 + L + k * rb;\n")
-	m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
 	m.Printf("    local why = e.decode == null ? null : e.decode(out[k], b, at + 8, at + rb);\n")
 	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("  }\n")
