@@ -2604,7 +2604,9 @@ local function float_text(v, single)
     local back = tonumber(text)
     if back ~= nil then
       if single then
-        local narrow = string.unpack("<f", string.pack("<f", back))
+        -- THE READ-BACK IS THE READER'S ONE ROUNDING (§16.2): the token's
+        -- nearest float32, not its double narrowed a second time.
+        local narrow = nearest_f32(text, back, string.unpack("<f", string.pack("<f", back)))
         if narrow == v then return text end
       elseif back == v then
         return text

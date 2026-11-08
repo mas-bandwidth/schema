@@ -105,21 +105,15 @@ print((r1.damaged and "1" or "0") .. "0")
 `
 }
 
-// jsonHostileProbe reads one hostile text and prints its report line in the
-// manifest's shape (docs/SPEC-TABLES.md §16.2, §4).
+// jsonHostileProbe reads one hostile text through the strict FromJson and
+// prints its verdict, read or refused (docs/SPEC-TABLES.md §16.2, §4).
 func jsonHostileProbe(module, root string) string {
 	return `local T = require("` + module + `")
 local J = require("json")
 local inputs = require("inputs")
-local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
-local v = J.fromJsonWalk(T, "` + root + `", inputs.text, report)
-if report.damaged then
-  print("refused")
-else
-  print(string.format("%d,%d,%d,%d,%d,%s,read",
-    report.unknown, report.kindChanged, report.widened, report.outOfRange,
-    report.repeatedKey, tostring(report.damaged)))
-end
+local report = {}
+local v = J.FromJson(T, "` + root + `", inputs.text, report)
+print(v == nil and "refused" or "read")
 `
 }
 

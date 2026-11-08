@@ -1,13 +1,10 @@
 package luatable
 
-// THE PLAIN FromJson IS STRICT, FromJson IS THE NAMED TWIN
-// (docs/SPEC-TABLES.md §6.5, §16.2): the plain read refuses a text whose
-// tolerant report is not clean under the strict set — malformed, clamped, or
-// kind_mismatch — answering nil and writing the strict reason into the
-// supplied report, while unknown and duplicate alone read clean. The answers
-// are the generated Go's own (internal/codegen/gotable), whose
-// TestGoDefaultReadIsStrict pins the FromJson rows: Go err.Error() against
-// Lua report.reason. FromJson keeps the answer FromJson had at BASE.
+// THE PLAIN FromJson IS THE ONE STRICT TEXT READ (docs/SPEC-TABLES.md §6.5,
+// §16.2; docs/plans/strict-only.md): it refuses a text that is damaged, out of
+// range, of the wrong kind, a repeated key or a lone surrogate, answering nil,
+// while unknown alone reads clean. Its verdict is held to the generated Go's
+// (internal/codegen/gotable) and to the manifest's.
 
 import (
 	"fmt"
@@ -64,8 +61,8 @@ func strictJSONRows(t *testing.T, repo, manifestPath string) []strictJSONRow {
 	return rows
 }
 
-// strictLuaProbe prints one line per row: the plain read's verdict, and the
-// tolerant read's BASE-shape report line.
+// strictLuaProbe prints one line per row: the plain read's verdict, ok or
+// refused.
 func strictLuaProbe(module string, rows []strictJSONRow) string {
 	var b strings.Builder
 	b.WriteString(`local T = require("` + module + `")
@@ -77,36 +74,16 @@ local rows = {
 		fmt.Fprintf(&b, "  { key = %q, root = %q },\n", fmt.Sprintf("row%d", i), row.root)
 	}
 	b.WriteString(`}
-local function fresh()
-  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
-    outOfRange = 0, widened = 0, repeatedKey = 0 }
-end
-local function reportLine(r)
-  local verdict = r.refused > 0 and "refused" or "read"
-  return string.format("%d,%d,%d,%d,%d,%s,%s",
-    r.unknown, r.kindChanged, r.widened, r.outOfRange,
-    r.repeatedKey, tostring(r.damaged), verdict)
-end
 for _, row in ipairs(rows) do
-  local text = inputs[row.key]
-  local r = fresh()
-  local v = J.FromJson(T, row.root, text, r)
-  local verdict = "ok"
-  if v == nil then verdict = r.Reason or "refused" end
-  print(row.key .. "|strict|" .. verdict)
-  local tr = fresh()
-  local tv = J.FromJson(T, row.root, text, tr)
-  local tolerant = reportLine(tr)
-  if tv == nil or tr.damaged then tolerant = "refused" end
-  print(row.key .. "|tolerant|" .. tolerant)
+  local v = J.FromJson(T, row.root, inputs[row.key], {})
+  print(row.key .. "|strict|" .. (v == nil and "refused" or "ok"))
 end
 `)
 	return b.String()
 }
 
 // strictGoProbe writes the generated Go oracle test for one unit: one plain
-// FromJson per row, its verdict Go's report.Err().Error(), or "ok" when the
-// read is clean.
+// FromJson per row, its verdict ok or refused.
 func strictGoProbe(pkg string, rows []strictJSONRow, texts map[string][]byte, fixed map[string]bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "package %s\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestStrictJSONOracle(t *testing.T) {\n", pkg)
@@ -118,7 +95,7 @@ func strictGoProbe(pkg string, rows []strictJSONRow, texts map[string][]byte, fi
 		} else {
 			fmt.Fprintf(&b, "\t{\n\t\tvar v %sBuilder\n\t\tv.Init()\n\t\tvar r TableReport\n\t\tok := %sFromJSON(&v, []byte(%q), &r)\n", row.root, row.root, text)
 		}
-		fmt.Fprintf(&b, "\t\tverdict := \"ok\"\n\t\tif !ok {\n\t\t\tif err := r.Err(); err != nil { verdict = err.Error() } else { verdict = \"refused\" }\n\t\t}\n")
+		fmt.Fprintf(&b, "\t\tverdict := \"ok\"\n\t\tif !ok {\n\t\t\tverdict = \"refused\"\n\t\t}\n")
 		fmt.Fprintf(&b, "\t\tif _, err := f.WriteString(%q + \"|\" + verdict + \"\\n\"); err != nil { t.Fatal(err) }\n", fmt.Sprintf("row%d", i))
 		if !fixed[row.root] {
 			b.WriteString("\t\tv.Shutdown()\n")
@@ -130,10 +107,10 @@ func strictGoProbe(pkg string, rows []strictJSONRow, texts map[string][]byte, fi
 }
 
 // TestLuaFromJsonIsStrict pins docs/SPEC-TABLES.md §6.5 and §16.2 over every
-// JSON-bearing row of the tables manifest: the plain FromJson's verdict is the
-// generated Go's (Go err.Error() against Lua report.reason), and
-// FromJson keeps the BASE answer (the manifest's own report line for a
-// hostile text, a clean read for an instance's canonical text).
+// JSON-bearing row of the tables manifest: the plain FromJson's VERDICT is the
+// generated Go's and the manifest's (a hostile row's read or refused, a clean
+// read for an instance's canonical text). Reason names are never compared
+// across languages (docs/rulings.json refusal-verdict-only).
 func TestLuaFromJsonIsStrict(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "go and the pinned lua")
@@ -250,17 +227,14 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 			if got := luaVerdict[key+"|strict"]; got != want {
 				t.Errorf("%s: plain FromJson answered %q, the generated Go %q", row.name, got, want)
 			}
-			tolerant := luaVerdict[key+"|tolerant"]
-			if row.hostile {
-				wantTolerant := row.expected
-				if wantTolerant == "" {
-					wantTolerant = "refused"
-				}
-				if tolerant != wantTolerant {
-					t.Errorf("%s: FromJson answered %q, BASE's FromJson answered %q", row.name, tolerant, wantTolerant)
-				}
-			} else if tolerant != "0,0,0,0,0,false,read" {
-				t.Errorf("%s: FromJson answered %q on a canonical instance text", row.name, tolerant)
+			// the manifest's own verdict: a hostile row's read or refused, a
+			// canonical instance text read
+			wantManifest := "ok"
+			if row.hostile && row.expected != "read" {
+				wantManifest = "refused"
+			}
+			if got := luaVerdict[key+"|strict"]; got != wantManifest {
+				t.Errorf("%s: plain FromJson answered %q, the manifest %q", row.name, got, wantManifest)
 			}
 			compared++
 		}
@@ -268,5 +242,5 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 	if compared == 0 {
 		t.Fatal("no JSON row compared")
 	}
-	t.Logf("%d JSON rows: plain FromJson agrees with the generated Go, FromJson with BASE", compared)
+	t.Logf("%d JSON rows: the plain FromJson's verdict agrees with the generated Go and the manifest", compared)
 }

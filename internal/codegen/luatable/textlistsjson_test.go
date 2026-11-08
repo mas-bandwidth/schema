@@ -81,9 +81,8 @@ type jsonCase struct {
 }
 
 // TestLuaTextListsJson holds §16.2's text-list and unbounded-text rows: the
-// Lua read of each case agrees with the generated Go's report (the six
-// counters, the verdict and the named reason), and the Lua write of the value
-// it read is the generated Go's text byte for byte. The cases cover the plain
+// Lua strict read of each case agrees with the generated Go's verdict, and
+// the Lua write of the value it read is the generated Go's text byte for byte. The cases cover the plain
 // shape, an absent ? element, the element and count clamps, a `total`'s kept
 // prefix, wrong JSON types, a duplicate map key and a key and element longer
 // than the walker's key scratch (the unbounded rows' no-bound rule).
@@ -152,18 +151,14 @@ for _, c in ipairs(cases) do
   local f = assert(io.open("cases/" .. c.name .. ".json", "rb"))
   local text = f:read("*a")
   f:close()
-  local r = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
-  -- the TOLERANT read, as the Go oracle's FromJson (§16.11): the
-  -- plain FromJson is the strict read and answers nil on a clamp
-  local v = J.FromJson(T, c.root, text, r)
-  local ok = not r.damaged
+  -- THE ONE STRICT READ (§16.2): the verdict and the written text are the
+  -- contract, the counters and reason names diagnostics
+  local v = J.FromJson(T, c.root, text, {})
+  local ok = v ~= nil
   local out = nil
   if ok then out = J.ToJson(T, c.root, v) end
   local refused = ok and out == nil
-  print(table.concat({ c.name, tostring(ok), tostring(r.unknown), tostring(r.kindChanged),
-    tostring(r.widened), tostring(r.outOfRange), tostring(r.repeatedKey), tostring(r.damaged),
-    (r.Reason ~= nil and r.Reason ~= "") and r.Reason or (r.outOfRangeField and ("clamped: " .. r.outOfRangeField) or ""),
-    hex(out), tostring(refused) }, "|"))
+  print(table.concat({ c.name, tostring(ok), hex(out), tostring(refused) }, "|"))
 end
 `)
 			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe.String()), 0o644); err != nil {
@@ -285,10 +280,9 @@ func TestOracleTotal(t *testing.T) {
 	return string(data)
 }
 
-// generatedJSONOracle generates the Go unit for u and runs one tolerant read
+// generatedJSONOracle generates the Go unit for u and runs one strict read
 // and write per case in a t.TempDir(), answering a line per case in the Lua
-// probe's shape: name|ok|unknown|kind_mismatch|widened|clamped|duplicate|
-// malformed|reason|hex(text)|write_refused.
+// probe's shape: name|read|hex(text)|write_refused.
 func generatedJSONOracle(t *testing.T, u *ir.Unit, cases []jsonCase) string {
 	t.Helper()
 	files, err := golang.Generate(u)
@@ -348,7 +342,7 @@ func oracle(root string, text []byte) (bool, TableReport, []byte, bool) {
 		if !b.Init() { panic("init") }
 		defer b.Shutdown()
 		var r TableReport
-		if !%sFromJSONTolerant(&b, text, &r) { return false, r, nil, false }
+		if !%sFromJSON(&b, text, &r) { return false, r, nil, false }
 		if !b.Lock() { panic("lock") }
 		v := b.AsConst()
 		n := %sToJSONMeasure(v)
@@ -374,13 +368,8 @@ func TestOracle(t *testing.T) {
 		text, err := os.ReadFile(filepath.Join("cases", c.name+".json"))
 		if err != nil { t.Fatal(err) }
 		ok, r, out, refused := oracle(c.root, text)
-		reason := r.Reason
-		if reason == "" && r.outOfRangeField != "" {
-			reason = "clamped: " + r.outOfRangeField
-		}
-		lines = append(lines, fmt.Sprintf("%s|%t|%d|%d|%d|%d|%d|%t|%s|%s|%t",
-			c.name, ok, r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate,
-			r.Malformed, reason, hex.EncodeToString(out), refused))
+		_ = r
+		lines = append(lines, fmt.Sprintf("%s|%t|%s|%t", c.name, ok, hex.EncodeToString(out), refused))
 	}
 	if err := os.WriteFile("oracle.txt", []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil { t.Fatal(err) }
 }
