@@ -63,7 +63,7 @@ func jsonValueRows(t *testing.T) []jsonValueRow {
 	t.Helper()
 	var rows []jsonValueRow
 	for _, r := range jsonManifestRows(t) {
-		if r.kind != "json-hostile" || r.expected == "refused" || !strings.HasSuffix(r.expected, ",false,read") {
+		if r.kind != "json-hostile" || r.expected != "read" {
 			continue
 		}
 		if !strings.Contains(" "+strings.Join(jsonValueUnits, " ")+" ", " "+r.unit+" ") {

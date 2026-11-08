@@ -27,7 +27,8 @@ type reportRow struct {
 	root     string
 	wire     string
 	// blobShared marks an instance whose wire names one blob from two slots
-	// (the manifest's go-refusal=blob_shared marker): every writer refuses
+	// (the manifest's wire-refused marker, formerly go-refusal=blob_shared):
+	// the strict read refuses it and every writer refuses
 	// it by name (docs/SPEC-TABLES.md §2.5).
 	blobShared bool
 }
@@ -49,7 +50,7 @@ func manifestRows(t *testing.T) []reportRow {
 		}
 		if (fields[0] == "report" || fields[0] == "instance") && len(fields) >= 5 {
 			rows = append(rows, reportRow{kind: fields[0], caseName: fields[1], unit: fields[2], root: fields[3], wire: fields[4],
-				blobShared: slices.Contains(fields[5:], "go-refusal=blob_shared")})
+				blobShared: slices.Contains(fields[5:], "go-refusal=blob_shared") || slices.Contains(fields[5:], "wire-refused")})
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -189,13 +190,13 @@ func loadProbe(g *generatedUnit, rootName string) string {
 	for _, m := range mods {
 		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
 	}
-	fmt.Fprintf(&b, `local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.loadWalk(%q, inputs.wire, report)
-local verdict = "read"
-if report.refused > 0 then verdict = "refused" end
-print(string.format("%%d,%%d,%%d,%%d,%%d,%%s,%%s",
-	report.unknown, report.kindMismatch, report.widened, report.clamped,
-	report.duplicate, tostring(report.malformed), verdict))
+	// THE ONE READ (docs/plans/strict-only.md): the plain strict load, whose
+	// verdict is the only cross-language answer (reports.txt holds read or
+	// refused). The counters are this leg's own diagnostics and are not
+	// compared.
+	fmt.Fprintf(&b, `local report: any = {}
+local v = load.load(%q, inputs.wire, report)
+print(if v ~= nil then "read" else "refused")
 `, rootName)
 	return b.String()
 }
@@ -251,7 +252,16 @@ func TestLuauTableLoadMatchesTheReports(t *testing.T) {
 		}
 		out := runCase(t, g, row, nil)
 		if row.kind == "instance" {
-			if strings.HasSuffix(out, ",refused") {
+			if row.blobShared {
+				// a wire-refused instance: one blob named from two slots, which
+				// the strict read refuses (docs/SPEC-TABLES.md §2.5)
+				if out != "refused" {
+					t.Errorf("instance %s: the strict read did not refuse a wire-refused instance: %s", row.caseName, out)
+				}
+				instances++
+				continue
+			}
+			if out == "refused" {
 				t.Errorf("instance %s: the load refused a wire its own unit wrote: %s", row.caseName, out)
 			}
 			instances++
@@ -283,13 +293,13 @@ func TestLuauTableLoadMatchesTheReports(t *testing.T) {
 
 // TestLuauTableLoadNegativeControl patches the emitted runtime in memory — one
 // anchor, matched exactly once — so a duplicate key is not counted, and
-// requires the comparison to go red. A duplicate is the one event the wire
-// counts as duplicate (docs/SPEC-TABLES.md §4): two map entries claiming one
-// key.
+// requires the walk's duplicate count to go red. Two map entries claiming one
+// key (docs/SPEC-TABLES.md §4). OWED: strict-only decision 5 makes this wire
+// damage; the strict wire read does not refuse it yet.
 func TestLuauTableLoadNegativeControl(t *testing.T) {
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Dup.schema": "package dup\ntable Box\n{\n    m map[uint8]uint8\n}\n"})
-	const want = "0,0,0,0,1,false,read"
+	const want = "duplicate=1"
 	wire := duplicateMapWire(t)
 	if got := runWire(t, g, "Box", wire); got != want {
 		t.Fatalf("the control, an unpatched duplicate: got %s, want %s", got, want)
@@ -317,9 +327,16 @@ func TestLuauTableLoadNegativeControl(t *testing.T) {
 	t.Logf("the reports comparison went red: got %s, want %s", got, want)
 }
 
+// runWire walks one wire at a root and prints the walk's duplicate count, the
+// diagnostic TestLuauTableLoadNegativeControl holds.
 func runWire(t *testing.T, g *generatedUnit, rootName string, wire []byte) string {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(loadProbe(g, rootName)), 0o644); err != nil {
+	probe := strings.Replace(loadProbe(g, rootName), "local report: any = {}\n", "", 1)
+	probe = probe[:strings.Index(probe, "local v = load.load(")] + fmt.Sprintf(`local report: any = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+load.loadWalk(%q, inputs.wire, report)
+print("duplicate=" .. tostring(report.duplicate))
+`, rootName)
+	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire})))

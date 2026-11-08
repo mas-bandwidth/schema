@@ -36,9 +36,27 @@ func TestLuauCookWritesCommittedCorpus(t *testing.T) {
 		if len(f) == 0 || f[0] != "cook-write" {
 			continue
 		}
-		if len(f) != 4 {
+		// cook-write <instance> <le> <be> [input=<json>] [share=<source>:<alias>]
+		// (test/conformance/README.md, "Cook writes use explicit value
+		// construction")
+		if len(f) < 4 || len(f) > 6 {
 			t.Fatalf("invalid cook-write row: %s", line)
 		}
+		input, share := "", ""
+		for _, option := range f[4:] {
+			switch {
+			case strings.HasPrefix(option, "input=") && input == "":
+				input = strings.TrimPrefix(option, "input=")
+			case strings.HasPrefix(option, "share=") && share == "":
+				share = strings.TrimPrefix(option, "share=")
+			default:
+				t.Fatalf("invalid cook-write option %q: %s", option, line)
+			}
+		}
+		if share != "" && input == "" {
+			t.Fatalf("a sharing cook-write row names no input: %s", line)
+		}
+		source, alias, _ := strings.Cut(share, ":")
 		seen[f[1]] = true
 		t.Run(f[1], func(t *testing.T) {
 			row, ok := instances[f[1]]
@@ -57,9 +75,37 @@ func TestLuauCookWritesCommittedCorpus(t *testing.T) {
 				}
 			}
 			sort.Strings(mods)
-			wire, err := os.ReadFile(filepath.Join(root, row.wire))
-			if err != nil {
-				t.Fatal(err)
+			files := map[string][]byte{}
+			// the value: the instance's wire through the one read, or the
+			// row's explicit JSON input, with the alias slot then holding the
+			// very object the source slot holds (one shared blob)
+			construct := fmt.Sprintf(`local v = L.load(%q, inputs.wire, {})
+assert(v ~= nil, "wire refused")`, row.root)
+			if input != "" {
+				text, err := os.ReadFile(filepath.Join(root, input))
+				if err != nil {
+					t.Fatal(err)
+				}
+				files["text"] = text
+				construct = jsonFlags(cu.g) + fmt.Sprintf(`local J = require("./schema_json")
+J.SetFlags(SCHEMA_JSON_FLAGS)
+local jr: any = {}
+local v = J.FromJson(%q, inputs.text, jr)
+assert(v ~= nil, "input refused: " .. tostring(jr.reason))`, row.root)
+				if source != "" {
+					construct += fmt.Sprintf(`
+local slots = {}
+for _, fd in d.fields do slots[fd.name] = fd.slot end
+assert(slots[%[1]q] ~= nil and slots[%[2]q] ~= nil, "share names no such field")
+assert(v[slots[%[1]q]] ~= nil, "share source is empty")
+v[slots[%[2]q]] = v[slots[%[1]q]]`, source, alias)
+				}
+			} else {
+				wire, err := os.ReadFile(filepath.Join(root, row.wire))
+				if err != nil {
+					t.Fatal(err)
+				}
+				files["wire"] = wire
 			}
 			probe := strings.Join(mods, "\n") + fmt.Sprintf(`
 local St = require("./schema_tables")
@@ -67,9 +113,7 @@ local L = require("./schema_load")
 local C = require("./schema_cook")
 local inputs = require("./inputs")
 local d = St.lookup(%q)
-local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = L.loadWalk(%q, inputs.wire, r)
-assert(v ~= nil and not r.malformed and r.refused == 0, "wire refused")
+%s
 C.BuildVersion = 0x%016xi
 for pass = 1, 2 do
   if pass == 2 then
@@ -99,8 +143,8 @@ for pass = 1, 2 do
     for i, entry in entries do assert(v[slot][i] == entry, "cook mutated map order") end
   end
 end
-`, row.root, row.root, cu.build)
-			out := runProbe(t, cu.g, probe, map[string][]byte{"wire": wire})
+`, row.root, construct, cu.build)
+			out := runProbe(t, cu.g, probe, files)
 			lines := strings.Split(out, "\n")
 			if len(lines) != 4 {
 				t.Fatalf("expected four writes, got %q", out)
