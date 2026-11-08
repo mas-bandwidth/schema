@@ -133,7 +133,11 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    // A RECORD THAT LACKS A | required FIELD (§2.3): Go's TableRefuseMissingRequired,
+    // at Go's own value, so the two targets answer the same number. The report's
+    // missing_required count and missing_required_fields name the fields.
+    missing_required = 255
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -206,6 +210,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason missing_required = TableRefuseReason::missing_required;
     static constexpr TableRefuseReason no_vocabulary = ::mapdemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::mapdemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::mapdemo::vocabulary_too_large;
@@ -276,6 +281,14 @@ struct TableReport
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// TableAppendText is strcat for the report's missing_required_fields, with
+// the caller's own bound check before it: MSVC deprecates strcat (C4996),
+// and every C++ target compiles this header with warnings as errors.
+inline void TableAppendText( char * to, const char * text )
+{
+    memcpy( to + strlen( to ), text, strlen( text ) + 1 );
+}
 
 // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
 // packet wire's own): a NaN or an infinity, whatever its
@@ -5090,7 +5103,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch;; }
+        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
         return;
     }
     switch ( me.kind )
@@ -5350,7 +5363,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;;
+                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -6636,10 +6649,10 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;;
+            report->refused = true; report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;;
+        report->refused = true; report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -10585,7 +10598,7 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10605,7 +10618,7 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
-                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // at a code point boundary (§3)
+                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
                 value.key[keep] = 0;
                 value.key_length = (int32_t) keep;
@@ -10618,7 +10631,7 @@ inline bool DocsPagesEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10785,7 +10798,7 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10807,7 +10820,7 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
                     if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
+                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
                     TableMapFill<DocsPagesEntry> fill = TableMapFillBegin( nodes, value.pages, count );
                     if ( fill.refused )
                     {
@@ -10842,12 +10855,12 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
                             // to EMPTY, ONE kind_mismatch is counted for it, and the rest
                             // is skipped. Events counted inside earlier entries stand.
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                             TableMapFillReset( fill );
                             break;
                         }
                         if ( read.damaged ) { r.report->damaged = true; break; }
-                        if ( read.over ) { r.report->refused = true; r.report->refuse_reason = out_of_range;; continue; } // skipped by its L, one count per entry
+                        if ( read.over ) { r.report->refused = true; r.report->refuse_reason = out_of_range; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;
                         if ( order > 0 )
                         {
@@ -10875,7 +10888,7 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
                             DocsPagesEntryLoadBody( elem, nodes, *slot );
                             if ( nodes.refused ) { return false; }
                         }
-                        if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed;; }
+                        if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed; }
                         last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
                         landed = true;
                     }
@@ -10905,7 +10918,7 @@ inline bool DocsLoadBody( TableReader & r, const TableNodeMap & nodes, Docs & va
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12108,16 +12121,14 @@ inline const Docs * DocsLoad( uint8_t * region, int64_t region_bytes, const uint
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Docs * root = DocsLoadWalk( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->damaged || out->refused || out->refused || out->refused || out->refused || out->missing_required )
+    if ( root == NULL || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -12305,16 +12316,14 @@ inline bool DocsLoadBuilder( DocsBuilder & builder, const uint8_t * wire_file, i
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = DocsLoadBuilderWalk( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->damaged || out->refused || out->refused || out->refused || out->refused || out->missing_required )
+    if ( !decoded || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -12350,16 +12359,14 @@ inline const Docs * DocsReadStrict( const uint8_t * wire_file, int64_t wire_file
     DocsBuilder builder( allocator );
     TableReport report;
     const bool decoded = DocsLoadBuilderWalk( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.damaged || report.refused || report.refused || report.refused || report.refused || report.missing_required )
+    if ( !decoded || report.damaged || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
             if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
-            else if ( report.refused ) { *reason = unknown_form; }
             else if ( report.damaged ) { *reason = wire_damaged; }
-            else if ( report.refused ) { *reason = blob_shared; } // §2.5, §16.7
-            else if ( report.refused ) { *reason = out_of_range; }
-            else if ( report.refused ) { *reason = kind_mismatch; }
+            else if ( report.refused ) { *reason = unknown_form; }
+            else if ( report.missing_required ) { *reason = missing_required; }
             else
             {
                 *reason = wire_damaged;
@@ -12497,7 +12504,7 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12517,7 +12524,7 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
                     r.offset += (int64_t) len; break;
                 }
                 uint64_t keep = len;
-                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // at a code point boundary (§3)
+                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
                 memcpy( value.key, r.buffer + r.offset, (size_t) keep );
                 value.key[keep] = 0;
                 value.key_length = (int32_t) keep;
@@ -12530,7 +12537,7 @@ inline bool DocsPagesEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12704,7 +12711,7 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12726,7 +12733,7 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
                     if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
+                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
@@ -12764,12 +12771,12 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
                             // to EMPTY, ONE kind_mismatch is counted for it, and the rest
                             // is skipped. Events counted inside earlier entries stand.
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                             TableMapFillReset( fill );
                             break;
                         }
                         if ( read.damaged ) { r.report->damaged = true; break; }
-                        if ( read.over ) { r.report->refused = true; r.report->refuse_reason = out_of_range;; continue; } // skipped by its L, one count per entry
+                        if ( read.over ) { r.report->refused = true; r.report->refuse_reason = out_of_range; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;
                         if ( order > 0 )
                         {
@@ -12797,7 +12804,7 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
                             DocsPagesEntryLoadBodyRetain( elem, nodes, *slot, retain, TableRetainStepInto( path, 0, (uint32_t) ( fill.map->count - 1 ) ) );
                             if ( nodes.refused ) { return false; }
                         }
-                        if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed;; }
+                        if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed; }
                         last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
                         landed = true;
                     }
@@ -12827,7 +12834,7 @@ inline bool DocsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Doc
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;

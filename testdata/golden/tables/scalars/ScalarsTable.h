@@ -120,7 +120,11 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    // A RECORD THAT LACKS A | required FIELD (§2.3): Go's TableRefuseMissingRequired,
+    // at Go's own value, so the two targets answer the same number. The report's
+    // missing_required count and missing_required_fields name the fields.
+    missing_required = 255
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -193,6 +197,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason missing_required = TableRefuseReason::missing_required;
     static constexpr TableRefuseReason no_vocabulary = ::scalardemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::scalardemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::scalardemo::vocabulary_too_large;
@@ -263,6 +268,14 @@ struct TableReport
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// TableAppendText is strcat for the report's missing_required_fields, with
+// the caller's own bound check before it: MSVC deprecates strcat (C4996),
+// and every C++ target compiles this header with warnings as errors.
+inline void TableAppendText( char * to, const char * text )
+{
+    memcpy( to + strlen( to ), text, strlen( text ) + 1 );
+}
 
 // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
 // packet wire's own): a NaN or an infinity, whatever its
@@ -4739,7 +4752,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch;; }
+        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
         return;
     }
     switch ( me.kind )
@@ -4999,7 +5012,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;;
+                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -6074,7 +6087,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6088,7 +6101,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int8_t decoded_v = int8_t( r.get8() );
-                if ( decoded_v > 112 ) { decoded_v = 112; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v > 112 ) { decoded_v = 112; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.tilt = decoded_v;
                 break;
             }
@@ -6098,7 +6111,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6112,8 +6125,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < -11796480 ) { decoded_v = -11796480; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > 11796480 ) { decoded_v = 11796480; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < -11796480 ) { decoded_v = -11796480; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > 11796480 ) { decoded_v = 11796480; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.angle = decoded_v;
                 break;
             }
@@ -6123,7 +6136,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6137,8 +6150,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v < -1966080000ll ) { decoded_v = -1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > 1966080000ll ) { decoded_v = 1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < -1966080000ll ) { decoded_v = -1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > 1966080000ll ) { decoded_v = 1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.position = decoded_v;
                 break;
             }
@@ -6148,7 +6161,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6164,8 +6177,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.reach = decoded_v;
                 break;
             }
@@ -6175,7 +6188,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6189,8 +6202,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > 1000000 ) { decoded_v = 1000000; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > 1000000 ) { decoded_v = 1000000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.ticks = decoded_v;
                 break;
             }
@@ -6200,7 +6213,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6214,7 +6227,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 uint8_t decoded_v = uint8_t( r.get8() );
-                if ( decoded_v > 240 ) { decoded_v = 240; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v > 240 ) { decoded_v = 240; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.ratio = decoded_v;
                 break;
             }
@@ -6224,7 +6237,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6238,7 +6251,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v > 65536000 ) { decoded_v = 65536000; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v > 65536000 ) { decoded_v = 65536000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.speed = decoded_v;
                 break;
             }
@@ -6248,7 +6261,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6262,7 +6275,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
-                if ( decoded_v > 18446744073709486080ull ) { decoded_v = 18446744073709486080ull; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v > 18446744073709486080ull ) { decoded_v = 18446744073709486080ull; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.span = decoded_v;
                 break;
             }
@@ -6272,7 +6285,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6288,7 +6301,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::uint128_t decoded_v = serialize::uint128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) ) { decoded_v = ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) ) { decoded_v = ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.mass = decoded_v;
                 break;
             }
@@ -6298,7 +6311,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6330,15 +6343,15 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             return false;
                         }
                         serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( widened_v < 0 ? ~0ull : 0ull ) << 64 ) | serialize::uint128_t( (uint64_t) widened_v ) );
-                        if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                        else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
                         value.flux = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6354,8 +6367,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.flux = decoded_v;
                 break;
             }
@@ -6374,15 +6387,15 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             return false;
                         }
                         serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( widened_v < 0 ? ~0ull : 0ull ) << 64 ) | serialize::uint128_t( (uint64_t) widened_v ) );
-                        if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                        else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
                         value.energy = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6398,8 +6411,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 uint64_t lo_v = 0, hi_v = 0;
                 r.get128( lo_v, hi_v );
                 serialize::int128_t decoded_v = serialize::int128_t( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );
-                if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ) { decoded_v = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ); r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.energy = decoded_v;
                 break;
             }
@@ -6424,7 +6437,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6449,7 +6462,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6463,8 +6476,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < -524288 ) { decoded_v = -524288; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > 524288 ) { decoded_v = 524288; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < -524288 ) { decoded_v = -524288; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > 524288 ) { decoded_v = 524288; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.scale = decoded_v;
                 break;
             }
@@ -6474,7 +6487,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6501,11 +6514,11 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 22 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
+                    else if ( elem_kind != 22 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
-                    if ( keep > 3 ) { keep = 3; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                    if ( keep > 3 ) { keep = 3; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover is damage, which discards the whole load (§4), and
                     // the following fields' bytes are never fabricated into
@@ -6519,8 +6532,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             break;
                         }
                         int32_t decoded_v = int32_t( sub.get32() );
-                        if ( decoded_v < -524288 ) { decoded_v = -524288; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                        else if ( decoded_v > 524288 ) { decoded_v = 524288; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        if ( decoded_v < -524288 ) { decoded_v = -524288; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        else if ( decoded_v > 524288 ) { decoded_v = 524288; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                         value.samples[(int32_t) i] = decoded_v;
                     }
                     }
@@ -6534,7 +6547,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6562,11 +6575,11 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 26 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
+                    else if ( elem_kind != 26 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
-                    if ( keep > 4 ) { keep = 4; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                    if ( keep > 4 ) { keep = 4; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover is damage, which discards the whole load (§4), and
                     // the following fields' bytes are never fabricated into
@@ -6581,7 +6594,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                             break;
                         }
                         uint16_t decoded_v = uint16_t( sub.get16() );
-                        if ( decoded_v > 25600 ) { decoded_v = 25600; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        if ( decoded_v > 25600 ) { decoded_v = 25600; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                         value.weights[(int32_t) i] = decoded_v;
                         decoded = i + 1;
                     }
@@ -6600,7 +6613,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6620,7 +6633,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
                     if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
-                    if ( elem_kind != 23 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
+                    if ( elem_kind != 23 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < count; i++ )
                     {
@@ -6654,8 +6667,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                                 continue;
                             }
                             int64_t decoded_v = int64_t( elem.get64() );
-                            if ( decoded_v < -429496729600ll ) { decoded_v = -429496729600ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                            else if ( decoded_v > 429496729600ll ) { decoded_v = 429496729600ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                            if ( decoded_v < -429496729600ll ) { decoded_v = -429496729600ll; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                            else if ( decoded_v > 429496729600ll ) { decoded_v = 429496729600ll; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                             value.axes.slots[int32_t( slot ) - 1] = decoded_v;
                         }
                         sub.offset += (int64_t) elem_len;
@@ -6670,7 +6683,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6702,12 +6715,12 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     {
                         if ( !TableKindWidens( elem_kind, 19 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
                         uint64_t widened_keep = count;
-                        if ( widened_keep > 2 ) { widened_keep = 2; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        if ( widened_keep > 2 ) { widened_keep = 2; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                         TableReader widened_sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         r.report->widened++;
                         uint64_t widened_decoded = 0;
@@ -6731,7 +6744,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                     else
                     {
                     uint64_t keep = count;
-                    if ( keep > 2 ) { keep = 2; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                    if ( keep > 2 ) { keep = 2; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover is damage, which discards the whole load (§4), and
                     // the following fields' bytes are never fabricated into
@@ -6766,7 +6779,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6798,7 +6811,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6901,17 +6914,16 @@ inline bool SimStateLoad( SimState & value, const uint8_t * buffer, int64_t byte
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = SimStateLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with out_of_range before kind_mismatch
-        // as Go's TableReport.Err() orders them, and damage before both.
+        // the walk names the condition it met where it met it; a refusal it
+        // left unnamed is a form, damage, or a missing required field.
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -8088,7 +8100,7 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8102,8 +8114,8 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v < -1966080000ll ) { decoded_v = -1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > 1966080000ll ) { decoded_v = 1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < -1966080000ll ) { decoded_v = -1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > 1966080000ll ) { decoded_v = 1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.x = decoded_v;
                 break;
             }
@@ -8113,7 +8125,7 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8127,8 +8139,8 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                     return false;
                 }
                 int64_t decoded_v = int64_t( r.get64() );
-                if ( decoded_v < -1966080000ll ) { decoded_v = -1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > 1966080000ll ) { decoded_v = 1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < -1966080000ll ) { decoded_v = -1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > 1966080000ll ) { decoded_v = 1966080000ll; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.y = decoded_v;
                 break;
             }
@@ -8138,7 +8150,7 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8152,7 +8164,7 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
-                if ( decoded_v > 23592960 ) { decoded_v = 23592960; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v > 23592960 ) { decoded_v = 23592960; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.heading = decoded_v;
                 break;
             }
@@ -8232,17 +8244,16 @@ inline bool PoseLoad( Pose & value, const uint8_t * buffer, int64_t bytes, Table
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = PoseLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with out_of_range before kind_mismatch
-        // as Go's TableReport.Err() orders them, and damage before both.
+        // the walk names the condition it met where it met it; a refusal it
+        // left unnamed is a form, damage, or a missing required field.
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -9232,7 +9243,7 @@ inline int64_t SimStateFixedLoad( SimState * values, int64_t capacity, const uin
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int64_t n = SimStateFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 ) { return -1; }
-    if ( out->damaged || out->refused || out->refused || out->refused )
+    if ( out->damaged || out->refused )
     {
         for ( int64_t k = 0; k < n; ++k ) { SimStateReset( values[k] ); }
         return -1;

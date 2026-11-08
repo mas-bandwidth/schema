@@ -1986,6 +1986,7 @@ static const char * reason_name( graphdemo::TableRefuseReason reason )
         case graphdemo::text_ill_formed: return "text_ill_formed";
         case graphdemo::count_over_bound: return "count_over_bound";
         case graphdemo::length_over_bound: return "length_over_bound";
+        case graphdemo::missing_required: return "missing_required";
     }
     return "?";
 }

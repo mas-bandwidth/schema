@@ -1066,10 +1066,10 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;;
+            report->refused = true; report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;;
+        report->refused = true; report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {

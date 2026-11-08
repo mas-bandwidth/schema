@@ -112,7 +112,11 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    // A RECORD THAT LACKS A | required FIELD (§2.3): Go's TableRefuseMissingRequired,
+    // at Go's own value, so the two targets answer the same number. The report's
+    // missing_required count and missing_required_fields name the fields.
+    missing_required = 255
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -185,6 +189,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason missing_required = TableRefuseReason::missing_required;
     static constexpr TableRefuseReason no_vocabulary = ::wide::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::wide::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::wide::vocabulary_too_large;
@@ -255,6 +260,14 @@ struct TableReport
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// TableAppendText is strcat for the report's missing_required_fields, with
+// the caller's own bound check before it: MSVC deprecates strcat (C4996),
+// and every C++ target compiles this header with warnings as errors.
+inline void TableAppendText( char * to, const char * text )
+{
+    memcpy( to + strlen( to ), text, strlen( text ) + 1 );
+}
 
 // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
 // packet wire's own): a NaN or an infinity, whatever its
@@ -4229,7 +4242,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch;; }
+        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
         return;
     }
     switch ( me.kind )
@@ -4489,7 +4502,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;;
+                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -5405,7 +5418,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5423,7 +5436,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 // code unit counts malformed, and damage discards the whole load
                 if ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->damaged = true; value.title[0] = 0; value.title_length = 0; r.offset += (int64_t) len; break; }
                 int64_t keep = units;
-                if ( keep > 7 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 7 ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // never splitting a pair (§3)
+                if ( keep > 7 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 7 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair (§3)
                 for ( int64_t i = 0; i < keep; i++ ) { value.title[i] = (char16_t) TableUtf16Unit( r.buffer + r.offset, i ); }
                 value.title[keep] = 0;
                 value.title_length = (int32_t) keep;
@@ -5436,7 +5449,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5468,7 +5481,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5496,11 +5509,11 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }
+                    else if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
-                    if ( keep > 3 ) { keep = 3; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                    if ( keep > 3 ) { keep = 3; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                     // elements are BOUNDED by the field body: a count the length
                     // cannot cover is damage, which discards the whole load (§4), and
                     // the following fields' bytes are never fabricated into
@@ -5534,7 +5547,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5566,7 +5579,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.body.type = BodyType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.body.type = BodyType::Wide;
@@ -5577,7 +5590,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 int64_t arm_keep = arm_units;
                                 // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
                                 if ( !TableUtf16Valid( sub.buffer + sub.offset, arm_units ) ) { value.body.type = BodyType::None; r.report->damaged = true; break; }
-                                if ( arm_keep > 4 ) { arm_keep = TableUtf16Clamp( sub.buffer + sub.offset, arm_units, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // never splitting a pair
+                                if ( arm_keep > 4 ) { arm_keep = TableUtf16Clamp( sub.buffer + sub.offset, arm_units, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair
                                 for ( int64_t i = 0; i < arm_keep; i++ ) { value.body.wide.value[i] = (char16_t) TableUtf16Unit( sub.buffer + sub.offset, i ); }
                                 value.body.wide.value[arm_keep] = 0;
                                 value.body.wide.value_length = (int32_t) arm_keep;
@@ -5592,7 +5605,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.body.type = BodyType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.body.type = BodyType::Narrow;
@@ -5602,7 +5615,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 uint32_t arm_keep = arm_len;
                                 // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
                                 if ( !TableUtf8Valid( sub.buffer + sub.offset, sub.size ) ) { value.body.type = BodyType::None; r.report->damaged = true; break; }
-                                if ( arm_keep > 4 ) { arm_keep = (uint32_t) TableUtf8Clamp( sub.buffer + sub.offset, sub.size, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // at a code point boundary
+                                if ( arm_keep > 4 ) { arm_keep = (uint32_t) TableUtf8Clamp( sub.buffer + sub.offset, sub.size, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary
                                 memcpy( value.body.narrow.value, sub.buffer + sub.offset, arm_keep );
                                 value.body.narrow.value[arm_keep] = 0;
                                 value.body.narrow.value_length = (int32_t) arm_keep;
@@ -5636,7 +5649,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.body.type = BodyType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.body.type = BodyType::Tally;
@@ -5741,17 +5754,16 @@ inline bool CaptionLoad( Caption & value, const uint8_t * buffer, int64_t bytes,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = CaptionLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with out_of_range before kind_mismatch
-        // as Go's TableReport.Err() orders them, and damage before both.
+        // the walk names the condition it met where it met it; a refusal it
+        // left unnamed is a form, damage, or a missing required field.
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -6323,7 +6335,7 @@ WIDE_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6341,7 +6353,7 @@ WIDE_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                 // code unit counts malformed, and damage discards the whole load
                 if ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->damaged = true; value.label[0] = 0; value.label_length = 0; r.offset += (int64_t) len; break; }
                 int64_t keep = units;
-                if ( keep > 4 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // never splitting a pair (§3)
+                if ( keep > 4 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair (§3)
                 for ( int64_t i = 0; i < keep; i++ ) { value.label[i] = (char16_t) TableUtf16Unit( r.buffer + r.offset, i ); }
                 value.label[keep] = 0;
                 value.label_length = (int32_t) keep;
@@ -6369,7 +6381,7 @@ WIDE_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6462,17 +6474,16 @@ inline bool StampLoad( Stamp & value, const uint8_t * buffer, int64_t bytes, Tab
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = StampLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with out_of_range before kind_mismatch
-        // as Go's TableReport.Err() orders them, and damage before both.
+        // the walk names the condition it met where it met it; a refusal it
+        // left unnamed is a form, damage, or a missing required field.
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -6795,7 +6806,7 @@ WIDE_TABLE_INLINE bool LineLoadBody( TableReader & r, Line & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6813,7 +6824,7 @@ WIDE_TABLE_INLINE bool LineLoadBody( TableReader & r, Line & value )
                 // code unit counts malformed, and damage discards the whole load
                 if ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->damaged = true; value.text[0] = 0; value.text_length = 0; r.offset += (int64_t) len; break; }
                 int64_t keep = units;
-                if ( keep > 4 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // never splitting a pair (§3)
+                if ( keep > 4 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair (§3)
                 for ( int64_t i = 0; i < keep; i++ ) { value.text[i] = (char16_t) TableUtf16Unit( r.buffer + r.offset, i ); }
                 value.text[keep] = 0;
                 value.text_length = (int32_t) keep;
@@ -6896,17 +6907,16 @@ inline bool LineLoad( Line & value, const uint8_t * buffer, int64_t bytes, Table
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = LineLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with out_of_range before kind_mismatch
-        // as Go's TableReport.Err() orders them, and damage before both.
+        // the walk names the condition it met where it met it; a refusal it
+        // left unnamed is a form, damage, or a missing required field.
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -7682,7 +7692,7 @@ inline int64_t CaptionFixedLoad( Caption * values, int64_t capacity, const uint8
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int64_t n = CaptionFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 ) { return -1; }
-    if ( out->damaged || out->refused || out->refused || out->refused )
+    if ( out->damaged || out->refused )
     {
         for ( int64_t k = 0; k < n; ++k ) { CaptionReset( values[k] ); }
         return -1;
@@ -8033,7 +8043,7 @@ inline int64_t StampFixedLoad( Stamp * values, int64_t capacity, const uint8_t *
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int64_t n = StampFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 ) { return -1; }
-    if ( out->damaged || out->refused || out->refused || out->refused )
+    if ( out->damaged || out->refused )
     {
         for ( int64_t k = 0; k < n; ++k ) { StampReset( values[k] ); }
         return -1;
