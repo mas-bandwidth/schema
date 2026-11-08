@@ -153,10 +153,10 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
 pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedEntityRow) -> bool {
     *value = mixed_entity_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.malformed = true; return false; };
+        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.malformed = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.malformed = true; return false; }
+        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
+        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
         match entry.id {
             0x23fcfd6678e36712 => {
                 let mut widened = false;
@@ -165,15 +165,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f1;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.clamped += 1; }
+                        if x > 4095 { x = 4095; report.damaged = true; }
                         value.entity_id = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -186,15 +186,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f2;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.clamped += 1; } else if x > 16383i128 { x = 16383i128; report.clamped += 1; }
+                        if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
                         value.pos_x = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -207,15 +207,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f3;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.clamped += 1; } else if x > 16383i128 { x = 16383i128; report.clamped += 1; }
+                        if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
                         value.pos_y = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -228,15 +228,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f4;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.clamped += 1; } else if x > 16383i128 { x = 16383i128; report.clamped += 1; }
+                        if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
                         value.pos_z = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -249,15 +249,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f5;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 511 { x = 511; report.clamped += 1; }
+                        if x > 511 { x = 511; report.damaged = true; }
                         value.yaw = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -270,15 +270,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f6;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 511 { x = 511; report.clamped += 1; }
+                        if x > 511 { x = 511; report.damaged = true; }
                         value.pitch = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -291,15 +291,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f7;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.clamped += 1; } else if x > 2047i128 { x = 2047i128; report.clamped += 1; }
+                        if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
                         value.vel_x = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -312,15 +312,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f8;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.clamped += 1; } else if x > 2047i128 { x = 2047i128; report.clamped += 1; }
+                        if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
                         value.vel_y = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -333,15 +333,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f9;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.clamped += 1; } else if x > 2047i128 { x = 2047i128; report.clamped += 1; }
+                        if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
                         value.vel_z = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -354,15 +354,15 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f10;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.clamped += 1; } else if x > 1000i128 { x = 1000i128; report.clamped += 1; }
+                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 1000i128 { x = 1000i128; report.damaged = true; }
                         value.health = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -372,16 +372,16 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                 let mut widened = false;
                 'f11: {
                     if entry.kind != 30 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f11;
                     }
                     {
-                        let Some(reference) = r.get(v.ref_bits) else { report.malformed = true; return false; };
+                        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
                         if reference == 0 {
                             value.weapon = 0;
                         } else {
-                            let Some(id) = v.name(reference) else { report.malformed = true; return false; };
+                            let Some(id) = v.name(reference) else { report.damaged = true; return false; };
                             value.weapon = match id {
                                 0xa790eee12766cf0c => 1,
                                 0x9fbfefa835da8476 => 2,
@@ -412,13 +412,13 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f12;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
                         value.damage = x as u64;
                     }
@@ -429,12 +429,12 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                 let mut widened = false;
                 'f13: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f13;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.moving = (lo as u8) != 0;
                     }
                     if widened { report.widened += 1; }
@@ -444,12 +444,12 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                 let mut widened = false;
                 'f14: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f14;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.firing = (lo as u8) != 0;
                     }
                     if widened { report.widened += 1; }
@@ -457,7 +457,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
             }
             _ => {
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -502,23 +502,23 @@ pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow
 pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedStatRow) -> bool {
     *value = mixed_stat_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.malformed = true; return false; };
+        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.malformed = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.malformed = true; return false; }
+        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
+        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
         match entry.id {
             0x80ab75f0866dbf65 => {
                 let mut widened = false;
                 'f15: {
                     if entry.kind != 6 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f15;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 255 { x = 255; report.clamped += 1; }
+                        if x > 255 { x = 255; report.damaged = true; }
                         value.stat_id = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -531,15 +531,15 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f16;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -512i128 { x = -512i128; report.clamped += 1; } else if x > 511i128 { x = 511i128; report.clamped += 1; }
+                        if x < -512i128 { x = -512i128; report.damaged = true; } else if x > 511i128 { x = 511i128; report.damaged = true; }
                         value.delta = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -547,7 +547,7 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
             }
             _ => {
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -604,10 +604,10 @@ pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHi
 pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedHitEventRow) -> bool {
     *value = mixed_hit_event_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.malformed = true; return false; };
+        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.malformed = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.malformed = true; return false; }
+        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
+        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
         match entry.id {
             0xb7bc9ac015a25050 => {
                 let mut widened = false;
@@ -616,15 +616,15 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f17;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.clamped += 1; }
+                        if x > 4095 { x = 4095; report.damaged = true; }
                         value.target_id = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -637,15 +637,15 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f18;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.clamped += 1; } else if x > 4095i128 { x = 4095i128; report.clamped += 1; }
+                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 4095i128 { x = 4095i128; report.damaged = true; }
                         value.damage = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -658,15 +658,15 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f19;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.clamped += 1; } else if x > 7i128 { x = 7i128; report.clamped += 1; }
+                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 7i128 { x = 7i128; report.damaged = true; }
                         value.hit_kind = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -676,12 +676,12 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                 let mut widened = false;
                 'f20: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f20;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.crit = (lo as u8) != 0;
                     }
                     if widened { report.widened += 1; }
@@ -689,7 +689,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
             }
             _ => {
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -734,10 +734,10 @@ pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedC
 pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedChatEventRow) -> bool {
     *value = mixed_chat_event_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.malformed = true; return false; };
+        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.malformed = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.malformed = true; return false; }
+        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
+        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
         match entry.id {
             0xa5013e9ad5caeda4 => {
                 let mut widened = false;
@@ -746,15 +746,15 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f21;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.clamped += 1; } else if x > 3i128 { x = 3i128; report.clamped += 1; }
+                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 3i128 { x = 3i128; report.damaged = true; }
                         value.channel = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -767,15 +767,15 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f22;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.clamped += 1; }
+                        if x > 4095 { x = 4095; report.damaged = true; }
                         value.speaker = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -783,7 +783,7 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
             }
             _ => {
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -828,10 +828,10 @@ pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &Mixe
 pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedPickupEventRow) -> bool {
     *value = mixed_pickup_event_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.malformed = true; return false; };
+        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.malformed = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.malformed = true; return false; }
+        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
+        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
         match entry.id {
             0x9e7fd06d864fbd56 => {
                 let mut widened = false;
@@ -840,15 +840,15 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f23;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 1023 { x = 1023; report.clamped += 1; }
+                        if x > 1023 { x = 1023; report.damaged = true; }
                         value.item_id = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -861,15 +861,15 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f24;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.clamped += 1; } else if x > 255i128 { x = 255i128; report.clamped += 1; }
+                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 255i128 { x = 255i128; report.damaged = true; }
                         value.amount = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -877,7 +877,7 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
             }
             _ => {
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -1191,10 +1191,10 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
 pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut BenchMixedRow) -> bool {
     *value = bench_mixed_message_default();
     loop {
-        let Some(reference) = r.get(v.ref_bits) else { report.malformed = true; return false; };
+        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
-        let Some(entry) = v.entry(reference).copied() else { report.malformed = true; return false; };
-        if entry.id >= 0xffff_ffff_ffff_fffd { report.malformed = true; return false; }
+        let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
+        if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
         match entry.id {
             0xaa38aca481f528a8 => {
                 let mut widened = false;
@@ -1203,15 +1203,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f28;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 65535 { x = 65535; report.clamped += 1; }
+                        if x > 65535 { x = 65535; report.damaged = true; }
                         value.sequence = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -1224,15 +1224,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f29;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.clamped += 1; } else if x > 65535i128 { x = 65535i128; report.clamped += 1; }
+                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 65535i128 { x = 65535i128; report.damaged = true; }
                         value.ack_sequence = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -1245,15 +1245,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f30;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4294967295 { x = 4294967295; report.clamped += 1; }
+                        if x > 4294967295 { x = 4294967295; report.damaged = true; }
                         value.ack_bits = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -1266,13 +1266,13 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f31;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
                         value.session_id = x as u64;
                     }
@@ -1286,13 +1286,13 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f32;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
                         value.client_id = x as u32;
                     }
@@ -1306,15 +1306,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f33;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x < 0u128 { x = 0u128; report.clamped += 1; } else if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.clamped += 1; }
+                        if x < 0u128 { x = 0u128; report.damaged = true; } else if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.damaged = true; }
                         value.nonce = x as u64;
                     }
                     if widened { report.widened += 1; }
@@ -1327,15 +1327,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 5) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f34;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -1000000000000i128 { x = -1000000000000i128; report.clamped += 1; } else if x > 1000000000000i128 { x = 1000000000000i128; report.clamped += 1; }
+                        if x < -1000000000000i128 { x = -1000000000000i128; report.damaged = true; } else if x > 1000000000000i128 { x = 1000000000000i128; report.damaged = true; }
                         value.world_time = x as i64;
                     }
                     if widened { report.widened += 1; }
@@ -1348,15 +1348,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f35;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 281474976710655 { x = 281474976710655; report.clamped += 1; }
+                        if x > 281474976710655 { x = 281474976710655; report.damaged = true; }
                         value.frame_tick = x as u64;
                     }
                     if widened { report.widened += 1; }
@@ -1366,14 +1366,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f36: {
                     if entry.kind != 22 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f36;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.clamped += 1; } else if x > 16776960i128 { x = 16776960i128; report.clamped += 1; }
+                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 16776960i128 { x = 16776960i128; report.damaged = true; }
                         value.server_time = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -1383,16 +1383,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f37: {
                     if entry.kind != 14 || entry.shape.elem != 13 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f37;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.malformed = true; return false; };
-                        if entry.shape.elem == 6 && !r.align() { report.malformed = true; return false; }
+                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
+                        if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
                         let element38 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default() };
                         let keep = core::cmp::min(n, 8);
-                        if keep < n { report.clamped += 1; }
+                        if keep < n { report.damaged = true; }
                         let width = table_message_value_bits(element38.kind, &element38.shape);
                         let walk = if width >= 0 { keep } else { n };
                         for i in 0..walk {
@@ -1400,7 +1400,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             let p: &mut MixedEntityRow = if i < keep { &mut value.entities[i as usize] } else { &mut scratch };
                             if !mixed_entity_load_message_body(r, v, report, &mut (*p)) { return false; }
                         }
-                        if walk < n && !r.skip((n - walk) * width as u64) { report.malformed = true; return false; }
+                        if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
                         value.entities_count = keep as i32;
                     }
                     if widened { report.widened += 1; }
@@ -1410,16 +1410,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f39: {
                     if entry.kind != 14 || entry.shape.elem != 13 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f39;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.malformed = true; return false; };
-                        if entry.shape.elem == 6 && !r.align() { report.malformed = true; return false; }
+                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
+                        if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
                         let element40 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default() };
                         let keep = core::cmp::min(n, 80);
-                        if keep < n { report.clamped += 1; }
+                        if keep < n { report.damaged = true; }
                         let width = table_message_value_bits(element40.kind, &element40.shape);
                         let walk = if width >= 0 { keep } else { n };
                         for i in 0..walk {
@@ -1427,7 +1427,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             let p: &mut MixedStatRow = if i < keep { &mut value.stats[i as usize] } else { &mut scratch };
                             if !mixed_stat_load_message_body(r, v, report, &mut (*p)) { return false; }
                         }
-                        if walk < n && !r.skip((n - walk) * width as u64) { report.malformed = true; return false; }
+                        if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
                         value.stats_count = keep as i32;
                     }
                     if widened { report.widened += 1; }
@@ -1437,25 +1437,25 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f41: {
                     if entry.kind != 15 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f41;
                     }
                     {
-                        let Some(reference) = r.get(v.ref_bits) else { report.malformed = true; return false; };
+                        let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
                         if reference == 0 {
                             value.game_event.set_none();
                         } else {
-                            let Some(arm_entry42) = v.entry(reference).copied() else { report.malformed = true; return false; };
-                            if arm_entry42.id >= 0xffff_ffff_ffff_fffd || arm_entry42.kind == 0 { report.malformed = true; return false; }
+                            let Some(arm_entry42) = v.entry(reference).copied() else { report.damaged = true; return false; };
+                            if arm_entry42.id >= 0xffff_ffff_ffff_fffd || arm_entry42.kind == 0 { report.damaged = true; return false; }
                             match arm_entry42.id {
                                 0x33732819300680aa => {
                                     let mut widened = false;
                                     'a43: {
                                         if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
                                             value.game_event.set_none();
-                                            report.kind_mismatch += 1;
-                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.malformed = true; return false; }
+                                            report.damaged = true;
+                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
                                             break 'a43;
                                         }
                                         let mut arm44: MixedHitEventRow = Default::default();
@@ -1469,8 +1469,8 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                                     'a45: {
                                         if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
                                             value.game_event.set_none();
-                                            report.kind_mismatch += 1;
-                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.malformed = true; return false; }
+                                            report.damaged = true;
+                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
                                             break 'a45;
                                         }
                                         let mut arm46: MixedChatEventRow = Default::default();
@@ -1484,8 +1484,8 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                                     'a47: {
                                         if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
                                             value.game_event.set_none();
-                                            report.kind_mismatch += 1;
-                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.malformed = true; return false; }
+                                            report.damaged = true;
+                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
                                             break 'a47;
                                         }
                                         let mut arm48: MixedPickupEventRow = Default::default();
@@ -1497,7 +1497,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                                 _ => {
                                     value.game_event.set_none();
                                     report.unknown += 1;
-                                    if !table_message_skip(r, v, &arm_entry42, 0) { report.malformed = true; return false; }
+                                    if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
                                 }
                             }
                         }
@@ -1509,28 +1509,28 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f49: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f49;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.malformed = true; return false; };
-                        if entry.shape.elem == 6 && !r.align() { report.malformed = true; return false; }
+                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
+                        if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
                         let element50 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default() };
                         let keep = core::cmp::min(n, 4);
-                        if keep < n { report.clamped += 1; }
+                        if keep < n { report.damaged = true; }
                         let width = table_message_value_bits(element50.kind, &element50.shape);
                         let walk = if width >= 0 { keep } else { n };
                         for i in 0..walk {
                             let mut scratch: u8 = Default::default();
                             let p: &mut u8 = if i < keep { &mut value.loadout[i as usize] } else { &mut scratch };
                             {
-                                let Some((lo, hi)) = table_message_read_scalar(r, element50.kind, &element50.shape) else { report.malformed = true; return false; };
+                                let Some((lo, hi)) = table_message_read_scalar(r, element50.kind, &element50.shape) else { report.damaged = true; return false; };
                                 let mut x = table_message_unsigned(element50.kind, lo, hi);
                                 (*p) = x as u8;
                             }
                         }
-                        if walk < n && !r.skip((n - walk) * width as u64) { report.malformed = true; return false; }
+                        if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
                     }
                     if widened { report.widened += 1; }
                 }
@@ -1539,20 +1539,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f51: {
                     if entry.kind != 12 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f51;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.malformed = true; return false; };
-                        if !r.align() { report.malformed = true; return false; }
+                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
+                        if !r.align() { report.damaged = true; return false; }
                         let buf = r.buffer;
                         let start = (r.offset / 8) as usize;
-                        if !r.skip(n * 8) { report.malformed = true; return false; }
+                        if !r.skip(n * 8) { report.damaged = true; return false; }
                         let text = &buf[start..start + n as usize];
-                        if !table_message_utf8(text) { report.malformed = true; return false; }
+                        if !table_message_utf8(text) { report.damaged = true; return false; }
                         let kept = table_message_utf8_clamp(text, core::cmp::min(n as usize, 15));
-                        if kept < n as usize { report.clamped += 1; }
+                        if kept < n as usize { report.damaged = true; }
                         value.player_name.fill(0);
                         value.player_name[..kept].copy_from_slice(&text[..kept]);
                         value.player_name_length = kept as i32;
@@ -1564,18 +1564,18 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f52: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f52;
                     }
                     {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.malformed = true; return false; };
-                        if !r.align() { report.malformed = true; return false; }
+                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
+                        if !r.align() { report.damaged = true; return false; }
                         let buf = r.buffer;
                         let start = (r.offset / 8) as usize;
-                        if !r.skip(n * 8) { report.malformed = true; return false; }
+                        if !r.skip(n * 8) { report.damaged = true; return false; }
                         let kept = core::cmp::min(n as usize, 16);
-                        if kept < n as usize { report.clamped += 1; }
+                        if kept < n as usize { report.damaged = true; }
                         value.payload.fill(0);
                         value.payload[..kept].copy_from_slice(&buf[start..start + kept]);
                         value.payload_length = kept as i32;
@@ -1587,14 +1587,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f53: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f53;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.clamped += 1; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.clamped += 1; }
+                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_x = x;
                     }
                     if widened { report.widened += 1; }
@@ -1604,14 +1604,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f54: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f54;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.clamped += 1; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.clamped += 1; }
+                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_y = x;
                     }
                     if widened { report.widened += 1; }
@@ -1621,14 +1621,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f55: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f55;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.clamped += 1; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.clamped += 1; }
+                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_z = x;
                     }
                     if widened { report.widened += 1; }
@@ -1638,12 +1638,12 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f56: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f56;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.recoil"); 0.0 };
                         value.recoil = x;
                     }
@@ -1657,13 +1657,13 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 11) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f57;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if entry.kind == 10 { if entry.shape.packing == 2 || table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite("BenchMixed.drift"); 0.0 };
                         value.drift = x;
                     }
@@ -1677,13 +1677,13 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 19) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f58;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
                         value.wide_key = TableU128(x);
                     }
@@ -1697,15 +1697,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 18) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f59;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -1267650600228229401496703205376i128 { x = -1267650600228229401496703205376i128; report.clamped += 1; } else if x > 1267650600228229401496703205376i128 { x = 1267650600228229401496703205376i128; report.clamped += 1; }
+                        if x < -1267650600228229401496703205376i128 { x = -1267650600228229401496703205376i128; report.damaged = true; } else if x > 1267650600228229401496703205376i128 { x = 1267650600228229401496703205376i128; report.damaged = true; }
                         value.flux = TableI128(x);
                     }
                     if widened { report.widened += 1; }
@@ -1715,14 +1715,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f60: {
                     if entry.kind != 26 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f60;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x < 0u128 { x = 0u128; report.clamped += 1; } else if x > 64000u128 { x = 64000u128; report.clamped += 1; }
+                        if x < 0u128 { x = 0u128; report.damaged = true; } else if x > 64000u128 { x = 64000u128; report.damaged = true; }
                         value.ping = x as u16;
                     }
                     if widened { report.widened += 1; }
@@ -1735,15 +1735,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f61;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 16777215 { x = 16777215; report.clamped += 1; }
+                        if x > 16777215 { x = 16777215; report.damaged = true; }
                         value.crc_hint = x as u32;
                     }
                     if widened { report.widened += 1; }
@@ -1753,12 +1753,12 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 let mut widened = false;
                 'f62: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
-                        report.kind_mismatch += 1;
-                        if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                        report.damaged = true;
+                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f62;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.has_extra = (lo as u8) != 0;
                     }
                     if widened { report.widened += 1; }
@@ -1771,15 +1771,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f63;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.clamped += 1; } else if x > 255i128 { x = 255i128; report.clamped += 1; }
+                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 255i128 { x = 255i128; report.damaged = true; }
                         value.extra = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -1792,15 +1792,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
-                            report.kind_mismatch += 1;
-                            if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                            report.damaged = true;
+                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f64;
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.malformed = true; return false; };
+                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.clamped += 1; } else if x > 15i128 { x = 15i128; report.clamped += 1; }
+                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 15i128 { x = 15i128; report.damaged = true; }
                         value.idle_ticks = x as i32;
                     }
                     if widened { report.widened += 1; }
@@ -1808,7 +1808,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
             }
             _ => {
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.malformed = true; return false; }
+                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }

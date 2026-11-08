@@ -146,7 +146,7 @@ func t03R32(t *testing.T) {
 		if r.layoutHash != wantHash {
 			t.Errorf("R32: %s read: layoutHash=%s, want the file's own hash %s (§5.9 #7)", half, r.layoutHash, wantHash)
 		}
-		if r.malformed || r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 || r.clamped != 0 {
+		if r.damaged || r.unknown != 0 || r.widened != 0 {
 			t.Errorf("R32: %s read moved a counter or set malformed: %+v; a refusal is one answer, once", half, r)
 		}
 		for k, want := range r.fresh {
@@ -254,7 +254,7 @@ func t03R15(t *testing.T) {
 	if !ref.refused || ref.reason != "layoutNewer" {
 		t.Errorf("R15: the retired remap-to-None read: refused=%v reason=%s, want a refusal named layoutNewer", ref.refused, ref.reason)
 	}
-	if ref.malformed || ref.n != -1 || ref.clamped != 0 {
+	if ref.damaged || ref.n != -1 {
 		t.Errorf("R15: the retired clamp moved on a newer file: %+v; a forward read refuses whole, before any record", ref)
 	}
 }
@@ -290,11 +290,9 @@ public final class %s {
         out.append("REPORT n=").append(n)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" malformed=").append(report.malformed)
+           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
-           .append(" kindMismatch=").append(report.kindMismatch)
            .append(" widened=").append(report.widened)
-           .append(" clamped=").append(report.clamped)
            .append('\n');
         dump("VALUE", back[0]);
         System.out.print(out);
@@ -409,11 +407,9 @@ public final class %s {
         out.append("FIRST n=").append(n1)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" malformed=").append(report.malformed)
+           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
-           .append(" kindMismatch=").append(report.kindMismatch)
            .append(" widened=").append(report.widened)
-           .append(" clamped=").append(report.clamped)
            .append(" layoutHash=").append("0x" + Long.toHexString(report.layoutHash))
            .append('\n');
         dump("FIRSTFIELD", vals[0]);
@@ -422,11 +418,9 @@ public final class %s {
         out.append("SECOND n=").append(n2)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" malformed=").append(report.malformed)
+           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
-           .append(" kindMismatch=").append(report.kindMismatch)
            .append(" widened=").append(report.widened)
-           .append(" clamped=").append(report.clamped)
            .append(" layoutHash=").append("0x" + Long.toHexString(report.layoutHash))
            .append('\n');
         dump("SECONDFIELD", vals[0]);
@@ -493,16 +487,12 @@ func t03ReportField(r *probeRun, k, v string) {
 		r.refused = v == "true"
 	case "reason":
 		r.reason = v
-	case "malformed":
-		r.malformed = v == "true"
+	case "damaged":
+		r.damaged = v == "true"
 	case "unknown":
 		r.unknown, _ = strconv.Atoi(v)
-	case "kindMismatch":
-		r.kindMismatch, _ = strconv.Atoi(v)
 	case "widened":
 		r.widened, _ = strconv.Atoi(v)
-	case "clamped":
-		r.clamped, _ = strconv.Atoi(v)
 	case "layoutHash":
 		r.layoutHash = v
 	}
@@ -533,10 +523,10 @@ func t03E3FixedArrayElement(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.malformed {
+	if r.n != 1 || r.refused || r.damaged {
 		t.Fatalf("E3/fixed-array-element: the round trip did not read: %+v", r)
 	}
-	if r.clamped != 0 || r.widened != 0 || r.unknown != 0 || r.kindMismatch != 0 {
+	if r.widened != 0 || r.unknown != 0 {
 		t.Errorf("E3/fixed-array-element: a clean round trip moved a counter: %+v", r)
 	}
 	// The written values land EXACT, per slot: the array dumps as one list.
@@ -553,7 +543,7 @@ func t03E3FixedArrayElement(t *testing.T) {
 	if want := fileHash(t, saved); ref.layoutHash != want {
 		t.Errorf("E3/fixed-array-element: the refusal carries %s, want the file's own hash %s", ref.layoutHash, want)
 	}
-	if ref.n != -1 || ref.malformed || ref.clamped != 0 {
+	if ref.n != -1 || ref.damaged {
 		t.Errorf("E3/fixed-array-element: the older reader moved on a newer file: %+v", ref)
 	}
 }
@@ -617,10 +607,10 @@ func t03E3OtherWidens(t *testing.T) {
 			})
 			out := t03RunSaveLoad(t, classes, "Probe_capability")
 			r := parseProbe(t, out)
-			if r.n != 1 || r.refused || r.malformed {
+			if r.n != 1 || r.refused || r.damaged {
 				t.Fatalf("%s: the round trip did not read: %+v", tc.row, r)
 			}
-			if r.clamped != 0 || r.widened != 0 || r.unknown != 0 || r.kindMismatch != 0 {
+			if r.widened != 0 || r.unknown != 0 {
 				t.Errorf("%s: a clean round trip moved a counter: %+v", tc.row, r)
 			}
 			// The written values land EXACT, field by field: the want map is
@@ -647,16 +637,16 @@ func t03E3OtherWidens(t *testing.T) {
 // t03C8: C8 "fixed-point F-shift / bits(N)". ALGORITHM §4.6: "A fixed-point
 // field's bounds are in VALUE UNITS and its storage is raw, so both ends are
 // shifted by F first; a bits(N) clamps to 2^N - 1." A forged value past the
-// WRITER's raw bound lands the bound and counts clamped == 1 EXACTLY, on the
-// compiled lane (the writer's bounds, bill §12.5) and on the identity lane
-// (the reader's own pass) alike.
+// WRITER's raw bound REFUSES the whole load as outOfRange (the strict read,
+// docs/plans/strict-only.md), on the compiled lane (the writer's bounds, bill
+// §12.5) and on the identity lane (the reader's own pass) alike.
 func t03C8(t *testing.T) {
 	t.Run("fixed_point_F_shift", func(t *testing.T) {
 		t.Parallel()
 		// fixed(4,4) | min = -8, max = 7: the raw band is [-128, 112]. Forge
 		// the old writer's byte past the ceiling — 127 — and both builds
-		// must land 112 with clamped == 1: the NEW build through the entry's
-		// writer bounds, the OLD build through its own scatter's pass.
+		// must refuse it: the NEW build through the entry's writer bounds,
+		// the OLD build through its own scatter's pass.
 		oldFile := t03CorpusFile(t, "old_fixed_I_grow.bin")
 		raw, err := os.ReadFile(oldFile)
 		if err != nil {
@@ -677,32 +667,16 @@ func t03C8(t *testing.T) {
 			{key: "reads", schema: "VNEW_fixed_I_grow.schema", older: []string{"VOLD_fixed_I_grow.schema"}},
 			{key: "refuses", schema: "VOLD_fixed_I_grow.schema"},
 		})
-		got := runProbe(t, classes, "Probe_reads", path)
-		if got.n != 1 || got.refused || got.malformed {
-			t.Fatalf("C8: the forged file must read: %+v", got)
-		}
-		if v := got.value["v"]; v != "112" {
-			t.Errorf("C8: the compiled lane landed v = %s, want the writer's raw ceiling 112 (min = -8, max = 7 shifted by F = 4)", v)
-		}
-		if got.clamped != 1 {
-			t.Errorf("C8: the compiled lane counted clamped = %d, want exactly 1: the bounds pass clamps to the WRITER's bound and counts (ALG 4.6, bill 12.5)", got.clamped)
-		}
-		own := runProbe(t, classes, "Probe_refuses", path)
-		if own.n != 1 || own.refused || own.malformed {
-			t.Fatalf("C8: the old build must read its own forged file: %+v", own)
-		}
-		if v := own.value["v"]; v != "112" {
-			t.Errorf("C8: the identity lane landed v = %s, want the reader's own raw ceiling 112", v)
-		}
-		if own.clamped != 1 {
-			t.Errorf("C8: the identity lane counted clamped = %d, want exactly 1", own.clamped)
-		}
+		// The compiled lane holds the WRITER's bound (ALG 4.6, bill 12.5);
+		// the identity lane holds the reader's own. Both refuse.
+		requireNamedRefusal(t, "C8 compiled lane, raw 127", runProbe(t, classes, "Probe_reads", path), "outOfRange")
+		requireNamedRefusal(t, "C8 identity lane, raw 127", runProbe(t, classes, "Probe_refuses", path), "outOfRange")
 	})
 	t.Run("bits_width", func(t *testing.T) {
 		t.Parallel()
 		// bits(12) rides two bytes, so a forged 0xFFFF is past 2^12 - 1:
 		// the width's own top is a bound the storage byte count does not
-		// enforce (ALG 4.6), and the read clamps to 4095 and counts.
+		// enforce (ALG 4.6), and the read refuses it as outOfRange.
 		newFile := t03CorpusFile(t, "new_bits_grow.bin")
 		raw, err := os.ReadFile(newFile)
 		if err != nil {
@@ -722,15 +696,11 @@ func t03C8(t *testing.T) {
 		_, classes := buildRow(t, t.TempDir(), "bits_grow", []sideSpec{
 			{key: "reads", schema: "VNEW_bits_grow.schema", older: []string{"VOLD_bits_grow.schema"}},
 		})
-		got := runProbe(t, classes, "Probe_reads", path)
-		if got.n != 1 || got.refused || got.malformed {
-			t.Fatalf("C8: the forged file must read: %+v", got)
-		}
-		if v := got.value["v"]; v != "4095" {
-			t.Errorf("C8: bits(12) landed v = %s, want the width's own top 2^12 - 1 = 4095", v)
-		}
-		if got.clamped != 1 {
-			t.Errorf("C8: bits(12) counted clamped = %d, want exactly 1", got.clamped)
+		requireNamedRefusal(t, "C8 bits(12) = 0xFFFF", runProbe(t, classes, "Probe_reads", path), "outOfRange")
+		// The unforged 0xFFF is the width's own top and reads whole.
+		clean := runProbe(t, classes, "Probe_reads", newFile)
+		if clean.n != 1 || clean.refused || clean.damaged || clean.value["v"] != "4095" {
+			t.Errorf("C8: bits(12) = 4095, the width's own top, must read whole: %+v", clean)
 		}
 	})
 }
@@ -755,7 +725,7 @@ func t03R20(t *testing.T) {
 	if got.unknown != 1 {
 		t.Errorf("R20: unknown = %d, want exactly 1: a deprecated field is dropped and counted ONCE per plan, never per record (§21.2, §5.9 #30)", got.unknown)
 	}
-	if got.kindMismatch != 0 || got.widened != 0 || got.clamped != 0 || got.malformed || got.refused {
+	if got.widened != 0 || got.damaged || got.refused {
 		t.Errorf("R20: the census read moved something else: %+v", got)
 	}
 }
@@ -809,7 +779,7 @@ func t03R21(t *testing.T) {
 		}
 		return
 	}
-	if got.n != 1 || got.refused || got.malformed {
+	if got.n != 1 || got.refused || got.damaged {
 		t.Fatalf("R21: the old file must read: %+v", got)
 	}
 	src := parseDumpedFloatBits(t, oracle.value["v"])
@@ -829,8 +799,8 @@ func t03R21(t *testing.T) {
 	if bits != want {
 		t.Errorf("R21: widenf landed 0x%016X, want the f32 0x%08X widened exactly, 0x%016X", bits, src, want)
 	}
-	if got.widened != 1 || got.clamped != 0 {
-		t.Errorf("R21: the counters: widened=%d clamped=%d, want widened == 1 and nothing else", got.widened, got.clamped)
+	if got.widened != 1 {
+		t.Errorf("R21: the counters: widened=%d, want widened == 1 and nothing else", got.widened)
 	}
 }
 
@@ -850,22 +820,22 @@ func t03R29(t *testing.T) {
 			{key: "refuses", schema: "VOLD_uint_widen.schema"},
 		})
 		got := runProbe(t, classes, "Probe_reads", oldFile)
-		if got.n != 1 || got.refused || got.malformed {
+		if got.n != 1 || got.refused || got.damaged {
 			t.Fatalf("R29: the old file must read: %+v", got)
 		}
 		if v := got.value["v"]; v != "65535" {
 			t.Errorf("R29: the band edge landed v = %s, want 65535 zero-extended across the 65536 ceiling, never sign-extended to -1", v)
 		}
-		if got.widened != 1 || got.clamped != 0 {
-			t.Errorf("R29: the band edge counters: widened=%d clamped=%d, want widened == 1 and nothing else", got.widened, got.clamped)
+		if got.widened != 1 {
+			t.Errorf("R29: the band edge counters: widened=%d, want widened == 1 and nothing else", got.widened)
 		}
 	})
 	t.Run("writer_bounds", func(t *testing.T) {
 		t.Parallel()
 		// The writer's | 0..100, the reader's | 0..200: the forged 150 is
-		// between them, and the bounds pass must land the WRITER's 100 and
-		// count exactly one clamp (the reference's range_widen_hostile, bill
-		// §12.5: "clamp to 100, COUNT clamped, never land 150").
+		// between them, and the bounds pass holds the WRITER's 100: the
+		// strict read refuses it and never lands 150 (the reference's
+		// range_widen_hostile, bill §12.5).
 		oldFile := t03CorpusFile(t, "old_range_widen.bin")
 		raw, err := os.ReadFile(oldFile)
 		if err != nil {
@@ -888,24 +858,14 @@ func t03R29(t *testing.T) {
 			{key: "reads", schema: "VNEW_range_widen.schema", older: []string{"VOLD_range_widen.schema"}},
 			{key: "refuses", schema: "VOLD_range_widen.schema"},
 		})
-		got := runProbe(t, classes, "Probe_reads", path)
-		if got.n != 1 || got.refused || got.malformed {
-			t.Fatalf("R29: the forged file must read: %+v", got)
-		}
-		if v := got.value["v"]; v != "100" {
-			t.Errorf("R29: the forged 150 landed v = %s, want the WRITER's max 100 — the bounds pass clamps to the plan's bounds and never the reader's wider own", v)
-		}
-		if got.clamped != 1 {
-			t.Errorf("R29: clamped = %d, want exactly 1 (bill 12.5, the reference's range_widen_hostile)", got.clamped)
-		}
-		if got.widened != 0 || got.unknown != 0 || got.kindMismatch != 0 {
-			t.Errorf("R29: the hostile range read moved something else: %+v", got)
-		}
-		// The clean value 100 lands unclamped on the same build, so the
-		// clamp above is the forged byte's and not the read's.
+		// 150 is inside the reader's 0..200 and past the WRITER's 0..100:
+		// only the plan's own bounds can catch it, and the read refuses.
+		requireNamedRefusal(t, "R29 forged 150", runProbe(t, classes, "Probe_reads", path), "outOfRange")
+		// The clean value 100 lands whole on the same build, so the refusal
+		// above is the forged byte's and not the read's.
 		clean := runProbe(t, classes, "Probe_reads", oldFile)
-		if clean.clamped != 0 || clean.value["v"] != "100" {
-			t.Errorf("R29: the lawful 100 must land unclamped: %+v", clean)
+		if clean.n != 1 || clean.refused || clean.damaged || clean.value["v"] != "100" {
+			t.Errorf("R29: the lawful 100 must land whole: %+v", clean)
 		}
 	})
 }
@@ -923,7 +883,7 @@ func t03E5(t *testing.T) {
 		{key: "refuses", schema: "VOLD_optional_add.schema"},
 	})
 	got := runProbe(t, classes, "Probe_reads", oldFile)
-	if got.n != 1 || got.refused || got.malformed {
+	if got.n != 1 || got.refused || got.damaged {
 		t.Fatalf("E5: the plain-T file must read through the ?T reader: %+v", got)
 	}
 	if p := got.value["linkPresent"]; p != "true" {

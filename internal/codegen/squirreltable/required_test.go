@@ -267,8 +267,8 @@ foreach (c in cases) {
   local saved = "-";
   if (c[2]) {
     local jr = {};
-    local jv = J.FromJsonTolerant(T, c[1], inputs[c[0] + ".json"], jr);
-    if (jv == null || jr.malformed) saved = "json-refused";
+    local jv = J.fromJsonWalk(T, c[1], inputs[c[0] + ".json"], jr);
+    if (jv == null || jr.bodyDamaged) saved = "json-refused";
     else saved = hex(S.save(T, c[1], jv));
   }
   print(c[0] + "|" + reason + "|" + field + "|" + saved + "\n");

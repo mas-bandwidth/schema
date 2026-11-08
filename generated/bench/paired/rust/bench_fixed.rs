@@ -83,10 +83,10 @@ pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &m
     *value = MixedEventRow::default();
     let tag_raw = b[0];
     // A TAG PAST THE ARM COUNT IS OUT OF RANGE, as a count past its bound is:
-    // it lands as None and counts one clamped rather than selecting nothing
+    // it lands as None and counts one held rather than selecting nothing
     // silently.
     if tag_raw > 3 {
-        report.clamped += 1;
+        report.held += 1;
     } else {
         value.tag = tag_raw;
     }
@@ -122,25 +122,25 @@ pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &m
 /// MixedEvent's read-side bounds: the arm THE TAG NAMES, and no other — the
 /// overlay behind a narrower arm is bytes nobody wrote.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_event_fixed_clamp_body(value: &mut MixedEventRow, clamped: &mut i32, damaged: &mut i32) {
-    let _ = (&clamped, &damaged);
+pub fn mixed_event_fixed_clamp_body(value: &mut MixedEventRow, oor: &mut i32, damaged: &mut i32) {
+    let _ = (&oor, &damaged);
     match value.tag {
         1 => {
             // SAFETY: the tag was just matched against `hit`.
             let mut arm = unsafe { value.arms.hit };
-            mixed_hit_event_fixed_clamp_body(&mut arm, clamped, damaged);
+            mixed_hit_event_fixed_clamp_body(&mut arm, oor, damaged);
             value.arms.hit = arm; // a WRITE of a union field, which is safe
         }
         2 => {
             // SAFETY: the tag was just matched against `chat`.
             let mut arm = unsafe { value.arms.chat };
-            mixed_chat_event_fixed_clamp_body(&mut arm, clamped, damaged);
+            mixed_chat_event_fixed_clamp_body(&mut arm, oor, damaged);
             value.arms.chat = arm; // a WRITE of a union field, which is safe
         }
         3 => {
             // SAFETY: the tag was just matched against `pickup`.
             let mut arm = unsafe { value.arms.pickup };
-            mixed_pickup_event_fixed_clamp_body(&mut arm, clamped, damaged);
+            mixed_pickup_event_fixed_clamp_body(&mut arm, oor, damaged);
             value.arms.pickup = arm; // a WRITE of a union field, which is safe
         }
         _ => {} // None, and any arm with no bound of its own
@@ -242,7 +242,7 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
         let at = 40;
         let raw = u8::from_le_bytes(b[at..at + 1].try_into().expect("the declared width"));
         if raw > 15 {
-            report.clamped += 1;
+            report.held += 1;
             value.weapon = 0;
         } else {
             value.weapon = raw;
@@ -266,27 +266,27 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
 /// MixedEntity's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_entity_fixed_clamp_body(value: &mut MixedEntityRow, clamped: &mut i32, damaged: &mut i32) {
-    let _ = (&clamped, &damaged);
-    *clamped += (value.entity_id > 4095) as i32; // bits(12)'s own width
+pub fn mixed_entity_fixed_clamp_body(value: &mut MixedEntityRow, oor: &mut i32, damaged: &mut i32) {
+    let _ = (&oor, &damaged);
+    *oor += (value.entity_id > 4095) as i32; // bits(12)'s own width
     value.entity_id = value.entity_id.min(4095);
-    *clamped += ((value.pos_x < -16383_i32) | (value.pos_x > 16383_i32)) as i32;
+    *oor += ((value.pos_x < -16383_i32) | (value.pos_x > 16383_i32)) as i32;
     value.pos_x = value.pos_x.clamp(-16383_i32, 16383_i32);
-    *clamped += ((value.pos_y < -16383_i32) | (value.pos_y > 16383_i32)) as i32;
+    *oor += ((value.pos_y < -16383_i32) | (value.pos_y > 16383_i32)) as i32;
     value.pos_y = value.pos_y.clamp(-16383_i32, 16383_i32);
-    *clamped += ((value.pos_z < -16383_i32) | (value.pos_z > 16383_i32)) as i32;
+    *oor += ((value.pos_z < -16383_i32) | (value.pos_z > 16383_i32)) as i32;
     value.pos_z = value.pos_z.clamp(-16383_i32, 16383_i32);
-    *clamped += (value.yaw > 511) as i32; // bits(9)'s own width
+    *oor += (value.yaw > 511) as i32; // bits(9)'s own width
     value.yaw = value.yaw.min(511);
-    *clamped += (value.pitch > 511) as i32; // bits(9)'s own width
+    *oor += (value.pitch > 511) as i32; // bits(9)'s own width
     value.pitch = value.pitch.min(511);
-    *clamped += ((value.vel_x < -2048_i32) | (value.vel_x > 2047_i32)) as i32;
+    *oor += ((value.vel_x < -2048_i32) | (value.vel_x > 2047_i32)) as i32;
     value.vel_x = value.vel_x.clamp(-2048_i32, 2047_i32);
-    *clamped += ((value.vel_y < -2048_i32) | (value.vel_y > 2047_i32)) as i32;
+    *oor += ((value.vel_y < -2048_i32) | (value.vel_y > 2047_i32)) as i32;
     value.vel_y = value.vel_y.clamp(-2048_i32, 2047_i32);
-    *clamped += ((value.vel_z < -2048_i32) | (value.vel_z > 2047_i32)) as i32;
+    *oor += ((value.vel_z < -2048_i32) | (value.vel_z > 2047_i32)) as i32;
     value.vel_z = value.vel_z.clamp(-2048_i32, 2047_i32);
-    *clamped += ((value.health < 0_i32) | (value.health > 1000_i32)) as i32;
+    *oor += ((value.health < 0_i32) | (value.health > 1000_i32)) as i32;
     value.health = value.health.clamp(0_i32, 1000_i32);
 }
 
@@ -322,11 +322,11 @@ pub fn mixed_stat_fixed_scatter(b: &[u8], value: &mut MixedStatRow, report: &mut
 /// MixedStat's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_stat_fixed_clamp_body(value: &mut MixedStatRow, clamped: &mut i32, damaged: &mut i32) {
-    let _ = (&clamped, &damaged);
-    *clamped += (value.stat_id > 255) as i32; // bits(8)'s own width
+pub fn mixed_stat_fixed_clamp_body(value: &mut MixedStatRow, oor: &mut i32, damaged: &mut i32) {
+    let _ = (&oor, &damaged);
+    *oor += (value.stat_id > 255) as i32; // bits(8)'s own width
     value.stat_id = value.stat_id.min(255);
-    *clamped += ((value.delta < -512_i32) | (value.delta > 511_i32)) as i32;
+    *oor += ((value.delta < -512_i32) | (value.delta > 511_i32)) as i32;
     value.delta = value.delta.clamp(-512_i32, 511_i32);
 }
 
@@ -375,13 +375,13 @@ pub fn mixed_hit_event_fixed_scatter(b: &[u8], value: &mut MixedHitEventRow, rep
 /// MixedHitEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_hit_event_fixed_clamp_body(value: &mut MixedHitEventRow, clamped: &mut i32, damaged: &mut i32) {
-    let _ = (&clamped, &damaged);
-    *clamped += (value.target_id > 4095) as i32; // bits(12)'s own width
+pub fn mixed_hit_event_fixed_clamp_body(value: &mut MixedHitEventRow, oor: &mut i32, damaged: &mut i32) {
+    let _ = (&oor, &damaged);
+    *oor += (value.target_id > 4095) as i32; // bits(12)'s own width
     value.target_id = value.target_id.min(4095);
-    *clamped += ((value.damage < 0_i32) | (value.damage > 4095_i32)) as i32;
+    *oor += ((value.damage < 0_i32) | (value.damage > 4095_i32)) as i32;
     value.damage = value.damage.clamp(0_i32, 4095_i32);
-    *clamped += ((value.hit_kind < 0_i32) | (value.hit_kind > 7_i32)) as i32;
+    *oor += ((value.hit_kind < 0_i32) | (value.hit_kind > 7_i32)) as i32;
     value.hit_kind = value.hit_kind.clamp(0_i32, 7_i32);
 }
 
@@ -417,11 +417,11 @@ pub fn mixed_chat_event_fixed_scatter(b: &[u8], value: &mut MixedChatEventRow, r
 /// MixedChatEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_chat_event_fixed_clamp_body(value: &mut MixedChatEventRow, clamped: &mut i32, damaged: &mut i32) {
-    let _ = (&clamped, &damaged);
-    *clamped += ((value.channel < 0_i32) | (value.channel > 3_i32)) as i32;
+pub fn mixed_chat_event_fixed_clamp_body(value: &mut MixedChatEventRow, oor: &mut i32, damaged: &mut i32) {
+    let _ = (&oor, &damaged);
+    *oor += ((value.channel < 0_i32) | (value.channel > 3_i32)) as i32;
     value.channel = value.channel.clamp(0_i32, 3_i32);
-    *clamped += (value.speaker > 4095) as i32; // bits(12)'s own width
+    *oor += (value.speaker > 4095) as i32; // bits(12)'s own width
     value.speaker = value.speaker.min(4095);
 }
 
@@ -457,11 +457,11 @@ pub fn mixed_pickup_event_fixed_scatter(b: &[u8], value: &mut MixedPickupEventRo
 /// MixedPickupEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn mixed_pickup_event_fixed_clamp_body(value: &mut MixedPickupEventRow, clamped: &mut i32, damaged: &mut i32) {
-    let _ = (&clamped, &damaged);
-    *clamped += (value.item_id > 1023) as i32; // bits(10)'s own width
+pub fn mixed_pickup_event_fixed_clamp_body(value: &mut MixedPickupEventRow, oor: &mut i32, damaged: &mut i32) {
+    let _ = (&oor, &damaged);
+    *oor += (value.item_id > 1023) as i32; // bits(10)'s own width
     value.item_id = value.item_id.min(1023);
-    *clamped += ((value.amount < 0_i32) | (value.amount > 255_i32)) as i32;
+    *oor += ((value.amount < 0_i32) | (value.amount > 255_i32)) as i32;
     value.amount = value.amount.clamp(0_i32, 255_i32);
 }
 
@@ -611,7 +611,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
         let raw = i32::from_le_bytes(b[52..56].try_into().expect("four bytes"));
         let held = raw.clamp(0, 8);
         if held != raw {
-            report.clamped += 1;
+            report.held += 1;
         }
         value.entities_count = held;
     }
@@ -625,7 +625,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
         let raw = i32::from_le_bytes(b[464..468].try_into().expect("four bytes"));
         let held = raw.clamp(0, 80);
         if held != raw {
-            report.clamped += 1;
+            report.held += 1;
         }
         value.stats_count = held;
     }
@@ -650,7 +650,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
         let raw = i32::from_le_bytes(b[1126..1130].try_into().expect("four bytes"));
         let held = raw.clamp(0, 15);
         if held != raw {
-            report.clamped += 1;
+            report.held += 1;
         }
         value.player_name_length = held;
     }
@@ -661,7 +661,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
         let raw = i32::from_le_bytes(b[1145..1149].try_into().expect("four bytes"));
         let held = raw.clamp(0, 16);
         if held != raw {
-            report.clamped += 1;
+            report.held += 1;
         }
         value.payload_length = held;
     }
@@ -725,45 +725,45 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
 /// BenchMixed's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
-pub fn bench_mixed_fixed_clamp_body(value: &mut BenchMixedRow, clamped: &mut i32, damaged: &mut i32) {
-    let _ = (&clamped, &damaged);
-    *clamped += (value.sequence > 65535) as i32; // bits(16)'s own width
+pub fn bench_mixed_fixed_clamp_body(value: &mut BenchMixedRow, oor: &mut i32, damaged: &mut i32) {
+    let _ = (&oor, &damaged);
+    *oor += (value.sequence > 65535) as i32; // bits(16)'s own width
     value.sequence = value.sequence.min(65535);
-    *clamped += ((value.ack_sequence < 0_i32) | (value.ack_sequence > 65535_i32)) as i32;
+    *oor += ((value.ack_sequence < 0_i32) | (value.ack_sequence > 65535_i32)) as i32;
     value.ack_sequence = value.ack_sequence.clamp(0_i32, 65535_i32);
-    *clamped += ((value.world_time < -1000000000000_i64) | (value.world_time > 1000000000000_i64)) as i32;
+    *oor += ((value.world_time < -1000000000000_i64) | (value.world_time > 1000000000000_i64)) as i32;
     value.world_time = value.world_time.clamp(-1000000000000_i64, 1000000000000_i64);
-    *clamped += (value.frame_tick > 281474976710655) as i32; // bits(48)'s own width
+    *oor += (value.frame_tick > 281474976710655) as i32; // bits(48)'s own width
     value.frame_tick = value.frame_tick.min(281474976710655);
-    *clamped += ((value.server_time < 0_i32) | (value.server_time > 16776960_i32)) as i32;
+    *oor += ((value.server_time < 0_i32) | (value.server_time > 16776960_i32)) as i32;
     value.server_time = value.server_time.clamp(0_i32, 16776960_i32);
     for i in 0..value.entities_count.clamp(0, 8) as usize {
-        mixed_entity_fixed_clamp_body(&mut value.entities[i], clamped, damaged);
+        mixed_entity_fixed_clamp_body(&mut value.entities[i], oor, damaged);
     }
     for i in 0..value.stats_count.clamp(0, 80) as usize {
-        mixed_stat_fixed_clamp_body(&mut value.stats[i], clamped, damaged);
+        mixed_stat_fixed_clamp_body(&mut value.stats[i], oor, damaged);
     }
-    mixed_event_fixed_clamp_body(&mut value.game_event, clamped, damaged);
+    mixed_event_fixed_clamp_body(&mut value.game_event, oor, damaged);
     if !table_utf8_valid(&value.player_name[..value.player_name_length.clamp(0, 15) as usize]) {
         value.player_name = [0u8; 16];
         value.player_name_length = 0;
         *damaged += 1;
     }
-    *clamped += ((value.aim_x < -1.0_f32) | (value.aim_x > 1.0_f32)) as i32;
+    *oor += ((value.aim_x < -1.0_f32) | (value.aim_x > 1.0_f32)) as i32;
     value.aim_x = value.aim_x.clamp(-1.0_f32, 1.0_f32);
-    *clamped += ((value.aim_y < -1.0_f32) | (value.aim_y > 1.0_f32)) as i32;
+    *oor += ((value.aim_y < -1.0_f32) | (value.aim_y > 1.0_f32)) as i32;
     value.aim_y = value.aim_y.clamp(-1.0_f32, 1.0_f32);
-    *clamped += ((value.aim_z < -1.0_f32) | (value.aim_z > 1.0_f32)) as i32;
+    *oor += ((value.aim_z < -1.0_f32) | (value.aim_z > 1.0_f32)) as i32;
     value.aim_z = value.aim_z.clamp(-1.0_f32, 1.0_f32);
-    *clamped += ((value.flux.0 < -1267650600228229401496703205376_i128) | (value.flux.0 > 1267650600228229401496703205376_i128)) as i32;
+    *oor += ((value.flux.0 < -1267650600228229401496703205376_i128) | (value.flux.0 > 1267650600228229401496703205376_i128)) as i32;
     value.flux.0 = value.flux.0.clamp(-1267650600228229401496703205376_i128, 1267650600228229401496703205376_i128);
-    *clamped += (value.ping > 64000_u16) as i32;
+    *oor += (value.ping > 64000_u16) as i32;
     value.ping = value.ping.min(64000_u16);
-    *clamped += (value.crc_hint > 16777215) as i32; // bits(24)'s own width
+    *oor += (value.crc_hint > 16777215) as i32; // bits(24)'s own width
     value.crc_hint = value.crc_hint.min(16777215);
-    *clamped += ((value.extra < 0_i32) | (value.extra > 255_i32)) as i32;
+    *oor += ((value.extra < 0_i32) | (value.extra > 255_i32)) as i32;
     value.extra = value.extra.clamp(0_i32, 255_i32);
-    *clamped += ((value.idle_ticks < 0_i32) | (value.idle_ticks > 15_i32)) as i32;
+    *oor += ((value.idle_ticks < 0_i32) | (value.idle_ticks > 15_i32)) as i32;
     value.idle_ticks = value.idle_ticks.clamp(0_i32, 15_i32);
 }
 

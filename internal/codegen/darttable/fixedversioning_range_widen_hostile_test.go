@@ -1,9 +1,7 @@
 package darttable
 
 import (
-	"fmt"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
@@ -25,32 +23,18 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 	for _, vec := range fixedvector.WriterRange {
 		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
-			want, err := fixedvector.Read(corpus, vec.File)
-			if err != nil {
+			if _, err := fixedvector.Read(corpus, vec.File); err != nil {
 				t.Fatal(err)
 			}
-			leaves, err := want.Leaves()
-			if err != nil {
-				t.Fatal(err)
-			}
-			var checks strings.Builder
-			for _, l := range leaves {
-				expr := "values[0]." + l.Field
-				if l.Index >= 0 {
-					expr += fmt.Sprintf("[%d]", l.Index)
-				}
-				fmt.Fprintf(&checks, "  check('${%[1]s}' == '%[2]d',\n      '%[3]s landed ${%[1]s}, want %[2]d: the forged value clamps to the WRITER range');\n",
-					expr, l.Value, l.Path)
-			}
-			body := fmt.Sprintf(`  final data = File(FILE).readAsBytesSync();
+			// STRICT VERDICT: a value past the writer's range refuses the
+			// whole read (out_of_range); no clamped value lands.
+			body := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == 1 && report.refused == 0 && !report.malformed,
-      'the forged file reads one record: n=$n ${why(report)}');
-%[1]s  check(report.clamped == %[2]d,
-      'clamped=${report.clamped}, want exactly %[2]d: one forged value, one clamp');
-  check(report.unknown == 0 && report.kindMismatch == 0 && report.widened == 0 &&
-      report.duplicate == 0,
-      'a counter that must not move did: ${why(report)}');`, checks.String(), want.Clamped)
+  check(n == -1 && report.refused == t.TableFixedRefusal.outOfRange,
+      'the forged file refuses out_of_range: n=$n ${why(report)}');
+  check(fresh(values[0]), 'a refused read lands nothing: ${why(report)}');
+  check(report.unknown == 0 && report.widened == 0,
+      'a counter that must not move did: ${why(report)}');`
 			out, err := runVersionProbe(t, dartBin, "VNEW_"+vec.Row, []string{"VOLD_" + vec.Row}, 0,
 				filepath.Join(corpus, vec.File), body)
 			if err != nil {

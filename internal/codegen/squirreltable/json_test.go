@@ -49,13 +49,13 @@ local hexOf = function(b) {
   return join(parts);
 };
 local fresh = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
+  return { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+    bodyDamaged = false, refused = false };
 };
 local reportLine = function(r) {
-  if (r.malformed) return "refused";
-  return r.unknown + "," + r.kindMismatch + "," + r.widened + "," + r.clamped + "," +
-    r.duplicate + ",false,read";
+  if (r.bodyDamaged) return "refused";
+  return r.unknown + "," + r.mismatch + "," + r.widened + "," + r.oor + "," +
+    r.repeated + ",false,read";
 };
 local instance = function(unit, mod, root, key) {
   local schema = dofile(unit + "/schema_module.nut", true);
@@ -63,21 +63,21 @@ local instance = function(unit, mod, root, key) {
   local L = schema.require("schema_table_load");
   local S = schema.require("schema_table_save");
   local J = schema.require("schema_table_json");
-  local v = L.loadTolerant(T, root, inputs[key + ".wire"], fresh());
+  local v = L.loadWalk(T, root, inputs[key + ".wire"], fresh());
   local w = J.ToJson(T, root, v);
   local m = J.ToJsonMeasure(T, root, v);
   local r = fresh();
-  local x = J.FromJsonTolerant(T, root, inputs[key + ".json"], r);
-  local b = r.malformed ? null : S.save(T, root, x);
+  local x = J.fromJsonWalk(T, root, inputs[key + ".json"], r);
+  local b = r.bodyDamaged ? null : S.save(T, root, x);
   print("instance " + key + " " + hexOf(w) + " " + m + " " + hexOf(b) + " " + reportLine(r) + "\n");
 };
 local hostile = function(unit, mod, root, key) {
   local schema = dofile(unit + "/schema_module.nut", true);
   local T = schema.require(mod);
   local J = schema.require("schema_table_json");
-  local r = fresh();
-  J.FromJsonTolerant(T, root, inputs[key + ".hostile"], r);
-  print("hostile " + key + " " + reportLine(r) + "\n");
+  // THE MANIFEST PINS THE VERDICT ONLY (docs/plans/strict-only.md decision 3)
+  local v = J.FromJson(T, root, inputs[key + ".hostile"], fresh());
+  print("hostile " + key + " " + (v == null ? "refused" : "read") + "\n");
 };
 `
 
@@ -390,9 +390,9 @@ local schema = dofile("tabledemo/schema_module.nut", true);
 local T = schema.require(%q);
 local L = schema.require("schema_table_load");
 local J = schema.require("schema_table_json");
-local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-  malformed = false, refused = false };
-local v = L.loadTolerant(T, "KeyedConfig", inputs["keyed_config"], report);
+local report = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+  bodyDamaged = false, refused = false };
+local v = L.loadWalk(T, "KeyedConfig", inputs["keyed_config"], report);
 local c = T.Descriptors.KeyedConfig;
 local h = T.Descriptors.HullConfig;
 v[c.byKey.hulls.member][0][h.byKey.health.member] = 0.3333333432674408;
@@ -504,10 +504,10 @@ local schema = dofile("guarded/schema_module.nut", true);
 local T = schema.require(%q);
 local J = schema.require("schema_table_json");
 foreach (key in %s) {
-  local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
-  local v = J.FromJsonTolerant(T, "Patrol", inputs[key], r);
-  local w = r.malformed ? null : J.ToJson(T, "Patrol", v);
+  local r = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+    bodyDamaged = false, refused = false };
+  local v = J.fromJsonWalk(T, "Patrol", inputs[key], r);
+  local w = r.bodyDamaged ? null : J.ToJson(T, "Patrol", v);
   local out = "";
   if (w == null) out = "null";
   else for (local i = 0; i < w.len(); i++) out += format("%%02x", w[i] & 0xff);

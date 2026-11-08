@@ -53,6 +53,6 @@ func TestFlagsElementWidening(t *testing.T) {
 	for _, b := range wire {
 		fmt.Fprintf(&probe, "%d,", b)
 	}
-	probe.WriteString("};auto n=RootLoadMeasure(wire,sizeof(wire));if(n<0)return 1;auto region=(uint8_t*)malloc(n);TableReport report;auto root=RootLoad(region,n,wire,sizeof(wire),&report);if(!root||report.widened!=3||report.kind_mismatch||report.malformed){fprintf(stderr,\"flags widening report failed\");return 2;}if(root->arrays[1]!=3||root->list.count!=2||root->list[1]!=7||root->keyed[Key::Second]!=2)return 3;free(region);return 0;}\n")
+	probe.WriteString("};auto n=RootLoadMeasure(wire,sizeof(wire));if(n<0)return 1;auto region=(uint8_t*)malloc(n);TableReport report;auto root=RootLoad(region,n,wire,sizeof(wire),&report);if(!root||report.widened!=3||report.damaged||report.refuse_reason!=ok){fprintf(stderr,\"flags widening report failed\");return 2;}if(root->arrays[1]!=3||root->list.count!=2||root->list[1]!=7||root->keyed[Key::Second]!=2)return 3;free(region);return 0;}\n")
 	issue710CompileRun(t, dir, "c++", ".cpp", probe.String())
 }

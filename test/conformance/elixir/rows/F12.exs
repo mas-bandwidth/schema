@@ -102,12 +102,13 @@ f12 = fn ->
       Leg.ok("F12: a second layout for a held hash is refused by name")
 
       # "AND CHANGES NOTHING": a refusal by name decodes nothing and moves no
-      # counter, and a named refusal is never `malformed`.
-      Leg.eq("F12: the refusal is not damage", report.malformed, false)
-      Leg.eq("F12: nothing was decoded — no clamp counter", report.clamped, 0)
+      # counter; the reason atom itself (not :malformed, not :wire_damaged)
+      # is the whole answer.
       Leg.eq("F12: no unknown counter", report.unknown, 0)
-      Leg.eq("F12: no kind-mismatch counter", report.kind_mismatch, 0)
       Leg.eq("F12: no widened counter", report.widened, 0)
+      Leg.eq("F12: no retained counter", report.retained, 0)
+      Leg.eq("F12: no retain_lost counter", report.retain_lost, 0)
+      Leg.eq("F12: no layout_hash on this refusal", report.layout_hash, 0)
 
     other ->
       Leg.fail(

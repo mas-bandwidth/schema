@@ -142,7 +142,7 @@ fixed table Lineage
 	}
 	t07Has(t, clamp, "for i in 0..value.a_count.clamp(0, 4) as usize {", "C14 a counted array walks its LIVE elements")
 	t07Has(t, clamp, "if value.f_present {", "C14 an optional's payload is walked only when present")
-	t07Has(t, clamp, "pick_fixed_clamp_body(&mut value.g, clamped, damaged);", "C14 the union's own pass is called")
+	t07Has(t, clamp, "pick_fixed_clamp_body(&mut value.g, oor, damaged);", "C14 the union's own pass is called")
 	if strings.Contains(clamp, "for i in 0..4 {") {
 		t.Error("C14: the counted array's clamp loop walks the declared bound and not the live count")
 	}

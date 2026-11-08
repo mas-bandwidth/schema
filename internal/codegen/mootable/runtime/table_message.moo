@@ -532,10 +532,8 @@ local function resetReport(report: any)
 	report.reason = nil
 	report.field = nil
 	report.unknown = 0
-	report.kindChanged = 0
 	report.widened = 0
-	report.outOfRange = 0
-		report.nonFinite = 0
+	report.nonFinite = 0
 	report.nonFiniteField = nil
 end
 
@@ -897,6 +895,11 @@ local function encodeValue(c: any, e: any, kind: number, shape: any, val: any, n
 		if not V.finite64(val[1], val[2]) then
 			return fail(c, "non_finite_float", named)
 		end
+		-- A FINITE VALUE OFF ITS DECLARED RANGE IS REFUSED, never pulled in
+		-- (docs/plans/strict-only.md decision 8)
+		if e.flo ~= nil and (V.cmp64(val[1], val[2], e.flo[1], e.flo[2]) < 0 or V.cmp64(val[1], val[2], e.fhi[1], e.fhi[2]) > 0) then
+			return fail(c, "invalid_value", named)
+		end
 		put(w, val[1], 32)
 		put(w, val[2], 32)
 		return true
@@ -906,6 +909,14 @@ local function encodeValue(c: any, e: any, kind: number, shape: any, val: any, n
 		end
 		if not V.finite32(val) then
 			return fail(c, "non_finite_float", named)
+		end
+		-- A FINITE VALUE OFF ITS DECLARED RANGE IS REFUSED, never pulled in
+		-- (docs/plans/strict-only.md decision 8)
+		if e.flo ~= nil then
+			local lo, hi = V.f32to64(val)
+			if V.cmp64(lo, hi, e.flo[1], e.flo[2]) < 0 or V.cmp64(lo, hi, e.fhi[1], e.fhi[2]) > 0 then
+				return fail(c, "invalid_value", named)
+			end
 		end
 		if shape.packing == 2 then
 			-- THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3)
@@ -1341,6 +1352,17 @@ local decodeBody: any
 local skipEntry: any
 local decodeArm: any
 
+-- THE ONE READ (docs/SPEC-TABLES.md §3.3, §4, §6.5): a kind mismatch, a value
+-- outside the reader's range and a count or a length past its bound REFUSE the
+-- whole batch; nothing is pulled into range, kept in part or skipped. The first one met
+-- is the diagnostic; the verdict is the only contract.
+local function refuseRead(t: any, why: string): boolean
+	if t.refusal == nil then
+		t.refusal = why
+	end
+	return false
+end
+
 local function dmal(t: any): boolean
 	t.report.damaged = true
 	return false
@@ -1543,7 +1565,8 @@ end
 
 -- one integer decoded at the announced shape and landed in fd's kind and
 -- storage: ranged values are offset + base, raw ones sign-extend by this
--- build's signedness; the declared range and bits(N) clamp (scalar)
+-- build's signedness; a value outside the declared range or bits(N) refuses
+-- out_of_range (scalar)
 local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, boolean)
 	local width = valueBits(kind, shape)
 	if width < 0 then
@@ -1556,7 +1579,7 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 	local mykw = fd.kw or kindWidth(kind)
 	local signed = fd.signed == true
 	if kindWidth(kind) == 16 or fixedKind(kind) then
-		-- the 128-bit and fixed family: a big value, then the field's clamp
+		-- the 128-bit and fixed family: a big value, then the field's range
 		if shape.packing == 1 then
 			x = add4(x, shape.base or { 0, 0, 0, 0 })
 		elseif kindWidth(kind) < 16 then
@@ -1582,20 +1605,15 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 	local lo, hi = fd.lo, fd.hi
 	if lo ~= nil then
 		local Cmp = if mykw == 16 then C else (if signed then Int64 else Uint64)
-		if Cmp.cmp(value, lo) < 0 then
-			value = lo
-			t.report.outOfRange += 1
-		elseif Cmp.cmp(value, hi) > 0 then
-			value = hi
-			t.report.outOfRange += 1
+		if Cmp.cmp(value, lo) < 0 or Cmp.cmp(value, hi) > 0 then
+			return nil, refuseRead(t, "out_of_range")
 		end
 	end
 	if fd.bits ~= nil and fd.bits < 64 then
 		local cap = Uint64.sub(Uint64.lsh(Uint64.fromNumber(1), fd.bits), Uint64.fromNumber(1))
 		local uv = if type(value) == "number" then value else (if Int64.is(value) then Int64.toUint64(value) else value)
 		if Uint64.cmp(uv, cap) > 0 then
-			value = cap
-			t.report.outOfRange += 1
+			return nil, refuseRead(t, "out_of_range")
 		end
 	end
 	-- narrow to the kind's raw domain
@@ -1624,7 +1642,7 @@ end
 
 -- one float32 at the announced shape: a quantized index dequantized, or the
 -- raw bits (refused when not finite); landed in fd (widened into f64, or
--- bounded by fd's range with -0 as +0)
+-- refused out_of_range outside fd's range, with -0 as +0)
 local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boolean)
 	local bits: number
 	if shape.packing == 2 then
@@ -1654,12 +1672,8 @@ local function decodeFloat32(t: any, fd: any, shape: any, named: any): (any, boo
 	end
 	if fd.flo ~= nil then
 		local lo, hi = V.f32to64(bits)
-		if V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 then
-			t.report.outOfRange += 1
-			return fd.flo32, true
-		elseif V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then
-			t.report.outOfRange += 1
-			return fd.fhi32, true
+		if V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 or V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then
+			return nil, refuseRead(t, "out_of_range")
 		elseif bits == 0x80000000 then
 			return 0, true
 		end
@@ -1694,7 +1708,7 @@ local function decodeScalar(t: any, fd: any, kind: number, shape: any, named: an
 	end
 	local v, ok = decodeInteger(t, fd, kind, shape)
 	if not ok then
-		return nil, dmal(t)
+		return nil, t.refusal ~= nil or dmal(t)
 	end
 	return v, true
 end
@@ -1724,7 +1738,7 @@ local function decodeEnum(t: any, e: any, element: boolean): (any, boolean)
 end
 
 -- string(N) / bytes(N): the length at its width, the align, the bytes; a
--- payload past this build's bound keeps what fits and counts outOfRange
+-- payload past this build's bound refuses length_over_bound
 local function decodeText(t: any, fd: any, entry: any, holder: any): boolean
 	local r = t.r
 	local shape = entry.shape
@@ -1739,11 +1753,10 @@ local function decodeText(t: any, fd: any, entry: any, holder: any): boolean
 	if not isBytes and not V.utf8(r.b, at, n) then
 		return dmal(t)
 	end
-	local keep = n
-	if fd.bound ~= nil and keep > fd.bound then
-		keep = fd.bound
-		t.report.outOfRange += 1
+	if fd.bound ~= nil and n > fd.bound then
+		return refuseRead(t, "length_over_bound")
 	end
+	local keep = n
 	if isBytes then
 		local dst = holder[fd.slot]
 		if type(dst) ~= "buffer" or buffer.len(dst) < keep then
@@ -1774,11 +1787,10 @@ local function decodeWide(t: any, fd: any, entry: any, holder: any): boolean
 	if not V.wide(units, 0, n * 2) then
 		return dmal(t)
 	end
-	local keep = n
-	if fd.bound ~= nil and keep > fd.bound then
-		keep = fd.bound
-		t.report.outOfRange += 1
+	if fd.bound ~= nil and n > fd.bound then
+		return refuseRead(t, "length_over_bound")
 	end
+	local keep = n
 	local dst = holder[fd.slot]
 	if type(dst) ~= "buffer" or buffer.len(dst) < keep * 2 then
 		dst = buffer.create(math.max(keep, fd.bound or keep) * 2)
@@ -1832,7 +1844,7 @@ local function decodeElement(t: any, fd: any, shape: any, dst: any, i: number, k
 end
 
 -- a positional array (array): the count, the align, the elements; a count past
--- this build's bound keeps the first N and counts outOfRange
+-- this build's bound refuses count_over_bound
 local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
 	local r = t.r
 	local shape = entry.shape
@@ -1848,28 +1860,17 @@ local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
 	if aligns(entry.kind, shape) and not ralign(r) then
 		return dmal(t)
 	end
-	local inner = shape.inner or {}
-	local run = runBits(entry.kind, shape.elem, inner)
-	local kept = n
 	if n > fd.bound then
-		kept = fd.bound
-		t.report.outOfRange += 1
+		return refuseRead(t, "count_over_bound")
 	end
 	local dst = holder[fd.slot]
-	local walk = n
-	if run >= 0 and walk > kept then
-		walk = kept
-	end
-	for i = 1, walk do
-		if not decodeElement(t, fd, shape, dst, i, i <= kept) then
+	for i = 1, n do
+		if not decodeElement(t, fd, shape, dst, i, true) then
 			return false
 		end
 	end
-	if walk < n and not skipRun(r, n - walk, run) then
-		return dmal(t)
-	end
 	if fd.array == "counted" then
-		holder[fd.slot .. "Count"] = kept
+		holder[fd.slot .. "Count"] = n
 	end
 	if fd.present ~= nil then
 		holder[fd.present] = true
@@ -1885,6 +1886,8 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 		return dmal(t)
 	end
 	local dst = holder[fd.slot]
+	-- A KEYED SLOT TWICE IS DAMAGE (§3.3; docs/plans/strict-only.md decision 5)
+	local seen: { [string]: boolean } = {}
 	for _ = 1, n do
 		local ref, rok = reference(t)
 		if not rok then
@@ -1894,6 +1897,10 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 		if key == nil then
 			return false
 		end
+		if seen[key.id] then
+			return dmal(t)
+		end
+		seen[key.id] = true
 		local at = 0
 		for i, kv in fd.keyvs do
 			if kv[2] == key.id then
@@ -1906,8 +1913,7 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 			t.report.unknown += 1
 			keep = false
 		elseif at > fd.bound then
-			t.report.outOfRange += 1
-			keep = false
+			return refuseRead(t, "out_of_range")
 		end
 		if not decodeElement(t, fd, shape, if keep then dst else {}, if keep then at else 1, keep) then
 			return false
@@ -1956,7 +1962,7 @@ end
 
 -- one union value (unionCell): the arm's reference, then the payload a field
 -- of the arm's type carries; an arm this build cannot name reads None and
--- counts unknown, a retyped one kind_mismatch
+-- counts unknown, a retyped one refuses kind_mismatch
 decodeArm = function(t: any, fd: any): (any, boolean)
 	local un = S.lookup(fd.t)
 	local u = un.new()
@@ -1986,8 +1992,7 @@ decodeArm = function(t: any, fd: any): (any, boolean)
 	local mine = mineEntry(slotOf(un, tag))
 	if entry.kind ~= mine.kind or entry.shape.elem ~= mine.shape.elem then
 		if not widens(entry, mine.kind, mine.shape.elem) then
-			t.report.kindChanged += 1
-			return u, skipEntry(t, entry.kind, entry.shape)
+			return u, refuseRead(t, "kind_mismatch")
 		end
 		t.report.widened += 1
 	end
@@ -2006,6 +2011,9 @@ end
 -- one body: fields until the zero reference (body)
 decodeBody = function(t: any, d: any, v: any): boolean
 	local byId = fieldsById(d)
+	-- A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
+	-- name it or not (docs/plans/strict-only.md decision 5)
+	local seen: { [string]: boolean } = {}
 	while true do
 		local ref, ok = reference(t)
 		if not ok then
@@ -2015,9 +2023,10 @@ decodeBody = function(t: any, d: any, v: any): boolean
 			return true
 		end
 		local entry = entryAt(t, ref)
-		if entry == nil or reserved(entry.id) then
+		if entry == nil or reserved(entry.id) or seen[entry.id] then
 			return dmal(t)
 		end
+		seen[entry.id] = true
 		local hit = byId[entry.id]
 		if hit == nil then
 			t.report.unknown += 1
@@ -2039,11 +2048,8 @@ decodeBody = function(t: any, d: any, v: any): boolean
 				end
 				continue
 			end
-			t.report.kindChanged += 1
-			if not skipEntry(t, entry.kind, entry.shape) then
-				return dmal(t)
-			end
-			continue
+			-- THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT and refuses
+			return refuseRead(t, "kind_mismatch")
 		end
 		if not decodeField(t, fd, entry, v) then
 			return false
@@ -2057,9 +2063,11 @@ end
 -- LoadMessages decodes a batch of root against the announced vocabulary v
 -- (DecodeMessages) and answers how many bodies it delivered and the values.
 -- -1 with report.reason is a refusal (newer_form, no_vocabulary,
--- integrity_mismatch, non_finite_float); a count above capacity is
+-- integrity_mismatch, kind_mismatch, out_of_range, count_over_bound,
+-- length_over_bound; non_finite_float answers 0); a count above capacity is
 -- batch_too_large and returns the wire's M. Damage anywhere discards the
--- whole batch: zero bodies, no values, with report.damaged set (§4).
+-- whole batch: zero bodies, no values, with report.damaged set (§4). Every
+-- refusal returns no values: the whole batch or nothing.
 function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, { any })
 	local d = messageRoot(root)
 	local rep: any = report or {}
@@ -2105,29 +2113,35 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	local t: any = { r = r, v = v, report = rep, indexBits = 0 }
 	local values = {}
-	local got = count
+	local whole = true
 	for i = 1, count do
 		local value = d.new()
-		local bok = decodeBody(t, d, value)
-		if not bok then
-			rep.damaged = true
-			got = i - 1
+		if not decodeBody(t, d, value) then
+			whole = false
 			break
 		end
 		values[i] = value
+	end
+	if t.refusal ~= nil then
+		rep.damaged = false
+		refuse(rep, t.refusal)
+		return -1, {}
+	end
+	if not whole then
+		rep.damaged = true
 	end
 	if rep.nonFinite > 0 then
 		rep.reason = "non_finite_float: " .. tostring(rep.nonFiniteField)
 		rep.field = rep.nonFiniteField
 		return 0, {}
 	end
-	if got == count and (not ralign(r) or r.off ~= r.n) then
+	if whole and (not ralign(r) or r.off ~= r.n) then
 		rep.damaged = true
 	end
 	if rep.damaged then
 		return 0, {}
 	end
-	return got, values
+	return count, values
 end
 
 return table.freeze(MS)

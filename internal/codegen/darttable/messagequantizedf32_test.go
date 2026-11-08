@@ -5,19 +5,24 @@ package darttable
 // index (packing 2, ir.TableMessageQuantized), never as its IEEE-754 bits. The
 // Go reference reads it at the announced width, reconstructs `min + index *
 // delta` in float32 arithmetic, rejects an index above `count` as damage, and
-// clamps the reconstructed value to the reader's own range
-// (internal/tablewire/messagedecode.go, `float32` and `clampFloat`). This test
+// refuses a reconstructed value off the reader's own range
+// (internal/tablewire/messagedecode.go, `float32` and `rangedFloat`). This test
 // pins that the generated Dart batch load answers the same six counters and
 // that the value it loads saves back to the Go oracle's bytes.
 //
 // The Box schema is the coordinator's probe: a fixed root whose one field is a
 // compressed float. The vectors cover an on-step value, an off-step value, a
-// value above max, a value below min, and each bound. The Go oracle encodes each
-// instance, the Dart leg loads those bytes, and both the loaded value and the
-// re-saved bytes must be the oracle's: the wants are the oracle's, never a
-// literal.
+// value above max, a value below min, and each bound. For an in-range value
+// the Go oracle encodes the instance, the Dart leg loads those bytes, and
+// both the loaded value and the re-saved bytes must be the oracle's: the
+// wants are the oracle's, never a literal. A value off its range never
+// reaches the wire: the strict Go encoder refuses it whole
+// (internal/tablewire's writer refusal, *tabletext.InvalidValue, no bytes),
+// so the above-max and below-min vectors assert that refusal instead of a
+// read — a clamped encoding of them is exactly what strict encode removed.
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -42,17 +47,24 @@ func TestMessageQuantizedFloat32ReadDart(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		x    float64
+		// refused marks a value off its declared range: the strict
+		// encoder refuses it, so there are no wire bytes to read.
+		refused bool
 	}{
-		{"on_step", 1.0},
-		{"off_step", 0.3},
-		{"above_max", 7.25},
-		{"below_min", -9.0},
-		{"at_min", -1.5},
-		{"at_max", 2.5},
+		{"on_step", 1.0, false},
+		{"off_step", 0.3, false},
+		{"above_max", 7.25, true},
+		{"below_min", -9.0, true},
+		{"at_min", -1.5, false},
+		{"at_max", 2.5, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			u := unitFrom(t, quantizedFloat32Schema)
+			if tc.refused {
+				checkQuantizedFloat32EncodeRefused(t, u, tc.x)
+				return
+			}
 			checkQuantizedFloat32Read(t, u, tc.x)
 		})
 	}
@@ -107,6 +119,27 @@ func checkQuantizedFloat32Read(t *testing.T, u *ir.Unit, x float64) {
 	}
 }
 
+// checkQuantizedFloat32EncodeRefused pins the strict half of the same
+// vectors: a Box value off its declared range is refused by the Go encoder
+// whole — *tabletext.InvalidValue and no bytes — never clamped onto the
+// wire for a reader to reconstruct (docs/SPEC-TABLES.md §3.3, §5; the
+// writer-refusal contract internal/tablewire proves for every writer).
+func checkQuantizedFloat32EncodeRefused(t *testing.T, u *ir.Unit, x float64) {
+	t.Helper()
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Box"))
+	f, ok := inst.FieldByKey("x")
+	if !ok {
+		t.Fatal("the synthetic Box declares no x field")
+	}
+	f.Cell.F = x
+	out, err := tablewire.EncodeMessage(m, inst)
+	var iv *tabletext.InvalidValue
+	if !errors.As(err, &iv) || out != nil {
+		t.Fatalf("the Go encoder answered x=%v with %d bytes, err=%v, want an invalid_value refusal and no bytes", x, len(out), err)
+	}
+}
+
 // quantizedFloat32Body loads the encoded Box with the generated Dart batch
 // message load and asserts the report's six counters, the loaded x and body
 // one's saved bytes match the Go oracle's on the same bytes (docs/SPEC-TABLES.md
@@ -123,11 +156,10 @@ func quantizedFloat32Body(announce, mutant []byte, rep tabletext.Report, wantX f
   final values = <h.Box>[value];
   final loadRep = h.TableReport();
   final count = r.boxLoadMessages(values, msg, vocab, loadRep);
-  check(count == 1 && !loadRep.refused && !loadRep.malformed,
-      'LoadMessages count=$count refused=${loadRep.refused} malformed=${loadRep.malformed}');
-  check(loadRep.unknown == %d && loadRep.kindMismatch == %d && loadRep.widened == %d &&
-      loadRep.clamped == %d && loadRep.duplicate == %d,
-      'six counters unknown=${loadRep.unknown} kindMismatch=${loadRep.kindMismatch} widened=${loadRep.widened} clamped=${loadRep.clamped} duplicate=${loadRep.duplicate}');
+  check(count == 1 && !loadRep.refused,
+      'LoadMessages count=$count refused=${loadRep.refused} reason=${loadRep.reason}');
+  check(loadRep.unknown == %d && loadRep.widened == %d,
+      'counters unknown=${loadRep.unknown} widened=${loadRep.widened}');
   check(value.x == %s, 'x=${value.x} want %s');
   final measureRep = h.TableReport();
   final measure = r.boxMeasureMessages(values, measureRep);
@@ -142,7 +174,7 @@ func quantizedFloat32Body(announce, mutant []byte, rep tabletext.Report, wantX f
   }
   check(same, 'saved bytes of body one differ from the oracle');
 `, dartBytes(announce), dartBytes(mutant),
-		rep.Unknown, 0, rep.Widened, 0, 0,
+		rep.Unknown, rep.Widened,
 		fixedFloatLit(wantX), fixedFloatLit(wantX),
 		len(saved), len(saved), dartBytes(saved))
 }

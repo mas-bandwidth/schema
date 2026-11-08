@@ -357,7 +357,6 @@ public final class FixedTableFixed {
         int made = Identity.plan.length;
         short[] table = remap;
         int censusUnknown = 0;
-        int censusKind = 0;
         if (fileHash != hash) {
             final TableFixed.Plan lane = Lineage.plans[pick];
             if (lane == null || lane.why != TableFixed.Reason.none) {
@@ -372,7 +371,6 @@ public final class FixedTableFixed {
             made = lane.count;
             table = lane.remap;
             censusUnknown = lane.unknown;
-            censusKind = lane.kindMismatch;
         }
         final long recordSize = known_.recordBytes;
 
@@ -381,7 +379,7 @@ public final class FixedTableFixed {
         // caller's capacity, which does.
         final long rest = data.length - head.recordsAt;
         if (recordSize <= 8 || rest % recordSize != 0) {
-            report.malformed = true;
+            report.damaged = true;
             return -1;
         }
         final long count64 = rest / recordSize;
@@ -401,14 +399,12 @@ public final class FixedTableFixed {
         int at = head.recordsAt;
         // STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a
         // refusal has written not one destination byte.
-        final int clampedBefore = report.clamped;
         final int widenedBefore = report.widened;
         for (int k = 0; k < n; k++) {
             if (TableFixed.get64(data, at) != fileHash) {
                 for (int j = 0; j < k; j++) {
                     scatter(defaults, 0, values[j], new TableFixed.Report());
                 }
-                report.clamped = clampedBefore;
                 report.widened = widenedBefore;
                 report.refuse(TableFixed.Reason.noLayout);
                 return -1;
@@ -424,12 +420,11 @@ public final class FixedTableFixed {
                 for (int j = 0; j <= k; j++) {
                     scatter(defaults, 0, values[j], new TableFixed.Report());
                 }
-                report.clamped = clampedBefore;
                 report.widened = widenedBefore;
                 return -1;
             }
             // DAMAGE DISCARDS THE WHOLE LOAD (§4)
-            if (report.malformed) {
+            if (report.damaged) {
                 for (int j = 0; j <= k; j++) {
                     scatter(defaults, 0, values[j], new TableFixed.Report());
                 }
@@ -441,7 +436,6 @@ public final class FixedTableFixed {
         // RETURNS (§5.9 #6): once per endpoint and never per record, which is also how
         // REFUSE stays total. On a lawful lineage it lands zero, always (§5.9 #30).
         report.unknown += censusUnknown;
-        report.kindMismatch += censusKind;
         return n;
     }
 }

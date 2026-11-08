@@ -152,12 +152,12 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
         OLDNS::TBL fresh; std::memset( (void *) &fresh, 0, sizeof( fresh ) ); OLDNS::TBL##Reset( fresh );         \
         OLDNS::TableReport r;                                                                            \
         std::vector<OLDNS::TableFixedEntry> plan( 4096 );                                                 \
-        const int64_t n = OLDNS::TBL##FixedLoadTolerant( &back, 1, (newbytes).data(), (int64_t) (newbytes).size(),\
+        const int64_t n = OLDNS::TBL##FixedLoad( &back, 1, (newbytes).data(), (int64_t) (newbytes).size(),\
                                                  plan.data(), 4096, NULL, &r );                          \
         const uint64_t file_hash = OLDNS::TableFixedGet64( (newbytes).data() + OLDNS::kTableFixedHashAt ); \
         check( n < 0 && r.refused && IS_LAYOUT_UNKNOWN( OLDNS, r.reason ) &&                               \
              r.layout_hash == file_hash &&                                                               \
-             r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed &&\
+             r.unknown == 0 && r.widened == 0 && !r.damaged &&                                         \
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,                                          \
              ROW "/OLD-REFUSES-NEW: layout_unknown before any record, no counter, nothing decoded" );      \
     } while ( 0 )
@@ -190,7 +190,7 @@ void array_bounded_grow_case()
         vnew_array_bounded_grow::ArrayBoundedGrowReset( back );
         vnew_array_bounded_grow::TableReport r;
         std::vector<vnew_array_bounded_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                                    plan.data(), 4096, NULL, &r ) == 1,
                "array_bounded_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -202,7 +202,7 @@ void array_bounded_grow_case()
         bool slack = true;
         for ( int i = 4; i < 8; ++i ) { slack = slack && back.vals[i] == 0; }
         check( slack, "array_bounded_grow/NEW-READS-OLD: [..N] slack past the count is zeros (§12.6)" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && r.widened == 0 && !r.damaged && !r.refused,
                "array_bounded_grow/NEW-READS-OLD: a bound that grew moves no counter (§5.2)" );
     }
 
@@ -240,12 +240,12 @@ void array_bounded_grow_hostile_case()
         std::vector<vnew_array_bounded_grow::TableFixedEntry> plan( 4096 );
         vnew_array_bounded_grow::ArrayBoundedGrow fresh;
         std::memset( (void *) &fresh, 0, sizeof( fresh ) ); vnew_array_bounded_grow::ArrayBoundedGrowReset( fresh );
-        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                                    plan.data(), 4096, NULL, &r ) == -1,
-               "array_bounded_grow_hostile: the forged file is REFUSED, even by the tolerant read" );
+               "array_bounded_grow_hostile: the forged file is REFUSED by the read" );
         check( r.refused && r.reason == vnew_array_bounded_grow::count_over_bound,
                "array_bounded_grow_hostile: a count of 7 past the WRITER's [..4] (not the reader's [..8]) is count_over_bound" );
-        check( r.clamped == 0 && !r.malformed, "array_bounded_grow_hostile: no clamp is counted" );
+        check( !r.damaged, "array_bounded_grow_hostile: a named refusal, not damage" );
         check( std::memcmp( (const void *) &back, (const void *) &fresh, sizeof( back ) ) == 0,
                "array_bounded_grow_hostile: no destination byte is written" );
     }
@@ -283,7 +283,7 @@ void array_fixed_grow_case()
         std::memset( (void *) &back, 0x5A, sizeof( back ) );
         vnew_array_fixed_grow::TableReport r;
         std::vector<vnew_array_fixed_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_array_fixed_grow::ArrayFixedGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_array_fixed_grow::ArrayFixedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                                plan.data(), 4096, NULL, &r ) == 1,
                "array_fixed_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -303,7 +303,7 @@ void array_fixed_grow_case()
             slack = slack && back.vals[i].x == 7 && back.vals[i].y == 9;
         }
         check( slack, "array_fixed_grow/NEW-READS-OLD: slots 4..7 hold the ELEMENT's defaults (x = 7, y = 9), not zero (§12.6)" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && r.widened == 0 && !r.damaged && !r.refused,
                "array_fixed_grow/NEW-READS-OLD: no counter moves" );
     }
     vnew_array_fixed_grow::ArrayFixedGrow nv;
@@ -338,7 +338,7 @@ void array_elem_widen_case()
         vnew_array_elem_widen::ArrayElemWidenReset( back );
         vnew_array_elem_widen::TableReport r;
         std::vector<vnew_array_elem_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_array_elem_widen::ArrayElemWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_array_elem_widen::ArrayElemWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                                plan.data(), 4096, NULL, &r ) == 1,
                "array_elem_widen/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -348,7 +348,7 @@ void array_elem_widen_case()
         check( back.vals[1] == INT16_MIN, "array_elem_widen/NEW-READS-OLD: INT16_MIN lands exactly" );
         check( back.vals[2] == INT16_MAX, "array_elem_widen/NEW-READS-OLD: INT16_MAX lands exactly" );
         check( r.widened > 0, "array_elem_widen/NEW-READS-OLD: a widened element counts (§5.2)" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "array_elem_widen/NEW-READS-OLD: nothing else fired" );
     }
     vnew_array_elem_widen::ArrayElemWiden nv;
@@ -382,7 +382,7 @@ void constant_grow_case()
         vnew_constant_grow::ConstantGrowReset( back );
         vnew_constant_grow::TableReport r;
         std::vector<vnew_constant_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_constant_grow::ConstantGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_constant_grow::ConstantGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                           plan.data(), 4096, NULL, &r ) == 1,
                "constant_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -394,7 +394,7 @@ void constant_grow_case()
         bool slack = true;
         for ( int i = 4; i < 8; ++i ) { slack = slack && back.vals[i] == 0; }
         check( slack, "constant_grow/NEW-READS-OLD: the slots the constant bought take the default" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && r.widened == 0 && !r.damaged && !r.refused,
                "constant_grow/NEW-READS-OLD: no counter moves" );
     }
     vnew_constant_grow::ConstantGrow nv;
@@ -427,7 +427,7 @@ void string_grow_case()
         vnew_string_grow::StringGrowReset( back );
         vnew_string_grow::TableReport r;
         std::vector<vnew_string_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_string_grow::StringGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_string_grow::StringGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                       plan.data(), 4096, NULL, &r ) == 1,
                "string_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -437,7 +437,7 @@ void string_grow_case()
         bool slack = true;
         for ( int i = 8; i < 16; ++i ) { slack = slack && back.text[i] == 0; }
         check( slack, "string_grow/NEW-READS-OLD: the capacity the grow bought is ZERO (the slack rule)" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "string_grow/NEW-READS-OLD: no counter moves" );
     }
     vnew_string_grow::StringGrow nv;
@@ -471,7 +471,7 @@ void wstring_grow_case()
         vnew_wstring_grow::WstringGrowReset( back );
         vnew_wstring_grow::TableReport r;
         std::vector<vnew_wstring_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_wstring_grow::WstringGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_wstring_grow::WstringGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                         plan.data(), 4096, NULL, &r ) == 1,
                "wstring_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -482,7 +482,7 @@ void wstring_grow_case()
         bool slack = true;
         for ( int i = 8; i < 16; ++i ) { slack = slack && back.text[i] == 0; }
         check( slack, "wstring_grow/NEW-READS-OLD: the code units the grow bought are ZERO" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "wstring_grow/NEW-READS-OLD: no counter moves" );
     }
     vnew_wstring_grow::WstringGrow nv;
@@ -515,7 +515,7 @@ void bytes_grow_case()
         vnew_bytes_grow::BytesGrowReset( back );
         vnew_bytes_grow::TableReport r;
         std::vector<vnew_bytes_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_bytes_grow::BytesGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_bytes_grow::BytesGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                     plan.data(), 4096, NULL, &r ) == 1,
                "bytes_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -527,7 +527,7 @@ void bytes_grow_case()
         bool slack = true;
         for ( int i = 8; i < 16; ++i ) { slack = slack && back.blob[i] == 0; }
         check( slack, "bytes_grow/NEW-READS-OLD: the capacity the grow bought is ZERO" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "bytes_grow/NEW-READS-OLD: no counter moves" );
     }
     vnew_bytes_grow::BytesGrow nv;
@@ -565,14 +565,14 @@ void int_widen_case()
         vnew_int_widen::IntWidenReset( back );
         vnew_int_widen::TableReport r;
         std::vector<vnew_int_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_int_widen::IntWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_int_widen::IntWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                   plan.data(), 4096, NULL, &r ) == 1,
                "int_widen/NEW-READS-OLD: one record" );
         check( back.v == (int32_t) values[k], names[k] );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "int_widen/NEW-READS-OLD: lead and trail bracket the row exactly" );
         check( r.widened == 1, "int_widen/NEW-READS-OLD: `widened` += 1, per record (§5.2)" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "int_widen/NEW-READS-OLD: nothing else fired" );
     }
 
@@ -604,14 +604,14 @@ void uint_widen_case()
         vnew_uint_widen::UintWidenReset( back );
         vnew_uint_widen::TableReport r;
         std::vector<vnew_uint_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_uint_widen::UintWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_uint_widen::UintWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                     plan.data(), 4096, NULL, &r ) == 1,
                "uint_widen/NEW-READS-OLD: one record" );
         check( back.v == 0xFFFFu, "uint_widen/NEW-READS-OLD: 0xFFFF ZERO-extends, it does not sign-extend" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "uint_widen/NEW-READS-OLD: lead and trail bracket the row exactly" );
         check( r.widened == 1, "uint_widen/NEW-READS-OLD: `widened` += 1" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "uint_widen/NEW-READS-OLD: nothing else fired" );
     }
     vnew_uint_widen::UintWiden nv;
@@ -654,7 +654,7 @@ void float_widen_case()
         vnew_float_widen::FloatWidenReset( back );
         vnew_float_widen::TableReport r;
         std::vector<vnew_float_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_float_widen::FloatWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_float_widen::FloatWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                       plan.data(), 4096, NULL, &r ) == 1,
                "float_widen/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -662,7 +662,7 @@ void float_widen_case()
         check( bits64( back.v ) == bits64( (double) f_from( kSubnormal ) ) && ( bits64( back.v ) >> 63 ) == 1u,
                "float_widen/NEW-READS-OLD: a negative subnormal widens to exactly its own value, sign and all" );
         check( r.widened == 1, "float_widen/NEW-READS-OLD: `widened` += 1" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "float_widen/NEW-READS-OLD: nothing else fired" );
     }
     {
@@ -690,7 +690,7 @@ void float_widen_case()
         vnew_float_widen::FloatWidenReset( back );
         vnew_float_widen::TableReport r;
         std::vector<vnew_float_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_float_widen::FloatWidenFixedLoadTolerant( &back, 1, forged.data(), (int64_t) forged.size(),
+        check( vnew_float_widen::FloatWidenFixedLoad( &back, 1, forged.data(), (int64_t) forged.size(),
                                                       plan.data(), 4096, NULL, &r ) == -1 &&
                r.refused && r.refuse_reason == vnew_float_widen::non_finite_float,
                "float_widen/NEW-READS-OLD: a forged NaN is refused as non_finite_float" );
@@ -735,20 +735,20 @@ void range_widen_case()
         vnew_range_widen::RangeWidenReset( back );
         vnew_range_widen::TableReport r;
         std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_range_widen::RangeWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                       plan.data(), 4096, NULL, &r ) == 1,
                "range_widen/NEW-READS-OLD: one record" );
         check( back.v == 100, "range_widen/NEW-READS-OLD: 100 lands" );
-        check( r.clamped == 0, "range_widen/NEW-READS-OLD: `clamped` == 0" );
+        check( r.refuse_reason == vnew_range_widen::ok, "range_widen/NEW-READS-OLD: the OLD max is in range, so no out_of_range" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "range_widen/NEW-READS-OLD: lead and trail bracket the row exactly" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "range_widen/NEW-READS-OLD: nothing else fired" );
     }
 
     // THE NEW WRITER PUTS 150 ON THE WIRE — inside its range, outside the old
-    // reader's. The bill says the old reader refuses the FILE; today it reads
-    // the record and CLAMPS, silently as far as any version is concerned.
+    // reader's. The bill says the old reader refuses the FILE, and it does: the
+    // new hash is not in its lineage.
     vnew_range_widen::RangeWiden nv;
     vnew_range_widen::RangeWidenReset( nv );
     nv.v = 150;
@@ -758,8 +758,10 @@ void range_widen_case()
 }
 
 // A scalar past the OLD range (0..100), read by the NEW reader whose own range
-// is 0..200. The plan carries the WRITER's range (bill §12.5): clamp to 100,
-// COUNT clamped, never land 150.
+// is 0..200. The plan carries the WRITER's range (bill §12.5), and the read is
+// STRICT (docs/SPEC-TABLES.md §6.5): the whole load refuses as out_of_range.
+// It never lands 150 (the reader's own range would admit it) and never clamps
+// to 100.
 void range_widen_hostile_case()
 {
     vold_range_widen::RangeWiden old;
@@ -773,17 +775,22 @@ void range_widen_hostile_case()
         + (size_t) vold_range_widen::RangeWidenFixedLayoutBytes;
     vold_range_widen::TableFixedPut32( ob.data() + rec + 8 + 4, 150u );
     {
+        vnew_range_widen::RangeWiden defaults;
+        vnew_range_widen::RangeWidenReset( defaults );
         vnew_range_widen::RangeWiden back;
         vnew_range_widen::RangeWidenReset( back );
+        back.lead = 77; // poison: the refusal must put every field back
+        back.v = 77;
+        back.trail = 77;
         vnew_range_widen::TableReport r;
         std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
-        check( vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
-                                                      plan.data(), 4096, NULL, &r ) == 1,
-               "range_widen_hostile: the forged file reads" );
-        check( back.v == 100, "range_widen_hostile: 150 clamps to the WRITER's max 100, not the reader's 200" );
-        check( r.clamped >= 1, "range_widen_hostile: COUNT clamped" );
-        check( back.lead == 1 && back.trail == 2,
-               "range_widen_hostile: lead and trail stand" );
+        check( vnew_range_widen::RangeWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+                                                      plan.data(), 4096, NULL, &r ) == -1,
+               "range_widen_hostile: 150 past the WRITER's max 100 refuses the read, though the reader's 200 admits it" );
+        check( r.refused && r.refuse_reason == vnew_range_widen::out_of_range,
+               "range_widen_hostile: named out_of_range" );
+        check( back.v == defaults.v && back.lead == defaults.lead && back.trail == defaults.trail,
+               "range_widen_hostile: nothing lands — not 150, not a clamped 100, not lead or trail" );
     }
 }
 
@@ -807,13 +814,13 @@ void bits_grow_case()
         vnew_bits_grow::BitsGrowReset( back );
         vnew_bits_grow::TableReport r;
         std::vector<vnew_bits_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_bits_grow::BitsGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_bits_grow::BitsGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                   plan.data(), 4096, NULL, &r ) == 1,
                "bits_grow/NEW-READS-OLD: one record" );
         check( back.v == 0xFFu, "bits_grow/NEW-READS-OLD: every bit of bits(8) lands in bits(12), exact" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "bits_grow/NEW-READS-OLD: lead and trail bracket the row exactly" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "bits_grow/NEW-READS-OLD: nothing else fired" );
     }
     vnew_bits_grow::BitsGrow nv;
@@ -845,18 +852,20 @@ void fixed_I_grow_case()
         vnew_fixed_i_grow::FixedIGrowReset( back );
         vnew_fixed_i_grow::TableReport r;
         std::vector<vnew_fixed_i_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_fixed_i_grow::FixedIGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_fixed_i_grow::FixedIGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                        plan.data(), 4096, NULL, &r ) == 1,
                "fixed_I_grow/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "fixed_I_grow/NEW-READS-OLD: lead and trail bracket the row exactly" );
-        // A FINDING: `fixed(I,F)` with I grown is NOT A WIDENING RUNG today. The
-        // read comes back kind_mismatch == 1 and the raw scaled value is LOST to
-        // the declared default, which is the one outcome bill §2 forbids for a
-        // widening. The rung is int8 -> int16 on the raw value and nothing else.
-        check( back.v == -1 && r.kind_mismatch == 0,
+        // `fixed(I,F)` with I grown IS A WIDENING RUNG (once a finding: the read
+        // came back a kind mismatch and the raw scaled value was LOST to the
+        // declared default, the one outcome bill §2 forbids for a widening). A
+        // kind mismatch now refuses the whole read, so the one-record check
+        // above and the value below are what hold it a widening. The rung is
+        // int8 -> int16 on the raw value and nothing else.
+        check( back.v == -1,
                "fixed_I_grow/NEW-READS-OLD: the RAW SCALED VALUE lands exactly (F equal)" );
-        check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "fixed_I_grow/NEW-READS-OLD: nothing else fired" );
     }
     vnew_fixed_i_grow::FixedIGrow nv;
@@ -893,7 +902,7 @@ void fixed_I_grow_element_case()
         vnew_fixed_i_grow_element::FixedIGrowElementReset( back );
         vnew_fixed_i_grow_element::TableReport r;
         std::vector<vnew_fixed_i_grow_element::TableFixedEntry> plan( 4096 );
-        check( vnew_fixed_i_grow_element::FixedIGrowElementFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_fixed_i_grow_element::FixedIGrowElementFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                                       plan.data(), 4096, NULL, &r ) == 1,
                "fixed_I_grow_element/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
@@ -903,9 +912,9 @@ void fixed_I_grow_element_case()
         // exactly and the element WIDENED, not kind_mismatch.
         check( back.vals[0] == -1 && back.vals[1] == -128 && back.vals[2] == 0 && back.vals[3] == 112,
                "fixed_I_grow_element/NEW-READS-OLD: the RAW SCALED VALUE lands exactly, per slot (F equal)" );
-        check( r.kind_mismatch == 0,
-               "fixed_I_grow_element/NEW-READS-OLD: the element widened, not kind_mismatch" );
-        check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.refuse_reason == vnew_fixed_i_grow_element::ok,
+               "fixed_I_grow_element/NEW-READS-OLD: the element widened, not a kind_mismatch refusal" );
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "fixed_I_grow_element/NEW-READS-OLD: nothing else fired" );
     }
     vnew_fixed_i_grow_element::FixedIGrowElement nv;
@@ -937,18 +946,19 @@ void optional_add_case()
         vnew_optional_add::OptionalAddReset( back );
         vnew_optional_add::TableReport r;
         std::vector<vnew_optional_add::TableFixedEntry> plan( 4096 );
-        check( vnew_optional_add::OptionalAddFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_optional_add::OptionalAddFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                         plan.data(), 4096, NULL, &r ) == 1,
                "optional_add/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "optional_add/NEW-READS-OLD: lead and trail bracket the row exactly" );
-        // A FINDING: `T` read into `?T` comes back kind_mismatch == 1, ABSENT, and
+        // ONCE A FINDING: `T` read into `?T` came back a kind mismatch, ABSENT,
         // with the payload at its default. Bill §2 says "an optional: `T` where
         // the reader has `?T` (landed present)"; §5.2's plan row says
-        // "?T where x has T: present := 1, then the value". Neither happens.
-        check( back.link_present && back.link.value == 777 && r.kind_mismatch == 0,
+        // "?T where x has T: present := 1, then the value". A kind mismatch now
+        // refuses the whole read, so the one-record check above holds it too.
+        check( back.link_present && back.link.value == 777,
                "optional_add/NEW-READS-OLD: `present` == 1 and the payload exact (§12.8)" );
-        check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "optional_add/NEW-READS-OLD: nothing else fired" );
     }
     // THE OTHER DIRECTION IS THE REFUSAL: `?T` where the reader has `T` — the
@@ -1022,7 +1032,7 @@ void floor_cases()
         vnew_floor::FlooredReset( back );
         vnew_floor::TableReport r;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_floor::FlooredFixedLoadTolerant( &back, 1, b1.data(), (int64_t) b1.size(),
+        const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, b1.data(), (int64_t) b1.size(),
                                                         plan.data(), 4096, NULL, &r );
         check( n == 1 && back.a == 11 && back.b == 22 && back.c == 3,
                "floor_at: a file AT the floor reads, and the reader's tail is the default" );
@@ -1040,10 +1050,10 @@ void floor_cases()
         vnew_floor::Floored fresh; std::memset( (void *) &fresh, 0, sizeof( fresh ) ); vnew_floor::FlooredReset( fresh );
         vnew_floor::TableReport r;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_floor::FlooredFixedLoadTolerant( &back, 1, b0.data(), (int64_t) b0.size(),
+        const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, b0.data(), (int64_t) b0.size(),
                                                         plan.data(), 4096, NULL, &r );
         check( n < 0 && r.refused && IS_LAYOUT_UNSUPPORTED( vnew_floor, r.reason ) &&
-             r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed &&
+             r.unknown == 0 && r.widened == 0 && !r.damaged &&
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
              "floor_below: a file ONE BELOW the floor refuses layout_unsupported, no counter, nothing decoded" );
     }
@@ -1055,14 +1065,14 @@ void floor_cases()
         vnew_floor::FlooredReset( back );
         vnew_floor::TableReport before;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-        const int64_t read_yesterday = vnew_floor::FlooredFixedLoadTolerant( &back, 1, b1.data(), (int64_t) b1.size(),
+        const int64_t read_yesterday = vnew_floor::FlooredFixedLoad( &back, 1, b1.data(), (int64_t) b1.size(),
                                                                      plan.data(), 4096, NULL, &before );
         check( read_yesterday == 1, "floor_raise_live: the file read before the floor moved" );
 // the floor must exist AND this build must be one that may move it
 #if defined( SCHEMA_HAS_FLOOR ) && defined( SCHEMA_FIXED_FLOOR_TEST_HOOKS )
         vnew_floor::FlooredFixedSetFloorForTest( 2 );
         vnew_floor::TableReport after;
-        const int64_t today = vnew_floor::FlooredFixedLoadTolerant( &back, 1, b1.data(), (int64_t) b1.size(),
+        const int64_t today = vnew_floor::FlooredFixedLoad( &back, 1, b1.data(), (int64_t) b1.size(),
                                                             plan.data(), 4096, NULL, &after );
         check( today < 0 && after.refused && IS_LAYOUT_UNSUPPORTED( vnew_floor, after.reason ),
                "floor_raise_live: the same file refuses after the floor is raised by one" );
@@ -1094,11 +1104,11 @@ void hash_cases()
         vnew_floor::Floored back;
         vnew_floor::FlooredReset( back );
         vnew_floor::TableReport r;
-        check( vnew_floor::FlooredFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+        check( vnew_floor::FlooredFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                              plan.data(), 4096, &cache, &r ) == 1, "hash_identity: the own-hash load" );
         check( back.a == 1 && back.b == 2 && back.c == 3, "hash_identity: the identity plan lands every field" );
         check( cache.compiles == 0, "hash_identity: the reader's own hash compiles NOTHING" );
-        check( !r.refused && r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+        check( !r.refused && r.unknown == 0 && r.widened == 0,
                "hash_identity: the identity read moves no counter" );
     }
 
@@ -1115,7 +1125,7 @@ void hash_cases()
         vnew_floor::Floored fresh; std::memset( (void *) &fresh, 0, sizeof( fresh ) ); vnew_floor::FlooredReset( fresh );
         vnew_floor::TableReport r;
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_floor::FlooredFixedLoadTolerant( &back, 1, sb.data(), (int64_t) sb.size(),
+        const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, sb.data(), (int64_t) sb.size(),
                                                         plan.data(), 4096, NULL, &r );
         check( n < 0 && r.refused && IS_LAYOUT_UNKNOWN( vnew_floor, r.reason ) &&
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
@@ -1174,15 +1184,14 @@ void hash_cases()
             vnew_floor::Floored fresh; std::memcpy( (void *) &fresh, &back, sizeof( fresh ) );
             vnew_floor::TableReport r;
             std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
-            const int64_t n = vnew_floor::FlooredFixedLoadTolerant( &back, 1, f.data(), (int64_t) f.size(),
+            const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, f.data(), (int64_t) f.size(),
                                                             plan.data(), 4096, NULL, &r );
             char what[256];
             std::snprintf( what, sizeof( what ),
                            "hash_known_bytes_differ: §1.1 case %s, under a KNOWN hash, is layout_malformed",
                            breaks[k].what );
-            check( n == -1 && r.refused && !r.malformed && r.reason == vnew_floor::layout_malformed, what );
-            check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 &&
-                   r.duplicate == 0 && r.retained == 0 && r.retain_lost == 0 && r.layout_hash == 0,
+            check( n == -1 && r.refused && !r.damaged && r.reason == vnew_floor::layout_malformed, what );
+            check( r.unknown == 0 && r.widened == 0 && r.retained == 0 && r.retain_lost == 0 && r.layout_hash == 0,
                    "hash_known_bytes_differ: a named refusal moves no counter and reports no hash" );
             check( std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
                    "hash_known_bytes_differ: nothing decoded" );
@@ -1221,13 +1230,13 @@ void lineage_merge_case()
         vnew_lineage_merge::MergedReset( back );
         vnew_lineage_merge::TableReport r;
         std::vector<vnew_lineage_merge::TableFixedEntry> plan( 4096 );
-        check( vnew_lineage_merge::MergedFixedLoadTolerant( &back, 1, ab.data(), (int64_t) ab.size(),
+        check( vnew_lineage_merge::MergedFixedLoad( &back, 1, ab.data(), (int64_t) ab.size(),
                                                     plan.data(), 4096, NULL, &r ) == 1,
                "lineage_merge: the merged build reads branch A's file" );
         check( back.anchor == 100 && back.from_a == 111,
                "lineage_merge: branch A's own fields land exactly" );
         check( back.from_b == 20, "lineage_merge: the field branch A never had takes its declared default" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "lineage_merge: branch A's file moves no counter" );
     }
     {
@@ -1235,14 +1244,14 @@ void lineage_merge_case()
         vnew_lineage_merge::MergedReset( back );
         vnew_lineage_merge::TableReport r;
         std::vector<vnew_lineage_merge::TableFixedEntry> plan( 4096 );
-        const int64_t n = vnew_lineage_merge::MergedFixedLoadTolerant( &back, 1, bb.data(), (int64_t) bb.size(),
+        const int64_t n = vnew_lineage_merge::MergedFixedLoad( &back, 1, bb.data(), (int64_t) bb.size(),
                                                                plan.data(), 4096, NULL, &r );
         check( n == 1, "lineage_merge: the merged build reads branch B's file" );
         // THE POSITION TRAP: `from_b` is entry 1 on the wire and field 2 here.
         check( back.anchor == 200, "lineage_merge: branch B's anchor" );
         check( back.from_b == 222, "lineage_merge: `from_b` lands in from_b, BY NAME and not by position" );
         check( back.from_a == 10, "lineage_merge: `from_a`, which branch B never had, takes its declared default" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && !r.malformed && !r.refused,
+        check( r.unknown == 0 && !r.damaged && !r.refused,
                "lineage_merge: branch B's file moves no counter" );
     }
 }

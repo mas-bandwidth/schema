@@ -34,7 +34,7 @@ func TestFixedFormRaggedTail(t *testing.T) {
 	body := `  final data = File(FILE).readAsBytesSync();
   final full = LOAD(values, values.length, data, data.length, plan, report);
   check(full >= 1, 'the corpus file did not read cleanly first: n=$full ${why(report)}');
-  check(report.refused == t.TableFixedRefusal.none && !report.malformed,
+  check(report.refused == t.TableFixedRefusal.none,
       'the corpus file read back dirty: ${why(report)}');
   final recordBytes = t.lineageFixedRecordBytes;
   for (var extra = 1; extra < recordBytes; extra++) {
@@ -47,12 +47,10 @@ func TestFixedFormRaggedTail(t *testing.T) {
     ragged.setRange(0, data.length, data);
     final n = LOAD(values, values.length, ragged, ragged.length, plan, rep);
     check(n == -1, 'a file with $extra stray bytes owes -1, not $n: ${why(rep)}');
-    check(rep.malformed, 'a ragged tail is malformed, not clean: ${why(rep)}');
-    check(rep.refused == t.TableFixedRefusal.none,
-        'a ragged tail is the residue, never refused by name: ${name(rep.refused)}');
-    check(rep.unknown == 0 && rep.kindMismatch == 0 && rep.clamped == 0 &&
-        rep.widened == 0 && rep.duplicate == 0 && rep.layoutHash == 0,
-        'a malformed read moves no counter and no reported hash: ${why(rep)}');
+    check(rep.refused == t.TableFixedRefusal.damaged,
+        'a ragged tail refuses wire_damaged, not clean: ${why(rep)}');
+    check(rep.unknown == 0 && rep.widened == 0 && rep.layoutHash == 0,
+        'a refused read moves no counter and no reported hash: ${why(rep)}');
     check(values[0].x == 0x5A5A5A5A && values[0].y == 0x5A5A5A5A &&
         values[0].z == 0x5A5A5A5A && values[0].w == 0x5A5A5A5A,
         'a ragged read wrote a destination byte: ${why(rep)}');
@@ -60,6 +58,6 @@ func TestFixedFormRaggedTail(t *testing.T) {
 
 	out, err := runVersionProbe(t, dartBin, "VNEW_field_append", nil, 0, file, body)
 	if err != nil {
-		t.Fatalf("a ragged tail is malformed, not refused: %v\n%s", err, out)
+		t.Fatalf("a ragged tail is refused wire_damaged: %v\n%s", err, out)
 	}
 }

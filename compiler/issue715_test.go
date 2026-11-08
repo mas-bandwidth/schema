@@ -41,40 +41,44 @@ fixed table Ship
 using namespace p;
 
 int main(void) {
-    // 1. Malformed Base64 body: must report kind_mismatch == 1 and preserve declared default "ab" (len 2)
+    // THE READ IS STRICT (docs/SPEC-TABLES.md §4, §16.8): text that is not
+    // canonical Base64 refuses the WHOLE load, and the refused value is the
+    // declaration's defaults, never a half-read one. The issue's bug was a
+    // wiped default ("ab" lost), so every refused case still pins the
+    // default, and past (read after tag) must not have landed either.
+    // 1. Malformed Base64 body: refused, the declared default "ab" (len 2) stands
     {
         const char * text = "{\"tag\":\"not_valid_base64!!!\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
-        if ( !ok ) { fprintf(stderr, "case 1: FromJson failed\n"); return 1; }
-        if ( r.kind_mismatch != 1 ) { fprintf(stderr, "case 1: kind_mismatch=%d, want 1\n", r.kind_mismatch); return 2; }
-        if ( r.malformed ) { fprintf(stderr, "case 1: malformed is true\n"); return 3; }
-        if ( s.past != 42 ) { fprintf(stderr, "case 1: after=%d, want 42\n", s.past); return 4; }
+        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        if ( ok ) { fprintf(stderr, "case 1: FromJson accepted malformed Base64\n"); return 1; }
+        if ( r.refuse_reason == TableRefuseReason::ok || !r.refused ) { fprintf(stderr, "case 1: refuse_reason=%d\n", (int) r.refuse_reason); return 2; }
+        if ( s.past != 0 ) { fprintf(stderr, "case 1: past=%d, want the default 0\n", s.past); return 4; }
         if ( s.tag_length != 2 ) { fprintf(stderr, "case 1: tag_length=%d, want 2 (default wiped!)\n", s.tag_length); return 5; }
         if ( s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 1: tag content corrupted\n"); return 6; }
     }
 
-    // 2. Mid-string '=' padding ("YQ=B"): must report kind_mismatch == 1 and preserve default
+    // 2. Mid-string '=' padding ("YQ=B"): refused, default preserved
     {
         const char * text = "{\"tag\":\"YQ=B\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
-        if ( !ok ) { fprintf(stderr, "case 2: FromJson failed\n"); return 7; }
-        if ( r.kind_mismatch != 1 ) { fprintf(stderr, "case 2: kind_mismatch=%d, want 1 (mid-string padding accepted!)\n", r.kind_mismatch); return 8; }
-        if ( s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 2: tag default not preserved\n"); return 9; }
+        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        if ( ok ) { fprintf(stderr, "case 2: mid-string padding accepted!\n"); return 7; }
+        if ( r.refuse_reason == TableRefuseReason::ok || !r.refused ) { fprintf(stderr, "case 2: refuse_reason=%d\n", (int) r.refuse_reason); return 8; }
+        if ( s.past != 0 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 2: tag default not preserved\n"); return 9; }
     }
 
-    // 3. Lone character ("Q", 6 bits, cannot form a byte): must report kind_mismatch == 1
+    // 3. Lone character ("Q", 6 bits, cannot form a byte): refused
     {
         const char * text = "{\"tag\":\"Q\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
-        if ( !ok ) { fprintf(stderr, "case 3: FromJson failed\n"); return 10; }
-        if ( r.kind_mismatch != 1 ) { fprintf(stderr, "case 3: kind_mismatch=%d, want 1 (lone symbol accepted!)\n", r.kind_mismatch); return 11; }
-        if ( s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 3: tag default not preserved\n"); return 12; }
+        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        if ( ok ) { fprintf(stderr, "case 3: lone symbol accepted!\n"); return 10; }
+        if ( r.refuse_reason == TableRefuseReason::ok || !r.refused ) { fprintf(stderr, "case 3: refuse_reason=%d\n", (int) r.refuse_reason); return 11; }
+        if ( s.past != 0 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 3: tag default not preserved\n"); return 12; }
     }
 
     // 4. Valid unpadded Base64 ("YWI" -> "ab")
@@ -82,8 +86,8 @@ int main(void) {
         const char * text = "{\"tag\":\"YWI\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
-        if ( !ok || r.kind_mismatch != 0 || r.malformed ) { fprintf(stderr, "case 4 failed\n"); return 13; }
+        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        if ( !ok || r.refuse_reason != TableRefuseReason::ok || r.damaged ) { fprintf(stderr, "case 4 failed\n"); return 13; }
         if ( s.past != 42 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 4 data mismatch\n"); return 14; }
     }
 
@@ -92,8 +96,8 @@ int main(void) {
         const char * text = "{\"tag\":\"YWI=\",\"past\":42}";
         Ship s;
         TableReport r;
-        bool ok = ShipFromJsonTolerant( s, text, (int64_t) strlen(text), &r );
-        if ( !ok || r.kind_mismatch != 0 || r.malformed ) { fprintf(stderr, "case 5 failed\n"); return 15; }
+        bool ok = ShipFromJson( s, text, (int64_t) strlen(text), &r );
+        if ( !ok || r.refuse_reason != TableRefuseReason::ok || r.damaged ) { fprintf(stderr, "case 5 failed\n"); return 15; }
         if ( s.past != 42 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "case 5 data mismatch\n"); return 16; }
     }
 

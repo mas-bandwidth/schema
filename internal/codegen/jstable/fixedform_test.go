@@ -173,10 +173,10 @@ fixed table Root
 	if body == "" {
 		t.Fatal("RootFixedDecode was not a closed function")
 	}
-	if !strings.Contains(body, "if (value.n < 0)") || !strings.Contains(body, "value.n = 1000; report.clamped++") {
+	if !strings.Contains(body, "if (value.n < 0)") || !strings.Contains(body, "value.n = 1000; report.oor++") {
 		t.Fatalf("ranged integer decode must clamp to the reader's min/max:\n%s", body)
 	}
-	if !strings.Contains(body, "if (value.grade > 3)") || !strings.Contains(body, "value.grade = 0; report.clamped++") {
+	if !strings.Contains(body, "if (value.grade > 3)") || !strings.Contains(body, "value.grade = 0; report.oor++") {
 		t.Fatalf("enum ordinal decode must land None past the top value:\n%s", body)
 	}
 	if !strings.Contains(body, "i < value.marksCount") {

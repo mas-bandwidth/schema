@@ -164,7 +164,7 @@ abstract final class TableFixedRefusal {
   static const int newerForm = 3; // a byte no form defines
 
   static const int noLayout = 4; // a hash naming no layout this reader holds
-  static const int layoutMalformed = 5; // bytes that are not a layout at all
+  static const int layoutDamaged = 5; // bytes that are not a layout at all
   static const int layoutCountMismatch = 6;
   static const int layoutKindUnknown = 7;
   static const int layoutSizeMismatch = 8;
@@ -197,6 +197,10 @@ abstract final class TableFixedRefusal {
   /// read by name, the report naming the field, and nothing lands.
   static const int nonFiniteFloat = 18;
   static const int integrityMismatch = 19;
+  static const int damaged = 20; // file framing damage (§3)
+  static const int outOfRange = 21; // a value outside its declared range (§4)
+  static const int countOverBound = 22; // a count past its bound (§4)
+  static const int lengthOverBound = 23; // a length past its bound (§4)
 
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
@@ -211,8 +215,8 @@ abstract final class TableFixedRefusal {
         return 'newer_form';
       case noLayout:
         return 'no_layout';
-      case layoutMalformed:
-        return 'layout_malformed';
+      case layoutDamaged:
+        return 'layout_damaged';
       case layoutCountMismatch:
         return 'layout_count_mismatch';
       case layoutKindUnknown:
@@ -241,6 +245,14 @@ abstract final class TableFixedRefusal {
         return 'integrity_mismatch';
       case nonFiniteFloat:
         return 'non_finite_float';
+      case damaged:
+        return 'wire_damaged';
+      case outOfRange:
+        return 'out_of_range';
+      case countOverBound:
+        return 'count_over_bound';
+      case lengthOverBound:
+        return 'length_over_bound';
       default:
         return '???';
     }
@@ -250,13 +262,9 @@ abstract final class TableFixedRefusal {
 /// A REPORT is §4's six counters and the refusal beside them. The caller owns
 /// it and the codec never makes one.
 final class TableFixedReport {
-  bool malformed = false;
   int refused = TableFixedRefusal.none;
   int unknown = 0;
-  int kindMismatch = 0;
-  int clamped = 0;
   int widened = 0;
-  int duplicate = 0;
 
   /// the layout hash the record carried, so an application can ask an endpoint for
   /// the layout a 'no_layout' refusal names
@@ -274,13 +282,9 @@ final class TableFixedReport {
   int layoutHash = 0;
 
   void reset() {
-    malformed = false;
     refused = TableFixedRefusal.none;
     unknown = 0;
-    kindMismatch = 0;
-    clamped = 0;
     widened = 0;
-    duplicate = 0;
     hash = 0;
     layoutHash = 0;
     nonFiniteFloat = '';
@@ -691,7 +695,7 @@ final class TableFixedLayout {
     count = 0;
     refusal = TableFixedRefusal.none;
     if (length < TableFixedLimits.layoutHeaderBytes) {
-      refusal = TableFixedRefusal.layoutMalformed;
+      refusal = TableFixedRefusal.layoutDamaged;
       return false;
     }
     // 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY
@@ -870,9 +874,9 @@ int tableFixedSelect(List<TableFixedKnownLayout> known, int hash) {
 }
 
 /// ONE OLDER ENTRY'S PLAN, laid down from THE LOCK'S BYTES and never from a
-/// file's. 'unknown' and 'kindMismatch' are the COMPILE CENSUS — the plan's own
-/// numbers, carried onto a report ONCE after the record loop and only on a read
-/// that returns (§5.4, §5.9 #6). 'why' is the name an entry the lock got wrong
+/// file's. 'unknown' is the COMPILE CENSUS — the plan's own number, carried
+/// onto a report ONCE after the record loop and only on a read that returns
+/// (§5.4, §5.9 #6). 'why' is the name an entry the lock got wrong
 /// refuses by, so a bad entry still answers by name rather than by a throw
 /// (§5.9 #8).
 final class TableFixedLineagePlan {
@@ -883,7 +887,6 @@ final class TableFixedLineagePlan {
     this.fillCount,
     this.remap,
     this.unknown,
-    this.kindMismatch,
     this.why,
   );
 
@@ -893,7 +896,6 @@ final class TableFixedLineagePlan {
   final int fillCount;
   final Int32List remap;
   final int unknown;
-  final int kindMismatch;
   final int why;
 }
 
@@ -926,7 +928,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           0,
           empty,
           0,
-          0,
           TableFixedRefusal.none,
         ),
       );
@@ -941,7 +942,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
       empty,
       0,
       empty,
-      0,
       0,
       TableFixedRefusal.planTooLarge,
     );
@@ -962,8 +962,7 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           0,
           empty,
           0,
-          0,
-          TableFixedRefusal.layoutMalformed,
+          TableFixedRefusal.layoutDamaged,
         );
         break;
       }
@@ -989,7 +988,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           0,
           empty,
           0,
-          0,
           TableFixedRefusal.layoutRecordTooLarge,
         );
         break;
@@ -1006,7 +1004,6 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
         plan.fillCount,
         Int32List.fromList(plan.remap.sublist(0, plan.remapUsed)),
         census.unknown,
-        census.kindMismatch,
         TableFixedRefusal.none,
       );
       break;
@@ -1101,13 +1098,9 @@ int tableFixedRun(
         image.setRange(d, d + size, source, s);
         break;
       case TableFixedOp.count:
-        var counted = sourceView.getInt32(s, Endian.little);
-        if (counted < 0) {
-          counted = 0;
-          report.clamped++;
-        } else if (counted > size) {
-          counted = size;
-          report.clamped++;
+        final counted = sourceView.getInt32(s, Endian.little);
+        if (counted < 0 || counted > size) {
+          return TableFixedRefusal.countOverBound;
         }
         imageView.setInt32(d, counted, Endian.little);
         break;
@@ -1116,14 +1109,9 @@ int tableFixedRun(
             ? 2
             : 1;
         final cap = size ~/ unit;
-        var used = sourceView.getInt32(s, Endian.little);
-        var clampFired = false;
-        if (used < 0) {
-          used = 0;
-          clampFired = true;
-        } else if (used > cap) {
-          used = cap;
-          clampFired = true;
+        final used = sourceView.getInt32(s, Endian.little);
+        if (used < 0 || used > cap) {
+          return TableFixedRefusal.lengthOverBound;
         }
         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE, and a
         // violation REFUSES BY NAME (§4.5 fix 11): the length above clamps and
@@ -1136,9 +1124,6 @@ int tableFixedRun(
           s + 4,
         )) {
           return TableFixedRefusal.textIllFormed;
-        }
-        if (clampFired) {
-          report.clamped++;
         }
         imageView.setInt32(d, used, Endian.little);
         image.setRange(
@@ -1167,7 +1152,7 @@ int tableFixedRun(
         final remapAt = plan[b + TableFixedLane.aux];
         var landed = 0;
         if (raw < 0 || raw > remap[remapAt]) {
-          report.clamped++;
+          report.unknown++;
         } else if (raw != 0) {
           landed = remap[remapAt + raw];
         }
@@ -1220,7 +1205,7 @@ int tableFixedRun(
         if (value == 0 && arms != 0 && guard == tableFixedNoGuard) {
           final raw = tableFixedTagAt(source, s, size);
           if (raw < 0 || raw > arms) {
-            report.clamped++;
+            report.unknown++;
           }
         }
         break;
@@ -1630,8 +1615,8 @@ abstract final class TableFixedCompiler {
         );
         return;
       }
-      // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-      report.kindMismatch++;
+      // A KIND THAT MOVED IS NEVER REINTERPRETED (§4): the field reads
+      // its default and the compile census does not count it.
       return;
     }
     switch (myKind) {
@@ -1921,8 +1906,6 @@ abstract final class TableFixedCompiler {
             arg,
             mySize & 0xff,
           );
-        } else {
-          report.kindMismatch++;
         }
         break;
     }
@@ -2188,14 +2171,8 @@ class TableMessageEntry {
 /// sets 'refused' and 'reason' and nothing else moves.
 class TableReport {
   bool refused = false;
-  bool malformed = false;
   int unknown = 0;
-  /// §4's other events, carried here so a message read answers the same
-  /// six-counter report the Go reference does (internal/tabletext.Report).
-  int kindMismatch = 0;
   int widened = 0;
-  int clamped = 0;
-  int duplicate = 0;
   int buildVersionRemote = 0;
   int buildVersionOwn = 0;
   String reason = '';
@@ -2204,8 +2181,8 @@ class TableReport {
   String nonFiniteFloat = '';
 
   void Damage() {
-    malformed = true;
-    reason = 'malformed';
+    refused = true;
+    reason = 'wire_damaged';
   }
 
   bool Refuse(String why) {
@@ -3248,7 +3225,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.entityId = v;
           value.entityId += 0;
         }
-        if (value.entityId > 4095) { value.entityId = 4095; r.report.clamped++; }
+        if (value.entityId > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 32:
         {
@@ -3258,7 +3235,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.posX += -16383;
           value.posX = value.posX.toSigned(32);
         }
-        if (value.posX < -16383) { value.posX = -16383; r.report.clamped++; } else if (value.posX > 16383) { value.posX = 16383; r.report.clamped++; }
+        if (value.posX < -16383 || value.posX > 16383) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 33:
         {
@@ -3268,7 +3245,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.posY += -16383;
           value.posY = value.posY.toSigned(32);
         }
-        if (value.posY < -16383) { value.posY = -16383; r.report.clamped++; } else if (value.posY > 16383) { value.posY = 16383; r.report.clamped++; }
+        if (value.posY < -16383 || value.posY > 16383) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 34:
         {
@@ -3278,7 +3255,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.posZ += -16383;
           value.posZ = value.posZ.toSigned(32);
         }
-        if (value.posZ < -16383) { value.posZ = -16383; r.report.clamped++; } else if (value.posZ > 16383) { value.posZ = 16383; r.report.clamped++; }
+        if (value.posZ < -16383 || value.posZ > 16383) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 35:
         {
@@ -3287,7 +3264,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.yaw = v;
           value.yaw += 0;
         }
-        if (value.yaw > 511) { value.yaw = 511; r.report.clamped++; }
+        if (value.yaw > 511) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 36:
         {
@@ -3296,7 +3273,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.pitch = v;
           value.pitch += 0;
         }
-        if (value.pitch > 511) { value.pitch = 511; r.report.clamped++; }
+        if (value.pitch > 511) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 37:
         {
@@ -3306,7 +3283,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.velX += -2048;
           value.velX = value.velX.toSigned(32);
         }
-        if (value.velX < -2048) { value.velX = -2048; r.report.clamped++; } else if (value.velX > 2047) { value.velX = 2047; r.report.clamped++; }
+        if (value.velX < -2048 || value.velX > 2047) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 38:
         {
@@ -3316,7 +3293,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.velY += -2048;
           value.velY = value.velY.toSigned(32);
         }
-        if (value.velY < -2048) { value.velY = -2048; r.report.clamped++; } else if (value.velY > 2047) { value.velY = 2047; r.report.clamped++; }
+        if (value.velY < -2048 || value.velY > 2047) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 39:
         {
@@ -3326,7 +3303,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.velZ += -2048;
           value.velZ = value.velZ.toSigned(32);
         }
-        if (value.velZ < -2048) { value.velZ = -2048; r.report.clamped++; } else if (value.velZ > 2047) { value.velZ = 2047; r.report.clamped++; }
+        if (value.velZ < -2048 || value.velZ > 2047) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 40:
         {
@@ -3336,7 +3313,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           value.health += 0;
           value.health = value.health.toSigned(32);
         }
-        if (value.health < 0) { value.health = 0; r.report.clamped++; } else if (value.health > 1000) { value.health = 1000; r.report.clamped++; }
+        if (value.health < 0 || value.health > 1000) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 41:
         {
@@ -3435,7 +3412,7 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
           value.statId = v;
           value.statId += 0;
         }
-        if (value.statId > 255) { value.statId = 255; r.report.clamped++; }
+        if (value.statId > 255) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 52:
         {
@@ -3445,7 +3422,7 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
           value.delta += -512;
           value.delta = value.delta.toSigned(32);
         }
-        if (value.delta < -512) { value.delta = -512; r.report.clamped++; } else if (value.delta > 511) { value.delta = 511; r.report.clamped++; }
+        if (value.delta < -512 || value.delta > 511) { r.report.Refuse('out_of_range'); return false; }
         break;
       default:
         if (ref > r.vocabulary.count) {
@@ -3504,7 +3481,7 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           value.targetId = v;
           value.targetId += 0;
         }
-        if (value.targetId > 4095) { value.targetId = 4095; r.report.clamped++; }
+        if (value.targetId > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 46:
         {
@@ -3514,7 +3491,7 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           value.damage += 0;
           value.damage = value.damage.toSigned(32);
         }
-        if (value.damage < 0) { value.damage = 0; r.report.clamped++; } else if (value.damage > 4095) { value.damage = 4095; r.report.clamped++; }
+        if (value.damage < 0 || value.damage > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 47:
         {
@@ -3524,7 +3501,7 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           value.hitKind += 0;
           value.hitKind = value.hitKind.toSigned(32);
         }
-        if (value.hitKind < 0) { value.hitKind = 0; r.report.clamped++; } else if (value.hitKind > 7) { value.hitKind = 7; r.report.clamped++; }
+        if (value.hitKind < 0 || value.hitKind > 7) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 48:
         {
@@ -3583,7 +3560,7 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
           value.channel += 0;
           value.channel = value.channel.toSigned(32);
         }
-        if (value.channel < 0) { value.channel = 0; r.report.clamped++; } else if (value.channel > 3) { value.channel = 3; r.report.clamped++; }
+        if (value.channel < 0 || value.channel > 3) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 30:
         {
@@ -3592,7 +3569,7 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
           value.speaker = v;
           value.speaker += 0;
         }
-        if (value.speaker > 4095) { value.speaker = 4095; r.report.clamped++; }
+        if (value.speaker > 4095) { r.report.Refuse('out_of_range'); return false; }
         break;
       default:
         if (ref > r.vocabulary.count) {
@@ -3646,7 +3623,7 @@ bool mixedPickupEventLoadMessageBody(
           value.itemId = v;
           value.itemId += 0;
         }
-        if (value.itemId > 1023) { value.itemId = 1023; r.report.clamped++; }
+        if (value.itemId > 1023) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 50:
         {
@@ -3656,7 +3633,7 @@ bool mixedPickupEventLoadMessageBody(
           value.amount += 0;
           value.amount = value.amount.toSigned(32);
         }
-        if (value.amount < 0) { value.amount = 0; r.report.clamped++; } else if (value.amount > 255) { value.amount = 255; r.report.clamped++; }
+        if (value.amount < 0 || value.amount > 255) { r.report.Refuse('out_of_range'); return false; }
         break;
       default:
         if (ref > r.vocabulary.count) {
@@ -3911,7 +3888,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.sequence = v;
           value.sequence += 0;
         }
-        if (value.sequence > 65535) { value.sequence = 65535; r.report.clamped++; }
+        if (value.sequence > 65535) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 2:
         {
@@ -3921,7 +3898,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.ackSequence += 0;
           value.ackSequence = value.ackSequence.toSigned(32);
         }
-        if (value.ackSequence < 0) { value.ackSequence = 0; r.report.clamped++; } else if (value.ackSequence > 65535) { value.ackSequence = 65535; r.report.clamped++; }
+        if (value.ackSequence < 0 || value.ackSequence > 65535) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 3:
         {
@@ -3930,7 +3907,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.ackBits = v;
           value.ackBits += 0;
         }
-        if (value.ackBits > 4294967295) { value.ackBits = 4294967295; r.report.clamped++; }
+        if (value.ackBits > 4294967295) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 4:
         {
@@ -3953,7 +3930,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.nonce = v;
           value.nonce += 0;
         }
-        if ((value.nonce ^ 0x8000000000000000) < 0x8000000000000000) { value.nonce = 0; r.report.clamped++; } else if ((value.nonce ^ 0x8000000000000000) > 9223372036854775807) { value.nonce = 0xffffffffffffffff; r.report.clamped++; }
+        if ((value.nonce ^ 0x8000000000000000) < 0x8000000000000000 || (value.nonce ^ 0x8000000000000000) > 9223372036854775807) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 7:
         {
@@ -3962,7 +3939,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.worldTime = v;
           value.worldTime += -1000000000000;
         }
-        if (value.worldTime < -1000000000000) { value.worldTime = -1000000000000; r.report.clamped++; } else if (value.worldTime > 1000000000000) { value.worldTime = 1000000000000; r.report.clamped++; }
+        if (value.worldTime < -1000000000000 || value.worldTime > 1000000000000) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 8:
         {
@@ -3971,7 +3948,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.frameTick = v;
           value.frameTick += 0;
         }
-        if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) { value.frameTick = 281474976710655; r.report.clamped++; }
+        if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 9:
         {
@@ -3980,7 +3957,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.serverTime = v;
           value.serverTime += 0;
         }
-        if (value.serverTime < 0) { value.serverTime = 0; r.report.clamped++; } else if (value.serverTime > 65535) { value.serverTime = 65535; r.report.clamped++; }
+        if (value.serverTime < 0 || value.serverTime > 65535) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 10:
         {
@@ -3990,7 +3967,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             value.entitiesCount = v;
           }
             final kept = value.entitiesCount < 8 ? value.entitiesCount : 8;
-            if (kept != value.entitiesCount) { r.report.clamped++; }
+            if (kept != value.entitiesCount) { r.report.Refuse('count_over_bound'); return false; }
             for (var i = 0; i < value.entitiesCount; i++) {
               if (i < kept) {
                 if (!mixedEntityLoadMessageBody(r, value.entities[i])) return false;
@@ -4010,7 +3987,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             value.statsCount = v;
           }
             final kept = value.statsCount < 80 ? value.statsCount : 80;
-            if (kept != value.statsCount) { r.report.clamped++; }
+            if (kept != value.statsCount) { r.report.Refuse('count_over_bound'); return false; }
             for (var i = 0; i < value.statsCount; i++) {
               if (i < kept) {
                 if (!mixedStatLoadMessageBody(r, value.stats[i])) return false;
@@ -4073,7 +4050,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (!r.bits.skip(n * 8)) { r.report.Damage(); return false; }
           if (!tableTextValid(r.bits.buffer, start, n)) { r.report.Damage(); return false; }
           var kept = n;
-          if (kept > 15) { kept = 15; r.report.clamped++; }
+          if (kept > 15) { r.report.Refuse('length_over_bound'); return false; }
           value.playerNameLength = kept;
           value.playerName.setRange(0, kept, r.bits.buffer, start);
         }
@@ -4085,7 +4062,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final start = r.bits.offset >> 3;
           if (!r.bits.skip(n * 8)) { r.report.Damage(); return false; }
           var kept = n;
-          if (kept > 16) { kept = 16; r.report.clamped++; }
+          if (kept > 16) { r.report.Refuse('length_over_bound'); return false; }
           value.payloadLength = kept;
           value.payload.setRange(0, kept, r.bits.buffer, start);
         }
@@ -4106,7 +4083,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           TableBitWriter._float32Cell[0] = scaled + -1.0;
           value.aimX = TableBitWriter._float32Cell[0];
         }
-        if (value.aimX < -1.0) { value.aimX = -1.0; r.report.clamped++; } else if (value.aimX > 1.0) { value.aimX = 1.0; r.report.clamped++; }
+        if (value.aimX < -1.0 || value.aimX > 1.0) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 17:
         {
@@ -4124,7 +4101,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           TableBitWriter._float32Cell[0] = scaled + -1.0;
           value.aimY = TableBitWriter._float32Cell[0];
         }
-        if (value.aimY < -1.0) { value.aimY = -1.0; r.report.clamped++; } else if (value.aimY > 1.0) { value.aimY = 1.0; r.report.clamped++; }
+        if (value.aimY < -1.0 || value.aimY > 1.0) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 18:
         {
@@ -4142,7 +4119,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           TableBitWriter._float32Cell[0] = scaled + -1.0;
           value.aimZ = TableBitWriter._float32Cell[0];
         }
-        if (value.aimZ < -1.0) { value.aimZ = -1.0; r.report.clamped++; } else if (value.aimZ > 1.0) { value.aimZ = 1.0; r.report.clamped++; }
+        if (value.aimZ < -1.0 || value.aimZ > 1.0) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 19:
         {
@@ -4180,7 +4157,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         hi = hi + 0xfffffff000000000 + carry;
         lo = sumLo;
         value.flux = Int128(hi, lo);
-        if (value.flux < Int128(0xfffffff000000000, 0)) { value.flux = Int128(0xfffffff000000000, 0); r.report.clamped++; } else if (value.flux > Int128(68719476736, 0)) { value.flux = Int128(68719476736, 0); r.report.clamped++; }
+        if (value.flux < Int128(0xfffffff000000000, 0) || value.flux > Int128(68719476736, 0)) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 23:
         {
@@ -4189,7 +4166,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.ping = v;
           value.ping += 0;
         }
-        if (value.ping < 0) { value.ping = 0; r.report.clamped++; } else if (value.ping > 250) { value.ping = 250; r.report.clamped++; }
+        if (value.ping < 0 || value.ping > 250) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 24:
         {
@@ -4198,7 +4175,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.crcHint = v;
           value.crcHint += 0;
         }
-        if (value.crcHint > 16777215) { value.crcHint = 16777215; r.report.clamped++; }
+        if (value.crcHint > 16777215) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 25:
         {
@@ -4215,7 +4192,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.extra += 0;
           value.extra = value.extra.toSigned(32);
         }
-        if (value.extra < 0) { value.extra = 0; r.report.clamped++; } else if (value.extra > 255) { value.extra = 255; r.report.clamped++; }
+        if (value.extra < 0 || value.extra > 255) { r.report.Refuse('out_of_range'); return false; }
         break;
       case 27:
         {
@@ -4225,7 +4202,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           value.idleTicks += 0;
           value.idleTicks = value.idleTicks.toSigned(32);
         }
-        if (value.idleTicks < 0) { value.idleTicks = 0; r.report.clamped++; } else if (value.idleTicks > 15) { value.idleTicks = 15; r.report.clamped++; }
+        if (value.idleTicks < 0 || value.idleTicks > 15) { r.report.Refuse('out_of_range'); return false; }
         break;
       default:
         if (ref > r.vocabulary.count) {
@@ -4347,80 +4324,80 @@ void mixedEntityFixedDecode(
   if (value.entityId > 4095) {
     // the bits(12) WIDTH clamp
     value.entityId = 4095;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.posX = view.getInt32(at + 4, Endian.little);
   if (value.posX < -16383) {
     value.posX = -16383;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.posX > 16383) {
     value.posX = 16383;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.posY = view.getInt32(at + 8, Endian.little);
   if (value.posY < -16383) {
     value.posY = -16383;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.posY > 16383) {
     value.posY = 16383;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.posZ = view.getInt32(at + 12, Endian.little);
   if (value.posZ < -16383) {
     value.posZ = -16383;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.posZ > 16383) {
     value.posZ = 16383;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.yaw = view.getUint32(at + 16, Endian.little);
   if (value.yaw > 511) {
     // the bits(9) WIDTH clamp
     value.yaw = 511;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.pitch = view.getUint32(at + 20, Endian.little);
   if (value.pitch > 511) {
     // the bits(9) WIDTH clamp
     value.pitch = 511;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.velX = view.getInt32(at + 24, Endian.little);
   if (value.velX < -2048) {
     value.velX = -2048;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.velX > 2047) {
     value.velX = 2047;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.velY = view.getInt32(at + 28, Endian.little);
   if (value.velY < -2048) {
     value.velY = -2048;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.velY > 2047) {
     value.velY = 2047;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.velZ = view.getInt32(at + 32, Endian.little);
   if (value.velZ < -2048) {
     value.velZ = -2048;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.velZ > 2047) {
     value.velZ = 2047;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.health = view.getInt32(at + 36, Endian.little);
   if (value.health < 0) {
     value.health = 0;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.health > 1000) {
     value.health = 1000;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.weapon = MixedWeapon(view.getUint8(at + 40));
   if (value.weapon > 15) {
     value.weapon = MixedWeapon.none;
-    report.clamped++;
+    report.unknown++;
   }
   value.damage = view.getUint64(at + 41, Endian.little);
   value.moving = view.getUint8(at + 49) != 0;
@@ -4459,15 +4436,15 @@ void mixedStatFixedDecode(
   if (value.statId > 255) {
     // the bits(8) WIDTH clamp
     value.statId = 255;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.delta = view.getInt32(at + 4, Endian.little);
   if (value.delta < -512) {
     value.delta = -512;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.delta > 511) {
     value.delta = 511;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
 }
 
@@ -4505,23 +4482,23 @@ void mixedHitEventFixedDecode(
   if (value.targetId > 4095) {
     // the bits(12) WIDTH clamp
     value.targetId = 4095;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.damage = view.getInt32(at + 4, Endian.little);
   if (value.damage < 0) {
     value.damage = 0;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.damage > 4095) {
     value.damage = 4095;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.hitKind = view.getInt32(at + 8, Endian.little);
   if (value.hitKind < 0) {
     value.hitKind = 0;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.hitKind > 7) {
     value.hitKind = 7;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.crit = view.getUint8(at + 12) != 0;
 }
@@ -4557,16 +4534,16 @@ void mixedChatEventFixedDecode(
   value.channel = view.getInt32(at, Endian.little);
   if (value.channel < 0) {
     value.channel = 0;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.channel > 3) {
     value.channel = 3;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.speaker = view.getUint32(at + 4, Endian.little);
   if (value.speaker > 4095) {
     // the bits(12) WIDTH clamp
     value.speaker = 4095;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
 }
 
@@ -4602,15 +4579,15 @@ void mixedPickupEventFixedDecode(
   if (value.itemId > 1023) {
     // the bits(10) WIDTH clamp
     value.itemId = 1023;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.amount = view.getInt32(at + 4, Endian.little);
   if (value.amount < 0) {
     value.amount = 0;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.amount > 255) {
     value.amount = 255;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
 }
 
@@ -4734,15 +4711,15 @@ void benchMixedFixedDecode(
   if (value.sequence > 65535) {
     // the bits(16) WIDTH clamp
     value.sequence = 65535;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.ackSequence = view.getInt32(at + 4, Endian.little);
   if (value.ackSequence < 0) {
     value.ackSequence = 0;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.ackSequence > 65535) {
     value.ackSequence = 65535;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.ackBits = view.getUint32(at + 8, Endian.little);
   value.sessionId = view.getUint64(at + 12, Endian.little);
@@ -4751,24 +4728,24 @@ void benchMixedFixedDecode(
   value.worldTime = view.getInt64(at + 32, Endian.little);
   if (value.worldTime < -1000000000000) {
     value.worldTime = -1000000000000;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.worldTime > 1000000000000) {
     value.worldTime = 1000000000000;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.frameTick = view.getUint64(at + 40, Endian.little);
   if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) {
     // the bits(48) WIDTH clamp
     value.frameTick = 281474976710655;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.serverTime = view.getInt32(at + 48, Endian.little);
   if (value.serverTime < 0) {
     value.serverTime = 0;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.serverTime > 16776960) {
     value.serverTime = 16776960;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.entitiesCount = view.getInt32(at + 52, Endian.little);
   for (var i = 0; i < value.entitiesCount; i++) {
@@ -4817,26 +4794,18 @@ void benchMixedFixedDecode(
       break;
     default:
       value.gameEvent.type = MixedEventType.none;
-      report.clamped++;
+      report.unknown++;
       break;
   }
   value.loadout.setRange(0, 4, image, at + 1122);
   value.playerNameLength = view.getInt32(at + 1126, Endian.little);
-  if (value.playerNameLength < 0) {
-    value.playerNameLength = 0;
-    report.clamped++;
-  } else if (value.playerNameLength > 15) {
-    value.playerNameLength = 15;
-    report.clamped++;
+  if (value.playerNameLength < 0 || value.playerNameLength > 15) {
+    report.refused = TableFixedRefusal.lengthOverBound;
   }
   value.playerName.setRange(0, 15, image, at + 1130);
   value.payloadLength = view.getInt32(at + 1145, Endian.little);
-  if (value.payloadLength < 0) {
-    value.payloadLength = 0;
-    report.clamped++;
-  } else if (value.payloadLength > 16) {
-    value.payloadLength = 16;
-    report.clamped++;
+  if (value.payloadLength < 0 || value.payloadLength > 16) {
+    report.refused = TableFixedRefusal.lengthOverBound;
   }
   value.payload.setRange(0, 16, image, at + 1149);
   {
@@ -4847,10 +4816,10 @@ void benchMixedFixedDecode(
       value.aimX = TableFixedLayout.float32Value(bits);
       if (value.aimX < -1.0) {
         value.aimX = -1.0;
-        report.clamped++;
+        report.refused = TableFixedRefusal.outOfRange;
       } else if (value.aimX > 1.0) {
         value.aimX = 1.0;
-        report.clamped++;
+        report.refused = TableFixedRefusal.outOfRange;
       } else if (value.aimX == 0) {
         value.aimX = 0.0;
       }
@@ -4864,10 +4833,10 @@ void benchMixedFixedDecode(
       value.aimY = TableFixedLayout.float32Value(bits);
       if (value.aimY < -1.0) {
         value.aimY = -1.0;
-        report.clamped++;
+        report.refused = TableFixedRefusal.outOfRange;
       } else if (value.aimY > 1.0) {
         value.aimY = 1.0;
-        report.clamped++;
+        report.refused = TableFixedRefusal.outOfRange;
       } else if (value.aimY == 0) {
         value.aimY = 0.0;
       }
@@ -4881,10 +4850,10 @@ void benchMixedFixedDecode(
       value.aimZ = TableFixedLayout.float32Value(bits);
       if (value.aimZ < -1.0) {
         value.aimZ = -1.0;
-        report.clamped++;
+        report.refused = TableFixedRefusal.outOfRange;
       } else if (value.aimZ > 1.0) {
         value.aimZ = 1.0;
-        report.clamped++;
+        report.refused = TableFixedRefusal.outOfRange;
       } else if (value.aimZ == 0) {
         value.aimZ = 0.0;
       }
@@ -4916,38 +4885,38 @@ void benchMixedFixedDecode(
   );
   if (value.flux < Int128(0xfffffff000000000, 0)) {
     value.flux = Int128(0xfffffff000000000, 0);
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.flux > Int128(68719476736, 0)) {
     value.flux = Int128(68719476736, 0);
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.ping = view.getUint16(at + 1221, Endian.little);
   if (value.ping > 64000) {
     value.ping = 64000;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.crcHint = view.getUint32(at + 1223, Endian.little);
   if (value.crcHint > 16777215) {
     // the bits(24) WIDTH clamp
     value.crcHint = 16777215;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.hasExtra = view.getUint8(at + 1227) != 0;
   value.extra = view.getInt32(at + 1228, Endian.little);
   if (value.extra < 0) {
     value.extra = 0;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.extra > 255) {
     value.extra = 255;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.idleTicks = view.getInt32(at + 1232, Endian.little);
   if (value.idleTicks < 0) {
     value.idleTicks = 0;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   } else if (value.idleTicks > 15) {
     value.idleTicks = 15;
-    report.clamped++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
 }
 

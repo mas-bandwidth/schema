@@ -92,8 +92,8 @@ final class TestRowR7 {
     /** the report a read that answers owes: every counter zero, no damage,
      *  no refusal, no layout hash carried. */
     private static boolean clean(tblv1.TableFixed.Report r) {
-        return !r.refused && !r.malformed && r.reason == tblv1.TableFixed.Reason.none
-                && r.unknown == 0 && r.kindMismatch == 0 && r.widened == 0 && r.clamped == 0
+        return !r.refused && !r.damaged && r.reason == tblv1.TableFixed.Reason.none
+                && r.unknown == 0 && r.widened == 0
                 && r.layoutHash == 0;
     }
 
@@ -181,8 +181,8 @@ final class TestRowR7 {
         check(TableFixed.get64(f, TableFixed.hashAt) == CfgFixed.hash
                 && given == (CfgFixed.hash ^ 0xFFFFFFFFFFFFFFFFL) && lr.refused
                 && lr.reason == TableFixed.Reason.layoutNewer && lr.layoutHash == given
-                && !lr.malformed && lr.unknown == 0 && lr.kindMismatch == 0
-                && lr.widened == 0 && lr.clamped == 0,
+                && !lr.damaged && lr.unknown == 0
+                && lr.widened == 0,
                 "a header hash no lineage entry holds is layout_newer carrying THE FILE'S HASH and "
                         + "nothing else (0x" + Long.toHexString(given)
                         + "L, as given): no counter moves, nothing decodes");

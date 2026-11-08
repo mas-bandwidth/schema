@@ -59,17 +59,17 @@ public final class MixedChatEventFixed {
             long q = TableFixed.get32(b, at + 0);
             if (q < 0L) {
                 q = 0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 3L) {
                 q = 3L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.channel = (int) (q);
         }
         v.speaker = TableFixed.get32(b, at + 4);
         if (v.speaker > 4095L) {
             v.speaker = (int) (4095L);
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         } // bits(12) clamps to 2^N - 1
     }
 }

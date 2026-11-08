@@ -14,12 +14,13 @@ import (
 	"strings"
 )
 
+// One case. A read returns the whole value or refuses the whole load
+// (docs/SPEC-TABLES.md §4, docs/plans/strict-only.md): the verdict and, on a
+// read, the decoded bytes and the canonical rewrite are the whole contract.
 type vector struct {
 	name, text string
 	want       []byte
-	malformed  bool
-	clamped    int
-	mismatch   int
+	refused    bool
 }
 
 func must(err error) {
@@ -31,12 +32,12 @@ func must(err error) {
 
 func corpus() []vector {
 	var cases []vector
-	add := func(name, encoded string, want []byte, malformed bool) {
-		clamped := 0
+	add := func(name, encoded string, want []byte, refused bool) {
+		// A payload past the declared 16384-byte bound refuses: no read clamps.
 		if len(want) > 16384 {
-			want, clamped = want[:16384], 1
+			want, refused = nil, true
 		}
-		cases = append(cases, vector{name, `{"payload":"` + encoded + `"}`, want, malformed, clamped, 0})
+		cases = append(cases, vector{name, `{"payload":"` + encoded + `"}`, want, refused})
 	}
 	lengths := []int{511, 512, 513, 4095, 4096, 4097, 16383, 16384, 16385, 16400}
 	for n := 0; n <= 257; n++ {
@@ -59,12 +60,11 @@ func corpus() []vector {
 		add("padding-"+v.text, v.text, []byte(v.want), false)
 	}
 	// Under SPEC-TABLES §16.2 and Issue #715, mid-string padding, lone padding,
-	// and lone symbols cannot form valid bytes and must report kind_mismatch.
+	// and lone symbols cannot form valid bytes: a kind mismatch, which refuses.
 	for _, text := range []string{
 		"=", "Q", "Q=Q==", "Q=Q=A=A=", "QQ==Q",
 	} {
-		add("invalid-padding-"+text, text, nil, false)
-		cases[len(cases)-1].mismatch = 1
+		add("invalid-padding-"+text, text, nil, true)
 	}
 	// Every alphabet symbol occupies each of the four positions; the oracle
 	// deliberately uses the standard decoder rather than a copied lookup.
@@ -81,21 +81,17 @@ func corpus() []vector {
 	// Raw bytes include NUL, high-bit values, whitespace and JSON escapes.
 	// None is a Base64 symbol, and none may index outside the table or turn
 	// the NUL alphabet terminator into a symbol. A byte the JSON layer refuses
-	// is malformed (docs/SPEC-TABLES.md §16.2 and the JSONTestSuite rule: the
+	// refuses (docs/SPEC-TABLES.md §16.2 and the JSONTestSuite rule: the
 	// read is RFC 8259's): a control byte below 0x20 unescaped in a string
 	// (n_string_unescaped_ctrl_char), the closing quote, a backslash that
 	// starts no escape (`\A`), and a lone byte at or above 0x80, which is not
 	// UTF-8 (string_not_utf8). Every other byte is a valid JSON string and an
-	// invalid Base64 symbol: a kind mismatch, the field left at its default.
+	// invalid Base64 symbol: a kind mismatch. Every one of them refuses.
 	for c := range 256 {
 		if strings.IndexByte(alphabet, byte(c)) >= 0 || c == '=' {
 			continue
 		}
-		jsonRefuses := c < 0x20 || c == '"' || c == '\\' || c >= 0x80
-		add(fmt.Sprintf("invalid-%02x", c), "QQ"+string([]byte{byte(c)})+"AA", nil, jsonRefuses)
-		if !jsonRefuses {
-			cases[len(cases)-1].mismatch = 1
-		}
+		add(fmt.Sprintf("invalid-%02x", c), "QQ"+string([]byte{byte(c)})+"AA", nil, true)
 	}
 	return cases
 }
@@ -122,29 +118,23 @@ func main() {
 			must(fmt.Errorf("%s: missing result", v.name))
 		}
 		fields := strings.Fields(scanner.Text())
-		if len(fields) != 5 {
+		if len(fields) != 3 {
 			must(fmt.Errorf("%s: bad driver result %q", v.name, scanner.Text()))
 		}
-		if (fields[0] == "1") != v.malformed {
-			must(fmt.Errorf("%s: malformed=%s, want %t", v.name, fields[0], v.malformed))
+		if (fields[0] == "1") != v.refused {
+			must(fmt.Errorf("%s: refused=%s, want %t", v.name, fields[0], v.refused))
 		}
-		if v.malformed {
-			continue // partial values on a failed read are not this contract
-		}
-		if fields[1] != fmt.Sprint(v.clamped) {
-			must(fmt.Errorf("%s: clamped=%s, want %d", v.name, fields[1], v.clamped))
-		}
-		if fields[2] != fmt.Sprint(v.mismatch) {
-			must(fmt.Errorf("%s: kind mismatch=%s, want %d", v.name, fields[2], v.mismatch))
+		if v.refused {
+			continue // a refusal lands no value
 		}
 		wantHex := hex.EncodeToString(v.want)
 		if wantHex == "" {
 			wantHex = "-"
 		}
-		if strings.ToLower(fields[3]) != wantHex {
+		if strings.ToLower(fields[1]) != wantHex {
 			must(fmt.Errorf("%s: decoded payload differs", v.name))
 		}
-		text, err := hex.DecodeString(fields[4])
+		text, err := hex.DecodeString(fields[2])
 		must(err)
 		var written struct{ Payload string }
 		must(json.Unmarshal(text, &written))
@@ -156,5 +146,5 @@ func main() {
 		must(fmt.Errorf("unexpected extra driver output: %s", scanner.Text()))
 	}
 	must(scanner.Err())
-	fmt.Printf("table Base64: %d cases passed (bytes, padding, malformed input, clamping, canonical writer)\n", len(cases))
+	fmt.Printf("table Base64: %d cases passed (bytes, padding, refusals, canonical writer)\n", len(cases))
 }

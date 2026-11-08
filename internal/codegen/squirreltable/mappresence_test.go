@@ -44,8 +44,8 @@ local hexOf = function(b) {
   return s;
 };
 local fresh = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
+  return { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+    bodyDamaged = false, refused = false };
 };
 local run = function(unit, mod) {
   local schema = dofile(unit + "/schema_module.nut", true);
@@ -84,14 +84,14 @@ local run = function(unit, mod) {
   };
   local fromJson = function(shape, text) {
     local r = fresh();
-    local v = J.FromJsonTolerant(T, "M", text, r);
-    local b = r.malformed ? null : S.save(T, "M", v);
+    local v = J.fromJsonWalk(T, "M", text, r);
+    local b = r.bodyDamaged ? null : S.save(T, "M", v);
     print("json " + shape + " " + describe(v) + " " + hexOf(b) + "\n");
   };
   local fromWire = function(shape, data) {
     local r = fresh();
-    local v = L.loadTolerant(T, "M", data, r);
-    local b = r.malformed ? null : S.save(T, "M", v);
+    local v = L.loadWalk(T, "M", data, r);
+    local b = r.bodyDamaged ? null : S.save(T, "M", v);
     print("wire " + shape + " " + describe(v) + " " + hexOf(b) + "\n");
   };
   built("absent"); built("empty"); built("entries");

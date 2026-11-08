@@ -58,7 +58,7 @@ if (input.capacity === "short") {
   report = new TableVariableReport();
 }
 const root = NodeLoadRetain(wire, store, report);
-if (root === null || report.malformed) { throw new Error("retained load refused: " + JSON.stringify(report)); }
+if (root === null || report.damaged) { throw new Error("retained load refused: " + JSON.stringify(report)); }
 const retained = report.retained, lost = report.retainLost, unknown = report.unknown;
 const size = NodeMeasureRetain(root, store);
 if (size < 0) { throw new Error("retaining measure refused"); }

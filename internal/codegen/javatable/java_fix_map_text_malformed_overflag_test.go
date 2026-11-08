@@ -19,11 +19,13 @@ import (
 // mutant (corpus seed map_text, pass length #130, run seed 24845619678)
 // against the Go oracle. A length pass changes a length so it still passes the
 // framing, decodes the same value (the same saved bytes) in both engines, but
-// the Java map read once flagged malformed where the oracle does not
-// (docs/SPEC-TABLES.md §2.8, §3, §4). The Java leg must answer byte for byte
-// as the oracle does: the same saved value bytes and the same report counters.
+// the Java map read once flagged damage where the oracle does not
+// (docs/SPEC-TABLES.md §2.8, §3, §4). The Java leg must answer the oracle's
+// VERDICT (the whole value, or a refusal of the whole load), and where both
+// keep the value, the same unknown and widened counts and the same saved
+// value bytes. Reason names are never compared.
 func TestJavaFixMapTextMalformedOverflag(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
+	t.Skip("generator bug, re-pinned and red: the oracle refuses this mutant (wire_damaged: a map body too short for its header, inside a field the reader skips as unknown; §4 \"skipped is not unread\"), but javatable's Reader.skip (variableform.go) steps over an L-framed kind without walking its content, so the Java load keeps a value with unknown=1")
 	t.Parallel()
 	const mutantHex = "01010e260d0211020c05616c706861030c0566697273740011020c0462657461030c067365636f6e6400040e150d01120207050003210a4100e9002d4e3dd800de00050e240d02100204fdffffff030e000604deadbeef0010020402000000030e060604000180ff00060409000000004f8168f2ff28b7afec105b36194ac93dea0ce83094fde47cca5c7155f6f133a65b92de9cabeae214e9ea716f0f0182bf0600000000000000"
 	wire, err := hex.DecodeString(mutantHex)
@@ -45,12 +47,16 @@ func TestJavaFixMapTextMalformedOverflag(t *testing.T) {
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Text"])
 	oreport := new(tabletext.Report)
-	if _, err := tablewire.Decode(model, value, wire, oreport); err != nil {
+	ok, err := tablewire.Decode(model, value, wire, oreport)
+	if err != nil && !tablewire.ReadRefusal(err) {
 		t.Fatalf("oracle Decode: %v", err)
 	}
-	encoded, err := tablewire.Encode(model, value)
-	if err != nil {
-		t.Fatalf("oracle Encode: %v", err)
+	oloaded := ok && err == nil && !oreport.Refused
+	var encoded []byte
+	if oloaded {
+		if encoded, err = tablewire.Encode(model, value); err != nil {
+			t.Fatalf("oracle Encode: %v", err)
+		}
 	}
 
 	// Generate the Java leg for the unit and compile it beside a driver that
@@ -98,12 +104,17 @@ func TestJavaFixMapTextMalformedOverflag(t *testing.T) {
 	}
 
 	loaded, jrep, saved := parseReportDriver(string(out))
-	if !loaded {
-		t.Fatalf("the leg refused to load the mutant: %s", out)
+	if loaded != oloaded {
+		t.Fatalf("verdict differs: leg loaded=%t (%s), oracle loaded=%t (%+v)\n%s", loaded, jrep, oloaded, oreport, out)
 	}
-	jwant := fmt.Sprintf("unknown=%d km=%d wid=%d cl=%d dup=%d mal=%t ref=%t",
-		oreport.Unknown, oreport.Unknown, oreport.Widened, oreport.Unknown,
-		oreport.Unknown, oreport.Refused, oreport.Refused)
+	if !loaded {
+		// both refuse the whole load: the leg keeps no value and says so
+		if !strings.Contains(jrep, "dmg=true") && !strings.Contains(jrep, "ref=true") {
+			t.Errorf("the leg kept no value but reports neither damage nor refusal: %s", jrep)
+		}
+		return
+	}
+	jwant := fmt.Sprintf("unknown=%d wid=%d dmg=false ref=false", oreport.Unknown, oreport.Widened)
 	if jrep != jwant {
 		t.Errorf("report differs: leg %s, oracle %s", jrep, jwant)
 	}
@@ -112,8 +123,9 @@ func TestJavaFixMapTextMalformedOverflag(t *testing.T) {
 	}
 }
 
-// variableReportDriver loads a wire, reports every counter and the saved
-// value bytes on one line, so the Go test can compare the leg with the oracle.
+// variableReportDriver loads a wire, reports the verdict, the evolution
+// counters and the saved value bytes, so the Go test can compare the leg with
+// the oracle.
 func variableReportDriver(pkg, root string) string {
 	return `import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -131,11 +143,8 @@ public final class Driver {
         for (byte x : saved) { b.write(x); }
         System.out.println("loaded=" + (v != null)
             + " unknown=" + report.unknown
-            + " km=" + report.kindMismatch
             + " wid=" + report.widened
-            + " cl=" + report.clamped
-            + " dup=" + report.duplicate
-            + " mal=" + report.malformed
+            + " dmg=" + report.damaged
             + " ref=" + report.refused);
         System.out.print("BYTES ");
         for (byte x : saved) { System.out.printf("%02x", x & 0xff); }
@@ -156,8 +165,8 @@ func parseReportDriver(s string) (loaded bool, rep string, saved []byte) {
 					vals[parts[0]] = parts[1]
 				}
 			}
-			rep = fmt.Sprintf("unknown=%s km=%s wid=%s cl=%s dup=%s mal=%s ref=%s",
-				vals["unknown"], vals["km"], vals["wid"], vals["cl"], vals["dup"], vals["mal"], vals["ref"])
+			rep = fmt.Sprintf("unknown=%s wid=%s dmg=%s ref=%s",
+				vals["unknown"], vals["wid"], vals["dmg"], vals["ref"])
 		}
 		if after, ok := strings.CutPrefix(line, "BYTES "); ok {
 			h := after

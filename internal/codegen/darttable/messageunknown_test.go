@@ -71,9 +71,7 @@ func goMessageUnknown(t *testing.T, row batchRow, root string, wire []byte) (unk
 		t.Fatalf("%s is not a fixed root of %s", root, row.path)
 	}
 	var rep tabletext.Report
-	if _, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(st)}, wire, &v, &rep); err != nil {
-		t.Fatalf("%s: the reference refuses the mutant: %v", root, err)
-	}
+	_, _, _ = tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(st)}, wire, &v, &rep)
 	return rep.Unknown, rep.Refused
 }
 
@@ -82,7 +80,6 @@ func goMessageUnknown(t *testing.T, row batchRow, root string, wire []byte) (unk
 // announcement, and asserts the two `unknown` counts are equal
 // (docs/SPEC-TABLES.md §3.3).
 func TestMessageUnknownCountDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	rows := map[string]batchRow{}
 	for _, row := range batchManifest(t) {
@@ -99,8 +96,8 @@ func TestMessageUnknownCountDart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			goUnknown, goMalformed := goMessageUnknown(t, row, c.root, wire)
-			if goUnknown != c.wantGo {
+			goUnknown, goRefused := goMessageUnknown(t, row, c.root, wire)
+			if !goRefused && goUnknown != c.wantGo {
 				t.Fatalf("%s: the Go reference counts unknown=%d on the mutant, the receipt says %d", c.root, goUnknown, c.wantGo)
 			}
 			u := batchUnit(t, row.path)
@@ -117,22 +114,28 @@ func TestMessageUnknownCountDart(t *testing.T) {
   final values = <h.%s>[v];
   final rep = h.TableReport();
   r.%sLoadMessages(values, msg, vocab, rep);
-  print('unknown=${rep.unknown} malformed=${rep.malformed}');
+  print('unknown=${rep.unknown} refused=${rep.refused}');
 `, dartBytes(row.announce), dartBytes(wire), st.Name, st.Name, st.Name, lower)
 			out, err := runBatchProbe(t, u, c.root, body)
 			if err != nil {
 				t.Fatalf("%s: the Dart probe did not run: %v\n%s", c.root, err, out)
 			}
 			dartUnknown := -1
+			dartRefused := false
 			for line := range strings.SplitSeq(out, "\n") {
 				if rest, ok := strings.CutPrefix(line, "unknown="); ok {
-					n, _, _ := strings.Cut(rest, " ")
+					n, r, _ := strings.Cut(rest, " ")
 					dartUnknown, _ = strconv.Atoi(n)
+					dartRefused = strings.TrimPrefix(r, "refused=") == "true"
 				}
 			}
-			if dartUnknown != goUnknown {
-				t.Errorf("%s: Dart counts unknown=%d, the Go reference counts %d (Go malformed=%v); Dart said %q",
-					c.root, dartUnknown, goUnknown, goMalformed, strings.TrimSpace(out))
+			if goRefused {
+				if !dartRefused {
+					t.Errorf("%s: Dart does not refuse a mutant the Go reference refuses; Dart said %q", c.root, strings.TrimSpace(out))
+				}
+			} else if dartUnknown != goUnknown {
+				t.Errorf("%s: Dart counts unknown=%d, the Go reference counts %d (Go refused=%v); Dart said %q",
+					c.root, dartUnknown, goUnknown, goRefused, strings.TrimSpace(out))
 			}
 		})
 	}

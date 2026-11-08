@@ -19,8 +19,8 @@ import (
 // streamdemo.Feed (corpus seed stream_chain): an ARRAY COUNT past the array's
 // own L but inside the enclosing body is a count the body cannot cover, which
 // is damage, and DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
-// generated Java reader owes the refusal, malformed, and no counter or saved
-// byte is compared.
+// generated Java reader owes the refusal (no value, the report refused or
+// damaged), and no counter or saved byte is compared.
 func TestJavaFixCountPastLengthRefused(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
@@ -72,9 +72,9 @@ func TestJavaFixCountPastLengthRefused(t *testing.T) {
         byte[] data=hex(args[0]);
         %s.TableVariable.Report report=new %s.TableVariable.Report();
         %s.%sVariable.Value v=%s.%sVariable.load(data,report);
-        if(v==null){System.out.println("null "+report.unknown+","+report.kindMismatch+","+report.widened+","+report.clamped+","+report.duplicate+","+report.malformed+","+report.refused);return;}
+        if(v==null){System.out.println("null "+(report.damaged||report.refused));return;}
         byte[] saved=%s.%sVariable.save(v);
-        System.out.println(report.unknown+","+report.kindMismatch+","+report.widened+","+report.clamped+","+report.duplicate+","+report.malformed+","+report.refused+"|"+hexstr(saved));
+        System.out.println("value "+report.unknown+","+report.widened+"|"+hexstr(saved));
     }
 }`, pkg, pkg, pkg, root, pkg, root, pkg, root)
 	if err := os.WriteFile(driver, []byte(dsrc), 0o644); err != nil {
@@ -110,8 +110,7 @@ func TestJavaFixCountPastLengthRefused(t *testing.T) {
 		if _, err := tablewire.Decode(model, oracle, wire, oreport); !tablewire.ReadRefusal(err) {
 			t.Fatalf("%s: oracle does not read the input as damaged: %v %+v", tc.name, err, oreport)
 		}
-		counts := strings.TrimPrefix(strings.SplitN(line, "|", 2)[0], "null ")
-		if parts := strings.Split(counts, ","); len(parts) != 7 || parts[5] != "true" {
+		if line != "null true" {
 			t.Errorf("%s: Java did not refuse a damaged load: %q", tc.name, line)
 		}
 	}

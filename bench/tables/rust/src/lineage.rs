@@ -299,16 +299,16 @@ pub(crate) fn load(ctx: &mut Ctx, fixed: &FixedCorpus) -> Option<LineageCorpus> 
     let mut twin = vec![0u8; file.len()];
     let read = old::fixed_table_fixed_load(&mut olds, &file, &mut oplan, &mut oremap, &mut orep);
     let clean = read == Some(NUM_VARIANTS)
-        && orep.clamped == 0
         && orep.widened == 0
         && orep.unknown == 0
-        && orep.kind_mismatch == 0;
+        && !orep.damaged
+        && !orep.refused;
     if !clean || old::fixed_table_fixed_save(&olds, &mut twin) != Some(file.len()) || twin != file {
         ctx.fail(
             NAME,
             &format!(
-                "the VOLD codec does not read its own file back clean (read {read:?}, clamped={}, widened={}, unknown={}, kind_mismatch={}; a clamp is a value the OLD generation cannot hold)",
-                orep.clamped, orep.widened, orep.unknown, orep.kind_mismatch
+                "the VOLD codec does not read its own file back clean (read {read:?}, widened={}, unknown={}, damaged={}, refused={}; a refusal here is a value the OLD generation cannot hold)",
+                orep.widened, orep.unknown, orep.damaged, orep.refused
             ),
         );
         return None;
@@ -337,14 +337,12 @@ pub(crate) fn load(ctx: &mut Ctx, fixed: &FixedCorpus) -> Option<LineageCorpus> 
     // knows, and an append is not an event.
     let widened = (NUM_VARIANTS * old_cap.min(new_cap)) as u32;
     eprintln!(
-        "{NAME} gate: counters widened={} (expected {widened} = {NUM_VARIANTS} records x min({old_cap}, {new_cap})), clamped={}, unknown={}, kind_mismatch={}",
-        report.widened, report.clamped, report.unknown, report.kind_mismatch
+        "{NAME} gate: counters widened={} (expected {widened} = {NUM_VARIANTS} records x min({old_cap}, {new_cap})), unknown={}",
+        report.widened, report.unknown
     );
     if report.widened != widened
-        || report.clamped != 0
         || report.unknown != 0
-        || report.kind_mismatch != 0
-        || report.malformed
+        || report.damaged
         || report.refused
     {
         ctx.fail(

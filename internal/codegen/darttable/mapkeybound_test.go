@@ -22,16 +22,17 @@ package darttable
 
 import (
 	"encoding/hex"
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestWireMapStringKeyOverBoundDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	schemas, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", "maps", "*.schema"))
@@ -53,16 +54,68 @@ func TestWireMapStringKeyOverBoundDart(t *testing.T) {
 		t.Fatal("the mapdemo unit has no Text root")
 	}
 
+	// STRICT WRITER: the encoder refuses an over-bound key, so constructed
+	// cases are encoded by a twin whose key bound is wider; the string(8)
+	// reader must refuse the over-bound key whole (length_over_bound).
+	twinUnit := *u
+	twinTables := make(map[string]*ir.Struct, len(u.Tables))
+	maps.Copy(twinTables, u.Tables)
+	for name, st := range twinTables {
+		if st.MapEntryOf == "" {
+			continue
+		}
+		cp := *st
+		twinTables[name] = &cp
+		fields := make([]*ir.Field, len(cp.Fields))
+		copy(fields, cp.Fields)
+		cp.Fields = fields
+		for i, f := range fields {
+			if f.Type.Kind == ir.TString && f.Type.Size > 0 {
+				nf := *f
+				nf.Type.Size = 64
+				fields[i] = &nf
+			}
+		}
+	}
+	// Point the twin Text's map field at the widened entry copy: the field's
+	// Ref is a direct pointer, not a map lookup.
+	if entry, ok := twinTables["TextNamesEntry"]; ok {
+		cp := *twinTables["Text"]
+		twinTables["Text"] = &cp
+		fields := make([]*ir.Field, len(cp.Fields))
+		copy(fields, cp.Fields)
+		cp.Fields = fields
+		for i, f := range fields {
+			if f.IsMap() {
+				nf := *f
+				nf.MapEntry = entry
+				fields[i] = &nf
+			}
+		}
+	}
+	twinUnit.Tables = twinTables
+	if u.Structs != nil {
+		twinStructs := make(map[string]*ir.Struct, len(u.Structs))
+		for name, st := range u.Structs {
+			twinStructs[name] = twinTables[name]
+			if twinStructs[name] == nil {
+				twinStructs[name] = st
+			}
+		}
+		twinUnit.Structs = twinStructs
+	}
+	twinModel := tabletext.NewModel(&twinUnit)
+	twinDef := twinTables["Text"]
 	textHex := func(keys, vals []string) string {
-		mp := model.New(def)
+		mp := twinModel.New(twinDef)
 		nf := &mp.Fields[0]
 		for i := range keys {
-			en := model.NewMapEntry(nf.Def)
+			en := twinModel.NewMapEntry(nf.Def)
 			en.Fields[0].Cell.Str = []byte(keys[i])
 			en.Fields[1].Cell.Str = []byte(vals[i])
 			nf.Entries = append(nf.Entries, tabletext.Cell{Tab: en})
 		}
-		data, err := tablewire.Encode(model, mp)
+		data, err := tablewire.Encode(twinModel, mp)
 		if err != nil {
 			t.Fatalf("Go Encode of the constructed Text: %v", err)
 		}
@@ -112,7 +165,7 @@ func TestWireMapStringKeyOverBoundDart(t *testing.T) {
 			}
 			inst := model.New(def)
 			var report tabletext.Report
-			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil {
+			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil && !report.Refused {
 				t.Fatalf("Go DecodeRegion on %s: %v", c.name, err)
 			}
 			wantSaved, err := tablewire.Encode(model, inst)
@@ -124,18 +177,17 @@ func TestWireMapStringKeyOverBoundDart(t *testing.T) {
 			if report.Refused {
 				// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
 				// leg owes the refusal, and no counter or saved byte is compared
-				if !got.malformed {
+				if !got.refused {
 					t.Errorf("the Dart load did not refuse a damaged map on %s", c.name)
 				}
 				return
 			}
-			if got.unknown != report.Unknown || got.kindMismatch != 0 ||
-				got.widened != report.Widened || got.clamped != 0 ||
-				got.duplicate != 0 || got.malformed != report.Refused ||
+			if got.unknown != report.Unknown ||
+				got.widened != report.Widened ||
 				got.refused != report.Refused {
-				t.Errorf("Dart report = %d,%d,%d,%d,%d,%v,%v; the Go oracle = %d,%d,%d,%d,%d,%v,%v on %s",
-					got.unknown, got.kindMismatch, got.widened, got.clamped, got.duplicate, got.malformed, got.refused,
-					report.Unknown, 0, report.Widened, 0, 0, report.Refused, report.Refused, c.name)
+				t.Errorf("Dart report = %d,%d,%v; the Go oracle = %d,%d,%v on %s",
+					got.unknown, got.widened, got.refused,
+					report.Unknown, report.Widened, report.Refused, c.name)
 			}
 			if got.saved != hex.EncodeToString(wantSaved) {
 				t.Errorf("Dart saved %s, the Go oracle saves %s on %s", got.saved, hex.EncodeToString(wantSaved), c.name)

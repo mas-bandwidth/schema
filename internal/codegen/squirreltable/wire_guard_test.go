@@ -82,15 +82,15 @@ local S = schema.require("schema_table_save");
 local L = schema.require("schema_table_load");
 local J = schema.require("schema_table_json");
 foreach (key in %s) {
-  local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
-  local v = J.FromJsonTolerant(T, %q, inputs[key + ".json"], r);
-  if (r.malformed) { print(key + " json-refused\n"); continue; }
+  local r = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+    bodyDamaged = false, refused = false };
+  local v = J.fromJsonWalk(T, %q, inputs[key + ".json"], r);
+  if (r.bodyDamaged) { print(key + " json-refused\n"); continue; }
   hexline(S.save(T, %q, v));
-  local lr = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
-  local loaded = L.loadTolerant(T, %q, inputs[key + ".wire"], lr);
-  if (lr.malformed) { print(key + " load-refused\n"); continue; }
+  local lr = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+    bodyDamaged = false, refused = false };
+  local loaded = L.loadWalk(T, %q, inputs[key + ".wire"], lr);
+  if (lr.bodyDamaged) { print(key + " load-refused\n"); continue; }
   hexline(S.save(T, %q, loaded));
 }
 `

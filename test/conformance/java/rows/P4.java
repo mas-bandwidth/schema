@@ -1,8 +1,10 @@
 // P4.java — "wrong plan goes red" (docs/FIXED-FORM-ALGORITHM.md:1685)
 //
 // Test: a wire written under schema K1 (grade=Grade, raw=uint16) read under
-// schema K2 (grade=uint16, raw=Grade) MUST produce exactly 2 kind_mismatches.
-// The reverse (K2 written, K1 read) must also produce exactly 2.
+// schema K2 (grade=uint16, raw=Grade) MUST compile to a plan that lands
+// neither moved field (no entry, the field keeps its default); the reverse
+// (K2 written, K1 read) likewise. The kind census that once counted them is
+// the compile's own and no longer a read counter (docs/plans/strict-only.md).
 //
 // Run from repo root as:
 //   java -cp build/conformance-java test/conformance/java/rows/P4.java
@@ -68,7 +70,6 @@ public final class P4 {
         tblk2.TableFixed.Report repK1asK2 = new tblk2.TableFixed.Report();
         int nK1asK2 = tblk2.TableFixed.compile(theirsK1, mineK2, tblk2.RootFixed.dest, planK1asK2, remapK1asK2, repK1asK2);
 
-        check(repK1asK2.kindMismatch == 2, "K1 read under K2 produces kindMismatch == 2");
         check(repK1asK2.unknown == 0, "K1 read under K2 produces unknown == 0");
         check(nK1asK2 == 0, "K1 read under K2 produces 0 plan copy entries");
 
@@ -85,7 +86,6 @@ public final class P4 {
         tblk1.TableFixed.Report repK2asK1 = new tblk1.TableFixed.Report();
         int nK2asK1 = tblk1.TableFixed.compile(theirsK2, mineK1, tblk1.RootFixed.dest, planK2asK1, remapK2asK1, repK2asK1);
 
-        check(repK2asK1.kindMismatch == 2, "K2 read under K1 produces kindMismatch == 2");
         check(repK2asK1.unknown == 0, "K2 read under K1 produces unknown == 0");
         check(nK2asK1 == 0, "K2 read under K1 produces 0 plan copy entries");
 
@@ -96,7 +96,7 @@ public final class P4 {
         tblk1.TableFixed.Report repK1asK1 = new tblk1.TableFixed.Report();
         int nK1asK1 = tblk1.TableFixed.compile(mineK1, mineK1, tblk1.RootFixed.dest, planK1asK1, remapK1asK1, repK1asK1);
 
-        check(repK1asK1.kindMismatch == 0, "Lawful K1 compile produces kindMismatch == 0");
+        check(!repK1asK1.refused && !repK1asK1.damaged, "Lawful K1 compile neither refuses nor is damaged");
         check(repK1asK1.unknown == 0, "Lawful K1 compile produces unknown == 0");
         check(nK1asK1 > 0, "Lawful K1 compile produces " + nK1asK1 + " plan entries");
 
@@ -107,7 +107,7 @@ public final class P4 {
         tblk2.TableFixed.Report repK2asK2 = new tblk2.TableFixed.Report();
         int nK2asK2 = tblk2.TableFixed.compile(mineK2, mineK2, tblk2.RootFixed.dest, planK2asK2, remapK2asK2, repK2asK2);
 
-        check(repK2asK2.kindMismatch == 0, "Lawful K2 compile produces kindMismatch == 0");
+        check(!repK2asK2.refused && !repK2asK2.damaged, "Lawful K2 compile neither refuses nor is damaged");
         check(repK2asK2.unknown == 0, "Lawful K2 compile produces unknown == 0");
         check(nK2asK2 > 0, "Lawful K2 compile produces " + nK2asK2 + " plan entries");
 
@@ -158,12 +158,12 @@ public final class P4 {
         // -------------------------------------------------------------------
         // 5. Negative controls
         // -------------------------------------------------------------------
-        boolean negControlCaught = false;
-        // Simulating incorrect report expectations
-        if (repK1asK2.kindMismatch != 0) {
-            negControlCaught = true;
-        }
-        check(negControlCaught, "Negative control: non-zero kindMismatch correctly detected");
+        // The kind census is the compile's own and never a read counter (the
+        // retired kindMismatch, docs/plans/strict-only.md): what a moved kind
+        // leaves observable is a plan that lands NOTHING for it, while the
+        // lawful compile of the same layout lands every field.
+        check(nK1asK2 == 0 && nK1asK1 > 0,
+            "Negative control: the moved kinds compile to no entry where the lawful plan has " + nK1asK1);
 
         if (failed > 0) {
             System.err.println("P4 TEST FAILED (" + failed + " failures)");

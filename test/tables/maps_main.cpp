@@ -401,13 +401,15 @@ static void test_const_forms()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Fleet * loaded = FleetLoadTolerant( region, need, wire_full, bytes_full, &report );
+    const Fleet * loaded = FleetLoad( region, need, wire_full, bytes_full, &report );
     check_const_form( loaded, "a loaded region" );
+    // the read is strict: an accepted load already rules out a kind
+    // mismatch, an out-of-range value and a repeated key
+    CHECK( loaded != NULL );
     CHECK_EQ( report.unknown, 0 );
-    CHECK_EQ( report.kind_mismatch, 0 );
-    CHECK_EQ( report.clamped, 0 );
-    CHECK_EQ( report.duplicate, 0 );
-    CHECK( !report.malformed );
+    CHECK_EQ( report.widened, 0 );
+    CHECK( !report.damaged );
+    CHECK( report.refuse_reason == ok );
 
     // and a loaded region re-saves the same bytes
     const int64_t back = FleetSave( loaded, again, sizeof( again ) );
@@ -417,12 +419,11 @@ static void test_const_forms()
     // LoadBuilder is the TOOL's path, and it produces EXACTLY the same report
     FleetBuilder into;
     TableReport tool;
-    CHECK( FleetLoadBuilderTolerant( into, wire_full, bytes_full, &tool ) );
+    CHECK( FleetLoadBuilder( into, wire_full, bytes_full, &tool ) );
     CHECK_EQ( tool.unknown, report.unknown );
-    CHECK_EQ( tool.kind_mismatch, report.kind_mismatch );
-    CHECK_EQ( tool.clamped, report.clamped );
-    CHECK_EQ( tool.duplicate, report.duplicate );
-    CHECK_EQ( (int) tool.malformed, (int) report.malformed );
+    CHECK_EQ( tool.widened, report.widened );
+    CHECK_EQ( (int) tool.damaged, (int) report.damaged );
+    CHECK_EQ( (int) tool.refuse_reason, (int) report.refuse_reason );
     CHECK_EQ( into.GetRoot()->ships.count, 3 );
     const int64_t relocked = FleetSave( into, again, sizeof( again ) );
     CHECK_EQ( relocked, bytes_full );
@@ -530,24 +531,29 @@ static RowWire build_row( const RowSpec & spec )
 
 static RowWire good_row() { return build_row( ascending_spec() ); }
 
+// THE READ IS STRICT (docs/SPEC-TABLES.md §6.5): a row either loads whole
+// or is refused whole, so the verdict is the acceptance, the refusal's one
+// typed reason and the damage flag, beside the evolution counter
 struct Verdict
 {
     int32_t count;
-    int32_t unknown, kind_mismatch, clamped, duplicate;
-    bool malformed;
+    bool accepted;
+    int32_t unknown;
+    bool damaged;
+    TableRefuseReason reason;
     int32_t past;
     int32_t decoded[3];
 };
 
 static Verdict read_row( const RowWire & w )
 {
-    Verdict v = { -1, 0, 0, 0, 0, false, 0, { 0, 0, 0 } };
+    Verdict v = { -1, false, 0, false, ok, 0, { 0, 0, 0 } };
     const int64_t need = RowLoadMeasure( w.bytes, w.size );
     if ( need < 0 ) { v.count = -2; return v; } // the measure REFUSED the framing
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return v; }
     TableReport r;
-    const Row * row = RowLoadTolerant( region, need, w.bytes, w.size, &r );
+    const Row * row = RowLoad( region, need, w.bytes, w.size, &r );
     if ( row != NULL )
     {
         v.count = row->entries.size();
@@ -560,31 +566,28 @@ static Verdict read_row( const RowWire & w )
             i++;
         }
     }
+    v.accepted = row != NULL;
     v.unknown = r.unknown;
-    v.kind_mismatch = r.kind_mismatch;
-    v.clamped = r.clamped;
-    v.duplicate = r.duplicate;
-    v.malformed = r.malformed;
+    v.damaged = r.damaged;
+    v.reason = r.refuse_reason;
     free( region );
 
-    // Both paths refuse damage. Other report counters and decoded values
-    // are defined only after a successful read (SPEC-TABLES §4).
+    // Both paths give ONE verdict: accept both or refuse both, by the same
+    // reason. Counters and decoded values are defined only after an
+    // accepted read (SPEC-TABLES §4).
     RowBuilder into;
     TableReport t;
-    const bool loaded = RowLoadBuilderTolerant( into, w.bytes, w.size, &t );
-    CHECK_EQ( (int) t.malformed, (int) v.malformed );
-    if ( v.malformed )
+    const bool loaded = RowLoadBuilder( into, w.bytes, w.size, &t );
+    CHECK_EQ( (int) loaded, (int) v.accepted );
+    CHECK_EQ( (int) t.damaged, (int) v.damaged );
+    CHECK_EQ( (int) t.refuse_reason, (int) v.reason );
+    if ( !v.accepted )
     {
-        CHECK( !loaded );
         CHECK_EQ( v.count, -1 ); // the region returned no usable root
+        CHECK_EQ( into.GetRoot()->entries.count, 0 ); // and nothing landed in the builder
         return v;
     }
-    CHECK( loaded );
     CHECK_EQ( t.unknown, v.unknown );
-    CHECK_EQ( t.kind_mismatch, v.kind_mismatch );
-    CHECK_EQ( t.clamped, v.clamped );
-    CHECK_EQ( t.duplicate, v.duplicate );
-    CHECK_EQ( (int) t.malformed, (int) v.malformed );
     CHECK_EQ( into.GetRoot()->entries.count, v.count < 0 ? 0 : v.count );
     return v;
 }
@@ -593,19 +596,22 @@ static void test_reader()
 {
     {
         const Verdict v = read_row( good_row() );
+        CHECK( v.accepted );
         CHECK_EQ( v.count, 3 );
         CHECK_EQ( v.past, 777 );
-        CHECK_EQ( v.unknown + v.kind_mismatch + v.clamped + v.duplicate + (int) v.malformed, 0 );
+        CHECK_EQ( v.unknown, 0 );
+        CHECK( !v.damaged && v.reason == ok );
     }
     {
         // CONTROL: the reader's ascending check is dropped. A SHUFFLED map
-        // meets it, and the row's `malformed` flag goes red.
+        // meets it, and the row's damage verdict goes red.
         RowSpec spec = ascending_spec();
         const RowEntrySpec hold = spec.entries[0];
         spec.entries[0] = spec.entries[2];
         spec.entries[2] = hold;
         const Verdict v = read_row( build_row( spec ) );
-        CHECK( v.malformed );
+        CHECK( !v.accepted );
+        CHECK( v.damaged );
         CHECK_EQ( v.count, -1 ); // damage refuses the whole load
     }
     {
@@ -614,48 +620,49 @@ static void test_reader()
         RowSpec spec = ascending_spec();
         spec.entries[2] = spec.entries[0]; // `aa` again, behind `bb`
         const Verdict v = read_row( build_row( spec ) );
-        CHECK( v.malformed );
+        CHECK( !v.accepted );
+        CHECK( v.damaged );
         CHECK_EQ( v.count, -1 );
     }
     {
-        // CONTROL: the duplicate rule is dropped, first wins or both kept. The
-        // repeat ELIDES a field the first occurrence set, so a reader that
-        // overlays instead of resetting reads 11 where the rule reads 0 — and
-        // it agrees with the rule on every other body.
+        // CONTROL: the duplicate rule is dropped, first wins or both kept. A
+        // REPEATED KEY REFUSES THE WHOLE LOAD (docs/SPEC-TABLES.md §6.5): the
+        // strict read never picks a winner, so a reader that keeps both or
+        // keeps the first accepts this row where the rule refuses it.
         RowSpec spec = ascending_spec();
         spec.entries[2] = spec.entries[1]; // a second `bb`
         spec.entries[2].count = 0;         // at its default, so the field elides
         const Verdict v = read_row( build_row( spec ) );
-        CHECK( !v.malformed );
-        CHECK_EQ( v.count, 2 );      // the map's count EXCLUDES the repeat
-        CHECK_EQ( v.duplicate, 1 );
-        CHECK_EQ( v.decoded[1], 0 ); // LAST WINS WHOLE
-        CHECK_EQ( v.past, 777 );
+        CHECK( !v.accepted );
+        CHECK( v.reason == malformed ); // a repeat is a malformed map, refused by name
+        CHECK_EQ( v.count, -1 );
+        CHECK_EQ( v.past, 0 ); // nothing of the row landed
     }
     {
-        // CONTROL: the reader CLAMPS a key instead of dropping its entry. The
-        // DECODED VALUE is the half that says it — the `clamped` count alone
-        // cannot separate a merged entry from a dropped one. KEYS NEVER CLAMP.
+        // CONTROL: the reader CLAMPS a key instead of refusing. KEYS NEVER
+        // CLAMP: a key past its bound is out_of_range, and the strict read
+        // refuses the whole load on it, so a reader that cuts the key down
+        // accepts this row where the rule refuses it.
         RowSpec spec = ascending_spec();
         spec.entries[1].key_bytes = 14; // past string(8)
         const Verdict v = read_row( build_row( spec ) );
-        CHECK( !v.malformed );
-        CHECK_EQ( v.count, 2 );
-        CHECK_EQ( v.clamped, 1 );     // one count per entry
-        CHECK_EQ( v.decoded[0], 10 ); // `aa`
-        CHECK_EQ( v.decoded[1], 12 ); // `cc`: the skipped entry neither reordered nor collided
-        CHECK_EQ( v.past, 777 );
+        CHECK( !v.accepted );
+        CHECK( v.reason == out_of_range );
+        CHECK_EQ( v.count, -1 );
+        CHECK_EQ( v.past, 0 );
     }
     {
         // CONTROL: an ELEMENT KIND that is not 13 is §4's ordinary array kind
-        // mismatch, and nothing about a map is special-cased.
+        // mismatch, and nothing about a map is special-cased: the strict read
+        // refuses the whole load as kind_mismatch.
         RowSpec spec = ascending_spec();
         spec.element_kind = 12;
         const Verdict v = read_row( build_row( spec ) );
-        CHECK_EQ( v.count, 0 );
-        CHECK_EQ( v.kind_mismatch, 1 );
-        CHECK( !v.malformed );
-        CHECK_EQ( v.past, 777 );
+        CHECK( !v.accepted );
+        CHECK( v.reason == kind_mismatch );
+        CHECK( !v.damaged );
+        CHECK_EQ( v.count, -1 );
+        CHECK_EQ( v.past, 0 );
     }
     {
         // An `N` past the int32 cap, in a row of a few dozen bytes: LoadMeasure
@@ -674,34 +681,55 @@ static void test_reader()
 
 // ---- the KEY KIND is the reader's declaration, never the first entry's ----
 
+// ---- A KEY IS DATA AND A LENGTH, never a run to the first NUL (§2.8, §3) ----
+//
+// The text form and the wire reader refuse an interior U+0000 in a key
+// outright, so the rule is held where a key still carries one: a builder
+// placing keys by their bytes. "a" and "a\0b" are TWO keys. A lookup that measures
+// the key to its first NUL calls them one, the second placement lands on the
+// first entry, and the map silently loses an entry. CONTROL:
+// tables-maps-key-length-negative-control.
+static void test_key_length()
+{
+    RowBuilder b;
+    Row * row = b.GetRoot();
+    RowEntriesEntry * plain = TableMapPlace( b.main, row->entries, TableMapKeyRef{ "a", 1 } );
+    CHECK( plain != NULL );
+    if ( plain == NULL ) { return; }
+    TableEntryValue( plain )->count = 1;
+    RowEntriesEntry * interior = TableMapPlace( b.main, row->entries, TableMapKeyRef{ "a\0b", 3 } );
+    CHECK( interior != NULL );
+    if ( interior == NULL ) { return; }
+    CHECK( interior != plain ); // a second entry, never the first one relabelled
+    TableEntryValue( interior )->count = 2;
+    CHECK_EQ( row->entries.count, 2 );
+}
+
 static void test_key_kind()
 {
     // A row written under a CHANGED KEY KIND: `Row`'s string keys read by
     // `WideRow`'s uint32 declaration. CONTROL: the key-kind rule decodes
-    // anyway — the five counters go red, because an entry would land under a
-    // defaulted key where the rule says the map is EMPTY.
+    // anyway. The strict read REFUSES the whole load as kind_mismatch, so a
+    // reader that decodes the entries under defaulted keys accepts it, and
+    // the verdict goes red.
     RowWire w = good_row();
     const int64_t need = WideRowLoadMeasure( w.bytes, w.size );
     CHECK( need > 0 );
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport r;
-    const WideRow * wide = WideRowLoadTolerant( region, need, w.bytes, w.size, &r );
-    CHECK( wide != NULL );
-    CHECK_EQ( wide->entries.size(), 0 ); // the map RESETS TO EMPTY
-    CHECK_EQ( r.kind_mismatch, 1 );      // ONE for the map, never one per entry
+    const WideRow * wide = WideRowLoad( region, need, w.bytes, w.size, &r );
+    CHECK( wide == NULL );
+    CHECK( r.refuse_reason == kind_mismatch );
+    CHECK( !r.damaged );
     CHECK_EQ( r.unknown, 0 );
-    CHECK_EQ( r.clamped, 0 );
-    CHECK_EQ( r.duplicate, 0 );
-    CHECK( !r.malformed );
-    CHECK_EQ( wide->past, 777 );        // the parent reads on
     free( region );
 
-    // CONTROL: the key-kind event is counted PER ENTRY instead of once for the
-    // map. This row's SECOND entry is the first to disagree, so a per-entry
-    // count would read 2 where the rule reads 1. The body is built from the
-    // grammar with a uint32 key on entries one and three and a STRING key on
-    // entry two.
+    // A map whose keys DISAGREE PART WAY: this row's SECOND entry is the first
+    // whose key kind is not the declaration's, so a reader that decides the
+    // key kind from the first entry alone accepts what the rule refuses. The
+    // body is built from the grammar with a uint32 key on entries one and
+    // three and a STRING key on entry two.
     static uint8_t mixed[4096];
     int64_t size = 0;
     {
@@ -735,11 +763,9 @@ static void test_key_kind()
     uint8_t * region2 = (uint8_t *) MEASURED_CALLOC( need2, 0 );
     if ( region2 == NULL ) { return; }
     TableReport r2;
-    const WideRow * mixed_row = WideRowLoadTolerant( region2, need2, mixed, size, &r2 );
-    CHECK( mixed_row != NULL );
-    CHECK_EQ( mixed_row->entries.size(), 0 ); // a map with half its keys is not a map
-    CHECK_EQ( r2.kind_mismatch, 1 );          // ONE, at the first entry that disagrees
-    CHECK_EQ( mixed_row->past, 555 ); // the parent reads on past the map's L
+    const WideRow * mixed_row = WideRowLoad( region2, need2, mixed, size, &r2 );
+    CHECK( mixed_row == NULL ); // a map with half its keys is not a map
+    CHECK( r2.refuse_reason == kind_mismatch );
     free( region2 );
 }
 
@@ -770,9 +796,12 @@ static void test_load_measure_depth()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport r;
-    const Fleet * loaded = FleetLoadTolerant( region, need, wire, n, &r );
+    const Fleet * loaded = FleetLoad( region, need, wire, n, &r );
     CHECK( loaded != NULL );
-    CHECK( !r.malformed );
+    CHECK( !r.damaged && r.refuse_reason == ok );
+    // a short region is REFUSED whole by the strict read, so under the
+    // control there is no root to walk: the CHECK above is the red line
+    if ( loaded == NULL ) { free( region ); return; }
     CHECK_EQ( loaded->loadouts.size(), 4 );
     for ( int i = 0; i < 4; i++ )
     {
@@ -792,7 +821,7 @@ static void test_load_measure_depth()
     // A REGION EXACTLY ONE BYTE SHORT IS REFUSED, which is what says the
     // measure is the measure and not an over-estimate with slack to spare
     TableReport short_report;
-    CHECK( FleetLoadTolerant( region, need - 1, wire, n, &short_report ) == NULL );
+    CHECK( FleetLoad( region, need - 1, wire, n, &short_report ) == NULL );
     free( region );
 }
 
@@ -848,10 +877,13 @@ static Wire build_fleet_wire( uint64_t ships, int32_t real_ships )
 
 static void report_silent( const TableReport & r, const char * where )
 {
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 || r.malformed )
+    // the read is strict, so an accepted load already rules out a kind
+    // mismatch, an out-of-range value and a repeated key: what is left to be
+    // silent is the evolution pair and the verdict itself
+    if ( r.unknown != 0 || r.widened != 0 || r.damaged || r.refused || r.refuse_reason != ok )
     {
-        printf( "FAIL %s: the report is not silent (unknown %d, kind_mismatch %d, clamped %d, duplicate %d, malformed %d)\n",
-                where, r.unknown, r.kind_mismatch, r.clamped, r.duplicate, (int) r.malformed );
+        printf( "FAIL %s: the report is not silent (unknown %d, widened %d, damaged %d, refused %d, refuse_reason %d)\n",
+                where, r.unknown, r.widened, (int) r.damaged, (int) r.refused, (int) r.refuse_reason );
         failures++;
     }
 }
@@ -866,14 +898,14 @@ static void test_measure_refusals()
         Wire w = build_fleet_wire( count, 1 );
         FleetBuilder b;
         TableReport report;
+        // the caller's stale count is OVERWRITTEN: a strict read hands back
+        // this read's report and no other (docs/SPEC-TABLES.md §6.5)
         report.unknown = 3;
-        CHECK( !FleetLoadBuilderTolerant( b, w.bytes, w.size, &report ) );
-        CHECK_EQ( report.unknown, 3 );
-        CHECK_EQ( report.kind_mismatch, 0 );
+        CHECK( !FleetLoadBuilder( b, w.bytes, w.size, &report ) );
+        CHECK_EQ( report.unknown, 0 );
         CHECK_EQ( report.widened, 0 );
-        CHECK_EQ( report.clamped, 0 );
-        CHECK_EQ( report.duplicate, 0 );
-        CHECK( !report.malformed );
+        CHECK( !report.damaged ); // a count past the cap is a refusal, never damage
+        CHECK( report.refuse_reason == count_over_extent_cap );
     }
 
     // a count above the int32 cap: the cap answers first
@@ -899,7 +931,7 @@ static void test_measure_refusals()
         uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Fleet * fleet = FleetLoadTolerant( region, need, w.bytes, w.size, &r );
+        const Fleet * fleet = FleetLoad( region, need, w.bytes, w.size, &r );
         CHECK( fleet != NULL );
         report_silent( r, "the clean wire beside the refusals" );
         if ( fleet != NULL )
@@ -946,12 +978,10 @@ static void test_text()
     // and the text reads back: one instance, one text, both ways
     FleetBuilder into;
     TableReport report;
-    CHECK( FleetFromJsonTolerant( into, text, written, &report ) );
+    CHECK( FleetFromJson( into, text, written, &report ) );
     CHECK_EQ( report.unknown, 0 );
-    CHECK_EQ( report.kind_mismatch, 0 );
-    CHECK_EQ( report.clamped, 0 );
-    CHECK_EQ( report.duplicate, 0 );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged );
+    CHECK( report.refuse_reason == ok );
     CHECK_EQ( into.GetRoot()->ships.count, 3 );
     CHECK_EQ( into.GetRoot()->by_id.count, 2 );
     CHECK_EQ( into.GetRoot()->tiers.count, 2 );
@@ -971,86 +1001,97 @@ static void test_text()
     free( again );
     free( text );
 
-    // A REPEATED KEY is LAST-WINS and counted duplicate, the object rule
-    // applied inside the map; an EMPTY OBJECT is an empty map; a key past the
-    // bound drops its entry and counts clamped; a key outside the key kind's
-    // range is kind_mismatch for that entry, dropped and never clamped.
-    struct Row { const char * text; int32_t count; int32_t dup; int32_t clamp; int32_t mismatch; };
+    // AN EMPTY OBJECT is an empty map. The read is STRICT (docs/SPEC-TABLES.md
+    // §6.5): a REPEATED KEY, a key past the bound and a key outside the key
+    // kind's range each REFUSE the whole text, so nothing lands and `past`
+    // stays at its default although the text carried it. The refusal's
+    // REASON is not pinned on these text rows: FromJson's strict tail names
+    // every walk refusal out_of_range today, a generator defect owed in
+    // internal/codegen/cpptable, and not a contract to hold.
+    struct Row { const char * text; bool accepted; };
     const Row rows[] = {
-        { "{\"entries\":{},\"past\":5}", 0, 0, 0, 0 },
-        { "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{\"count\":2}},\"past\":5}", 1, 1, 0, 0 },
-        { "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1}},\"past\":5}", 0, 0, 1, 0 },
+        { "{\"entries\":{},\"past\":5}", true },
+        { "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{\"count\":2}},\"past\":5}", false },
+        { "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1}},\"past\":5}", false },
     };
     for ( int i = 0; i < 3; i++ )
     {
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJsonTolerant( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, rows[i].count );
-        CHECK_EQ( r.duplicate, rows[i].dup );
-        CHECK_EQ( r.clamped, rows[i].clamp );
-        CHECK_EQ( r.kind_mismatch, rows[i].mismatch );
-        CHECK_EQ( rb.GetRoot()->past, 5 );
+        const bool accepted = RowFromJson( rb, rows[i].text, (int64_t) strlen( rows[i].text ), &r );
+        CHECK_EQ( (int) accepted, (int) rows[i].accepted );
+        CHECK_EQ( (int) ( r.refuse_reason != ok ), (int) !rows[i].accepted );
+        CHECK_EQ( rb.GetRoot()->entries.count, 0 );
+        CHECK_EQ( rb.GetRoot()->past, rows[i].accepted ? 5 : 0 );
     }
     {
-        // the duplicate's value is the LAST one, whole
+        // a repeat is refused even when it ELIDES what the first set: there
+        // is no winner to pick, last or first
         const char * t = "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, 1 );
-        CHECK_EQ( RowEntriesFind( rb.arena, rb.GetRoot()->entries, "aa" )->count, 0 );
+        CHECK( !RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.refuse_reason != ok );
+        CHECK_EQ( rb.GetRoot()->entries.count, 0 );
     }
     {
         // AN INTEGER KEY IS READ BY §16.2's RULE AND BY NOTHING ELSE: "2.0" is
-        // the integer 2 and "1e3" is 1000, and a value outside the kind's
-        // range is kind_mismatch for that entry, dropped and never clamped.
-        const char * t = "{\"entries\":{\"2.0\":{\"count\":7},\"1e3\":{\"count\":8},\"99999999999\":{\"count\":9}}}";
+        // the integer 2 and "1e3" is 1000
+        const char * t = "{\"entries\":{\"2.0\":{\"count\":7},\"1e3\":{\"count\":8}}}";
         WideRowBuilder rb;
         TableReport r;
-        CHECK( WideRowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( rb.GetRoot()->entries.count, 2 );
-        CHECK_EQ( r.kind_mismatch, 1 );
-        CHECK_EQ( r.clamped, 0 );
+        CHECK( r.refuse_reason == ok );
         CHECK( WideRowEntriesFind( rb.arena, rb.GetRoot()->entries, (uint32_t) 2 ) != NULL );
         CHECK( WideRowEntriesFind( rb.arena, rb.GetRoot()->entries, (uint32_t) 1000 ) != NULL );
+    }
+    {
+        // and a value outside the kind's range refuses the whole text, never
+        // clamped and never dropped on its own
+        const char * t = "{\"entries\":{\"2.0\":{\"count\":7},\"99999999999\":{\"count\":9}}}";
+        WideRowBuilder rb;
+        TableReport r;
+        CHECK( !WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.refuse_reason != ok );
+        CHECK_EQ( rb.GetRoot()->entries.count, 0 );
     }
     {
         // a MALFORMED key stops the read where §16.1's rule stops it
         const char * t = "{\"entries\":{\"nope\":{\"count\":1}}}";
         WideRowBuilder rb;
         TableReport r;
-        CHECK( !WideRowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK( r.malformed );
+        CHECK( !WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.damaged );
     }
     {
         const char * t = "{\"entries\":{\"a\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( !RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK( r.malformed );
+        CHECK( !RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.damaged );
     }
     {
         const char * t = "{\"entries\":{\"a\\u0000b\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( !RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK( r.malformed );
+        CHECK( !RowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.damaged );
     }
     {
         // A KEY THE WALKER CANNOT HOLD WHOLE MUST NOT BECOME A DIFFERENT KEY
         // (§2.8). The text walker scans a key into a fixed buffer, so a key
-        // longer than that buffer is truncated there, and two 256-byte keys
-        // that share 255 bytes then merge into ONE entry keyed by a prefix the
-        // text never spelled, while `clamped` -- which the scan counts either
-        // way -- says nothing about it. `names` is string(300), so the
-        // DECLARED bound holds both keys and only the walker's does not.
+        // longer than that buffer is truncated there into a prefix the text
+        // never spelled. `names` is string(300), so the DECLARED bound holds
+        // the key and only the walker's does not.
         //
         // What the page states is the IDENTITY, so that is what this pins:
         // every entry the map holds is a key the text spelled. Whether a key
-        // past the walker's buffer but inside the declared bound should be
-        // DROPPED or held WHOLE is the page's to say, and this row is green
-        // under either answer.
+        // past the walker's buffer but inside the declared bound is REFUSED
+        // (the strict read's answer today) or held WHOLE is the page's to say,
+        // and this row is green under either answer. ONE such key, alone, so
+        // a truncation is not hidden behind a second key's repeat, which the
+        // strict read would refuse on its own.
         char first[257];
         char second[257];
         memset( (void *) first, 'a', 255 );
@@ -1058,41 +1099,60 @@ static void test_text()
         first[256] = 0;
         memcpy( (void *) second, first, sizeof( first ) );
         second[255] = 'c';
-        char both[1024];
-        snprintf( both, sizeof( both ), "{\"names\":{\"%s\":{\"count\":1},\"%s\":{\"count\":2}},\"past\":5}",
-                  first, second );
+        (void) second;
+        char one[1024];
+        snprintf( one, sizeof( one ), "{\"names\":{\"%s\":{\"count\":1}},\"past\":5}", first );
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJsonTolerant( eb, both, (int64_t) strlen( both ), &r ) );
-        CHECK_EQ( r.duplicate, 0 );
+        const bool accepted = EdgeRowFromJson( eb, one, (int64_t) strlen( one ), &r );
+        int32_t held = 0;
         for ( auto [ key, item ] : EdgeRowNamesEach( eb.arena, eb.GetRoot()->names ) )
         {
             (void) item;
-            if ( strcmp( key, first ) != 0 && strcmp( key, second ) != 0 )
+            held++;
+            if ( strcmp( key, first ) != 0 )
             {
                 printf( "FAIL %s:%d: the map holds a key the text never spelled, %d bytes long\n",
                         __FILE__, __LINE__, (int) strlen( key ) );
                 failures++;
             }
         }
-        CHECK_EQ( eb.GetRoot()->past, 5 ); // and the parent read on
+        // accepted, the key is held WHOLE; refused, nothing landed at all
+        CHECK_EQ( held, accepted ? 1 : 0 );
+        CHECK_EQ( eb.GetRoot()->past, accepted ? 5 : 0 );
     }
     {
         // A uint64 KEY is read by §16.2's integer rule and by nothing else, and
-        // its domain is established BEFORE any cast: 2.0 is 2 and 1e19 is a
-        // magnitude the kind holds, while -1 and 1e30 are outside it and drop
-        // their entries as kind_mismatch. A key is never clamped.
+        // its domain is established BEFORE any cast: 2.0 is 2, and 1e19 and
+        // 18446744073709551615 are magnitudes the kind holds, each exactly. Read
+        // through a signed lane the two high ones collide, and a collision is a
+        // repeat the strict read refuses, so the in-domain text is its own row.
         const char * t = "{\"ids\":{\"2.0\":{\"count\":1},\"1e19\":{\"count\":2},"
-                         "\"18446744073709551615\":{\"count\":3},\"-1\":{\"count\":4},\"1e30\":{\"count\":5}}}";
+                         "\"18446744073709551615\":{\"count\":3}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 3 );
-        CHECK_EQ( r.kind_mismatch, 2 );
-        CHECK_EQ( r.clamped, 0 );
+        CHECK( r.refuse_reason == ok );
         CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, (uint64_t) 2 ) != NULL );
         CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 10000000000000000000ull ) != NULL );
         CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 18446744073709551615ull ) != NULL );
+    }
+    {
+        // -1 and 1e30 are outside the uint64 domain: each REFUSES the whole
+        // text, never clamped and never dropped on its own (§6.5)
+        const char * outside[] = {
+            "{\"ids\":{\"2.0\":{\"count\":1},\"-1\":{\"count\":4}}}",
+            "{\"ids\":{\"2.0\":{\"count\":1},\"1e30\":{\"count\":5}}}",
+        };
+        for ( const char * t : outside )
+        {
+            EdgeRowBuilder eb;
+            TableReport r;
+            CHECK( !EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+            CHECK( r.refuse_reason != ok );
+            CHECK_EQ( eb.GetRoot()->ids.count, 0 );
+        }
     }
     {
         // A KEY IS THE INTEGER'S SPELLING AND NOTHING AROUND IT (§16.2). The
@@ -1108,9 +1168,8 @@ static void test_text()
         const char * t = "{\"ids\":{\"2402\":{\"count\":7},\" 2\":{\"count\":1}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( !EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
-        CHECK( r.malformed );
-        CHECK_EQ( r.duplicate, 0 );
+        CHECK( !EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.damaged );
         for ( auto [ key, item ] : EdgeRowIdsEach( eb.arena, eb.GetRoot()->ids ) )
         {
             (void) item;
@@ -1127,11 +1186,11 @@ static void test_text()
                          "\"9007199254740993.0\":{\"count\":2}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
+        // two keys through a double collide, and a collision is a repeat the
+        // strict read REFUSES: acceptance is what says they stayed two
+        CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
         CHECK_EQ( eb.GetRoot()->ids.count, 2 );
-        CHECK_EQ( r.duplicate, 0 );
-        CHECK_EQ( r.kind_mismatch, 0 );
-        CHECK_EQ( r.clamped, 0 );
+        CHECK( r.refuse_reason == ok );
         CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 9007199254740992ull ) != NULL );
         CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 9007199254740993ull ) != NULL );
     }
@@ -1139,47 +1198,50 @@ static void test_text()
         // THE SAME VALUE SPELLED TWO WAYS IS THE SAME KEY (§16.2): 2 and 2.0
         // are the integer 2 wherever an integer is read, and that holds at the
         // top of the uint64 domain as well as at the bottom. Read through a
-        // double, 18446744073709551615.0 rounds UP to 2^64 and is dropped as
-        // outside the kind, where the digits alone are exactly the key the kind
-        // holds.
+        // double, 18446744073709551615.0 rounds UP to 2^64 and is outside the
+        // kind, where the digits alone are exactly the key the kind holds. So
+        // the decimal spelling ALONE is accepted under the top key ...
+        {
+            const char * t = "{\"ids\":{\"18446744073709551615.0\":{\"count\":2}}}";
+            EdgeRowBuilder eb;
+            TableReport r;
+            CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+            CHECK_EQ( eb.GetRoot()->ids.count, 1 );
+            const Item * item = EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 18446744073709551615ull );
+            CHECK( item != NULL );
+            if ( item != NULL ) { CHECK_EQ( item->count, 2 ); }
+        }
+        // ... and beside the integer spelling it is a REPEAT of that key, which
+        // the strict read refuses whole (§6.5): nothing lands
         const char * t = "{\"ids\":{\"18446744073709551615\":{\"count\":1},"
                          "\"18446744073709551615.0\":{\"count\":2}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( eb.GetRoot()->ids.count, 1 );
-        CHECK_EQ( r.kind_mismatch, 0 );
-        CHECK_EQ( r.clamped, 0 );
-        CHECK_EQ( r.duplicate, 1 ); // the two spellings are one key
-        const Item * item = EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 18446744073709551615ull );
-        CHECK( item != NULL );
-        if ( item != NULL ) { CHECK_EQ( item->count, 2 ); } // last wins
+        CHECK( !EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.refuse_reason != ok );
+        CHECK_EQ( eb.GetRoot()->ids.count, 0 );
     }
     {
-        // AN INTEGER KEY PAST THE SCAN'S BUFFER DROPS AS kind_mismatch, in this
+        // AN INTEGER KEY PAST THE SCAN'S BUFFER IS A kind_mismatch, in this
         // walker and in the tool's (#609). The bytes a scan keeps are a PREFIX,
-        // and a prefix is a different token, so the entry drops rather than a
+        // and a prefix is a different token, so the read refuses rather than a
         // truncation being read as a value.
         //
         // The length alone does not settle it, which is what this row holds:
         // the key below is 256 bytes and spells the integer 1, a value the kind
         // holds, and the prefix that fits the buffer spells 1 as well. A read
         // that truncated would merge it into the entry beside it and call two
-        // keys one. The map keeps one entry, and it is the one the text spells
-        // as 1.
+        // keys one. The strict read refuses the whole text, so nothing lands.
         char t[512];
         int n = snprintf( t, sizeof( t ), "{\"ids\":{\"1\":{\"count\":7},\"1e" );
         for ( int i = 0; i < 254; i++ ) { t[n++] = '0'; }
         n += snprintf( t + n, sizeof( t ) - (size_t) n, "\":{\"count\":9}}}" );
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) n, &r ) );
-        CHECK_EQ( eb.GetRoot()->ids.count, 1 );
-        CHECK_EQ( r.kind_mismatch, 1 );
-        CHECK_EQ( r.duplicate, 0 );
-        const Item * item = EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 1ull );
-        CHECK( item != NULL );
-        if ( item != NULL ) { CHECK_EQ( item->count, 7 ); }
+        CHECK( !EdgeRowFromJson( eb, t, (int64_t) n, &r ) );
+        CHECK( r.refuse_reason != ok );
+        CHECK( !r.damaged ); // a refusal of the key, not damage to the text
+        CHECK_EQ( eb.GetRoot()->ids.count, 0 );
     }
     test_text_allocation_refusals();
 }
@@ -1187,9 +1249,9 @@ static void test_text()
 // ---- AN ALLOCATION FAILURE IS NOT AN OVERSIZED KEY (§2.8, §16.1) ----
 //
 // The arena refusing is the READ failing, the way the neighboring list, blob
-// and pointer paths fail on one. Reporting it as `clamped` says the key did not
-// fit a bound it fits perfectly, hands back an instance missing entries the
-// text spelled, and calls the read a SUCCESS.
+// and pointer paths fail on one. Reporting it as a key over its bound says the
+// key did not fit a bound it fits perfectly, and skipping it hands back an
+// instance missing entries the text spelled and calls the read a SUCCESS.
 //
 // The arena allocates one SEGMENT at a time, so a text has to cross a segment
 // boundary before the allocator is asked anything at all. Reaching that
@@ -1279,17 +1341,17 @@ static void test_text_allocation_refusals()
     budget.refuse_from = before + 1; // the arena can carve nothing more
 
     TableReport r;
-    if ( FleetFromJsonTolerant( fb, text, length, &r ) )
+    if ( FleetFromJson( fb, text, length, &r ) )
     {
         printf( "FAIL %s:%d: the arena refused and the read still called itself clean"
-                " (clamped=%d, entries=%d)\n",
-                __FILE__, __LINE__, r.clamped, fb.GetRoot()->loadouts.count );
+                " (refuse_reason=%d, entries=%d)\n",
+                __FILE__, __LINE__, (int) r.refuse_reason, fb.GetRoot()->loadouts.count );
         failures++;
     }
     else
     {
-        CHECK( r.malformed );
-        CHECK_EQ( r.clamped, 0 ); // an arena refusal is not a key over its bound
+        CHECK( r.refuse_reason != ok );
+        CHECK( r.refuse_reason != out_of_range ); // an arena refusal is not a key over its bound
     }
     CHECK( budget.seen > before ); // the read did reach the allocator, or this proves nothing
     free( text );
@@ -1329,9 +1391,9 @@ static void test_depth()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Depth * loaded = DepthLoadTolerant( region, need, wire, n, &report );
+    const Depth * loaded = DepthLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         const Item * one = loaded->one.roster.Find( (uint8_t) 3 );
@@ -1361,7 +1423,7 @@ static void test_depth()
         CHECK_EQ( DepthSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
         TableReport short_report;
-        CHECK( DepthLoadTolerant( region, need - 1, wire, n, &short_report ) == NULL );
+        CHECK( DepthLoad( region, need - 1, wire, n, &short_report ) == NULL );
     }
     free( region );
 
@@ -1391,8 +1453,9 @@ static void test_depth()
     // and the TOOL's path reads the same four reaches into a builder
     DepthBuilder into;
     TableReport tool;
-    CHECK( DepthLoadBuilderTolerant( into, wire, n, &tool ) );
-    CHECK_EQ( (int) tool.malformed, (int) report.malformed );
+    CHECK( DepthLoadBuilder( into, wire, n, &tool ) );
+    CHECK_EQ( (int) tool.damaged, (int) report.damaged );
+    CHECK_EQ( (int) tool.refuse_reason, (int) report.refuse_reason );
     CHECK_EQ( into.GetRoot()->one.roster.count, 1 );
     CHECK_EQ( into.GetRoot()->many_count, 2 );
     CHECK_EQ( into.GetRoot()->keyed[Slot::Alpha].roster.count, 1 );
@@ -1477,11 +1540,9 @@ static void test_text_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Text * loaded = TextLoadTolerant( region, need, wire, n, &report );
+    const Text * loaded = TextLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
-    CHECK_EQ( report.clamped, 0 );
-    CHECK_EQ( report.kind_mismatch, 0 );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         const TextNamesEntry * alpha = loaded->names.Find( "alpha" );
@@ -1537,10 +1598,8 @@ static void test_text_values()
     // and it reads back to the same instance, so the same wire
     TextBuilder into;
     TableReport text_report;
-    CHECK( TextFromJsonTolerant( into, json, json_bytes, &text_report ) );
-    CHECK( !text_report.malformed );
-    CHECK_EQ( text_report.clamped, 0 );
-    CHECK_EQ( text_report.kind_mismatch, 0 );
+    CHECK( TextFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.damaged && text_report.refuse_reason == ok );
     CHECK_EQ( text_report.unknown, 0 );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( TextSave( into, from_text, sizeof( from_text ) ), n );
@@ -1576,8 +1635,8 @@ static void test_text_values()
         CHECK_EQ( TextMeasure( dup ), reset_bytes );
         TextBuilder read_back;
         TableReport reset_report;
-        CHECK( TextLoadBuilderTolerant( read_back, reset_wire, reset_bytes, &reset_report ) );
-        CHECK( !reset_report.malformed );
+        CHECK( TextLoadBuilder( read_back, reset_wire, reset_bytes, &reset_report ) );
+        CHECK( !reset_report.damaged && reset_report.refuse_reason == ok );
         const TextNamesEntry * landed = TextNamesFind( read_back.arena, read_back.GetRoot()->names, "alpha" );
         CHECK( landed != NULL && landed->value_length == 0 );
     }
@@ -1624,9 +1683,9 @@ static void test_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Cells * loaded = CellsLoadTolerant( region, need, wire, n, &report );
+    const Cells * loaded = CellsLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         const CellsRowsEntryValue * alpha = loaded->rows.Find( "alpha" );
@@ -1659,8 +1718,8 @@ static void test_array_values()
 
     CellsBuilder into;
     TableReport text_report;
-    CHECK( CellsFromJsonTolerant( into, json, json_bytes, &text_report ) );
-    CHECK( !text_report.malformed );
+    CHECK( CellsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.damaged && text_report.refuse_reason == ok );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( CellsSave( into, from_text, sizeof( from_text ) ), n );
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
@@ -1707,9 +1766,9 @@ static void test_counted_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Runs * loaded = RunsLoadTolerant( region, need, wire, n, &report );
+    const Runs * loaded = RunsLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         const RunsSpansEntry * four = loaded->spans.Find( (uint16_t) 4 );
@@ -1742,8 +1801,8 @@ static void test_counted_array_values()
 
     RunsBuilder into;
     TableReport text_report;
-    CHECK( RunsFromJsonTolerant( into, json, json_bytes, &text_report ) );
-    CHECK( !text_report.malformed );
+    CHECK( RunsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.damaged && text_report.refuse_reason == ok );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( RunsSave( into, from_text, sizeof( from_text ) ), n );
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
@@ -1793,9 +1852,9 @@ static void test_enum_extent_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Slots * loaded = SlotsLoadTolerant( region, need, wire, n, &report );
+    const Slots * loaded = SlotsLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         const TableKeyed<int32_t, Slot> * low = loaded->seats.Find( (int32_t) -2 ); // sorts first
@@ -1828,8 +1887,8 @@ static void test_enum_extent_values()
 
     SlotsBuilder into;
     TableReport text_report;
-    CHECK( SlotsFromJsonTolerant( into, json, json_bytes, &text_report ) );
-    CHECK( !text_report.malformed );
+    CHECK( SlotsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.damaged && text_report.refuse_reason == ok );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( SlotsSave( into, from_text, sizeof( from_text ) ), n );
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
@@ -1883,9 +1942,9 @@ static void test_unbounded_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Spans * loaded = SpansLoadTolerant( region, need, wire, n, &report );
+    const Spans * loaded = SpansLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         // key 1 was inserted SECOND and carries THREE elements, key 8 first and
@@ -1930,8 +1989,8 @@ static void test_unbounded_values()
 
     SpansBuilder into;
     TableReport text_report;
-    CHECK( SpansFromJsonTolerant( into, json, json_bytes, &text_report ) );
-    CHECK( !text_report.malformed );
+    CHECK( SpansFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.damaged && text_report.refuse_reason == ok );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( SpansSave( into, from_text, sizeof( from_text ) ), n );
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
@@ -1981,9 +2040,9 @@ static void test_blob_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Docs * loaded = DocsLoadTolerant( region, need, wire, n, &report );
+    const Docs * loaded = DocsLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         const TableBlob * alpha = loaded->pages.Find( "alpha" );
@@ -2015,8 +2074,8 @@ static void test_blob_values()
 
     DocsBuilder into;
     TableReport text_report;
-    CHECK( DocsFromJsonTolerant( into, json, json_bytes, &text_report ) );
-    CHECK( !text_report.malformed );
+    CHECK( DocsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.damaged && text_report.refuse_reason == ok );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( DocsSave( into, from_text, sizeof( from_text ) ), n );
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
@@ -2067,9 +2126,9 @@ static void test_byte_blob_values()
     uint8_t * chunk_region = (uint8_t *) MEASURED_CALLOC( chunk_need, 0 );
     if ( chunk_region == NULL ) { return; }
     TableReport chunk_report;
-    const Chunks * chunks = ChunksLoadTolerant( chunk_region, chunk_need, chunk_wire, cn, &chunk_report );
+    const Chunks * chunks = ChunksLoad( chunk_region, chunk_need, chunk_wire, cn, &chunk_report );
     CHECK( chunks != NULL );
-    CHECK( !chunk_report.malformed );
+    CHECK( !chunk_report.damaged && chunk_report.refuse_reason == ok );
     if ( chunks != NULL )
     {
         const TableBytesView low = TableBytesViewOf( chunks->blobs.Find( (int32_t) -3 ) );
@@ -2097,8 +2156,8 @@ static void test_byte_blob_values()
 
     ChunksBuilder chunks_into;
     TableReport chunk_text_report;
-    CHECK( ChunksFromJsonTolerant( chunks_into, chunk_json, chunk_json_bytes, &chunk_text_report ) );
-    CHECK( !chunk_text_report.malformed );
+    CHECK( ChunksFromJson( chunks_into, chunk_json, chunk_json_bytes, &chunk_text_report ) );
+    CHECK( !chunk_text_report.damaged && chunk_text_report.refuse_reason == ok );
     static uint8_t chunk_from_text[1u << 16];
     CHECK_EQ( ChunksSave( chunks_into, chunk_from_text, sizeof( chunk_from_text ) ), cn );
     CHECK( memcmp( chunk_from_text, chunk_wire, (size_t) cn ) == 0 );
@@ -2156,9 +2215,9 @@ static void test_pointer_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Pairs * loaded = PairsLoadTolerant( region, need, wire, n, &report );
+    const Pairs * loaded = PairsLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         const PairsSlotsEntryValue * four = loaded->slots.Find( 4u );
@@ -2205,8 +2264,8 @@ static void test_pointer_array_values()
 
     PairsBuilder into;
     TableReport text_report;
-    CHECK( PairsFromJsonTolerant( into, json, json_bytes, &text_report ) );
-    CHECK( !text_report.malformed );
+    CHECK( PairsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.damaged && text_report.refuse_reason == ok );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( PairsSave( into, from_text, sizeof( from_text ) ), n );
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
@@ -2261,9 +2320,9 @@ static void test_counted_pointer_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Crews * loaded = CrewsLoadTolerant( region, need, wire, n, &report );
+    const Crews * loaded = CrewsLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         // key 4 was inserted SECOND and carries TWO slots, key 9 first and
@@ -2311,8 +2370,8 @@ static void test_counted_pointer_array_values()
 
     CrewsBuilder into;
     TableReport text_report;
-    CHECK( CrewsFromJsonTolerant( into, json, json_bytes, &text_report ) );
-    CHECK( !text_report.malformed );
+    CHECK( CrewsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.damaged && text_report.refuse_reason == ok );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( CrewsSave( into, from_text, sizeof( from_text ) ), n );
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
@@ -2378,9 +2437,9 @@ static void test_unbounded_pointer_array_values()
     uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
     if ( region == NULL ) { return; }
     TableReport report;
-    const Trails * loaded = TrailsLoadTolerant( region, need, wire, n, &report );
+    const Trails * loaded = TrailsLoad( region, need, wire, n, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed );
+    CHECK( !report.damaged && report.refuse_reason == ok );
     if ( loaded != NULL )
     {
         // A LIST WHOSE SLOTS WERE NOT PLACED HAS A NULL ELEMENT POINTER, so
@@ -2428,8 +2487,8 @@ static void test_unbounded_pointer_array_values()
 
     TrailsBuilder into;
     TableReport text_report;
-    CHECK( TrailsFromJsonTolerant( into, json, json_bytes, &text_report ) );
-    CHECK( !text_report.malformed );
+    CHECK( TrailsFromJson( into, json, json_bytes, &text_report ) );
+    CHECK( !text_report.damaged && text_report.refuse_reason == ok );
     static uint8_t from_text[1u << 16];
     CHECK_EQ( TrailsSave( into, from_text, sizeof( from_text ) ), n );
     CHECK( memcmp( from_text, wire, (size_t) n ) == 0 );
@@ -2467,6 +2526,7 @@ int main( int argc, char ** argv )
     test_const_forms();
     test_reader();
     test_key_kind();
+    test_key_length();
     test_load_measure_depth();
     test_measure_refusals();
     test_text();

@@ -97,7 +97,7 @@ func init() {
 		Name{Name: "TableMessageUnsigned", What: "an endpoint's value zero-extended from its announced kind (§3.3)", Scoped: true},
 		Name{Name: "TableMessageReadScalar", What: "one scalar read by the endpoint's announced shape (§3.3)", Scoped: true},
 		Name{Name: "TableMessageWriteScalar", What: "one scalar written by this build's own shape (§3.3)", Scoped: true},
-		Name{Name: "TableMessageSkip", What: "the tolerant skip of one value by the endpoint's shape (§3.3)", Scoped: true},
+		Name{Name: "TableMessageSkip", What: "the skip of one unknown value by the endpoint's shape (§3.3)", Scoped: true},
 		Name{Name: "TableMessageSkipBody", What: "a nested body skipped whole to its zero reference (§3.3)", Scoped: true},
 		Name{Name: "TableMessageBatchOpen", What: "the batch's form byte, vocabulary and count checks (§3.3)", Scoped: true},
 		Name{Name: "TableMessageBatchClose", What: "the batch's zero pad and nothing after it (§3.3)", Scoped: true},

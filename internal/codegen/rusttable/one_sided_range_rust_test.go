@@ -44,8 +44,8 @@ func rustConstructProbe(t *testing.T, u *ir.Unit, body string) (string, error) {
 }
 
 // Exact literal endpoints independently name the intended values. The wire
-// input is encoded from a range-free schema, so decoder clamping is exercised
-// even when the text reader would otherwise clamp before producing the input.
+// input is encoded from a range-free schema, so the decoder's own bound check
+// is exercised: a value past its bound refuses the whole read (strict-only).
 func TestRustOneSidedRangeNative(t *testing.T) {
 	slowtest.Gate(t, "rustc (native one-sided integer bounds and cook)")
 	keyedRequireRustc(t)
@@ -113,6 +113,19 @@ func TestRustOneSidedRangeNative(t *testing.T) {
 			t.Fatal(err)
 		}
 		base := filepath.Join(work, fmt.Sprint(i))
+		// The range-free schema's wire carries another fixed-table identity,
+		// so the ranged reader refuses it whole (layout_unknown, §3.4); the Go
+		// engine's verdict on it is the oracle for the Rust wire read. The
+		// ranged schema's own bytes (fixed form 3) are read back through the
+		// fixed loader above; the JSON read must save exactly those bytes.
+		rawVerdict := m.New(u.Tables["Ranges"])
+		var rawRep tabletext.Report
+		rawOK, _ := tablewire.Decode(m, rawVerdict, wire, &rawRep)
+		textVerdict := m.New(u.Tables["Ranges"])
+		var textRep tabletext.Report
+		if textOK := m.Read(textVerdict, []byte(text), &textRep); textOK != (tc.clamps == 0) {
+			t.Fatalf("case %d: Go text verdict %v disagrees with the corpus (%d clamps): %+v", i, textOK, tc.clamps, textRep)
+		}
 		for name, data := range map[string][]byte{"input": wire, "want": want} {
 			if err := os.WriteFile(base+"."+name, data, 0o600); err != nil {
 				t.Fatal(err)
@@ -152,6 +165,27 @@ binary.LittleEndian.PutUint64(buf[len(buf)-RangesFixedRecordBytes+8+%d*8:],%s)
 if err:=os.WriteFile(%q,buf,0600);err!=nil {t.Fatal(err)}
 }
 `, values["upper"], values["lower"], values["negative"], values["floor"], base+".fixed-want", slot, rawExpr, base+".fixed-input")
+		// STRICT-ONLY (docs/plans/strict-only.md): a value past its bound
+		// refuses the whole read in every form; nothing is clamped.
+		if tc.clamps != 0 {
+			fmt.Fprintf(&body, `{
+let buf=std::fs::read(%q).unwrap();
+let mut out=vec![RangesRow::default();1];
+let mut plan=vec![TableFixedEntry::default();64];
+let mut remap=vec![0u16;64];
+let mut report=TableFixedReport::default();
+assert_eq!(ranges_fixed_load(&mut out,&buf,&mut plan,&mut remap,&mut report),None,"fixed refusal case %d");
+assert_eq!(report.reason,TableFixedReason::OutOfRange,"fixed reason case %d: {:?}",report);
+let mut tr = TableReport::default();
+assert!(ranges_from_json(%q, &mut tr).is_none(), "JSON refusal case %d");
+assert!(tr.damaged, "JSON damaged case %d");
+let mut wr = TableReport::default();
+assert_eq!(ranges_load(&std::fs::read(%q).unwrap(), &mut wr).is_some(), %t, "raw wire verdict case %d");
+println!("case %d ok");
+}
+`, base+".fixed-input", i, i, text, i, i, base+".input", rawOK, i, i)
+			continue
+		}
 		fmt.Fprintf(&body, `{
 let buf=std::fs::read(%q).unwrap();
 let mut out=vec![RangesRow::default();1];
@@ -159,30 +193,26 @@ let mut plan=vec![TableFixedEntry::default();64];
 let mut remap=vec![0u16;64];
 let mut report=TableFixedReport::default();
 assert_eq!(ranges_fixed_load(&mut out,&buf,&mut plan,&mut remap,&mut report),Some(1));
-assert_eq!(report.clamped,%d,"fixed clamp case %d");
 assert_eq!(out[0].%s,%s,"fixed value case %d");
 let mut saved=vec![0u8;ranges_fixed_measure(1)];
 assert_eq!(ranges_fixed_save(&out,&mut saved),Some(saved.len()));
 assert_eq!(saved,std::fs::read(%q).unwrap(),"fixed bytes case %d");
 }
-`, base+".fixed-input", tc.clamps, i, tc.field, tc.value, i, base+".fixed-want", i)
+`, base+".fixed-input", tc.field, tc.value, i, base+".fixed-want", i)
 		fmt.Fprintf(&body, `{
 let mut tr = TableReport::default();
 let tv = ranges_from_json(%q, &mut tr).expect("JSON value");
-let mut wr = TableReport::default();
-let wire = std::fs::read(%q).unwrap();
-let wv = ranges_load(&wire, &mut wr).expect("wire value");
+let mut rr = TableReport::default();
+assert_eq!(ranges_load(&std::fs::read(%q).unwrap(), &mut rr).is_some(), %t, "raw wire verdict case %d");
 let want = std::fs::read(%q).unwrap();
-assert_eq!(tr.clamped, %d, "JSON clamp case %d");
-assert_eq!(wr.clamped, %d, "wire clamp case %d");
+assert!(!tr.damaged, "clean case %d");
 assert_eq!(ranges_save(&tv), want, "JSON bytes case %d");
-assert_eq!(ranges_save(&wv), want, "wire bytes case %d");
 for (order, path) in [(1u64, %q), (2u64, %q)] {
 assert_eq!(ranges_cook_write(&tv, order).unwrap(), std::fs::read(path).unwrap(), "cook case %d");
 }
 println!("case %d ok");
 }
-`, text, base+".input", base+".want", tc.clamps, i, tc.clamps, i, i, i, base+".le", base+".be", i, i)
+`, text, base+".input", rawOK, i, base+".want", i, i, base+".le", base+".be", i, i)
 	}
 	rustRangeFixedOracle(t, u, goBody.String())
 	out, err := rustConstructProbe(t, u, body.String())

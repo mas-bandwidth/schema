@@ -75,12 +75,12 @@ print("plain " + pb.len() + " " + hex(pb) + "\n");
 print("big " + bb.len() + " " + hex(bb) + "\n");
 
 local mkreport = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-           duplicate = 0, malformed = false, refused = false };
+  return { unknown = 0, mismatch = 0, widened = 0, oor = 0,
+           repeated = 0, bodyDamaged = false, refused = false };
 };
 local r = mkreport();
 local l2 = L.load(T, "Ledger", lb, r);
-if (l2 == null || l2.N != 1000 || l2.Label != "ok" || l2.Count != 7 || r.malformed || r.refused) throw "tolerant round trip";
+if (l2 == null || l2.N != 1000 || l2.Label != "ok" || l2.Count != 7 || r.bodyDamaged || r.refused) throw "tolerant round trip";
 local r2 = {};
 local l3 = R.ReadStrict(T, "Ledger", lb, r2);
 if (l3 == null || l3.N != 1000 || r2.reason != null) throw "strict round trip N=" + (l3 == null ? "-" : l3.N.tostring()) + " reason=" + r2.reason;

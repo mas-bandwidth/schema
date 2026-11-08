@@ -67,12 +67,12 @@ public final class R8 {
         check(r.refused, "the load refuses");
         check(r.reason == TableFixed.Reason.layoutNewer,
                 "the refusal is by the name layoutNewer (got " + r.reason + ")");
-        check(!r.malformed, "layoutNewer is a refusal, not malformed");
+        check(!r.damaged, "layoutNewer is a refusal, not malformed");
         check(r.layoutHash == given,
                 "the report carries THE FILE'S HASH and nothing else: 0x"
                         + Long.toHexString(given) + "L as given (got 0x"
                         + Long.toHexString(r.layoutHash) + "L)");
-        check(r.unknown == 0 && r.kindMismatch == 0 && r.widened == 0 && r.clamped == 0,
+        check(r.unknown == 0 && r.widened == 0,
                 "REFUSE is total: no counter moves");
         check(out[0].a == initialA && Float.floatToRawIntBits(out[0].b) == initialB
                         && out[0].nameLength == initialNameLength

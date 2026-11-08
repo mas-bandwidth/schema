@@ -85,7 +85,7 @@ public final class MixedEventFixed {
         // and that its own switch cannot answer.
         if (v.type > 3) {
             v.type = none;
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         }
         switch (v.type) {
             case 1:

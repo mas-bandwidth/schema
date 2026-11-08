@@ -57,7 +57,7 @@ function roundTrip() {
   const back = [new mod.T()]; mod.InitT(back[0]);
   const report = new mod.TableFixedReport();
   const n = mod.TFixedLoad(back, 1, bytes, bytes.length, mod.TFixedNewPlan(4096, 4096), report);
-  const ok = n === 1 && back[0].x === 7 && back[0].y === 9 && !report.malformed && report.refused === 0;
+  const ok = n === 1 && back[0].x === 7 && back[0].y === 9 && !report.damaged && report.refused === 0;
   return { ok: ok, bytes: bytes };
 }
 

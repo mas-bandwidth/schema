@@ -80,7 +80,7 @@ const plan = TNewPlan(8192, 8192);
 // alike over zeros.
 plan.image.fill(0x5A);
 const n = TLoad(back, back.length, data, data.length, plan, report);
-if (!(n === 1 && !r.malformed && r.refused === 0)) {
+if (!(n === 1 && !r.damaged && r.refused === 0)) {
   fail("E7: V2 read V1's record through a compiled plan: n=" + n + " " + reason(r));
 }
 const got = back[0];

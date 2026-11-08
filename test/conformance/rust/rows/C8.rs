@@ -44,7 +44,7 @@ fn c8_fixed_point_f_shift_and_bits_n() {
         let n = tabledemo::ranged_widths_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
         check(n == Some(1), "bits(N): the clean record reads");
         check(
-            back[0].b12 == 3000 && report.clamped == 0,
+            back[0].b12 == 3000 && report.oor == 0,
             "bits(N): value inside bits(12) lands untouched",
         );
 
@@ -62,7 +62,7 @@ fn c8_fixed_point_f_shift_and_bits_n() {
         let n = tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
         check(n == Some(1), "bits(N): the forged record still reads");
         check(back[0].b12 == 4095, "bits(N): 4096 -> 4095 = 2^12 - 1");
-        check(report.clamped == 1, "bits(N): counts ONE clamped");
+        check(report.oor == 1, "bits(N): counts ONE clamped");
 
         // bits(48) at body offset 24: u64::MAX past 2^48-1
         let mut forged = file.clone();
@@ -70,7 +70,7 @@ fn c8_fixed_point_f_shift_and_bits_n() {
         let mut report = tabledemo::TableFixedReport::default();
         tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
         check(
-            back[0].b48 == 0xFFFF_FFFF_FFFF && report.clamped == 1,
+            back[0].b48 == 0xFFFF_FFFF_FFFF && report.oor == 1,
             "bits(N): bits(48) past 2^48-1 clamps to 2^48-1",
         );
 
@@ -80,7 +80,7 @@ fn c8_fixed_point_f_shift_and_bits_n() {
         let mut report = tabledemo::TableFixedReport::default();
         tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
         check(
-            back[0].b32 == 0xFFFF_FFFF && report.clamped == 0,
+            back[0].b32 == 0xFFFF_FFFF && report.oor == 0,
             "bits(N): bits(32) filling its lane clamps nothing (negative control)",
         );
     }

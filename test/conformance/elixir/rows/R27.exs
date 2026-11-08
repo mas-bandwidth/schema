@@ -116,9 +116,8 @@ defmodule R27 do
       case apply(mod, :profile_config_fixed_load, [file]) do
         {:ok, [landed], report} ->
           landed.experience == @wire_lead and landed.timestamp == @wire_trail and
-            report.malformed == false and
-            report.unknown == 0 and report.kind_mismatch == 0 and report.clamped == 0 and
-            report.widened == 0 and report.duplicate == 0
+            report.unknown == 0 and report.widened == 0 and
+            report.retained == 0 and report.retain_lost == 0 and report.layout_hash == 0
 
         _ ->
           false
