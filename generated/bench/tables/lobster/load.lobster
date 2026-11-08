@@ -22,12 +22,8 @@ import .schema_tables
 
 namespace schema_rt
 
-// THE REPORT (docs/SPEC-TABLES.md §4): the six counters of reports.txt, the
-// blob_shared counter (§2.5), the reason a named rule gives and the verdict.
-// refused is the verdict, not an event (§3): a form byte this reader does not
-// carry, or a collection count past the storage cap on a variable root.
-// stopped is whether the read stopped short of the root body's terminator:
-// Go's Decode answering false (a mutable reader discards that value, §4.2).
+// Read diagnostics are local observations. refused and stopped describe a
+// whole-load refusal; counters never select a recovery path.
 class LoadReport:
     unknown:int = 0
     kind_mismatch:int = 0
@@ -56,6 +52,32 @@ class LoadReport:
     // damage to its terminator. The strict read names it wire_damaged; a
     // body that stopped the walk is malformed.
     damaged:bool = false
+
+// A failed read stops its walk. Diagnostics are local; the verdict is whole.
+def read_refuse(rep:LoadReport, reason:string) -> bool:
+    rep.refused = true
+    rep.stopped = true
+    if rep.reason == "":
+        rep.reason = reason
+    return false
+
+// Diagnostics belong to this invocation and cannot veto a later valid read.
+def read_reset(rep:LoadReport):
+    rep.unknown = 0
+    rep.kind_mismatch = 0
+    rep.widened = 0
+    rep.clamped = 0
+    rep.duplicate = 0
+    rep.malformed = false
+    rep.blob_shared = 0
+    rep.missing_required = 0
+    rep.non_finite_float = ""
+    rep.retained = 0
+    rep.retain_lost = 0
+    rep.refused = false
+    rep.reason = ""
+    rep.stopped = false
+    rep.damaged = false
 
 class Record
 class Slot
@@ -126,6 +148,27 @@ class Record:
     held:bool = false
     // walk is the cycle check's mark: 0 unvisited, 1 open, 2 closed
     walk:int = 0
+
+// Fixed roots share their generated native codec with the generic Record
+// surface. The adapter projects storage only; it owns no wire decoder.
+class FixedRecordCodec:
+    name:string
+    def read_fixed(data:string, report:LoadReport) -> Record?:
+        read_refuse(report, "layout_unsupported")
+        return nil
+    def write_fixed(rec:Record) -> string, string:
+        return "", "layout_unsupported"
+
+let fixed_record_codecs:[FixedRecordCodec] = []
+
+def register_fixed_record_codec(codec:FixedRecordCodec):
+    push(fixed_record_codecs, codec)
+
+def fixed_record_codec(name:string) -> FixedRecordCodec:
+    for(fixed_record_codecs) codec:
+        if codec.name == name:
+            return codec
+    return FixedRecordCodec { name: name }
 
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
@@ -578,38 +621,23 @@ def scalar_at(r:Reader, cell:Value, fd:FieldDescriptor, declared:int, kind:int) 
     let rep = r.st.report
     let width = kind_width(kind)
     if not has(r, width):
-        rep.malformed = true
-        return false
+        return read_refuse(rep, "wire_damaged")
     if kind == 1:
         let x = u8(r)
         if x > 1:
-            rep.malformed = true
-            if rep.reason == "":
-                rep.reason = "malformed: " + fd.name
+            return read_refuse(rep, "wire_damaged")
         cell.b = x != 0
         return true
     if kind == 10:
         let bits = read_uint32_le(r.b, r.off)
-        var v = read_float32_le(r.b, r.off)
+        let v = read_float32_le(r.b, r.off)
         r.off += 4
         if not finite_f32_bits(bits):
-            // a NaN or an infinity is refused on its raw bits, before the
-            // field is written and before a compressed float's bounds (§3.3)
             refuse_non_finite(rep, fd)
-            return true
-        if declared == 11:
-            cell.f = v
-            return true
-        if fd.franged:
-            if v < fd.flo:
-                v = fd.flo
-                rep.clamped++
-            elif v > fd.fhi:
-                v = fd.fhi
-                rep.clamped++
-            elif v == 0.0:
-                v = 0.0
-        cell.f = fround(v)
+            return read_refuse(rep, "non_finite_float")
+        if declared != 11 and fd.franged and (v < fd.flo or v > fd.fhi):
+            return read_refuse(rep, "out_of_range")
+        cell.f = if declared == 11: v else: fround(v)
         return true
     if kind == 11:
         let bits = read_int64_le(r.b, r.off)
@@ -617,67 +645,46 @@ def scalar_at(r:Reader, cell:Value, fd:FieldDescriptor, declared:int, kind:int) 
         r.off += 8
         if not finite_f64_bits(bits):
             refuse_non_finite(rep, fd)
-            return true
+            return read_refuse(rep, "non_finite_float")
         cell.f = v
         return true
     if kind_wide(kind):
         let signed = kind_signed(kind)
-        var raw = read_raw(r, width, signed)
+        let raw = read_raw(r, width, signed)
         if fd.ranged:
             let lo = i128_shl(fd.lo, fd.fbits)
             let hi = i128_shl(fd.hi, fd.fbits)
-            if i128_lt(raw, lo, signed):
-                raw = lo
-                rep.clamped++
-            elif i128_lt(hi, raw, signed):
-                raw = hi
-                rep.clamped++
+            if i128_lt(raw, lo, signed) or i128_lt(hi, raw, signed):
+                return read_refuse(rep, "out_of_range")
         cell.w = raw
         return true
     let signed = kind_signed(kind)
-    let rawv = read_raw(r, width, false).lo
-    var raw = rawv
-    var value = rawv
-    if signed and width < 8 and (rawv & shl(1, width * 8 - 1)) != 0:
-        value = rawv - shl(1, width * 8)
+    let raw = read_raw(r, width, false).lo
+    var value = raw
+    if signed and width < 8 and (raw & shl(1, width * 8 - 1)) != 0:
+        value = raw - shl(1, width * 8)
     if kind_wide(declared):
-        // an integer kind widened into a 128-bit declaration (§4)
         let dsigned = kind_signed(declared)
-        var w = Int128 { value, if signed and value < 0: -1 else: 0 }
+        let w = Int128 { value, if signed and value < 0: -1 else: 0 }
         if fd.ranged:
             let lo = i128_shl(fd.lo, fd.fbits)
             let hi = i128_shl(fd.hi, fd.fbits)
-            if i128_lt(w, lo, dsigned):
-                w = lo
-                rep.clamped++
-            elif i128_lt(hi, w, dsigned):
-                w = hi
-                rep.clamped++
+            if i128_lt(w, lo, dsigned) or i128_lt(hi, w, dsigned):
+                return read_refuse(rep, "out_of_range")
         cell.w = w
         return true
     if fd.ranged:
         let lo = fd.lo.lo
         let hi = fd.hi.lo
         if signed:
-            if value < lo:
-                value = lo
-                rep.clamped++
-            elif value > hi:
-                value = hi
-                rep.clamped++
-        else:
-            if ult(raw, lo):
-                raw = lo
-                rep.clamped++
-            elif ult(hi, raw):
-                raw = hi
-                rep.clamped++
-            value = raw
+            if value < lo or value > hi:
+                return read_refuse(rep, "out_of_range")
+        elif ult(raw, lo) or ult(hi, raw):
+            return read_refuse(rep, "out_of_range")
     if fd.bits > 0 and fd.bits < width * 8:
         let most = shl(1, fd.bits) - 1
         if ult(most, value):
-            value = most
-            rep.clamped++
+            return read_refuse(rep, "out_of_range")
     cell.i = value
     return true
 
@@ -950,51 +957,40 @@ let enum_shape = register_shape(EnumShape { key: "enum" })
 
 // resolve_cell places one node index in a pointer slot (§3.1, §2.5; Go's
 // resolveCell). Every failure is one of §4's events and the slot stays null.
-def resolve_cell(r:Reader, cell:Value, fd:FieldDescriptor, index:int):
+def resolve_cell(r:Reader, cell:Value, fd:FieldDescriptor, index:int) -> bool:
     cell.node = nil
     cell.blob = nil
     cell.blob_node = nil
     let st = r.st
     let rep = st.report
-    if not st.variable or not st.good:
-        return
-    let blob = fd.s == "sblob" or fd.s == "bblob"
     if index == 0:
-        return
+        return true
+    if not st.variable or not st.good:
+        return read_refuse(rep, "wire_damaged")
+    let blob = fd.s == "sblob" or fd.s == "bblob"
     if index == 1:
         let root = st.root
         if blob or not root or root.d.name != fd.t:
-            rep.kind_mismatch++
-            return
+            return read_refuse(rep, "kind_mismatch")
         cell.node = root
-        return
-    if index >= 2 and index - 2 < length(st.nodes):
-        let node = st.nodes[index - 2]
-        if node.kind == 0:
-            return
-        if blob:
-            let want = if fd.s == "sblob": 2 else: 3
-            if node.kind != want:
-                rep.kind_mismatch++
-                return
-            cell.blob = node.blob
-            cell.blob_node = node
-            var seen = false
-            for(st.named) x:
-                if x == index:
-                    seen = true
-            if seen:
-                rep.blob_shared++
-            else:
-                push(st.named, index)
-            return
-        let nr = node.rec
-        if node.kind != 1 or not nr or nr.d.name != fd.t:
-            rep.kind_mismatch++
-            return
-        cell.node = nr
-        return
-    rep.malformed = true
+        return true
+    if index < 2 or index - 2 >= length(st.nodes):
+        return read_refuse(rep, "wire_damaged")
+    let node = st.nodes[index - 2]
+    if node.kind == 0:
+        return true // a type this reader cannot name is evolution
+    if blob:
+        let want = if fd.s == "sblob": 2 else: 3
+        if node.kind != want:
+            return read_refuse(rep, "kind_mismatch")
+        cell.blob = node.blob
+        cell.blob_node = node
+        return true
+    let nr = node.rec
+    if node.kind != 1 or not nr or nr.d.name != fd.t:
+        return read_refuse(rep, "kind_mismatch")
+    cell.node = nr
+    return true
 
 class PointerShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
@@ -1004,22 +1000,19 @@ class PointerShape : Shape
         if not ok:
             r.st.report.malformed = true
             return false
-        resolve_cell(r, sl.cell, sl.fd, index)
-        return true
+        return resolve_cell(r, sl.cell, sl.fd, index)
     def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
         let index, ok = leb(r)
         if not ok:
             r.st.report.malformed = true
             return false
-        resolve_cell(r, sl.elems[i], elem_of(sl.fd), index)
-        return true
+        return resolve_cell(r, sl.elems[i], elem_of(sl.fd), index)
     def arm(r:Reader, fv:Slot, n:int) -> bool:
         let index, ok = leb(r)
         if not ok or r.off != r.lo + n:
             r.st.report.malformed = true
             return false
-        resolve_cell(r, fv.cell, fv.fd, index)
-        return true
+        return resolve_cell(r, fv.cell, fv.fd, index)
 
 let pointer_shape = register_shape(PointerShape { key: "ptr" })
 
@@ -1034,14 +1027,10 @@ class StringShape : Shape
             return false
         if not text_valid(r.b, r.off, n):
             rep.malformed = true
-            sl.cell = field_default(sl.fd)
-            sl.count = length(sl.cell.s)
-            r.off += n
-            return true
-        var keep = n
+            return false
+        let keep = n
         if keep > sl.fd.bound:
-            keep = text_boundary(r.b, r.off, n, sl.fd.bound)
-            rep.clamped++
+            return read_refuse(rep, "length_over_bound")
         sl.cell.s = substring(r.b, r.off, keep)
         sl.count = keep
         r.off += n
@@ -1051,10 +1040,9 @@ class StringShape : Shape
         if not text_valid(r.b, r.off, n):
             rep.malformed = true
             return false
-        var keep = n
+        let keep = n
         if keep > fv.fd.bound:
-            keep = text_boundary(r.b, r.off, n, fv.fd.bound)
-            rep.clamped++
+            return read_refuse(rep, "length_over_bound")
         fv.cell.s = substring(r.b, r.off, keep)
         fv.count = keep
         r.off += n
@@ -1075,19 +1063,14 @@ class WideShape : Shape
         r.off += n
         if (n & 1) != 0:
             rep.malformed = true
-            sl.cell = field_default(sl.fd)
-            sl.count = 0
-            return true
+            return false
         let units = wide_units(r.b, at, n)
         if not wide_valid(units):
             rep.malformed = true
-            sl.cell = field_default(sl.fd)
-            sl.count = 0
-            return true
-        var keep = length(units)
+            return false
+        let keep = length(units)
         if keep > sl.fd.bound:
-            keep = wide_boundary(units, sl.fd.bound)
-            rep.clamped++
+            return read_refuse(rep, "length_over_bound")
         sl.cell.units = slice(units, 0, keep)
         sl.count = keep
         return true
@@ -1100,10 +1083,9 @@ class WideShape : Shape
         if not wide_valid(units):
             rep.malformed = true
             return false
-        var keep = length(units)
+        let keep = length(units)
         if keep > fv.fd.bound:
-            keep = wide_boundary(units, fv.fd.bound)
-            rep.clamped++
+            return read_refuse(rep, "length_over_bound")
         fv.cell.units = slice(units, 0, keep)
         fv.count = keep
         r.off += n
@@ -1111,43 +1093,19 @@ class WideShape : Shape
 
 let wide_shape = register_shape(WideShape { key: "wstr" })
 
-// nested_body decodes a by-value body framed by its own L into rec (§3): a
-// body whose terminator is not the last byte of its L is framing damage and
-// falls back on its declared defaults, staying the body it was.
+// A nested body must decode completely inside its own length.
 def nested_body(r:Reader, sl:Slot, i:int) -> bool:
-    let rep = r.st.report
-    let missing_before = rep.missing_required
     let n, ok = leb(r)
     if not ok or not has(r, n):
-        rep.malformed = true
-        return false
-    // the body is RESET only once its L frames (Go's field and element): a
-    // payload whose L the wire cannot cover leaves the value standing
-    let held = if i < 0: sl.cell.tab else: sl.elems[i].tab
-    var rec = new_record(table_of(if i < 0: sl.fd.t else: elem_of(sl.fd).t))
-    if held:
-        if i >= 0:
-            // an element read again takes its discard once its L frames
-            // (Go's element); a field took its own at the field id
-            forget(held)
-        refill(held)
-        rec = held
+        return read_refuse(r.st.report, "wire_damaged")
+    let rec = new_record(table_of(if i < 0: sl.fd.t else: elem_of(sl.fd).t))
     if i < 0:
         sl.cell.tab = rec
     else:
         sl.elems[i].tab = rec
     let sr = sub(r, n)
-    body_at(sr, rec, true, false)
-    if r.st.count_refused:
-        return false
-    // a body below refused for a missing required field refuses this body too
-    // (docs/SPEC-TABLES.md §2.3, THE RECORD'S at any depth)
-    if rep.missing_required > missing_before:
-        r.off += n
-        return false
-    if sr.off != sr.hi:
-        rep.malformed = true
-        refill(rec)
+    if not body_at(sr, rec, true, false) or sr.off != sr.hi:
+        return read_refuse(r.st.report, "wire_damaged")
     r.off += n
     return true
 
@@ -1159,9 +1117,7 @@ class TableShape : Shape
 
 let table_shape = register_shape(TableShape { key: "tab" })
 
-// A PLAIN TEXT LIST's element (§2.13): its own L, then well-formed text,
-// clamped at the element bound and counted, into the element record's one
-// field.
+// A plain text element has its own length and must fit its declared bound.
 class TextListShape : Shape
     def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
         let rep = r.st.report
@@ -1173,11 +1129,10 @@ class TextListShape : Shape
             rep.malformed = true
             return false
         let ed = table_of(elem_of(sl.fd).t)
-        var keep = n
+        let keep = n
         let bound = ed.fields[0].bound
         if keep > bound:
-            keep = text_boundary(r.b, r.off, n, bound)
-            rep.clamped++
+            return read_refuse(rep, "length_over_bound")
         let held = sl.elems[i].tab
         var rec = new_record(ed)
         if held:
@@ -1190,14 +1145,10 @@ class TextListShape : Shape
 
 let text_list_shape = register_shape(TextListShape { key: "textlist" })
 
-// collection_cap: a count past the int32 storage cap (§2.9). A variable
-// root's load refuses the partial value; a value-only read reports damage.
+// Every collection count must fit the int32 storage cap.
 def collection_cap(r:Reader) -> bool:
-    if not r.st.variable:
-        r.st.report.malformed = true
-        return true
     r.st.count_refused = true
-    return false
+    return read_refuse(r.st.report, "count_over_extent_cap")
 
 // array_body decodes an array or bytes payload (§2.9, §3; Go's arrayBody).
 // framed < 0 reads the field's own L; an arm passes the L it was framed by.
@@ -1207,94 +1158,50 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
     let rep = r.st.report
     let f = sl.fd
     let is_bytes = f.s == "bytes"
-    let bound = f.bound
-    let counted = is_bytes or f.array == "counted" or f.array == "list"
-    let optional = f.present != ""
     var body_len = framed
     if framed < 0:
         let n, good = leb(r)
-        if not good or n < 0:
-            rep.malformed = true
-            return false, false
-        body_len = n
-    if not has(r, body_len):
-        rep.malformed = true
-        return false, false
-    let end = r.off + body_len
-    // a body shorter than its own header is INERT (§4)
-    if body_len >= 2:
-        var decoded = 0
-        let ek = u8(r)
-        let count, good = leb(r)
         if not good:
-            rep.malformed = true
-            r.off = end
-            if optional:
-                sl.present = true
-            return true, false
-        if ek != f.ek and not widens(ek, f.ek):
-            // the element kind is part of the array's identity (§3)
-            rep.kind_mismatch++
-            r.off = end
-            return true, false
-        // a widened element kind counts once the count is known to land: the
-        // builder's count-cap refusal moves no counter (§2.9), while the
-        // region read's damage still counts it
-        let widened = ek != f.ek
-        // THE READ COMMITS TO REPLACE HERE (Go's arrayBody, §6.6): the
-        // retained fields under the elements go with the value it loses
-        for(sl.elems) old:
-            forget_value(old)
-        var keep = count
+            return read_refuse(rep, "wire_damaged"), false
+        body_len = n
+    if body_len < 2 or not has(r, body_len):
+        return read_refuse(rep, "wire_damaged"), false
+    let sr = sub(r, body_len)
+    let ek = u8(sr)
+    let count, good = leb(sr)
+    if not good:
+        return read_refuse(rep, "wire_damaged"), false
+    if ek != f.ek and not widens(ek, f.ek):
+        return read_refuse(rep, "kind_mismatch"), false
+    if count < 0 or count > 0x7FFFFFFF:
+        return collection_cap(r), false
+    if f.array != "list" and count > f.bound:
+        return read_refuse(rep, if is_bytes: "length_over_bound" else: "count_over_bound"), false
+    if ek != f.ek:
+        rep.widened++
+    if is_bytes:
+        if not has(sr, count):
+            return read_refuse(rep, "wire_damaged"), false
+        sl.cell.s = substring(sr.b, sr.off, count)
+        sr.off += count
+    else:
         if f.array == "list":
             sl.elems = []
-            if count < 0 or count > 0x7FFFFFFF:
-                r.off = end
-                if widened and not r.st.variable:
-                    rep.widened++
-                return collection_cap(r), false
-        elif ult(bound, count):
-            keep = bound
-            rep.clamped++
-        if widened:
-            rep.widened++
-        // elements are BOUNDED by the field body (§4)
-        let sr = sub_to(r, end)
-        if is_bytes:
-            // each byte is consumed from the body's own reader, so a count
-            // the body's L cannot cover keeps the prefix it does frame and
-            // flags malformed; it never reads a neighbour's bytes (§4)
-            var i = 0
-            while i < keep:
-                if not has(sr, 1):
-                    rep.malformed = true
-                    break
-                sr.off++
-                i++
-            sl.cell.s = substring(sr.b, sr.lo, i)
-            decoded = i
-        else:
-            let es = shape(elem_key(f))
-            var i = 0
-            while i < keep:
-                if f.array == "list":
-                    push(sl.elems, element_zero(f))
-                if not es.element(sr, sl, i, ek):
-                    break
-                i++
-                decoded = i
+        let es = shape(elem_key(f))
+        var i = 0
+        while i < count:
             if f.array == "list":
-                truncate(sl.elems, decoded)
-        if counted:
-            if f.array == "counted":
-                var j = decoded
-                while j < sl.count:
-                    sl.elems[j] = element_zero(f)
-                    j++
-            sl.count = decoded
-    if optional:
+                push(sl.elems, element_zero(f))
+            if not es.element(sr, sl, i, ek):
+                return false, false
+            i++
+    if sr.off != sr.hi:
+        return read_refuse(rep, "wire_damaged"), false
+    if is_bytes or f.array == "counted" or f.array == "list":
+        sl.count = count
+    if f.present != "":
         sl.present = true
-    r.off = end
+    r.off += body_len
     return true, true
 
 class ArrayShape : Shape
@@ -1316,46 +1223,29 @@ class KeyedShape : Shape
         let rep = r.st.report
         let f = sl.fd
         let n, ok = leb(r)
-        if not ok or not has(r, n):
-            rep.malformed = true
-            return false
-        let end = r.off + n
-        if n < 2:
-            r.off = end
-            return true
-        let ek = u8(r)
-        let count, good = leb(r)
-        if not good:
-            rep.malformed = true
-            r.off = end
-            return true
+        if not ok or n < 2 or not has(r, n):
+            return read_refuse(rep, "wire_damaged")
+        let sr = sub(r, n)
+        let ek = u8(sr)
+        let count, good = leb(sr)
+        if not good or count < 0 or count > 0x7FFFFFFF:
+            return read_refuse(rep, "wire_damaged")
         if ek != f.ek:
             if not widens(ek, f.ek):
-                rep.kind_mismatch++
-                r.off = end
-                return true
+                return read_refuse(rep, "kind_mismatch")
             rep.widened++
         let keys = keyed_variants(f)
         let e = elem_of(f)
-        let sr = sub_to(r, end)
         var i = 0
-        while ult(i, count):
+        while i < count:
             i++
             let kref, kgood = leb(sr)
-            if not kgood:
-                rep.malformed = true
-                break
-            if kref == 0:
-                rep.malformed = true
-                break
             let key_id, named = rid(sr, kref)
-            if not named:
-                rep.malformed = true
-                break
+            if not kgood or not named:
+                return read_refuse(rep, "wire_damaged")
             let elem_len, lgood = leb(sr)
             if not lgood or not has(sr, elem_len):
-                rep.malformed = true
-                break
+                return read_refuse(rep, "wire_damaged")
             let v = enum_value(keys, key_id)
             if v < 1 or v > f.bound:
                 rep.unknown++
@@ -1366,26 +1256,21 @@ class KeyedShape : Shape
                 continue
             let slot = v - 1
             let er = sub(sr, elem_len)
+            var decoded = false
             if e.s == "enum":
-                enum_cell(er, sl.elems[slot], e)
+                decoded = enum_cell(er, sl.elems[slot], e)
             elif e.s == "tab":
-                let held = sl.elems[slot].tab
-                var rec = new_record(table_of(e.t))
-                if held:
-                    forget(held)
-                    refill(held)
-                    rec = held
+                let rec = new_record(table_of(e.t))
                 sl.elems[slot].tab = rec
-                body_at(er, rec, true, false)
-                if r.st.count_refused:
-                    return false
-                if er.off != er.hi:
-                    rep.malformed = true
-                    refill(rec)
+                decoded = body_at(er, rec, true, false)
             else:
-                scalar_at(er, sl.elems[slot], e, f.ek, ek)
+                decoded = scalar_at(er, sl.elems[slot], e, f.ek, ek)
+            if not decoded or er.off != er.hi:
+                return read_refuse(rep, "wire_damaged")
             sr.off += elem_len
-        r.off = end
+        if sr.off != sr.hi:
+            return read_refuse(rep, "wire_damaged")
+        r.off += n
         return true
 
 let keyed_shape = register_shape(KeyedShape { key: "keyed" })
@@ -1393,8 +1278,7 @@ let keyed_shape = register_shape(KeyedShape { key: "keyed" })
 // THE UNION (§2.6, §3; Go's unionCell): AN ARM HEADER IS A FIELD HEADER —
 // the arm id reference, the arm's kind byte, L, then L bytes of payload. An
 // arm this reader cannot name is unknown and the union reads None; a
-// retyped arm is a kind mismatch unless its kind widens; framing damage
-// inside L reads None and the parent reads on past L.
+// retyped arm refuses unless its kind widens. Its payload must consume L.
 def reset_union(cell:Value):
     cell.i = 0
     cell.tab = nil
@@ -1485,32 +1369,33 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
             if widens(kind, want):
                 // WIDENED AT AN ARM (§4): decoded at its own width
                 if n != kind_width(kind):
-                    rep.malformed = true
+                    return read_refuse(rep, "wire_damaged")
                 else:
                     let fv = new_slot(a)
                     if scalar_at(sr, fv.cell, a, a.k, kind):
                         cell.i = tag
                         cell.arm = fv
                         rep.widened++
+                    else:
+                        return false
             else:
-                rep.kind_mismatch++
+                return read_refuse(rep, "kind_mismatch")
         elif a.s == "tab":
             let payload = new_record(table_of(a.t))
-            body_at(sr, payload, true, false)
-            if r.st.count_refused:
+            cell.tab = payload
+            if not body_at(sr, payload, true, false):
                 return false
             if sr.off != sr.hi:
-                rep.malformed = true
-                cell.i = 0
-                cell.tab = nil
+                return read_refuse(rep, "wire_damaged")
             else:
                 cell.i = tag
                 cell.tab = payload
         else:
             cell.tab = nil
             if not arm_read(sr, cell, a, tag, n):
-                cell.i = 0
-                cell.arm = nil
+                return false
+            if sr.off != sr.hi:
+                return read_refuse(rep, "wire_damaged")
     r.off += n
     return true
 
@@ -1531,11 +1416,8 @@ class UnionShape : Shape
 
 let union_shape = register_shape(UnionShape { key: "union" })
 
-// THE MAP (§2.8; Go's mapField and mapKey): the key BEFORE the slot,
-// ascending against the last key that landed, a repeat last-wins whole and
-// counted duplicate, a descending key stopping the map as malformed, a key
-// past the bound dropping its entry as clamped, and a key KIND the
-// declaration does not name emptying the map for one kind_mismatch.
+// Map entries decode once, including their required key. Keys must be
+// strictly ascending; any key or value violation refuses the whole load.
 def key_is_string(k:FieldDescriptor) -> bool:
     return k.s == "text" or (k.s == "str" and not k.wide)
 
@@ -1558,140 +1440,47 @@ def map_key_order(k:FieldDescriptor, a:Value, b:Value) -> int:
         return 0
     return if ult(a.i, b.i): -1 else: 1
 
-def map_key_fits(k:FieldDescriptor, key:Value) -> bool:
-    if not key_is_string(k):
-        return true
-    return length(key.s) <= k.bound
-
-// map_key is THE KEY SCAN: it reads the key out of an entry's body before
-// the body decodes, the LAST occurrence winning, into a scratch report. It
-// returns the key, whether the body framed, whether the key arrived under a
-// kind the declaration does not name, and whether it widened.
-def map_key(body:Reader, k:FieldDescriptor, entry:Record) -> Value, bool, bool, bool:
-    let st = body.st
-    let scratch = LoadState { data: st.data, ids: st.ids, report: LoadReport {}, variable: st.variable, good: st.good, root: st.root, nodes: st.nodes, named: [], count_refused: false }
-    let scan = Reader { b: body.b, lo: body.lo, off: body.lo, hi: body.hi, st: scratch }
-    let cell = entry.fields[0].cell
-    let want = k.k
-    var kind_bad = false
-    var widened = false
-    while true:
-        let ref, ok = leb(scan)
-        if not ok:
-            return cell, false, kind_bad, widened
-        if ref == 0:
-            return cell, scan.off == scan.hi, kind_bad, widened
-        let id, named = rid(scan, ref)
-        if not named or not has(scan, 1):
-            return cell, false, kind_bad, widened
-        let kind = u8(scan)
-        if id == map_key_id:
-            if kind != want and widens(kind, want):
-                kind_bad = false
-                widened = true
-                if not scalar_at(scan, cell, k, want, kind):
-                    return cell, false, kind_bad, widened
-                continue
-            kind_bad = kind != want
-            if kind_bad:
-                if not skip(scan, kind):
-                    return cell, false, kind_bad, widened
-                continue
-            if key_is_string(k):
-                let n, nok = leb(scan)
-                if not nok or not has(scan, n) or not text_valid(scan.b, scan.off, n):
-                    return cell, false, kind_bad, widened
-                cell.s = substring(scan.b, scan.off, n)
-                scan.off += n
-            else:
-                let sk = if k.s == "enum": 7 else: k.k
-                if not scalar_at(scan, cell, k, sk, sk):
-                    return cell, false, kind_bad, widened
-            continue
-        if not skip(scan, kind):
-            return cell, false, kind_bad, widened
-    return cell, false, kind_bad, widened
-
 class MapShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
         let rep = r.st.report
         let n, ok = leb(r)
-        if not ok or not has(r, n):
-            rep.malformed = true
-            return false
-        let end = r.off + n
-        if n >= 2:
-            let ek = u8(r)
-            let count, good = leb(r)
-            if not good:
-                rep.malformed = true
-                r.off = end
-                return true
-            if ek != 13:
-                rep.kind_mismatch++
-                r.off = end
-                return true
-            let keep = active_retain_capture()
+        if not ok or n < 2 or not has(r, n):
+            return read_refuse(rep, "wire_damaged")
+        let sr = sub(r, n)
+        let ek = u8(sr)
+        let count, good = leb(sr)
+        if not good:
+            return read_refuse(rep, "wire_damaged")
+        if ek != 13:
+            return read_refuse(rep, "kind_mismatch")
+        if count < 0 or count > 0x7FFFFFFF:
+            return collection_cap(r)
+        let ed = table_of(sl.fd.t)
+        let k = ed.fields[0]
+        let keep = active_retain_capture()
+        sl.entries = []
+        var last = Value {}
+        var i = 0
+        while i < count:
+            let elem_len, lgood = leb(sr)
+            if not lgood or not has(sr, elem_len):
+                return read_refuse(rep, "wire_damaged")
+            let body = sub(sr, elem_len)
+            let decoded = new_record(ed)
+            push(sl.entries, Value { tab: decoded })
+            if not body_at(body, decoded, true, true) or body.off != body.hi:
+                return read_refuse(rep, "wire_damaged")
+            let entry_key = decoded.fields[0].cell
+            if i > 0 and map_key_order(k, last, entry_key) >= 0:
+                return read_refuse(rep, "wire_damaged")
             if keep:
-                keep.forget_built(sl)
-            for(sl.entries) old:
-                forget_value(old)
-            sl.entries = []
-            if count < 0 or count > 0x7FFFFFFF:
-                r.off = end
-                return collection_cap(r)
-            let sr = sub_to(r, end)
-            let ed = table_of(sl.fd.t)
-            let k = ed.fields[0]
-            var last = Value {}
-            var landed = false
-            var widened = false
-            var i = 0
-            while i < count:
-                i++
-                let elem_len, lgood = leb(sr)
-                if not lgood or not has(sr, elem_len):
-                    rep.malformed = true
-                    break
-                let body = sub(sr, elem_len)
-                sr.off += elem_len
-                let entry = new_record(ed)
-                let mkey, key_ok, kind_bad, entry_widened = map_key(body, k, entry)
-                if entry_widened and not widened:
-                    widened = true
-                    rep.widened++
-                if kind_bad:
-                    rep.kind_mismatch++
-                    sl.entries = []
-                    break
-                if not key_ok:
-                    rep.malformed = true
-                    break
-                if not map_key_fits(k, mkey):
-                    rep.clamped++
-                    continue
-                var order = -1
-                if landed:
-                    order = map_key_order(k, last, mkey)
-                if order > 0:
-                    rep.malformed = true
-                    break
-                let whole = Reader { b: body.b, lo: body.lo, off: body.lo, hi: body.hi, st: body.st }
-                let decoded = new_record(ed)
-                body_at(whole, decoded, true, true)
-                if keep:
-                    keep.built(sl, decoded)
-                if r.st.count_refused:
-                    return false
-                if order == 0:
-                    forget_value(sl.entries[length(sl.entries) - 1])
-                    sl.entries[length(sl.entries) - 1] = Value { tab: decoded }
-                    rep.duplicate++
-                    continue
-                push(sl.entries, Value { tab: decoded })
-                last = decoded.fields[0].cell
-                landed = true
-        r.off = end
+                keep.built(sl, decoded)
+            last = entry_key
+            sr.off += elem_len
+            i++
+        if sr.off != sr.hi:
+            return read_refuse(rep, "wire_damaged")
+        r.off += n
         return true
 
 let map_shape = register_shape(MapShape { key: "map" })
@@ -1712,8 +1501,8 @@ def mark_seen(rec:Record, sl:Slot, seen:[bool]):
             return
 
 // body_at decodes one table body (§3, §4; Go's bodyAt): unknown ids skip by
-// their kind and count, a kind the declaration widens decodes and counts, any
-// other foreign kind skips and counts, and framing damage stops this body.
+// their kind and count after wire validation. Widening decodes; an
+// incompatible known kind or any failed child stops the entire read.
 // nested: a body that is not the root's, where the node table's reserved id
 // is malformed (§3.1). entry: a map entry's body, whose widened key the map
 // counts once (§2.8).
@@ -1735,6 +1524,8 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             rep.malformed = true
             return false
         if ref == 0:
+            // An elided map key is its default (zero or empty text), as
+            // every other absent field. MapShape still checks strict order.
             let missing:[string] = []
             for(rec.fields) x, i:
                 if x.fd.required and not seen[i]:
@@ -1765,11 +1556,12 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             if nested:
                 rep.malformed = true
                 return false
-            if r.st.variable and rec.d.variable:
-                if not skip(r, kind):
-                    rep.malformed = true
-                    return false
-                continue
+            // Every reader knows this reserved field. The wire pass has
+            // already checked its records and graph, even for a value-only
+            // declaration; it is never an unknown field to retain.
+            if not skip(r, kind):
+                return read_refuse(rep, "wire_damaged")
+            continue
         let found = slot_by_id(rec, id)
         if not found:
             rep.unknown++
@@ -1787,7 +1579,7 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
                     // the read, named <Table>.0x<id>
                     if rep.non_finite_float == "":
                         rep.non_finite_float = rec.d.name + ".0x" + hex64(id)
-                    continue
+                    return read_refuse(rep, "non_finite_float")
                 retain.capture(rec, id, kind, payload, r.st.ids)
             continue
         let sl = found
@@ -1802,11 +1594,7 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
                     sl.present = true
                 mark_seen(rec, sl, seen)
                 continue
-            rep.kind_mismatch++
-            if not skip(r, kind):
-                rep.malformed = true
-                return false
-            continue
+            return read_refuse(rep, "kind_mismatch")
         mark_seen(rec, sl, seen)
         if f.s == "tab" or f.s == "union":
             // THE FIELD IS BEING READ AGAIN, whole (Go's discardsWhole and
@@ -1941,12 +1729,10 @@ def decode_variable(st:LoadState, root:Record, hi:int):
     var scanned = true
     if framed and present:
         records, scanned = scan_node_records(st, plo, phi)
-    if not framed and present:
-        rep.malformed = true
-    elif not scanned:
-        rep.malformed = true
-    else:
-        st.good = true
+    if not framed or not scanned:
+        read_refuse(rep, "wire_damaged")
+        return
+    st.good = true
     let place:[TableDescriptor] = []
     for(root.d.place_tables) name:
         push(place, table_of(name))
@@ -1975,16 +1761,23 @@ def decode_variable(st:LoadState, root:Record, hi:int):
     for(records) rec, i:
         let node = st.nodes[i]
         let nr = node.rec
-        if node.kind == 1 and nr and not st.count_refused:
-            body_at(reader(st, rec.lo, rec.hi), nr, true, false)
-    if not st.count_refused:
-        st.report.stopped = not body_at(reader(st, 1, hi), root, false, false)
+        if node.kind == 1 and nr:
+            let body = reader(st, rec.lo, rec.hi)
+            if not body_at(body, nr, true, false) or body.off != body.hi:
+                read_refuse(rep, "wire_damaged")
+                break
+    if not rep.refused:
+        if not body_at(reader(st, 1, hi), root, false, false):
+            read_refuse(rep, "wire_damaged")
     if length(st.nodes) > 0:
         // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph
         // the load stored is checked once every index has resolved
         if not st.report.malformed and load_cyclic(st, root):
             st.report.malformed = true
         unlink_unreached(st, root)
+    if rep.refused:
+        for(st.nodes) node:
+            release(node.rec)
 
 // load_cyclic reports whether the loaded graph holds a cycle. No writer
 // produces a cyclic wire, so a cycle anywhere refuses the load, one the root
@@ -2032,63 +1825,35 @@ def load_cyclic(st:LoadState, root:Record) -> bool:
         r.walk = 0
     return found
 
-// load_tolerant is THE TOLERANT READ, by its own name (docs/SPEC-TABLES.md
-// §6.5): it reads a form-1 wire at the root table named root into a fresh
-// Record, filling report (§3, §4). A form byte this reader does not carry is
-// REFUSED and nothing is decoded: it returns nil with report.refused set.
-// Damage is reported, never fatal, and the entire read is discarded. A
-// missing required field and a non-finite float refuse even here (§2.3,
-// §3.3): nil, with the field named in report.reason.
-def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
+// The first local refusal diagnostic, or the empty string after success.
+def strict_reason(rep:LoadReport) -> string:
+    if rep.refused or rep.stopped or rep.malformed or rep.damaged:
+        if rep.reason != "":
+            return rep.reason
+        return "wire_damaged"
+    return ""
+
+// The single read returns a complete value or nil. Unknowns and legal
+// widening preserve evolution; diagnostics do not enable partial values.
+def load(root:string, data:string, report:LoadReport) -> Record?:
+    read_reset(report)
+    if table_of(root).fixed:
+        if length(data) == 0:
+            read_refuse(report, "truncated")
+            return nil
+        if data[0] != 3:
+            read_refuse(report, if data[0] == 1: "previous_form" else: if data[0] == 2: "message_form_as_file" else: "newer_form")
+            return nil
+        return fixed_record_codec(root).read_fixed(data, report)
     let rec = load_walk(root, data, report)
     if report.non_finite_float != "":
         report.reason = "non_finite_float: " + report.non_finite_float
         release(rec)
         return nil
-    if report.malformed:
+    if report.refused or report.malformed or report.stopped:
         release(rec)
-        return nil
-    return rec
-
-// strict_reason is docs/SPEC-TABLES.md §6.5's one typed reason for a read,
-// in the order Go's TableReport.Err() applies: a non-finite float first
-// (§3.3), then a count past the int32 storage cap (§2.9), a form refusal,
-// the verdict's damage (wire_damaged), missing_required, malformed,
-// blob_shared, clamped and kind_mismatch; the empty string on a read whose
-// only counters are unknown or widened, which are not loss.
-def strict_reason(rep:LoadReport) -> string:
-    if rep.non_finite_float != "":
-        return "non_finite_float"
-    if rep.reason == "count_over_extent_cap":
-        return "count_over_extent_cap"
-    if rep.refused or rep.reason == "newer_form" or rep.reason == "message_form_as_file":
-        return "unknown_form"
-    if rep.reason == "integrity_mismatch":
-        return "integrity_mismatch"
-    if rep.damaged:
-        return "wire_damaged"
-    if rep.missing_required > 0:
-        return "missing_required"
-    if rep.malformed:
-        return "malformed"
-    if rep.blob_shared > 0:
-        return "blob_shared"
-    if rep.clamped > 0:
-        return "clamped"
-    if rep.kind_mismatch > 0:
-        return "kind_mismatch"
-    return ""
-
-// load is THE PLAIN NAME, and it is THE STRICT READ (docs/SPEC-TABLES.md
-// §6.5, as Go's RootLoad and C++'s Load are): it answers the record only for
-// a wire the strict read accepts, and nil otherwise, the report holding the
-// read's counters and strict_reason(report) the one typed reason. Unknown
-// and widened alone are not a refusal. load_tolerant keeps the recovered
-// record.
-def load(root:string, data:string, report:LoadReport) -> Record?:
-    let rec = load_tolerant(root, data, report)
-    if strict_reason(report) != "":
-        release(rec)
+        if report.reason == "":
+            read_refuse(report, "wire_damaged")
         return nil
     return rec
 
@@ -2173,6 +1938,237 @@ def release(root:Record?) -> void:
         for(found) n:
             push(work, n)
 
+// The declaration-free pass inspects every payload, including unknown fields
+// and records. An unknown value is skipped only after it is proved lawful.
+// The pointer graph is built from wire indices, never from the known subset.
+class WireCheck:
+    st:LoadState
+    edges:[int] = []
+    node_lo:int = -1
+    node_hi:int = -1
+    depth:int = 0
+
+let binary_max_depth = 128
+
+def wire_scalar(c:WireCheck, r:Reader, kind:int) -> bool:
+    let w = kind_width(kind)
+    if not has(r, w):
+        return read_refuse(c.st.report, "wire_damaged")
+    if kind == 1 and r.b[r.off] > 1:
+        return read_refuse(c.st.report, "wire_damaged")
+    if kind == 10 and not finite_f32_bits(read_uint32_le(r.b, r.off)):
+        return read_refuse(c.st.report, "non_finite_float")
+    if kind == 11 and not finite_f64_bits(read_int64_le(r.b, r.off)):
+        return read_refuse(c.st.report, "non_finite_float")
+    r.off += w
+    return true
+
+def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
+    if (kind >= 1 and kind <= 11) or (kind >= 18 and kind <= 29) or kind == 36:
+        return wire_scalar(c, r, kind)
+    if kind == 17 or kind == 30:
+        let v, ok = leb(r)
+        if not ok:
+            return read_refuse(c.st.report, "wire_damaged")
+        if kind == 17:
+            push(c.edges, v)
+        elif v < 0 or v > length(c.st.ids):
+            return read_refuse(c.st.report, "wire_damaged")
+        return true
+    if kind == 15:
+        let arm, ok = leb(r)
+        if not ok or arm < 0 or arm > length(c.st.ids):
+            return read_refuse(c.st.report, "wire_damaged")
+        if arm == 0:
+            return true
+        if not has(r, 1):
+            return read_refuse(c.st.report, "wire_damaged")
+        let ak = u8(r)
+        let n, framed = leb(r)
+        if not framed or not has(r, n):
+            return read_refuse(c.st.report, "wire_damaged")
+        if not wire_content(c, sub(r, n), ak):
+            return false
+        r.off += n
+        return true
+    if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33:
+        let n, ok = leb(r)
+        if not ok or not has(r, n):
+            return read_refuse(c.st.report, "wire_damaged")
+        if not wire_content(c, sub(r, n), kind):
+            return false
+        r.off += n
+        return true
+    return read_refuse(c.st.report, "wire_damaged")
+
+def wire_content(c:WireCheck, r:Reader, kind:int) -> bool:
+    let nested = kind >= 13 and kind <= 16
+    if nested:
+        if c.depth >= binary_max_depth:
+            return read_refuse(c.st.report, "depth_over_bound")
+        c.depth++
+    let ok = wire_content_at(c, r, kind)
+    if nested:
+        c.depth--
+    return ok
+
+// Structured kinds 13 through 16 add a level, including a nested union.
+// A scalar arm's length adds none. Pointer records start at depth zero.
+def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
+    if kind == 12:
+        if not text_valid(r.b, r.off, r.hi - r.off):
+            return read_refuse(c.st.report, "wire_damaged")
+        return true
+    if kind == 33:
+        let n = r.hi - r.off
+        if (n & 1) != 0 or not wide_valid(wide_units(r.b, r.off, n)):
+            return read_refuse(c.st.report, "wire_damaged")
+        return true
+    if kind == 31:
+        return true // escape is the one intentionally opaque wire kind
+    if kind == 32:
+        return r.off == r.hi or read_refuse(c.st.report, "wire_damaged")
+    if kind == 13:
+        return wire_body(c, r, false)
+    if kind == 14 or kind == 16:
+        if not has(r, 2):
+            return read_refuse(c.st.report, "wire_damaged")
+        let ek = u8(r)
+        let count, ok = leb(r)
+        if not ok:
+            return read_refuse(c.st.report, "wire_damaged")
+        if count < 0 or count > 0x7FFFFFFF:
+            return read_refuse(c.st.report, "count_over_extent_cap")
+        // Every encoded element consumes at least one byte. Refuse the
+        // impossible count before allocating a declaration-sized container.
+        if count > r.hi - r.off:
+            return read_refuse(c.st.report, "wire_damaged")
+        let keys:[int] = []
+        var i = 0
+        while i < count:
+            if kind == 16:
+                let key, good = leb(r)
+                if not good or key <= 0 or key > length(c.st.ids):
+                    return read_refuse(c.st.report, "wire_damaged")
+                for(keys) seen:
+                    if seen == key:
+                        return read_refuse(c.st.report, "wire_damaged")
+                push(keys, key)
+                let n, framed = leb(r)
+                if not framed or not has(r, n):
+                    return read_refuse(c.st.report, "wire_damaged")
+                if not wire_content(c, sub(r, n), ek):
+                    return false
+                r.off += n
+            elif not wire_payload(c, r, ek):
+                return false
+            i++
+        return r.off == r.hi or read_refuse(c.st.report, "wire_damaged")
+    if not wire_payload(c, r, kind):
+        return false
+    return r.off == r.hi or read_refuse(c.st.report, "wire_damaged")
+
+def wire_body(c:WireCheck, r:Reader, root:bool) -> bool:
+    let seen:[int] = []
+    while true:
+        let ref, ok = leb(r)
+        if not ok:
+            return read_refuse(c.st.report, "wire_damaged")
+        if ref == 0:
+            return r.off == r.hi or read_refuse(c.st.report, "wire_damaged")
+        let id, named = rid(r, ref)
+        if not named or not has(r, 1):
+            return read_refuse(c.st.report, "wire_damaged")
+        for(seen) old:
+            if old == id:
+                return read_refuse(c.st.report, "wire_damaged")
+        push(seen, id)
+        let kind = u8(r)
+        if id == build_version_id or id == message_vocabulary_id:
+            return read_refuse(c.st.report, "wire_damaged")
+        if id == node_table_id:
+            if not root or kind != 12:
+                return read_refuse(c.st.report, "wire_damaged")
+            let n, framed = leb(r)
+            if not framed or not has(r, n):
+                return read_refuse(c.st.report, "wire_damaged")
+            c.node_lo = r.off
+            c.node_hi = r.off + n
+            r.off += n
+        elif not wire_payload(c, r, kind):
+            return false
+    return false
+
+def wire_graph(c:WireCheck, children:[[int]], blobs:[bool]) -> bool:
+    let n = length(children)
+    let names:[int] = []
+    let marks:[int] = []
+    for(n):
+        push(names, 0)
+        push(marks, 0)
+    for(children) edges:
+        for(edges) index:
+            if index == 0:
+                continue
+            if index < 0 or index > n:
+                return read_refuse(c.st.report, "wire_damaged")
+            names[index - 1] = names[index - 1] + 1
+    for(blobs) blob, i:
+        if blob and names[i + 1] > 1:
+            return read_refuse(c.st.report, "blob_shared")
+    let stack:[int] = [0]
+    let next:[int] = [0]
+    marks[0] = 1
+    while length(stack) > 0:
+        let top = length(stack) - 1
+        let node = stack[top]
+        let edges = children[node]
+        if next[top] == length(edges):
+            marks[node] = 2
+            pop(stack)
+            pop(next)
+            continue
+        let index = edges[next[top]]
+        next[top] = next[top] + 1
+        if index == 0:
+            continue
+        let target = index - 1
+        if marks[target] == 1:
+            return read_refuse(c.st.report, "wire_damaged")
+        if marks[target] == 0:
+            marks[target] = 1
+            push(stack, target)
+            push(next, 0)
+    for(marks) mark:
+        if mark == 0:
+            return read_refuse(c.st.report, "wire_damaged")
+    return true
+
+def wire_check(st:LoadState, hi:int) -> bool:
+    let c = WireCheck { st: st }
+    if not wire_body(c, reader(st, 1, hi), true):
+        return false
+    let children:[[int]] = [c.edges]
+    let blobs:[bool] = []
+    if c.node_lo >= 0:
+        let records, ok = scan_node_records(st, c.node_lo, c.node_hi)
+        if not ok:
+            return read_refuse(st.report, "wire_damaged")
+        for(records) node:
+            c.edges = []
+            let blob = node.tid == string_blob_id or node.tid == bytes_blob_id
+            if blob:
+                let n = node.hi - node.lo
+                if n > 0xffffffff:
+                    return read_refuse(st.report, "blob_over_size_cap")
+                if node.tid == string_blob_id and not text_valid(st.data, node.lo, n):
+                    return read_refuse(st.report, "wire_damaged")
+            elif not wire_body(c, reader(st, node.lo, node.hi), false):
+                return false
+            push(blobs, blob)
+            push(children, c.edges)
+    return wire_graph(c, children, blobs)
+
 // load_walk is the framing walk both reads share (Go's decodeWalk).
 def load_walk(root:string, data:string, report:LoadReport) -> Record?:
     if length(data) < 1:
@@ -2187,6 +2183,9 @@ def load_walk(root:string, data:string, report:LoadReport) -> Record?:
         report.reason = if form == 2: "message_form_as_file" else: "newer_form"
         return nil
     let d = table_of(root)
+    if d.fixed:
+        read_refuse(report, "unknown_form")
+        return nil
     let wire, intact = wire_integrity_body(d, data)
     if not intact:
         report.malformed = true
@@ -2202,17 +2201,21 @@ def load_walk(root:string, data:string, report:LoadReport) -> Record?:
         report.stopped = true
         return rec
     let st = LoadState { data: wire, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
+    if not wire_check(st, first):
+        return nil
     let end, terminated = body_extent(st, first)
-    if terminated and end != first:
+    if not terminated or end != first:
         report.malformed = true
         report.damaged = true
         report.stopped = true
         return rec
     if not rec.d.variable:
-        report.stopped = not body_at(reader(st, 1, first), rec, false, false)
+        if not body_at(reader(st, 1, first), rec, false, false):
+            read_refuse(report, "wire_damaged")
         if not report.stopped and report.malformed:
             report.damaged = true
         if report.missing_required > 0:
+            release(rec)
             return nil
         return rec
     decode_variable(st, rec, first)
