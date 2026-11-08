@@ -64,7 +64,7 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	for _, tc := range []struct{ name, files, want string }{
 		{"cpp witness", "test/tables/versioning_numbers.cpp", "no| cpp"},
 		{"cpp header", "test/tables/floatnan.h", "no| cpp"},
-		{"shared schema", "test/tables/VNEW_floor.schema", "yes|cpp go c rust js cs java dart elixir goose lobster luau"},
+		{"shared schema", "test/tables/VNEW_floor.schema", "yes|cpp go c rust js cs java dart elixir goose lobster luau squirrel"},
 		{"documentation", "README.md", "no|"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -137,6 +137,12 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			want:  `no|./internal/codegen/goosetable|["goose"]`,
 		},
 		{
+			// the Squirrel row runs make targets only, so it names no package
+			name:  "squirrel card leg only",
+			files: "make/squirrel-cards.mk",
+			want:  `no||["squirrel"]`,
+		},
+		{
 			name:  "dart leg only",
 			files: "internal/codegen/darttable/darttable.go",
 			want:  `no|./internal/codegen/darttable|["dart"]`,
@@ -154,7 +160,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "broad compiler change",
 			files: "compiler/compiler.go",
-			want:  `yes|./...|["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust"]`,
+			want:  `yes|./...|["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]`,
 		},
 		{
 			name:  "lobster leg only",
