@@ -1840,6 +1840,9 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 	end
 	r.pos += 1
 	local first = true
+	-- a skipped object's keys are held to the layer's rule too: a repeated
+	-- key refuses in every object of the text (§16.2, §16.12)
+	local keys: { [string]: boolean }? = nil
 	while true do
 		local c = peek(r)
 		if c == close then
@@ -1861,6 +1864,14 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 				return false
 			end
 			r.pos += 1
+			if keys == nil then
+				keys = { [key] = true }
+			elseif keys[key] then
+				r.bad = true -- malformed: a repeated key
+				return false
+			else
+				keys[key] = true
+			end
 			if #key > 0 and string.byte(key, 1) == 38 and r.graph ~= nil then
 				if not first or not skippedAmpersand(r, key) then
 					r.bad = true
@@ -2927,6 +2938,9 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 	end
 	local want = elementShape(e)
 	local seen: { [number]: boolean } = {}
+	-- the keys that name no slot (an unknown variant, `"None"`): a repeat of
+	-- one is a repeated key like any other, and refuses (§16.2)
+	local unknownSeen: { [string]: boolean }? = nil
 	while true do
 		local c = peek(r)
 		if c == 125 then
@@ -2963,6 +2977,13 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 				r.report.repeatedKey += 1
 			end
 			seen[at] = true
+		elseif unknownSeen == nil then
+			unknownSeen = { [name] = true }
+		elseif unknownSeen[name] then
+			r.bad = true -- malformed: a repeated key
+			return false
+		else
+			unknownSeen[name] = true
 		end
 		if at < 0 then
 			r.report.unknown += 1
@@ -3214,6 +3235,9 @@ end
 readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: string?): boolean
 	local keys = keyIndex(d)
 	local seen: { [number]: boolean } = {}
+	-- the keys no field takes: a repeat of one is a repeated key like any
+	-- other, and refuses (§16.2); a field's key repeats through seen
+	local unknownSeen: { [string]: boolean }? = nil
 	local first = firstKey
 	while true do
 		local key: string
@@ -3247,6 +3271,14 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 		end
 		local i = keys[key]
 		if i == nil then
+			if unknownSeen == nil then
+				unknownSeen = { [key] = true }
+			elseif unknownSeen[key] then
+				r.bad = true -- malformed: a repeated key
+				return false
+			else
+				unknownSeen[key] = true
+			end
 			r.report.unknown += 1
 			if not skipValue(r, depth + 1) then
 				return false
