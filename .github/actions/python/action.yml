@@ -23,7 +23,11 @@ runs:
         lock=$(shasum -a 256 make/python-mypy.lock | cut -c1-16)
         echo "floor=$floor" >> "$GITHUB_OUTPUT"
         echo "current=$current" >> "$GITHUB_OUTPUT"
-        echo "key=python-$floor-$current-$(echo "$sums" | shasum -a 256 | cut -c1-16)-$lock" >> "$GITHUB_OUTPUT"
+        # The built CPython and its scripts carry the absolute dist/ path they
+        # were built under, so the key names the workspace: a fleet runner's
+        # workspace differs from a hosted one's and from the next runner's.
+        ws=$(printf %s "$GITHUB_WORKSPACE" | shasum -a 256 | cut -c1-12)
+        echo "key=python-$floor-$current-$(echo "$sums" | shasum -a 256 | cut -c1-16)-$lock-$ws" >> "$GITHUB_OUTPUT"
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       id: restore
       with:

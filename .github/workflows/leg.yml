@@ -40,13 +40,17 @@ jobs:
   # emits the matrix from the registry; the second fans out one run per row.
   # No inputs come from the caller: the matrix is the registry, full stop.
   leg-matrix:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -62,8 +66,11 @@ jobs:
     needs: leg-matrix
     if: needs.leg-matrix.outputs.matrix != '[]'
     name: leg (${{ matrix.lang }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.leg-matrix.outputs.matrix) }}
@@ -79,9 +86,11 @@ jobs:
         if: matrix.runtime != ''
         run: |
           tag=$(printenv "${{ matrix.runtime_tag }}")
+          rm -rf "../${{ matrix.runtime }}"
           git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -95,7 +104,7 @@ jobs:
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.dotnet != ''
+        if: (matrix.dotnet != '') && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -137,8 +146,10 @@ jobs:
         if: matrix.lobster != ''
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
           make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
 
       # THE SQUIRREL STEP, as ci-full.yml's conformance job has it: the pinned
@@ -150,9 +161,9 @@ jobs:
         if: matrix.squirrel != ''
         run: |
           make dist-squirrel
-          mkdir -p "$HOME/.local/bin"
-          ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$HOME/.local/bin/sq"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$RUNNER_TEMP/bin/sq"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       # THE LUA STEP, as ci-full.yml's conformance job has it: the pinned
       # PUC-Rio interpreter is built from source by `make dist-lua` at the
@@ -162,9 +173,9 @@ jobs:
         if: matrix.lua != ''
         run: |
           make dist-lua
-          mkdir -p "$HOME/.local/bin"
-          ln -sf "$PWD/dist/lua-${{ matrix.lua }}/src/lua" "$HOME/.local/bin/lua"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -sf "$PWD/dist/lua-${{ matrix.lua }}/src/lua" "$RUNNER_TEMP/bin/lua"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       # THE LUAU PIN, as ci-full.yml's conformance job installs it: make/luau.mk's
       # dist-luau, the sha256 refused before anything is unpacked, into the
