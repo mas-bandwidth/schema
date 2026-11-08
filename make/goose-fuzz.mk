@@ -140,23 +140,26 @@ schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 		echo "NEGATIVE CONTROL FAILED: the corpus went red, but not on wire-non-finite-float alone"; exit 1; }
 	@echo "goose hostile-corpus negative control: a load that lands a NaN reds wire-non-finite-float, and only it"
 
-# THE TEXT-LIST TOTAL's control (docs/SPEC-TABLES.md §2.13): the total taken
-# out of the generated load, so a list past it keeps every element; the corpus
-# must go red on the two wire rows past a total, wire-text-total-past and
-# wire-text-total-and-count, and on nothing else.
+# THE TEXT-LIST TOTAL's control (docs/SPEC-TABLES.md §2.13): the total and the
+# list's count bound taken out of the generated load, so a list past either
+# keeps every element and the strict read lands it; the corpus must go red on
+# the two wire rows past a total, wire-text-total-past and
+# wire-text-total-and-count, and on nothing else. Both are taken out because
+# wire-text-total-and-count is past its [..4] bound as well as its total, and
+# under strict-only (docs/plans/strict-only.md) either refuses it.
 .PHONY: schema-goose-runs-hostile-corpus-total-negative-control
 schema-goose-runs-hostile-corpus-total-negative-control: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@mkdir -p $(GOOSE_FUZZ_DIR)
-	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|if d.text_total > 0 {|if d.text_total < 0 { // SABOTAGED: the total keeps nothing out|' \
+	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|if d.text_total > 0 {|if d.text_total < 0 { // SABOTAGED: the total keeps nothing out|;s|} else if count > d.bound as! u64 {|} else if count > d.bound as! u64 \&\& false { // SABOTAGED: the bound keeps nothing out|' \
 		sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile-total-plant \
 		>$(GOOSE_FUZZ_DIR)/hostile-total-plant.log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \
-		echo "NEGATIVE CONTROL FAILED: a load that ignores a text list's total left the corpus green"; exit 1; fi
+		echo "NEGATIVE CONTROL FAILED: a load that ignores a text list's total and bound left the corpus green"; exit 1; fi
 	@test "$$(grep -c '^FAIL ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log)" = 2 && grep -q '^FAIL wire-text-total-past: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log && grep -q '^FAIL wire-text-total-and-count: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log || { \
 		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \
 		echo "NEGATIVE CONTROL FAILED: the corpus went red, but not on the two wire rows past a total alone"; exit 1; }
-	@echo "goose hostile-corpus total negative control: a load that ignores the total reds wire-text-total-past and wire-text-total-and-count, and only them"
+	@echo "goose hostile-corpus total negative control: a load that ignores the total and the bound reds wire-text-total-past and wire-text-total-and-count, and only them"
 
 # test-goose runs both (make/goose.mk) and their controls, which are seconds
 # beside them; the controls run in group goose-wire of the controls leg too.
