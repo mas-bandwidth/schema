@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -18,10 +19,12 @@ const (
 	luaFixed49Values    = "TestLuaFixedProofSuiteValues"
 	luaFixed49Negative  = "TestLuaFixedProofSuiteNegativeControl"
 	luaFixed49Evolution = "TestLuaFixedProofEvolution"
+	luaFixedCutProof    = "internal/codegen/luatable/fixed_evolution_proof_test.go: TestLuaFixedEvolution"
 )
 
 // luaFixed49CutRows are the eight fixed rows the cut rewrites; they are
-// recorded by their own card and are never marked done here.
+// recorded by their own card (lua-4), each citing its own per-row proof in
+// luaFixedCutProofFile and never the 49-row suite.
 var luaFixed49CutRows = []string{
 	"numeric-evolution",
 	"reports",
@@ -144,6 +147,7 @@ func validateLuaFixed49Overlay(root, overlay string) error {
 	}
 
 	rows := map[string]string{}
+	seenFixed := map[string]bool{}
 	var fixedIDs []string
 	for line := range strings.SplitSeq(overlay, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -157,11 +161,24 @@ func validateLuaFixed49Overlay(root, overlay string) error {
 		if !strings.HasPrefix(m[1], luaFixed49IDPrefix) {
 			continue
 		}
-		if _, dup := rows[m[1]]; dup {
+		if seenFixed[m[1]] {
 			return fmt.Errorf("duplicate overlay row %s", m[1])
 		}
-		rows[m[1]] = trimmed
+		seenFixed[m[1]] = true
 		fixedIDs = append(fixedIDs, m[1])
+		if slices.Contains(luaFixed49CutRows, strings.TrimPrefix(m[1], luaFixed49IDPrefix)) {
+			if !strings.Contains(trimmed, luaFixedCutProof) || strings.Contains(trimmed, luaFixed49SuiteFile) {
+				return fmt.Errorf("cut row %s must cite its own proof (%s...) and not the 49-row suite", m[1], luaFixedCutProof)
+			}
+			if st := squirrelOverlayStateRx.FindStringSubmatch(trimmed); st == nil || st[1] != "done" {
+				return fmt.Errorf("%s: a recorded cut row must be :state :done", m[1])
+			}
+			if rev := squirrelOverlayRevRx.FindStringSubmatch(trimmed); rev == nil || !isFortyHexSHA(rev[1]) {
+				return fmt.Errorf("%s: :done row must carry a 40-hex :tested-revision", m[1])
+			}
+			continue
+		}
+		rows[m[1]] = trimmed
 	}
 
 	if len(rows) != 49 {
@@ -169,12 +186,6 @@ func validateLuaFixed49Overlay(root, overlay string) error {
 	}
 	if !sort.StringsAreSorted(fixedIDs) {
 		return fmt.Errorf("overlay %s rows are not sorted by :id", luaFixed49IDPrefix)
-	}
-
-	for _, cut := range luaFixed49CutRows {
-		if _, ok := rows[luaFixed49IDPrefix+cut]; ok {
-			return fmt.Errorf("cut row %s must not be recorded here", cut)
-		}
 	}
 
 	for id := range rows {
