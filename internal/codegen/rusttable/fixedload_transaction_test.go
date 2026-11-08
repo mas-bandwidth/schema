@@ -36,7 +36,7 @@ func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
         let mut values = vec![poison(); 2];
         let mut report = TableFixedReport::default();
         let got = root_fixed_load(&mut values, data, &mut plan, &mut remap, &mut report);
-        if got.is_some() || !report.malformed || report.refused {
+        if got.is_some() || !report.damaged || report.refused {
             failures.push(format!("{name}: expected malformed without usable records"));
         }
         if values.iter().any(|v| v.a != 0 || v.b != 0 || v.inner.n != 0 || v.inner.ok || v.f != 0.0) {
@@ -49,7 +49,7 @@ func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
         let mut values = vec![poison(); 2];
         let mut report = TableFixedReport::default();
         let got = root_fixed_load(&mut values, &[form], &mut plan, &mut remap, &mut report);
-        if got.is_some() || report.malformed || !report.refused || report.reason != reason {
+        if got.is_some() || report.damaged || !report.refused || report.reason != reason {
             failures.push(format!("form{form}: expected named refusal"));
         }
         if values.iter().any(|v| v.a != 77 || v.b != 77 || v.inner.n != 77 || !v.inner.ok || v.f != 0.0) {
@@ -58,9 +58,9 @@ func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
     }
     let mut values = vec![RootRow::default(); 2];
     let mut report = TableFixedReport::default();
-    report.malformed = true;
+    report.damaged = true;
     if root_fixed_load(&mut values, &valid, &mut plan, &mut remap, &mut report) != Some(2)
-        || values[0].a != 5 || values[1].a != 6 || !report.malformed {
+        || values[0].a != 5 || values[1].a != 6 || !report.damaged {
         failures.push("reused report: old damage changed this valid read".to_string());
     }
     if failures.is_empty() { println!("FIXED_TRANSACTION ok"); }
