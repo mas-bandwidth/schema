@@ -1,0 +1,152 @@
+# .github/go-test-rows.txt — the table tools/gotestrows cuts ci-fast's
+# go-test-touched selection by (ci-fast.yml, `plan`'s rows step).
+#
+#   weight <package> <short seconds> <plain seconds>
+#       the package's measured `go test` wall on a fleet runner, alone in its
+#       job: `go test -v -count=1 -short` (a broad diff's run) and plain `go
+#       test` (a touched package's run). Light packages are packed into rows
+#       under a budget by these numbers; a package not named here weighs 10.
+#   split <package> <top-level test regexp>
+#       that package runs as one row per split line (-run the pattern) plus a
+#       complement row that -skips them all, so every test runs exactly once
+#       and a new test lands in the complement.
+#
+# MEASURED 2026-11-08 on the schema fleet runners, one package per job, runs
+# 42492071587 and 42493376287 (rowan/ci-measure-gotest, never merged). The
+# numbers include compiling the test binary on a warm build cache. Hosts
+# differ by up to 3x (vision runs slowest); the numbers are as measured,
+# whichever host took the job. A row that goes past the two-minute cap is
+# re-measured and re-split here: the weights only place packages, they never
+# decide whether one runs.
+
+weight ./bench/corpus 13 2
+weight ./bench/paired 3 4
+weight ./bench/tools 20 13
+weight ./bench/tools/realpacket-gen 6 2
+weight ./bench/tools/shapegate 0 0
+weight ./cmd/schema 14 76
+weight ./compiler 391 61
+weight ./internal/ast 0 0
+weight ./internal/baseline 5 18
+weight ./internal/check 40 15
+weight ./internal/ci 120 120
+weight ./internal/ci/hostilecorpus 12 1
+weight ./internal/codegen/c 1 0
+weight ./internal/codegen/ccommon 0 0
+weight ./internal/codegen/cpp 3 1
+weight ./internal/codegen/cpptable 55 229
+weight ./internal/codegen/cqualify 2 0
+weight ./internal/codegen/csharp 2 1
+weight ./internal/codegen/cstable 26 9
+weight ./internal/codegen/ctable 15 16
+weight ./internal/codegen/dart 1 4
+weight ./internal/codegen/darttable 8 10
+weight ./internal/codegen/elixir 1 2
+weight ./internal/codegen/elixirtable 79 77
+weight ./internal/codegen/elixirtable/fixedclosure 0 0
+weight ./internal/codegen/golang 10 1
+weight ./internal/codegen/goose 1 0
+weight ./internal/codegen/goose/gooserun 0 0
+weight ./internal/codegen/goosetable 135 135
+weight ./internal/codegen/gotable 192 316
+weight ./internal/codegen/gotable/fuzzunit 36 100
+weight ./internal/codegen/java 2 1
+weight ./internal/codegen/javatable 64 162
+weight ./internal/codegen/js 2 2
+weight ./internal/codegen/jstable 4 2
+weight ./internal/codegen/lobster 2 2
+weight ./internal/codegen/lobster/lobsterrun 0 0
+weight ./internal/codegen/lobstertable 8 9
+weight ./internal/codegen/lua 0 0
+weight ./internal/codegen/lua/luarun 0 0
+weight ./internal/codegen/luatable 20 214
+weight ./internal/codegen/luau 0 0
+weight ./internal/codegen/luau/luaurun 0 0
+weight ./internal/codegen/luautable 38 168
+weight ./internal/codegen/moo 0 0
+weight ./internal/codegen/moo/moorun 0 0
+weight ./internal/codegen/mootable 2 2
+weight ./internal/codegen/python 0 0
+weight ./internal/codegen/python/pyrun 0 0
+weight ./internal/codegen/rust 7 7
+weight ./internal/codegen/rusttable 100 322
+weight ./internal/codegen/squirrel 1 1
+weight ./internal/codegen/squirrel/sqrun 0 0
+weight ./internal/codegen/squirreltable 17 3
+weight ./internal/docgate 19 12
+weight ./internal/fixedproof 2 2
+weight ./internal/fixedvector 1 1
+weight ./internal/format 0 0
+weight ./internal/fuzz 34 206
+weight ./internal/goldens 98 108
+weight ./internal/goname 1 1
+weight ./internal/jsontestsuite 0 0
+weight ./internal/listwalk 1 1
+weight ./internal/lockfile 4 4
+weight ./internal/mapwalk 19 1
+weight ./internal/memceiling 1 1
+weight ./internal/parser 0 0
+weight ./internal/publicapi 0 0
+weight ./internal/rfc3339 1 1
+weight ./internal/scanner 0 0
+weight ./internal/slowtest 1 1
+weight ./internal/tablecook 6 6
+weight ./internal/tablenames 1 1
+weight ./internal/tablepack 1 2
+weight ./internal/tabletext 17 9
+weight ./internal/tablewire 1 1
+weight ./internal/version 0 0
+weight ./internal/viewlisting 3 3
+weight ./ir 2 2
+weight ./tables/goruntime 0 0
+weight ./test/conformance/goose/wirefuzzdispatch 0 0
+weight ./test/conformance/harness 14 17
+weight ./test/conformance/lobster/hostile 2 2
+weight ./test/conformance/lobster/wirefuzzhost 0 0
+weight ./test/cookgen 0 0
+weight ./test/cs-hostile/gen 0 0
+weight ./test/elixir-view/emit 0 0
+weight ./test/go-hostile/gen 0 0
+weight ./test/packet-text/harness 0 0
+weight ./test/packet-text/moo/driver 0 0
+weight ./test/table-base64/harness 0 0
+weight ./test/vocabgen 0 0
+weight ./tools/agentsmap 0 0
+weight ./tools/cellmerge 1 1
+weight ./tools/fixedtwin 2 1
+weight ./tools/hostilecorpus 1 1
+weight ./tools/hostilecorpusexec 1 1
+weight ./tools/matrix 0 0
+weight ./tools/negativecontrols 0 0
+weight ./tools/pgroup 1 1
+weight ./tools/releasediff 1 1
+weight ./tools/releasetag 1 1
+weight ./tools/roadmap 2 2
+weight ./tools/roadmap/cmd/roadmap-handtext 0 0
+weight ./tools/sabotage 1 1
+weight ./tools/slowgatescan 5 1
+weight ./tools/treelock 1 1
+weight ./working 0 0
+
+# the packages whose single tests outrun a packed row
+split ./internal/codegen/gotable ^TestGoSharedRuntimeCoversTheCorpora$
+split ./internal/codegen/rusttable ^TestRetainsAndWidensOnEveryRootRust$
+split ./internal/codegen/elixirtable ^TestMessageFormBatchElixir$
+split ./internal/codegen/cpptable ^TestMessageFormSkipDepthCPP$
+split ./internal/codegen/cpptable ^TestCyclicWireIsRefusedCPP$
+split ./internal/codegen/cpptable ^TestDamageDiscardsTheWholeLoadCPP$
+split ./internal/codegen/cpptable ^TestRefusedLoadsHandBackNothingCPP$
+split ./internal/codegen/cpptable ^TestPointerNamingAnOpenNodeIsRefusedCPP$
+split ./internal/codegen/cpptable ^TestDiamondChainLoadsLinearCPP$
+split ./internal/ci ^TestEveryRunPatternMatchesATest$
+split ./internal/codegen/goosetable ^TestGooseEveryPackageNameIsClaimed$
+split ./internal/codegen/goosetable ^TestGooseTableWireMatchesTheCorpus$
+split ./internal/codegen/goosetable ^TestGooseTableDescriptorsLoad$
+split ./internal/codegen/luautable ^TestLuauTableDescriptorsLoad$
+split ./internal/codegen/luautable ^TestLuauJsonAgreesWithTheCorpus$
+split ./internal/codegen/luautable ^(TestLuauTableLoadRoundTripsEveryCleanInstance|TestLuauTableLoadMatchesTheReports)$
+split ./compiler ^TestRefusalUnchangedCatchesConstructKeyedLeak$
+split ./compiler ^TestJavaGeneratesEveryManifestUnit$
+split ./compiler ^TestRefusalUnchangedIgnoresTrivialEmitterChange$
+split ./compiler ^(TestUnboundedTextRefusedOffGo|TestStringArraysRefusedOffGo)$
+split ./internal/goldens ^TestGeneratedTextNamesNoMachine$
