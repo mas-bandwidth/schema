@@ -154,7 +154,7 @@ export const TableFixedRefusal = Object.freeze({
   // THE ONE READ REFUSES WHAT IT USED TO CLAMP (docs/FIXED-FORM-ALGORITHM.md
   // §4.5, §4.6, §5.4; docs/plans/strict-only.md): a count or a length past
   // the plan's bound, a ranged scalar off the plan's end or a forged ordinal or
-  // tag, and a bool or present byte other than 0 or 1. Nothing is clamped.
+  // tag, and a bool or present byte other than 0 or 1. Nothing clamps.
   CountOverBound: 20,
   LengthOverBound: 21,
   OutOfRange: 22,

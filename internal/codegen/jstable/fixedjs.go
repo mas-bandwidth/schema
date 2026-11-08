@@ -782,7 +782,7 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 // emitDecodeCount is §3.4's `count` op, inline: a count or a length is read out
 // of the image and held to THIS reader's own bound, and one past it REFUSES
 // count_over_bound or length_over_bound (docs/FIXED-FORM-ALGORITHM.md §4.5):
-// nothing is clamped.
+// nothing clamps.
 //
 // THE COMPILED PLAN'S OWN count op has already done this — OP_COUNT and
 // OP_TEXT refuse on the way into the image — so on that path this never
