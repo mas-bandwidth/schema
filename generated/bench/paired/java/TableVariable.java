@@ -17,7 +17,7 @@ public final class TableVariable {
     // A FLOAT IS FINITE ON EVERY TABLE WIRE (docs/SPEC-TABLES.md §3.3, the
     // packet wire's own rule): a read that meets a NaN or an
     // infinity in a float's raw bits refuses as non_finite_float, the
-    // tolerant load too, naming the first such field, and lands nothing.
+    // strict load, naming the first such field, and lands nothing.
     // Every finite float32 widens exactly through the ordinary conversion.
     public static void nonFiniteFloat(Report report, String field) {
         if (report.reason == null) {
@@ -42,17 +42,12 @@ public final class TableVariable {
     public static final long BUILD_ID = 0xFFFFFFFFFFFFFFFEL;
     public static final long VOCAB_ID = 0xFFFFFFFFFFFFFFFDL;
 
-    // The report counters of §4: unknown, kind mismatch, clamp, malformed and
-    // widened. A refusal (an unknown form byte) moves none of them. Retained and
+    // The report counters of §4: unknown and widened. Retained and
     // retain_lost (§6.6) accumulate across a retained load and save.
     public static final class Report {
         public int unknown;
-        public int kindMismatch;
-        public int clamped;
-        public boolean malformed;
+        public boolean damaged;
         public int widened;
-        public int duplicate;
-        public int blobShared;
         public int missingRequired;
         public boolean refused;
         public String reason;
@@ -69,12 +64,8 @@ public final class TableVariable {
         // call after call (a reused Measure) without a fresh object per call.
         public void reset() {
             unknown = 0;
-            kindMismatch = 0;
-            clamped = 0;
-            malformed = false;
+            damaged = false;
             widened = 0;
-            duplicate = 0;
-            blobShared = 0;
             missingRequired = 0;
             refused = false;
             reason = null;
@@ -83,6 +74,20 @@ public final class TableVariable {
             nodeRecs = null;
             nodesGood = false;
             rootTypeId = 0;
+        }
+
+        public void refuse(String why) {
+            if (!refused) {
+                refused = true;
+                reason = why;
+            }
+        }
+
+        public void refuse(String why, String field) {
+            if (!refused) {
+                refused = true;
+                reason = (field != null && !field.isEmpty()) ? (why + ": " + field) : why;
+            }
         }
     }
 
@@ -158,7 +163,7 @@ public final class TableVariable {
         // element kind, against the ENCLOSING body rather than the
         // collection's own L, as the engine reads it (internal/tablewire
         // arrayBody, §3, §4): a count that runs past L is still a count, judged
-        // with the kind byte and clamped to the bound, and the elements after
+        // with the kind byte and bounded to the limit, and the elements after
         // it then find no bytes. An unbounded list's count is read inside its
         // own L (the count refusal, §2.9).
         public long count(int outer) {
@@ -187,7 +192,7 @@ public final class TableVariable {
         }
 
         // leb reads one canonical unsigned LEB128. A non-minimal spelling or a
-        // value past 64 bits is malformed (§3). On damage the cursor stays
+        // value past 64 bits is damaged (§3). On damage the cursor stays
         // where the spelling began, exactly as the oracle's read does, so the
         // caller's "body ended at its own L" check measures the same spot.
         public long leb() {
@@ -197,14 +202,14 @@ public final class TableVariable {
             for (int i = 0; i < 10; i++) {
                 if (!has(1)) {
                     off = start;
-                    report.malformed = true;
+                    report.damaged = true;
                     fail = true;
                     return 0;
                 }
                 int b = get8();
                 if (shift == 63 && (b & 0xfe) != 0) {
                     off = start;
-                    report.malformed = true;
+                    report.damaged = true;
                     fail = true;
                     return 0;
                 }
@@ -212,7 +217,7 @@ public final class TableVariable {
                 if ((b & 0x80) == 0) {
                     if (i > 0 && b == 0) {
                         off = start;
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                         return 0;
                     }
@@ -221,7 +226,7 @@ public final class TableVariable {
                 shift += 7;
             }
             off = start;
-            report.malformed = true;
+            report.damaged = true;
             fail = true;
             return 0;
         }
@@ -233,7 +238,7 @@ public final class TableVariable {
         public long resolve(long ref) {
             int count = ids != null ? ids.length : (buf.length - 8 - idBase) >>> 3;
             if (ref <= 0 || ref > count) {
-                report.malformed = true;
+                report.damaged = true;
                 fail = true;
                 return -1;
             }
@@ -248,7 +253,7 @@ public final class TableVariable {
         public Reader body() {
             long n = leb();
             if (fail || !has((int) n)) {
-                report.malformed = true;
+                report.damaged = true;
                 fail = true;
                 return null;
             }
@@ -268,7 +273,7 @@ public final class TableVariable {
         public int bodyEnd() {
             long n = leb();
             if (fail || !has((int) n)) {
-                report.malformed = true;
+                report.damaged = true;
                 fail = true;
                 return -1;
             }
@@ -288,7 +293,7 @@ public final class TableVariable {
                     if (has(1)) {
                         off += 1;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -299,7 +304,7 @@ public final class TableVariable {
                     if (has(2)) {
                         off += 2;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -311,7 +316,7 @@ public final class TableVariable {
                     if (has(4)) {
                         off += 4;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -324,7 +329,7 @@ public final class TableVariable {
                     if (has(8)) {
                         off += 8;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -335,7 +340,7 @@ public final class TableVariable {
                     if (has(16)) {
                         off += 16;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         fail = true;
                     }
                     break;
@@ -355,7 +360,7 @@ public final class TableVariable {
                         if (!fail && has((int) n)) {
                             off += (int) n;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             fail = true;
                         }
                         break;
@@ -371,7 +376,7 @@ public final class TableVariable {
                         long arm = leb();
                         if (!fail && arm != 0) {
                             if (!has(1)) {
-                                report.malformed = true;
+                                report.damaged = true;
                                 fail = true;
                             } else {
                                 get8();
@@ -379,7 +384,7 @@ public final class TableVariable {
                                 if (!fail && has((int) n)) {
                                     off += (int) n;
                                 } else {
-                                    report.malformed = true;
+                                    report.damaged = true;
                                     fail = true;
                                 }
                             }
@@ -387,7 +392,7 @@ public final class TableVariable {
                         break;
                     }
                 default:
-                    report.malformed = true;
+                    report.damaged = true;
                     fail = true;
             }
         }
@@ -695,7 +700,7 @@ public final class TableVariable {
     // A form byte this build does not carry is a refusal, not damage. The
     // framing checks are STRICT here (§3): a table that carries one id twice,
     // or a body whose terminator does not land at the table's first entry —
-    // bytes no field claims — is malformed for the whole wire, and open says
+    // bytes no field claims — is damaged for the whole wire, and open says
     // so before any value is read.
     public static Reader open(byte[] data, Report report) {
         if (report == null) {
@@ -718,12 +723,12 @@ public final class TableVariable {
     }
 
     // trailerBase is open's every check, made IN PLACE on the caller's bytes:
-    // the form byte, the id table's count and its duplicate ids, and the
+    // the form byte, the id table's count and its repeated ids, and the
     // body's extent (§3). It answers the offset of the table's first entry, or
     // -1 with the report moved exactly as open moves it, and allocates nothing.
     public static int trailerBase(byte[] data, Report report) {
         if (data.length < 1) {
-            report.malformed = true;
+            report.damaged = true;
             return -1;
         }
         int form = data[0] & 0xff;
@@ -734,20 +739,20 @@ public final class TableVariable {
             // message_form_as_file for a batch (form 2) handed to a file root,
             // newer_form for any other byte. A widening is not a refusal: the
             // widened counter counts it and reason stays null (§4.1). Damage
-            // is the malformed flag and names no reason.
+            // is the damaged flag and names no reason.
             report.refused = true;
             report.reason = form == 2 ? "message_form_as_file" : "newer_form";
             return -1;
         }
         if (data.length < 9) {
-            report.malformed = true;
+            report.damaged = true;
             return -1;
         }
         long count = u64(data, data.length - 8);
-        // §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+        // §3, THE DISTINCTNESS CHECK: an entry count above 4096 is damaged
         // whatever the buffer would hold
         if (count < 0 || count > 4096 || count > (data.length - 9) / 8) {
-            report.malformed = true;
+            report.damaged = true;
             return -1;
         }
         int base = data.length - 8 - (int) count * 8;
@@ -755,14 +760,14 @@ public final class TableVariable {
             long id = u64(data, base + i * 8);
             for (int j = 0; j < i; j++) {
                 if (u64(data, base + j * 8) == id) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return -1;
                 }
             }
         }
         int end = bodyExtent(data, (int) count, 1, base);
         if (end >= 0 && end != base) {
-            report.malformed = true;
+            report.damaged = true;
             return -1;
         }
         return base;
@@ -809,7 +814,7 @@ public final class TableVariable {
             return java.util.Arrays.copyOf(data, data.length - 4);
         }
         if (report != null) {
-            report.malformed = true;
+            report.damaged = true;
             report.reason = "integrity_mismatch";
         }
         return null;
@@ -1095,38 +1100,38 @@ public final class TableVariable {
 
     // nodes reads a node-table field's payload (§3.1) and returns its records.
     // A type id this reader cannot name keeps its index and counts unknown;
-    // a text blob whose content is not text counts malformed; in both, the
+    // a text blob whose content is not text counts damaged; in both, the
     // record resolves to null (its typeId is cleared) and every pointer naming
     // it reads null (§3.1, §4). Structural damage — a bad reference, a size
     // past the field, a declared count the scan does not match, or bytes left
-    // over — is malformed for the whole table and answers null.
+    // over — is damaged for the whole table and answers null.
     public static NodeRecord[] nodes(Reader r, boolean retain) {
         long declared = r.leb();
         if (r.fail || declared < 0 || declared > 0x7fffffffL) {
-            r.report.malformed = true;
+            r.report.damaged = true;
             return null;
         }
         // The node table is WHOLE or it is NOTHING (docs/SPEC-TABLES.md §3.1):
         // the records are scanned structurally FIRST, and a record that cannot
         // be read, a node_count the scan does not match, or bytes left over is
-        // malformed for the whole table with NO unknown counted — the oracle's
+        // damaged for the whole table with NO unknown counted — the oracle's
         // scanNodeRecords returns no records on a bad scan and its unknown
         // count runs only past a whole one (internal/tablewire/decodenodes.go).
         java.util.ArrayList<NodeRecord> list = new java.util.ArrayList<>();
         while (r.off < r.limit) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return null;
             }
             long typeId = r.resolve(ref);
             if (r.fail) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return null;
             }
             long size = r.leb();
             if (r.fail || size < 0 || !r.has((int) size)) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return null;
             }
             byte[] body = new byte[(int) size];
@@ -1135,19 +1140,19 @@ public final class TableVariable {
             list.add(new NodeRecord(typeId, body));
         }
         if (declared != list.size()) {
-            r.report.malformed = true;
+            r.report.damaged = true;
             return null;
         }
         // Type resolution (§3.1), past the whole scan: a record whose type id
         // this reader cannot name keeps its index and counts unknown ONCE, and
-        // a text blob whose content is not text counts malformed; in both the
+        // a text blob whose content is not text counts damaged; in both the
         // record resolves to null (its type id cleared). A NODE RECORD whose
         // type id this reader cannot name is an excluded class (§6.6): the
         // retaining read counts one retain_lost and never retains it.
         for (NodeRecord rec : list) {
             if (rec.typeId == STRING_ID) {
                 if (!textValid(rec.body, 0, rec.body.length)) {
-                    r.report.malformed = true;
+                    r.report.damaged = true;
                     rec.typeId = 0;
                     rec.textMalformed = true;
                 } else {
@@ -1264,7 +1269,7 @@ public final class TableVariable {
 
     // measureNodes is the region-measure half's node-table scan (§6.5), over
     // the reader as narrowed to the node-table payload: the same framing walk
-    // as nodes() with no counters past malformed and no type-id clearing. A
+    // as nodes() with no counters past damaged and no type-id clearing. A
     // record is sized by its type id whether or not its text is well-formed:
     // a blob record adds its framed length, header and terminator, and a TABLE
     // record adds its own rounded layout plus the maps and lists its body
@@ -1280,7 +1285,7 @@ public final class TableVariable {
         m.nodeTableBytes = 0;
         long declared = r.leb();
         if (r.fail || declared < 0 || declared > 0x7fffffffL) {
-            r.report.malformed = true;
+            r.report.damaged = true;
             return;
         }
         int first = r.off;
@@ -1288,24 +1293,24 @@ public final class TableVariable {
         while (r.off < r.limit) {
             long ref = r.leb();
             if (r.fail || ref == 0) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return;
             }
             r.resolve(ref);
             if (r.fail) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return;
             }
             long size = r.leb();
             if (r.fail || size < 0 || size > (long) (r.limit - r.off)) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return;
             }
             r.off += (int) size;
             count++;
         }
         if (declared != count) {
-            r.report.malformed = true;
+            r.report.damaged = true;
             return;
         }
         r.off = first;
@@ -1357,7 +1362,7 @@ public final class TableVariable {
     // because a reader that broke at the first would read the good numbering a
     // damaged repeat was planted to hide. A field under a kind other than 12,
     // a length the body cannot cover, or a payload whose records do not scan
-    // is malformed for the whole table and marks the numbering bad (NodeTable.
+    // is damaged for the whole table and marks the numbering bad (NodeTable.
     // bad), and the scan returns the body cursor to where it began for the
     // decode itself.
     public static NodeTable readNodeTable(Reader r, Report report, boolean retain) {
@@ -1380,13 +1385,13 @@ public final class TableVariable {
             int kind = r.get8();
             if (id == NODE_ID) {
                 if (kind != 12) {
-                    report.malformed = true;
+                    report.damaged = true;
                     bad = true;
                     break;
                 }
                 long n = r.leb();
                 if (r.fail || n < 0 || !r.has((int) n)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     bad = true;
                     break;
                 }
@@ -1443,7 +1448,7 @@ public final class TableVariable {
     // damage (§4); a record this reader cannot name reads null, counted once
     // at the scan; and a record of another type is a kind mismatch. target is
     // the slot's table type id, or STRING_ID / BYTES_ID for a byte buffer.
-    // Only the slots a field keeps are read: a clamped array's tail past its
+    // Only the slots a field keeps are read: an array's tail past its
     // bound is stepped over by the field's length, unread.
     static void judge(long index, Report report, long target) {
         if (!report.nodesGood || index == 0) {
@@ -1451,42 +1456,42 @@ public final class TableVariable {
         }
         if (index == 1) {
             if (target == STRING_ID || target == BYTES_ID || target != report.rootTypeId) {
-                report.kindMismatch++;
+                report.refuse("kind_mismatch");
             }
             return;
         }
         NodeRecord[] recs = report.nodeRecs;
         // a reference is unsigned
         if (Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) {
-            report.malformed = true; // a reference above the entry count is damage
+            report.damaged = true; // a reference above the entry count is damage
             return;
         }
         NodeRecord rec = recs[(int) (index - 2)];
         if (rec.typeId != 0 && rec.typeId != target) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return;
         }
         if (rec.typeId != 0 && (target == STRING_ID || target == BYTES_ID)) {
             if (rec.judged) {
-                report.blobShared++;
+                report.refuse("blob_shared");
             } else {
                 rec.judged = true;
             }
         }
     }
 
-    // boolByte reads one bool byte: a byte past 1 is malformed and reads true,
+    // boolByte reads one bool byte: a byte past 1 is damaged and reads true,
     // as the engine's scalarAt reads it (§3).
     static boolean boolByte(int b, Report report) {
         if (b > 1) {
-            report.malformed = true;
+            report.damaged = true;
         }
         return b != 0;
     }
 
     // resolveString resolves one *string pointer index against the numbering
     // (§3.1): 0 is null; 1 is the ROOT — a table, not a blob, so it is a kind
-    // mismatch; an index past the records is malformed; and a record whose
+    // mismatch; an index past the records is damaged; and a record whose
     // type id is not the string id reads null, its unknown already counted at
     // the scan.
     // isSharedBlob marks a blob record named by a pointer slot and answers true
@@ -1511,11 +1516,11 @@ public final class TableVariable {
             return null;
         }
         if (index == 1) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.malformed = true;
+            report.damaged = true;
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -1526,7 +1531,7 @@ public final class TableVariable {
             return null;
         }
         if (rec.typeId != STRING_ID) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         return rec.value;
@@ -1534,17 +1539,17 @@ public final class TableVariable {
 
     // resolveBytes resolves one *bytes pointer index against the numbering
     // (§3.1), exactly as resolveString resolves a *string: 0 is null, 1 is the
-    // ROOT (a kind mismatch), an index past the records is malformed.
+    // ROOT (a kind mismatch), an index past the records is damaged.
     public static byte[] resolveBytes(NodeRecord[] recs, long index, Report report) {
         if (index == 0) {
             return null;
         }
         if (index == 1) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.malformed = true;
+            report.damaged = true;
             return null;
         }
         // a record this reader cannot name (or a text record that was not
@@ -1555,7 +1560,7 @@ public final class TableVariable {
             return null;
         }
         if (rec.typeId != BYTES_ID) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         return rec.bytes;
@@ -1606,7 +1611,7 @@ public final class TableVariable {
         if (text.length <= bound) return text;
         int keep = bound;
         if (keep > 0 && Character.isHighSurrogate(text[keep - 1])) keep--;
-        report.clamped++;
+        report.refuse("out_of_range");
         return java.util.Arrays.copyOf(text, keep);
     }
 
@@ -1724,11 +1729,11 @@ public final class TableVariable {
             if (root != null && targetTypeId == rootTypeId) {
                 return (T) root;
             }
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         if (index < 2 || recs == null || index - 2 >= recs.length) {
-            report.malformed = true;
+            report.damaged = true;
             return null;
         }
         NodeRecord rec = recs[(int) (index - 2)];
@@ -1736,7 +1741,7 @@ public final class TableVariable {
             return null;
         }
         if (rec.typeId != targetTypeId) {
-            report.kindMismatch++;
+            report.refuse("kind_mismatch");
             return null;
         }
         return (T) rec.table;
@@ -2044,7 +2049,7 @@ public final class TableVariable {
     static java.math.BigInteger readInteger(Reader r, int kind) {
         int width = integerWidth(kind);
         if (width == 0 || !r.has(width)) {
-            r.report.malformed = true;
+            r.report.damaged = true;
             r.fail = true;
             return null;
         }
@@ -2061,11 +2066,11 @@ public final class TableVariable {
             java.math.BigInteger hi,
             Report report) {
         if (raw.compareTo(lo) < 0) {
-            report.clamped++;
+            report.refuse("out_of_range");
             return lo;
         }
         if (raw.compareTo(hi) > 0) {
-            report.clamped++;
+            report.refuse("out_of_range");
             return hi;
         }
         return raw;

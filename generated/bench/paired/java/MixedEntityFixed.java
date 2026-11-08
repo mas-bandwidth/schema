@@ -106,16 +106,16 @@ public final class MixedEntityFixed {
         v.entityId = TableFixed.get32(b, at + 0);
         if (v.entityId > 4095L) {
             v.entityId = (int) (4095L);
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         } // bits(12) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -16383L) {
                 q = -16383L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 16383L) {
                 q = 16383L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.posX = (int) (q);
         }
@@ -123,10 +123,10 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 8);
             if (q < -16383L) {
                 q = -16383L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 16383L) {
                 q = 16383L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.posY = (int) (q);
         }
@@ -134,31 +134,31 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 12);
             if (q < -16383L) {
                 q = -16383L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 16383L) {
                 q = 16383L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.posZ = (int) (q);
         }
         v.yaw = TableFixed.get32(b, at + 16);
         if (v.yaw > 511L) {
             v.yaw = (int) (511L);
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         } // bits(9) clamps to 2^N - 1
         v.pitch = TableFixed.get32(b, at + 20);
         if (v.pitch > 511L) {
             v.pitch = (int) (511L);
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         } // bits(9) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 24);
             if (q < -2048L) {
                 q = -2048L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 2047L) {
                 q = 2047L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.velX = (int) (q);
         }
@@ -166,10 +166,10 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 28);
             if (q < -2048L) {
                 q = -2048L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 2047L) {
                 q = 2047L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.velY = (int) (q);
         }
@@ -177,10 +177,10 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 32);
             if (q < -2048L) {
                 q = -2048L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 2047L) {
                 q = 2047L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.velZ = (int) (q);
         }
@@ -188,10 +188,10 @@ public final class MixedEntityFixed {
             long q = TableFixed.get32(b, at + 36);
             if (q < 0L) {
                 q = 0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 1000L) {
                 q = 1000L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.health = (int) (q);
         }
@@ -199,7 +199,7 @@ public final class MixedEntityFixed {
             long q = (b[at + 40] & 0xFF);
             if (q > 15L) {
                 q = 0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.weapon = (byte) (q);
         }

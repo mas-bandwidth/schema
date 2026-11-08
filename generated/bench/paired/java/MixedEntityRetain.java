@@ -146,7 +146,7 @@ public final class MixedEntityRetain {
             }
         }
         // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
-        if (report.malformed) {
+        if (report.damaged || report.refused) {
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
@@ -154,7 +154,7 @@ public final class MixedEntityRetain {
         }
         // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
         if (TableVariable.cyclic(nt)) {
-            report.malformed = true;
+            report.damaged = true;
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
@@ -313,7 +313,7 @@ public final class MixedEntityRetain {
                 return;
             }
             if (!r.has(1)) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             }
             int kind = r.get8();
@@ -323,7 +323,7 @@ public final class MixedEntityRetain {
                         if (r.has(2)) {
                             v.entityId = r.get16();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -331,17 +331,17 @@ public final class MixedEntityRetain {
                             v.entityId = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.entityId & 0xffffffffL) > 4095L) {
                         v.entityId = (int) 4095L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_posX) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -349,7 +349,7 @@ public final class MixedEntityRetain {
                         if (r.has(4)) {
                             v.posX = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -357,7 +357,7 @@ public final class MixedEntityRetain {
                             v.posX = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -365,7 +365,7 @@ public final class MixedEntityRetain {
                             v.posX = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -375,11 +375,11 @@ public final class MixedEntityRetain {
                         } else {
                             v.posX = 16383;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_posY) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -387,7 +387,7 @@ public final class MixedEntityRetain {
                         if (r.has(4)) {
                             v.posY = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -395,7 +395,7 @@ public final class MixedEntityRetain {
                             v.posY = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -403,7 +403,7 @@ public final class MixedEntityRetain {
                             v.posY = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -413,11 +413,11 @@ public final class MixedEntityRetain {
                         } else {
                             v.posY = 16383;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_posZ) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -425,7 +425,7 @@ public final class MixedEntityRetain {
                         if (r.has(4)) {
                             v.posZ = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -433,7 +433,7 @@ public final class MixedEntityRetain {
                             v.posZ = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -441,7 +441,7 @@ public final class MixedEntityRetain {
                             v.posZ = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -451,11 +451,11 @@ public final class MixedEntityRetain {
                         } else {
                             v.posZ = 16383;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_yaw) {
                 if (kind == 7 || kind == 6) {
@@ -463,7 +463,7 @@ public final class MixedEntityRetain {
                         if (r.has(2)) {
                             v.yaw = r.get16();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -471,17 +471,17 @@ public final class MixedEntityRetain {
                             v.yaw = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.yaw & 0xffffffffL) > 511L) {
                         v.yaw = (int) 511L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_pitch) {
                 if (kind == 7 || kind == 6) {
@@ -489,7 +489,7 @@ public final class MixedEntityRetain {
                         if (r.has(2)) {
                             v.pitch = r.get16();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -497,17 +497,17 @@ public final class MixedEntityRetain {
                             v.pitch = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.pitch & 0xffffffffL) > 511L) {
                         v.pitch = (int) 511L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_velX) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -515,7 +515,7 @@ public final class MixedEntityRetain {
                         if (r.has(4)) {
                             v.velX = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -523,7 +523,7 @@ public final class MixedEntityRetain {
                             v.velX = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -531,7 +531,7 @@ public final class MixedEntityRetain {
                             v.velX = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -541,11 +541,11 @@ public final class MixedEntityRetain {
                         } else {
                             v.velX = 2047;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_velY) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -553,7 +553,7 @@ public final class MixedEntityRetain {
                         if (r.has(4)) {
                             v.velY = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -561,7 +561,7 @@ public final class MixedEntityRetain {
                             v.velY = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -569,7 +569,7 @@ public final class MixedEntityRetain {
                             v.velY = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -579,11 +579,11 @@ public final class MixedEntityRetain {
                         } else {
                             v.velY = 2047;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_velZ) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -591,7 +591,7 @@ public final class MixedEntityRetain {
                         if (r.has(4)) {
                             v.velZ = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -599,7 +599,7 @@ public final class MixedEntityRetain {
                             v.velZ = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -607,7 +607,7 @@ public final class MixedEntityRetain {
                             v.velZ = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -617,11 +617,11 @@ public final class MixedEntityRetain {
                         } else {
                             v.velZ = 2047;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_health) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -629,7 +629,7 @@ public final class MixedEntityRetain {
                         if (r.has(4)) {
                             v.health = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -637,7 +637,7 @@ public final class MixedEntityRetain {
                             v.health = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -645,7 +645,7 @@ public final class MixedEntityRetain {
                             v.health = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -655,11 +655,11 @@ public final class MixedEntityRetain {
                         } else {
                             v.health = 1000;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_weapon) {
                 if (kind == 30) {
@@ -676,7 +676,7 @@ public final class MixedEntityRetain {
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_damage) {
                 if (kind == 9 || kind == 8 || kind == 7 || kind == 6) {
@@ -684,7 +684,7 @@ public final class MixedEntityRetain {
                         if (r.has(8)) {
                             v.damage = r.get64();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 8) {
@@ -692,7 +692,7 @@ public final class MixedEntityRetain {
                             v.damage = ((long) r.get32()) & 0xffffffffL;
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 7) {
@@ -700,7 +700,7 @@ public final class MixedEntityRetain {
                             v.damage = r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else {
@@ -708,55 +708,55 @@ public final class MixedEntityRetain {
                             v.damage = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_moving) {
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
                         if (bv > 1) {
-                            report.malformed = true;
+                            report.damaged = true;
                         }
                         v.moving = bv != 0;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedEntityVariable.F_firing) {
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
                         if (bv > 1) {
-                            report.malformed = true;
+                            report.damaged = true;
                         }
                         v.firing = bv != 0;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
                     r.skip(kind);
                 } else {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
             } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             } else {
                 captureUnknown(r, id, kind, retain, report, path, depth);
