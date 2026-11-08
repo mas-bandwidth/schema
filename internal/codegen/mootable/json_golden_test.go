@@ -207,6 +207,30 @@ func TestMooJsonGoldensRoundTrip(t *testing.T) {
 	}
 }
 
+// TestMooJsonGoldensRoundTripNegativeControl indents the writer one space a
+// level instead of two and requires the round trip red on the write-back and
+// never on the read: the reader takes any whitespace, so the break is the
+// writer's.
+func TestMooJsonGoldensRoundTripNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
+	t.Parallel()
+	src := string(Runtime()["json.moo"])
+	const site = `s = "\n" .. string.rep("  ", depth)`
+	if strings.Count(src, site) != 1 {
+		t.Fatal("the control's site moved: json.moo no longer indents at " + site)
+	}
+	bad := jsonGoldenRun(t, map[string][]byte{"json.moo": []byte(strings.Replace(src, site, `s = "\n" .. string.rep(" ", depth)`, 1))})
+	if len(bad) == 0 {
+		t.Fatal("the round trip stayed green with the writer's indent broken: it cannot see the writer's spelling")
+	}
+	for _, b := range bad {
+		if strings.Contains(b, "the golden read reported") {
+			t.Errorf("the writer's indent broke the read: %s", b)
+		}
+	}
+	t.Logf("the round trip red on %d write-backs", len(bad))
+}
+
 func jsonGoldenRun(t *testing.T, runtime map[string][]byte) []string {
 	t.Helper()
 	m := readTextManifest(t)
