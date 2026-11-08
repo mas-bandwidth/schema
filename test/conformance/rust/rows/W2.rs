@@ -68,7 +68,7 @@ fn test_row_w2() {
         "absent optional: the payload tag_length reads as the wire's zeros"
     );
     assert!(
-        report.clamped == 0 && !report.malformed && !report.refused,
+        report.oor == 0 && !report.damaged && !report.refused,
         "absent optional: a clean read moves no counter"
     );
 

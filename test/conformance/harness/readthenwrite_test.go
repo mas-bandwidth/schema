@@ -47,15 +47,13 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 		"Position":      true,
 	}
 	mt := reflect.TypeFor[Manifest]()
-	for i := range mt.NumField() {
-		sf := mt.Field(i)
+	for sf := range mt.Fields() {
 		if retiredFields[sf.Name] {
 			t.Errorf("Manifest still carries retired field %s", sf.Name)
 		}
 		if sf.Type.Kind() == reflect.Slice && sf.Type.Elem().Kind() == reflect.Struct {
 			et := sf.Type.Elem()
-			for j := range et.NumField() {
-				ef := et.Field(j)
+			for ef := range et.Fields() {
 				if retiredFields[ef.Name] {
 					t.Errorf("Manifest row type %s still carries retired field %s", et.Name(), ef.Name)
 				}
