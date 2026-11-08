@@ -89,13 +89,12 @@ public final class Probe {
         if (v != 0x01020304) { throw new AssertionError("value " + Integer.toHexString(v)); }
         if (rd.leb() != 0) { throw new AssertionError("terminator"); }
 
-        // A non-canonical LEB128 (0x80 0x00) is damage.
+        // A non-canonical LEB128 (0x80 0x00) is damage, judged by the
+        // wire-alone check inside open before any field is read.
         byte[] bad = new byte[] { 1, (byte) 0x80, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         TableVariable.Report rb = new TableVariable.Report();
         TableVariable.Reader rdb = TableVariable.open(bad, rb);
-        if (rdb == null) { throw new AssertionError("bad open"); }
-        rdb.leb();
-        if (!rb.damaged) { throw new AssertionError("non-canonical LEB not damaged"); }
+        if (rdb != null || !rb.damaged) { throw new AssertionError("non-canonical LEB not damaged at open"); }
 
         // An unknown form byte is a refusal, not damage.
         byte[] unknown = new byte[] { 7, 0, 0, 0, 0, 0, 0, 0, 0 };

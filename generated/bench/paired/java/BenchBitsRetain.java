@@ -65,6 +65,7 @@ public final class BenchBitsRetain {
             }
         }
         readFieldsRetain(r, v, nt, retain, report, path, 0);
+        TableVariable.settleNonFinite(report);
         if (report.refused) {
             retain.used = 0;
             retain.idUsed = 0;
@@ -82,13 +83,11 @@ public final class BenchBitsRetain {
             retain.nodeKeys.clear();
             return null;
         }
-        nt.from = 1;
         BenchBitsVariable.resolveNodes(v, nt, report);
         if (nt.recs != null && !nt.bad) {
             for (int i = 0; i < nt.recs.length; i++) {
                 TableVariable.NodeRecord rec = nt.recs[i];
                 if (rec.table != null) {
-                    nt.from = i + 2;
                     BenchBitsVariable.resolveNodePointers(
                             rec.table, rec.typeId, nt, v, BenchBitsVariable.TYPE_ID, report);
                 }
@@ -96,14 +95,6 @@ public final class BenchBitsRetain {
         }
         // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
         if (report.damaged || report.refused) {
-            retain.used = 0;
-            retain.idUsed = 0;
-            retain.nodeKeys.clear();
-            return null;
-        }
-        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
-        if (TableVariable.cyclic(nt)) {
-            report.damaged = true;
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();

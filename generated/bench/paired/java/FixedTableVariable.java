@@ -378,6 +378,7 @@ public final class FixedTableVariable {
         }
         Value v = new Value();
         readFields(r, v, null, report);
+        TableVariable.settleNonFinite(report);
         if (report.refused) {
             return null;
         }
