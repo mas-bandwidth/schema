@@ -2085,7 +2085,7 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 			if value.ServerTime < 0 || value.ServerTime > 16776960 {
 				w.Over++
 			}
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 22, Packing: 1, Bits: 24, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ServerTime), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 22, Packing: 1, Bits: 24, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ServerTime), uint64(int64(value.ServerTime)>>63))
 		}
 	}
 	{
