@@ -12,6 +12,7 @@ package tabledemo
 
 import (
 	"math"
+	"slices"
 	"unsafe"
 )
 
@@ -233,11 +234,9 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -845,7 +844,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 						r.Report.Refuse(TableRefuseCountOverBound, "RangedSigned.edges")
 						return false
 					}
-					for i := uint64(0); i < n; i++ {
+					for i := range n {
 						p := &base[i]
 						{
 							var raw [16]byte
@@ -1143,11 +1142,9 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -1755,7 +1752,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 						r.Report.Refuse(TableRefuseCountOverBound, "RangedUnsigned.counts")
 						return false
 					}
-					for i := uint64(0); i < n; i++ {
+					for i := range n {
 						p := &base[i]
 						{
 							var raw [16]byte
@@ -1954,11 +1951,9 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {

@@ -10,7 +10,7 @@ using R1 = Tblr1;
 using V1 = Tblv1;
 
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that meets
-// damage refuses as a whole, the report says malformed, and nothing it decoded
+// damage refuses as a whole, the report says so, and nothing it decoded
 // is handed back. Every C# load entry point is held to it: the managed load,
 // the native region load, the retaining load (its store emptied), the builder
 // load (its root back at its declared defaults), and the text read.
@@ -56,7 +56,7 @@ static unsafe partial class Program
         foreach (string line in File.ReadAllLines(manifest))
         {
             string[] f = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-            if (f.Length < 6 || f[0] != "framing" || f[5] != "malformed") { continue; }
+            if (f.Length < 6 || f[0] != "framing" || f[5] != "refused") { continue; }
             string name = f[1], key = f[2] + " " + f[3];
             byte[] wire = File.ReadAllBytes(Path.Combine(root, f[4]));
             switch (key)
@@ -71,7 +71,7 @@ static unsafe partial class Program
             }
             run++;
         }
-        Check(run >= 50, Discard + "every damaged framing vector ran (" + run + ")");
+        Check(run >= 50, Discard + "every refused framing vector ran (" + run + ")");
     }
 
     static string R1Json(R1.Cfg v)
@@ -86,7 +86,7 @@ static unsafe partial class Program
         R1.Cfg v = new R1.Cfg();
         string defaults = R1Json(v);
         var report = new R1.TableReport();
-        Check(!R1.Schema.CfgLoad(v, wire, report) && report.Malformed, Discard + name + ": managed load answers false, malformed");
+        Check(!R1.Schema.CfgLoad(v, wire, report) && (report.Damaged || report.Refused), Discard + name + ": managed load answers false, refused");
         Check(R1Json(v) == defaults, Discard + name + ": managed load hands back the declared defaults");
     }
 
@@ -100,7 +100,7 @@ static unsafe partial class Program
         L.Squad v = new L.Squad();
         string defaults = Json(v);
         var report = new L.TableReport();
-        Check(!L.Schema.SquadLoad(v, wire, report) && report.Malformed, Discard + name + ": managed load answers false, malformed");
+        Check(!L.Schema.SquadLoad(v, wire, report) && (report.Damaged || report.Refused), Discard + name + ": managed load answers false, refused");
         Check(Json(v) == defaults, Discard + name + ": managed load hands back the declared defaults");
         DiscardNative(name, wire,
             (r, c, w, rep) => (IntPtr)L.Schema.SquadLoad(r, c, w, (L.TableReport)rep),
@@ -108,7 +108,7 @@ static unsafe partial class Program
         using (var builder = new L.SquadBuilder())
         {
             var b = new L.TableReport();
-            Check(!L.Schema.SquadLoadBuilder(builder, wire, b) && b.Malformed, Discard + name + ": builder load answers false, malformed");
+            Check(!L.Schema.SquadLoadBuilder(builder, wire, b) && (b.Damaged || b.Refused), Discard + name + ": builder load answers false, refused");
             Check(builder.GetRoot()->Name == 0, Discard + name + ": builder root is back at its declared defaults");
         }
     }
@@ -119,7 +119,7 @@ static unsafe partial class Program
         L.Army v = new L.Army();
         byte[] t0 = new byte[L.Schema.ArmyToJsonMeasure(v)]; L.Schema.ArmyToJson(v, t0);
         var report = new L.TableReport();
-        Check(!L.Schema.ArmyLoad(v, wire, report) && report.Malformed, Discard + name + ": managed load answers false, malformed");
+        Check(!L.Schema.ArmyLoad(v, wire, report) && (report.Damaged || report.Refused), Discard + name + ": managed load answers false, refused");
         byte[] t1 = new byte[L.Schema.ArmyToJsonMeasure(v)]; L.Schema.ArmyToJson(v, t1);
         Check(t0.AsSpan().SequenceEqual(t1), Discard + name + ": managed load hands back the declared defaults");
         DiscardNative(name, wire,
@@ -128,7 +128,7 @@ static unsafe partial class Program
         using (var builder = new L.ArmyBuilder())
         {
             var b = new L.TableReport();
-            Check(!L.Schema.ArmyLoadBuilder(builder, wire, b) && b.Malformed, Discard + name + ": builder load answers false, malformed");
+            Check(!L.Schema.ArmyLoadBuilder(builder, wire, b) && (b.Damaged || b.Refused), Discard + name + ": builder load answers false, refused");
         }
     }
 
@@ -137,7 +137,7 @@ static unsafe partial class Program
         L.Ints v = new L.Ints();
         byte[] t0 = new byte[L.Schema.IntsToJsonMeasure(v)]; L.Schema.IntsToJson(v, t0);
         var report = new L.TableReport();
-        Check(!L.Schema.IntsLoad(v, wire, report) && report.Malformed, Discard + name + ": managed load answers false, malformed");
+        Check(!L.Schema.IntsLoad(v, wire, report) && (report.Damaged || report.Refused), Discard + name + ": managed load answers false, refused");
         byte[] t1 = new byte[L.Schema.IntsToJsonMeasure(v)]; L.Schema.IntsToJson(v, t1);
         Check(t0.AsSpan().SequenceEqual(t1), Discard + name + ": managed load hands back the declared defaults");
         DiscardNative(name, wire,
@@ -146,7 +146,7 @@ static unsafe partial class Program
         using (var builder = new L.IntsBuilder())
         {
             var b = new L.TableReport();
-            Check(!L.Schema.IntsLoadBuilder(builder, wire, b) && b.Malformed, Discard + name + ": builder load answers false, malformed");
+            Check(!L.Schema.IntsLoadBuilder(builder, wire, b) && (b.Damaged || b.Refused), Discard + name + ": builder load answers false, refused");
         }
     }
 
@@ -155,7 +155,7 @@ static unsafe partial class Program
         L.Bounded v = new L.Bounded();
         byte[] t0 = new byte[L.Schema.BoundedToJsonMeasure(v)]; L.Schema.BoundedToJson(v, t0);
         var report = new L.TableReport();
-        Check(!L.Schema.BoundedLoad(v, wire, report) && report.Malformed, Discard + name + ": managed load answers false, malformed");
+        Check(!L.Schema.BoundedLoad(v, wire, report) && (report.Damaged || report.Refused), Discard + name + ": managed load answers false, refused");
         byte[] t1 = new byte[L.Schema.BoundedToJsonMeasure(v)]; L.Schema.BoundedToJson(v, t1);
         Check(t0.AsSpan().SequenceEqual(t1), Discard + name + ": managed load hands back the declared defaults");
     }
@@ -165,7 +165,7 @@ static unsafe partial class Program
         G.ListNode v = new G.ListNode();
         byte[] t0 = new byte[G.Schema.ListNodeToJsonMeasure(v)]; G.Schema.ListNodeToJson(v, t0);
         var report = new G.TableReport();
-        Check(!G.Schema.ListNodeLoad(v, wire, report) && report.Malformed, Discard + name + ": managed load answers false, malformed");
+        Check(!G.Schema.ListNodeLoad(v, wire, report) && (report.Damaged || report.Refused), Discard + name + ": managed load answers false, refused");
         long m1 = G.Schema.ListNodeToJsonMeasure(v);
         byte[] t1 = m1 >= 0 ? new byte[m1] : Array.Empty<byte>();
         if (m1 >= 0) { G.Schema.ListNodeToJson(v, t1); }
@@ -176,7 +176,7 @@ static unsafe partial class Program
         using (var builder = new G.ListNodeBuilder())
         {
             var b = new G.TableReport();
-            Check(!G.Schema.ListNodeLoadBuilder(builder, wire, b) && b.Malformed, Discard + name + ": builder load answers false, malformed");
+            Check(!G.Schema.ListNodeLoadBuilder(builder, wire, b) && (b.Damaged || b.Refused), Discard + name + ": builder load answers false, refused");
             Check(builder.GetRoot()->Value == 0 && builder.GetRoot()->Next == 0, Discard + name + ": builder root is back at its declared defaults");
         }
     }
@@ -194,11 +194,11 @@ static unsafe partial class Program
         try
         {
             var report = new L.TableReport();
-            Check(load((IntPtr)region, DiscardRegion, wire, report) == IntPtr.Zero && report.Malformed, Discard + name + ": region load hands back no root, malformed");
+            Check(load((IntPtr)region, DiscardRegion, wire, report) == IntPtr.Zero && (report.Damaged || report.Refused), Discard + name + ": region load hands back no root, refused");
             var store = new L.TableRetain { Bytes = bytes, Capacity = 4096, Ids = ids, IdCapacity = 64 };
             store.Used = 7; store.Count = 1;
             var r = new L.TableReport();
-            Check(retainLoad((IntPtr)region, DiscardRegion, wire, ref store, r) == IntPtr.Zero && r.Malformed, Discard + name + ": retaining load hands back no root, malformed");
+            Check(retainLoad((IntPtr)region, DiscardRegion, wire, ref store, r) == IntPtr.Zero && (r.Damaged || r.Refused), Discard + name + ": retaining load hands back no root, refused");
             Check(store.Used == 0 && store.Count == 0 && store.IdUsed == 0, Discard + name + ": retaining load leaves the store empty (used " + store.Used + ", count " + store.Count + ")");
         }
         finally { NativeMemory.AlignedFree(region); NativeMemory.Free(bytes); NativeMemory.Free(ids); }
@@ -214,11 +214,11 @@ static unsafe partial class Program
         try
         {
             var report = new G.TableReport();
-            Check(load((IntPtr)region, DiscardRegion, wire, report) == IntPtr.Zero && report.Malformed, Discard + name + ": region load hands back no root, malformed");
+            Check(load((IntPtr)region, DiscardRegion, wire, report) == IntPtr.Zero && (report.Damaged || report.Refused), Discard + name + ": region load hands back no root, refused");
             var store = new G.TableRetain { Bytes = bytes, Capacity = 4096, Ids = ids, IdCapacity = 64 };
             store.Used = 7; store.Count = 1;
             var r = new G.TableReport();
-            Check(retainLoad((IntPtr)region, DiscardRegion, wire, ref store, r) == IntPtr.Zero && r.Malformed, Discard + name + ": retaining load hands back no root, malformed");
+            Check(retainLoad((IntPtr)region, DiscardRegion, wire, ref store, r) == IntPtr.Zero && (r.Damaged || r.Refused), Discard + name + ": retaining load hands back no root, refused");
             Check(store.Used == 0 && store.Count == 0 && store.IdUsed == 0, Discard + name + ": retaining load leaves the store empty (used " + store.Used + ", count " + store.Count + ")");
         }
         finally { NativeMemory.AlignedFree(region); NativeMemory.Free(bytes); NativeMemory.Free(ids); }
@@ -236,9 +236,12 @@ static unsafe partial class Program
         var report = new V1.TableReport();
         bool loaded = V1.Schema.CfgLoad(v, wire, report);
         Check(!loaded, Discard + "nested fixed: managed load answered true on damage");
-        Check(report.Malformed, Discard + "nested fixed: the report does not say malformed");
+        // kind 37 under the known field `factor` is damage and a kind mismatch at
+        // once; strict-only fixes no detection order, and either refuses the load.
+        Check(report.Damaged || report.Refused, Discard + "nested fixed: the report does not say refused");
         Check(v.A == 5, Discard + "nested fixed: a damaged load handed back a=" + v.A);
-        Check(V1.Schema.CfgLoadVerdict(new V1.Cfg(), wire, new V1.TableReport()) == V1.Schema.TableWire.Verdict.Damaged, Discard + "nested fixed: the verdict is Damaged");
+        var nestedVerdict = V1.Schema.CfgLoadVerdict(new V1.Cfg(), wire, new V1.TableReport());
+        Check(nestedVerdict == V1.Schema.TableWire.Verdict.Damaged || nestedVerdict == V1.Schema.TableWire.Verdict.Refused, Discard + "nested fixed: the verdict is a refusal");
     }
 
     // A VARIABLE root damaged the same way: Scene's `ground` body carries
@@ -258,7 +261,7 @@ static unsafe partial class Program
         G.Scene v = new G.Scene();
         var report = new G.TableReport();
         Check(!G.Schema.SceneLoad(v, wire, report), Discard + "nested variable: managed load answered true on damage");
-        Check(report.Malformed, Discard + "nested variable: the report does not say malformed");
+        Check(report.Damaged || report.Refused, Discard + "nested variable: the report does not say refused");
         Check(v.Version == 1 && v.Meta.Build == 1 && v.Ground.Depth == 0, Discard + "nested variable: a damaged managed load handed back version=" + v.Version + " build=" + v.Meta.Build);
 
         byte* region = (byte*)NativeMemory.AlignedAlloc(DiscardRegion, 64);
@@ -269,11 +272,11 @@ static unsafe partial class Program
             var g = new G.TableReport();
             G.SceneRow* root = G.Schema.SceneLoad((IntPtr)region, DiscardRegion, wire, g);
             Check(root == null, Discard + "nested variable: region load handed back a root on damage" + (root != null ? ": version=" + root->Version : ""));
-            Check(g.Malformed, Discard + "nested variable: the region report does not say malformed");
+            Check(g.Damaged || g.Refused, Discard + "nested variable: the region report does not say refused");
             var store = new G.TableRetain { Bytes = bytes, Capacity = 4096, Ids = ids, IdCapacity = 64 };
             var rr = new G.TableReport();
             Check(G.Schema.SceneLoadRetain((IntPtr)region, DiscardRegion, wire, ref store, rr) == null, Discard + "nested variable: retaining load handed back a root on damage");
-            Check(rr.Malformed && store.Used == 0 && store.Count == 0, Discard + "nested variable: retaining load malformed=" + rr.Malformed + " used=" + store.Used + " count=" + store.Count);
+            Check((rr.Damaged || rr.Refused) && store.Used == 0 && store.Count == 0, Discard + "nested variable: retaining load refused=" + (rr.Damaged || rr.Refused) + " used=" + store.Used + " count=" + store.Count);
         }
         finally { NativeMemory.AlignedFree(region); NativeMemory.Free(bytes); NativeMemory.Free(ids); }
 
@@ -281,7 +284,7 @@ static unsafe partial class Program
         {
             var b = new G.TableReport();
             Check(!G.Schema.SceneLoadBuilder(builder, wire, b), Discard + "nested variable: builder load answered true on damage");
-            Check(b.Malformed, Discard + "nested variable: the builder report does not say malformed");
+            Check(b.Damaged || b.Refused, Discard + "nested variable: the builder report does not say refused");
             Check(builder.GetRoot()->Version == 1 && builder.GetRoot()->Ground.Depth == 0, Discard + "nested variable: builder root handed back version=" + builder.GetRoot()->Version);
         }
     }
@@ -293,7 +296,7 @@ static unsafe partial class Program
         byte[] text = Encoding.UTF8.GetBytes("{\"a\":42,\"&node\":1}");
         V1.Cfg v = new V1.Cfg();
         var report = new V1.TableReport();
-        Check(!V1.Schema.CfgFromJson(v, text, report) && report.Malformed, Discard + "text: the read answered true on damage");
+        Check(!V1.Schema.CfgFromJson(v, text, report) && report.Damaged, Discard + "text: the read answered true on damage");
         Check(v.A == 5, Discard + "text: a damaged text read handed back a=" + v.A);
     }
 
@@ -339,13 +342,13 @@ static unsafe partial class Program
         bool ok = C2.Schema.CycleNodeLoad(v, wire, report);
         if (wantCyclic)
         {
-            Check(!ok && report.Malformed, Discard + name + ": managed load answers false, malformed");
+            Check(!ok && report.Damaged, Discard + name + ": managed load answers false, malformed");
             Check(v.Id == 7 && v.Next == null && v.Guarded == null && v.LinksCount == 0 && v.EdgesCount == 0,
                 Discard + name + ": managed load hands back the declared defaults");
         }
         else
         {
-            Check(ok && !report.Malformed && v.Id == 42, Discard + name + ": acyclic managed load succeeds with id=42");
+            Check(ok && !report.Damaged && v.Id == 42, Discard + name + ": acyclic managed load succeeds with id=42");
         }
 
         byte* region = (byte*)NativeMemory.AlignedAlloc(DiscardRegion, 64);
@@ -360,14 +363,14 @@ static unsafe partial class Program
             C2.CycleNodeRow* rrow = C2.Schema.CycleNodeLoadRetain((IntPtr)region, DiscardRegion, wire, ref store, rr);
             if (wantCyclic)
             {
-                Check(row == null && r.Malformed, Discard + name + ": region load hands back no root, malformed");
-                Check(rrow == null && rr.Malformed, Discard + name + ": retaining load hands back no root, malformed");
+                Check(row == null && r.Damaged, Discard + name + ": region load hands back no root, malformed");
+                Check(rrow == null && rr.Damaged, Discard + name + ": retaining load hands back no root, malformed");
                 Check(store.Used == 0 && store.Count == 0 && store.IdUsed == 0, Discard + name + ": retaining load leaves the store empty");
             }
             else
             {
-                Check(row != null && !r.Malformed && row->Id == 42, Discard + name + ": acyclic region load succeeds");
-                Check(rrow != null && !rr.Malformed && rrow->Id == 42, Discard + name + ": acyclic retaining load succeeds");
+                Check(row != null && !r.Damaged && row->Id == 42, Discard + name + ": acyclic region load succeeds");
+                Check(rrow != null && !rr.Damaged && rrow->Id == 42, Discard + name + ": acyclic retaining load succeeds");
             }
         }
         finally { NativeMemory.AlignedFree(region); NativeMemory.Free(bytes); NativeMemory.Free(ids); }
@@ -379,13 +382,13 @@ static unsafe partial class Program
             bool bok = C2.Schema.CycleNodeLoadBuilder(builder, wire, b);
             if (wantCyclic)
             {
-                Check(!bok && b.Malformed, Discard + name + ": builder load answers false, malformed");
+                Check(!bok && b.Damaged, Discard + name + ": builder load answers false, malformed");
                 Check(builder.GetRoot()->Id == 7 && builder.GetRoot()->Next == 0 && builder.GetRoot()->Guarded == 0,
                     Discard + name + ": builder root is back at its declared defaults");
             }
             else
             {
-                Check(bok && !b.Malformed && builder.GetRoot()->Id == 42, Discard + name + ": acyclic builder load succeeds");
+                Check(bok && !b.Damaged && builder.GetRoot()->Id == 42, Discard + name + ": acyclic builder load succeeds");
             }
         }
     }
@@ -444,7 +447,7 @@ static unsafe partial class Program
                     byte[] wire = File.ReadAllBytes(Path.Combine(root, f[4]));
                     var mrep = new G.TableReport();
                     var mv = new G.ListNode();
-                    Check(G.Schema.ListNodeLoad(mv, wire, mrep) && !mrep.Malformed && mv.Next != null, Discard + row + ": managed load succeeds");
+                    Check(G.Schema.ListNodeLoad(mv, wire, mrep) && !mrep.Damaged && mv.Next != null, Discard + row + ": managed load succeeds");
                     long need = G.Schema.ListNodeLoadMeasure(wire, out _, out _, out _);
                     Check(need > 0, Discard + row + ": LoadMeasure succeeds");
                     byte* reg = (byte*)NativeMemory.AlignedAlloc((nuint)(need + 64), 64);
@@ -452,19 +455,19 @@ static unsafe partial class Program
                     {
                         var rrep = new G.TableReport();
                         G.ListNodeRow* rroot = G.Schema.ListNodeLoad((IntPtr)reg, need, wire, rrep);
-                        Check(rroot != null && !rrep.Malformed && rroot->Next != 0, Discard + row + ": region load succeeds");
+                        Check(rroot != null && !rrep.Damaged && rroot->Next != 0, Discard + row + ": region load succeeds");
                     }
                     finally { NativeMemory.AlignedFree(reg); }
                     using var bld = new G.ListNodeBuilder();
                     var brep = new G.TableReport();
-                    Check(G.Schema.ListNodeLoadBuilder(bld, wire, brep) && !brep.Malformed && bld.GetRoot()->Next != 0, Discard + row + ": builder load succeeds");
+                    Check(G.Schema.ListNodeLoadBuilder(bld, wire, brep) && !brep.Damaged && bld.GetRoot()->Next != 0, Discard + row + ": builder load succeeds");
                 }
                 else if (row == "node_diamond_chain")
                 {
                     byte[] wire = File.ReadAllBytes(Path.Combine(root, f[4]));
                     var mrep = new G.TableReport();
                     var mv = new G.Scene();
-                    Check(G.Schema.SceneLoad(mv, wire, mrep) && !mrep.Malformed && mv.Tree != null, Discard + row + ": managed load succeeds");
+                    Check(G.Schema.SceneLoad(mv, wire, mrep) && !mrep.Damaged && mv.Tree != null, Discard + row + ": managed load succeeds");
                     long need = G.Schema.SceneLoadMeasure(wire, out _, out _, out _);
                     Check(need > 0, Discard + row + ": LoadMeasure succeeds");
                     byte* reg = (byte*)NativeMemory.AlignedAlloc((nuint)(need + 64), 64);
@@ -472,12 +475,12 @@ static unsafe partial class Program
                     {
                         var rrep = new G.TableReport();
                         G.SceneRow* rroot = G.Schema.SceneLoad((IntPtr)reg, need, wire, rrep);
-                        Check(rroot != null && !rrep.Malformed && rroot->Tree != 0, Discard + row + ": region load succeeds");
+                        Check(rroot != null && !rrep.Damaged && rroot->Tree != 0, Discard + row + ": region load succeeds");
                     }
                     finally { NativeMemory.AlignedFree(reg); }
                     using var bld = new G.SceneBuilder();
                     var brep = new G.TableReport();
-                    Check(G.Schema.SceneLoadBuilder(bld, wire, brep) && !brep.Malformed && bld.GetRoot()->Tree != 0, Discard + row + ": builder load succeeds");
+                    Check(G.Schema.SceneLoadBuilder(bld, wire, brep) && !brep.Damaged && bld.GetRoot()->Tree != 0, Discard + row + ": builder load succeeds");
                 }
             }
         }

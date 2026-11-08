@@ -32,7 +32,7 @@ const plan = TNewPlan(4096, 4096);
 plan.image.fill(0x5A);
 const n = TLoad(back, back.length, data, data.length, plan, report);
 if (n !== 1) { fail("the manifest says this file carries 1 record, not " + n + " " + reason(r)); }
-if (r.refused !== 0 || r.malformed) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
+if (r.refused !== 0 || r.damaged) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
 const got = back[0];
 if (got.lead !== 1 || got.trail !== 2) {
   fail("the brackets either side of the removed field did not stand: " + show(got));
@@ -46,14 +46,14 @@ for (let i = 0; i < 4; i++) {
 if (r.unknown !== 1) {
   fail("unknown === 1 (once per FIELD per endpoint): Item.drop is one field of one endpoint, not " + r.unknown);
 }
-if (r.kindMismatch !== 0 || r.widened !== 0 || r.clamped !== 0) {
+if (r.mismatch !== 0 || r.widened !== 0 || r.oor !== 0) {
   fail("a removed field is unknown, never a moved kind: " + reason(r));
 }
 // THE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that RETURNS (§5.9
 // #6), so a SECOND read of the same endpoint reports unknown === 1 again.
 TableFixedResetReport(report);
 const m = TLoad(back, back.length, data, data.length, plan, report);
-if (m !== 1 || r.refused !== 0 || r.malformed) {
+if (m !== 1 || r.refused !== 0 || r.damaged) {
   fail("the second read of the same endpoint must also return one clean record: " + m + " " + reason(r));
 }
 if (r.unknown !== 1) {

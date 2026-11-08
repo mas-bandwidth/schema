@@ -18,7 +18,6 @@ import (
 // Go oracle counts one clamped on those bytes; the Dart load must report the
 // same.
 func TestMessageClampedCountDart(t *testing.T) {
-	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	var row *batchRow
 	for i := range batchManifest(t) {
@@ -46,12 +45,15 @@ func TestMessageClampedCountDart(t *testing.T) {
 	if err := vocabulary.AnnounceRead(announce, &oracle); err != nil {
 		t.Fatalf("the Go oracle refused the announcement: %v", err)
 	}
+	// STRICT VERDICT (docs/plans/strict-only.md decision 2): a fixed-string
+	// payload past its bound refuses the whole batch read; the Go oracle
+	// refuses the same bytes.
 	value := m.New(m.Lookup(row.root))
 	_, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, loginMutant, vocabulary, &oracle)
-	if err != nil {
-		t.Fatalf("the Go oracle erred on the mutant: %v", err)
+	if err == nil && !oracle.Refused {
+		t.Fatalf("the Go oracle must refuse the mutant: report %+v", oracle)
 	}
-	out, err := runBatchProbe(t, u, row.root, messageClampedBody(announce, 0))
+	out, err := runBatchProbe(t, u, row.root, messageClampedBody(announce))
 	if err != nil {
 		t.Fatalf("the clamped message count did not run green: %v\n%s", err, out)
 	}
@@ -71,11 +73,10 @@ func mustHex(s string) []byte {
 	return b
 }
 
-// messageClampedBody loads the mutant with the generated Dart batch message load
-// and asserts the report's clamped count matches the Go oracle's on the same
-// bytes (docs/SPEC-TABLES.md §3.3): the want is the Go oracle's count, never a
-// literal.
-func messageClampedBody(announce []byte, want int) string {
+// messageClampedBody loads the mutant with the generated Dart batch message
+// load and asserts the strict refusal: no message lands and the report
+// refuses length_over_bound (docs/plans/strict-only.md decision 2).
+func messageClampedBody(announce []byte) string {
 	return fmt.Sprintf(`
   final ann = Uint8List.fromList(%s);
   final msg = Uint8List.fromList(%s);
@@ -85,6 +86,7 @@ func messageClampedBody(announce []byte, want int) string {
   final values = <h.LoginRequest>[h.LoginRequest()];
   final rep = h.TableReport();
   final count = r.loginRequestLoadMessages(values, msg, vocab, rep);
-  check(rep.clamped == %d, 'clamped=${rep.clamped} want %d (docs/SPEC-TABLES.md §3.3)');
-`, dartBytes(announce), dartBytes(loginMutant), want, want)
+  check(count == 0 && rep.refused && rep.reason == 'length_over_bound',
+      'over-bound batch body refused: count=$count reason=${rep.reason}');
+`, dartBytes(announce), dartBytes(loginMutant))
 }

@@ -54,8 +54,8 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
 		if r.n != 1 {
 			t.Errorf("union_unselected_arm, %s: n=%d, want 1", col.name, r.n)
 		}
-		if r.refused || r.malformed {
-			t.Errorf("union_unselected_arm, %s: a clean read refused: refused=%v reason=%s malformed=%v", col.name, r.refused, r.reason, r.malformed)
+		if r.refused || r.damaged {
+			t.Errorf("union_unselected_arm, %s: a clean read refused: refused=%v reason=%s malformed=%v", col.name, r.refused, r.reason, r.damaged)
 		}
 		if got := r.value["pick.type"]; got != "1" {
 			t.Errorf("union_unselected_arm, %s: pick.type=%s, want the writer's alpha arm (1)", col.name, got)
@@ -66,9 +66,9 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
 		if got := r.value["seq"]; got != "15" {
 			t.Errorf("union_unselected_arm, %s: seq=%s, want the writer's 15", col.name, got)
 		}
-		if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 || r.clamped != 0 {
-			t.Errorf("union_unselected_arm, %s: a counter moved on a clean read: unknown=%d kindMismatch=%d widened=%d clamped=%d, want all 0",
-				col.name, r.unknown, r.kindMismatch, r.widened, r.clamped)
+		if r.unknown != 0 || r.widened != 0 {
+			t.Errorf("union_unselected_arm, %s: a counter moved on a clean read: unknown=%d widened=%d, want all 0",
+				col.name, r.unknown, r.widened)
 		}
 	}
 }

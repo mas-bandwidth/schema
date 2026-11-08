@@ -27,6 +27,11 @@ type FixedLineageEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	// Ranges are the WRITER's ranged integer leaves, on the raw scale
+	// (docs/FIXED-FORM-ALGORITHM.md §4.6): a record read under this entry's
+	// compiled plan refuses out_of_range past them, as it does past this
+	// reader's own ranges.
+	Ranges []ir.TableFixedWriterRange
 }
 
 // FixedLineageOf computes the entry a unit's OWN build locks for table `name`:
@@ -44,6 +49,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
 			Record: int64(fixedHashBytes) + fixedTypeBytes(st),
+			Ranges: ir.TableFixedWriterRanges(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false
@@ -341,12 +347,47 @@ func fixedValidateLayout(b []byte) string {
 	return reason
 }
 
-func emitFixedPlanBody(m *Module, st *ir.Struct, layout []byte) {
-	root, reason := fixedParseLayoutTree(layout)
+func emitFixedPlanBody(m *Module, st *ir.Struct, e FixedLineageEntry) {
+	root, reason := fixedParseLayoutTree(e.Layout)
 	if reason != "" || root == nil {
 		return
 	}
 	emitFixedPlanStruct(m, st, root, 0, "v", "  ", "0")
+	emitFixedWriterRanges(m, st, root, e.Ranges)
+}
+
+// emitFixedWriterRanges is the bounds pass's WRITER half
+// (docs/FIXED-FORM-ALGORITHM.md §4.6): after the plan has landed a record, a
+// root-level ranged leaf the older writer bounded is held to THAT writer's
+// range, which is the narrower one, so a value inside this reader's range but
+// outside the writer's — a value the writer could not have written — refuses
+// out_of_range and never lands as though it were lawful. A field the writer's
+// layout does not carry, or whose kind moved, holds no writer range
+// (ir.TableFixedWriterField).
+func emitFixedWriterRanges(m *Module, st *ir.Struct, root *fixedLayoutNode, ranges []ir.TableFixedWriterRange) {
+	carried := map[uint64]bool{}
+	for _, c := range root.children {
+		carried[c.id] = true
+	}
+	for _, r := range ranges {
+		for _, f := range st.Fields {
+			w, ok := ir.TableFixedWriterField(f, r)
+			if !ok || !carried[ir.TableFieldWireId(f)] {
+				continue
+			}
+			expr := "v." + squirrel.Member(f)
+			storage := fixedStorageBytes(f.Type)
+			if f.Array == ir.ArrayFixed {
+				m.Printf("  for (local i = 0; i < %s.len(); i++) {\n", expr)
+				m.Printf("    local x = %s[i];\n", expr)
+				fixedEmitRangeGuard(m, w, "x", "    ", storage)
+				m.Printf("  }\n")
+			} else {
+				fixedEmitRangeGuard(m, w, expr, "  ", storage)
+			}
+			break
+		}
+	}
 }
 
 func emitFixedPlanStruct(m *Module, st *ir.Struct, node *fixedLayoutNode, baseAt int64, expr, ind, dyn string) {
@@ -384,6 +425,8 @@ func emitFixedPlanStruct(m *Module, st *ir.Struct, node *fixedLayoutNode, baseAt
 					off = fmt.Sprintf("%d + %s", cAt, dyn)
 				}
 				m.Printf("%sif (at + %s + %d <= lim) {\n", ind, off, child.size)
+				// a present byte other than 0 or 1 is damage (§3.4)
+				m.Printf("%s  if (b[at + %s] > 1) return \"wire_damaged\";\n", ind, off)
 				m.Printf("%s  %sPresent = b[at + %s] != 0;\n", ind, fExpr, off)
 				m.Printf("%s  if (%sPresent) {\n", ind, fExpr)
 				emitFixedPlanDecodeValue(m, f, inner, cAt+1, fExpr, ind+"    ", dyn, false)
@@ -463,10 +506,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			if !fixedPlanElemCompat(f, elem) || elem.size <= 0 {
 				return
 			}
-			n := node.size / elem.size
-			if n > f.KeyEnumRef.Max {
-				n = f.KeyEnumRef.Max
-			}
+			n := min(node.size/elem.size, f.KeyEnumRef.Max)
 			iv := fmt.Sprintf("i%d", len(ind)/2)
 			m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", ind, iv, iv, n, iv)
 			emitFixedPlanDecodeValue(m, f, elem, at, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
@@ -480,10 +520,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			iv := fmt.Sprintf("i%d", len(ind)/2)
 			if f.Array == ir.ArrayCounted {
 				oldCap := (node.size - 4) / elem.size
-				capLim := f.ArrayBound
-				if oldCap < capLim {
-					capLim = oldCap
-				}
+				capLim := min(oldCap, f.ArrayBound)
 				m.Printf("%slocal c = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 				m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", ind, capLim)
 				m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", ind, expr, expr, expr, expr, elemZero(f))
@@ -491,10 +528,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 				emitFixedPlanDecodeValue(m, f, elem, at+4, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
 				m.Printf("%s}\n", ind)
 			} else {
-				n := node.size / elem.size
-				if n > f.ArrayBound {
-					n = f.ArrayBound
-				}
+				n := min(node.size/elem.size, f.ArrayBound)
 				m.Printf("%swhile (%s.len() < %d) %s.append(%s);\n", ind, expr, f.ArrayBound, expr, elemZero(f))
 				m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", ind, iv, iv, n, iv)
 				emitFixedPlanDecodeValue(m, f, elem, at, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
@@ -506,10 +540,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			if f.Type.Kind == ir.TWString {
 				oldCap = (node.size - 4) / 2
 			}
-			capLim := f.Type.Size
-			if oldCap < capLim {
-				capLim = oldCap
-			}
+			capLim := min(oldCap, f.Type.Size)
 			m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 			m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, capLim)
 			switch f.Type.Kind {
@@ -541,12 +572,13 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 				tagW = 2
 			}
 			m.Printf("%s%s.Type = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, tagW)
-			maxArms := nArms
-			if len(r.Variants) < maxArms {
-				maxArms = len(r.Variants)
-			}
-			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) %s.Type = 0;\n", ind, expr, expr, maxArms, expr)
-			for i := 0; i < maxArms; i++ {
+			maxArms := min(len(r.Variants), nArms)
+			// A TAG PAST THE WRITER'S ARMS is not one the writer wrote: it
+			// REFUSES out_of_range on the compiled plan exactly as on the
+			// identity one, and never lands None (docs/FIXED-FORM-ALGORITHM.md
+			// §4.6, §5.4; §5.8 row 12)
+			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) return \"out_of_range\";\n", ind, expr, expr, maxArms)
+			for i := range maxArms {
 				v := r.Variants[i]
 				armNode := node.children[i]
 				if v.F == nil || armNode == nil || armNode.kind == ir.TableKindNoPayload {
@@ -567,6 +599,11 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			}
 			m.Printf("%s{\n", ind)
 			m.Printf("%s  local ev = _rt_fixed.getu(b, at + %s, %d);\n", ind, off, node.size)
+			// AN ORDINAL PAST THE WRITER'S VARIANTS — the plan's count, never
+			// this reader's longer one — is FORGED and refuses out_of_range
+			// (docs/FIXED-FORM-ALGORITHM.md §4.6, §5.4; §5.8 row 12)
+			top := min(len(node.children), len(r.Variants))
+			m.Printf("%s  if (ev < 0 || ev > %d) return \"out_of_range\";\n", ind, top)
 			m.Printf("%s  local val = null;\n", ind)
 			for i, v := range r.Variants {
 				kw := "if"
@@ -588,6 +625,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 	}
 	if node.size == 16 {
 		m.Printf("%s%s = [_rt_fixed.u64le(b, at + %s), _rt_fixed.u64le(b, at + %s + 8)];\n", ind, expr, off, off)
+		fixedEmitRange128Guard(m, f, expr, ind)
 		return
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
@@ -599,11 +637,14 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 		m.Printf("%s  if (x == null) { _M.FixedField <- %s; return \"non_finite_float\"; }\n", ind, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
 		if fixedPlanLeafWidens(f, node) {
 			m.Printf("%s  _M.FixedWidened <- _M.FixedWidened + 1;\n", ind)
+		} else {
+			fixedEmitRangeGuard(m, f, "x", ind+"  ", fixedStorageBytes(f.Type))
 		}
 		m.Printf("%s  %s = x;\n%s}\n", ind, expr, ind)
 		return
 	}
 	if f.Type.Kind == ir.TBool {
+		m.Printf("%sif (b[at + %s] > 1) return \"wire_damaged\";\n", ind, off)
 		m.Printf("%s%s = b[at + %s] != 0;\n", ind, expr, off)
 		return
 	}
@@ -612,10 +653,12 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			m.Printf("%s_M.FixedWidened <- _M.FixedWidened + 1;\n", ind)
 		}
 		m.Printf("%s%s = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, node.size)
+		fixedEmitRangeGuard(m, f, expr, ind, node.size)
 		return
 	}
 	if fixedPlanLeafWidens(f, node) {
 		m.Printf("%s_M.FixedWidened <- _M.FixedWidened + 1;\n", ind)
 	}
 	m.Printf("%s%s = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, node.size)
+	fixedEmitRangeGuard(m, f, expr, ind, node.size)
 }

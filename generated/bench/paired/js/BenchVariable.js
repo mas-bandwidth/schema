@@ -7,7 +7,7 @@
 // A saved table is a form byte, a root body of fields (id reference, kind,
 // payload), and an id table as the trailer (docs/SPEC-TABLES.md §3). A pointer
 // *T, a *string and a *bytes ride as a node index into the flat node table the
-// root body carries last (docs/SPEC-TABLES.md §3.1). Reading is tolerant: an
+// root body carries last (docs/SPEC-TABLES.md §3.1). Reading is strict: an
 // unknown id is skipped and counted, an absent field reads its declared
 // default, and a kind mismatch is reported (§4).
 
@@ -19,7 +19,7 @@ export const TableVariableForm = 1;
 
 // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3, THE DISTINCTNESS CHECK;
 // docs/LAYERS/1-framing.md F6): an id table of more than 4096 entries is
-// malformed for the whole wire, whatever the buffer would hold, so the
+// damaged for the whole wire, whatever the buffer would hold, so the
 // distinctness proof never runs past it. kTableProbeBound in the C++ reference.
 export const TableVariableEntryBound = 4096n;
 
@@ -49,27 +49,72 @@ function TableVariableRound(n, a) {
 // byte answers message_form_as_file for form 2 and newer_form for any other.
 // A read that WIDENS is not a refusal: the value lands in the wider field, the
 // widened counter counts it (§4.1), and reason stays empty, exactly as Go's
-// does for a file read. Damage is the malformed flag, never a reason.
+// does for a file read. Damage is the damaged flag, never a reason.
 export class TableVariableReport {
-  constructor() {
+  constructor() { this.reset(); }
+
+  // reset puts every field back to a fresh report's value, so a caller reuses
+  // one report across reads without allocating another.
+  reset() {
     this.reason = "";
-    this.malformed = false;
+    this.damaged = false;
     this.refused = 0;
     this.unknown = 0;
-    this.kindMismatch = 0;
-    this.clamped = 0;
+    this.mismatch = 0;
+    this.oor = 0;
+    this.oorField = "";
     this.widened = 0;
-    this.duplicate = 0;
+    this.repeated = 0;
     this.missingRequired = 0;
-    // Extra successful namings of one blob record on a tolerant read (§2.5).
-    this.blobShared = 0;
+    // Extra successful namings of one blob record on a strict read (§2.5).
+    this.sharedBlob = 0;
     this.retained = 0;
     this.retainLost = 0;
     // the first float a read found to be a NaN or an infinity, <Table>.<field>
     // (docs/SPEC-TABLES.md §3.3): the read refuses, reason non_finite_float
     this.nonFiniteFloat = "";
   }
+
+  // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, "Strict
+  // error identity", §11): null when the strict rule accepts the read this
+  // report describes, else the one TableRefuseReason member it refuses with.
+  // A form byte the read does not carry is unknown_form whichever
+  // form-specific name the reason holds; then integrity_mismatch, a
+  // non-finite float, any damage as wire_damaged, a missing required field, a
+  // storage cap by its own name, a blob named from two slots, out_of_range, and
+  // kind_mismatch, in that order. unknown, widened, retained and repeated
+  // alone never refuse. No string is built: the answer is a frozen member.
+  err() {
+    const reason = this.reason;
+    if (reason === "newer_form" || reason === "message_form_as_file") { return TableRefuseReason.UnknownForm; }
+    if (reason === "integrity_mismatch") { return TableRefuseReason.IntegrityMismatch; }
+    if (this.nonFiniteFloat !== "") { return TableRefuseReason.NonFiniteFloat; }
+    if (this.damaged) { return TableRefuseReason.WireDamaged; }
+    if (this.missingRequired > 0) { return TableRefuseReason.MissingRequired; }
+    if (this.refused) {
+      return reason === "count_over_extent_cap" ? TableRefuseReason.CountOverExtentCap : TableRefuseReason.UnknownForm;
+    }
+    if (this.sharedBlob > 0) { return TableRefuseReason.BlobShared; }
+    if (this.oor > 0) { return TableRefuseReason.OutOfRange; }
+    if (this.mismatch > 0) { return TableRefuseReason.KindMismatch; }
+    return null;
+  }
 }
+
+// THE STRICT READ'S REASONS (docs/SPEC-TABLES.md §6.5, the refusal-names
+// table): each member's value is the enum's own value name, so a reason
+// compares by identity and spells itself with no lookup.
+export const TableRefuseReason = Object.freeze({
+  UnknownForm: "unknown_form",
+  IntegrityMismatch: "integrity_mismatch",
+  NonFiniteFloat: "non_finite_float",
+  WireDamaged: "wire_damaged",
+  MissingRequired: "missing_required",
+  CountOverExtentCap: "count_over_extent_cap",
+  BlobShared: "blob_shared",
+  OutOfRange: "out_of_range",
+  KindMismatch: "kind_mismatch",
+});
 
 // Ids intern a writer's ids in FIRST-USE order (docs/SPEC-TABLES.md §3), each a
 // BigInt, returning the 1-based reference. First-use order follows the write
@@ -276,7 +321,7 @@ function TableVariableWideClamp(s, bound) {
 
 // Kind 36, the timestamp, skips its eight bytes like any fixed-width kind
 // (§3: kinds 1-11, 18-29 and 36 skip their fixed width), so a field this
-// reader cannot name under it is counted, never malformed.
+// reader cannot name under it is counted, never damaged.
 function TableVariableSkip(r, kind) {
   switch (kind) {
     case 1: case 2: case 6: case 20: case 25: { if (r.at + 1 > r.end) return false; r.at += 1; return true; }
@@ -303,7 +348,7 @@ function TableVariableSkip(r, kind) {
 // scans its records, BEFORE any value decode: the numbering is positional and
 // read once. The table is whole or it is nothing — a field under another kind,
 // a length past the body, a record that cannot be framed or a count the scan
-// does not match is one malformed and answers null, and every pointer in the
+// does not match is one damaged and answers null, and every pointer in the
 // save then reads null (internal/tablewire nodetable.go). No node table at all
 // is an empty numbering.
 function TableVariableNodeTableScan(bytes, table, end, report) {
@@ -328,21 +373,21 @@ function TableVariableNodeTableScan(bytes, table, end, report) {
     }
     if (!TableVariableSkip(w, kind)) { break; }
   }
-  if (present && bad) { report.malformed = true; return null; }
+  if (present && bad) { report.damaged = true; return null; }
   if (!present) { return []; }
   const rec = new TableVariableReader(payload, 0, payload.length);
   const count = rec.leb();
-  if (rec.bad) { report.malformed = true; return null; }
+  if (rec.bad) { report.damaged = true; return null; }
   const raw = [];
   while (rec.at < rec.end) {
     const tref = rec.leb();
-    if (rec.bad || tref === 0 || tref > table.length) { report.malformed = true; return null; }
+    if (rec.bad || tref === 0 || tref > table.length) { report.damaged = true; return null; }
     const tlen = rec.leb();
-    if (rec.bad || rec.at + tlen > rec.end) { report.malformed = true; return null; }
+    if (rec.bad || rec.at + tlen > rec.end) { report.damaged = true; return null; }
     raw.push({ tid: table[tref - 1], body: payload.slice(rec.at, rec.at + tlen) });
     rec.at += tlen;
   }
-  if (count !== raw.length) { report.malformed = true; return null; }
+  if (count !== raw.length) { report.damaged = true; return null; }
   return raw;
 }
 
@@ -570,7 +615,7 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
 // Capture one unknown field (id, kind) whose payload the plain read has already
 // skipped (bytes[start:end]). The framing was validated by that skip, so the
 // resolving walk here can only fail on inner damage or an excluded class, which
-// is one retainLost and never 'malformed' (§6.6).
+// is one retainLost and never 'damaged' (§6.6).
 function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, path, report) {
   const src = new TableVariableReader(bytes, start, end);
   const out = new TableVariableWriter();
@@ -733,7 +778,7 @@ function TableVariableRetainTail(w, ids, retain, path) {
 // each, counted once at the end.
 // TableVariableRetainDiscard drops the records at or under a path, exactly as
 // the reference's TableRetain.discard (§6.6): a body re-read replaces what an
-// earlier read retained there, so a duplicate map entry or a re-selected union
+// earlier read retained there, so a repeated map entry or a re-selected union
 // arm does not leave two records behind. The field flag narrows the pass to records
 // whose first step under the path is the field's own ordinal.
 function TableVariableRetainDiscard(retain, path, field, ordinal) {
@@ -1329,24 +1374,24 @@ function TableVariableSaveWalk(c, v, retain, why) {
 // (docs/SPEC-TABLES.md §3, §3.3, §6.5): message_form_as_file for a batch (form
 // 2) handed to a file root, newer_form for any other byte — the fixed form 3
 // is newer than this one, and a byte no form defines is too. Damage moves the
-// malformed flag and names no reason, as the reference's Load does.
+// damaged flag and names no reason, as the reference's Load does.
 function TableVariableOpen(bytes, report) {
-  if (bytes.length < 1) { report.malformed = true; return null; }
+  if (bytes.length < 1) { report.damaged = true; return null; }
   if (bytes[0] !== TableVariableForm) {
     report.refused = 1;
     report.reason = bytes[0] === 2 ? "message_form_as_file" : "newer_form";
     return null;
   }
-  if (bytes.length < 9) { report.malformed = true; return null; }
+  if (bytes.length < 9) { report.damaged = true; return null; }
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
-  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { report.malformed = true; return null; }
+  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { report.damaged = true; return null; }
   const end = bytes.length - 8 - Number(count) * 8;
   const table = [];
   const seen = new Set();
   for (let i = 0; i < Number(count); i++) {
     const id = dv.getBigUint64(end + i * 8, true);
-    if (seen.has(id)) { report.malformed = true; return null; }
+    if (seen.has(id)) { report.damaged = true; return null; }
     seen.add(id);
     table.push(id);
   }
@@ -1354,7 +1399,7 @@ function TableVariableOpen(bytes, report) {
   while (true) {
     const ref = w.leb();
     if (w.bad) { break; }
-    if (ref === 0) { if (w.at !== w.end) { report.malformed = true; return null; } break; }
+    if (ref === 0) { if (w.at !== w.end) { report.damaged = true; return null; } break; }
     if (ref > table.length) { break; }
     if (w.at >= w.end) { break; }
     const kind = w.u8();
@@ -1378,27 +1423,28 @@ function TableVariableLoad(c, bytes, report, retain) {
   if (report === undefined || report === null) { report = new TableVariableReport(); }
   if (c.integrity && bytes.length > 0 && bytes[0] === 1) {
     if (!c.integrity.holds(bytes, 1)) {
-      report.malformed = true; report.reason = "integrity_mismatch";
+      report.damaged = true; report.reason = "integrity_mismatch";
       if (retain !== null) { retain.reset(); }
       return null;
     }
     bytes = bytes.subarray(0, bytes.length - 4);
   }
   const missingBefore = report.missingRequired;
+  const strictBefore = TableVariableStrictMark(report);
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
   if (TableVariableCountRefused(report)) { report.refused = 0; report.reason = null; }
   // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): this read judges
-  // its own damage, so a report a caller hands in already marked malformed
+  // its own damage, so a report a caller hands in already marked damaged
   // stays marked and does not refuse a clean wire.
-  const carried = report.malformed;
-  report.malformed = false;
+  const carried = report.damaged;
+  report.damaged = false;
   const open = TableVariableOpen(bytes, report);
   // A REFUSED form byte hands a non-variable root back at its declared
   // defaults (§3); DAMAGE hands back nothing (§4).
   if (open === null) {
-    const damaged = report.malformed;
-    report.malformed = carried || damaged;
+    const damaged = report.damaged;
+    report.damaged = carried || damaged;
     return c.variable || damaged ? null : c.make();
   }
   const table = open.table;
@@ -1410,9 +1456,9 @@ function TableVariableLoad(c, bytes, report, retain) {
     for (const rec of raw) {
       if (rec.tid === TableStringBlobId && place.str) {
         // a text blob's content is refused on the terms a kind 12 payload is:
-        // the record is malformed, and every slot naming it reads null
+        // the record is damaged, and every slot naming it reads null
         const dec = TableVariableUtf8Decode(rec.body);
-        if (!dec.ok) { report.malformed = true; st.nodes.push(null); continue; }
+        if (!dec.ok) { report.damaged = true; st.nodes.push(null); continue; }
         st.nodes.push({ kind: "s", blob: dec.s, refs: 0, shared: null, named: false });
         continue;
       }
@@ -1439,7 +1485,7 @@ function TableVariableLoad(c, bytes, report, retain) {
     }
   }
   TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
-  // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+  // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and outranks
   // any damage the walk met after it (§3.3): nothing lands.
   if (report.nonFiniteFloat) {
     report.refused = 1;
@@ -1449,30 +1495,45 @@ function TableVariableLoad(c, bytes, report, retain) {
   }
   // A storage cap refuses the whole read without adding a damage event.
   if (TableVariableCountRefused(report)) {
-    report.malformed = carried || report.malformed;
+    report.damaged = carried || report.damaged;
     if (retain !== null) { retain.reset(); }
     return null;
   }
   if (report.missingRequired !== missingBefore) {
-    report.malformed = carried;
+    report.damaged = carried;
     if (retain !== null) { retain.reset(); }
     return null;
   }
   TableVariableResolve(st, report);
   // DAMAGE DISCARDS THE WHOLE LOAD (§4): a read that met damage anywhere hands
   // back no root, and a retaining read keeps nothing it would save.
-  if (report.malformed) {
+  if (report.damaged) {
     if (retain !== null) { retain.reset(); }
     return null;
   }
-  report.malformed = carried;
+  // THE ONE READ REFUSES THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.5): a
+  // changed kind, a value or a length out of range, a repeated key and a blob
+  // named from two slots hand back nothing; err() names which.
+  if (TableVariableStrictMark(report) !== strictBefore) {
+    report.damaged = carried;
+    if (retain !== null) { retain.reset(); }
+    return null;
+  }
+  report.damaged = carried;
   return v;
+}
+
+// THE STRICT MARK: the sum of the counters whose any movement refuses the
+// read. A read takes it before its walk and compares after, so a report a
+// caller reuses across reads judges each read on its own.
+function TableVariableStrictMark(report) {
+  return report.mismatch + report.oor + report.repeated + report.sharedBlob;
 }
 
 // RESOLUTION (§3.1, decodenodes.go resolveCell): 0 is null, 1 is the root
 // (checked against the reader's own root type), k + 1 is record k. A record of
 // another kind than the slot declares is a kind mismatch, an index past the
-// numbering is malformed, and a numbering that could not be read resolves
+// numbering is damaged, and a numbering that could not be read resolves
 // nothing. A *string record named by two or more slots lands as ONE String
 // object in each, so the save numbers it once again.
 function TableVariableResolve(st, report) {
@@ -1481,26 +1542,26 @@ function TableVariableResolve(st, report) {
     let value = null, str = null;
     if (st.good && index !== 0) {
       if (index === 1) {
-        if (d.s === "ptr" && d.c === st.rootCodec) { value = st.root; } else { report.kindMismatch++; }
+        if (d.s === "ptr" && d.c === st.rootCodec) { value = st.root; } else { report.mismatch++; }
       } else if (index - 2 >= st.nodes.length) {
-        report.malformed = true;
+        report.damaged = true;
       } else {
         const n = st.nodes[index - 2];
         if (n !== null) {
           if (d.s === "sblob") {
-            if (n.kind === "s") { str = n; } else { report.kindMismatch++; }
+            if (n.kind === "s") { str = n; } else { report.mismatch++; }
           } else if (d.s === "bblob") {
-            if (n.kind === "b") { value = n.blob; } else { report.kindMismatch++; }
+            if (n.kind === "b") { value = n.blob; } else { report.mismatch++; }
           } else if (n.kind === "t" && n.codec === d.c) {
             value = n.v;
           } else {
-            report.kindMismatch++;
+            report.mismatch++;
           }
           // Count every extra valid naming, including repeated field events.
           // The mark belongs to this load's node, so reused reports accumulate
           // while distinct equal blobs and rejected kinds never become shares.
           if ((d.s === "sblob" && n.kind === "s") || (d.s === "bblob" && n.kind === "b")) {
-            if (n.named) { report.blobShared++; } else { n.named = true; }
+            if (n.named) { report.sharedBlob++; } else { n.named = true; }
           }
         }
       }
@@ -1536,7 +1597,7 @@ function TableVariableResolve(st, report) {
   // The edges are collected from the final stored slots of the root and every
   // table record (stored slots under false guards included), so an overwritten
   // field occurrence on the wire leaves no stale edge.
-  if (st.good && !report.malformed) {
+  if (st.good && !report.damaged) {
     const nodeAt = new Map([[st.root, 0]]);
     for (let i = 0; i < st.nodes.length; i++) {
       const n = st.nodes[i];
@@ -1555,7 +1616,7 @@ function TableVariableResolve(st, report) {
       }
     }
     if (TableVariableCyclic(st.nodes.length + 1, from, to)) {
-      report.malformed = true;
+      report.damaged = true;
     }
   }
 }
@@ -1612,27 +1673,27 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
   const missingBefore = report.missingRequired;
   // A BODY READ REPLACES WHAT AN EARLIER PASS RETAINED HERE (§6.6): the
   // reference's LoadBodyRetain opens with TableRetain.discard(Path,false,0),
-  // which is what keeps a duplicate map entry from leaving two records.
+  // which is what keeps a repeated map entry from leaving two records.
   if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, false, 0); }
   for (;;) {
     if (TableVariableCountRefused(report) || report.missingRequired !== missingBefore || report.missingRequired !== st.missingBefore) { return false; }
     const ref = r.leb();
-    if (r.bad) { report.malformed = true; return false; }
+    if (r.bad) { report.damaged = true; return false; }
     if (ref === 0) { return TableVariableRequireSeen(c, v, seen, report); }
-    if (ref > table.length) { report.malformed = true; return false; }
-    if (r.at >= r.end) { report.malformed = true; return false; }
+    if (ref > table.length) { report.damaged = true; return false; }
+    if (r.at >= r.end) { report.damaged = true; return false; }
     const kind = r.u8();
     const id = table[ref - 1];
     // THE RESERVED BUILD-VERSION AND VOCABULARY IDS ride in the announcement
-    // and nowhere else (§3.3): in any body they are malformed
-    if (id === TableBuildVersionId || id === TableMessageVocabularyId) { report.malformed = true; return false; }
+    // and nowhere else (§3.3): in any body they are damaged
+    if (id === TableBuildVersionId || id === TableMessageVocabularyId) { report.damaged = true; return false; }
     if (id === TableNodeTableId) {
       // the node table rides in a VARIABLE root body and nowhere else (§3.1):
       // a nested body naming it is damage; the root steps over it, the records
       // having been read first
-      if (nested) { report.malformed = true; return false; }
+      if (nested) { report.damaged = true; return false; }
       if (c.variable) {
-        if (!TableVariableSkip(r, kind)) { report.malformed = true; return false; }
+        if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
         continue;
       }
     }
@@ -1640,7 +1701,7 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
     if (fd === undefined) {
       report.unknown++;
       const from = r.at;
-      if (!TableVariableSkip(r, kind)) { report.malformed = true; return false; }
+      if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
       if (retain !== null) {
         // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.6):
         // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
@@ -1666,8 +1727,8 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       }
       // the escape kind 31 and the payload-free kind 32 at a named position take
       // this same rule and no other (§3)
-      report.kindMismatch++;
-      if (!TableVariableSkip(r, kind)) { report.malformed = true; return false; }
+      report.mismatch++;
+      if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
       continue;
     }
     const placed = TableVariableReadField(fd, r, table, v, report, st, retain, path);
@@ -1706,14 +1767,14 @@ function TableVariableRequireSeen(c, v, seen, report) {
 // bits(N) clamp (§4, decode.go scalarAt); undefined is a short payload
 function TableVariableScalar(r, d, kind, report) {
   const width = tableRetainWidth(kind);
-  if (r.at + width > r.end) { report.malformed = true; return undefined; }
+  if (r.at + width > r.end) { report.damaged = true; return undefined; }
   let x;
   switch (kind) {
     case 1: {
       // A BOOL BYTE IS 0 OR 1 (§3): any other byte reads true, counts one
-      // malformed and the body reads on (decode.go scalarAt)
+      // damaged and the body reads on (decode.go scalarAt)
       const b = r.u8();
-      if (b > 1) { report.malformed = true; }
+      if (b > 1) { report.damaged = true; }
       return b !== 0;
     }
     case 10: {
@@ -1727,8 +1788,8 @@ function TableVariableScalar(r, d, kind, report) {
       s.setUint32(0, b, true);
       let v = s.getFloat32(0, true);
       if (d.f32 && d.lo !== null) {
-        if (v < d.lo) { v = Math.fround(d.lo); report.clamped++; }
-        else if (v > d.hi) { v = Math.fround(d.hi); report.clamped++; }
+        if (v < d.lo) { v = Math.fround(d.lo); report.oor++; }
+        else if (v > d.hi) { v = Math.fround(d.hi); report.oor++; }
       }
       return v;
     }
@@ -1748,14 +1809,14 @@ function TableVariableScalar(r, d, kind, report) {
     case 9: case 28: x = r.u64(); break;
     case 18: case 24: x = r.i128(); break;
     case 19: case 29: x = r.u128(); break;
-    default: report.malformed = true; return undefined;
+    default: report.damaged = true; return undefined;
   }
   if (d.big && typeof x !== "bigint") { x = BigInt(x); }
   if (d.lo !== null) {
-    if (x < d.lo) { x = d.lo; report.clamped++; }
-    else if (x > d.hi) { x = d.hi; report.clamped++; }
+    if (x < d.lo) { x = d.lo; report.oor++; }
+    else if (x > d.hi) { x = d.hi; report.oor++; }
   }
-  if (d.bits > 0 && d.bits < width * 8 && x > d.bmax) { x = d.bmax; report.clamped++; }
+  if (d.bits > 0 && d.bits < width * 8 && x > d.bmax) { x = d.bmax; report.oor++; }
   return x;
 }
 
@@ -1763,9 +1824,9 @@ function TableVariableScalar(r, d, kind, report) {
 // (undefined), and a variant this enum cannot name reads None and counts unknown
 function TableVariableEnumRead(e, r, table, report, retain) {
   const ref = r.leb();
-  if (r.bad) { report.malformed = true; return undefined; }
+  if (r.bad) { report.damaged = true; return undefined; }
   if (ref === 0) { return null; }
-  if (ref > table.length) { report.malformed = true; return undefined; }
+  if (ref > table.length) { report.damaged = true; return undefined; }
   const id = table[ref - 1];
   for (const [name, vid] of e.vs) { if (vid === id) { return name; } }
   report.unknown++;
@@ -1783,15 +1844,15 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
     }
     case "str": {
       const L = r.leb();
-      if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+      if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
       const bytes = r.b.subarray(r.at, r.at + L);
       r.at += L;
       const dec = TableVariableUtf8Decode(bytes);
       // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its default
-      if (!dec.ok) { report.malformed = true; v[fd.n] = fd.def; return true; }
+      if (!dec.ok) { report.damaged = true; v[fd.n] = fd.def; return true; }
       if (fd.bound >= 0 && bytes.length > fd.bound) {
         // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3)
-        report.clamped++;
+        report.oor++;
         let cut = fd.bound;
         while (cut > 0 && (bytes[cut] & 0xc0) === 0x80) { cut--; }
         v[fd.n] = TableVariableUtf8Decode(bytes.subarray(0, cut)).s;
@@ -1804,14 +1865,14 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       // WIDE TEXT (docs/SPEC-TABLES.md §3, §4; internal/tablewire decode.go):
       // an ODD L is framing damage on this field and ill-formed UTF-16 (an
       // unpaired surrogate, a zero unit) is damage too — each reads the
-      // declared default, counts one malformed, and the parent reads on past
+      // declared default, counts one damaged, and the parent reads on past
       // L; a payload past N units is CLAMPED, a pair never split
       const L = r.leb();
-      if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+      if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
       const s = TableVariableWideDecode(r.b.subarray(r.at, r.at + L));
       r.at += L;
-      if (s === null) { report.malformed = true; v[fd.n] = fd.def; return true; }
-      if (s.length > fd.bound) { report.clamped++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
+      if (s === null) { report.damaged = true; v[fd.n] = fd.def; return true; }
+      if (s.length > fd.bound) { report.oor++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
       else { v[fd.n] = s; }
       return true;
     }
@@ -1825,13 +1886,13 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       // a pointer's payload is a NUMBER: bounds-checked at resolution, never
       // followed (§3.1)
       const index = r.leb();
-      if (r.bad) { report.malformed = true; return false; }
+      if (r.bad) { report.damaged = true; return false; }
       st.pending.push([v, fd.n, index, fd]);
       return true;
     }
     case "tab": {
       const L = r.leb();
-      if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+      if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
       const sub = new TableVariableReader(r.b, r.at, r.at + L);
       const inst = fd.c.make();
       v[fd.n] = inst;
@@ -1841,7 +1902,7 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       if (TableVariableCountRefused(report)) { return false; }
       // a body whose terminator is not the last byte of its L is damage: the
       // field reads its declared defaults and the parent continues past L
-      if (sub.at !== sub.end) { report.malformed = true; v[fd.n] = fd.c.make(); }
+      if (sub.at !== sub.end) { report.damaged = true; v[fd.n] = fd.c.make(); }
       r.at += L;
       return true;
     }
@@ -1862,20 +1923,20 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
 }
 
 // AN ARRAY BODY (§2.9, §3, decode.go arrayBody): a body shorter than its own
-// header is inert; a damaged count is malformed and keeps the field; an element
+// header is inert; a damaged count is damaged and keeps the field; an element
 // kind that is not this array's (and does not widen) is a kind mismatch and
-// keeps the field; a bounded array's excess is clamped; elements are bounded by
+// keeps the field; a bounded array's excess is oor; elements are bounded by
 // the body and a count the body cannot cover keeps the decoded prefix.
 function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
-  if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+  if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
   const end = r.at + L;
-  const mismatchBefore = report.kindMismatch;
+  const mismatchBefore = report.mismatch;
   const selected = TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path);
   r.at = end;
-  // undefined means a tolerant skip, distinct from damage (false) and a
+  // undefined means a strict skip, distinct from damage (false) and a
   // compatible field (true); a skipped field cannot satisfy Required.
-  return !selected && report.kindMismatch !== mismatchBefore ? undefined : true;
+  return !selected && report.mismatch !== mismatchBefore ? undefined : true;
 }
 
 // AN ARRAY BODY between r.at and end — a FIELD's after its own L, an ARM's
@@ -1888,7 +1949,7 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
 // L, because a canonical LEB128 is up to ten bytes and an L of 2 is the
 // shortest body that carries one at all (docs/SPEC-TABLES.md §3, §4; decode.go
 // arrayBody). A count spelled wide enough therefore leaves the cursor past the
-// end it was framed by, and a bounded array's excess is clamped and counts even
+// end it was framed by, and a bounded array's excess is oor and counts even
 // as that body covers no elements; read is bounded by the body and a count the
 // body cannot cover keeps the decoded prefix.
 function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path) {
@@ -1897,12 +1958,12 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     const ek = r.u8();
     const count = r.leb();
     if (r.bad) {
-      report.malformed = true;
+      report.damaged = true;
       if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
       return false;
     }
     if (ek !== fd.ek) {
-      if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; return false; }
+      if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; return false; }
       report.widened++;
     }
     let keep = count;
@@ -1910,8 +1971,8 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; return false; }
     } else if (count > fd.bound) {
       keep = fd.bound;
-      report.clamped++;
-      if (fd.tl && !report.clampedField) { report.clampedField = fd.field; }
+      report.oor++;
+      if (fd.tl && !report.oorField) { report.oorField = fd.field; }
     }
     // the span from the cursor to the body's end, empty rather than negative
     // when the count's own spelling ran past it (decode.go subTo)
@@ -1922,7 +1983,7 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     if (fd.s === "bytes") {
       const out = [];
       for (let i = 0; i < keep; i++) {
-        if (sub.at >= sub.end) { report.malformed = true; break; }
+        if (sub.at >= sub.end) { report.damaged = true; break; }
         out.push(sub.u8());
       }
       v[fd.n] = new Uint8Array(out);
@@ -1938,10 +1999,10 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       const out = [];
       let total = 0;
       for (let i = 0; i < keep; i++) {
-        const before = report.clamped;
+        const before = report.oor;
         if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { break; }
         if (fd.tl) {
-          if (report.clamped !== before && !report.clampedField) { report.clampedField = fd.field; }
+          if (report.oor !== before && !report.oorField) { report.oorField = fd.field; }
           total += TableVariableTextListLength(out[i]);
           if (fd.total > 0 && total > fd.total) { out.length = i; TableVariableTextListClamp(fd, report); break; }
         }
@@ -1955,16 +2016,16 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
 
 function TableVariableReadElement(fd, r, table, out, report, st, retain, path, ek, i) {
   if (fd.plain) {
-    const inst = fd.e.c.make(), vf = fd.e.c.fields[0], before = report.clamped;
+    const inst = fd.e.c.make(), vf = fd.e.c.fields[0], before = report.oor;
     if (!TableVariableReadField(vf, r, table, inst, report, st, retain, path)) { return false; }
-    if (report.clamped !== before && !report.clampedField) { report.clampedField = fd.field; }
+    if (report.oor !== before && !report.oorField) { report.oorField = fd.field; }
     out[i] = inst; return true;
   }
   const e = fd.e;
   switch (e.s) {
     case "union": {
       // an ARM HEADER in its place (decode.go element): null for None
-      if (r.at >= r.end) { report.malformed = true; return false; }
+      if (r.at >= r.end) { report.damaged = true; return false; }
       if (fd.fixed) { out[i] = null; }
       // THE ELEMENT'S OWN STEP (§6.6), the twin of the writer's: repeated
       // union elements are different records, not one re-read.
@@ -1977,7 +2038,7 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
     }
     case "ptr": {
       const index = r.leb();
-      if (r.bad) { report.malformed = true; return false; }
+      if (r.bad) { report.damaged = true; return false; }
       out[i] = null;
       st.pending.push([out, i, index, e]);
       return true;
@@ -1990,14 +2051,14 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
     }
     case "tab": {
       const L = r.leb();
-      if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+      if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
       const sub = new TableVariableReader(r.b, r.at, r.at + L);
       let inst = e.c.make();
       if (path !== null) { path.push({ o: fd.o, i: i }); }
       TableVariableBodyRead(e.c, sub, table, inst, report, st, true, retain, path);
       if (path !== null) { path.pop(); }
       if (TableVariableCountRefused(report)) { return false; }
-      if (sub.at !== sub.end) { report.malformed = true; inst = e.c.make(); }
+      if (sub.at !== sub.end) { report.damaged = true; inst = e.c.make(); }
       r.at += L;
       out[i] = inst;
       return true;
@@ -2245,8 +2306,8 @@ function TableVariableTextListValid(fd, values) {
   return true;
 }
 function TableVariableTextListClamp(fd, report) {
-  report.clamped++;
-  if (!report.clampedField) { report.clampedField = fd.field; }
+  report.oor++;
+  if (!report.oorField) { report.oorField = fd.field; }
 }
 function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "[") { inp.bad = true; return false; }
@@ -2268,12 +2329,12 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
       if (shape === "z" && vf.opt) {
         if (!inp.literal("null")) { return false; }
       } else if (shape !== "s") {
-        report.kindMismatch++;
+        report.mismatch++;
         if (!inp.skip(depth + 1, graph)) { return false; }
       } else {
-        const before = report.clamped;
+        const before = report.oor;
         if (!TableVariableTextField(vf, inp, record, depth + 1, graph, report)) { return false; }
-        if (report.clamped !== before && !report.clampedField) { report.clampedField = fd.field; }
+        if (report.oor !== before && !report.oorField) { report.oorField = fd.field; }
       }
       total += TableVariableTextListLength(record);
       if (fd.total > 0 && total > fd.total) { dropped = true; TableVariableTextListClamp(fd, report); }
@@ -2655,14 +2716,14 @@ function TableVariableMapKeyScan(fd, bytes, at, end, table) {
 }
 
 // ONE MAP (mapField): ascending against the last entry that LANDED, a repeated
-// key last-wins and counted duplicate, a descending key stops the map with what
-// it has and flags malformed, a key past its bound drops its entry and counts
-// clamped, and a key kind the reader does not declare empties the map for one
+// key last-wins and counted repeated, a descending key stops the map with what
+// it has and flags damaged, a key past its bound drops its entry and counts
+// oor, and a key kind the reader does not declare empties the map for one
 // kind_mismatch. A pointer inside an entry resolves after the whole load, so
 // the Map is built again then (TableVariableResolve).
 function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
-  if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+  if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
   const end = r.at + L;
   if (L >= 2) {
     // THE HEADER IS READ AGAINST THE PARENT BUFFER, as the oracle reads it
@@ -2672,8 +2733,8 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     // (decode.go subTo, docs/SPEC-TABLES.md §3).
     const ek = r.u8();
     const count = r.leb();
-    if (r.bad) { report.malformed = true; r.at = end; return true; }
-    if (ek !== 13) { report.kindMismatch++; r.at = end; return undefined; }
+    if (r.bad) { report.damaged = true; r.at = end; return true; }
+    if (ek !== 13) { report.mismatch++; r.at = end; return undefined; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
@@ -2683,24 +2744,24 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     let last = null, landed = false, widened = false;
     for (let i = 0; i < count; i++) {
       const elen = sub.leb();
-      if (sub.bad || sub.at + elen > sub.end) { report.malformed = true; break; }
+      if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
       const eat = sub.at;
       sub.at += elen;
       const scan = TableVariableMapKeyScan(fd, r.b, eat, eat + elen, table);
       if (scan.widened && !widened) { widened = true; report.widened++; }
-      if (scan.kindBad) { report.kindMismatch++; ents.length = 0; break; }
-      if (!scan.ok) { report.malformed = true; break; }
-      if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.clamped++; continue; }
+      if (scan.kindBad) { report.mismatch++; ents.length = 0; break; }
+      if (!scan.ok) { report.damaged = true; break; }
+      if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.oor++; continue; }
       let order = -1;
       if (landed) { order = TableVariableKeyOrder(fd, last, scan.key); }
-      if (order > 0) { report.malformed = true; break; }
+      if (order > 0) { report.damaged = true; break; }
       const entry = fd.c.make();
       if (path !== null) { path.push({ o: fd.o, i: order === 0 ? ents.length - 1 : ents.length }); }
       TableVariableBodyRead(fd.c, new TableVariableReader(r.b, eat, eat + elen), table, entry, report, st, true, retain, path);
       if (path !== null) { path.pop(); }
       if (TableVariableCountRefused(report)) { return false; }
       entry.key = scan.key;
-      if (order === 0) { ents[ents.length - 1] = entry; report.duplicate++; continue; }
+      if (order === 0) { ents[ents.length - 1] = entry; report.repeated++; continue; }
       ents.push(entry);
       last = scan.key;
       landed = true;
@@ -2717,7 +2778,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
 // 0 is damage, and a slot the writer never sent keeps its value
 function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
-  if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+  if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
   const end = r.at + L;
   if (L < 2) { r.at = end; return true; }
   // the same parent-buffer header as a map's and an array's (decode.go keyed,
@@ -2725,18 +2786,18 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   // entry span empty rather than negative
   const ek = r.u8();
   const count = r.leb();
-  if (r.bad) { report.malformed = true; r.at = end; return true; }
+  if (r.bad) { report.damaged = true; r.at = end; return true; }
   const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
   if (ek !== fd.ek) {
-    if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return undefined; }
+    if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; r.at = end; return undefined; }
     report.widened++;
   }
   const arr = v[fd.n];
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
-    if (sub.bad || key === 0 || key > table.length) { report.malformed = true; break; }
+    if (sub.bad || key === 0 || key > table.length) { report.damaged = true; break; }
     const elen = sub.leb();
-    if (sub.bad || sub.at + elen > sub.end) { report.malformed = true; break; }
+    if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
     const slot = fd.slotById.get(table[key - 1]);
     if (slot === undefined) {
       report.unknown++;
@@ -2757,7 +2818,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         TableVariableBodyRead(fd.e.c, er, table, inst, report, st, true, retain, path);
         if (path !== null) { path.pop(); }
         if (TableVariableCountRefused(report)) { return false; }
-        if (er.at !== er.end) { report.malformed = true; inst = fd.e.c.make(); }
+        if (er.at !== er.end) { report.damaged = true; inst = fd.e.c.make(); }
         arr[slot] = inst;
         break;
       }
@@ -2774,20 +2835,20 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
 
 // ONE UNION (unionCell): null for None and for an arm this reader does not
 // select — an unknown arm (counted unknown), a retyped one (kind_mismatch), an
-// arm damaged inside its L (malformed) — and undefined for damage that stops
+// arm damaged inside its L (damaged) — and undefined for damage that stops
 // the enclosing body
 function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   // A re-selected arm replaces the records an earlier selection retained here
   // under this field's ordinal (the reference's retainDiscard before the arm).
   if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, o); }
   const ref = r.leb();
-  if (r.bad) { report.malformed = true; return undefined; }
+  if (r.bad) { report.damaged = true; return undefined; }
   if (ref === 0) { return null; }
-  if (ref > table.length || r.at >= r.end) { report.malformed = true; return undefined; }
+  if (ref > table.length || r.at >= r.end) { report.damaged = true; return undefined; }
   const armId = table[ref - 1];
   const kind = r.u8();
   const n = r.leb();
-  if (r.bad || r.at + n > r.end) { report.malformed = true; return undefined; }
+  if (r.bad || r.at + n > r.end) { report.damaged = true; return undefined; }
   const end = r.at + n;
   const sub = new TableVariableReader(r.b, r.at, end);
   const arm = u.byId.get(armId);
@@ -2800,13 +2861,13 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
       // WIDENED AT AN ARM: decoded at its own width, and an L that is not that
       // width is the arm's own framing damage
       if (n !== tableRetainWidth(kind)) {
-        report.malformed = true;
+        report.damaged = true;
       } else {
         const x = TableVariableScalar(sub, arm.f, kind, report);
         if (x !== undefined) { out = { arm: arm.name, value: x }; report.widened++; }
       }
     } else {
-      report.kindMismatch++;
+      report.mismatch++;
     }
   } else if (arm.body) {
     const inst = arm.c.make();
@@ -2814,7 +2875,7 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
     TableVariableBodyRead(arm.c, sub, table, inst, report, st, true, retain, path);
     if (path !== null) { path.pop(); }
     if (TableVariableCountRefused(report)) { return undefined; }
-    if (sub.at !== end) { report.malformed = true; } else { out = { arm: arm.name, value: inst }; }
+    if (sub.at !== end) { report.damaged = true; } else { out = { arm: arm.name, value: inst }; }
   } else {
     out = TableVariableArmRead(arm, sub, table, report, st, retain, path, o);
   }
@@ -2827,16 +2888,16 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
 function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
   const n = r.end - r.at;
   if (arm.void) {
-    if (n !== 0) { report.malformed = true; return null; }
+    if (n !== 0) { report.damaged = true; return null; }
     return { arm: arm.name, value: null };
   }
-  if (arm.fw > 0 && n !== arm.fw) { report.malformed = true; return null; }
+  if (arm.fw > 0 && n !== arm.fw) { report.damaged = true; return null; }
   const f = arm.f;
   const holder = { arm: arm.name, value: TableVariableFieldDefault(f) };
   switch (f.s) {
     case "ptr": case "sblob": case "bblob": {
       const index = r.leb();
-      if (r.bad || r.at !== r.end) { report.malformed = true; return null; }
+      if (r.bad || r.at !== r.end) { report.damaged = true; return null; }
       holder.value = null;
       st.pending.push([holder, "value", index, f]);
       return holder;
@@ -2844,9 +2905,9 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
     case "str": {
       const bytes = r.b.subarray(r.at, r.end);
       const dec = TableVariableUtf8Decode(bytes);
-      if (!dec.ok) { report.malformed = true; return null; }
+      if (!dec.ok) { report.damaged = true; return null; }
       if (bytes.length > f.bound) {
-        report.clamped++;
+        report.oor++;
         let cut = f.bound;
         while (cut > 0 && (bytes[cut] & 0xc0) === 0x80) { cut--; }
         holder.value = TableVariableUtf8Decode(bytes.subarray(0, cut)).s;
@@ -2857,11 +2918,11 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
     }
     case "wstr": {
       // an ODD L or ill-formed UTF-16 at an arm is that arm's own damage: the
-      // union reads None, one malformed counts, the parent reads on past L
+      // union reads None, one damaged counts, the parent reads on past L
       // (§3; decode.go arm); past N units clamps, a pair never split
       const s = TableVariableWideDecode(r.b.subarray(r.at, r.end));
-      if (s === null) { report.malformed = true; return null; }
-      if (s.length > f.bound) { report.clamped++; holder.value = TableVariableWideClamp(s, f.bound); }
+      if (s === null) { report.damaged = true; return null; }
+      if (s.length > f.bound) { report.oor++; holder.value = TableVariableWideClamp(s, f.bound); }
       else { holder.value = s; }
       return holder;
     }
@@ -2878,7 +2939,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
     case "enum": {
       const x = TableVariableEnumRead(f, r, table, report, retain);
       if (x === undefined) { return null; }
-      if (r.at !== r.end) { report.malformed = true; return null; }
+      if (r.at !== r.end) { report.damaged = true; return null; }
       holder.value = x;
       return holder;
     }
@@ -3307,8 +3368,9 @@ class TableVariableTextIn {
               if (low >= 0xdc00 && low <= 0xdfff) { code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00); }
               else { this.p = mark; }
             }
-            // a surrogate half that never found its partner reads as U+FFFD (§16.3)
-            if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+            // A SURROGATE HALF THAT NEVER FOUND ITS PARTNER REFUSES (§16.3,
+            // docs/plans/strict-only.md decision 9): string_lone_surrogate
+            if (code >= 0xd800 && code <= 0xdfff) { this.bad = true; return null; }
             out += String.fromCodePoint(code);
             break;
           }
@@ -3321,7 +3383,9 @@ class TableVariableTextIn {
         const lo = t.charCodeAt(this.p + 1);
         if (lo >= 0xdc00 && lo <= 0xdfff) { out += t[this.p] + t[this.p + 1]; this.p += 2; continue; }
       }
-      if (c >= 0xd800 && c <= 0xdfff) { out += String.fromCharCode(0xfffd); this.p++; continue; }
+      // an unpaired surrogate in a string handed in as JavaScript text is the
+      // same lone surrogate, and refuses the same way
+      if (c >= 0xd800 && c <= 0xdfff) { this.bad = true; return null; }
       out += t[this.p];
       this.p++;
     }
@@ -3421,12 +3485,13 @@ class TableVariableTextIn {
 }
 
 // ONE TEXT: the root's object and nothing after it. The instance holds what
-// was placed before any stop; a text that is not JSON is malformed.
+// was placed before any stop; a text that is not JSON is damaged.
 function TableVariableFromJson(c, text, report) {
   const missingBefore = report.missingRequired;
+  const strictBefore = TableVariableStrictMark(report);
   report.reason = ""; report.refused = 0;
-  const carried = report.malformed;
-  report.malformed = false;
+  const carried = report.damaged;
+  report.damaged = false;
   const inp = new TableVariableTextIn(text);
   // The dialect accepts exactly one BOM at byte zero, never as whitespace.
   if (text.charCodeAt(0) === 0xfeff) { inp.p = 1; }
@@ -3438,9 +3503,11 @@ function TableVariableFromJson(c, text, report) {
   }
   // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
   // back no value
-  if (report.missingRequired !== missingBefore) { report.malformed = carried; return null; }
-  if (inp.bad || !ok || report.malformed) { report.malformed = true; return null; }
-  report.malformed = carried;
+  if (report.missingRequired !== missingBefore) { report.damaged = carried; return null; }
+  if (inp.bad || !ok || report.damaged) { report.damaged = true; return null; }
+  // the one read refuses the whole text, as the wire load does (§4, §16.2)
+  if (TableVariableStrictMark(report) !== strictBefore) { report.damaged = carried; return null; }
+  report.damaged = carried;
   return v;
 }
 
@@ -3488,7 +3555,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
       report.unknown++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {
-      if (seen.has(fd)) { report.duplicate++; }
+      if (seen.has(fd)) { report.repeated++; }
       seen.add(fd);
       const shape = inp.shape();
       if (shape === "z" && (fd.opt || fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
@@ -3501,7 +3568,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
         // the wrong shape included
         if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
         if (shape !== fd.js) {
-          report.kindMismatch++;
+          report.mismatch++;
           if (!inp.skip(depth + 1, graph)) { return false; }
         } else {
           inp.field = c.name + "." + fd.n;
@@ -3520,13 +3587,13 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
 
 // a base64 body six bits at a time (read.go readBase64): '=' anywhere is
 // padding, a character outside the alphabet makes the body the wrong shape
-// (one kind mismatch), and past the bound the excess is clamped
+// (one kind mismatch), and past the bound the excess is oor
 function TableVariableBase64Read(inp, bound, report) {
   if (inp.peek() !== "\"") { inp.bad = true; return null; }
   inp.p++;
   const t = inp.t;
   const out = [];
-  let acc = 0, held = 0, clamped = false, bad = false;
+  let acc = 0, held = 0, oor = false, bad = false;
   for (;;) {
     if (inp.p >= t.length) { inp.bad = true; return null; }
     const ch = t[inp.p++];
@@ -3538,11 +3605,11 @@ function TableVariableBase64Read(inp, bound, report) {
     held += 6;
     if (held >= 8) {
       held -= 8;
-      if (bound < 0 || out.length < bound) { out.push((acc >> held) & 0xff); } else { clamped = true; }
+      if (bound < 0 || out.length < bound) { out.push((acc >> held) & 0xff); } else { oor = true; }
     }
   }
-  if (bad) { report.kindMismatch++; return { bad: true, bytes: new Uint8Array(0) }; }
-  if (clamped) { report.clamped++; }
+  if (bad) { report.mismatch++; return { bad: true, bytes: new Uint8Array(0) }; }
+  if (oor) { report.oor++; }
   return { bad: false, bytes: new Uint8Array(out) };
 }
 
@@ -3580,7 +3647,7 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
         let cut = fd.bound;
         while (cut > 0 && (b[cut] & 0xc0) === 0x80) { cut--; }
         v[fd.n] = TableVariableUtf8Decode(b.slice(0, cut)).s;
-        report.clamped++;
+        report.oor++;
       } else {
         v[fd.n] = s;
       }
@@ -3589,10 +3656,10 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
     case "wstr": {
       // the wstring row of §16.2 (tabletext scanWString): the same text,
       // TRANSCODED at the boundary — a JavaScript string already is UTF-16 —
-      // and clamped at N CODE UNITS with a pair never split
+      // and oor at N CODE UNITS with a pair never split
       const s = inp.str();
       if (!TableVariableStoredText(s, inp, report)) { return false; }
-      if (s.length > fd.bound) { report.clamped++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
+      if (s.length > fd.bound) { report.oor++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
       else { v[fd.n] = s; }
       return true;
     }
@@ -3620,7 +3687,7 @@ function TableVariableZero(e) {
 }
 
 // an array re-established before placing; an unbounded one reads every
-// element, a bounded one keeps its prefix and counts the excess clamped; a
+// element, a bounded one keeps its prefix and counts the excess oor; a
 // fixed-length one stays at its declared length with unread tail slots at zero;
 // a null element of an array of pointers is a null slot (§16.2)
 function TableVariableTextArray(fd, inp, v, depth, graph, report) {
@@ -3637,13 +3704,13 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     if (ch === "") { inp.bad = true; return false; }
     const shape = inp.shape();
     if (placed >= bound) {
-      report.clamped++;
+      report.oor++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else if (e.s === "ptr" && shape === "z") {
       if (!inp.literal("null")) { return false; }
       out[placed++] = null;
     } else if (shape !== e.js) {
-      report.kindMismatch++;
+      report.mismatch++;
       if (!inp.skip(depth + 1, graph)) { return false; }
       out[placed++] = TableVariableZero(e);
     } else {
@@ -3691,7 +3758,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
     if (entry.open) { inp.bad = true; return false; }
     holder[key] = null;
     if (entry.c === null) { return true; }
-    if (entry.c !== d.c) { report.kindMismatch++; return true; }
+    if (entry.c !== d.c) { report.mismatch++; return true; }
     holder[key] = entry.node;
     return true;
   }
@@ -3733,7 +3800,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         if (ch === "]") { inp.p++; holder[key] = d.big ? mask : Number(mask); return true; }
         if (ch === "") { inp.bad = true; return false; }
         if (inp.shape() !== "s") {
-          report.kindMismatch++;
+          report.mismatch++;
           if (!inp.skip(depth + 1, graph)) { return false; }
         } else {
           const s = inp.str();
@@ -3798,11 +3865,11 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       if (n === null) { inp.bad = true; return false; }
       let x = Number(n.tok);
       // a magnitude the format cannot hold is the wrong shape for the kind
-      if (!Number.isFinite(x)) { report.kindMismatch++; return true; }
+      if (!Number.isFinite(x)) { report.mismatch++; return true; }
       let ranged = false;
       if (d.lo !== null) {
-        if (x < d.lo) { x = d.lo; ranged = true; report.clamped++; }
-        else if (x > d.hi) { x = d.hi; ranged = true; report.clamped++; }
+        if (x < d.lo) { x = d.lo; ranged = true; report.oor++; }
+        else if (x > d.hi) { x = d.hi; ranged = true; report.oor++; }
       }
       if (d.f32) {
         // ONE correctly-rounded conversion at the field's own width
@@ -3813,7 +3880,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         // midpoint above it among them — so a tie is broken by the exact
         // decimal, compared with the double in integer arithmetic.
         x = ranged ? Math.fround(x) : f32OfToken(n.tok, x);
-        if (!Number.isFinite(x)) { report.kindMismatch++; return true; }
+        if (!Number.isFinite(x)) { report.mismatch++; return true; }
       }
       holder[key] = x;
       return true;
@@ -3875,7 +3942,7 @@ function TableVariableTextWide(d, tok, holder, key, report) {
       raw = neg ? lo : hi;
       saturated = true;
     } else if (point < -40) {
-      report.kindMismatch++;
+      report.mismatch++;
       return true;
     } else {
       const scale = point - digits.length;
@@ -3884,22 +3951,22 @@ function TableVariableTextWide(d, tok, holder, key, report) {
         raw *= 10n ** BigInt(scale);
       } else {
         const den = 10n ** BigInt(-scale);
-        if (raw % den !== 0n) { report.kindMismatch++; return true; }
+        if (raw % den !== 0n) { report.mismatch++; return true; }
         raw /= den;
       }
       if (neg) { raw = -raw; }
       if (raw < lo) { raw = lo; saturated = true; } else if (raw > hi) { raw = hi; saturated = true; }
     }
   }
-  if (saturated) { report.clamped++; }
+  if (saturated) { report.oor++; }
   if (d.tlo !== null) {
-    if (raw < d.tlo) { raw = d.tlo; report.clamped++; }
-    else if (raw > d.thi) { raw = d.thi; report.clamped++; }
+    if (raw < d.tlo) { raw = d.tlo; report.oor++; }
+    else if (raw > d.thi) { raw = d.thi; report.oor++; }
   }
   // the storage landing: every fixed field declares a range inside its width,
   // so this binds only a wide kind declaring none, whose domain is the 128 above
-  if (raw < d.dlo) { raw = d.dlo; report.clamped++; }
-  else if (raw > d.dhi) { raw = d.dhi; report.clamped++; }
+  if (raw < d.dlo) { raw = d.dlo; report.oor++; }
+  else if (raw > d.dhi) { raw = d.dhi; report.oor++; }
   holder[key] = d.big ? raw : Number(raw);
   return true;
 }
@@ -3916,27 +3983,27 @@ function TableVariableTextInt(d, inp, holder, key, report) {
     let t = n.tok;
     if (t[0] === "-") { neg = true; t = t.slice(1); }
     mag = BigInt(t);
-    if (mag > 0xffffffffffffffffn) { mag = 0xffffffffffffffffn; report.clamped++; }
+    if (mag > 0xffffffffffffffffn) { mag = 0xffffffffffffffffn; report.oor++; }
   } else {
     const x = Number(n.tok);
-    if (!Number.isFinite(x)) { report.kindMismatch++; return true; }
+    if (!Number.isFinite(x)) { report.mismatch++; return true; }
     neg = x < 0 || Object.is(x, -0);
     const a = Math.abs(x);
     if (a >= 18446744073709551616) {
       mag = 0xffffffffffffffffn;
-      report.clamped++;
+      report.oor++;
     } else {
-      if (Math.trunc(a) !== a) { report.kindMismatch++; return true; }
+      if (Math.trunc(a) !== a) { report.mismatch++; return true; }
       mag = BigInt(a);
     }
   }
   let x = neg ? -mag : mag;
   if (d.tlo !== null) {
-    if (x < d.tlo) { x = d.tlo; report.clamped++; }
-    else if (x > d.thi) { x = d.thi; report.clamped++; }
+    if (x < d.tlo) { x = d.tlo; report.oor++; }
+    else if (x > d.thi) { x = d.thi; report.oor++; }
   }
-  if (x < d.dlo) { x = d.dlo; report.clamped++; }
-  else if (x > d.dhi) { x = d.dhi; report.clamped++; }
+  if (x < d.dlo) { x = d.dlo; report.oor++; }
+  else if (x > d.dhi) { x = d.dhi; report.oor++; }
   holder[key] = d.big ? x : Number(x);
   return true;
 }
@@ -3993,10 +4060,10 @@ function TableVariableJsonUnion(u, val, depth, g, out) {
 // a map key's text (placeMapKey): a string key is the key; an integer key is
 // ONE JSON number, integral in VALUE (2.0 and 1e3 are integers) and inside the
 // key kind's range — anything else of that shape is a kind mismatch, and a
-// token that is not one JSON number is malformed
+// token that is not one JSON number is damaged
 function TableVariableMapKeyNumber(kd, s) {
   const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
-  if (m === null) { return { status: "malformed" }; }
+  if (m === null) { return { status: "damaged" }; }
   const frac = m[3] === undefined ? "" : m[3];
   let digits = BigInt(m[2] + frac);
   let exp = (m[4] === undefined ? 0 : parseInt(m[4], 10)) - frac.length;
@@ -4026,7 +4093,7 @@ function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
   }
   holder[fd.n] = TableVariableFieldDefault(fd);
   if (shape !== fd.js) {
-    report.kindMismatch++;
+    report.mismatch++;
     return inp.skip(depth, graph);
   }
   return TableVariableTextField(fd, inp, holder, depth, graph, report);
@@ -4054,20 +4121,20 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
       status = res.status;
       key = res.key;
     }
-    if (status === "malformed") { report.malformed = true; inp.bad = true; return false; }
+    if (status === "damaged") { report.damaged = true; inp.bad = true; return false; }
     if (status === "mismatch") {
-      report.kindMismatch++;
+      report.mismatch++;
       if (!inp.skip(depth, graph)) { return false; }
     } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
       // KEYS NEVER CLAMP: the entry drops whole (§2.8)
-      report.clamped++;
+      report.oor++;
       if (!inp.skip(depth, graph)) { return false; }
     } else {
       const entry = fd.c.make();
       entry.key = key;
       if (!TableVariableTextValue(vd, inp, entry, depth, graph, report)) { return false; }
       const at = ents.findIndex((e) => TableVariableKeyOrder(fd, e.key, key) === 0);
-      if (at >= 0) { report.duplicate++; ents[at] = entry; } else { ents.push(entry); }
+      if (at >= 0) { report.repeated++; ents[at] = entry; } else { ents.push(entry); }
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
@@ -4094,16 +4161,17 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     if (key === null) { return false; }
     if (inp.peek() !== ":") { inp.bad = true; return false; }
     inp.p++;
+    // A REPEATED KEY IS DAMAGE (docs/plans/strict-only.md decision 5), the
+    // key of no slot (None, or a variant this reader does not carry) as much
+    // as a placed one: no writer produces it, so the read refuses.
+    if (seen.has(key)) { report.repeated++; }
+    seen.add(key);
     const slot = fd.slotByName.get(key);
-    if (slot !== undefined) {
-      if (seen.has(slot)) { report.duplicate++; }
-      seen.add(slot);
-    }
     if (slot === undefined) {
       report.unknown++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else if (inp.shape() !== fd.e.js) {
-      report.kindMismatch++;
+      report.mismatch++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
       return false;
@@ -4133,7 +4201,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
     if (!inp.skip(depth + 1, graph)) { return false; }
   } else if (arm.void) {
     if (inp.shape() !== "z") {
-      report.kindMismatch++;
+      report.mismatch++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {
       if (!inp.literal("null")) { return false; }
@@ -4141,7 +4209,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
     }
   } else if (arm.body) {
     if (inp.shape() !== (arm.c.jsonArray ? "a" : "o")) {
-      report.kindMismatch++;
+      report.mismatch++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {
       const inst = arm.c.make();
@@ -4156,7 +4224,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
       h.value = null;
       holder[key] = h;
     } else if (shape !== arm.f.js) {
-      report.kindMismatch++;
+      report.mismatch++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {
       if (!TableVariableTextField(arm.f, inp, h, depth + 1, graph, report)) { return false; }

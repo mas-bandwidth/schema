@@ -36,13 +36,13 @@ static partial class Program
 
         byte[] badVoid = Fixture(new byte[] { 1,15,2,32,1,99,3,8,42,0,0,0,0 }, "item", "signal", "tail");
         report = new U.TableReport();
-        Check(!U.Schema.RootLoad(copy, badVoid, report) && report.Malformed && copy.Item.Type == U.ChoiceType.None && copy.Tail == new U.Root().Tail,
+        Check(!U.Schema.RootLoad(copy, badVoid, report) && report.Damaged && copy.Item.Type == U.ChoiceType.None && copy.Tail == new U.Root().Tail,
             "void arm: nonzero length is damage and discards the whole load");
 
         Messagedemo.ToolMessage message = new Messagedemo.ToolMessage();
         Messagedemo.TableReport armReport = new Messagedemo.TableReport();
         byte[] badWidth = Fixture(new byte[] { 1,15,2,6,2,1,0,0 }, "body", "caps");
-        Check(!Messagedemo.Schema.ToolMessageLoad(message, badWidth, armReport) && armReport.Malformed &&
+        Check(!Messagedemo.Schema.ToolMessageLoad(message, badWidth, armReport) && armReport.Damaged &&
             armReport.Widened == 0 && message.Body.Type == Messagedemo.ToolBodyType.None,
             "widening arm: damage precedes the widening event and discards the whole load");
 
@@ -51,7 +51,7 @@ static partial class Program
         byte[] repeat = Fixture(new byte[] { 1,14,6,15,2,2,32,0,0,1,14,3,15,2,2,3,8,42,0,0,0,0 },
             "pending", "signal", "tail");
         report = new U.TableReport();
-        Check(!U.Schema.RootLoad(copy, repeat, report) && report.Malformed && copy.Pending[0].Type == U.ChoiceType.None && copy.Tail == new U.Root().Tail,
+        Check(!U.Schema.RootLoad(copy, repeat, report) && report.Damaged && copy.Pending[0].Type == U.ChoiceType.None && copy.Tail == new U.Root().Tail,
             "repeated union array: a damaged later header discards the whole load");
 
         // A shorter counted union array must restore the whole element, not the
@@ -81,17 +81,17 @@ static partial class Program
 
         report = new U.TableReport();
         byte[] foreignArray = Fixture(new byte[] { 1,14,2,8,0,2,8,42,0,0,0,0 }, "optional", "tail");
-        Check(U.Schema.RootLoad(copy, foreignArray, report) && report.KindMismatch == 1 && !copy.OptionalPresent && copy.Tail == 42,
-            "optional array: foreign element kind does not establish presence");
+        Check(!U.Schema.RootLoad(copy, foreignArray, report) && report.Refused && !report.Damaged && !copy.OptionalPresent && copy.Tail == new U.Root().Tail,
+            "optional array: a foreign element kind refuses the load and establishes no presence");
 
         report = new U.TableReport();
-        Check(U.Schema.RootFromJson(copy, Encoding.UTF8.GetBytes("{\"item\":{\"grade\":7},\"tail\":42}"), report) &&
-            report.KindMismatch == 1 && copy.Item.Type == U.ChoiceType.None && copy.Tail == 42,
-            "general JSON arm: wrong shape leaves None and preserves sibling");
+        Check(!U.Schema.RootFromJson(copy, Encoding.UTF8.GetBytes("{\"item\":{\"grade\":7},\"tail\":42}"), report) &&
+            (report.Refused || report.Damaged) && copy.Item.Type == U.ChoiceType.None && copy.Tail == new U.Root().Tail,
+            "general JSON arm: a wrong shape refuses the load and lands nothing");
         report = new U.TableReport();
-        Check(U.Schema.RootFromJson(copy, Encoding.UTF8.GetBytes("{\"optional\":[{\"x\":4}],\"optional\":null}"), report) &&
-            !copy.OptionalPresent && copy.OptionalCount == 0 && copy.Optional[0].X == 9,
-            "optional array: repeated null restores absent storage");
+        Check(!U.Schema.RootFromJson(copy, Encoding.UTF8.GetBytes("{\"optional\":[{\"x\":4}],\"optional\":null}"), report) &&
+            (report.Refused || report.Damaged) && !copy.OptionalPresent && copy.OptionalCount == 0 && copy.Optional[0].X == 9,
+            "optional array: a repeated JSON key refuses the load and restores absent storage");
 
         report = new U.TableReport();
         for (int i = 0; i < 1000; i++) { U.Schema.RootLoad(copy, expected, report); U.Schema.RootSave(copy, actual); }

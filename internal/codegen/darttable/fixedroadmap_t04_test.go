@@ -260,10 +260,7 @@ func t04R32(t *testing.T) {
 	for _, zero := range []string{
 		"refused = TableFixedRefusal.none;",
 		"unknown = 0;",
-		"kindMismatch = 0;",
 		"widened = 0;",
-		"clamped = 0;",
-		"malformed = false;",
 		"layoutHash = 0;",
 	} {
 		t04Has(t, fixedRuntime, zero, "R32 REFUSE is TOTAL")
@@ -286,7 +283,7 @@ func t04R10(t *testing.T) {
 	}
 	t04Has(t, load, "if (layoutBytes != known.layoutBytes) {", "R10 the layout's length is a byte comparison")
 	t04Has(t, load, "bytes[TableFixedLimits.layoutAt + i] != known.layout[i]", "R10 the layout's bytes are compared")
-	t04Has(t, load, "report.refused = TableFixedRefusal.layoutMalformed;", "R10 a lie about a known version is layout_malformed")
+	t04Has(t, load, "report.refused = TableFixedRefusal.layoutDamaged;", "R10 a lie about a known version is layout_damaged")
 	if strings.Contains(load, ".parse(") {
 		t.Error("R10: the load walks a stranger's layout; the walk is the build's TableFixedLineagePlans")
 	}
@@ -328,8 +325,8 @@ func t04R15(t *testing.T) {
 		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
 	}
 	t04Has(t, load, "report.unknown += censusUnknown;", "R15 unknown is the compile census")
-	t04Has(t, fixedRuntime, "} else if (counted > size) {", "R15 the count clamp is the writer's bound")
-	t04Has(t, fixedRuntime, "} else if (used > cap) {", "R15 the text clamp is the writer's span")
+	t04Has(t, fixedRuntime, "if (counted < 0 || counted > size) {", "R15 a count past the writer's bound refuses")
+	t04Has(t, fixedRuntime, "return TableFixedRefusal.lengthOverBound;", "R15 a text length past the writer's span refuses")
 	if strings.Contains(fixedRuntime, "remap.get(") {
 		t.Error("R15: a forward-read remap survives in the runtime")
 	}
@@ -594,8 +591,8 @@ func t04R29(t *testing.T) {
 	}
 	t04Has(t, fixedRuntime, "size(0) == 0 || size(0) > TableFixedLimits.recordMaxBytes", "R29 the reader holds the endpoint's layout to the same ceiling")
 	t04Has(t, fixedRuntime, "plan.record != 0 && end > plan.record", "R29 an entry past the writer's declared record")
-	t04Has(t, fixedRuntime, "} else if (counted > size) {", "R29 the count clamps to the writer's bound")
-	t04Has(t, fixedRuntime, "} else if (used > cap) {", "R29 the text clamps to the writer's span")
+	t04Has(t, fixedRuntime, "return TableFixedRefusal.countOverBound;", "R29 a count past the writer's bound refuses")
+	t04Has(t, fixedRuntime, "if (used < 0 || used > cap) {", "R29 a text length past the writer's span refuses")
 	// THE COUNT'S BOUND IS THE WRITER'S: the plan compiles the count op with
 	// the WRITER's element count, never the reader's wider one.
 	t04Has(t, fixedRuntime, "final theirN = theirElem != 0 ? (theirSize - head) ~/ theirElem : 0;", "R29 the count's bound is the writer's")

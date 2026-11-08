@@ -56,9 +56,9 @@ public final class %[1]s {
 
     static void say(String tag, int n, %[2]s.TableFixed.Report r) {
         System.out.println(tag + " n=" + n
-            + " unknown=" + r.unknown + " kindMismatch=" + r.kindMismatch
-            + " widened=" + r.widened + " clamped=" + r.clamped
-            + " refused=" + r.refused + " malformed=" + r.malformed
+            + " unknown=" + r.unknown
+            + " widened=" + r.widened
+            + " refused=" + r.refused + " damaged=" + r.damaged
             + " reason=" + r.reason);
     }
 
@@ -120,10 +120,10 @@ public final class %[1]s {
 	if n := num("READ1", "n"); n != 3 {
 		t.Errorf("READ1: n=%d, want 3 — a three-record file must read three records", n)
 	}
-	if reads["READ1"]["refused"] != "false" || reads["READ1"]["malformed"] != "false" || reads["READ1"]["reason"] != "none" {
+	if reads["READ1"]["refused"] != "false" || reads["READ1"]["damaged"] != "false" || reads["READ1"]["reason"] != "none" {
 		t.Errorf("READ1: a clean NEW-READS-OLD is not a refusal: %v", reads["READ1"])
 	}
-	if num("READ1", "kindMismatch") != 0 || num("READ1", "widened") != 0 || num("READ1", "clamped") != 0 {
+	if num("READ1", "widened") != 0 {
 		t.Errorf("READ1: a counter that must not move did: %v", reads["READ1"])
 	}
 	if u := num("READ1", "unknown"); u != 1 {

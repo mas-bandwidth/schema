@@ -32,8 +32,8 @@ function TableVariableTextListValid(fd, values) {
   return true;
 }
 function TableVariableTextListClamp(fd, report) {
-  report.clamped++;
-  if (!report.clampedField) { report.clampedField = fd.field; }
+  report.oor++;
+  if (!report.oorField) { report.oorField = fd.field; }
 }
 function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "[") { inp.bad = true; return false; }
@@ -55,12 +55,12 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
       if (shape === "z" && vf.opt) {
         if (!inp.literal("null")) { return false; }
       } else if (shape !== "s") {
-        report.kindMismatch++;
+        report.mismatch++;
         if (!inp.skip(depth + 1, graph)) { return false; }
       } else {
-        const before = report.clamped;
+        const before = report.oor;
         if (!TableVariableTextField(vf, inp, record, depth + 1, graph, report)) { return false; }
-        if (report.clamped !== before && !report.clampedField) { report.clampedField = fd.field; }
+        if (report.oor !== before && !report.oorField) { report.oorField = fd.field; }
       }
       total += TableVariableTextListLength(record);
       if (fd.total > 0 && total > fd.total) { dropped = true; TableVariableTextListClamp(fd, report); }

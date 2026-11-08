@@ -188,7 +188,7 @@ for _, name in { "short", "long", "duplicate" } do
 	local root = roots[name]
 	local report = fresh()
 	local v = load.load(root, inputs[name], report)
-	if v == nil or report.refused > 0 then
+	if v == nil or report.refused > 0 or report.duplicate > 0 then
 		print(name .. ":REFUSED:" .. tostring(report.duplicate) .. ":" .. tostring(report.malformed))
 	else
 		local out = save.save(St.lookup(root), v)

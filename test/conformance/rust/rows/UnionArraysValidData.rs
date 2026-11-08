@@ -102,7 +102,7 @@ fn test_union_arrays_valid_data_write_read() {
     let n = root_config_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report)
         .expect("read succeeds");
     check(n == 1, "arrays of unions: the reader reads one record");
-    check(report.clamped == 0 && !report.malformed && !report.refused,
+    check(report.oor == 0 && !report.damaged && !report.refused,
           "arrays of unions: a clean read — no counter moved");
 
     let b = &back[0];

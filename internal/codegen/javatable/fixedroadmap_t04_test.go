@@ -169,8 +169,8 @@ fixed table T
 func t04R19(t *testing.T) {
 	runtime := t04Runtime()
 	for _, want := range []string{
-		"unknown = 0; kindMismatch = 0; widened = 0; clamped = 0;",
-		"malformed = false; refused = false; reason = Reason.none; layoutHash = 0;",
+		"unknown = 0; widened = 0; damaged = false; kindChanged = 0;",
+		"refused = false; reason = Reason.none; layoutHash = 0;",
 	} {
 		t04Has(t, runtime, want, "R19 a clean read moves nothing")
 	}
@@ -187,11 +187,13 @@ fixed table T
 	surface := t04Surface(t, out)
 	for _, want := range []string{
 		"report.unknown += censusUnknown;",
-		"report.kindMismatch += censusKind;",
 		"lands zero, always (§5.9 #30)",
 	} {
 		t04Has(t, surface, want, "R19 the census adds the plan's own number once")
 	}
+	// The kind census never reaches a read counter: the retired kindMismatch
+	// is not a member of the report the strict read hands back.
+	t04No(t, surface, "kindMismatch", "R19 the retired kindMismatch counter is gone from the read")
 }
 
 // ---- java/E9 ---------------------------------------------------------------
@@ -237,11 +239,11 @@ func t04R16(t *testing.T) {
 		"if (!named && census && c.report != null) { c.report.unknown++; }",
 		// widened: once per entry per record.
 		"report.widened++;",
-		// clamped: once per entry per record, count and text.
-		"else if (v > p.size) { v = p.size; report.clamped++; }",
-		"else if (v > cap) { v = cap; report.clamped++; }",
-		// the bounds pass counts a forged ordinal remapped to None on BOTH plans.
-		"if (raw > (p.dstsize & 0xFFL)) { report.clamped++; }",
+		// a count or a text length past its bound refuses the load by name.
+		"} else if (v > p.size) { v = p.size; report.refuse(Reason.countOverBound); }",
+		"} else if (v > cap) { v = cap; report.refuse(Reason.lengthOverBound); }",
+		// a forged ordinal past the writer's arm set refuses on BOTH plans.
+		"if (raw > (p.dstsize & 0xFFL)) { report.refuse(Reason.outOfRange); }",
 	} {
 		t04Has(t, runtime, want, "R16 §5.4's counters")
 	}
@@ -299,9 +301,9 @@ fixed table T
 		t.Fatal("R16: the run loop has no opCopy/opCount cases to bound")
 	}
 	copyBody := runtime[start:end]
-	for _, bad := range []string{"clamped++", "widened++", "unknown++", "kindMismatch++"} {
+	for _, bad := range []string{"refuse(", "widened++", "unknown++"} {
 		if strings.Contains(copyBody, bad) {
-			t.Errorf("R16: opCopy moves a counter (%s); copy lands its bytes and moves nothing", bad)
+			t.Errorf("R16: opCopy moves a counter or refuses (%s); copy lands its bytes and moves nothing", bad)
 		}
 	}
 }
@@ -339,12 +341,12 @@ fixed table T
 
 // ---- java/C3 ---------------------------------------------------------------
 
-// t04C3 holds java/C3: a text length is clamped ONCE, counting one `clamped`, at
-// the field's declared capacity — the compiled plan's text op and the identity
-// path's scatter count alike.
+// t04C3 holds java/C3: a text length past the field's declared capacity
+// REFUSES the load as lengthOverBound — the compiled plan's text op and the
+// identity path's scatter alike.
 func t04C3(t *testing.T) {
 	runtime := t04Runtime()
-	t04Has(t, runtime, "else if (v > cap) { v = cap; report.clamped++; }", "C3 the text op clamps the length")
+	t04Has(t, runtime, "} else if (v > cap) { v = cap; report.refuse(Reason.lengthOverBound); }", "C3 the text op refuses a length past its cap")
 	out, err := Generate(unitFrom(t, `package probe
 
 fixed table T
@@ -356,7 +358,7 @@ fixed table T
 		t.Fatalf("C3: Generate: %v", err)
 	}
 	surface := t04Surface(t, out)
-	t04Has(t, surface, "if (n < 0) { n = 0; r.clamped++; } else if (n > 8) { n = 8; r.clamped++; }", "C3 a string(N)'s length clamps to its bound")
+	t04Has(t, surface, "if (n < 0) { n = 0; r.refuse(TableFixed.Reason.lengthOverBound); } else if (n > 8) { n = 8; r.refuse(TableFixed.Reason.lengthOverBound); }", "C3 a string(N)'s length outside its bound refuses the load")
 }
 
 // ---- java/C4 ---------------------------------------------------------------

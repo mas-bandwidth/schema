@@ -95,7 +95,7 @@ public final class BenchPacketRetain {
             }
         }
         // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
-        if (report.malformed) {
+        if (report.damaged || report.refused) {
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
@@ -103,7 +103,7 @@ public final class BenchPacketRetain {
         }
         // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
         if (TableVariable.cyclic(nt)) {
-            report.malformed = true;
+            report.damaged = true;
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
@@ -262,7 +262,7 @@ public final class BenchPacketRetain {
                 return;
             }
             if (!r.has(1)) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             }
             int kind = r.get8();
@@ -272,7 +272,7 @@ public final class BenchPacketRetain {
                         if (r.has(4)) {
                             v.a = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -280,7 +280,7 @@ public final class BenchPacketRetain {
                             v.a = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -288,7 +288,7 @@ public final class BenchPacketRetain {
                             v.a = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -298,11 +298,11 @@ public final class BenchPacketRetain {
                         } else {
                             v.a = 100;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_b) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -310,7 +310,7 @@ public final class BenchPacketRetain {
                         if (r.has(4)) {
                             v.b = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -318,7 +318,7 @@ public final class BenchPacketRetain {
                             v.b = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -326,7 +326,7 @@ public final class BenchPacketRetain {
                             v.b = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -336,11 +336,11 @@ public final class BenchPacketRetain {
                         } else {
                             v.b = 65535;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_c) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -348,7 +348,7 @@ public final class BenchPacketRetain {
                         if (r.has(4)) {
                             v.c = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -356,7 +356,7 @@ public final class BenchPacketRetain {
                             v.c = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -364,7 +364,7 @@ public final class BenchPacketRetain {
                             v.c = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -374,11 +374,11 @@ public final class BenchPacketRetain {
                         } else {
                             v.c = 1000000;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_bits7) {
                 if (kind == 6) {
@@ -386,17 +386,17 @@ public final class BenchPacketRetain {
                         if (r.has(1)) {
                             v.bits7 = r.get8();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.bits7 & 0xffffffffL) > 127L) {
                         v.bits7 = (int) 127L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_bits13) {
                 if (kind == 7 || kind == 6) {
@@ -404,7 +404,7 @@ public final class BenchPacketRetain {
                         if (r.has(2)) {
                             v.bits13 = r.get16();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -412,17 +412,17 @@ public final class BenchPacketRetain {
                             v.bits13 = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.bits13 & 0xffffffffL) > 8191L) {
                         v.bits13 = (int) 8191L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_bits23) {
                 if (kind == 8 || kind == 6 || kind == 7) {
@@ -430,7 +430,7 @@ public final class BenchPacketRetain {
                         if (r.has(4)) {
                             v.bits23 = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -438,7 +438,7 @@ public final class BenchPacketRetain {
                             v.bits23 = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 7) {
@@ -446,33 +446,33 @@ public final class BenchPacketRetain {
                             v.bits23 = r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.bits23 & 0xffffffffL) > 8388607L) {
                         v.bits23 = (int) 8388607L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_flag) {
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
                         if (bv > 1) {
-                            report.malformed = true;
+                            report.damaged = true;
                         }
                         v.flag = bv != 0;
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_x) {
                 if (kind == 10) {
@@ -484,12 +484,12 @@ public final class BenchPacketRetain {
                             v.x = Float.intBitsToFloat(fbits);
                         }
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_y) {
                 if (kind == 10) {
@@ -501,12 +501,12 @@ public final class BenchPacketRetain {
                             v.y = Float.intBitsToFloat(fbits);
                         }
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_z) {
                 if (kind == 10) {
@@ -518,12 +518,12 @@ public final class BenchPacketRetain {
                             v.z = Float.intBitsToFloat(fbits);
                         }
                     } else {
-                        report.malformed = true;
+                        report.damaged = true;
                         r.fail = true;
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_big) {
                 if (kind == 9 || kind == 6 || kind == 7 || kind == 8) {
@@ -531,7 +531,7 @@ public final class BenchPacketRetain {
                         if (r.has(8)) {
                             v.big = r.get64();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -539,7 +539,7 @@ public final class BenchPacketRetain {
                             v.big = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 7) {
@@ -547,7 +547,7 @@ public final class BenchPacketRetain {
                             v.big = r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 8) {
@@ -555,13 +555,13 @@ public final class BenchPacketRetain {
                             v.big = ((long) r.get32()) & 0xffffffffL;
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == BenchPacketVariable.F_blob) {
                 if (kind == 14) {
@@ -572,11 +572,11 @@ public final class BenchPacketRetain {
                             long n = ar.count(r.limit);
                             if (ar.fail) {
                             } else if (!(ek == 6)) {
-                                report.kindMismatch++;
+                                report.refuse("kind_mismatch");
                             } else {
                                 if (n < 0 || n > 17) {
                                     n = 17;
-                                    report.clamped++;
+                                    report.refuse("out_of_range");
                                 }
                                 if (ek != 6) {
                                     report.widened++;
@@ -594,17 +594,17 @@ public final class BenchPacketRetain {
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
                     r.skip(kind);
                 } else {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
             } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             } else {
                 captureUnknown(r, id, kind, retain, report, path, depth);

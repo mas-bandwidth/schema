@@ -89,7 +89,18 @@ print("OK")
 
 func (lobsterFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wire []byte, capacity int) (int, string, map[string]string, []byte, fixedproof.LoadCounters) {
 	t.Helper()
+	return lobsterLoadLineage(t, u, root, lineage, wire, capacity, nil)
+}
+
+// lobsterLoadLineage is LoadLineage with an optional mutate hook that edits
+// the generated files before the run: the per-row negative controls of
+// fixed_evolution_rows_test.go plant one break through it.
+func lobsterLoadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]fixedproof.LineageEntry, wire []byte, capacity int, mutate func(map[string][]byte)) (int, string, map[string]string, []byte, fixedproof.LoadCounters) {
+	t.Helper()
 	files := lobsterGenerateWithLineage(t, u, lineage)
+	if mutate != nil {
+		mutate(files)
+	}
 	if capacity < 0 {
 		// Every fixed record contains an eight-byte hash, so this file-size
 		// bound supplies enough caller storage without imposing a hidden cap.
@@ -122,8 +133,8 @@ else:
 	fields := map[string]string{}
 	count, reason := -1, ""
 	var counters fixedproof.LoadCounters
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(strings.TrimSpace(out), "\n")
+	for line := range lines {
 		if after, ok := strings.CutPrefix(line, "COUNTERS "); ok {
 			parts := strings.Fields(after)
 			if len(parts) == 5 {

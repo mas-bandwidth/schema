@@ -69,7 +69,7 @@ public final class TableRetain {
         used = write;
     }
 
-    // A winning duplicate map key replaces the entry itself and every child.
+    // A winning repeated map key replaces the entry itself and every child.
     void discardPath(int[] path, int depth) {
         int write = 0;
         for (int at = 0; at < used; ) {
@@ -249,7 +249,7 @@ public final class TableRetain {
     }
 
     // A resolving cursor over one self-framed payload (§6.6). The walk's own
-    // damage is a dropped record and never malformed, so it reads the bytes
+    // damage is a dropped record and never damaged, so it reads the bytes
     // directly and touches no report; the outer framing was validated by the
     // plain read's skip before the walk began.
     static final class Resolver {

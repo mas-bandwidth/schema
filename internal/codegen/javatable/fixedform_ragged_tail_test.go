@@ -78,9 +78,9 @@ func TestFixedFormRaggedTail(t *testing.T) {
 	// The full file must read cleanly FIRST, so a broken fixture cannot pass
 	// this row by accident.
 	full := runProbe(t, classes, "Probe_reads", oldFile)
-	if full.n < 1 || full.refused || full.malformed {
+	if full.n < 1 || full.refused || full.damaged {
 		t.Fatalf("the full file does not read cleanly: n=%d refused=%v reason=%s malformed=%v",
-			full.n, full.refused, full.reason, full.malformed)
+			full.n, full.refused, full.reason, full.damaged)
 	}
 
 	for extra := 1; extra < recordBytes; extra++ {
@@ -90,8 +90,8 @@ func TestFixedFormRaggedTail(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := runProbe(t, classes, "Probe_reads", raggedFile)
-		if !r.malformed {
-			t.Errorf("extra=%d: malformed=%v, want true — %d trailing bytes are not a whole record", extra, r.malformed, extra)
+		if !r.damaged {
+			t.Errorf("extra=%d: malformed=%v, want true — %d trailing bytes are not a whole record", extra, r.damaged, extra)
 		}
 		if r.refused {
 			t.Errorf("extra=%d: refused=%v, want false — a ragged tail is the residue, not a refusal by name", extra, r.refused)
@@ -102,9 +102,9 @@ func TestFixedFormRaggedTail(t *testing.T) {
 		if r.n != -1 {
 			t.Errorf("extra=%d: n=%d, want -1", extra, r.n)
 		}
-		if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 || r.clamped != 0 {
-			t.Errorf("extra=%d: counters moved: unknown=%d kindMismatch=%d widened=%d clamped=%d, want all 0",
-				extra, r.unknown, r.kindMismatch, r.widened, r.clamped)
+		if r.unknown != 0 || r.widened != 0 {
+			t.Errorf("extra=%d: counters moved: unknown=%d widened=%d, want all 0",
+				extra, r.unknown, r.widened)
 		}
 		if r.layoutHash != "0x0" {
 			t.Errorf("extra=%d: layoutHash=%s, want 0x0 — only the two layout refusals report a hash", extra, r.layoutHash)
@@ -115,8 +115,8 @@ func TestFixedFormRaggedTail(t *testing.T) {
 		// reads probe is poisoned (0x5A through its non-final fields), so a
 		// value==fresh comparison cannot serve there; the refuses probe is not.
 		ref := runProbe(t, classes, "Probe_refuses", raggedFile)
-		if !ref.malformed || ref.n != -1 {
-			t.Fatalf("extra=%d: the refuses probe did not report malformed: n=%d malformed=%v", extra, ref.n, ref.malformed)
+		if !ref.damaged || ref.n != -1 {
+			t.Fatalf("extra=%d: the refuses probe did not report malformed: n=%d malformed=%v", extra, ref.n, ref.damaged)
 		}
 		assertFresh(t, ref)
 	}
@@ -131,8 +131,8 @@ func TestFixedFormRaggedTail(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := runProbe(t, classes, "Probe_reads", wholeFile)
-	if w.malformed {
-		t.Errorf("extra==recordBytes: malformed=%v, want false — a whole extra record is not a ragged tail", w.malformed)
+	if w.damaged {
+		t.Errorf("extra==recordBytes: malformed=%v, want false — a whole extra record is not a ragged tail", w.damaged)
 	}
 	if !w.refused || w.reason != "noLayout" {
 		t.Errorf("extra==recordBytes: refused=%v reason=%s, want a noLayout refusal for the zero-filled extra record", w.refused, w.reason)

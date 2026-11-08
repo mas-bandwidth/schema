@@ -68,7 +68,7 @@ func (g *wireGen) jsonTextListRead(f *ir.Field, val string, d int, fallback stri
 	et := f.Type.Name
 	read := fmt.Sprintf("e.value=_jsonStringField(item,%d,r);", textBound(ir.TextListValue(f)))
 	if ir.TextListOptional(f) {
-		read = fmt.Sprintf("if(item is String){e.hasValue=true;%s}else if(item!=null){r.kindMismatch++;}", read)
+		read = fmt.Sprintf("if(item is String){e.hasValue=true;%s}else if(item!=null){r.refuse('kind_mismatch');}", read)
 	}
 	length := "tableTextByteLength(e.value)"
 	if ir.TextListOptional(f) {
@@ -100,22 +100,20 @@ func (g *wireGen) emitTextTotalKeep(f *ir.Field, length, ind string) {
 	if f.TextTotal == 0 {
 		return
 	}
-	g.pf("%stextSpent += %s;\n%sif(textSpent>%d){r.report.clamped++;if(r.report.clampedField.isEmpty)r.report.clampedField=%q;break;}\n", ind, length, ind, f.TextTotal, f.TextListElem().MapEntryOf)
+	g.pf("%stextSpent += %s;\n%sif(textSpent>%d){r.report.refuse('length_over_bound');break;}\n", ind, length, ind, f.TextTotal)
 }
 
 const textListJSONRuntime = `
 List<T> _jsonTextList<T>(dynamic val,TableTextReport r,int bound,String field,T Function(dynamic) read,int total,int Function(T) length,[List<T>? fallback]) {
- if(val is! List){r.kindMismatch++;return fallback??<T>[];}
- final before=r.clamped;
+ if(val is! List){r.refuse('kind_mismatch');return fallback??<T>[];}
  final out=<T>[];
  var spent=0;
  for(var i=0;i<val.length;i++){
-  if(bound>=0&&i>=bound){r.clamped+=val.length-i;break;}
+  if(bound>=0&&i>=bound){r.refuse('count_over_bound');break;}
   final e=read(val[i]);
-  if(total>0){spent+=length(e);if(spent>total){r.clamped++;if(bound>=0&&val.length>bound)r.clamped+=val.length-bound;break;}}
+  if(total>0){spent+=length(e);if(spent>total){r.refuse('length_over_bound');break;}}
   out.add(e);
  }
- if(r.clamped!=before&&r.clampedField.isEmpty)r.clampedField=field;
  return out;
 }
 `

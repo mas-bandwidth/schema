@@ -25,10 +25,10 @@ local M = schema.require(%q);
 local J = schema.require("schema_table_json");
 local cases = %s;
 foreach (c in cases) {
-  local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
-  local v = J.FromJsonTolerant(M, c[0], inputs[c[1]], r);
-  local w = r.malformed ? null : J.ToJson(M, c[0], v);
+  local r = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+    bodyDamaged = false, refused = false };
+  local v = J.fromJsonWalk(M, c[0], inputs[c[1]], r);
+  local w = r.bodyDamaged ? null : J.ToJson(M, c[0], v);
   local out = "";
   if (w == null) out = "null";
   else for (local i = 0; i < w.len(); i++) out += format("%%02x", w[i] & 0xff);

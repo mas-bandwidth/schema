@@ -177,14 +177,14 @@ def region_size(st:LoadState, d:TableDescriptor, lo:int, hi:int) -> int, bool:
         return 0, false
     return region_round(region_round(d.rsize, d.ralign) + s.at, d.ralign), true
 
-// load_measure is the region a C reader would ask for to load the wire at the
-// root table named root (Go's FileRegionMeasure): the bytes, whether the node
-// table was read whole, and whether the framing REFUSES the region (a
-// collection count past the int32 storage cap, or one its body cannot hold,
-// or a blob past 4 GiB), followed by a local diagnostic. Ordinary framing
-// failure answers 0, not whole; a checksum mismatch answers -1 and refuses
-// before any record is measured. Diagnostics are not a conformance value.
+// Validate with the single read before measuring the accepted value. A
+// refusal never supplies a usable region; diagnostics remain local.
 def load_measure(root:string, data:string) -> int, bool, bool, string:
+    let report = LoadReport {}
+    let value = load(root, data, report)
+    if not value:
+        return -1, false, true, strict_reason(report)
+    release(value)
     if length(data) == 0:
         return 0, false, false, "wire_damaged"
     if data[0] != 1:

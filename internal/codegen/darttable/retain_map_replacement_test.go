@@ -14,7 +14,6 @@ import (
 )
 
 func TestDartRetainedMapReplacement(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Node { known int32 }
@@ -72,13 +71,14 @@ table Root { entries map[int32]Value }
 		name                               string
 		body                               []byte
 		unknown, duplicate, mismatch, lost int
+		refusal                            string
 	}{
-		{"known_only_large", field(known...), 0, 0, 0, 0},
-		{"duplicate", field(first, last), 2, 1, 0, 0},
-		{"replace_empty", append(field(first), field()...), 2, 0, 0, 0},
-		{"inert_repeat", append(field(first), 1, 14, 2, 8, 0), 2, 0, 1, 0},
-		{"cleared_then_replaced", append(field(first, []byte{2, 12, 1, 'x', 0}), field()...), 2, 0, 1, 0},
-		{"discarded_body_keeps_pointer_node", append(field(entry(true, true), last), 7, 12, 10, 1, 8, 7, 10, 8, 11, 0, 0, 0, 0), 3, 1, 0, 1},
+		{"known_only_large", field(known...), 0, 0, 0, 0, ""},
+		{"duplicate", field(first, last), 2, 1, 0, 0, "wire_damaged"},
+		{"replace_empty", append(field(first), field()...), 2, 0, 0, 0, "wire_damaged"},
+		{"inert_repeat", append(field(first), 1, 14, 2, 8, 0), 2, 0, 1, 0, "wire_damaged"},
+		{"cleared_then_replaced", append(field(first, []byte{2, 12, 1, 'x', 0}), field()...), 2, 0, 1, 0, "wire_damaged"},
+		{"discarded_body_keeps_pointer_node", append(field(entry(true, true), last), 7, 12, 10, 1, 8, 7, 10, 8, 11, 0, 0, 0, 0), 3, 1, 0, 1, "wire_damaged"},
 	} {
 		wire := append([]byte{1}, tc.body...)
 		wire = append(wire, 0)
@@ -90,23 +90,31 @@ table Root { entries map[int32]Value }
 		v := m.New(u.Tables["Root"])
 		var r tabletext.Report
 		store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
-		if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Unknown != tc.unknown || r.Retained != tc.unknown || r.RetainLost != 0 || tc.duplicate != 0 || tc.mismatch != 0 {
-			t.Fatalf("%s neutral read %+v %v", tc.name, r, err)
+		ok, derr := tablewire.DecodeRetain(m, v, wire, store, &r)
+		if tc.refusal != "" {
+			if ok && !r.Refused {
+				t.Fatalf("%s neutral read must refuse: %+v %v", tc.name, r, derr)
+			}
+		} else if !ok || derr != nil || r.Refused || r.Unknown != tc.unknown || r.Retained != tc.unknown || r.RetainLost != 0 {
+			t.Fatalf("%s neutral read %+v %v", tc.name, r, derr)
 		}
 		var sr tabletext.Report
 		saved, err := tablewire.EncodeRetain(m, v, store, &sr)
-		if err != nil || sr.RetainLost != tc.lost {
+		if tc.refusal == "" && (err != nil || sr.RetainLost != tc.lost) {
 			t.Fatalf("%s neutral save %+v %v", tc.name, sr, err)
 		}
 		fmt.Fprintf(&b, `{final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();final v=w.rootWireLoadRetain(data,store,r);
- check(!r.malformed&&!r.refused&&r.unknown==%d&&r.retained==%d&&r.retainLost==0&&r.duplicate==%d&&r.kindMismatch==%d,'map replacement read %s');
+ check(r.refused==%t,'map replacement verdict %s: ${r.reason}');
+ if(r.refused){check(r.reason==%q||r.reason=='kind_mismatch'||r.reason=='wire_damaged','map replacement refusal %s: ${r.reason}');check(store.used==0,'refused map load keeps no store');}
+ if(!r.refused){
+ check(r.unknown==%d&&r.retained==%d&&r.retainLost==0,'map replacement read %s');
  check(w.retainedMapEntriesForTest(store)<=r.retained,'retained map metadata bound');
- if(r.retained==0){final empty=w.TableRetain(0,List.filled(0,0));final er=w.TableWireReport();w.rootWireLoadRetain(data,empty,er);check(!er.malformed&&!er.refused&&er.retained==0&&w.retainedMapEntriesForTest(empty)==0,'zero-capacity map metadata');}
+ if(r.retained==0){final empty=w.TableRetain(0,List.filled(0,0));final er=w.TableWireReport();w.rootWireLoadRetain(data,empty,er);check(!er.refused&&er.retained==0&&w.retainedMapEntriesForTest(empty)==0,'zero-capacity map metadata');}
  for(var repeat=0;repeat<3;repeat++){
  final sr=w.TableWireReport();final saved=w.rootWireSaveRetain(v,store,sr);
  check(sr.retainLost==%d&&hex(saved)==%q,'map replacement save %s');
- }}
-`, hex.EncodeToString(wire), tc.unknown, tc.unknown, tc.duplicate, tc.mismatch, tc.name, tc.lost, hex.EncodeToString(saved), tc.name)
+ }}}
+`, hex.EncodeToString(wire), tc.refusal != "", tc.name, tc.refusal, tc.name, tc.unknown, tc.unknown, tc.name, tc.lost, hex.EncodeToString(saved), tc.name)
 	}
 	b.WriteString("}\n")
 	runFormsProbe(t, files, b.String())

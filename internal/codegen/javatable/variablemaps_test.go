@@ -72,20 +72,17 @@ public final class Driver {
   for(int which=0;which<2;which++){
    TableVariable.Report report=new TableVariable.Report();
    RootVariable.Value v=RootVariable.load(frame(which==0?new String[]{"a","b"}:new String[]{"b","a"},false,which==0,false),report);
-   check(v==null&&report.malformed&&!report.refused,"slack or descending key discards the whole load");
+   check(v==null&&(report.damaged||report.refused),"slack or descending key refuses the whole load");
   }
   TableRetain retain=new TableRetain(4096,128);TableVariable.Report report=new TableVariable.Report();
   RootVariable.Value v=RootRetain.loadRetain(frame(new String[]{"a","a"},true,false,false),retain,report);
-  check(v!=null&&!report.malformed&&report.duplicate==1&&report.unknown==1&&report.retained==1&&retain.used==0&&v.entries.size()==1&&v.entries.get(0).value==2,"duplicate replaces whole entry and its retained tail");
-  check(java.util.Arrays.equals(RootVariable.save(v),RootRetain.saveRetain(v,retain,report)),"duplicate old unknown must not reappear");
+  check(v==null&&report.refused&&!report.damaged&&retain.used==0,"a repeated map key refuses the whole retaining load and keeps no tail");
   retain=new TableRetain(4096,128);report=new TableVariable.Report();
   v=RootRetain.loadRetain(frame(new String[]{"a"},true,false,true),retain,report);
-  check(v!=null&&!report.malformed&&report.kindMismatch==1&&report.unknown==1&&retain.used>0&&v.entries.size()==1&&v.entries.get(0).value==1&&v.tail==17,"incompatible repeat preserves prior value and retained subtree");
-  byte[] saved=RootRetain.saveRetain(v,retain,report);TableVariable.Report again=new TableVariable.Report();RootVariable.Value loaded=RootVariable.load(saved,again);
-  check(loaded!=null&&again.unknown==1&&loaded.entries.get(0).value==1,"skipped repeat keeps unknown on resave");
+  check(v==null&&(report.refused||report.damaged)&&retain.used==0,"an incompatible repeat refuses the whole retaining load and keeps no tail");
   report=new TableVariable.Report();v=RootVariable.fromJson("{\"entries\":{\"a\":7,\"a\":8},\"tail\":17}".getBytes(java.nio.charset.StandardCharsets.UTF_8),report);
-  check(v!=null&&!report.malformed&&report.duplicate==1&&v.entries.size()==1&&v.entries.get(0).value==8,"JSON duplicates are last-wins");
-  System.out.println("map damage discard, duplicate replacement, skipped repeat retention and JSON duplicates pass");
+  check(v==null&&report.refused,"a JSON repeated map key refuses the whole read");
+  System.out.println("map damage, repeated keys, incompatible repeats and JSON repeated keys all refuse the whole load");
  }
 }`)
 }

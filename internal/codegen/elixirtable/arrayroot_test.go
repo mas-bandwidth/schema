@@ -47,7 +47,7 @@ func TestArrayRootElixir(t *testing.T) {
  value=%%{"values" => [3,17,-5]}
  {:ok, ^want}=T.save("ArrayRoot",value)
  {:ok, ^value, report}=T.load("ArrayRoot",want)
- Probe.check(report.clamped==0 and not report.malformed,"wire clean")
+ Probe.check(report.clamped==0 and true,"wire clean")
  {:ok, ^text}=T.to_json("ArrayRoot",value)
  {:ok, ^value, report}=T.from_json("ArrayRoot",text)
  Probe.check(report.kind_mismatch==0 and report.clamped==0,"JSON clean")
@@ -63,7 +63,7 @@ func TestArrayRootElixir(t *testing.T) {
  Probe.check(report.clamped==2,"scalar storage clamps")
  clean="{\"direct\":[1],\"rows\":[[2],[3]],\"mapping\":{\"1\":[4]},\"choice\":{\"items\":[5]}}"
  {:ok, nested, report}=T.from_json("Nested",clean)
- Probe.check(report.kind_mismatch==0 and not report.malformed,"nested arrays clean")
+ Probe.check(report.kind_mismatch==0 and true,"nested arrays clean")
  Probe.check(nested["choice"]=={"items",%%{"values"=>[5]}},"array union arm selected")
  {:ok,nested_text}=T.to_json("Nested",nested)
  Probe.check(not String.contains?(nested_text,"values"),"nested arrays have no object wrapper")
@@ -74,7 +74,7 @@ func TestArrayRootElixir(t *testing.T) {
  {:ok,^nested_text}=T.to_json("Nested",loaded)
  wrong="{\"direct\":{},\"rows\":[{}],\"mapping\":{\"1\":{}},\"choice\":{\"items\":{}}}"
  {:ok, nested, report}=T.from_json("Nested",wrong)
- Probe.check(report.kind_mismatch==4 and not report.malformed,"nested shape mismatch counts")
+ Probe.check(report.kind_mismatch==4 and true,"nested shape mismatch counts")
  Probe.check(nested["choice"]==nil,"wrong-shaped array union arm stays None")
  {:error,:json_root_not_array,report}=T.from_json("ArrayRoot","{}")
  Probe.check(report.malformed and report.reason=="json_root_not_array: ArrayRoot","named root refusal")

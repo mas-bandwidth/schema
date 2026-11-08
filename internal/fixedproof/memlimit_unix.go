@@ -25,10 +25,7 @@ func setAddressSpaceLimit(limit uint64) (restore func()) {
 		return func() {}
 	}
 	next := prev
-	next.Cur = limit
-	if next.Max < next.Cur {
-		next.Cur = next.Max
-	}
+	next.Cur = min(next.Max, limit)
 	if err := syscall.Setrlimit(syscall.RLIMIT_AS, &next); err != nil {
 		return func() {}
 	}

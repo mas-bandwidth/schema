@@ -195,16 +195,16 @@ public final class BenchMixedFixed {
         v.sequence = TableFixed.get32(b, at + 0);
         if (v.sequence > 65535L) {
             v.sequence = (int) (65535L);
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         } // bits(16) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) {
                 q = 0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 65535L) {
                 q = 65535L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.ackSequence = (int) (q);
         }
@@ -215,10 +215,10 @@ public final class BenchMixedFixed {
             long q = TableFixed.get64(b, at + 24);
             if (Long.compareUnsigned(q, 0x0L) < 0) {
                 q = 0x0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (Long.compareUnsigned(q, 0xffffffffffffffffL) > 0) {
                 q = 0xffffffffffffffffL;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.nonce = q;
         }
@@ -226,26 +226,26 @@ public final class BenchMixedFixed {
             long q = TableFixed.get64(b, at + 32);
             if (q < -1000000000000L) {
                 q = -1000000000000L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 1000000000000L) {
                 q = 1000000000000L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.worldTime = q;
         }
         v.frameTick = TableFixed.get64(b, at + 40);
         if (v.frameTick > 281474976710655L) {
             v.frameTick = 281474976710655L;
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         } // bits(48) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 48);
             if (q < 0L) {
                 q = 0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 16776960L) {
                 q = 16776960L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.serverTime = (int) (q);
         }
@@ -253,10 +253,10 @@ public final class BenchMixedFixed {
             int n = TableFixed.get32(b, at + 52);
             if (n < 0) {
                 n = 0;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.countOverBound);
             } else if (n > 8) {
                 n = 8;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.countOverBound);
             }
             v.entitiesCount = n;
         }
@@ -267,10 +267,10 @@ public final class BenchMixedFixed {
             int n = TableFixed.get32(b, at + 464);
             if (n < 0) {
                 n = 0;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.countOverBound);
             } else if (n > 80) {
                 n = 80;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.countOverBound);
             }
             v.statsCount = n;
         }
@@ -285,10 +285,10 @@ public final class BenchMixedFixed {
             int n = TableFixed.get32(b, at + 1126);
             if (n < 0) {
                 n = 0;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.lengthOverBound);
             } else if (n > 15) {
                 n = 15;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.lengthOverBound);
             }
             v.playerNameLength = n;
         }
@@ -304,10 +304,10 @@ public final class BenchMixedFixed {
             int n = TableFixed.get32(b, at + 1145);
             if (n < 0) {
                 n = 0;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.countOverBound);
             } else if (n > 16) {
                 n = 16;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.countOverBound);
             }
             v.payloadLength = n;
         }
@@ -324,10 +324,10 @@ public final class BenchMixedFixed {
             float q = Float.intBitsToFloat(fbits);
             if (q < Float.intBitsToFloat(0xbf800000)) {
                 q = Float.intBitsToFloat(0xbf800000);
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > Float.intBitsToFloat(0x3f800000)) {
                 q = Float.intBitsToFloat(0x3f800000);
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.aimX = q;
         }
@@ -340,10 +340,10 @@ public final class BenchMixedFixed {
             float q = Float.intBitsToFloat(fbits);
             if (q < Float.intBitsToFloat(0xbf800000)) {
                 q = Float.intBitsToFloat(0xbf800000);
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > Float.intBitsToFloat(0x3f800000)) {
                 q = Float.intBitsToFloat(0x3f800000);
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.aimY = q;
         }
@@ -356,10 +356,10 @@ public final class BenchMixedFixed {
             float q = Float.intBitsToFloat(fbits);
             if (q < Float.intBitsToFloat(0xbf800000)) {
                 q = Float.intBitsToFloat(0xbf800000);
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > Float.intBitsToFloat(0x3f800000)) {
                 q = Float.intBitsToFloat(0x3f800000);
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.aimZ = q;
         }
@@ -385,27 +385,27 @@ public final class BenchMixedFixed {
             long q = TableFixed.get16(b, at + 1221);
             if (q < 0L) {
                 q = 0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 64000L) {
                 q = 64000L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.ping = (short) (q);
         }
         v.crcHint = TableFixed.get32(b, at + 1223);
         if (v.crcHint > 16777215L) {
             v.crcHint = (int) (16777215L);
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         } // bits(24) clamps to 2^N - 1
         v.hasExtra = b[at + 1227] != 0;
         {
             long q = TableFixed.get32(b, at + 1228);
             if (q < 0L) {
                 q = 0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 255L) {
                 q = 255L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.extra = (int) (q);
         }
@@ -413,10 +413,10 @@ public final class BenchMixedFixed {
             long q = TableFixed.get32(b, at + 1232);
             if (q < 0L) {
                 q = 0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 15L) {
                 q = 15L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.idleTicks = (int) (q);
         }

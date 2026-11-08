@@ -44,7 +44,7 @@ func TestLobsterTableFreePacketIdentity(t *testing.T) {
 			if !bytes.Equal(data, candidate[name]) {
 				return fmt.Errorf("packet file %s changed", name)
 			}
-			for _, line := range strings.Split(string(candidate[name]), "\n") {
+			for line := range strings.SplitSeq(string(candidate[name]), "\n") {
 				dep, ok := strings.CutPrefix(strings.TrimSpace(line), "import .")
 				if ok && view[dep+".lobster"] != nil {
 					return fmt.Errorf("packet file %s imports reflection %s", name, dep)

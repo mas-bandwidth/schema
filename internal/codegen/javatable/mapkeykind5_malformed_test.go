@@ -19,14 +19,13 @@ import (
 // uint16 7 -> 15; plus a bad-kind key followed by a widened key, and a
 // bad-kind string key followed by a good string key). The oracle's key scan
 // (§2.8) SKIPS the mis-kind key, reads a later correct key, and the desynced
-// body tail counts malformed; it never reports a kind mismatch for the skipped
+// body tail is damage; it never reports a kind mismatch for the skipped
 // occurrence, a WIDENED key leaves the mis-kind mark as it was, and a correct
 // key clears it. On a mutant the oracle reads clean the Java answer is pinned
-// to the oracle's (saved bytes and every report counter); on one it reads as
+// to the oracle's (saved bytes, unknown and widened); on one it reads as
 // damaged, DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) and the leg
 // owes the refusal alone.
 func TestJavaFixMapKeyKind5Malformed(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repo, "tables", "maps")
@@ -104,7 +103,7 @@ public final class Driver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         %s.TableVariable.Report report = new %s.TableVariable.Report();
         %s.%sVariable.Value v = %s.%sVariable.load(wire, report);
-        System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
+        System.out.println("R " + report.unknown + "," + report.widened + "," + report.damaged + "," + report.refused);
         if (v == null) { System.out.println("S null"); return; }
         byte[] saved = %s.%sVariable.save(v);
         System.out.println("S " + java.util.HexFormat.of().formatHex(saved));
@@ -141,26 +140,23 @@ public final class Driver {
 			model := tabletext.NewModel(u)
 			want := new(tabletext.Report)
 			value := model.New(u.Tables[root])
-			if _, err := tablewire.Decode(model, value, mutant, want); err != nil {
+			if _, err := tablewire.Decode(model, value, mutant, want); err != nil && !tablewire.ReadRefusal(err) {
 				t.Fatalf("oracle decode: err=%v report=%+v", err, want)
 			}
 			gotFields := strings.Split(javaReport, ",")
-			if len(gotFields) != 7 {
+			if len(gotFields) != 4 {
 				t.Fatalf("java report shape: %q", javaReport)
 			}
 			if want.Refused {
-				if gotFields[5] != "true" {
+				if gotFields[2] != "true" && gotFields[3] != "true" {
 					t.Errorf("Java %s did not refuse a damaged load: %q", root, javaReport)
 				}
 				return
 			}
 			wantFields := []string{
 				fmt.Sprintf("%d", want.Unknown),
-				fmt.Sprintf("%d", want.Unknown),
 				fmt.Sprintf("%d", want.Widened),
-				fmt.Sprintf("%d", want.Unknown),
-				fmt.Sprintf("%d", want.Unknown),
-				fmt.Sprintf("%t", want.Refused),
+				"false",
 				fmt.Sprintf("%t", want.Refused),
 			}
 			for i := range wantFields {
@@ -179,11 +175,11 @@ public final class Driver {
 	}
 }
 
-// A repeated key in a map entry selects its final occurrence, including a
-// later widening kind (docs/SPEC-TABLES.md §2.8). A stale mismatch mark from
-// an earlier incompatible occurrence must not empty an otherwise valid map.
+// A repeated key in a map entry, here with a later widening kind, once selected
+// its final occurrence. Last-wins is retired (docs/plans/strict-only.md,
+// docs/SPEC-TABLES.md §2.8, §4): a repeated key refuses the whole load, on load
+// and on loadRetain, which keeps no tail, as the oracle refuses it.
 func TestJavaMapRepeatedKeyLastKindWins(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	u := unitFromDir(t, filepath.Join(repo, "tables", "maps"))
@@ -226,15 +222,12 @@ public final class RepeatedKeyWidenDriver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         TableVariable.Report report = new TableVariable.Report();
         PairsVariable.Value v = PairsVariable.load(wire, report);
-        if (v == null) throw new AssertionError("plain load refused");
-        byte[] saved = PairsVariable.save(v);
         TableRetain retain = new TableRetain(1 << 16, 256);
         TableVariable.Report rreport = new TableVariable.Report();
         PairsVariable.Value rv = PairsRetain.loadRetain(wire, retain, rreport);
-        if (rv == null) throw new AssertionError("retain load refused");
-        System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
-        System.out.println("RR " + rreport.unknown + "," + rreport.kindMismatch + "," + rreport.widened + "," + rreport.clamped + "," + rreport.duplicate + "," + rreport.malformed + "," + rreport.refused);
-        System.out.println("S " + java.util.HexFormat.of().formatHex(saved));
+        System.out.println("R " + report.unknown + "," + report.widened + "," + report.damaged + "," + report.refused);
+        System.out.println("RR " + rreport.unknown + "," + rreport.widened + "," + rreport.damaged + "," + rreport.refused);
+        System.out.println("V " + (v == null ? "null" : "present") + " " + (rv == null ? "null" : "present") + " " + retain.used);
     }
 }
 `
@@ -256,7 +249,7 @@ public final class RepeatedKeyWidenDriver {
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
-	var rLine, rrLine, sLine string
+	var rLine, rrLine, vLine string
 	for line := range strings.SplitSeq(string(out), "\n") {
 		if after, ok := strings.CutPrefix(line, "R "); ok {
 			rLine = after
@@ -264,25 +257,23 @@ public final class RepeatedKeyWidenDriver {
 		if after, ok := strings.CutPrefix(line, "RR "); ok {
 			rrLine = after
 		}
-		if after, ok := strings.CutPrefix(line, "S "); ok {
-			sLine = after
+		if after, ok := strings.CutPrefix(line, "V "); ok {
+			vLine = after
 		}
 	}
 	model := tabletext.NewModel(u)
 	want := new(tabletext.Report)
 	value := model.New(u.Tables["Pairs"])
-	if _, err := tablewire.Decode(model, value, fuzzWire, want); err != nil {
-		t.Fatalf("oracle decode: %v", err)
+	if ok, err := tablewire.Decode(model, value, fuzzWire, want); ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("test setup: the oracle read a repeated map key: ok=%v err=%v %+v", ok, err, want)
 	}
-	wantLine := fmt.Sprintf("%d,%d,%d,%d,%d,%t,%t", want.Unknown, want.Unknown, want.Widened, want.Unknown, want.Unknown, want.Refused, want.Refused)
-	if rLine != wantLine || rrLine != wantLine {
-		t.Fatalf("report mismatch: plain=%q retain=%q want=%q", rLine, rrLine, wantLine)
+	for name, line := range map[string]string{"load": rLine, "loadRetain": rrLine} {
+		f := strings.Split(line, ",")
+		if len(f) != 4 || (f[2] != "true" && f[3] != "true") {
+			t.Errorf("Java %s did not refuse a repeated map key: %q", name, line)
+		}
 	}
-	encoded, err := tablewire.Encode(model, value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sLine != hex.EncodeToString(encoded) {
-		t.Fatalf("saved mismatch: got=%s want=%s", sLine, hex.EncodeToString(encoded))
+	if vLine != "null null 0" {
+		t.Errorf("Java handed back a value or kept a tail for a repeated map key: %q (want load null, loadRetain null, retain.used 0)", vLine)
 	}
 }

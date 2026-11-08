@@ -1471,7 +1471,9 @@ end
 -- are §2.13's ordinary counters and name no field here, as in the Go JSON read.
 local function text_list_over_bound(report, table_name, field_name)
   report.outOfRange = report.outOfRange + 1
-  if not report.outOfRangeField or report.outOfRangeField == "" then report.outOfRangeField = table_name .. "." .. field_name end
+  if not report.outOfRangeField or report.outOfRangeField == "" then
+    report.outOfRangeField = table_name .. "." .. field_name
+  end
 end
 
 -- ONE text list's JSON array (§16.2): strings in INDEX order, `null` for an

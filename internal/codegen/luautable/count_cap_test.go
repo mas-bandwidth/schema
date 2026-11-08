@@ -35,11 +35,11 @@ local function report(): any
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
 end
 local paths = {
-	tolerant = function(b, rep) return load.loadTolerant("Root", b, rep) end,
+	tolerant = function(b, rep) return load.loadWalk("Root", b, rep) end,
 	load = function(b, rep) return load.load("Root", b, rep) end,
 	strict = function(b, rep) return R.ReadStrict(T, "Root", b, rep) end,
 	retain = function(b, rep) return (Ret.LoadRetain("Root", b, rep)) end,
-	retainTolerant = function(b, rep) return (Ret.LoadRetainTolerant("Root", b, rep)) end,
+	retainTolerant = function(b, rep) return (Ret.loadRetainWalk("Root", b, rep)) end,
 }
 local names = {}
 for name in inputs do names[#names + 1] = name end

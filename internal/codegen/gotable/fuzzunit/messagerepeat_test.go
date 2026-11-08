@@ -66,10 +66,10 @@ func TestGeneratedMessageRefusesRepeatedFieldId(t *testing.T) {
 		out[n/8] |= bit << uint(n%8)
 		n++
 	}
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		put(getBit(x, i))
 	}
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		put(0)
 	}
 	for i := 8; i < endX; i++ {
@@ -154,8 +154,8 @@ func TestGeneratedMessageRepeatNegativeControl(t *testing.T) {
 	for _, c := range []struct {
 		file, from, to, run string
 	}{
-		{"internal/codegen/gotable/fuzzunit/RangesTableMessage.go", "\t\t\tif id == entry.ID {", "\t\t\tif false && id == entry.ID {", "^TestGeneratedMessageRefusesRepeatedFieldId$"},
-		{"internal/codegen/gotable/fuzzunit/KeyedTableMessage.go", "if k == id {", "if false && k == id {", "^TestGeneratedMessageRefusesRepeatedKeyedSlot$"},
+		{"internal/codegen/gotable/fuzzunit/RangesTableMessage.go", "\t\tif slices.Contains(seen, entry.ID) {", "\t\tif false && slices.Contains(seen, entry.ID) {", "^TestGeneratedMessageRefusesRepeatedFieldId$"},
+		{"internal/codegen/gotable/fuzzunit/KeyedTableMessage.go", "if slices.Contains(seenKey, id) {", "if false && slices.Contains(seenKey, id) {", "^TestGeneratedMessageRefusesRepeatedKeyedSlot$"},
 	} {
 		out, failed := slowtest.RunSabotaged(t, "../../../..", "./internal/codegen/gotable/fuzzunit", c.run,
 			slowtest.Sabotage{File: c.file, From: c.from, To: c.to, All: true})

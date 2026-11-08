@@ -220,18 +220,18 @@ local hexOf = function(b) {
   return s;
 };
 local fresh = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
+  return { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+    bodyDamaged = false, refused = false };
 };
 local run = function(key) {
   local r = fresh();
-  local v = J.FromJsonTolerant(T, "Root", inputs[key], r);
+  local v = J.fromJsonWalk(T, "Root", inputs[key], r);
   local reason = ("reason" in r && r.reason != null) ? r.reason : "-";
-  if (r.malformed) { print(key + "|refused|" + reason + "\n"); return; }
+  if (r.bodyDamaged) { print(key + "|refused|" + reason + "\n"); return; }
   local t1 = J.ToJson(T, "Root", v);
   local r2 = fresh();
-  local v2 = J.FromJsonTolerant(T, "Root", t1, r2);
-  local t2 = r2.malformed ? null : J.ToJson(T, "Root", v2);
+  local v2 = J.fromJsonWalk(T, "Root", t1, r2);
+  local t2 = r2.bodyDamaged ? null : J.ToJson(T, "Root", v2);
   print(key + "|read|" + hexOf(t1) + "|" + hexOf(t2) + "|" + reason + "\n");
 };
 `

@@ -9,11 +9,11 @@
 #   `refused` plus `reason` is one answer; `malformed` is the other; they are
 #   NEVER both set, and the counters are a third thing again.
 #
-# On this leg the two answers are the reason atom and the report's `malformed`
-# flag: a refusal by name comes back `{:error, name, report}` with
-# `report.malformed == false`, and a malformed read comes back
-# `{:error, :malformed, report}` with `report.malformed == true` — a set
-# `malformed` beside a named reason, or a named reason on a malformed read, is
+# On this leg the two answers are the reason atom alone (the strict report
+# carries no `malformed` flag): a refusal by name comes back
+# `{:error, name, report}` with a name that is not `:malformed`, and a
+# malformed read comes back `{:error, :malformed, report}` — the residue
+# beside a named reason, or a named reason on a malformed read, is
 # the failure §5.3 row 8 names. The destination is the returned values term, so
 # "not one destination byte written" is the SHAPE of every refusal here: a
 # 3-tuple `{:error, _, _}` with no values in it, the prefill (`R.run`'s third
@@ -88,7 +88,7 @@ load = fn data -> apply(mod, want_load, [data]) end
 # excluded (it is the LAST member and zero on every path but the two layout
 # refusals, §5.9 #7, #15).
 counters_zero? = fn report ->
-  report |> Map.drop([:malformed, :layout_hash]) |> Map.values() |> Enum.all?(&(&1 == 0))
+  report |> Map.drop([:layout_hash]) |> Map.values() |> Enum.all?(&(&1 == 0))
 end
 
 {:ok, checker} = Agent.start_link(fn -> {0, []} end)
@@ -110,7 +110,7 @@ named_refusal = fn label, data, want, want_layout_hash ->
     {:error, ^want, report} ->
       check.(
         label,
-        not report.malformed and counters_zero?.(report) and
+        counters_zero?.(report) and
           report.layout_hash == want_layout_hash
       )
 
@@ -122,18 +122,18 @@ end
 malformed_read = fn label, data ->
   case load.(data) do
     {:error, :malformed, report} ->
-      check.(label, report.malformed and counters_zero?.(report) and report.layout_hash == 0)
+      check.(label, counters_zero?.(report) and report.layout_hash == 0)
 
     other ->
       check.(
         label <>
-          " — wanted {:error, :malformed, _} with malformed set, got #{inspect(other)}",
+          " — wanted {:error, :malformed, _} (the residue, no name), got #{inspect(other)}",
         false
       )
   end
 end
 
-# ---- the positive control: a lawful read lands, malformed clear ----
+# ---- the positive control: a lawful read lands, no counter moved ----
 
 own_file = header.(hash, layout) <> layout <> record.(hash)
 
@@ -144,21 +144,21 @@ check.(
 
 case load.(own_file) do
   {:ok, _values, report} ->
-    check.("lawful own-file read: malformed clear", not report.malformed)
+    check.("lawful own-file read: no counter moved", counters_zero?.(report))
 
   other ->
     check.(
-      "lawful own-file read: malformed clear — got #{inspect(other)}",
+      "lawful own-file read: no counter moved — got #{inspect(other)}",
       false
     )
 end
 
-# ---- REFUSAL BY NAME: refused true, reason the name, malformed FALSE ----
+# ---- REFUSAL BY NAME: the reason atom is the name, no counter moved ----
 # (docs/FIXED-FORM-ALGORITHM.md:906, the table's first row)
 
 # form byte 1 — a committed form-1 file, whatever its length
 named_refusal.(
-  "form byte 1 refuses previous_form, malformed clear, no counter",
+  "form byte 1 refuses previous_form by name, no counter",
   <<1, 0, 0>>,
   :previous_form,
   0
@@ -166,7 +166,7 @@ named_refusal.(
 
 # form byte 2 — a committed form-2 batch
 named_refusal.(
-  "form byte 2 refuses message_form_as_file, malformed clear, no counter",
+  "form byte 2 refuses message_form_as_file by name, no counter",
   <<2, 0, 0>>,
   :message_form_as_file,
   0
@@ -174,7 +174,7 @@ named_refusal.(
 
 # a form byte no form defines
 named_refusal.(
-  "form byte 9 refuses newer_form, malformed clear, no counter",
+  "form byte 9 refuses newer_form by name, no counter",
   <<9, 0, 0>>,
   :newer_form,
   0
@@ -211,13 +211,13 @@ named_refusal.(
 
 # a record whose hash names no layout this reader holds
 named_refusal.(
-  "a record hash that is not the file's refuses no_layout, malformed clear, no counter",
+  "a record hash that is not the file's refuses no_layout by name, no counter",
   header.(hash, layout) <> layout <> record.(Bitwise.bxor(hash, 1)),
   :no_layout,
   0
 )
 
-# ---- MALFORMED: the residue, malformed TRUE, no reason named ----
+# ---- MALFORMED: the residue, the :malformed reason, no name beside it ----
 # (docs/FIXED-FORM-ALGORITHM.md:906, the table's second row)
 
 # no first byte — there is no form byte to name

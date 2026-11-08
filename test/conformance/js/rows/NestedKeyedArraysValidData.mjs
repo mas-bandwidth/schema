@@ -172,10 +172,10 @@ const report = new TableFixedReport();
 
 const n = KeyedConfigFixedLoad(back, 2, bytes, written, plan, report);
 assert(n === 2, "KeyedConfigFixedLoad returned " + n + " records, expected 2");
-assert(!report.malformed, "read is not malformed");
+assert(!report.damaged, "read is not malformed");
 assert(report.refused === 0, "read is not refused (refused=" + report.refused + ")");
 assert(report.unknown === 0, "unknown=" + report.unknown);
-assert(report.kindMismatch === 0, "kindMismatch=" + report.kindMismatch);
+assert(report.mismatch === 0, "kindMismatch=" + report.mismatch);
 
 // ---- ASSERT: every nested keyed slot survived the round trip ----
 

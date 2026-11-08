@@ -88,7 +88,7 @@ func TestJavaDriverLoadsFixedRootFormThree(t *testing.T) {
 			t.Errorf("%s can mistake a malformed fixed read for an absent text value", surface)
 		}
 	}
-	if !strings.Contains(driver, `return read >= 0 && !codec.flag(report, "malformed") && !codec.flag(report, "refused");`) {
+	if !strings.Contains(driver, `return read >= 0 && !codec.flag(report, "damaged") && !codec.flag(report, "refused");`) {
 		t.Error("fixed text absence is not limited to successful reads")
 	}
 }

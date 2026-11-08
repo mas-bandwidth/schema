@@ -277,7 +277,7 @@ func fpClampRows(t *testing.T, model *tabletext.Model) ([]fpRow, map[string][]by
 		inputs[key] = wire
 		rows = append(rows, fpRow{
 			key:  key,
-			code: fmt.Sprintf(`{ local rep = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false }; local v = L.loadTolerant(T, "V", I[%q], rep); print(%q + " " + rep.clamped + " " + f32bits(v.Q) + "," + f32bits(v.R) + "\n"); }`, key, key),
+			code: fmt.Sprintf(`{ local rep = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false }; local v = L.loadWalk(T, "V", I[%q], rep); print(%q + " " + rep.oor + " " + f32bits(v.Q) + "," + f32bits(v.R) + "\n"); }`, key, key),
 			want: fmt.Sprintf("%s %d %08x,%08x", key, rep.Unknown, gq, gr),
 			// the control lands every value as written: the rows the engine
 			// clamped go red, and only those (a -0 is elided by the writer, as
@@ -289,8 +289,8 @@ func fpClampRows(t *testing.T, model *tabletext.Model) ([]fpRow, map[string][]by
 }
 
 var fpClampSabotage = [][2]string{{
-	"    if (x < fd.fmin) { x = narrowToF32(fd.fmin); report.clamped = report.clamped + 1; }\n" +
-		"    else if (x > fd.fmax) { x = narrowToF32(fd.fmax); report.clamped = report.clamped + 1; }\n" +
+	"    if (x < fd.fmin) { x = narrowToF32(fd.fmin); report.oor = report.oor + 1; }\n" +
+		"    else if (x > fd.fmax) { x = narrowToF32(fd.fmax); report.oor = report.oor + 1; }\n" +
 		"    else if (x == 0.0) x = 0.0;\n",
 	"",
 }}
@@ -342,6 +342,13 @@ func fpQuantRows(t *testing.T, u *ir.Unit, model *tabletext.Model, control strin
 		var set strings.Builder
 		for k, n := range names {
 			x := values[k][i]
+			if x < float32(fields[k].FMin) {
+				x = float32(fields[k].FMin)
+			} else if x > float32(fields[k].FMax) {
+				x = float32(fields[k].FMax)
+			} else if x == 0 {
+				x = 0
+			}
 			nfField(t, inst, n).Cell.F = float64(x)
 			fmt.Fprintf(&set, " v.%s = f64(%q);", "Q"+strings.ToLower(n[1:]), fmt.Sprintf("%016x", math.Float64bits(float64(x))))
 			shape := ir.TableFieldShape(fields[k])
@@ -373,7 +380,7 @@ func fpQuantRows(t *testing.T, u *ir.Unit, model *tabletext.Model, control strin
 		inputs[rkey] = batch
 		rows = append(rows, fpRow{
 			key:  rkey,
-			code: fmt.Sprintf(`{ local out = [T.Q()]; local rr = {}; local n = T.QLoadMessages(out, voc, I[%q], rr); local w = out[0]; print(%q + " " + n + " " + rr.clamped + " " + f32bits(w.Qa) + "," + f32bits(w.Qb) + "," + f32bits(w.Qc) + "," + f32bits(w.Qd) + "\n"); }`, rkey, rkey),
+			code: fmt.Sprintf(`{ local out = [T.Q()]; local rr = {}; local n = T.QLoadMessages(out, voc, I[%q], rr); local w = out[0]; print(%q + " " + n + " " + rr.oor + " " + f32bits(w.Qa) + "," + f32bits(w.Qb) + "," + f32bits(w.Qc) + "," + f32bits(w.Qd) + "\n"); }`, rkey, rkey),
 			want: fmt.Sprintf("%s 1 %d %s", rkey, 0, strings.Join(bits, ",")),
 			// a row whose write the old quantizer moves reads the same:
 			// the read rows take the oracle's own batch
@@ -425,7 +432,7 @@ func fpQuantRows(t *testing.T, u *ir.Unit, model *tabletext.Model, control strin
 		inputs[key] = bad
 		rows = append(rows, fpRow{
 			key:  key,
-			code: fmt.Sprintf(`{ local out = [T.Q()]; local rr = {}; local n = T.QLoadMessages(out, voc, I[%q], rr); print(%q + " " + n + " " + ("malformed" in rr ? rr.malformed : false) + "\n"); }`, key, key),
+			code: fmt.Sprintf(`{ local out = [T.Q()]; local rr = {}; local n = T.QLoadMessages(out, voc, I[%q], rr); print(%q + " " + n + " " + ("bodyDamaged" in rr ? rr.bodyDamaged : false) + "\n"); }`, key, key),
 			want: key + " 0 true",
 			red:  control == "read",
 		})

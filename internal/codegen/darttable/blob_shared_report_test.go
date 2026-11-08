@@ -14,7 +14,6 @@ import (
 )
 
 func TestDartBlobSharedReportCensus(t *testing.T) {
-	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Root { a *string
@@ -29,7 +28,7 @@ table Root { a *string
 	maps.Copy(files, packetFiles(t, u))
 	m := tabletext.NewModel(u)
 	var b strings.Builder
-	b.WriteString(strings.Replace(dartClosurePrelude, "void main(){", "int sharedCount(dynamic r){try{return r.blobShared as int;}on NoSuchMethodError{return -1;}}\nvoid main(){", 1))
+	b.WriteString(dartClosurePrelude)
 	for _, tc := range []struct {
 		name            string
 		refs            []byte
@@ -73,30 +72,34 @@ table Root { a *string
 		}
 		wire = binary.LittleEndian.AppendUint64(wire, uint64(len(ids)))
 		v := m.New(u.Tables["Root"])
+		// STRICT VERDICT (docs/plans/strict-only.md decision 6): a shared
+		// blob record or a wrong record kind refuses the whole load; only a
+		// distinct-record wire reads.
+		expectRefused := tc.shared > 0 || tc.km > 0
 		var r tabletext.Report
-		for repeat := 1; repeat <= 2; repeat++ {
-			if ok, err := tablewire.Decode(m, v, wire, &r); !ok || err != nil || tc.shared*repeat != 0 || tc.km*repeat != 0 {
-				t.Fatalf("%s oracle report %+v %v", tc.name, r, err)
+		ok, derr := tablewire.Decode(m, v, wire, &r)
+		if expectRefused {
+			if ok || !r.Refused {
+				t.Fatalf("%s oracle must refuse: ok=%v err=%v report %+v", tc.name, ok, derr, r)
 			}
+		} else if !ok || derr != nil || r.Refused {
+			t.Fatalf("%s oracle report %+v %v", tc.name, r, derr)
 		}
+		// The writer's own blob_shared refusal is exercised on a hand-built
+		// shared value by the writer tests; a refused load leaves defaults,
+		// which encode cleanly, so only the distinct case round-trips here.
 		saved, err := tablewire.Encode(m, v)
-		if tc.shared == 0 && err != nil {
+		if !expectRefused && err != nil {
 			t.Fatal(err)
-		}
-		if tc.shared != 0 && (err == nil || !strings.Contains(err.Error(), "blob_shared")) {
-			t.Fatalf("%s oracle writer %v", tc.name, err)
 		}
 		fmt.Fprintf(&b, `for(final retaining in [false,true]){
  final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();
  for(var repeat=1;repeat<=2;repeat++){
  final v=retaining?w.rootWireLoadRetain(data,store,r):w.rootWireLoad(data,r);
- check(!r.malformed&&!r.refused&&sharedCount(r)==%d*repeat&&r.kindMismatch==%d*repeat,'shared blob census %s');
-`, hex.EncodeToString(wire), tc.shared, tc.km, tc.name)
-		if tc.shared == 0 {
+ check(r.refused==%s,'shared blob verdict %s refused=${r.refused} reason=${r.reason}');
+`, hex.EncodeToString(wire), map[bool]string{true: "true", false: "false"}[expectRefused], tc.name)
+		if !expectRefused {
 			fmt.Fprintf(&b, "check(hex(w.rootWireSave(v))==%q,'distinct blobs stay distinct');\n", hex.EncodeToString(saved))
-		} else {
-			b.WriteString(`var refused=false;try{w.rootWireSave(v);}on StateError catch(e){refused=e.message.toString().contains('blob_shared');}check(refused,'actual shared writer refusal');
-`)
 		}
 		b.WriteString("}}\n")
 	}

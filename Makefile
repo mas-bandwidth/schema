@@ -3265,7 +3265,7 @@ tables-big-endian-negative-control: tables-big-endian
 .PHONY: tables-big-endian-control-only
 tables-big-endian-control-only:
 	@mkdir -p build
-	@sed 's|void put16( uint16_t v ) { uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }|void put16( uint16_t v ) { raw( \&v, 2 ); } // SABOTAGED: host order|' \
+	@sed 's|uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) };|uint8_t b[2]; memcpy( b, \&v, 2 ); // SABOTAGED: host order|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
 	@cmp -s build/cpptable-host-order.gotext internal/codegen/cpptable/cpptable.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
@@ -6474,26 +6474,6 @@ conformance: build/conformance-harness build/conformance-cpp build/schema_test_c
 		--results build/conformance/results.json \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 
-# THE PUBLISHED MATRIX (issue #581): docs/MATRIX.md is generated from the one
-# manifest in the tree, docs/matrix.json, by the Go tool at tools/matrix. The
-# page is the board's table at the moment of the release — the
-# feature-by-language cells and one maturity state per language — and it ships
-# red: a ❌ cell and a language marked coming are honest states, never reasons
-# to hold a release or to hide a column.
-#
-# `matrix-check` is the CI gate (tools/matrix/matrix_test.go): it regenerates
-# the page and refuses when the committed one differs, so the published table
-# cannot drift from what the tree ships. `go test ./...`, which `make test`
-# runs, carries it too. `matrix-print` is what the release notes call: the
-# page's state line per language, in manifest order.
-.PHONY: matrix matrix-check matrix-print
-matrix:
-	go run ./tools/matrix write
-matrix-check:
-	go run ./tools/matrix check
-matrix-print:
-	@go run ./tools/matrix states
-
 # THE TABLES BENCH PASS (bench/tables/README.md): every leg under
 # bench/tables/*/leg, results under bench/tables/results/. A PUBLISHABLE
 # number is a box sitting under the estate's bench rules — core 15, server
@@ -7206,7 +7186,7 @@ promotion-tag:
 # not just hope that it's correct and complete"). release refuses, before any
 # tag is made, unless PROOF names the proof report the ci-full `proof` job
 # wrote AT THE COMMIT BEING RELEASED and that report is green: no red cell and
-# docs/proof.json in step with the results (tools/matrix VerifyRelease). The
+# test/proof/proof.json in step with the results (tools/matrix VerifyRelease). The
 # refusal names the red cells. release.yml downloads the report from the
 # ci-full run on the commit; a release with no report refuses by name. The
 # lock runs first, so a red proof refuses before the previous-release
@@ -7358,11 +7338,11 @@ release-proof-gate-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: release-proof-refusal went red for another reason"; cat $(RELEASE_PROOF_CHECK)-control/red.out; exit 1; }
 	@echo "negative control: with VerifyRelease sabotaged to pass red cells, make release lets a red proof through and release-proof-refusal goes RED"
 
-# THE PROOF TABLE (docs/MATRIX.md, "Proof: the 3.0.0 gate"; tools/matrix
-# proof). `proof` runs the conformance matrix, then computes the table from
-# its per-case results and fails, printing the red list, while any cell is red
-# or docs/proof.json is not what the results compute. `proof-write`
-# regenerates docs/proof.json and the page from the same results.
+# THE PROOF TABLE, the 3.0.0 gate (tools/matrix proof), an internal check
+# with no published page. `proof` runs the conformance matrix, then computes
+# the table from its per-case results and fails, printing the red list, while
+# any cell is red or test/proof/proof.json is not what the results compute.
+# `proof-write` regenerates test/proof/proof.json from the same results.
 .PHONY: proof proof-write proof-negative-control
 proof: conformance
 	go run ./tools/matrix proof -results build/conformance/results.json

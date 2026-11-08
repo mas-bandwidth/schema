@@ -59,7 +59,7 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	widedemo := unitFrom(t, string(captionSrc))
+	widedemo := unitFrom(t, strings.ReplaceAll(string(captionSrc), "fixed table", "table"))
 	wvc := newVariableClass(widedemo)
 	for _, root := range []string{"Caption", "Stamp"} {
 		if !wvc.carried(root) || !wvc.emitted[root] {
@@ -110,6 +110,17 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 		c := wCase{name: f[1], root: f[3], wire: wire}
 		if c.text, err = os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "json", f[1]+".json")); err != nil {
 			t.Fatal(err)
+		}
+		if len(c.wire) > 0 && c.wire[0] != byte(ir.TableWireForm) {
+			mm0 := tabletext.NewModel(mirror)
+			inst0 := mm0.New(mm0.Lookup(c.root))
+			var rep0 tabletext.Report
+			if !mm0.Read(inst0, c.text, &rep0) {
+				t.Fatalf("%s: failed to read json for form-1 wire: %+v", c.name, rep0)
+			}
+			if c.wire, err = tablewire.Encode(mm0, inst0); err != nil {
+				t.Fatalf("%s: failed to encode form-1 wire: %v", c.name, err)
+			}
 		}
 		wide = append(wide, c)
 	}
@@ -232,7 +243,7 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 		if err := os.WriteFile(savedPath, saved, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		want := fmt.Sprintf("REPORT %s %d,%d,%d,%d,%d,%v SAVED OK", dc.name, rrep.Unknown, 0, rrep.Widened, 0, 0, false)
+		want := fmt.Sprintf("REPORT %s %d,%d,%v SAVED OK", dc.name, rrep.Unknown, rrep.Widened, false)
 		if !ok {
 			// THE ONE READ (docs/SPEC-TABLES.md §4, §6.5): the oracle refused,
 			// so the leg owes the refusal, and no counter or saved byte is
@@ -470,12 +481,12 @@ macro_rules! wide_report {
         let saved = std::fs::read($saved).unwrap();
         let mut r = Default::default();
         let loaded = table::$load(&wire, &mut r);
-        println!("DISCARD {} {}", $case, r.malformed);
-        match loaded {
-            None => println!("REPORT {} REFUSED", $case),
-            Some(v) => {
+        println!("DISCARD {} {}", $case, r.damaged);
+        match (loaded, r.err()) {
+            (None, _) | (_, Some(_)) => println!("REPORT {} REFUSED", $case),
+            (Some(v), None) => {
                 let again = table::$save(&v);
-                println!("REPORT {} {},{},{},{},{},{} SAVED {}", $case, r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate, r.malformed, if again == saved { "OK" } else { "DIFF" });
+                println!("REPORT {} {},{},{} SAVED {}", $case, r.unknown, r.widened, r.damaged, if again == saved { "OK" } else { "DIFF" });
             }
         }
     }};

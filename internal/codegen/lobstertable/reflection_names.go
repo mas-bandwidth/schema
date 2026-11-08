@@ -2,6 +2,7 @@ package lobstertable
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
@@ -52,12 +53,8 @@ func checkReflectionNames(u *ir.Unit) error {
 		return err
 	}
 	structs := map[string]*ir.Struct{}
-	for name, d := range u.Structs {
-		structs[name] = d
-	}
-	for name, d := range u.Tables {
-		structs[name] = d
-	}
+	maps.Copy(structs, u.Structs)
+	maps.Copy(structs, u.Tables)
 	owners := map[string]bool{}
 	for name := range structs {
 		owners[name] = true

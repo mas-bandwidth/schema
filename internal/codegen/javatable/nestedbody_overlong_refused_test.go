@@ -18,8 +18,8 @@ import (
 // TestJavaFixNestedBodyOverLongRefused pins the nested-table-body over-long
 // read (docs/SPEC-TABLES.md §3): a union arm whose table body's L runs past its
 // own zero terminator is damage, and DAMAGE DISCARDS THE WHOLE LOAD (§4): the
-// generated Java reader owes the refusal, malformed, and nothing it decoded is
-// compared.
+// generated Java reader owes the refusal (no value, the report refused or
+// damaged), and nothing it decoded is compared.
 //
 // The mutant is a tabledemo.RootConfig wire (corpus root_full, pass length #36
 // at seed 24845619678) whose weapons[0].effect buff arm body declares L=8 but
@@ -82,7 +82,7 @@ public final class Driver {
         byte[] data=hex(args[0]);
         %s.TableVariable.Report report=new %s.TableVariable.Report();
         %s.%sVariable.Value v=%s.%sVariable.load(data,report);
-        System.out.println(report.malformed+" "+(v==null?"null":"value"));
+        System.out.println((report.damaged||report.refused)+" "+(v==null?"null":"value"));
     }
 }`, pkg, pkg, pkg, root, pkg, root)
 	if err := os.WriteFile(driver, []byte(dsrc), 0o644); err != nil {
@@ -107,7 +107,7 @@ public final class Driver {
 		line = ln
 		break
 	}
-	if fields := strings.Fields(line); len(fields) != 2 || fields[0] != "true" {
+	if fields := strings.Fields(line); len(fields) != 2 || fields[0] != "true" || fields[1] != "null" {
 		t.Fatalf("Java RootConfig did not refuse a damaged load: %q", line)
 	}
 }

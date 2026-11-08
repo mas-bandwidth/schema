@@ -169,8 +169,8 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "Uint8List bytes",
 			"TableVocabulary vocabulary", "TableReport report"})
 	if st.Integrity != "" {
-		g.pf("  if (report.reason == 'integrity_mismatch') { report.reason = ''; report.malformed = false; }\n")
-		g.pf("  if (bytes.isNotEmpty && bytes[0] == 2) {\n    if (!tableIntegrityValid(bytes, bytes.length, 6)) {\n      report.malformed = true;\n      report.reason = 'integrity_mismatch';\n      return -1;\n    }\n    bytes = Uint8List.sublistView(bytes, 0, bytes.length - 4);\n  }\n")
+		g.pf("  if (report.reason == 'integrity_mismatch') { report.reason = ''; report.refused = false; }\n")
+		g.pf("  if (bytes.isNotEmpty && bytes[0] == 2) {\n    if (!tableIntegrityValid(bytes, bytes.length, 6)) {\n      report.refused = true;\n      report.reason = 'integrity_mismatch';\n      return -1;\n    }\n    bytes = Uint8List.sublistView(bytes, 0, bytes.length - 4);\n  }\n")
 	}
 	g.pf("  final r = TableMessageReader();\n")
 	g.pf("  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);\n")
@@ -549,7 +549,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 			g.pf("%s  if (!tableTextValid(r.bits.buffer, start, n)) { %s; }\n", ind, bad)
 		}
 		g.pf("%s  var kept = n;\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  if (kept > %d) { r.report.Refuse('length_over_bound'); return false; }\n", ind, f.Type.Size)
 		g.pf("%s  %sLength = kept;\n", ind, expr)
 		g.pf("%s  %s.setRange(0, kept, r.bits.buffer, start);\n", ind, expr)
 		g.pf("%s}\n", ind)
@@ -558,7 +558,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  final n = r.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
 		g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
 		g.pf("%s  var kept = n;\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  if (kept > %d) { r.report.Refuse('length_over_bound'); return false; }\n", ind, f.Type.Size)
 		g.pf("%s  final buf = List<int>.filled(n, 0);\n", ind)
 		g.pf("%s  for (var i = 0; i < n; i++) { buf[i] = r.bits.get(16); }\n", ind)
 		g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
@@ -591,7 +591,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 			// §3.3, §4). The elements past the bound are still read and dropped,
 			// as Go's array does.
 			g.pf("%s  final kept = %s < %d ? %s : %d;\n", aind, count, f.ArrayBound, count, f.ArrayBound)
-			g.pf("%s  if (kept != %s) { r.report.clamped++; }\n", aind, count)
+			g.pf("%s  if (kept != %s) { r.report.Refuse('count_over_bound'); return false; }\n", aind, count)
 		} else if ir.TableMessageCountBits(shape) > 0 {
 			g.pf("%sr.bits.get(%d);\n", aind, ir.TableMessageCountBits(shape))
 			g.pf("%sif (r.bits.failed) { %s; }\n", aind, bad)
@@ -715,8 +715,8 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 					// file form's emitClamp does (fixeddart.go). The index check
 					// above is the damage rule and runs first.
 					lo, hi, _ := fixedFloatClampEnds(f)
-					g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
-						ind, expr, lo, expr, lo, expr, hi, expr, hi)
+					g.pf("%sif (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
+						ind, expr, lo, expr, hi)
 				}
 				return
 			}
@@ -740,8 +740,8 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 			// A -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL
 			// VALUES), as the oracle's clampFloat lands it.
 			lo, hi, _ := fixedFloatClampEnds(f)
-			g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; } else if (%s == 0) { %s = 0.0; }\n",
-				ind, expr, lo, expr, lo, expr, hi, expr, hi, expr, expr)
+			g.pf("%sif (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; } else if (%s == 0) { %s = 0.0; }\n",
+				ind, expr, lo, expr, hi, expr, expr)
 		}
 		return
 	}
@@ -804,15 +804,15 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	// the Dart int and must not be mistaken for below-min), and an int64 bound
 	// at -2^63 is written as the exhaustive literal Dart accepts (fixedIntLit).
 	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-		loLHS, loCmp, loAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
-		hiLHS, hiCmp, hiAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
-		g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
-			ind, loLHS, loCmp, expr, loAssign, hiLHS, hiCmp, expr, hiAssign)
+		loLHS, loCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
+		hiLHS, hiCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
+		g.pf("%sif (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
+			ind, loLHS, loCmp, hiLHS, hiCmp)
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		maxBits := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
-		lhs, cmp, assign := g.gen.fixedClampTerms(f.Type, expr, maxBits)
-		g.pf("%sif (%s > %s) { %s = %s; r.report.clamped++; }\n", ind, lhs, cmp, expr, assign)
+		lhs, cmp, _ := g.gen.fixedClampTerms(f.Type, expr, maxBits)
+		g.pf("%sif (%s > %s) { r.report.Refuse('out_of_range'); return false; }\n", ind, lhs, cmp)
 	}
 }
 
@@ -858,10 +858,10 @@ func (g *fixedModule) emitMessageReadScalar128(f *ir.Field, entry ir.TableVocabu
 		// The comparison literals come from the fixed form's own
 		// fixedClampTerms (fixeddart.go), which spell an Int128/UInt128
 		// bound as its high and low hex halves.
-		loLHS, loCmp, loAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
-		hiLHS, hiCmp, hiAssign := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
-		g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
-			ind, loLHS, loCmp, expr, loAssign, hiLHS, hiCmp, expr, hiAssign)
+		loLHS, loCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
+		hiLHS, hiCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
+		g.pf("%sif (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
+			ind, loLHS, loCmp, hiLHS, hiCmp)
 	}
 }
 

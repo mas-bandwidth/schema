@@ -52,7 +52,7 @@ func TestFixedRoadmapJsT05Evolution(t *testing.T) {
 // t05Join is the §5.4 counter check every backward read owes: a clean
 // NEW-READS-OLD moves NONE of the six events (§5.4, docs/FIXED-FORM-ALGORITHM.md
 // §5.5). It is one JS predicate because R19's whole clause is its negation.
-const t05CleanRead = `if (r.unknown !== 0 || r.kindMismatch !== 0 || r.clamped !== 0 || r.widened !== 0 || r.duplicate !== 0) {
+const t05CleanRead = `if (r.unknown !== 0 || r.mismatch !== 0 || r.oor !== 0 || r.widened !== 0 || r.repeated !== 0) {
   fail("§5.4: a clean backward read moved a counter: " + reason(r));
 }`
 
@@ -79,7 +79,7 @@ const report = new TableFixedReport(); const r = report;
 const plan = TNewPlan(4096, 4096);
 plan.image.fill(0x5A);
 const n = TLoad(back, back.length, data, data.length, plan, report);
-if (!(n >= 1 && !r.malformed && r.refused === 0)) {
+if (!(n >= 1 && !r.damaged && r.refused === 0)) {
   fail("a clean NEW-READS-OLD is not a refusal: n=" + n + " " + reason(r));
 }
 %s
@@ -205,10 +205,10 @@ func t05E9(t *testing.T) {
 	if n := strings.Count(src, "duplicate++"); n != 0 {
 		t.Errorf("E9: the runtime raises `duplicate` %d time(s); the fixed form never raises it (§5.4)", n)
 	}
-	if n := strings.Count(src, "this.duplicate = 0;"); n != 1 {
+	if n := strings.Count(src, "this.repeated = 0;"); n != 1 {
 		t.Errorf("E9: the fresh report declares `duplicate` %d time(s), want once", n)
 	}
-	if n := strings.Count(src, "report.duplicate = 0;"); n != 1 {
+	if n := strings.Count(src, "report.repeated = 0;"); n != 1 {
 		t.Errorf("E9: the reset clears `duplicate` %d time(s), want once", n)
 	}
 }
@@ -272,20 +272,20 @@ fixed table T
 
 	// clamped once per entry, per record: a count clamp and a text clamp each
 	// count once, at the one site that reads the number.
-	if !strings.Contains(t02Norm(run), "else if (v > size) { v = size; report.clamped++; }") {
+	if !strings.Contains(t02Norm(run), "else if (v > size) { v = size; report.oor++; }") {
 		t.Error("R16: the count op does not clamp once to the writer's bound the plan carries")
 	}
 	if !strings.Contains(t02Norm(run), "const cap = (size / unit) | 0;") ||
-		!strings.Contains(t02Norm(run), "else if (v > cap) { v = cap; report.clamped++; }") {
+		!strings.Contains(t02Norm(run), "else if (v > cap) { v = cap; report.oor++; }") {
 		t.Error("R16: the text op does not clamp its length once in the USED units (§3.4)")
 	}
 
 	// A forged ordinal remapped to None counts on BOTH plans: the compiled
 	// plan's ordinal op counts it, and the identity projection counts it too.
-	if !strings.Contains(t02Norm(run), "if (raw > arms) { report.clamped++; }") {
+	if !strings.Contains(t02Norm(run), "if (raw > arms) { report.oor++; }") {
 		t.Error("R16: the compiled plan does not count a forged ordinal remapped to None")
 	}
-	if !strings.Contains(t02Norm(jsFn(src, "TFixedDecode")), "if (value.rank > 3) { value.rank = 0; report.clamped++; }") {
+	if !strings.Contains(t02Norm(jsFn(src, "TFixedDecode")), "if (value.rank > 3) { value.rank = 0; report.oor++; }") {
 		t.Error("R16: the identity projection does not count a forged ordinal remapped to None")
 	}
 
@@ -302,7 +302,7 @@ fixed table T
 	}
 	// const moves nothing except the forged-ordinal guard it carries.
 	constCase := t02Block(t, run, "case TableFixedOpConst: {", "break;")
-	if n := strings.Count(constCase, "report.clamped++"); n != 1 {
+	if n := strings.Count(constCase, "report.oor++"); n != 1 {
 		t.Errorf("R16: the CONST op counts %d time(s), want only the forged-ordinal guard", n)
 	}
 	if n := strings.Count(constCase, "report.widened++") + strings.Count(constCase, "report.unknown++"); n != 0 {
@@ -312,11 +312,11 @@ fixed table T
 	// pass's to count (§5.4 line 961), and the single counter in the case body IS
 	// that guard — no second count, and no other op counter.
 	ordinalCase := t02Block(t, run, "case TableFixedOpOrdinal: {", "break;")
-	if n := strings.Count(ordinalCase, "report.clamped++"); n != 1 {
+	if n := strings.Count(ordinalCase, "report.oor++"); n != 1 {
 		t.Errorf("R16: the ORDINAL op carries %d clamped sites, want only the bounds pass's forged guard", n)
 	}
 	if n := strings.Count(ordinalCase, "report.widened") + strings.Count(ordinalCase, "report.unknown") +
-		strings.Count(ordinalCase, "report.kindMismatch") + strings.Count(ordinalCase, "report.duplicate"); n != 0 {
+		strings.Count(ordinalCase, "report.mismatch") + strings.Count(ordinalCase, "report.repeated"); n != 0 {
 		t.Error("R16: the ORDINAL op moves a counter beyond the bounds pass; the op lands its value and moves nothing (§5.4)")
 	}
 }
@@ -337,7 +337,7 @@ fixed table T
     x uint32 | min = 0, max = 4294967295
 }
 `)
-	if decode := jsFn(vacuous, "TFixedDecode"); strings.Contains(decode, "report.clamped") {
+	if decode := jsFn(vacuous, "TFixedDecode"); strings.Contains(decode, "report.oor") {
 		t.Errorf("R18: a clamp that cannot fire was emitted:\n%s", decode)
 	}
 
@@ -349,7 +349,7 @@ fixed table T
     x uint32 = 1 | min = 1, max = 2
 }
 `)
-	if decode := jsFn(live, "TFixedDecode"); !strings.Contains(decode, "report.clamped") {
+	if decode := jsFn(live, "TFixedDecode"); !strings.Contains(decode, "report.oor") {
 		t.Errorf("R18: a clamp that CAN fire was elided:\n%s", decode)
 	}
 }
@@ -368,7 +368,7 @@ fixed table T
 }
 `)
 	decode := jsFn(src, "TFixedDecode")
-	want := "if (n < 0) { n = 0; report.clamped++; } else if (n > 8) { n = 8; report.clamped++; }"
+	want := "if (n < 0) { n = 0; report.oor++; } else if (n > 8) { n = 8; report.oor++; }"
 	if !strings.Contains(t02Norm(decode), want) {
 		t.Errorf("C3: the text length is not clamped once at both ends to the reader's own 8:\n%s", decode)
 	}
@@ -429,7 +429,7 @@ fixed table T
 	// THE CLAMP IS IN UNITS: the declared bound `size` in bytes, divided by the
 	// unit width, is the cap the used length is clamped to.
 	t02Has(t, t02Norm(src), "const cap = (size / unit) | 0;", "R24 the clamp is in units")
-	t02Has(t, t02Norm(src), "else if (v > cap) { v = cap; report.clamped++; }", "R24 the length clamps once in units")
+	t02Has(t, t02Norm(src), "else if (v > cap) { v = cap; report.oor++; }", "R24 the length clamps once in units")
 	// THE CONTENT CHECK HOLDS THE USED UNITS (v * unit) AND NOT THE SLACK (size):
 	// slack is unspecified on read and is not a refusal.
 	t02Has(t, t02Norm(src), ", v * unit)) { report.refused = TableFixedRefusal.TextIllFormed", "R24 the content check holds the used units and not the slack")

@@ -279,6 +279,10 @@ pub enum TableFixedReason {
     /// in non_finite_float, and nothing lands. The writer refuses one too.
     NonFiniteFloat,
     IntegrityMismatch,
+    /// A COUNT, A LENGTH, AN ORDINAL, A TAG OR A VALUE PAST ITS BOUND or
+    /// declared range (docs/SPEC-TABLES.md §4, strict-only): the whole batch
+    /// is refused and nothing lands.
+    OutOfRange,
 }
 
 impl TableFixedReason {
@@ -305,6 +309,7 @@ impl TableFixedReason {
             Self::TextIllFormed => "text_ill_formed",
             Self::NonFiniteFloat => "non_finite_float",
             Self::IntegrityMismatch => "integrity_mismatch",
+            Self::OutOfRange => "out_of_range",
         }
     }
 }
@@ -315,10 +320,17 @@ impl TableFixedReason {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct TableFixedReport {
     pub unknown: u32,
-    pub kind_mismatch: u32,
+    /// THE COMPILE CENSUS's kind changes (§5.4): a writer field whose kind
+    /// moved off every ladder on the lineage. It stays on the plan and is
+    /// never landed on a load's report (strict-only: the verdict is the
+    /// contract, docs/plans/strict-only.md).
+    pub(crate) kind_changed: u32,
     pub widened: u32,
-    pub clamped: u32,
-    pub malformed: bool,
+    /// OUT OF RANGE SEEN BY THIS RECORD'S RUN OR SCATTER: a count, a length,
+    /// an ordinal or a tag past its bound. LOAD refuses the whole batch as
+    /// out_of_range when it is non-zero; no read returns with it set.
+    pub(crate) held: u32,
+    pub damaged: bool,
     pub refused: bool,
     pub reason: TableFixedReason,
     /// THE FIELD A non_finite_float REFUSAL NAMES (docs/SPEC-TABLES.md §3.3),
@@ -337,10 +349,10 @@ impl TableFixedReport {
     /// ` + "`malformed`" + ` does not fire.
     pub fn refuse<T>(&mut self, reason: TableFixedReason) -> Option<T> {
         self.unknown = 0;
-        self.kind_mismatch = 0;
+        self.kind_changed = 0;
         self.widened = 0;
-        self.clamped = 0;
-        self.malformed = false;
+        self.held = 0;
+        self.damaged = false;
         self.refused = true;
         self.reason = reason;
         self.layout_hash = 0;
@@ -544,7 +556,7 @@ pub fn table_fixed_run(
                         break;
                     }
                     None => {
-                        report.malformed = true;
+                        report.damaged = true;
                         return;
                     }
                 }
@@ -561,33 +573,33 @@ pub fn table_fixed_run(
                 match (src.get(s..s + n), image.get_mut(d..d + n)) {
                     (Some(from), Some(into)) => into.copy_from_slice(from),
                     _ => {
-                        report.malformed = true;
+                        report.damaged = true;
                         return;
                     }
                 }
             }
             TableFixedOp::Count => {
                 if src.len() < s + 4 || image.len() < d + 4 {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
                 let raw = get32(src, s) as i32;
                 let held = raw.clamp(0, p.size as i32);
                 if held != raw {
-                    report.clamped += 1;
+                    report.held += 1;
                 }
                 image[d..d + 4].copy_from_slice(&held.to_le_bytes());
             }
             TableFixedOp::Text => {
                 let n = p.size as usize;
                 if src.len() < s + 4 + n || image.len() < d + 4 + n {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
                 let raw = get32(src, s) as i32;
                 let held = raw.clamp(0, p.aux as i32);
                 if held != raw {
-                    report.clamped += 1;
+                    report.held += 1;
                 }
                 image[d..d + 4].copy_from_slice(&held.to_le_bytes());
                 let (head, tail) = image.split_at_mut(d + 4);
@@ -601,7 +613,7 @@ pub fn table_fixed_run(
                 let n = p.size as usize;
                 let w = p.dstsize as usize;
                 if src.len() < s + n || image.len() < d + w {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
                 let mut raw: u64 = 0;
@@ -616,12 +628,12 @@ pub fn table_fixed_run(
                     Some(count) => {
                         // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT
                         // OF RANGE, as a count past its bound is: it lands as
-                        // None and counts one clamped. A variant the writer DOES
+                        // None and counts one held. A variant the writer DOES
                         // carry and this reader cannot name is a different thing
                         // — it resolves to None through the table and counts
                         // nothing, because nothing was out of range.
                         if raw > u64::from(*count) {
-                            report.clamped += 1;
+                            report.held += 1;
                         }
                         0
                     }
@@ -635,7 +647,7 @@ pub fn table_fixed_run(
                 let n = p.size as usize;
                 let w = p.dstsize as usize;
                 if src.len() < s + n || image.len() < d + w || n == 0 || n > 8 {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
                 let mut raw: u64 = 0;
@@ -657,7 +669,7 @@ pub fn table_fixed_run(
             }
             TableFixedOp::WidenF => {
                 if src.len() < s + 4 || image.len() < d + 8 {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
                 // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
@@ -678,7 +690,7 @@ pub fn table_fixed_run(
                 // value widens before it is taken apart.
                 let n = p.size as usize;
                 if image.len() < d + n || n > 8 {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
                 let v = u64::from(p.aux);
@@ -689,7 +701,7 @@ pub fn table_fixed_run(
                 // COUNT: a tag past that set lands None (already written just
                 // above) and COUNTS, so the compiled plan counts it exactly as
                 // the identity plan's decode bound does and the SAME forged
-                // bytes land the SAME clamped == 1 on either plan
+                // bytes land the SAME held == 1 on either plan
                 // (schema#1254, §5.4, §5.8 row 12). Compiler::push holds every
                 // entry to the writer's record, this one with it, so the read
                 // below is behind the compile-time refusal — and src.get is
@@ -698,7 +710,7 @@ pub fn table_fixed_run(
                 if p.aux == 0 && p.dstsize != 0 && p.guard_count == 0 {
                     match src.get(s..s + n) {
                         None => {
-                            report.malformed = true;
+                            report.damaged = true;
                             return;
                         }
                         Some(bytes) => {
@@ -707,7 +719,7 @@ pub fn table_fixed_run(
                                 raw |= u64::from(*b) << (8 * i);
                             }
                             if raw > u64::from(p.dstsize) {
-                                report.clamped += 1;
+                                report.held += 1;
                             }
                         }
                     }
@@ -1427,7 +1439,7 @@ fn compile_entry(
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        report.kind_mismatch += 1;
+        report.kind_changed += 1;
         return;
     }
     match me.kind {
@@ -1621,7 +1633,7 @@ fn compile_entry(
             // A GROWN ORDINAL WIDTH IS A WIDEN, and it is UNSIGNED (§5.2's EMIT
             // at kind 30, bill §12.7): the writer's variant NAMES did not move,
             // only the width the ordinal rides at, so there is nothing to remap
-            // and the counter this moves is widened (§5.4) and not clamped.
+            // and the counter this moves is widened (§5.4) and not held.
             // The same-kind widen extends with ZERO — the entry's sign is left
             // at zero and never inferred from the kind's signedness.
             c.push(TableFixedEntry {
@@ -1674,7 +1686,7 @@ fn compile_entry(
             });
         }
         12 | 33 => {
-            // text: the length, clamped to MY bound in units, then the content
+            // text: the length, held to MY bound in units, then the content
             let unit = if me.kind == 33 { 2u32 } else { 1u32 };
             let bytes = me.size.saturating_sub(4).min(te.size.saturating_sub(4));
             // THE CAP IS THE SPAN'S, IN UNITS, AND THE SPAN IS THE SHORTER OF
@@ -1726,7 +1738,7 @@ fn compile_entry(
                     ..TableFixedEntry::default()
                 });
             } else {
-                report.kind_mismatch += 1;
+                report.kind_changed += 1;
             }
         }
     }

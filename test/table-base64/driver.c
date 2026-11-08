@@ -34,21 +34,20 @@ int main(void)
 #ifndef __cplusplus
         memset(&report, 0, sizeof(report));
 #endif
+        // The one read (docs/SPEC-TABLES.md §4): the whole value or a refusal.
 #ifdef __cplusplus
-        // The bound probes read tolerantly, and the tolerant read is the
-        // named one: the plain BlobFromJson is strict (SPEC-TABLES §16.11).
-        BlobFromJsonTolerant(value, text, (int64_t) n, &report);
+        bool ok = BlobFromJson(value, text, (int64_t) n, &report);
 #else
-        base64test_blob_from_json_tolerant(&value, text, (int64_t) n, &report);
+        int ok = base64test_blob_from_json(&value, text, (int64_t) n, &report);
 #endif
-        if (report.malformed) { puts("1 0 0 - -"); continue; }
+        if (!ok) { puts("1 - -"); continue; }
 #ifdef __cplusplus
         int64_t size = BlobToJson(value, written, sizeof(written));
 #else
         int64_t size = base64test_blob_to_json(&value, written, sizeof(written));
 #endif
         if (size < 0) { return 1; }
-        printf("0 %d %d ", report.clamped, report.kind_mismatch);
+        printf("0 ");
         hex(value.payload, (size_t) value.payload_length);
         putchar(' '); hex(written, (size_t) size); putchar('\n');
     }

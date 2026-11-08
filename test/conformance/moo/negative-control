@@ -8,19 +8,22 @@
 # red on the named surfaces with their neighbours green. No tracked file is
 # written, so an interrupt leaves no sabotaged tree.
 #
-#   report  table_load.moo counts every unknown field twice: the surfaces that
-#           print the load's report red (`moo / report`, `moo / framing`, and
-#           `moo / retain`, whose answer carries the same counters) and nothing
-#           else; `wire`, `json-read` and `retain-save` green (the sabotage
-#           moves no byte).
+#   report  table_load.moo damages the load at every unknown field it meets,
+#           so a wire a newer writer wrote is refused whole: the surfaces that
+#           read such wires answer `refused` where the oracle reads (`moo /
+#           report`, `moo / framing`, `moo / retain` and `moo / retain-save`)
+#           and nothing else; `wire`, `json-read` and `cook-write` green (no
+#           instance wire carries an unknown field). Local counters are not an
+#           oracle, so a sabotage that moved only a counter would be harmless.
 #   framing table_load.moo drops the id table's 4096-entry bound
 #           (docs/LAYERS/1-framing.md F6): `moo / framing` red on
 #           frame_entries_4097 and nothing else; `wire` and `report` green.
 #   walk    json.moo's field-key index never holds the first declared field:
-#           the text READER's two surfaces red (`moo / json-read`, and
-#           `moo / json-hostile`, which reads through the same index) and
-#           nothing else; `json-write`, `wire` and `cook-write` green, so the
-#           break is the text walk's and the matrix localizes it (I11).
+#           the text READER's surfaces red (`moo / json-read`, `moo /
+#           json-hostile`, which reads through the same index, and `moo /
+#           cook-write`, whose recipes read their input as text) and nothing
+#           else; `json-write` and `wire` green, so the break is the text
+#           reader's and the matrix localizes it (I11).
 #
 # usage: test/conformance/moo/negative-control <report|walk|framing>
 set -eu
@@ -33,7 +36,7 @@ mkdir -p "$out"
 case "$mode" in
 report)
     source=internal/codegen/mootable/runtime/table_load.moo
-    sed 's/^\([[:space:]]*_\{0,1\}report\.unknown += \)1$/\12/' "$source" > "$out/runtime.moo"
+    perl -pe 's/^(\s*)(_?report)\.unknown \+= 1$/$1$2.unknown += 1; $2.bodyDamaged = true/' "$source" > "$out/runtime.moo"
     ;;
 framing)
     source=internal/codegen/mootable/runtime/table_load.moo
@@ -82,9 +85,9 @@ if [ ! -f "$out/stage/list/manifest.moo" ]; then
 fi
 red=$(grep -oE '^ *moo / [a-z-]+' "$out/log" | sed 's/^ *moo \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing report retain " ; green="wire json-read retain-save" ;;
+report) want="framing report retain retain-save " ; green="wire json-read cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
-walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the moo $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

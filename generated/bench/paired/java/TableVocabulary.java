@@ -991,22 +991,25 @@ public final class TableVocabulary {
 
     // The read report across announcement and message-batch operations (§3.3, §4).
     public static final class Report {
-        public boolean malformed;
+        public boolean damaged;
         public boolean refused;
         public String reason;
         public int unknown;
-        public int kindMismatch;
         public int widened;
-        public int clamped;
 
         public void zero() {
-            malformed = false;
+            damaged = false;
             refused = false;
             reason = null;
             unknown = 0;
-            kindMismatch = 0;
             widened = 0;
-            clamped = 0;
+        }
+
+        public void refuse(String why) {
+            if (!refused) {
+                refused = true;
+                reason = why;
+            }
         }
     }
 
@@ -1059,7 +1062,7 @@ public final class TableVocabulary {
     // refusal (docs/SPEC-TABLES.md §3.3).
     private static boolean announceReadInner(TableVocabulary v, byte[] data, Report report) {
         if (data == null || data.length == 0) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         if ((data[0] & 0xff) != 1) {
@@ -1068,12 +1071,12 @@ public final class TableVocabulary {
             return false;
         }
         if (data.length < 9) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         long entryCount = readU64(data, data.length - 8);
         if (entryCount < 0 || entryCount > (data.length - 9) / 8) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         int idsStart = data.length - 8 - (int) entryCount * 8;
@@ -1084,49 +1087,49 @@ public final class TableVocabulary {
         while (true) {
             long ref = r.leb();
             if (r.err) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             if (ref == 0) {
                 break;
             }
             if (Long.compareUnsigned(ref, entryCount) > 0) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             long id = readU64(data, idsStart + (int) (ref - 1) * 8);
             int kind = r.u8();
             if (r.err) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             if (id == -2L) { // the reserved build-version id, 0xFFFFFFFFFFFFFFFE
                 if (kind != 9 || !r.has(8)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 v.buildVersion = r.u64();
                 versionCount++;
             } else if (id == -3L) { // the reserved vocabulary id, 0xFFFFFFFFFFFFFFFD
                 if (kind != 14) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 long len = r.leb();
                 if (r.err || len < 0 || len > r.buf.length - r.at) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 int bodyStart = r.at;
                 Reader sub = new Reader(r.buf, bodyStart);
                 int elem = sub.u8();
                 if (sub.err || elem != 6) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 long n = sub.leb();
                 if (sub.err || n < 0 || n != len - (sub.at - bodyStart)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 // A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
@@ -1145,20 +1148,20 @@ public final class TableVocabulary {
             } else {
                 report.unknown++;
                 if (!skip(r, kind)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             }
         }
         if (r.at != idsStart) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         // THE TWO STRICT CHECKS: the build version present exactly once, and the
         // vocabulary present exactly once. A failed check says the bytes are not
         // an announcement rather than that this endpoint declined to announce (§3.3).
         if (versionCount != 1 || vocabCount != 1) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         // Resolve the vocabulary once: every entry an id, a kind and a shape.
@@ -1180,7 +1183,7 @@ public final class TableVocabulary {
             }
             Entry e = new Entry();
             if (!entryRead(src, e) || e.id == -3L || e.id == -2L || (e.id == -1L && nodeSeen)) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             if (e.id == -1L) {
@@ -1191,7 +1194,7 @@ public final class TableVocabulary {
                 if (v.entries[i].id == e.id
                         && v.entries[i].kind == e.kind
                         && sameShape(v.entries[i], e)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             }
@@ -1335,7 +1338,7 @@ public final class TableVocabulary {
         }
     }
 
-    // Skip an unknown field by its announced kind (§3.3): a tolerant reader
+    // Skip an unknown field by its announced kind (§3.3): a strict reader
     // steps over a field it cannot name exactly, by the width the kind states.
     static boolean skip(Reader r, int kind) {
         int w = kindWidth(kind);
@@ -1421,7 +1424,7 @@ public final class TableVocabulary {
                     return null;
                 }
                 values = Math.max(1.0f, Math.min(4294967040.0f, values));
-                // count = ceil(delta / res) clamped to [1, 4294967040] (§3.3), a
+                // count = ceil(delta / res) bounded to [1, 4294967040] (§3.3), a
                 // count the 32-bit unsigned width holds, then bits_required(0, count).
                 long count = (long) Math.ceil((double) values);
                 s.steps = count;

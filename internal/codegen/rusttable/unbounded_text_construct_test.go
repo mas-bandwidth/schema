@@ -16,7 +16,6 @@ import (
 )
 
 func TestRustUnboundedTextNative(t *testing.T) {
-	t.Skip("layer 4 (rust): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (unbounded UTF-8 text extents)")
 	keyedRequireRustc(t)
 	schema, e := os.ReadFile("../../../testdata/conformance/feature-witnesses/unbounded-text/complete/Probe.schema")
@@ -32,10 +31,14 @@ func TestRustUnboundedTextNative(t *testing.T) {
 	}
 	var b strings.Builder
 	for i, input := range []string{`{}`, string(raw), `{"by_name":{"same":1,"same":9},"maybe_open":[null,"",42],"capped":["a","b","c","tail"]}`, `{"open":["\ud800","\udfff","\udc00\ud800","\ud83d\ude00"],"by_name":{"\ud800":1,"\udfff":2}}`} {
+		// STRICT-ONLY (docs/plans/strict-only.md): a repeated key, a kind
+		// mismatch, a value past its bound or a lone surrogate refuses the
+		// whole read. The Go engine's verdict is the oracle; only it is pinned.
 		v := m.New(u.Tables["Root"])
 		var r tabletext.Report
 		if !m.Read(v, []byte(input), &r) {
-			t.Fatal(r)
+			fmt.Fprintf(&b, `{let mut r=TableReport::default();assert!(root_from_json(%q,&mut r).is_none(),"refusal%d");assert!(r.damaged,"refusal damaged%d");}`+"\n", input, i, i)
+			continue
 		}
 		wire, e := tablewire.Encode(m, v)
 		if e != nil {
@@ -45,7 +48,7 @@ func TestRustUnboundedTextNative(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert_eq!((r.clamped,r.kind_mismatch,r.duplicate),(%d,%d,%d),"reports%d");assert_eq!(root_to_json(&v).trim_end(),%q,"JSON%d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire%d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);let mut store=TableRetain{bytes:Vec::with_capacity(65536),ids:Vec::with_capacity(65536)};let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, 0, 0, 0, i, string(text), i, rustByteVector(wire), i)
+		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert!(!r.damaged,"clean%d");assert_eq!(root_to_json(&v).trim_end(),%q,"JSON%d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire%d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);let mut store=TableRetain{bytes:Vec::with_capacity(65536),ids:Vec::with_capacity(65536)};let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, i, string(text), i, rustByteVector(wire), i)
 		measured, whole, refused := tablewire.FileRegionMeasure(u, u.Tables["Root"], wire)
 		if !whole || refused {
 			t.Fatal("measure", measured, whole, refused)

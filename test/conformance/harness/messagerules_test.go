@@ -1020,8 +1020,7 @@ func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
 		if row.value > 10 {
 			// A WRITER NEVER CLAMPS (docs/SPEC-TABLES.md §5): a value past the
 			// declared max refuses invalid_value rather than ride as index 1000
-			var iv *tabletext.InvalidValue
-			if !errors.As(err, &iv) {
+			if _, ok := errors.AsType[*tabletext.InvalidValue](err); !ok {
 				t.Errorf("%g: the message writer answered %x %v, want invalid_value", row.value, message, err)
 			}
 			continue
