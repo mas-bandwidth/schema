@@ -27,6 +27,11 @@ type FixedLineageEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	// Ranges are the WRITER's ranged integer leaves, on the raw scale
+	// (docs/FIXED-FORM-ALGORITHM.md §4.6): a record read under this entry's
+	// compiled plan refuses out_of_range past them, as it does past this
+	// reader's own ranges.
+	Ranges []ir.TableFixedWriterRange
 }
 
 // FixedLineageOf computes the entry a unit's OWN build locks for table `name`:
@@ -44,6 +49,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
 			Record: int64(fixedHashBytes) + fixedTypeBytes(st),
+			Ranges: ir.TableFixedWriterRanges(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false
@@ -341,12 +347,47 @@ func fixedValidateLayout(b []byte) string {
 	return reason
 }
 
-func emitFixedPlanBody(m *Module, st *ir.Struct, layout []byte) {
-	root, reason := fixedParseLayoutTree(layout)
+func emitFixedPlanBody(m *Module, st *ir.Struct, e FixedLineageEntry) {
+	root, reason := fixedParseLayoutTree(e.Layout)
 	if reason != "" || root == nil {
 		return
 	}
 	emitFixedPlanStruct(m, st, root, 0, "v", "  ", "0")
+	emitFixedWriterRanges(m, st, root, e.Ranges)
+}
+
+// emitFixedWriterRanges is the bounds pass's WRITER half
+// (docs/FIXED-FORM-ALGORITHM.md §4.6): after the plan has landed a record, a
+// root-level ranged leaf the older writer bounded is held to THAT writer's
+// range, which is the narrower one, so a value inside this reader's range but
+// outside the writer's — a value the writer could not have written — refuses
+// out_of_range and never lands as though it were lawful. A field the writer's
+// layout does not carry, or whose kind moved, holds no writer range
+// (ir.TableFixedWriterField).
+func emitFixedWriterRanges(m *Module, st *ir.Struct, root *fixedLayoutNode, ranges []ir.TableFixedWriterRange) {
+	carried := map[uint64]bool{}
+	for _, c := range root.children {
+		carried[c.id] = true
+	}
+	for _, r := range ranges {
+		for _, f := range st.Fields {
+			w, ok := ir.TableFixedWriterField(f, r)
+			if !ok || !carried[ir.TableFieldWireId(f)] {
+				continue
+			}
+			expr := "v." + squirrel.Member(f)
+			storage := fixedStorageBytes(f.Type)
+			if f.Array == ir.ArrayFixed {
+				m.Printf("  for (local i = 0; i < %s.len(); i++) {\n", expr)
+				m.Printf("    local x = %s[i];\n", expr)
+				fixedEmitRangeGuard(m, w, "x", "    ", storage)
+				m.Printf("  }\n")
+			} else {
+				fixedEmitRangeGuard(m, w, expr, "  ", storage)
+			}
+			break
+		}
+	}
 }
 
 func emitFixedPlanStruct(m *Module, st *ir.Struct, node *fixedLayoutNode, baseAt int64, expr, ind, dyn string) {
@@ -547,7 +588,11 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			if len(r.Variants) < maxArms {
 				maxArms = len(r.Variants)
 			}
-			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) %s.Type = 0;\n", ind, expr, expr, maxArms, expr)
+			// A TAG PAST THE WRITER'S ARMS is not one the writer wrote: it
+			// REFUSES out_of_range on the compiled plan exactly as on the
+			// identity one, and never lands None (docs/FIXED-FORM-ALGORITHM.md
+			// §4.6, §5.4; §5.8 row 12)
+			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) return \"out_of_range\";\n", ind, expr, expr, maxArms)
 			for i := 0; i < maxArms; i++ {
 				v := r.Variants[i]
 				armNode := node.children[i]
@@ -569,6 +614,14 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			}
 			m.Printf("%s{\n", ind)
 			m.Printf("%s  local ev = _rt_fixed.getu(b, at + %s, %d);\n", ind, off, node.size)
+			// AN ORDINAL PAST THE WRITER'S VARIANTS — the plan's count, never
+			// this reader's longer one — is FORGED and refuses out_of_range
+			// (docs/FIXED-FORM-ALGORITHM.md §4.6, §5.4; §5.8 row 12)
+			top := len(node.children)
+			if len(r.Variants) < top {
+				top = len(r.Variants)
+			}
+			m.Printf("%s  if (ev < 0 || ev > %d) return \"out_of_range\";\n", ind, top)
 			m.Printf("%s  local val = null;\n", ind)
 			for i, v := range r.Variants {
 				kw := "if"
@@ -590,6 +643,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 	}
 	if node.size == 16 {
 		m.Printf("%s%s = [_rt_fixed.u64le(b, at + %s), _rt_fixed.u64le(b, at + %s + 8)];\n", ind, expr, off, off)
+		fixedEmitRange128Guard(m, f, expr, ind)
 		return
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
