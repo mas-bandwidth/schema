@@ -188,7 +188,7 @@ func fixedProgram(t *testing.T, u *ir.Unit, root string, dir string, inputs []st
 	fmt.Fprintf(&b, "    var values: %s::%s[%d] = [%s::%s { .. }; %d];\n", ns, root, slots, ns, root, slots)
 	fmt.Fprintf(&b, "    var report = schema_rt::FixedReport { .. };\n")
 	fmt.Fprintf(&b, "    let n = %s::%sFixedLoad(values[0..%d], bytes, report);\n", ns, root, capacity)
-	fmt.Fprintf(&b, "    print(n, \" \", schema_rt::fixed_refusal_name(report.reason), \" \", report.clamped);\n")
+	fmt.Fprintf(&b, "    print(n, \" \", schema_rt::fixed_refusal_name(report.reason), \" \", report.oor);\n")
 	fmt.Fprintf(&b, "    if n < 0 { print(-1); print(\"-\"); return; }\n")
 	fmt.Fprintf(&b, "    var out: u8[>..] = [];\n")
 	fmt.Fprintf(&b, "    print(%s::%sFixedSave(values[0..n], out));\n", ns, root)
@@ -713,7 +713,7 @@ fn main() {
         if clean[bi] != resaved[bi] { byte_eq = false; }
         bi += 1;
     }
-    print("clean ", n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.clamped, " ", byte_eq);
+    print("clean ", n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", byte_eq);
 
     // 2. Write contract refuses out-of-range 32-bit and 128-bit values.
     var bad_u = v;
@@ -761,14 +761,10 @@ fn main() {
     let c_low = probe::_TFixedClamp(raw_v);
     print("clamp_helper_low ", c_low, " ", raw_v.X, " ", raw_v.U.lo, " ", raw_v.S.lo as! i64, " ", raw_v.Fx.lo == 0xfff6000000000000 && raw_v.Fx.hi == 0xffffffffffffffff);
 
-    // Tolerant load clamps all 4 and counts 4; strict load refuses clamped.
     var tol_low: probe::T[1] = [probe::T { .. }; 1];
     var rep_low = schema_rt::FixedReport { .. };
-    let n_low = probe::TFixedLoadTolerant(tol_low, low_file, rep_low);
-    var strict_low: probe::T[1] = [probe::T { .. }; 1];
-    var rep_strict = schema_rt::FixedReport { .. };
-    let n_strict = probe::TFixedLoad(strict_low, low_file, rep_strict);
-    print("load_low ", n_low, " ", rep_low.clamped, " ", tol_low[0].X, " ", tol_low[0].U.lo, " ", tol_low[0].S.lo as! i64, " ", n_strict, " ", schema_rt::fixed_refusal_name(rep_strict.reason));
+    let n_low = probe::TFixedLoad(tol_low, low_file, rep_low);
+    print("load_low ", n_low, " ", rep_low.oor, " ", tol_low[0].X, " ", tol_low[0].U.lo, " ", tol_low[0].S.lo as! i64);
 
     // 4. Forged above-max record bytes: all 4 fields above max.
     var high_file: u8[>..] = [];
@@ -798,8 +794,8 @@ fn main() {
 
     var tol_high: probe::T[1] = [probe::T { .. }; 1];
     var rep_high = schema_rt::FixedReport { .. };
-    let n_high = probe::TFixedLoadTolerant(tol_high, high_file, rep_high);
-    print("load_high ", n_high, " ", rep_high.clamped, " ", tol_high[0].X, " ", tol_high[0].U.lo, " ", tol_high[0].S.lo, " ", tol_high[0].Fx.lo == 0x000a000000000000 && tol_high[0].Fx.hi == 0);
+    let n_high = probe::TFixedLoad(tol_high, high_file, rep_high);
+    print("load_high ", n_high, " ", rep_high.oor, " ", tol_high[0].X, " ", tol_high[0].U.lo, " ", tol_high[0].S.lo, " ", tol_high[0].Fx.lo == 0x000a000000000000 && tol_high[0].Fx.hi == 0);
 }
 `, nil)
 		wantLines := []string{
@@ -807,7 +803,7 @@ fn main() {
 			"save_refuse -1 -1 -1",
 			"raw_low -100 5 -600 18446744073709551615",
 			"clamp_helper_low 4 -5 10 -500 true",
-			"load_low 1 4 -5 10 -500 -1 clamped",
+			"load_low 1 4 -5 10 -500",
 			"load_high 1 4 5 1000 500 true",
 		}
 		if got := strings.Split(out, "\n"); strings.Join(got, "\n") != strings.Join(wantLines, "\n") {
@@ -899,7 +895,7 @@ fn main() {
     var values: cfold::Reading[1] = [cfold::Reading { .. }; 1];
     var rep = schema_rt::FixedEvolveReport { .. };
     let n = cfold::ReadingFixedEvolveLoad(values, bytes, rep);
-    print(n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", rep.clamped, " ", rep.widened, " ", values[0].Lead, " ", schema_rt::fixed_f32_bits(values[0].Aim), " ", values[0].Trail);
+    print(n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", rep.oor, " ", rep.widened, " ", values[0].Lead, " ", schema_rt::fixed_f32_bits(values[0].Aim), " ", values[0].Trail);
 }
 `, map[string][]byte{"old.bin": oldFile})
 			want := fmt.Sprintf("1 ok 0 0 1 %d 2", uint32(0x3e99999a))
@@ -942,14 +938,14 @@ fn main() {
 
     var got: cfold::Reading[1] = [cfold::Reading { .. }; 1];
     var rep = schema_rt::FixedReport { .. };
-    let nl = cfold::ReadingFixedLoadTolerant(got, f_low, rep);
-    print("clamp_low ", nl, " ", rep.clamped, " ", schema_rt::fixed_f32_bits(got[0].Aim) == 0xbf800000);
+    let nl = cfold::ReadingFixedLoad(got, f_low, rep);
+    print("clamp_low ", nl, " ", rep.oor, " ", schema_rt::fixed_f32_bits(got[0].Aim) == 0xbf800000);
 
-    let nh = cfold::ReadingFixedLoadTolerant(got, f_high, rep);
-    print("clamp_high ", nh, " ", rep.clamped, " ", schema_rt::fixed_f32_bits(got[0].Aim) == 0x40000000);
+    let nh = cfold::ReadingFixedLoad(got, f_high, rep);
+    print("clamp_high ", nh, " ", rep.oor, " ", schema_rt::fixed_f32_bits(got[0].Aim) == 0x40000000);
 
-    let nz = cfold::ReadingFixedLoadTolerant(got, f_negz, rep);
-    print("norm_negz ", nz, " ", rep.clamped, " ", schema_rt::fixed_f32_bits(got[0].Aim) == 0x00000000);
+    let nz = cfold::ReadingFixedLoad(got, f_negz, rep);
+    print("norm_negz ", nz, " ", rep.oor, " ", schema_rt::fixed_f32_bits(got[0].Aim) == 0x00000000);
 }
 `, nil)
 		wantLines := []string{
@@ -1011,8 +1007,8 @@ fn main() {
     // CONTROL 1: clean read clamps nothing, refuses nothing, and lands in bound.
     var got: probe::Host[1] = [probe::Host { .. }; 1];
     var r = schema_rt::FixedReport { .. };
-    let cn = probe::HostFixedLoadTolerant(got, clean, r);
-    print("control1 ", cn == 1 && r.reason == 0 && !r.malformed && r.clamped == 0 && in_bound(got[0]) && saved == clean.len);
+    let cn = probe::HostFixedLoad(got, clean, r);
+    print("control1 ", cn == 1 && r.reason == 0 && !r.damaged && r.oor == 0 && in_bound(got[0]) && saved == clean.len);
 
     // THE SWEEP: every byte of the record poisoned six ways.
     let poisons: u8[6] = [0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
@@ -1029,13 +1025,13 @@ fn main() {
             hit[rec_start + at] = poisons[p];
             var slot: probe::Host[1] = [probe::Host { .. }; 1];
             var rep = schema_rt::FixedReport { .. };
-            let n = probe::HostFixedLoadTolerant(slot, hit, rep);
+            let n = probe::HostFixedLoad(slot, hit, rep);
             if n < 0 {
-                let named = rep.reason != 0 && !rep.malformed;
-                let damaged = rep.malformed;
+                let named = rep.reason != 0 && !rep.damaged;
+                let damaged = rep.damaged;
                 if !named && !damaged { sweep_ok = false; }
             } else {
-                if rep.reason != 0 || rep.malformed || !in_bound(slot[0]) { sweep_ok = false; }
+                if rep.reason != 0 || rep.damaged || !in_bound(slot[0]) { sweep_ok = false; }
             }
             cases += 1;
             p += 1;
@@ -1070,8 +1066,8 @@ fn main() {
         probe::Host { Small: 777, Marks: [0, 0, 0, 0], MarksCount: 0, Note: 0, NotePresent: false, Tail: 777 },
     ];
     var rep2 = schema_rt::FixedReport { .. };
-    let n2 = probe::HostFixedLoadTolerant(pair, two, rep2);
-    print("last_record_nolayout ", saved2 > 0 && n2 == -1 && schema_rt::fixed_refusal_name(rep2.reason) == "no_layout" && rep2.clamped == 0 && pair[0].Small == 777);
+    let n2 = probe::HostFixedLoad(pair, two, rep2);
+    print("last_record_nolayout ", saved2 > 0 && n2 == -1 && schema_rt::fixed_refusal_name(rep2.reason) == "no_layout" && rep2.oor == 0 && pair[0].Small == 777);
 }
 `, nil)
 		wantLines := []string{

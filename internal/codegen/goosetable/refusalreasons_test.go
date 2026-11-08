@@ -74,9 +74,9 @@ fn probe(name: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
     let root = schema_rt::load_table(conformance_unit(), "Root", data, vals, nodes, report);
-    let counters = report.unknown + report.kind_mismatch + report.widened + report.clamped + report.duplicate;
+    let counters = report.unknown + report.mismatch + report.widened + report.oor + report.repeated;
     write_stdout(str(name, " ", schema_rt::load_refusal_name(schema_rt::load_error(report, root)), "_ ",
-        schema_rt::load_refusal_name(report.reason), "_ ", counters, " ", report.malformed, "\n"));
+        schema_rt::load_refusal_name(report.reason), "_ ", counters, " ", report.body_damaged, "\n"));
 }
 
 fn main() {
@@ -138,7 +138,7 @@ func TestGooseLoadRefusalReasons(t *testing.T) {
 	for _, r := range reasonRows(t) {
 		reasons[r.strict] = true
 	}
-	for _, want := range []string{"ok", "wire_damaged", "malformed", "unknown_form", "count_over_extent_cap", "kind_mismatch", "clamped", "non_finite_float"} {
+	for _, want := range []string{"ok", "wire_damaged", "malformed", "unknown_form", "count_over_extent_cap", "kind_mismatch", "out_of_range", "non_finite_float"} {
 		if !reasons[want] {
 			t.Errorf("no pin row answers %s", want)
 		}
