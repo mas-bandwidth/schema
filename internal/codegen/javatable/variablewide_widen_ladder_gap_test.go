@@ -20,7 +20,6 @@ import (
 // (docs/SPEC-TABLES.md §4). Before the fix the emitted field read counted a
 // kind_mismatch, because its widening ladder stopped at kind 9.
 func TestJavaFixWidenLadderGap(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	u := unitFrom(t, "package probe\nflags Perks { Shielded, Cloaked, Turbo }\ntable Root {\n    perks Perks\n}\n")
 	model := tabletext.NewModel(u)
@@ -56,8 +55,7 @@ func TestJavaFixWidenLadderGap(t *testing.T) {
 			if oracle.Refused {
 				verdict = "refused"
 			}
-			want := fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", oracle.Unknown, oracle.Unknown,
-				oracle.Widened, oracle.Unknown, oracle.Unknown, oracle.Refused, verdict)
+			want := fmt.Sprintf("%d,%d,%t,%s", oracle.Unknown, oracle.Widened, false, verdict)
 			if oracle.Widened != 1 || oracle.Unknown != 0 || oracle.Refused {
 				t.Fatalf("oracle expected exactly one widen; got %s", want)
 			}
@@ -116,7 +114,7 @@ func TestJavaFixWidenLadderGap(t *testing.T) {
 }
 
 // widenLadderProbe loads the mutant and prints the report line in the harness's
-// format: unknown,kindMismatch,widened,clamped,duplicate,malformed,verdict.
+// format: unknown,widened,damaged,verdict.
 const widenLadderProbe = `import java.nio.file.Files;
 import java.nio.file.Paths;
 
@@ -126,8 +124,7 @@ public final class Driver {
         probe.TableVariable.Report report = new probe.TableVariable.Report();
         probe.RootVariable.Value v = probe.RootVariable.load(wire, report);
         if (v == null) { System.out.println("null"); return; }
-        System.out.println(report.unknown + "," + report.kindMismatch + "," + report.widened
-                + "," + report.clamped + "," + report.duplicate + "," + report.malformed
+        System.out.println(report.unknown + "," + report.widened + "," + report.damaged
                 + "," + (report.refused ? "refused" : "read"));
     }
 }

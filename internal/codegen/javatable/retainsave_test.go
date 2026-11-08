@@ -77,7 +77,7 @@ public final class RetainSaveDriver {
         tblrt1.TableRetain store = new tblrt1.TableRetain(1 << 20, ids);
         tblrt1.TableVariable.Report load = new tblrt1.TableVariable.Report();
         tblrt1.NodeVariable.Value v = tblrt1.NodeRetain.loadRetain(wire, store, load);
-        if (v == null || load.malformed || load.refused) throw new AssertionError("retaining load refused");
+        if (v == null || load.damaged || load.refused) throw new AssertionError("retaining load refused");
         tblrt1.TableVariable.Report save = new tblrt1.TableVariable.Report();
         long size = tblrt1.NodeRetain.measureRetain(v, store);
         byte[] got = tblrt1.NodeRetain.saveRetain(v, store, save);

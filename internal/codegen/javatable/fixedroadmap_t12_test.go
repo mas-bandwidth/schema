@@ -169,7 +169,7 @@ public final class ProbeUnionFieldArms {
             probe.TFixed.Value[] out = { new probe.TFixed.Value() };
             probe.TableFixed.Report rep = new probe.TableFixed.Report();
             int n = probe.TFixed.load(out, 1, buf, plan, pool, probe.TFixed.image(), rep);
-            check(n == 1 && !rep.refused && !rep.malformed && rep.clamped == 0, "scalar load");
+            check(n == 1 && !rep.refused && !rep.damaged, "scalar load");
             check(out[0].lead == 101 && out[0].tail == 102, "scalar neighbors");
             check(out[0].body.type == probe.BodyFixed.scalar && out[0].body.scalar == s, "scalar value");
         }
@@ -187,7 +187,7 @@ public final class ProbeUnionFieldArms {
             probe.TFixed.Value[] out = { new probe.TFixed.Value() };
             probe.TableFixed.Report rep = new probe.TableFixed.Report();
             int n = probe.TFixed.load(out, 1, buf, plan, pool, probe.TFixed.image(), rep);
-            check(n == 1 && !rep.refused && !rep.malformed && rep.clamped == 0, "text load");
+            check(n == 1 && !rep.refused && !rep.damaged, "text load");
             check(out[0].body.type == probe.BodyFixed.text && out[0].body.textLength == len, "text length");
             for (int i = 0; i < len; i++) check(out[0].body.text[i] == (byte) ('a' + i), "text byte");
             check(out[0].lead == 201 && out[0].tail == 202, "text neighbors");
@@ -207,7 +207,7 @@ public final class ProbeUnionFieldArms {
             probe.TFixed.Value[] out = { new probe.TFixed.Value() };
             probe.TableFixed.Report rep = new probe.TableFixed.Report();
             int n = probe.TFixed.load(out, 1, buf, plan, pool, probe.TFixed.image(), rep);
-            check(n == 1 && !rep.refused && !rep.malformed && rep.clamped == 0, "bytes load");
+            check(n == 1 && !rep.refused && !rep.damaged, "bytes load");
             check(out[0].body.type == probe.BodyFixed.data && out[0].body.dataLength == 4, "bytes length");
             check(out[0].body.data[0] == 0x00 && out[0].body.data[1] == (byte) 0xFF &&
                   out[0].body.data[2] == 0x7F && out[0].body.data[3] == (byte) 0x80, "bytes payload");
@@ -225,7 +225,7 @@ public final class ProbeUnionFieldArms {
             probe.TFixed.Value[] out = { new probe.TFixed.Value() };
             probe.TableFixed.Report rep = new probe.TableFixed.Report();
             int n = probe.TFixed.load(out, 1, buf, plan, pool, probe.TFixed.image(), rep);
-            check(n == 1 && !rep.refused && !rep.malformed && rep.clamped == 0, "array load");
+            check(n == 1 && !rep.refused && !rep.damaged, "array load");
             check(out[0].body.type == probe.BodyFixed.list &&
                   out[0].body.list[0] == Integer.MIN_VALUE &&
                   out[0].body.list[1] == 0 &&
@@ -326,7 +326,7 @@ public final class ProbeFu1Oracle {
         };
         tblfu1.TableFixed.Report rep = new tblfu1.TableFixed.Report();
         int n = tblfu1.FuRootFixed.load(back, 3, ref, tblfu1.TableFixed.plan(1 << 14), new short[1 << 14], tblfu1.FuRootFixed.image(), rep);
-        check(n == 3 && !rep.refused && !rep.malformed, "fu1 load");
+        check(n == 3 && !rep.refused && !rep.damaged, "fu1 load");
         check(back[0].pick.type == tblfu1.PickFixed.labelled &&
               back[0].pick.labelled.lead == 101 &&
               back[0].pick.labelled.labelLength == 5 &&
@@ -482,7 +482,7 @@ public final class ProbePayloadFreeArms {
                 out[0].action.value = -1;
                 probe.TableFixed.Report rep = new probe.TableFixed.Report();
                 int n = probe.RecFixed.load(out, 1, bytes, plan, pool, probe.RecFixed.image(), rep);
-                check(n == 1 && !rep.refused && !rep.malformed && rep.clamped == 0,
+                check(n == 1 && !rep.refused && !rep.damaged,
                       "payload-free load");
                 check((out[0].action.type & 0xFF) == action && (out[0].signal.type & 0xFF) == signal,
                       "payload-free tags round-trip");
@@ -559,7 +559,7 @@ fixed table Rec
             probe.RecFixed.Value[] out = { new probe.RecFixed.Value() };
             probe.TableFixed.Report rep = new probe.TableFixed.Report();
             int n = probe.RecFixed.load(out, 1, bytes, plan, pool, probe.RecFixed.image(), rep);
-            check(n == 1 && !rep.refused && !rep.malformed && rep.clamped == 0,
+            check(n == 1 && !rep.refused && !rep.damaged,
                   "union-arrays load");
             check(out[0].lead == 3 && out[0].trail == 5 && out[0].historyCount == count,
                   "union-arrays count and neighbors");

@@ -30,18 +30,18 @@ local L = schema.require("schema_table_load");
 local R = schema.require("schema_table_refusal");
 local RT = schema.require("schema_table_retain");
 local newReport = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false };
+  return { unknown = 0, mismatch = 0, widened = 0, oor = 0,
+    repeated = 0, bodyDamaged = false, refused = false };
 };
 local show = function(key, path, v, r) {
-  local n = r.unknown + r.kindMismatch + r.widened + r.clamped + r.duplicate;
+  local n = r.unknown + r.mismatch + r.widened + r.oor + r.repeated;
   local why = ("reason" in r) && r.reason != null ? r.reason : "-";
   print(key + " " + path + " " + (v == null ? "nil" : "some") + " " + r.refused + " " +
-        r.malformed + " " + n + " " + why + "\n");
+        r.bodyDamaged + " " + n + " " + why + "\n");
 };
 foreach (key in __KEYS__) {
   local r = newReport();
-  show(key, "tolerant", L.loadTolerant(T, "Root", inputs[key], r), r);
+  show(key, "tolerant", L.loadWalk(T, "Root", inputs[key], r), r);
   r = newReport();
   show(key, "plain", L.load(T, "Root", inputs[key], r), r);
   r = {};

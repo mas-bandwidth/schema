@@ -204,7 +204,7 @@ public final class Driver {
         cards.TableVariable.Report report = new cards.TableVariable.Report();
         cards.CardVariable.Value v = cards.CardVariable.load(wire, report);
         if (v == null) { fail("load returned null"); }
-        if (report.malformed || report.refused) { fail("load reported malformed/refused"); }
+        if (report.damaged || report.refused) { fail("load reported damaged/refused"); }
         if (!"populated".equals(v.id)) { fail("id=" + v.id); }
         if (!"0123456789012345678901234567890123456789".equals(v.sha)) { fail("sha"); }
         if (v.tier != 1) { fail("tier=" + v.tier); }
@@ -348,9 +348,9 @@ public final class Driver {
 
         cards.TableVariable.Report read = new cards.TableVariable.Report();
         cards.CardVariable.Value from = cards.CardVariable.fromJson(golden, read);
-        if (read.malformed || read.unknown != 0 || read.kindMismatch != 0 || read.clamped != 0) {
+        if (from == null || read.damaged || read.refused || read.unknown != 0 || read.widened != 0) {
             fail("FromJson of the Go leg's JSON reports loss (unknown=" + read.unknown
-                    + " kindMismatch=" + read.kindMismatch + " clamped=" + read.clamped + ")");
+                    + " widened=" + read.widened + " refused=" + read.refused + " reason=" + read.reason + ")");
         }
         byte[] saved = cards.CardVariable.save(from);
         if (!java.util.Arrays.equals(wire, saved)) {
@@ -363,7 +363,7 @@ public final class Driver {
         byte[] unknownText = ("{ \"id\": \"x\", \"bogus\": 123 }").getBytes(StandardCharsets.UTF_8);
         cards.TableVariable.Report ur = new cards.TableVariable.Report();
         cards.CardVariable.Value uv = cards.CardVariable.fromJson(unknownText, ur);
-        if (ur.malformed) { fail("an unknown property is not malformed"); }
+        if (uv == null || ur.damaged || ur.refused) { fail("an unknown property is not a refusal"); }
         if (ur.unknown != 1) { fail("unknown property: unknown=" + ur.unknown); }
         if (!"x".equals(uv.id)) { fail("unknown property lost id=" + uv.id); }
 
@@ -374,14 +374,15 @@ public final class Driver {
         if (er.unknown != 1) { fail("out-of-range enum: unknown=" + er.unknown); }
         if (ev.tier != 0) { fail("out-of-range enum did not read None"); }
 
-        // An OVER-BOUND string is clamped and counted, never silently truncated (§16.2).
+        // An OVER-BOUND string REFUSES the whole load, never truncated (§4, §16.2).
         StringBuilder longId = new StringBuilder();
         for (int i = 0; i < 70; i++) { longId.append('a'); }
         byte[] stringText = ("{ \"id\": \"" + longId + "\" }").getBytes(StandardCharsets.UTF_8);
         cards.TableVariable.Report sr = new cards.TableVariable.Report();
         cards.CardVariable.Value sv = cards.CardVariable.fromJson(stringText, sr);
-        if (sr.clamped != 1) { fail("over-bound string: clamped=" + sr.clamped); }
-        if (sv.id.length() != 64) { fail("over-bound string kept " + sv.id.length() + " code points"); }
+        if (sv != null || !sr.refused || sr.damaged) {
+            fail("over-bound string not refused: value=" + (sv != null) + " refused=" + sr.refused + " damaged=" + sr.damaged + " reason=" + sr.reason);
+        }
 
         System.out.println("ok");
     }

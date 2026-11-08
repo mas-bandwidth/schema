@@ -511,7 +511,7 @@ const wire = newer.EntrySave(input);
 const retain = new older.TableVariableRetain(new Uint8Array(4096), new Array(64));
 const report = new older.TableVariableReport();
 const v = older.EntryLoadRetain(wire, retain, report);
-if (v === null || report.malformed || report.refused !== 0) {
+if (v === null || report.damaged || report.refused !== 0) {
   console.log("load", JSON.stringify(report)); process.exit(1);
 }
 if (v.id !== "retain") { console.log("id", v.id); process.exit(1); }

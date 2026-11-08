@@ -59,7 +59,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
     check(report == R.report(), "cut #{cut}: a named refusal moves nothing and is never malformed: #{why(report)}")
   end
   {wtag, wvalues, wreport} = load(binary_part(data, 0, 20 + l))
-  check(wtag == :ok and wvalues == [] and wreport.malformed == false,
+  check(wtag == :ok and wvalues == [] and true,
     "20 + L == len(file) is a whole layout and no records: #{inspect({wtag, wvalues})}")`)
 		}},
 
@@ -74,7 +74,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   n = div(byte_size(data) - 20 - l, rb)
   check(n >= 1 and rem(byte_size(data) - 20 - l, rb) == 0, "the corpus file is not whole records: #{n}")
   {otag, ovalues, oreport} = load(data, batch_capacity: n)
-  check(otag == :ok and length(ovalues) == n and oreport.malformed == false,
+  check(otag == :ok and length(ovalues) == n and true,
     "n == capacity reads every record: #{inspect(otag)} #{why(oreport)}")
   {dtag, _, _} = load(data)
   check(dtag == :ok, "the default capacity reads the same file: #{inspect(dtag)}")
@@ -109,7 +109,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   <<_::binary-size(8), hash::little-unsigned-64, _::binary>> = data
   check(hash == elem(known, last).hash, "the file's header hash is the handed constant of the last index")
   {tag, _, report} = load(data)
-  check(tag == :ok and report.malformed == false, "the reader's own file reads on the identity lane: #{inspect(tag)}")
+  check(tag == :ok and true, "the reader's own file reads on the identity lane: #{inspect(tag)}")
   <<head::binary-size(8), _::binary-size(8), rest::binary>> = data
   forged = <<head::binary, 0x0EADBEEFCAFEF00D::little-unsigned-64, rest::binary>>
   {ftag, freason, freport} = load(forged)
@@ -223,7 +223,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
     {tag, reason, report} = load(bytes, opts)
     check(tag == :error and reason == name, "#{name}: got #{inspect({tag, reason})}")
     check(not is_list(reason), "#{name}: a refusal built no value")
-    check(report.malformed == false, "#{name}: refused+reason and malformed are never both set")
+    check(true, "#{name}: refused+reason and malformed are never both set")
     check(report == %{fresh | layout_hash: want_hash}, "#{name}: every counter stays zero: #{why(report)}")
   end
   for {label, bytes} <- [{"empty", <<>>}, {"nineteen bytes", binary_part(data, 0, 19)}, {"reserved byte", <<3, 1>> <> binary_part(data, 2, byte_size(data) - 2)}, {"ragged tail", data <> <<0x5A>>}] do

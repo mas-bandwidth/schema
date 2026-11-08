@@ -28,10 +28,10 @@ const RESERVE_BYTES = 1;        // bytes[1..8] must be zero
 // The report structure expected by CellFixedLoad
 function newReport() {
   return {
-    malformed: false,
+    damaged: false,
     refused: 0,
     unknown: 0,
-    kindMismatch: 0,
+    mismatch: 0,
     layoutHash: 0n,
   };
 }
@@ -122,16 +122,16 @@ function testUnknownLayoutLayoutNewer() {
     console.log("FAIL: report.refused = " + report.refused + ", expected 15 (LayoutNewer)");
     return false;
   }
-  if (report.malformed) {
-    console.log("FAIL: report.malformed = true, expected false");
+  if (report.damaged) {
+    console.log("FAIL: report.damaged = true, expected false");
     return false;
   }
   if (report.unknown !== 0) {
     console.log("FAIL: report.unknown = " + report.unknown + ", expected 0");
     return false;
   }
-  if (report.kindMismatch !== 0) {
-    console.log("FAIL: report.kindMismatch = " + report.kindMismatch + ", expected 0");
+  if (report.mismatch !== 0) {
+    console.log("FAIL: report.mismatch = " + report.mismatch + ", expected 0");
     return false;
   }
 

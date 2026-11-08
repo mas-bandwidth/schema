@@ -41,7 +41,7 @@ if (recordBytes <= 8) { fail("this row needs a record over eight bytes: recordBy
 
 const first = new TableFixedReport();
 const clean = TLoad(back, back.length, data, data.length, plan, first);
-if (clean < 1 || first.malformed || first.refused !== 0) {
+if (clean < 1 || first.damaged || first.refused !== 0) {
   fail("the corpus file must read cleanly first: n=" + clean + " " + reason(first));
 }
 
@@ -54,13 +54,13 @@ for (let extra = 1; extra < recordBytes; extra++) {
   const report = new TableFixedReport();
   const n = TLoad(back, back.length, ragged, ragged.length, plan, report);
   if (n !== -1) { fail("extra=" + extra + ": a ragged tail returns -1, got n=" + n); }
-  if (report.malformed !== true) {
-    fail("extra=" + extra + ": a ragged tail is malformed=true, got malformed=" + report.malformed);
+  if (report.damaged !== true) {
+    fail("extra=" + extra + ": a ragged tail is malformed=true, got malformed=" + report.damaged);
   }
   if (report.refused !== TableFixedRefusal.None) {
     fail("extra=" + extra + ": a ragged tail is the residue, not a refusal: refused=" + TableFixedRefusalName(report.refused));
   }
-  if (report.unknown !== 0 || report.kindMismatch !== 0 || report.clamped !== 0 || report.widened !== 0 || report.duplicate !== 0) {
+  if (report.unknown !== 0 || report.mismatch !== 0 || report.oor !== 0 || report.widened !== 0 || report.repeated !== 0) {
     fail("extra=" + extra + ": a ragged tail moves no counter: " + reason(report));
   }
   for (let k = 0; k < 8; k++) {
@@ -76,7 +76,7 @@ for (let extra = 1; extra < recordBytes; extra++) {
   whole.set(data);
   const report = new TableFixedReport();
   const n = TLoad(back1, back1.length, whole, whole.length, plan, report);
-  if (n !== -1 || report.malformed || report.refused !== TableFixedRefusal.BatchTooLarge) {
+  if (n !== -1 || report.damaged || report.refused !== TableFixedRefusal.BatchTooLarge) {
     fail("extra == recordBytes is one more whole record, so it owes batch_too_large, not malformed: n=" + n + " " + reason(report));
   }
 }

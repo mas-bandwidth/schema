@@ -345,7 +345,7 @@ public final class R27 {
             tabledemo.PackConfigFixed.image(), rpt);
         check(n == 2, "reader: returned 2 records (got " + n + ")");
         check(!rpt.refused, "reader: not refused");
-        check(!rpt.malformed, "reader: not malformed");
+        check(!rpt.damaged, "reader: not malformed");
 
         // ASSERT EVERY VALUE THE MANIFEST RECORDS
         // Record 0

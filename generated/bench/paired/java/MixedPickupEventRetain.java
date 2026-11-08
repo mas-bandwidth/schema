@@ -95,7 +95,7 @@ public final class MixedPickupEventRetain {
             }
         }
         // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
-        if (report.malformed) {
+        if (report.damaged || report.refused) {
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
@@ -103,7 +103,7 @@ public final class MixedPickupEventRetain {
         }
         // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
         if (TableVariable.cyclic(nt)) {
-            report.malformed = true;
+            report.damaged = true;
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
@@ -262,7 +262,7 @@ public final class MixedPickupEventRetain {
                 return;
             }
             if (!r.has(1)) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             }
             int kind = r.get8();
@@ -272,7 +272,7 @@ public final class MixedPickupEventRetain {
                         if (r.has(2)) {
                             v.itemId = r.get16();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 6) {
@@ -280,17 +280,17 @@ public final class MixedPickupEventRetain {
                             v.itemId = r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
                     if (!r.fail && ((long) v.itemId & 0xffffffffL) > 1023L) {
                         v.itemId = (int) 1023L;
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == MixedPickupEventVariable.F_amount) {
                 if (kind == 4 || kind == 2 || kind == 3) {
@@ -298,7 +298,7 @@ public final class MixedPickupEventRetain {
                         if (r.has(4)) {
                             v.amount = r.get32();
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 2) {
@@ -306,7 +306,7 @@ public final class MixedPickupEventRetain {
                             v.amount = (byte) r.get8();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     } else if (kind == 3) {
@@ -314,7 +314,7 @@ public final class MixedPickupEventRetain {
                             v.amount = (short) r.get16();
                             report.widened++;
                         } else {
-                            report.malformed = true;
+                            report.damaged = true;
                             r.fail = true;
                         }
                     }
@@ -324,21 +324,21 @@ public final class MixedPickupEventRetain {
                         } else {
                             v.amount = 255;
                         }
-                        report.clamped++;
+                        report.refuse("out_of_range");
                     }
                 } else {
                     r.skip(kind);
-                    report.kindMismatch++;
+                    report.refuse("kind_mismatch");
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
                     r.skip(kind);
                 } else {
-                    report.malformed = true;
+                    report.damaged = true;
                     return;
                 }
             } else if (id == TableVariable.BUILD_ID || id == TableVariable.VOCAB_ID) {
-                report.malformed = true;
+                report.damaged = true;
                 return;
             } else {
                 captureUnknown(r, id, kind, retain, report, path, depth);

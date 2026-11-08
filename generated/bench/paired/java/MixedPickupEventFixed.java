@@ -58,16 +58,16 @@ public final class MixedPickupEventFixed {
         v.itemId = TableFixed.get32(b, at + 0);
         if (v.itemId > 1023L) {
             v.itemId = (int) (1023L);
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         } // bits(10) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) {
                 q = 0L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 255L) {
                 q = 255L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.amount = (int) (q);
         }

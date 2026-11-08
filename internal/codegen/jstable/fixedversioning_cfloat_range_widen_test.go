@@ -41,13 +41,13 @@ const READ = (f, wantBits, clamped, tag) => {
   if (f32bits(back[0].aim) !== wantBits) {
     fail(tag + ": aim landed bits " + f32bits(back[0].aim).toString(16) + ", want " + wantBits.toString(16) + " (" + back[0].aim + ")");
   }
-  if (r.clamped !== clamped) {
-    fail(tag + ": clamped landed " + r.clamped + ", want exactly " + clamped + ": " + reason(r));
+  if (r.oor !== clamped) {
+    fail(tag + ": clamped landed " + r.oor + ", want exactly " + clamped + ": " + reason(r));
   }
-  if (r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0 || r.duplicate !== 0) {
+  if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
     fail(tag + ": counters moved on a clean read: " + reason(r));
   }
-  if (r.malformed) { fail(tag + ": not malformed: " + reason(r)); }
+  if (r.damaged) { fail(tag + ": not malformed: " + reason(r)); }
   if (r.refused !== 0) { fail(tag + ": not a refusal: " + reason(r)); }
 };
 READ(%[1]q, %[4]d, 0, "old_");

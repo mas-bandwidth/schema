@@ -31,7 +31,7 @@ import (
 // mutantMatchUnknownRef is the wire-fuzz mutant of match_full_message.bin that
 // isolates cause C9 (an unknown reference inside a MatchResult body). The
 // batch is damaged, and DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md
-// §4, §3.3): the Java leg owes the refusal, malformed, and no counter or
+// §4, §3.3): the Java leg owes the refusal, damaged, and no counter or
 // re-saved body is compared.
 const mutantMatchUnknownRef = "02004640404040404040c021a00f00000000000020d20400217d00000000000000f928900420a80f000000000000206c05120184f50100000000000024b7403280c03e000000000000801818480810da07000000000000902903490182fb00000000000000026a203140781f00000000000040da0d240708f00300000000000088ce810401217e00000000000000383c90240000"
 
@@ -82,9 +82,9 @@ func TestJavaFixMessageUnknownReferenceRefused(t *testing.T) {
             final TableVocabulary.Report srep = new TableVocabulary.Report();
             final int wrote = MatchResultMessage.saveMessages(values, cc, buf, srep);
             if (!announced) { fail("announce failed"); }
-            System.out.println("C9 unknown=" + lrep.unknown + " kind_mismatch=" + lrep.kindMismatch
-                + " widened=" + lrep.widened + " clamped=" + lrep.clamped
-                + " malformed=" + lrep.malformed
+            System.out.println("C9 unknown=" + lrep.unknown
+                + " widened=" + lrep.widened
+                + " damaged=" + lrep.damaged
                 + " save=" + (wrote < 0 ? "failed" : hex(java.util.Arrays.copyOf(buf, wrote))));
         }
 `, hexOf(ann), mutantMatchUnknownRef)
@@ -99,7 +99,7 @@ func TestJavaFixMessageUnknownReferenceRefused(t *testing.T) {
 	if line == "" {
 		t.Fatalf("no C9 report line in the probe output:\n%s", out)
 	}
-	if !strings.Contains(line, " malformed=true ") {
+	if !strings.Contains(line, " damaged=true ") {
 		t.Errorf("Java did not refuse a damaged batch: %s", line)
 	}
 }

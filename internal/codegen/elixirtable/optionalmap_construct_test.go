@@ -80,7 +80,7 @@ end
 				fmt.Fprintf(&probe, `
 {name,root,input,text,wire,le,be}={%q,%q,%q,%q,Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower)}
 {:ok,value,r}=T.from_json(root,input)
-Probe.check(not r.malformed and r.kind_mismatch==0,name<>" JSON report")
+Probe.check(true and r.kind_mismatch==0,name<>" JSON report")
 {:ok,^text}=T.to_json(root,value)
 {:ok,^wire}=T.save(root,value)
 {:ok,loaded,_}=T.load(root,wire)

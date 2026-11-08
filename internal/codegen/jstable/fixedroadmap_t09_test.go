@@ -132,7 +132,7 @@ if (TSave([none], 1, noneBuf) !== noneBuf.length) { fail("payload-free-arms: sav
 const noneBack = [new T()]; InitT(noneBack[0]);
 const noneReport = new TableFixedReport();
 const noneN = TLoad(noneBack, 1, noneBuf, noneBuf.length, TNewPlan(4096, 4096), noneReport);
-if (!(noneN === 1 && !noneReport.malformed)) { fail("payload-free-arms: load none " + reason(noneReport)); }
+if (!(noneN === 1 && !noneReport.damaged)) { fail("payload-free-arms: load none " + reason(noneReport)); }
 if (!(noneBack[0].body.type === BodyType.None)) { fail("payload-free-arms: None did not round trip"); }
 
 function roundtrip(arm, setup) {
@@ -144,7 +144,7 @@ function roundtrip(arm, setup) {
   const back = [new T()]; InitT(back[0]);
   const report = new TableFixedReport();
   const n = TLoad(back, 1, buf, buf.length, TNewPlan(4096, 4096), report);
-  if (!(n === 1 && !report.malformed)) { fail("payload-free-arms: load " + arm + " " + reason(report)); }
+  if (!(n === 1 && !report.damaged)) { fail("payload-free-arms: load " + arm + " " + reason(report)); }
   return back[0];
 }
 
@@ -207,7 +207,7 @@ const back = [new T()]; InitT(back[0]);
 const report = new TableFixedReport();
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, 1, buf, buf.length, plan, report);
-if (!(n === 1 && !report.malformed)) { fail("union-arrays: load " + reason(report)); }
+if (!(n === 1 && !report.damaged)) { fail("union-arrays: load " + reason(report)); }
 if (!(back[0].pending[0].type === ShapeType.Circle && back[0].pending[0].circle.radius === 1.25)) {
   fail("union-arrays: the first fixed-array arm did not round trip");
 }
@@ -258,7 +258,7 @@ const back = [new T()]; InitT(back[0]);
 const report = new TableFixedReport();
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, 1, buf, buf.length, plan, report);
-if (!(n === 1 && !report.malformed)) { fail("scalar-defaults: load " + reason(report)); }
+if (!(n === 1 && !report.damaged)) { fail("scalar-defaults: load " + reason(report)); }
 if (!(back[0].a === -2147483648)) { fail("scalar-defaults: int32 boundary did not round trip, got " + back[0].a); }
 if (!(back[0].r === 3.4028234663852886e38)) { fail("scalar-defaults: float32 boundary did not round trip, got " + back[0].r); }
 if (!(back[0].g === Grade.First)) { fail("scalar-defaults: enum value did not round trip, got " + back[0].g); }
@@ -302,7 +302,7 @@ const back = [new T()]; InitT(back[0]);
 const report = new TableFixedReport();
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, 1, buf, buf.length, plan, report);
-if (!(n === 1 && !report.malformed)) { fail("text-bytes-flags-defaults: load " + reason(report)); }
+if (!(n === 1 && !report.damaged)) { fail("text-bytes-flags-defaults: load " + reason(report)); }
 let got = "";
 for (let i = 0; i < back[0].sLength; i++) { got += String.fromCharCode(back[0].s[i]); }
 if (!(got === "abcdefgh")) { fail("text-defaults: the full declared width did not round trip, got " + JSON.stringify(got)); }
@@ -338,7 +338,7 @@ const absentBack = [new T()]; InitT(absentBack[0]);
 let report = new TableFixedReport();
 let plan = TNewPlan(4096, 4096);
 let n = TLoad(absentBack, 1, absentBuf, absentBuf.length, plan, report);
-if (!(n === 1 && !report.malformed)) { fail("optional-arrays: load absent " + reason(report)); }
+if (!(n === 1 && !report.damaged)) { fail("optional-arrays: load absent " + reason(report)); }
 if (!(absentBack[0].optPresent === false && absentBack[0].optCount === 0)) { fail("optional-arrays: an absent optional came back present"); }
 if (!(absentBack[0].tail === 1)) { fail("optional-arrays: the field behind the absent optional did not land"); }
 
@@ -354,7 +354,7 @@ const presentBack = [new T()]; InitT(presentBack[0]);
 report = new TableFixedReport();
 plan = TNewPlan(4096, 4096);
 n = TLoad(presentBack, 1, presentBuf, presentBuf.length, plan, report);
-if (!(n === 1 && !report.malformed)) { fail("optional-arrays: load present " + reason(report)); }
+if (!(n === 1 && !report.damaged)) { fail("optional-arrays: load present " + reason(report)); }
 if (!(presentBack[0].optPresent === true && presentBack[0].optCount === 2)) { fail("optional-arrays: the boundary-length array came back wrong"); }
 if (!(presentBack[0].opt[0].x === -2147483648 && presentBack[0].opt[1].x === 2147483647)) {
   fail("optional-arrays: the array elements did not round trip");

@@ -139,8 +139,7 @@ public final class W4 {
 
         check("load returns 1 record", n == 1);
         check("no refusal", !report.refused);
-        check("no malformed", !report.malformed);
-        check("no clamped", report.clamped == 0);
+        check("no malformed", !report.damaged);
         check("no unknown", report.unknown == 0);
 
         PaddedFrameFixed.Value loaded = out[0];
@@ -194,7 +193,7 @@ public final class W4 {
                     !loaded.rows[i].counterPresent);
         }
 
-        // ---- NEGATIVE CONTROL: a forged count past max should clamp
+        // ---- NEGATIVE CONTROL: a forged count past max refuses the load
 
         TableFixed.Report report2 = new TableFixed.Report();
         PaddedFrameFixed.Value[] out2 = new PaddedFrameFixed.Value[1];
@@ -203,12 +202,14 @@ public final class W4 {
         int rowsCountOffset = bodyAt + 9;
         TableFixed.put32(forged, rowsCountOffset, 99); // > rowsMax=64
 
-        PaddedFrameFixed.load(out2, 1, forged,
+        int n2 = PaddedFrameFixed.load(out2, 1, forged,
                 PaddedFrameFixed.identityPlan(), null,
                 PaddedFrameFixed.image(), report2);
 
-        check("negative control: count > max clamps", report2.clamped >= 1);
-        check("negative control: rowsCount clamped to 64", out2[0].rowsCount == 64);
+        // Only the verdict is asserted: the forged frame also walks 0xFF slack
+        // into a float, and which of several conditions names the refusal is
+        // per-language detail (docs/plans/strict-only.md, decision 3).
+        check("negative control: count > max refuses the load", n2 == -1 && report2.refused && !report2.damaged);
 
         System.out.println("\n" + passed + " passed, " + failed + " failed");
         System.exit(failed > 0 ? 1 : 0);

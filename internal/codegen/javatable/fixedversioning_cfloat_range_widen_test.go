@@ -8,11 +8,11 @@ package javatable
 //
 // Three reads of the corpus: `old_` lands its written 0.5 whole (clamp 0); `hostile_`
 // forges 1.5, outside the old writer's range but inside the new reader's, and lands it
-// WHOLE with clamp 0 — the pass is the READER's, not the writer's; `past_` forges 5.0
-// and clamps to the READER's own max 2.0 with clamp EXACTLY 1. `clamped` is asserted
-// exactly, never >= 1: this row exists to catch a reader that counts twice or counts
-// the wrong read. The `hostile_` read alone is not worth having — with the emitter's
-// float bounds pass deleted outright it would STAY GREEN and only `past_` would go red.
+// WHOLE with no refusal — the pass is the READER's, not the writer's; `past_` forges
+// 5.0, past the READER's own max 2.0, and the strict read (docs/plans/strict-only.md)
+// REFUSES the whole load as outOfRange. The `hostile_` read alone is not worth having —
+// with the emitter's float bounds pass deleted outright it would STAY GREEN and only
+// `past_` would go red.
 
 import (
 	"os"
@@ -40,26 +40,30 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	// were the decimal strings "0.5"/"1.5"/"2.0" — the weakest comparison of
 	// the nine legs. `old_`'s value is the manifest's `values=r0.aim`;
 	// `hostile_`'s is the manifest's own `forged=r0.aim@104`, the value the
-	// reference wrote into those bytes. `past_` is NOT a manifest value and is
-	// not dressed as one: the file carries 5.0 and what lands is THIS READER'S
-	// OWN DECLARED MAX, 2.0 = 0x40000000, which is the whole content of that
-	// column.
+	// reference wrote into those bytes. `past_` carries 5.0, past THIS
+	// READER'S OWN DECLARED MAX 2.0, and lands nothing: it refuses.
 	for _, tc := range []struct {
 		file    string
 		aim     uint32
-		clamped int
+		refuses bool
 	}{
-		{"old_cfloat_range_widen.bin", manifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"), 0},
-		{"hostile_cfloat_range_widen.bin", manifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"), 0},
-		{"past_cfloat_range_widen.bin", 0x40000000, 1},
+		{"old_cfloat_range_widen.bin", manifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"), false},
+		{"hostile_cfloat_range_widen.bin", manifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"), false},
+		{"past_cfloat_range_widen.bin", 0, true},
 	} {
 		r := runProbe(t, classes, "Probe_reads", filepath.Join(corpus, tc.file))
+		if tc.refuses {
+			// 5.0 is past THIS READER'S OWN declared max 2.0: the strict read
+			// refuses the whole load as outOfRange and lands nothing.
+			requireNamedRefusal(t, tc.file, r, "outOfRange")
+			continue
+		}
 
 		if r.n != 1 {
 			t.Errorf("%s: n=%d, want 1", tc.file, r.n)
 		}
-		if r.refused || r.malformed {
-			t.Errorf("%s: a clean read refused: refused=%v reason=%s malformed=%v", tc.file, r.refused, r.reason, r.malformed)
+		if r.refused || r.damaged {
+			t.Errorf("%s: a clean read refused: refused=%v reason=%s malformed=%v", tc.file, r.refused, r.reason, r.damaged)
 		}
 		if got := r.value["lead"]; got != "1" {
 			t.Errorf("%s: lead=%s, want 1", tc.file, got)
@@ -70,12 +74,9 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		if got := r.value["trail"]; got != "2" {
 			t.Errorf("%s: trail=%s, want 2", tc.file, got)
 		}
-		if r.clamped != tc.clamped {
-			t.Errorf("%s: clamped=%d, want %d exactly", tc.file, r.clamped, tc.clamped)
-		}
-		if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 {
-			t.Errorf("%s: counters moved on a clean read: unknown=%d kindMismatch=%d widened=%d, want all 0",
-				tc.file, r.unknown, r.kindMismatch, r.widened)
+		if r.unknown != 0 || r.widened != 0 {
+			t.Errorf("%s: counters moved on a clean read: unknown=%d widened=%d, want all 0",
+				tc.file, r.unknown, r.widened)
 		}
 	}
 }
