@@ -43,15 +43,14 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
     }
 `
 
+	// THE ONE READ (docs/SPEC-TABLES.md §4, §6.5): a forged ordinal past the
+	// writer's set is out of range, and the strict read refuses the whole
+	// load; nothing lands.
 	body := `
-    if ( n != 1 ) { printf( "the forged file reads one record, not %lld\n", (long long) n ); return 1; }
-    if ( r.refused || r.damaged )
-        { printf( "the forged read is not a refusal: refused=%d malformed=%d reason=%d\n", (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
-    if ( back[0].tier != Tier::None ) { printf( "the forged ordinal lands None, not %d\n", (int) back[0].tier ); return 1; }
-    if ( back[0].seq != 9 ) { printf( "the scalar after the enum must stand at 9, not %d\n", (int) back[0].seq ); return 1; }
-    if ( r.refused != 1 ) { printf( "out_of_range is the bounds pass's count, once per field: %d\n", r.refused ); return 1; }
-    if ( r.unknown != 0 || r.widened != 0 )
-        { printf( "only out_of_range may move on a forged ordinal: unknown=%d kind_mismatch=%d widened=%d repeated=%d\n", r.unknown, r.refused, r.widened, r.refused ); return 1; }
+    if ( n != -1 ) { printf( "the forged file must refuse, not read %lld records\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != out_of_range )
+        { printf( "the forged read is not an out_of_range refusal: refused=%d reason=%d\n", (int) r.refused, (int) r.refuse_reason ); return 1; }
+    if ( r.damaged ) { printf( "a forged ordinal is a refusal, not damage\n" ); return 1; }
 `
 
 	// THE COMPILED PLAN: the NEW build reads the forged OLD file through the
