@@ -166,7 +166,7 @@ func jsonProbe(t *testing.T, u *ir.Unit, files map[string][]byte, dir string, ro
 	}
 	b.WriteString("\n" + gooserun.HexProbe + "\n")
 	b.WriteString(`fn verdict(ok: bool, r: const schema_rt::JsonReport&) {
-    if ok && !r.malformed { print(r.unknown, ",", r.kind_mismatch, ",", r.widened, ",", r.clamped, ",", r.duplicate, ",false,read"); } else { print("refused"); }
+    if ok && !r.damaged { print(r.unknown, ",", r.mismatch, ",", r.widened, ",", r.oor, ",", r.repeated, ",false,read"); } else { print("refused"); }
 }
 
 `)
@@ -184,7 +184,7 @@ func jsonProbe(t *testing.T, u *ir.Unit, files map[string][]byte, dir string, ro
 			fmt.Fprintf(&b, "    print(%s::%sToJsonMeasure(v));\n", ns, root)
 			fmt.Fprintf(&b, "    var out: u8[>..] = [];\n    let n = %s::%sToJson(v, out);\n    if n != out.len { print(\"short\"); }\n    hex(out);\n", ns, root)
 		} else {
-			fmt.Fprintf(&b, "    let ok = %s::%sFromJsonTolerant(v, text, report);\n", ns, root)
+			fmt.Fprintf(&b, "    let ok = %s::%sFromJson(v, text, report);\n", ns, root)
 			b.WriteString("    verdict(ok, report);\n")
 		}
 		b.WriteString("}\n\n")

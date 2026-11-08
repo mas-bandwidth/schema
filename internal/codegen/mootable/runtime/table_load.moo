@@ -438,15 +438,16 @@ local function key_value(keyfd: any, vals: any): any
 	if keyfd == nil then
 		return nil
 	end
-	local k = vals[keyfd.slot]
-	if k == nil and keyfd.s == "text" then
-		return "" -- unbounded text holds its default "" as nil (§2.13.1)
-	end
-	return k
+	return vals[keyfd.slot]
 end
 
 -- the ascending order of two keys: -1/0/1 (§2.8)
 local function key_compare(keyfd: any, a: any, b: any): number
+	if keyfd.s == "str" or keyfd.s == "text" then
+		-- an absent string key is at its default, the empty string (§2.8)
+		a = if type(a) == "string" then a else ""
+		b = if type(b) == "string" then b else ""
+	end
 	if type(a) == "string" and type(b) == "string" then
 		return if a < b then -1 elseif a > b then 1 else 0
 	end
@@ -547,14 +548,18 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 	end
 	local endpos = r.at + n
 	local landed: { any } = {}
-	if n >= 2 then
-		-- THE HEADER IS READ AS AN ARRAY'S IS (array_body): its count is one
-		-- LEB128 bounded by the enclosing body, not by this field's L, as the
-		-- reference's and the engine's map readers read it
-		local head = new_reader(r.b, r.at, r.e)
+	-- A MAP HEADER LIES INSIDE ITS OWN L (docs/plans/strict-only.md decision
+	-- 7): an L too short for it, or a count that crosses it, is damage
+	if n < 2 then
+		report.bodyDamaged = true
+		r.at = endpos
+		return true
+	end
+	do
+		local head = new_reader(r.b, r.at, endpos)
 		local ek = r_u8(head)
 		local count = r_leb(head)
-		local sub = new_reader(r.b, if head.at > endpos then endpos else head.at, endpos)
+		local sub = new_reader(r.b, head.at, endpos)
 		if head.bad then
 			report.bodyDamaged = true
 			r.at = endpos
@@ -571,16 +576,10 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 			_retain.supersede(v, fd.slot, fd)
 		end
 		-- THE STORAGE CAP (§2.9, §2.2; internal/tablewire collectionCap): a
-		-- count inside the map's L is the load's refusal, the one LoadMeasure
-		-- names; a count whose spelling crosses L is read against the parent
-		-- (§3) where the measure, bounded by L, sees no count, so it is the
-		-- region's recovery instead: damage, the walk resuming after L
+		-- count past it refuses the load (the header lies inside L, so a
+		-- count that crosses L was damage above)
 		if count > 0x7FFFFFFF then
-			if head.at > endpos then
-				report.bodyDamaged = true
-			else
-				refuse_count(report)
-			end
+			refuse_count(report)
 			r.at = endpos
 			return true
 		end
@@ -628,6 +627,7 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 				-- the entry's body is read WHOLE now the key has chosen its
 				-- place; a repeated key replaces the entry it repeats, whole
 				local vals: any = entry.new()
+				local met: { [string]: boolean } = {}
 				while true do
 					local ref = r_leb(body)
 					if body.bad then
@@ -643,11 +643,13 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 					end
 					local id = _table[ref]
 					local kind = r_u8(body)
-					-- THE RESERVED IDS IN A NESTED BODY ARE MALFORMED (§3.1)
-					if id == BuildVersionId or id == MessageVocabularyId or id == NodeTableId then
+					-- THE RESERVED IDS IN A NESTED BODY ARE MALFORMED (§3.1), and
+					-- a field id twice in one entry is damage (decision 5)
+					if id == BuildVersionId or id == MessageVocabularyId or id == NodeTableId or met[id] then
 						report.bodyDamaged = true
 						break
 					end
+					met[id] = true
 					local efd = entryFields[id]
 					if efd == nil then
 						report.unknown += 1
@@ -698,6 +700,11 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 						break
 					end
 				end
+				-- an absent string key lands at its default, the empty string
+				-- (§2.8), as the key order compared it
+				if keyfd ~= nil and (keyfd.s == "str" or keyfd.s == "text") and vals[keyfd.slot] == nil then
+					vals[keyfd.slot] = ""
+				end
 				if _retain ~= nil and v ~= nil and fd.slot ~= nil then
 					_retain.builtMap(v, fd.slot, entry, vals)
 				end
@@ -713,6 +720,10 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 					hasLast = true
 				end
 			end
+		end
+		-- BYTES LEFT INSIDE A MAP'S L AFTER ITS ENTRIES ARE DAMAGE (§3)
+		if sub.at ~= sub.e then
+			report.bodyDamaged = true
 		end
 	end
 	if v ~= nil and fd.slot ~= nil then
@@ -735,13 +746,17 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 	if v ~= nil and fd.slot ~= nil then
 		dst = v[fd.slot]
 	end
-	if n >= 2 then
-		-- the header's count is bounded by the enclosing body, as an
-		-- array's is (array_body) and as the reference's keyed reader reads it
-		local head = new_reader(r.b, r.at, r.e)
+	-- A KEYED HEADER LIES INSIDE ITS OWN L (decision 7)
+	if n < 2 then
+		report.bodyDamaged = true
+		r.at = endpos
+		return true
+	end
+	do
+		local head = new_reader(r.b, r.at, endpos)
 		local ek = r_u8(head)
 		local count = r_leb(head)
-		local sub = new_reader(r.b, if head.at > endpos then endpos else head.at, endpos)
+		local sub = new_reader(r.b, head.at, endpos)
 		if head.bad then
 			report.bodyDamaged = true
 			r.at = endpos
@@ -815,6 +830,11 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			else
 				x = scalar_at(payload, e, ek, report, fd)
 			end
+			-- BYTES LEFT INSIDE A KEYED SLOT AFTER ITS ELEMENT ARE DAMAGE (§3.2)
+			if payload.at ~= payload.e then
+				report.bodyDamaged = true
+				break
+			end
 			if dst ~= nil and x ~= nil then
 				if type(dst) == "buffer" then
 					buffer.writeu8(dst, at - 1, x)
@@ -822,6 +842,10 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 					dst[at] = x
 				end
 			end
+		end
+		-- BYTES LEFT INSIDE A KEYED ARRAY'S L AFTER ITS SLOTS ARE DAMAGE (§3.2)
+		if sub.at ~= sub.e then
+			report.bodyDamaged = true
 		end
 	end
 	r.at = endpos
@@ -860,12 +884,13 @@ end
 -- §3). It answers whether the body SELECTED this array, the engine's
 -- `selected` (internal/tablewire decode.go, arrayBody): false for a foreign
 -- element kind, a damaged count and a count past the list cap.
-local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: number?): boolean
-	local head = new_reader(sub.b, sub.at, headerEnd or sub.e)
+local function array_body(fd: any, sub: any, report: any, v: any): boolean
+	-- AN ARRAY HEADER LIES INSIDE ITS OWN L (docs/plans/strict-only.md
+	-- decision 7): a count that crosses it is damage
+	local head = new_reader(sub.b, sub.at, sub.e)
 	local ek = r_u8(head)
 	local count = r_leb(head)
-	local crossed = head.at > sub.e
-	sub.at = if crossed then sub.e else head.at
+	sub.at = head.at
 	if head.bad then
 		report.bodyDamaged = true
 		if fd.present ~= nil and v ~= nil then
@@ -887,19 +912,15 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 	end
 	local keep = count
 	if fd.array == "list" then
-		-- THE STORAGE CAP (§2.9, §2.2), read_map's rule: inside L the load's
-		-- refusal, crossing L the region's damage
+		-- THE STORAGE CAP (§2.9, §2.2), read_map's rule: the load's refusal
 		if count > 0x7FFFFFFF then
-			if crossed then
-				report.bodyDamaged = true
-			else
-				refuse_count(report)
-			end
+			refuse_count(report)
 			return false
 		end
 	elseif fd.bound ~= nil and count > fd.bound then
-		keep = fd.bound
+		-- a count past the reader's bound refuses the load (count_over_bound)
 		report.outOfRange += 1
+		return false
 	end
 	local slot = fd.slot
 	local holder: any = nil
@@ -917,6 +938,9 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 			store_buffer(holder, slot, sub.b, sub.at, have, have)
 		end
 		sub.at += have
+		if sub.at ~= sub.e then
+			report.bodyDamaged = true
+		end
 		return true
 	end
 	local e = fd.e
@@ -966,10 +990,8 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 		end
 		got = i
 	end
-	-- THE ARRAY'S L FRAMES ITS ELEMENTS EXACTLY (§2.9, §3): a byte left inside
-	-- it after the counted elements is damage, as the engine reads it
-	-- (internal/tablewire/decode.go, arrayBody)
-	if sub.at ~= sub.e then
+	-- BYTES LEFT INSIDE AN ARRAY'S L AFTER ITS ELEMENTS ARE DAMAGE (§3)
+	if got == keep and sub.at ~= sub.e then
 		report.bodyDamaged = true
 	end
 	if fd.array == "counted" and holder ~= nil then
@@ -987,10 +1009,13 @@ local function read_array(fd: any, r: any, report: any, v: any): (boolean, boole
 		return false, false
 	end
 	local endpos = r.at + n
-	local selected = true
-	if n >= 2 then
-		selected = array_body(fd, new_reader(r.b, r.at, endpos), report, v, r.e)
+	if n < 2 then
+		-- an L too short for the array's header is damage (§3)
+		report.bodyDamaged = true
+		r.at = endpos
+		return true, true
 	end
+	local selected = array_body(fd, new_reader(r.b, r.at, endpos), report, v)
 	r.at = endpos
 	return true, selected
 end
@@ -1626,10 +1651,9 @@ end
 read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	local byId = fields_by_id(desc)
 	local seen: { [string]: boolean } = {}
-	-- every id that rode in this body, known or not: ONE ID TWICE IN ONE BODY
-	-- is damage, decidable from the wire alone (§3, §6.5;
-	-- internal/tablewire/wirecheck.go)
-	local rode: { [string]: boolean } = {}
+	-- A FIELD ID TWICE IN ONE BODY IS DAMAGE, whether this reader can name it
+	-- or not (§3; docs/plans/strict-only.md decision 5)
+	local met: { [string]: boolean } = {}
 	while true do
 		local ref = r_leb(r)
 		if r.bad then
@@ -1660,15 +1684,11 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 		end
 		local kind = r_u8(r)
 		local id = _table[ref]
-		if rode[id] then
+		if id == BuildVersionId or id == MessageVocabularyId or met[id] then
 			_report.bodyDamaged = true
 			return false
 		end
-		rode[id] = true
-		if id == BuildVersionId or id == MessageVocabularyId then
-			_report.bodyDamaged = true
-			return false
-		end
+		met[id] = true
 		local handled = false
 		if id == NodeTableId then
 			if nested then
@@ -1898,7 +1918,7 @@ end
 local REFUSING = { "missingRequired", "bodyDamaged", "blobShared", "outOfRange", "kindChanged" }
 local NAMES: { [string]: string } = {
 	missingRequired = "missing_required",
-	bodyDamaged = "malformed",
+	bodyDamaged = "wire_damaged",
 	blobShared = "blob_shared",
 	outOfRange = "out_of_range",
 	kindChanged = "kind_mismatch",
@@ -2276,9 +2296,8 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.reason = "count_over_extent_cap"
 		return nil
 	end
-	-- THE VERDICT'S DAMAGE IS wire_damaged, and a malformed body behind good
-	-- framing is malformed (TableReport.Err()'s order); a load that read
-	-- nothing whole and names nothing else is wire_damaged
+	-- THE VERDICT'S DAMAGE IS wire_damaged, a damaged body behind good
+	-- framing too; why a read refused is a diagnostic, never compared
 	if rep.damaged then
 		rep.reason = "wire_damaged"
 		return nil
@@ -2286,10 +2305,12 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 	for _, k in REFUSING do
 		if moved(rep, k) then
 			if k == "bodyDamaged" then
+				-- THE ONE READ (§4, §6.5): damage behind good framing refuses
+				-- the whole load; no value read before it comes back
 				rep.damaged = true
 				rep.reason = NAMES[k]
 				rep.field = witness(root, b, k)
-				return v
+				return nil
 			end
 			if k == "missingRequired" then
 				rep.reason = "missing_required: " .. (rep.missingName or "")
@@ -2306,9 +2327,10 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.reason = "wire_damaged"
 		return nil
 	end
+	-- A REPEATED MAP KEY IS DAMAGE (docs/plans/strict-only.md decision 5)
 	if rep.repeatedKey > 0 then
 		rep.damaged = true
-		rep.reason = "malformed"
+		rep.reason = "wire_damaged"
 		rep.field = witness(root, b, "repeatedKey")
 		return nil
 	end

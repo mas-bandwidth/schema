@@ -71,8 +71,8 @@ fn probe(name: const u8[:]) {
         length = vals[s].len;
         if schema_rt::save_table(conformance_unit(), "Root", data, vals, nodes, root, out) != 0 { out.clear(); }
     }
-    write_stdout(str(name, " ", (if root >= 0 { 1 } else { 0 }), " ", (if report.malformed { 1 } else { 0 }), " ",
-        report.widened, " ", report.kind_mismatch, " ", report.duplicate, " ", report.clamped, " ", length, " ",
+    write_stdout(str(name, " ", (if root >= 0 { 1 } else { 0 }), " ", (if report.body_damaged { 1 } else { 0 }), " ",
+        report.widened, " ", report.mismatch, " ", report.repeated, " ", report.oor, " ", length, " ",
         schema_rt::load_refusal_name(report.reason), "_ ", first, " ", hex(out), "\n"));
 }
 
@@ -155,7 +155,7 @@ func oneFieldWire(name string, kind byte, payload []byte) []byte {
 // signalingNaN is the float gate's red list.
 func signalingNaN(t *testing.T, override map[string][]byte) []string {
 	t.Helper()
-	u := probeUnit(t, "package probe\nfixed table Root { value float64 }\n")
+	u := probeUnit(t, "package probe\ntable Root { value float64 }\n")
 	refused := []uint32{0x7f800001, 0xff812345, 0x7fc12345, 0x7f800000, 0xff800000}
 	widened := []uint32{0x3fc00000, 0x80000000, 0x007fffff, 0x80000001}
 	wires := map[string][]byte{}
