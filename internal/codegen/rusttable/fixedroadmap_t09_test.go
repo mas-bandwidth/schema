@@ -116,7 +116,7 @@ fn round(v: ConfigRow) -> ConfigRow {
     let mut report = TableFixedReport::default();
     let n = config_fixed_load(&mut out, &buf, &mut plan, &mut remap, &mut report)
         .expect("the buffer this writer wrote reads");
-    assert!(n == 1 && !report.refused && !report.malformed, "clean read: {report:?}");
+    assert!(n == 1 && !report.refused && !report.damaged, "clean read: {report:?}");
     out[0]
 }
 

@@ -55,7 +55,7 @@ func TestWireArrayHeadersFollowTheOracleRust(t *testing.T) {
 	// a keyed array's and a map's header reads against the parent: no guard
 	// that calls a count past the body's own L damage before the element kind
 	// is judged
-	keyedGone := "Some(_) if *off > sub => { report.malformed = true; }"
+	keyedGone := "Some(_) if *off > sub => { report.damaged = true; }"
 	keyed := rustFn(src, "keyed_load_body")
 	mapped := rustFn(src, "mapped_load_body")
 	// an arm's array header reads inside the arm's L
@@ -70,11 +70,11 @@ func TestWireArrayHeadersFollowTheOracleRust(t *testing.T) {
 	rules := []rule{
 		{"keyed header against the parent", keyed, "match leb_read(wire, off) {", keyedGone,
 			func(s string) string {
-				return strings.Replace(s, "None => { report.malformed = true; }", "None => { report.malformed = true; }\n"+keyedGone, 1)
+				return strings.Replace(s, "None => { report.damaged = true; }", "None => { report.damaged = true; }\n"+keyedGone, 1)
 			}},
 		{"map header against the parent", mapped, "match leb_read(wire, off) {", keyedGone,
 			func(s string) string {
-				return strings.Replace(s, "None => { report.malformed = true; }", "None => { report.malformed = true; }\n"+keyedGone, 1)
+				return strings.Replace(s, "None => { report.damaged = true; }", "None => { report.damaged = true; }\n"+keyedGone, 1)
 			}},
 		{"arm array header inside the arm's L (fixed root)", keyed, armWant, "",
 			func(s string) string { return strings.ReplaceAll(s, armWant, "match leb_read(wire, off) {") }},

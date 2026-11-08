@@ -139,11 +139,11 @@ fn a_plan_that_does_not_fit_is_refused_by_name() {
         "a plan that does not fit: refused BY NAME — plan_too_large, the name §5.9 #36 owes",
     );
     check(
-        !report.malformed
+        !report.damaged
             && report.unknown == 0
-            && report.kind_mismatch == 0
+            && report.mismatch == 0
             && report.widened == 0
-            && report.clamped == 0,
+            && report.oor == 0,
         "a plan that does not fit: a refusal by name is never malformed and moves no counter",
     );
 
@@ -176,7 +176,7 @@ fn an_entry_that_would_not_parse_is_layout_malformed_by_name() {
         "a known-hash layout that differs: refused BY NAME — layout_malformed, never a throw",
     );
     check(
-        !report.malformed && report.unknown == 0 && report.kind_mismatch == 0,
+        !report.damaged && report.unknown == 0 && report.mismatch == 0,
         "a known-hash layout that differs: a refusal by name moves no counter",
     );
 }
