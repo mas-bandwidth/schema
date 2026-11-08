@@ -83,6 +83,8 @@ func (g *tableGen) wirePrimitives() string {
 		runtime = strings.ReplaceAll(runtime, "@CHECK_DEFAULT@", checkDefault)
 		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
 		runtime = strings.ReplaceAll(runtime, "@READ_NODES@", readNodes)
+		runtime = strings.ReplaceAll(runtime, "@BYTES_ID@", fmt.Sprintf("0x%016x", ir.TableWireId("bytes")))
+		runtime = strings.ReplaceAll(runtime, "@STRING_ID@", fmt.Sprintf("0x%016x", ir.TableWireId("string")))
 	}
 	// KIND 33's RUNTIME, and only where a kind 33 payload can arrive
 	// (docs/SPEC-TABLES.md §3, §2.2). table_wire_utf16_unit, table_wire_utf16
@@ -355,16 +357,15 @@ static SCHEMA_UNUSED int table_reader_span( TableReader * r, TableReader * sub )
     if ( !table_reader_leb( r, &bytes ) || !table_reader_room( r, bytes ) ) { return 0; }
     *sub = table_reader_child( r, r->offset, (int64_t) bytes ); r->offset += (int64_t) bytes; return 1;
 }
-/* The reference reads the array header in the enclosing body, then bounds
-   elements by L. Keep that recovery order even when the count crosses L. */
+/* AN ARRAY, KEYED OR MAP HEADER LIES INSIDE ITS OWN L (docs/SPEC-TABLES.md
+   §3, tla/Framing.tla): the element kind and the count are read from the
+   body alone, so an L of 0 or 1, or a count that crosses L, is damage. */
 static SCHEMA_UNUSED int table_reader_array_header( TableReader * sub, const TableReader * parent, uint8_t * kind, uint64_t * count )
 {
-    TableReader header = *sub;
-    int ok;
-    header.size += parent->size - parent->offset;
-    *kind = table_reader_get8( &header );
-    ok = table_reader_leb( &header, count ); sub->offset = header.offset;
-    return ok;
+    (void) parent;
+    if ( sub->size < 2 || !table_reader_has( sub, 1 ) ) { return 0; }
+    *kind = table_reader_get8( sub );
+    return table_reader_leb( sub, count );
 }
 static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 {
@@ -476,6 +477,209 @@ static SCHEMA_UNUSED int table_wire_utf8( const uint8_t * p, uint64_t n )
 static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
+}
+/* ---- SKIPPED IS NOT UNREAD (docs/SPEC-TABLES.md §4, §6.5) ----
+
+   A field this reader cannot name is walked by every rule the wire alone
+   decides before it is stepped over: lengths and counts inside their L, the
+   headers of an array, keyed or map body inside its own L, a terminated body
+   with no id twice, a keyed slot named once, a bool of 0 or 1, well-formed
+   text, a finite float, a node index the node table holds, a kind that can be
+   skipped, and the binary depth bound. It is the engine's wire check
+   (internal/tablewire/wirecheck.go) over one payload, and it allocates
+   nothing: the repeated-id stamps live in the walk's own frame, zeroed on
+   first use, because an unknown field is evolution and not the hot path. */
+typedef struct TableWireCheck
+{
+    uint64_t ids, nodes;
+    uint32_t gen;
+    int32_t depth;
+    int stamped;
+    uint32_t stamp[4097];
+} TableWireCheck;
+static SCHEMA_UNUSED int table_wire_check_value( TableWireCheck * c, TableReader * r, uint8_t kind );
+static SCHEMA_UNUSED int table_wire_check_framed( TableWireCheck * c, TableReader * sub, uint8_t kind );
+static SCHEMA_UNUSED uint32_t table_wire_check_next( TableWireCheck * c )
+{
+    if ( !c->stamped ) { memset( c->stamp, 0, sizeof( c->stamp ) ); c->stamped = 1; }
+    return ++c->gen;
+}
+static SCHEMA_UNUSED int table_wire_check_utf16( const uint8_t * p, int64_t n )
+{
+    int64_t i;
+    if ( n & 1 ) { return 0; }
+    for ( i = 0; i < n; i += 2 )
+    {
+        uint16_t u = (uint16_t) ( p[i] | ( p[i+1] << 8 ) );
+        if ( u == 0 || ( u >= 0xdc00 && u <= 0xdfff ) ) { return 0; }
+        if ( u >= 0xd800 && u <= 0xdbff )
+        {
+            uint16_t v;
+            i += 2; if ( i >= n ) { return 0; }
+            v = (uint16_t) ( p[i] | ( p[i+1] << 8 ) );
+            if ( v < 0xdc00 || v > 0xdfff ) { return 0; }
+        }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t table_wire_check_width( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 20: case 25: return 1;
+        case 3: case 7: case 21: case 26: return 2;
+        case 4: case 8: case 10: case 22: case 27: return 4;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
+        case 18: case 19: case 24: case 29: return 16;
+        default: return 0;
+    }
+}
+/* one table body, to its terminator: no id twice, no reserved id */
+static SCHEMA_UNUSED int table_wire_check_body( TableWireCheck * c, TableReader * r )
+{
+    uint32_t gen = table_wire_check_next( c );
+    TableReader probe = *r;
+    for ( ;; )
+    {
+        uint64_t ref; uint8_t kind;
+        if ( !table_reader_leb( &probe, &ref ) ) { return 0; }
+        if ( ref == 0 ) { break; }
+        if ( ref > c->ids || !table_reader_has( &probe, 1 ) || c->stamp[ref] == gen ) { return 0; }
+        c->stamp[ref] = gen;
+        kind = table_reader_get8( &probe );
+        if ( !table_reader_skip( &probe, kind ) ) { return 0; }
+    }
+    for ( ;; )
+    {
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( r, &ref ) ) { return 0; }
+        if ( ref == 0 ) { return 1; }
+        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );
+        if ( id >= 0xfffffffffffffffdull ) { return 0; } /* the node table and the announcement ids ride in a root body only */
+        if ( !table_wire_check_value( c, r, kind ) ) { return 0; }
+    }
+}
+/* an array or keyed body: its header inside its own L, then its elements */
+static SCHEMA_UNUSED int table_wire_check_array( TableWireCheck * c, TableReader * sub, int keyed )
+{
+    uint8_t kind; uint64_t count, i;
+    if ( sub->size < 2 ) { return 0; }
+    kind = table_reader_get8( sub );
+    if ( !table_reader_leb( sub, &count ) ) { return 0; }
+    if ( count > (uint64_t) ( sub->size - sub->offset ) ) { return 0; }
+    if ( !keyed )
+    {
+        for ( i = 0; i < count; i++ ) { if ( !table_wire_check_value( c, sub, kind ) ) { return 0; } }
+        return 1;
+    }
+    {
+        uint32_t gen = table_wire_check_next( c );
+        TableReader probe = *sub, elem;
+        for ( i = 0; i < count; i++ )
+        {
+            uint64_t key;
+            if ( !table_reader_leb( &probe, &key ) || key == 0 || key > c->ids || c->stamp[key] == gen ) { return 0; }
+            c->stamp[key] = gen;
+            if ( !table_reader_span( &probe, &elem ) ) { return 0; }
+        }
+        for ( i = 0; i < count; i++ )
+        {
+            uint64_t key;
+            table_reader_leb( sub, &key ); table_reader_span( sub, &elem );
+            if ( !table_wire_check_framed( c, &elem, kind ) ) { return 0; }
+        }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int table_wire_check_union( TableWireCheck * c, TableReader * r )
+{
+    uint64_t ref; uint8_t kind; TableReader arm; int structural, good;
+    if ( !table_reader_leb( r, &ref ) || ref > c->ids ) { return 0; }
+    if ( ref == 0 ) { return 1; }
+    if ( !table_reader_has( r, 1 ) ) { return 0; }
+    kind = table_reader_get8( r );
+    if ( !table_reader_span( r, &arm ) ) { return 0; }
+    structural = kind == 13 || kind == 14 || kind == 15 || kind == 16;
+    if ( structural ) { if ( c->depth >= 128 ) { return 0; } c->depth++; }
+    good = table_wire_check_framed( c, &arm, kind );
+    if ( structural ) { c->depth--; }
+    return good;
+}
+/* the content of an L-framed payload, which fills its L exactly */
+static SCHEMA_UNUSED int table_wire_check_framed( TableWireCheck * c, TableReader * sub, uint8_t kind )
+{
+    int ok;
+    switch ( kind )
+    {
+        case 12: return table_wire_utf8( sub->buffer, (uint64_t) sub->size );
+        case 33: return table_wire_check_utf16( sub->buffer, sub->size );
+        case 31: return 1;
+        case 32: return sub->size == 0;
+        case 13: case 14: case 16:
+            if ( c->depth >= 128 ) { return 0; }
+            c->depth++;
+            ok = kind == 13 ? table_wire_check_body( c, sub ) : table_wire_check_array( c, sub, kind == 16 );
+            c->depth--;
+            break;
+        case 15: ok = table_wire_check_union( c, sub ); break;
+        case 17: case 30: ok = table_wire_check_value( c, sub, kind ); break;
+        default:
+            if ( table_wire_check_width( kind ) == 0 || sub->size != table_wire_check_width( kind ) ) { return 0; }
+            ok = table_wire_check_value( c, sub, kind );
+            break;
+    }
+    return ok && sub->offset == sub->size;
+}
+/* one payload of a kind, a field's or an element's */
+static SCHEMA_UNUSED int table_wire_check_value( TableWireCheck * c, TableReader * r, uint8_t kind )
+{
+    uint64_t n; int64_t width; TableReader sub;
+    switch ( kind )
+    {
+        case 1: if ( !table_reader_has( r, 1 ) || table_reader_get8( r ) > 1 ) { return 0; } return 1;
+        case 10: if ( !table_reader_has( r, 4 ) ) { return 0; } if ( ( table_reader_get32( r ) & 0x7f800000u ) == 0x7f800000u ) { r->report->non_finite_floats++; } return 1;
+        case 11: if ( !table_reader_has( r, 8 ) ) { return 0; } if ( ( table_reader_get64( r ) & UINT64_C(0x7ff0000000000000) ) == UINT64_C(0x7ff0000000000000) ) { r->report->non_finite_floats++; } return 1;
+        case 17: /* a node index: null, or a record of the node table; the root (1) is a cycle */
+            if ( !table_reader_leb( r, &n ) ) { return 0; }
+            return n == 0 || ( n >= 2 && n <= c->nodes + 1 );
+        case 30: return table_reader_leb( r, &n ) && n <= c->ids;
+        case 15: return table_wire_check_union( c, r );
+        case 12: case 13: case 14: case 16: case 31: case 32: case 33:
+            return table_reader_span( r, &sub ) && table_wire_check_framed( c, &sub, kind );
+        default:
+            width = table_wire_check_width( kind );
+            if ( width == 0 || !table_reader_has( r, width ) ) { return 0; }
+            r->offset += width; return 1;
+    }
+}
+/* THE NODE TABLE AT A READER THAT HOLDS NO GRAPH (docs/SPEC-TABLES.md §3.1,
+   §6.5): its own id is known to every reader, so it is walked whole, a count
+   and that many records, each a type reference and an L-framed body that is
+   a blob's bytes, a string's text or a table body, before it is stepped over. */
+static SCHEMA_UNUSED int table_wire_skip_node_table( TableReader * r, uint8_t kind )
+{
+    TableWireCheck c; TableReader payload, body; uint64_t count, i;
+    if ( kind != 12 || !table_reader_span( r, &payload ) || !table_reader_leb( &payload, &count ) ) { return 0; }
+    if ( count > (uint64_t) payload.size ) { return 0; }
+    c.ids = r->id_count; c.nodes = count; c.gen = 0; c.depth = 0; c.stamped = 0;
+    for ( i = 0; i < count; i++ )
+    {
+        uint64_t ref, id;
+        if ( !table_reader_leb( &payload, &ref ) || ref == 0 || ref > c.ids || !table_reader_span( &payload, &body ) ) { return 0; }
+        id = table_reader_id_at( &payload, ref );
+        if ( id == UINT64_C(@BYTES_ID@) ) { continue; }
+        if ( id == UINT64_C(@STRING_ID@) ) { if ( !table_wire_utf8( body.buffer, (uint64_t) body.size ) ) { return 0; } continue; }
+        if ( !table_wire_check_framed( &c, &body, 13 ) ) { return 0; }
+    }
+    return payload.offset == payload.size;
+}
+/* table_wire_skip_value steps over one unknown payload after walking it;
+   nodes is the node table's record count (0 where the read has none) */
+static SCHEMA_UNUSED int table_wire_skip_value( TableReader * r, uint8_t kind, uint64_t nodes, int32_t depth )
+{
+    TableWireCheck c;
+    c.ids = r->id_count; c.nodes = nodes; c.gen = 0; c.depth = depth; c.stamped = 0;
+    return table_wire_check_value( &c, r, kind );
 }
 `
 

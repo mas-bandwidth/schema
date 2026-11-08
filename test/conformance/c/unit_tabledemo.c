@@ -11,7 +11,7 @@
 SCHEMA_CONFORMANCE_CODEC( RootConfig, root_config )
 SCHEMA_CONFORMANCE_CODEC( ProfileConfig, profile_config )
 SCHEMA_CONFORMANCE_CODEC( LoadoutConfig, loadout_config )
-SCHEMA_CONFORMANCE_CODEC_FORM1( WideBlob, wide_blob ) /* past the ceiling: no file form */
+SCHEMA_CONFORMANCE_CODEC_NO_FILE( WideBlob, wide_blob ) /* declared fixed, past the ceiling: no file form */
 SCHEMA_CONFORMANCE_CODEC( ArchiveConfig, archive_config )
 SCHEMA_CONFORMANCE_CODEC( KeyedConfig, keyed_config )
 SCHEMA_CONFORMANCE_CODEC( PackConfig, pack_config )

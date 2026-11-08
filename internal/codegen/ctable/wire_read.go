@@ -161,6 +161,15 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	if hasReq {
 		g.pf("    int32_t missing_before = r->report->missing_required;\n")
 	}
+	// A REPEATED FIELD ID IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4):
+	// a bit per declared field, and for the ids this reader cannot name a bit
+	// per id-table entry, zeroed only when the first unknown id rides, so the
+	// declared path pays one test per field. The node table's own id is the
+	// last bit of the declared set.
+	words := (len(st.Fields) + 1 + 63) / 64
+	damage := "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0;"
+	g.pf("    uint64_t field_seen[%d]; uint8_t unknown_seen[513]; int unknown_fresh = 1;\n", words)
+	g.pf("    memset( field_seen, 0, sizeof( field_seen ) );\n")
 	g.pf("    for ( ;; )\n    {\n        uint64_t ref, id; uint8_t kind;\n")
 	g.pf("        if ( !table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n")
 	switch {
@@ -197,6 +206,7 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		}
 		plain := !f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "" && (kind == tkI16 || kind == tkI32 || kind == tkI64 || kind == 18 || kind == tkU16 || kind == tkU32 || kind == tkU64 || kind == 19 || kind == tkF64)
 		g.pf("            case 0x%016xull: /* %s */\n            {\n", ir.TableFieldWireId(f), f.Name)
+		g.pf("                if ( field_seen[%d] & UINT64_C(0x%x) ) { %s } /* a repeated id */\n                field_seen[%d] |= UINT64_C(0x%x);\n", ordinal/64, uint64(1)<<(ordinal%64), damage, ordinal/64, uint64(1)<<(ordinal%64))
 		g.pf("                if ( kind != %d )\n                {\n", wireKind)
 		if plain {
 			g.pf("                    if ( table_kind_widens( kind, %d ) )\n                    {\n", wireKind)
@@ -224,13 +234,25 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		}
 		g.pf("                break;\n            }\n")
 	}
+	// THE NODE TABLE'S OWN ID (docs/SPEC-TABLES.md §3.1): once per root body.
+	// A reader that holds the graph has already walked it; one that holds
+	// none walks it whole here (table_wire_skip_node_table).
+	nodeBit := len(st.Fields)
+	nodeOnce := fmt.Sprintf("if ( field_seen[%d] & UINT64_C(0x%x) ) { %s } field_seen[%d] |= UINT64_C(0x%x);", nodeBit/64, uint64(1)<<(nodeBit%64), damage, nodeBit/64, uint64(1)<<(nodeBit%64))
+	nodes := "0"
 	if g.anyVariable {
-		g.pf("%s", "            case UINT64_MAX:\n                if(r->nodes==NULL) { "+g.unknownEvent()+" }\n                if(!table_reader_skip(r,kind)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n                break;\n")
-	}
-	if g.retain {
-		g.pf("            default:\n                r->report->unknown += 1;\n                if(!table_retain_capture(r,id,kind,body_keep)){r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}break;\n        }\n    }\n}\n\n")
+		nodes = "( r->nodes != NULL ? r->nodes->count - 1 : 0 )"
+		g.pf("%s", "            case UINT64_MAX:\n                "+nodeOnce+"\n                if(r->nodes==NULL) { if(!table_wire_skip_node_table(r,kind)) { "+damage+" } break; }\n                if(!table_reader_skip(r,kind)) { "+damage+" }\n                break;\n")
 	} else {
-		g.pf("%s", "            default:\n                "+g.unknownEvent()+"\n                if ( !table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n                break;\n        }\n    }\n}\n\n")
+		g.pf("%s", "            case UINT64_MAX:\n                "+nodeOnce+"\n                if(!table_wire_skip_node_table(r,kind)) { "+damage+" }\n                break;\n")
+	}
+	// SKIPPED IS NOT UNREAD (§4): an id this reader cannot name rides once,
+	// and its payload is walked by every wire-alone rule before it is stepped over.
+	unknownOnce := "if ( unknown_fresh ) { memset( unknown_seen, 0, sizeof( unknown_seen ) ); unknown_fresh = 0; } if ( unknown_seen[ref>>3] & (uint8_t)(1u<<(ref&7)) ) { " + damage + " } unknown_seen[ref>>3] |= (uint8_t)(1u<<(ref&7));"
+	if g.retain {
+		g.pf("            default:\n                %s\n                r->report->unknown += 1;\n                { TableReader walk=*r; if(!table_wire_skip_value(&walk,kind,%s,0)) { %s } }\n                if(!table_retain_capture(r,id,kind,body_keep)){r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;}break;\n        }\n    }\n}\n\n", unknownOnce, nodes, damage)
+	} else {
+		g.pf("            default:\n                %s\n                %s\n                if ( !table_wire_skip_value( r, kind, %s, 0 ) ) { %s }\n                break;\n        }\n    }\n}\n\n", unknownOnce, g.unknownEvent(), nodes, damage)
 	}
 	if g.retain || g.isVar(st.Name) || st.IsMapEntry() {
 		return
@@ -312,6 +334,9 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		} else {
 			g.pf("%ssub = %s; %s.offset = %s.size;\n", ind, bounded, bounded, bounded)
 		}
+		if bounded == "" {
+			g.pf("%sif ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
+		}
 		g.pf("%sif ( sub.size >= 2 )\n%s{\n", ind, ind)
 		g.pf("%s    uint8_t elem_kind; uint64_t count, kept, i;\n", ind)
 		if bounded == "" {
@@ -377,6 +402,9 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 			g.pf("%s            %s = (int32_t) i + 1;\n", ind, count)
 		}
 		g.pf("%s        }\n%s        end_%s: ;\n", ind, ind, f.Name)
+		if bounded == "" {
+			g.pf("%s        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }\n", ind)
+		}
 		if f.Array == ir.ArrayCounted {
 			g.wireCountedTailReset(f, dst, ind+"        ")
 		}
@@ -405,6 +433,7 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 
 func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 	g.pf("%sTableReader sub;\n%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind, ind)
+	g.pf("%sif ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
 	g.pf("%sif ( sub.size >= 2 )\n%s{\n", ind, ind)
 	g.pf("%s    uint8_t elem_kind; uint64_t count, i;\n", ind)
 	g.pf("%s    if ( !table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
@@ -429,7 +458,7 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 	if kind != tkTable {
 		g.pf("%s        next_%s: ;\n", ind, f.Name)
 	}
-	g.pf("%s    }\n%s}\n", ind, ind)
+	g.pf("%s    }\n%s    if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }\n%s}\n", ind, ind, ind)
 }
 
 // Keep value-initialized storage past a replacement's decoded prefix (#725).

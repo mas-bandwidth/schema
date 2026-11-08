@@ -65,23 +65,28 @@
         return SCHEMA_CONFORMANCE_Q(FN##_fixed_save)( (const SCHEMA_CONFORMANCE_Q(FN##_t) *) value, 1, buffer, capacity ); \
     }
 
-#define SCHEMA_CONFORMANCE_FILE_FORM1( TYPE, FN ) \
+/* A root DECLARED fixed whose record is past the form's ceiling has no file
+   form in C (no FN_fixed_* is emitted), and the declaration still fixes the
+   form a file read expects: the read refuses rather than falling back to
+   form 1 (docs/rulings.json fixed-root-refuses-form1, internal/tablewire/fixed.go). */
+#define SCHEMA_CONFORMANCE_FILE_NONE( TYPE, FN ) \
     static int schema_conformance_load_##TYPE( void * value, const uint8_t * bytes, int64_t size, ConformanceReport * report ) \
     { \
-        SCHEMA_CONFORMANCE_Q(table_report_t) inner; \
-        int ok; \
-        memset( &inner, 0, sizeof( inner ) ); \
-        ok = SCHEMA_CONFORMANCE_Q(SCHEMA_CONFORMANCE_READ(FN##_load))( (SCHEMA_CONFORMANCE_Q(FN##_t) *) value, bytes, size, &inner ); \
-        SCHEMA_CONFORMANCE_COPY_REPORT( inner, report ); \
-        return ok; \
+        (void) bytes; (void) size; \
+        SCHEMA_CONFORMANCE_Q(FN##_reset)( (SCHEMA_CONFORMANCE_Q(FN##_t) *) value ); \
+        memset( report, 0, sizeof( *report ) ); \
+        report->refused = 1; \
+        return 0; \
     } \
     static int64_t schema_conformance_measure_##TYPE( const void * value ) \
     { \
-        return SCHEMA_CONFORMANCE_Q(FN##_measure)( (const SCHEMA_CONFORMANCE_Q(FN##_t) *) value ); \
+        (void) value; \
+        return -1; \
     } \
     static int64_t schema_conformance_save_##TYPE( const void * value, uint8_t * buffer, int64_t capacity ) \
     { \
-        return SCHEMA_CONFORMANCE_Q(FN##_save)( (const SCHEMA_CONFORMANCE_Q(FN##_t) *) value, buffer, capacity ); \
+        (void) value; (void) buffer; (void) capacity; \
+        return -1; \
     }
 
 #define SCHEMA_CONFORMANCE_CODEC_IN( TYPE, FN, FORM ) \
@@ -171,7 +176,7 @@
 
 /* a fixed root with a file form, and one past the ceiling with none */
 #define SCHEMA_CONFORMANCE_CODEC( TYPE, FN ) SCHEMA_CONFORMANCE_CODEC_IN( TYPE, FN, FIXED )
-#define SCHEMA_CONFORMANCE_CODEC_FORM1( TYPE, FN ) SCHEMA_CONFORMANCE_CODEC_IN( TYPE, FN, FORM1 )
+#define SCHEMA_CONFORMANCE_CODEC_NO_FILE( TYPE, FN ) SCHEMA_CONFORMANCE_CODEC_IN( TYPE, FN, NONE )
 
 /* Variable roots are loaded into driver-owned regions. The generated load
    itself neither allocates nor follows a reference. A variable table has no

@@ -470,6 +470,9 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	} else {
 		g.pf("                sub=%s; %s.offset=%s.size;\n", bounded, bounded, bounded)
 	}
+	if bounded == "" {
+		g.pf("                if(sub.size<2) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
+	}
 	g.pf("                if(sub.size>=2) {\n                    uint8_t elem_kind; uint64_t count,i; TableSequenceFill fill;\n")
 	if bounded == "" {
 		g.pf("                    if(!table_reader_array_header(&sub,r,&elem_kind,&count)) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
@@ -527,7 +530,11 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 		}
 		g.pf("                            if(spent>%d) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; %s(element); table_sequence_fill_drop(&fill,element); goto list_end_%s; }\n", f.TextTotal, g.api(f.Type.Name, "reset"), f.Name)
 	}
-	g.pf("                        } while(0);\n                    }\n                    list_end_%s: table_sequence_fill_end(&fill);\n                }\n", f.Name)
+	g.pf("                        } while(0);\n                    }\n                    list_end_%s: table_sequence_fill_end(&fill);\n", f.Name)
+	if bounded == "" {
+		g.pf("                    if(sub.offset!=sub.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }\n")
+	}
+	g.pf("                }\n")
 }
 
 func sequenceFloor(f *ir.Field) int {
