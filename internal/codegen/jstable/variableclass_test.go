@@ -679,7 +679,7 @@ import { pathToFileURL } from "node:url";
 
 const spec = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const same = (a, b) => a !== null && a.length === b.length && a.every((x, i) => x === b[i]);
-const clean = (r) => r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && r.duplicate === 0 && !r.malformed;
+const clean = (r) => r.unknown === 0 && r.mismatch === 0 && r.widened === 0 && r.oor === 0 && r.repeated === 0 && !r.damaged;
 const firstDiff = (a, b) => { if (a === null) { return "null"; } for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i] !== b[i]) { return "at " + i + " got " + a[i] + " want " + b[i] + " (len " + a.length + " vs " + b.length + ")"; } } return "equal"; };
 
 for (const c of spec.cases) {
@@ -691,7 +691,7 @@ for (const c of spec.cases) {
   const saved = m[c.root + "Save"](v);
   if (c.refuseSave) {
     // every writer refuses a blob two slots name (§2.5): null and -1
-    console.log("WIRE " + c.name + (saved === null && !rep.malformed ? " SAVEREFUSED OK" : " SAVED " + (saved === null ? "null" : saved.length)));
+    console.log("WIRE " + c.name + (saved === null && !rep.damaged ? " SAVEREFUSED OK" : " SAVED " + (saved === null ? "null" : saved.length)));
     const refusedMeasure = m[c.root + "Measure"](v);
     console.log("MEASURE " + c.name + (refusedMeasure === -1 ? " REFUSED OK" : " DIFF " + refusedMeasure));
   } else if (same(saved, wire) && clean(rep)) { console.log("WIRE " + c.name + " OK"); }
@@ -731,11 +731,11 @@ for (const c of spec.cases) {
   if (v === null) { console.log("ESCAPE REFUSED"); }
   else {
     const again = m.ProbeSave(v);
-    console.log("ESCAPE " + [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed].join(",") + " SAVED " + (same(again, want) ? "OK" : "DIFF " + firstDiff(again, want)));
+    console.log("ESCAPE " + [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, r.damaged].join(",") + " SAVED " + (same(again, want) ? "OK" : "DIFF " + firstDiff(again, want)));
   }
 }
 
-const counts = (r) => [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed].join(",");
+const counts = (r) => [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, r.damaged].join(",");
 
 {
   // five elements of a [2..4]uint8: from the wire and from the text
@@ -773,6 +773,6 @@ const counts = (r) => [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplic
   console.log("CYCLE pair text " + (m.ProbeToJson(q) === null ? "OK" : "WROTE"));
   const r = new m.TableVariableReport();
   m.ProbeFromJson(e.selfRef, r);
-  console.log("SELFREF malformed " + r.malformed);
+  console.log("SELFREF malformed " + r.damaged);
 }
 `

@@ -150,7 +150,7 @@ public final class TextDiffProbe {
                 byte[] text = Files.readAllBytes(dir.resolve("engine-" + i + ".json"));
                 probe.TableVariable.Report r = new probe.TableVariable.Report();
                 probe.RootVariable.Value v = probe.RootVariable.fromJson(text, r);
-                if (v == null || r.malformed || r.refused || r.unknown != 0 || r.kindMismatch != 0 || r.clamped != 0) {
+                if (v == null || r.damaged || r.refused || r.unknown != 0 || r.widened != 0) {
                     fail("instance " + i + ": fromJson of the engine text reports loss");
                 }
                 byte[] wire = probe.RootVariable.save(v);

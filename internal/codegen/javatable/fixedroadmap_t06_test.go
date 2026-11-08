@@ -86,8 +86,8 @@ func TestFixedRoadmapJavaT06Writes(t *testing.T) {
 }
 
 // t06C14: C14 "bounds pass walks live only". The java leg's bounds pass for a
-// counted array is the emitted scatter: it clamps the count to this reader's
-// own declared bound, then walks the LIVE count, and never the declared slack
+// counted array is the emitted scatter: it refuses a count outside this
+// reader's own declared bound (countOverBound), then walks the LIVE count, and never the declared slack
 // behind it (docs/FIXED-FORM-ALGORITHM.md §4.6, the reference's row C14: "the
 // bounds pass walks LIVE elements only: a counted array's live count, not its
 // slack"). A fixed table with a counted array names the clause directly.
@@ -101,8 +101,8 @@ func t06C14(t *testing.T) {
 	if strings.Contains(scatter, "i < 4") {
 		t.Errorf("C14: the bounds walk still takes the declared bound, not the live count")
 	}
-	t06Has(t, scatter, "if (n < 0) { n = 0; r.clamped++; } else if (n > 4) { n = 4; r.clamped++; }",
-		"C14 the count itself is clamped to this reader's own bound")
+	t06Has(t, scatter, "if (n < 0) { n = 0; r.refuse(TableFixed.Reason.countOverBound); } else if (n > 4) { n = 4; r.refuse(TableFixed.Reason.countOverBound); }",
+		"C14 a count outside this reader's own bound refuses the load")
 }
 
 // t06W4: W4 "read slack unspecified". A union's slack behind a NARROWER arm is
@@ -126,15 +126,15 @@ func t06W4(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.malformed {
-		t.Fatalf("W4: a read of the narrower arm did not return clean: n=%d refused=%v reason=%s malformed=%v", r.n, r.refused, r.reason, r.malformed)
+	if r.n != 1 || r.refused || r.damaged {
+		t.Fatalf("W4: a read of the narrower arm did not return clean: n=%d refused=%v reason=%s malformed=%v", r.n, r.refused, r.reason, r.damaged)
 	}
 	if got := r.value["pick.plain.n"]; got != "303" {
 		t.Errorf("W4: pick.plain.n=%s, want the writer's 303", got)
 	}
-	if r.clamped != 0 || r.widened != 0 || r.unknown != 0 || r.kindMismatch != 0 {
-		t.Errorf("W4: a clean read of a narrower arm moved a counter: clamped=%d widened=%d unknown=%d kindMismatch=%d, want all 0",
-			r.clamped, r.widened, r.unknown, r.kindMismatch)
+	if r.widened != 0 || r.unknown != 0 {
+		t.Errorf("W4: a clean read of a narrower arm moved a counter: widened=%d unknown=%d, want all 0",
+			r.widened, r.unknown)
 	}
 }
 
@@ -208,7 +208,7 @@ func t06W5(t *testing.T) {
 		if body == "" {
 			t.Fatalf("W5: no %s in TFixed.java", fn)
 		}
-		if strings.Contains(body, "report.") || strings.Contains(body, ".clamped") {
+		if strings.Contains(body, "report.") || strings.Contains(body, ".refuse(") {
 			t.Errorf("W5: %s carries a write-side check or counter; write checks are DEBUG only and a release build clamps nothing", fn)
 		}
 	}

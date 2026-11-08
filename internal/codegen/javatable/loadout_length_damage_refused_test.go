@@ -18,9 +18,9 @@ import (
 )
 
 // TestJavaFixLoadoutLengthDamageRefused pins the wire-fuzzer cause J9: on
-// tabledemo.LoadoutConfig a length pass mutant is malformed, and DAMAGE
+// tabledemo.LoadoutConfig a length pass mutant is damage, and DAMAGE
 // DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the Java leg owes the
-// refusal, malformed, and nothing it decoded or would save is compared. The
+// refusal (no value, the report refused or damaged), and nothing it decoded or would save is compared. The
 // mutant is the loadout_full length #36 mutant of the all-root gate.
 func TestJavaFixLoadoutLengthDamageRefused(t *testing.T) {
 	t.Parallel()
@@ -35,11 +35,11 @@ func TestJavaFixLoadoutLengthDamageRefused(t *testing.T) {
 
 	ans := goOracleLoadout(t, u, "LoadoutConfig", wire)
 	if !ans.report.Refused {
-		t.Fatalf("oracle did not report malformed; this mutant does not pin the cause")
+		t.Fatalf("oracle did not refuse; this mutant does not pin the cause")
 	}
 	leg := javaLoadout(t, u, "LoadoutConfig", wire)
-	if !leg.report.malformed {
-		t.Fatalf("Java LoadoutConfig did not refuse a damaged load: %+v", leg.report)
+	if !leg.report.rejected() || leg.saved != nil {
+		t.Fatalf("Java LoadoutConfig did not refuse a damaged load: %+v saved=%x", leg.report, leg.saved)
 	}
 }
 
@@ -64,9 +64,12 @@ func goOracleLoadout(t *testing.T, u *ir.Unit, root string, wire []byte) oracleL
 }
 
 type javaLoadoutReport struct {
-	malformed, refused                                 bool
-	unknown, kindMismatch, widened, clamped, duplicate int
+	damaged, refused bool
+	unknown, widened int
 }
+
+// rejected is the strict verdict: the load refused or says damaged.
+func (r javaLoadoutReport) rejected() bool { return r.damaged || r.refused }
 
 type javaLoadoutAnswer struct {
 	saved  []byte
@@ -114,10 +117,8 @@ public final class Driver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         %s.TableVariable.Report report = new %s.TableVariable.Report();
         %s.%sVariable.Value v = %s.%sVariable.load(wire, report);
-        System.out.println("malformed=" + report.malformed + " refused=" + report.refused +
-            " unknown=" + report.unknown + " kindMismatch=" + report.kindMismatch +
-            " widened=" + report.widened + " clamped=" + report.clamped +
-            " duplicate=" + report.duplicate);
+        System.out.println("damaged=" + report.damaged + " refused=" + report.refused +
+            " unknown=" + report.unknown + " widened=" + report.widened);
         if (v == null) { System.out.println("saved=null"); return; }
         byte[] saved = %s.%sVariable.save(v);
         System.out.println("saved=" + new String(java.util.HexFormat.of().formatHex(saved)));
@@ -146,9 +147,9 @@ public final class Driver {
 	var ans javaLoadoutAnswer
 	haveReport, haveSaved := false, false
 	for line := range strings.SplitSeq(string(out), "\n") {
-		if strings.HasPrefix(line, "malformed=") {
+		if strings.HasPrefix(line, "damaged=") {
 			fields := strings.Fields(line)
-			if len(fields) != 7 {
+			if len(fields) != 4 {
 				t.Fatalf("bad java report line %q", line)
 			}
 			for _, field := range fields {
@@ -157,20 +158,14 @@ public final class Driver {
 					t.Fatalf("bad java report field %q", field)
 				}
 				switch parts[0] {
-				case "malformed":
-					ans.report.malformed = parts[1] == "true"
+				case "damaged":
+					ans.report.damaged = parts[1] == "true"
 				case "refused":
 					ans.report.refused = parts[1] == "true"
 				case "unknown":
 					ans.report.unknown = javaCounter(t, parts[0], parts[1])
-				case "kindMismatch":
-					ans.report.kindMismatch = javaCounter(t, parts[0], parts[1])
 				case "widened":
 					ans.report.widened = javaCounter(t, parts[0], parts[1])
-				case "clamped":
-					ans.report.clamped = javaCounter(t, parts[0], parts[1])
-				case "duplicate":
-					ans.report.duplicate = javaCounter(t, parts[0], parts[1])
 				default:
 					t.Fatalf("unknown java report field %q", field)
 				}

@@ -18,8 +18,10 @@ package squirreltable
 import (
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -126,7 +128,7 @@ func emitFixedPlans(m *Module, st *ir.Struct, entries []FixedLineageEntry, own u
 			m.Printf("};\n\n")
 			continue
 		}
-		emitFixedPlanBody(m, st, e.Layout)
+		emitFixedPlanBody(m, st, e)
 		m.Printf("  return null;\n};\n\n")
 	}
 }
@@ -391,9 +393,14 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
 	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
+	// EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS
+	// (docs/FIXED-FORM-ALGORITHM.md §5.3; FIXED-FORM-VERSIONING-TESTS row 9):
+	// a forged hash on the LAST record refuses no_layout with not one
+	// destination byte written, exactly as on the first.
+	m.Printf("  for (local k = 0; k < count; k++)\n")
+	m.Printf("    if (_rt_fixed.u64le(b, 20 + L + k * rb) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
 	m.Printf("  for (local k = 0; k < count; k++) {\n")
 	m.Printf("    local at = 20 + L + k * rb;\n")
-	m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
 	m.Printf("    local why = e.decode == null ? null : e.decode(out[k], b, at + 8, at + rb);\n")
 	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("  }\n")
@@ -772,6 +779,7 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 	// the [lo, hi] pair the table surface uses.
 	if fixedStorageBytes(f.Type) == 16 {
 		m.Printf("%s%s = [_rt_fixed.u64le(b, at + %s), _rt_fixed.u64le(b, at + %s + 8)];\n", ind, expr, off, off)
+		fixedEmitRange128Guard(m, f, expr, ind)
 		return
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
@@ -866,6 +874,63 @@ func fixedEmitRangeGuard(m *Module, f *ir.Field, expr, ind string, storage int64
 	if f.Type.Kind == ir.TBits && uint(f.Type.Width) < bits {
 		mask := (uint64(1) << uint(f.Type.Width)) - 1
 		m.Printf("%sif (%s < 0 || %s > %d) return \"out_of_range\";\n", ind, expr, expr, mask)
+	}
+}
+
+// fixedEmitRange128Guard is fixedEmitRangeGuard for a 128-bit leaf, held as
+// the [lo, hi] pair of 64-bit halves (docs/FIXED-FORM-ALGORITHM.md §4.6: the
+// comparison is in the field's own type). The high halves compare signed for a
+// signed kind and unsigned otherwise; the low halves always unsigned, by the
+// sign-bit flip. An end the 128-bit storage already holds is not spelled.
+func fixedEmitRange128Guard(m *Module, f *ir.Field, expr, ind string) {
+	if f.Type.Kind != ir.TInt && f.Type.Kind != ir.TFixed {
+		return
+	}
+	lo, hi, ok := ir.TableRawRange(f)
+	if !ok {
+		return
+	}
+	signed := f.Type.Signed
+	one := big.NewInt(1)
+	smin, smax := big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, 128), one)
+	if signed {
+		smin = new(big.Int).Neg(new(big.Int).Lsh(one, 127))
+		smax = new(big.Int).Sub(new(big.Int).Lsh(one, 127), one)
+	}
+	mask := new(big.Int).Sub(new(big.Int).Lsh(one, 64), one)
+	lit := func(v int64) string {
+		if v == math.MinInt64 {
+			return "(-9223372036854775807 - 1)"
+		}
+		return strconv.FormatInt(v, 10)
+	}
+	flip := func(u uint64) string { return lit(int64(u ^ (uint64(1) << 63))) }
+	// halves splits a bound into the literal its high half compares against
+	// (flipped for an unsigned kind) and its low half's flipped literal.
+	halves := func(v *big.Int) (string, string) {
+		l := new(big.Int).And(v, mask).Uint64()
+		h := new(big.Int).Rsh(v, 64)
+		if signed {
+			return lit(h.Int64()), flip(l)
+		}
+		return flip(h.Uint64()), flip(l)
+	}
+	H := expr + "[1]"
+	if !signed {
+		H = "(" + expr + "[1] ^ (1 << 63))"
+	}
+	L := "(" + expr + "[0] ^ (1 << 63))"
+	var conds []string
+	if lo.Cmp(smin) > 0 {
+		bh, bl := halves(lo)
+		conds = append(conds, fmt.Sprintf("(%s < %s || (%s == %s && %s < %s))", H, bh, H, bh, L, bl))
+	}
+	if hi.Cmp(smax) < 0 {
+		bh, bl := halves(hi)
+		conds = append(conds, fmt.Sprintf("(%s > %s || (%s == %s && %s > %s))", H, bh, H, bh, L, bl))
+	}
+	if len(conds) > 0 {
+		m.Printf("%sif (%s) return \"out_of_range\";\n", ind, strings.Join(conds, " || "))
 	}
 }
 

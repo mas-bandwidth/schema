@@ -14,7 +14,6 @@ import (
 )
 
 func TestJavaCarriesTextList(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "compiles and runs generated Java text-list codecs")
 	t.Parallel()
 
@@ -41,40 +40,50 @@ table Lists
 		t.Fatalf("oracle encode: %v", err)
 	}
 
+	// An element past its bound cannot be written by this unit's writer (it
+	// refuses, §4), so a WIDER declaration of the same fields writes it.
 	rawElemClamp := func() []byte {
-		x := m.New(m.Lookup("Lists"))
-		fv := &x.Fields[0]
-		fv.Count = 1
-		fv.Elems[0].Tab.Fields[0].Cell.Str = []byte("123456789")
-		fv.Elems[0].Tab.Fields[0].Count = 9
-		w, err := tablewire.Encode(m, x)
+		wide := tabletext.NewModel(unitFrom(t, strings.Replace(schema, "rules [..4]string(8)", "rules [..4]string(16)", 1)))
+		x := wide.New(wide.Lookup("Lists"))
+		var r tabletext.Report
+		if !wide.Read(x, []byte(`{"rules":["123456789"]}`), &r) || !r.Silent() {
+			t.Fatalf("wide read: %+v", r)
+		}
+		w, err := tablewire.Encode(wide, x)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return w
 	}()
+	// an element past its bound REFUSES the whole load in the oracle (§4)
 	backClamp := m.New(m.Lookup("Lists"))
 	var clampRep tabletext.Report
-	if ok, err := tablewire.Decode(m, backClamp, rawElemClamp, &clampRep); !ok || err != nil || clampRep.Unknown != 1 {
-		t.Fatalf("oracle decode clamped: ok=%v err=%v rep=%+v", ok, err, clampRep)
-	}
-	wantElemClampWire, err := tablewire.Encode(m, backClamp)
-	if err != nil {
-		t.Fatal(err)
+	if ok, err := tablewire.Decode(m, backClamp, rawElemClamp, &clampRep); ok && err == nil && !clampRep.Refused {
+		t.Fatalf("oracle accepted an element past its bound: rep=%+v", clampRep)
 	}
 
+	// Ill-formed UTF-8 cannot be written either: write "zq" and put the two
+	// ill-formed bytes in its place.
 	rawBadUtf8 := func() []byte {
 		x := m.New(m.Lookup("Lists"))
-		fv := &x.Fields[0]
-		fv.Count = 1
-		fv.Elems[0].Tab.Fields[0].Cell.Str = []byte("\xff\xfe")
-		fv.Elems[0].Tab.Fields[0].Count = 2
+		var r tabletext.Report
+		if !m.Read(x, []byte(`{"rules":["zq"]}`), &r) || !r.Silent() {
+			t.Fatalf("read: %+v", r)
+		}
 		w, err := tablewire.Encode(m, x)
 		if err != nil {
 			t.Fatal(err)
 		}
+		at := bytes.Index(w, []byte("zq"))
+		if at < 0 || bytes.Count(w, []byte("zq")) != 1 {
+			t.Fatal("the text \"zq\" is not once in the wire")
+		}
+		w[at], w[at+1] = 0xff, 0xfe
 		return w
 	}()
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Lists")), rawBadUtf8, &tabletext.Report{}); ok && err == nil {
+		t.Fatalf("oracle accepted ill-formed UTF-8")
+	}
 
 	driver := `import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -93,13 +102,12 @@ public final class Main {
     public static void main(String[] args) throws Exception {
         byte[] wireValid = unhex("` + hex.EncodeToString(wireValid) + `");
         byte[] rawElemClamp = unhex("` + hex.EncodeToString(rawElemClamp) + `");
-        byte[] wantElemClampWire = unhex("` + hex.EncodeToString(wantElemClampWire) + `");
         byte[] rawBadUtf8 = unhex("` + hex.EncodeToString(rawBadUtf8) + `");
 
         // 1. Round-trip variable wire
         TableVariable.Report rep = new TableVariable.Report();
         ListsVariable.Value v = ListsVariable.load(wireValid, rep);
-        if (v == null || rep.malformed || rep.refused || rep.clamped != 0) {
+        if (v == null || rep.damaged || rep.refused || rep.unknown != 0 || rep.widened != 0) {
             throw new AssertionError("valid load failed: " + rep.reason);
         }
         if (ListsVariable.loadMeasure(wireValid, new TableVariable.Measure()) < 0) {
@@ -129,8 +137,8 @@ public final class Main {
         }
         TableVariable.Report jrep = new TableVariable.Report();
         ListsVariable.Value vj = ListsVariable.fromJson(js, jrep);
-        if (vj == null || jrep.malformed || jrep.clamped != 0) {
-            throw new AssertionError("fromJson failed");
+        if (vj == null || jrep.damaged || jrep.refused || jrep.unknown != 0) {
+            throw new AssertionError("fromJson failed: " + jrep.reason);
         }
         if (!Arrays.equals(ListsVariable.save(vj), wireValid)) {
             throw new AssertionError("fromJson -> save mismatch");
@@ -171,20 +179,17 @@ public final class Main {
             throw new AssertionError("first[1] should be absent");
         }
 
-        // 5. Element clamp on wire
+        // 5. An element past its bound on the wire refuses the whole load (§4)
         TableVariable.Report crep = new TableVariable.Report();
         ListsVariable.Value vc = ListsVariable.load(rawElemClamp, crep);
-        if (vc == null || crep.malformed || crep.clamped != 1 || !"clamped: Lists.rules".equals(crep.reason)) {
-            throw new AssertionError("elem clamp failed: clamped=" + crep.clamped + " reason=" + crep.reason);
-        }
-        if (!Arrays.equals(ListsVariable.save(vc), wantElemClampWire)) {
-            throw new AssertionError("clamped save mismatch");
+        if (vc != null || !crep.refused || crep.damaged) {
+            throw new AssertionError("element past its bound not refused: value=" + (vc != null) + " refused=" + crep.refused + " damaged=" + crep.damaged + " reason=" + crep.reason);
         }
 
         // 6. Malformed UTF-8 on wire
         TableVariable.Report mrep = new TableVariable.Report();
         ListsVariable.Value vm = ListsVariable.load(rawBadUtf8, mrep);
-        if (vm != null || !mrep.malformed) {
+        if (vm != null || !(mrep.damaged || mrep.refused)) {
             throw new AssertionError("expected malformed UTF-8 refusal");
         }
 
@@ -227,6 +232,8 @@ table Totals {
  d []?string(5) | total=5
 }
 `
+	// inputJSON runs every list past its total: the whole load refuses (§4).
+	// expectedJSON holds every list inside its total and reads back exactly.
 	const inputJSON = `{"a":["ééé","a","z","tail"],"b":[null,"ééé","abc","tail"],"c":["ééé","a","z"],"d":[null,"ééé","abc","x"]}`
 	const expectedJSON = `{"a":["éé","a"],"b":[null,"éé"],"c":["éé","a"],"d":[null,"éé"]}`
 
@@ -290,60 +297,70 @@ public final class Main {
 
     public static void main(String[] args) throws Exception {
         byte[] inputJson = unhex("` + hex.EncodeToString([]byte(inputJSON)) + `");
+        byte[] withinJson = unhex("` + hex.EncodeToString([]byte(expectedJSON)) + `");
         byte[] wireTotals = unhex("` + hex.EncodeToString(wireTotals) + `");
         byte[] plainTailWire = unhex("` + hex.EncodeToString(plainTailWire) + `");
         byte[] plainTailDamaged = unhex("` + hex.EncodeToString(plainTailDamaged) + `");
         byte[] optTailWire = unhex("` + hex.EncodeToString(optTailWire) + `");
         byte[] optTailDamaged = unhex("` + hex.EncodeToString(optTailDamaged) + `");
 
-        // 1. JSON witness
+        // 1. JSON witness: every list past its total refuses the whole load (§4)
         TableVariable.Report jrep = new TableVariable.Report();
         TotalsVariable.Value vj = TotalsVariable.fromJson(inputJson, jrep);
-        if (vj == null || jrep.malformed || jrep.clamped != 10 || !"clamped: Totals.a".equals(jrep.reason)) {
-            throw new AssertionError("JSON witness mismatch: clamped=" + jrep.clamped + " reason=" + jrep.reason + " malformed=" + jrep.malformed);
-        }
-        byte[] outJson = TotalsVariable.toJson(vj);
-        if (outJson == null) {
-            throw new AssertionError("toJson on clamped Totals failed");
+        if (vj != null || !jrep.refused || jrep.damaged) {
+            throw new AssertionError("JSON past total not refused: value=" + (vj != null) + " refused=" + jrep.refused + " damaged=" + jrep.damaged + " reason=" + jrep.reason);
         }
 
-        // 2. Wire witness
+        // 2. Wire witness: the same lists on the wire refuse the same way
         TableVariable.Report wrep = new TableVariable.Report();
         TotalsVariable.Value vw = TotalsVariable.load(wireTotals, wrep);
-        if (vw == null || wrep.malformed || wrep.clamped != 10 || !"clamped: Totals.a".equals(wrep.reason)) {
-            throw new AssertionError("Wire witness mismatch: clamped=" + wrep.clamped + " reason=" + wrep.reason + " malformed=" + wrep.malformed);
-        }
-        byte[] outWireJson = TotalsVariable.toJson(vw);
-        if (outWireJson == null || !new String(outJson, StandardCharsets.UTF_8).equals(new String(outWireJson, StandardCharsets.UTF_8))) {
-            throw new AssertionError("Wire vs JSON output mismatch");
+        if (vw != null || !wrep.refused || wrep.damaged) {
+            throw new AssertionError("wire past total not refused: value=" + (vw != null) + " refused=" + wrep.refused + " damaged=" + wrep.damaged + " reason=" + wrep.reason);
         }
 
-        // 3. Skipped tail is not decoded (JSON and wire, plain and optional)
+        // 2b. Within the totals the text reads clean and writes back exactly
+        TableVariable.Report krep = new TableVariable.Report();
+        TotalsVariable.Value vk = TotalsVariable.fromJson(withinJson, krep);
+        if (vk == null || krep.refused || krep.damaged || krep.unknown != 0) {
+            throw new AssertionError("JSON within totals refused: " + krep.reason);
+        }
+        byte[] outJson = TotalsVariable.toJson(vk);
+        if (outJson == null) {
+            throw new AssertionError("toJson on Totals within its totals failed");
+        }
+        TableVariable.Report brep = new TableVariable.Report();
+        TotalsVariable.Value vb = TotalsVariable.load(TotalsVariable.save(vk), brep);
+        if (vb == null || brep.refused || brep.damaged || !java.util.Arrays.equals(TotalsVariable.toJson(vb), outJson)) {
+            throw new AssertionError("wire within totals did not round-trip: " + brep.reason);
+        }
+
+        // 3. A list running past its total refuses, whatever its tail holds
+        //    (JSON and wire, plain and optional): no value
         for (String tail : new String[]{"\"toolong\"", "\"\\u0000\""}) {
             byte[] js = ("{\"names\":[\"abcde\",\"xyz\"," + tail + "]}").getBytes(StandardCharsets.UTF_8);
             TableVariable.Report r1 = new TableVariable.Report();
             TailPlainVariable.Value tp = TailPlainVariable.fromJson(js, r1);
-            if (tp == null || r1.malformed || r1.clamped != 1 || tp.names.size() != 1) {
-                throw new AssertionError("TailPlain JSON tail " + tail + ": clamped=" + r1.clamped + " malformed=" + r1.malformed);
+            if (tp != null || !(r1.refused || r1.damaged)) {
+                throw new AssertionError("TailPlain JSON tail " + tail + " not refused: refused=" + r1.refused + " damaged=" + r1.damaged);
             }
             TableVariable.Report r2 = new TableVariable.Report();
             TailOptVariable.Value to = TailOptVariable.fromJson(js, r2);
-            if (to == null || r2.malformed || r2.clamped != 1 || to.names.size() != 1) {
-                throw new AssertionError("TailOpt JSON tail " + tail + ": clamped=" + r2.clamped + " malformed=" + r2.malformed);
+            if (to != null || !(r2.refused || r2.damaged)) {
+                throw new AssertionError("TailOpt JSON tail " + tail + " not refused: refused=" + r2.refused + " damaged=" + r2.damaged);
             }
         }
         for (byte[] w : new byte[][]{plainTailWire, plainTailDamaged}) {
             TableVariable.Report r = new TableVariable.Report();
             TailPlainVariable.Value tp = TailPlainVariable.load(w, r);
-            if (tp == null || r.malformed || r.clamped != 1 || tp.names.size() != 1) {
-                throw new AssertionError("TailPlain wire: clamped=" + r.clamped + " malformed=" + r.malformed);
+            if (tp != null || !(r.refused || r.damaged)) {
+                throw new AssertionError("TailPlain wire not refused: refused=" + r.refused + " damaged=" + r.damaged);
             }
         }
         for (byte[] w : new byte[][]{optTailWire, optTailDamaged}) {
             TableVariable.Report r = new TableVariable.Report();
             TailOptVariable.Value to = TailOptVariable.load(w, r);
-            if (to == null || r.malformed || r.clamped != 1 || to.names.size() != 1) {
-                throw new AssertionError("TailOpt wire: clamped=" + r.clamped + " malformed=" + r.malformed);
+            if (to != null || !(r.refused || r.damaged)) {
+                throw new AssertionError("TailOpt wire not refused: refused=" + r.refused + " damaged=" + r.damaged);
             }
         }
 
@@ -458,8 +475,8 @@ public final class Main {
         }
         TableVariable.Report lrep = new TableVariable.Report();
         WhereVariable.Value loaded = WhereVariable.load(wire, lrep);
-        if (loaded == null || lrep.malformed || lrep.refused || lrep.clamped != 0) {
-            throw new AssertionError("load failed: clamped=" + lrep.clamped);
+        if (loaded == null || lrep.damaged || lrep.refused || lrep.unknown != 0 || lrep.widened != 0) {
+            throw new AssertionError("load failed: " + lrep.reason);
         }
         if (!longRule.equals(loaded.rules.get(0).value)) {
             throw new AssertionError("loaded rules[0] mismatch");
@@ -484,8 +501,8 @@ public final class Main {
         }
         TableVariable.Report jrep = new TableVariable.Report();
         WhereVariable.Value fromJs = WhereVariable.fromJson(js, jrep);
-        if (fromJs == null || jrep.malformed || jrep.clamped != 0) {
-            throw new AssertionError("fromJson failed: clamped=" + jrep.clamped);
+        if (fromJs == null || jrep.damaged || jrep.refused || jrep.unknown != 0) {
+            throw new AssertionError("fromJson failed: " + jrep.reason);
         }
         if (!Arrays.equals(WhereVariable.save(fromJs), wire)) {
             throw new AssertionError("fromJson -> save mismatch");
@@ -579,7 +596,7 @@ public final class Main {
         // 1. a=true, b=false: req is inactive -> allowed on JSON and wire!
         TableVariable.Report r1 = new TableVariable.Report();
         GuardedVariable.Value v1 = GuardedVariable.fromJson("{\"a\":true,\"b\":false}".getBytes(StandardCharsets.UTF_8), r1);
-        if (v1 == null || r1.refused || r1.malformed || r1.missingRequired != 0) {
+        if (v1 == null || r1.refused || r1.damaged || r1.missingRequired != 0) {
             throw new AssertionError("a=true, b=false should not require req on JSON: " + r1.reason);
         }
         byte[] w1 = GuardedVariable.save(v1);
@@ -588,7 +605,7 @@ public final class Main {
         }
         TableVariable.Report rw1 = new TableVariable.Report();
         GuardedVariable.Value vw1 = GuardedVariable.load(w1, rw1);
-        if (vw1 == null || rw1.refused || rw1.malformed || rw1.missingRequired != 0) {
+        if (vw1 == null || rw1.refused || rw1.damaged || rw1.missingRequired != 0) {
             throw new AssertionError("a=true, b=false should not require req on wire: " + rw1.reason);
         }
 
@@ -602,7 +619,7 @@ public final class Main {
         // 3. a=true, b=true, req=0 present: allowed on JSON and wire!
         TableVariable.Report r3 = new TableVariable.Report();
         GuardedVariable.Value v3 = GuardedVariable.fromJson("{\"a\":true,\"b\":true,\"req\":0}".getBytes(StandardCharsets.UTF_8), r3);
-        if (v3 == null || r3.refused || r3.malformed || r3.missingRequired != 0) {
+        if (v3 == null || r3.refused || r3.damaged || r3.missingRequired != 0) {
             throw new AssertionError("a=true, b=true, req=0 should succeed on JSON: " + r3.reason);
         }
         byte[] w3 = GuardedVariable.save(v3);
@@ -611,7 +628,7 @@ public final class Main {
         }
         TableVariable.Report rw3 = new TableVariable.Report();
         GuardedVariable.Value vw3 = GuardedVariable.load(w3, rw3);
-        if (vw3 == null || rw3.refused || rw3.malformed || rw3.missingRequired != 0) {
+        if (vw3 == null || rw3.refused || rw3.damaged || rw3.missingRequired != 0) {
             throw new AssertionError("a=true, b=true, req=0 should succeed on wire: " + rw3.reason);
         }
         System.out.println("NESTED_GUARD_REQ_OK");
@@ -681,7 +698,7 @@ public final class Main {
         byte[] rootExpected = fromHex(%q);
         TableVariable.Report r = new TableVariable.Report();
         RootVariable.Value v = RootVariable.fromJson(rootInput.getBytes(StandardCharsets.UTF_8), r);
-        check(v != null && !r.malformed && !r.refused, "Root fromJson");
+        check(v != null && !r.damaged && !r.refused, "Root fromJson");
         byte[] saved = RootVariable.save(v);
         check(toHex(saved).equals(toHex(rootExpected)), "Root save: got=" + toHex(saved) + " want=" + toHex(rootExpected));
         String js = new String(RootVariable.toJson(v), StandardCharsets.UTF_8);
@@ -690,7 +707,7 @@ public final class Main {
         TableRetain store = new TableRetain(65536, 8192);
         TableVariable.Report rr = new TableVariable.Report();
         RootVariable.Value back = RootRetain.loadRetain(rootExpected, store, rr);
-        check(back != null && !rr.malformed && !rr.refused, "Root loadRetain");
+        check(back != null && !rr.damaged && !rr.refused, "Root loadRetain");
         TableVariable.Report sr = new TableVariable.Report();
         byte[] savedRetain = RootRetain.saveRetain(back, store, sr);
         check(toHex(savedRetain).equals(toHex(rootExpected)), "Root saveRetain");
@@ -721,7 +738,7 @@ public final class Main {
         byte[] arrayExpected = fromHex(%q);
         TableVariable.Report ar = new TableVariable.Report();
         ArrayRootVariable.Value av = ArrayRootVariable.fromJson(arrayInput.getBytes(StandardCharsets.UTF_8), ar);
-        check(av != null && !ar.malformed && !ar.refused, "ArrayRoot fromJson");
+        check(av != null && !ar.damaged && !ar.refused, "ArrayRoot fromJson");
         byte[] asaved = ArrayRootVariable.save(av);
         check(toHex(asaved).equals(toHex(arrayExpected)), "ArrayRoot save");
         String ajs = new String(ArrayRootVariable.toJson(av), StandardCharsets.UTF_8);
@@ -730,7 +747,7 @@ public final class Main {
         TableRetain astore = new TableRetain(65536, 8192);
         TableVariable.Report arr = new TableVariable.Report();
         ArrayRootVariable.Value aback = ArrayRootRetain.loadRetain(arrayExpected, astore, arr);
-        check(aback != null && !arr.malformed && !arr.refused, "ArrayRoot loadRetain");
+        check(aback != null && !arr.damaged && !arr.refused, "ArrayRoot loadRetain");
         TableVariable.Report asr = new TableVariable.Report();
         byte[] asavedRetain = ArrayRootRetain.saveRetain(aback, astore, asr);
         check(toHex(asavedRetain).equals(toHex(arrayExpected)), "ArrayRoot saveRetain");

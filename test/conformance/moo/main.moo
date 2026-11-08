@@ -146,6 +146,18 @@ end
 
 local tableModules: { [string]: { string } } = load(stage .. "tables")
 
+-- the <Base>Table module of unit key that carries root's <Root>Fixed data,
+-- or nil: a variable root, or a fixed root this build emits no form-3 data for
+local function fixedTable(key: string, root: string): any?
+	for _, name in tableModules[key] or {} do
+		local m: any = load(ROOT .. generated .. "/" .. key .. "/" .. name)
+		if type(m) == "table" and m[root .. "Fixed"] ~= nil then
+			return m
+		end
+	end
+	return nil
+end
+
 local ctx = {
 	-- require every <Base>Table module of a unit, which registers its descriptors
 	tables = function(key: string)
@@ -163,6 +175,37 @@ local ctx = {
 	end,
 	inputs = function(path: string): buffer
 		return inputs[path] or fail("no staged fixture " .. path)
+	end,
+	-- THE ONE READ (docs/SPEC-TABLES.md §6.5): every wire a surface loads goes
+	-- through the unit's table_refusal.moo, which answers the root's own form
+	-- (form 1 for a variable root, form 3 for a fixed root through its fixed
+	-- reader) and refuses every other by name, as the Go oracle does
+	-- (internal/tablewire/decode.go). The value, or nil, and the report.
+	read = function(key: string, root: string, bytes: buffer): (any?, any)
+		local L: any = load(ROOT .. generated .. "/" .. key .. "/table_load")
+		local R: any = load(ROOT .. generated .. "/" .. key .. "/table_refusal")
+		local report = L.newReport()
+		local v = R.ReadStrict(fixedTable(key, root), root, bytes, report)
+		-- a read that names a refusal or damage returned no value, whatever
+		-- it handed back beside the name (§4: damage discards the whole load)
+		if report.damaged or report.reason ~= nil then
+			return nil, report
+		end
+		return v, report
+	end,
+	-- THE ONE WRITE: a fixed root's canonical file is form 3, one record,
+	-- through table_fixed.moo; any other root's is form 1 through
+	-- table_save.moo. The bytes, or nil and the writer's refusal.
+	write = function(key: string, root: string, v: any): (buffer?, any?)
+		local S: any = load(ROOT .. generated .. "/" .. key .. "/schema_tables")
+		local d: any = S.lookup(root)
+		local T: any = if d.fixed then fixedTable(key, root) else nil
+		if T ~= nil then
+			local F: any = load(ROOT .. generated .. "/" .. key .. "/table_fixed")
+			return F.save(d, T[root .. "Fixed"], { v })
+		end
+		local W: any = load(ROOT .. generated .. "/" .. key .. "/table_save")
+		return W.save(d, v)
 	end,
 	-- a named absence: the case the leg cannot write for a reason the corpus names
 	refuse = function(case: string, reason: string)

@@ -91,14 +91,11 @@ func t14CompressedFloats(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.malformed {
+	if r.n != 1 || r.refused || r.damaged {
 		t.Fatalf("R30: the off-grid round trip did not read: %+v", r)
 	}
 	if got := parseDumpedFloatBits(t, r.value["aim"]); got != 0x3E99999A {
 		t.Errorf("R30: aim landed %#x, want the writer's own bits 0x3E99999A — the float rides whole, never requantized", got)
-	}
-	if r.clamped != 0 {
-		t.Errorf("R30: clamped=%d, want 0 — an off-grid value inside the reader's range rides whole and counts nothing", r.clamped)
 	}
 }
 

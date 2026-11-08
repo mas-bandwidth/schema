@@ -17,7 +17,7 @@ import (
 
 // TestJavaFixA1ArmBodyAsA2DamageRefused pins the Java read of a tbla2.Root
 // whose union header occurrence is damaged: DAMAGE DISCARDS THE WHOLE LOAD
-// (docs/SPEC-TABLES.md §4), so the leg owes the refusal, malformed, and no
+// (docs/SPEC-TABLES.md §4), so the leg owes the refusal (no value, the report refused or damaged), and no
 // counter or saved byte is compared.
 //
 // The mutant is the representative random pass #6001 at seed 24845619678 on
@@ -79,9 +79,9 @@ public final class Driver {
         byte[] data=hex(args[0]);
         %s.TableVariable.Report report=new %s.TableVariable.Report();
         %s.%sVariable.Value v=%s.%sVariable.load(data,report);
-        if(v==null){System.out.println("null "+report.malformed);return;}
+        if(v==null){System.out.println("null "+(report.damaged||report.refused));return;}
         byte[] saved=%s.%sVariable.save(v);
-        System.out.println(report.unknown+" "+report.kindMismatch+" "+report.widened+" "+report.clamped+" "+report.duplicate+" "+report.malformed+" "+hexstr(saved));
+        System.out.println("value "+report.unknown+" "+report.widened+" "+hexstr(saved));
     }
 }`, pkg, pkg, pkg, root, pkg, root, pkg, root)
 	if err := os.WriteFile(driver, []byte(dsrc), 0o644); err != nil {
@@ -107,7 +107,7 @@ public final class Driver {
 		break
 	}
 	fields := strings.Fields(line)
-	if javaMalformed := len(fields) == 7 && fields[5] == "true" || len(fields) == 2 && fields[0] == "null" && fields[1] == "true"; !javaMalformed {
+	if refused := len(fields) == 2 && fields[0] == "null" && fields[1] == "true"; !refused {
 		t.Errorf("Java did not refuse a damaged load: %q", line)
 	}
 }

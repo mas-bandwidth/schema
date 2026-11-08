@@ -53,7 +53,7 @@ const L = new DataView(buf.buffer, buf.byteOffset, buf.length).getUint32(16, tru
   const back = eight(); const plan = TNewPlan(4096, 4096);
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, buf, buf.length, plan, r);
-  if (!(n === 1 && !r.malformed && r.refused === 0)) {
+  if (!(n === 1 && !r.damaged && r.refused === 0)) {
     fail("t13: the valid file must read: n=" + n + " " + reason(r));
   }
 }

@@ -210,7 +210,7 @@ const wire = new Uint8Array(readFileSync(process.argv[2]));
 const report = new TableVariableReport();
 const card = CardLoad(wire, report);
 if (card === null) { console.log("load refused"); process.exit(1); }
-if (report.malformed || report.refused !== 0 || report.unknown !== 0 || report.kindMismatch !== 0) {
+if (report.damaged || report.refused !== 0 || report.unknown !== 0 || report.mismatch !== 0) {
   console.log("load report", JSON.stringify(report)); process.exit(1);
 }
 if (card.id !== "populated") { console.log("id", card.id); process.exit(1); }

@@ -43,7 +43,7 @@ const check=(p,s)=>{if(!p)throw new Error(s)};
 for(const c of cases){
  const r=new m.TableVariableReport(),v=m[c.root+"FromJson"](c.text,r);
  check((v===null)===c.malformed, "read verdict "+c.text);
- check(r.kindMismatch===c.mismatch&&r.clamped===c.clamped&&r.malformed===c.malformed,"report "+c.text+" "+JSON.stringify(r));
+ check(r.mismatch===c.mismatch&&r.oor===c.clamped&&r.damaged===c.malformed,"report "+c.text+" "+JSON.stringify(r));
  if(c.reason)check(r.reason===c.reason,"reason "+c.text);
  if(v!==null){
   const text=m[c.root+"ToJson"](v),obj=JSON.parse(text);
@@ -92,10 +92,10 @@ const check=(p,s)=>{if(!p)throw new Error(s)};
 for(const c of cases){
  const r=new m.TableVariableReport(),v=m.MapsFromJson(c.input,r);
  check((v===null)===!!c.malformed,"read verdict "+c.name);
- check(r.kindMismatch===(c.mismatch||0)&&r.duplicate===(c.duplicate||0)&&r.malformed===!!c.malformed,"report "+c.name+" "+JSON.stringify(r));
+ check(r.mismatch===(c.mismatch||0)&&r.repeated===(c.duplicate||0)&&r.damaged===!!c.malformed,"report "+c.name+" "+JSON.stringify(r));
  if(v!==null){
   const er=new m.TableVariableReport(),expected=m.MapsFromJson(c.expected,er);
-  check(expected!==null&&er.kindMismatch===0,"expected input "+c.name);
+  check(expected!==null&&er.mismatch===0,"expected input "+c.name);
   const text=m.MapsToJson(v),want=m.MapsToJson(expected);
   check(text===want,"present default "+c.name+" "+text+" != "+want);
   const wire=m.MapsSave(v),loaded=m.MapsLoad(wire,new m.TableVariableReport());

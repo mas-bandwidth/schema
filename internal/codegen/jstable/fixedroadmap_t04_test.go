@@ -194,11 +194,11 @@ func t04R29(t *testing.T) {
 	t04Has(t, n, "export const TableFixedRecordMaxBytes = 65536;", "R29 the band's ceiling is 65536")
 	t04Has(t, n, "if (size > TableFixedRecordMaxBytes) { TableFixedFail(b, TableFixedRefusal.LayoutRecordTooLarge); return 0; }",
 		"R29 a record past the ceiling is refused by name")
-	t04Has(t, n, "if (v < 0) { v = 0; report.clamped++; }",
+	t04Has(t, n, "if (v < 0) { v = 0; report.oor++; }",
 		"R29 a live count below the writer's floor clamps to it and counts")
-	t04Has(t, n, "else if (v > size) { v = size; report.clamped++; }",
+	t04Has(t, n, "else if (v > size) { v = size; report.oor++; }",
 		"R29 a live count past the writer's bound clamps to it and counts")
-	t04Has(t, n, "else if (v > cap) { v = cap; report.clamped++; }",
+	t04Has(t, n, "else if (v > cap) { v = cap; report.oor++; }",
 		"R29 a text length past the writer's cap clamps to it and counts")
 }
 

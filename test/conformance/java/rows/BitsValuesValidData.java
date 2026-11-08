@@ -6,8 +6,8 @@
 // 16003). A `bits(N)` field's IMPLIED RANGE is `[0, 2^N - 1]` (the elided
 // `min=0, max=2^N-1`). A value INSIDE that range, on both write and read,
 // lands identically through the production encoder and decoder, with no
-// counter moving: `clamped == 0`, `widened == 0`, `unknown == 0`,
-// `kindMismatch == 0`, no refusal, no malformed. ACCEPTANCE means the
+// counter moving: `widened == 0`, `unknown == 0`, no refusal, no
+// damage. ACCEPTANCE means the
 // round trip carries the value EXACTLY across the form-3 fixed wire.
 //
 // THE FIXED-FORM UNIT UNDER TEST. tables/examples/Ranges.schema declares
@@ -62,7 +62,7 @@ public final class BitsValuesValidData {
         //   b32 = 0xDEADBEEF          (a max-storable 32-bit pattern)
         //   b64 = 0xDECAFBADDEADBEEF  (max 0xFFFFFFFFFFFFFFFF)
         //   b12 = 0xABC               (= 2748, max 0xFFF)
-        //   b48 = 0xC0FFEEDEADBEEF    (max 0xFFFFFFFFFFFF)
+        //   b48 = 0xC0FFEEADBEEF      (max 0xFFFFFFFFFFFF; 48 bits, not 56)
         // Each value is also different from the declared default of 0, so a
         // field that failed to write leaves a wrong read-back below.
         final RangedWidthsFixed.Value written = new RangedWidthsFixed.Value();
@@ -71,7 +71,7 @@ public final class BitsValuesValidData {
         written.b32 = 0xDEADBEEF;
         written.b64 = 0xDECAFBADDEADBEEFL;
         written.b12 = 0xABC;
-        written.b48 = 0xC0FFEEDEADBEEFL;
+        written.b48 = 0xC0FFEEADBEEFL;
 
         final int need = RangedWidthsFixed.measure(1);
         final byte[] file = new byte[need];
@@ -123,22 +123,19 @@ public final class BitsValuesValidData {
         check(n == 1, "the production load reads back exactly one record (n=" + n + ")");
         check(!report.refused,
                 "no refusal, and the file's own hash IS the reader's own (refused=" + report.refused + ")");
-        check(!report.malformed,
-                "no malformed framing on the writer's bytes (malformed=" + report.malformed + ")");
+        check(!report.damaged,
+                "no malformed framing on the writer's bytes (malformed=" + report.damaged + ")");
 
         // The ACCEPTANCE counters, all of them: §4's ledger, each zero on
-        // valid input (a value in [0, 2^N - 1] isAccepted by `clamped` is N's
-        // own ceiling, and no widening fires because every bits(N) carries its
-        // own storage width).
-        check(report.clamped == 0,
-                "no `clamped` counter moves: every value is inside bits(N)'s implied [0, 2^N - 1] "
-                + "(clamped=" + report.clamped + ")");
+        // valid input (every value is inside bits(N)'s implied [0, 2^N - 1], so
+        // the read does not refuse, checked above, and no widening fires
+        // because every bits(N) carries its own storage width).
         check(report.widened == 0,
                 "no `widened` counter moves: every bits(N) carries its own storage width "
                 + "(widened=" + report.widened + ")");
-        check(report.unknown == 0 && report.kindMismatch == 0,
-                "the layout is the reader's own: no `unknown` and no `kind_mismatch` "
-                + "(unknown=" + report.unknown + ", kindMismatch=" + report.kindMismatch + ")");
+        check(report.unknown == 0,
+                "the layout is the reader's own: no `unknown` "
+                + "(unknown=" + report.unknown + ")");
 
         // ---- the VALUES round-trip ----------------------------------------
         //
