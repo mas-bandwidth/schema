@@ -199,7 +199,13 @@ local function scan_unit(inp)
           inp.p = mark
         end
       end
-      if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
+      -- A LONE OR OUT-OF-ORDER SURROGATE ESCAPE REFUSES (docs/plans/strict-only.md
+      -- decision 9), reason malformed with the text string_lone_surrogate.
+      if code >= 0xd800 and code <= 0xdfff then
+        inp.surrogate = true
+        inp.bad = true
+        return nil, false, false
+      end
       unit = utf8_encode(code)
     else
       inp.bad = true
@@ -2325,6 +2331,13 @@ local function read_json(T, name, text, report)
   end
   if inp.surrogate and (report.Reason == nil or report.Reason == "") then
     report.Reason = "string_lone_surrogate: <root>"
+  end
+  -- A LONE SURROGATE ESCAPE AND A REPEATED KEY ARE DAMAGE
+  -- (docs/plans/strict-only.md decisions 5 and 9): the read refuses them.
+  if inp.surrogate then report.damaged = true end
+  if (report.repeatedKey or 0) > 0 then
+    report.damaged = true
+    if report.Reason == nil or report.Reason == "" then report.Reason = "repeated_key: <root>" end
   end
   return v
 end

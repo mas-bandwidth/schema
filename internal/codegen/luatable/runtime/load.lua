@@ -2245,6 +2245,8 @@ local function strict_refusal(bytes, report, root)
   if (report.sharedBlob or 0) > 0 then return "blob_shared" end
   if report.outOfRange > 0 then return "out_of_range" end
   if report.kindChanged > 0 then return "kind_mismatch" end
+  -- A REPEATED MAP KEY IS DAMAGE (docs/plans/strict-only.md decision 5).
+  if (report.repeatedKey or 0) > 0 then return "malformed" end
   if root == nil then return "wire_damaged" end
   return nil
 end
