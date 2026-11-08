@@ -148,12 +148,12 @@ const cases=JSON.parse(readFileSync(process.argv[2],"utf8"));
 const m=await import(pathToFileURL(process.argv[3]).href);
 const hex=b=>b===null?"null":Buffer.from(b).toString("hex");
 const expect=(ok,msg)=>{if(!ok){throw new Error(msg);}};
-const missing=(v,r,name)=>expect(v===null && r.missingRequired===1 && r.reason==="missing_required: "+name && !r.malformed,"missing "+name+": "+JSON.stringify(r));
+const missing=(v,r,name)=>expect(v===null && r.missingRequired===1 && r.reason==="missing_required: "+name && !r.damaged,"missing "+name+": "+JSON.stringify(r));
 for(const c of cases){
  const r=new m.TableVariableReport();const v=m[c.root+"Load"](new Uint8Array(Buffer.from(c.wire,"hex")),r);
  if(c.missing){missing(v,r,c.missing);}
  else {
-  expect(v!==null && !r.malformed && (r.missingRequired||0)===0,"positive read "+JSON.stringify(r));
+  expect(v!==null && !r.damaged && (r.missingRequired||0)===0,"positive read "+JSON.stringify(r));
   expect(hex(m.AllSave(v))===c.wire,"required default writer");
   expect(m.AllMeasure(v)===c.wire.length/2,"required measure");
   const text=m.AllToJson(v);const jr=new m.TableVariableReport();const back=m.AllFromJson(text,jr);
@@ -179,7 +179,7 @@ const r=new m.TableVariableReport();missing(m.GuardFromJson('{"on":true}',r),r,"
 expect(m.GuardFromJson('{}',r)!==null,"reused JSON report");
 expect(m.AllLoad(new Uint8Array(Buffer.from(cases[0].wire,"hex")),r)!==null,"reused wire report");
 const rr=new m.TableVariableReport();const wrongShape=m.GuardFromJson('{"on":true,"needed":"wrong"}',rr);
-expect(wrongShape!==null && rr.kindMismatch===1 && rr.missingRequired===0,"JSON key presence");
+expect(wrongShape!==null && rr.mismatch===1 && rr.missingRequired===0,"JSON key presence");
 `
 
 // Required is a variable-table declaration. Its fixed positional accelerator
@@ -211,7 +211,7 @@ if(TSave([value],1,wire)!==-1){fail("required uint64 preflight rounded its minim
 value.wide=9007199254740993n;
 if(TSave([value],1,wire)!==wire.length){fail("required initialized fixed value rejected");}
 const back=[new T()];InitT(back[0]);const report=new TableFixedReport();
-if(TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report)!==1 || back[0].n!==5 || back[0].wide!==9007199254740993n || report.malformed || report.refused!==0){fail("required fixed roundtrip");}
+if(TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report)!==1 || back[0].n!==5 || back[0].wide!==9007199254740993n || report.damaged || report.refused!==0){fail("required fixed roundtrip");}
 `
 	if out, err := jsRunVersionProbe(t, jsNode(t), src, nil, 0, "T", probe); err != nil {
 		t.Fatalf("required fixed: %v\n%s", err, out)

@@ -3744,9 +3744,17 @@ local function writeMap(w: W, fd: any, rec: any, depth: number): boolean
 	local ed = St.lookup(fd.t)
 	local kd, vd = ed.fields[1], ed.fields[2]
 	local ks, cls, signed = kd.slot, kd.cls, kd.signed == true
+	-- unbounded text holds its default "" as nil (§2.13.1): the key is ""
+	local function keyOf(entry: any): any
+		local k = entry[ks]
+		if k == nil and kd.s == "text" then
+			return ""
+		end
+		return k
+	end
 	local order = table.clone(entries)
 	table.sort(order, function(a: any, b: any): boolean
-		return keyLess(a[ks], b[ks], cls, signed)
+		return keyLess(keyOf(a), keyOf(b), cls, signed)
 	end)
 	emit(w, "{")
 	for i, entry in order do
@@ -3754,7 +3762,7 @@ local function writeMap(w: W, fd: any, rec: any, depth: number): boolean
 			emit(w, ",")
 		end
 		line(w, depth + 1)
-		local k = entry[ks]
+		local k = keyOf(entry)
 		writeString(w :: any, if type(k) == "string" then k else writeInteger(kd, k))
 		emit(w, ": ")
 		if vd.present ~= nil and not entry[vd.present] then

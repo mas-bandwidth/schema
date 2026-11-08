@@ -42,13 +42,13 @@ if (back[0].lead !== 1 || back[0].trail !== 2) {
 if (f32bits(back[0].aim) !== %[2]d) {
   fail("the refined reader lands the old writer's value BIT-EXACT: aim bits " + f32bits(back[0].aim).toString(16) + ", manifest " + (%[2]d).toString(16) + ": " + show(back[0]));
 }
-if (r.clamped !== 0) {
+if (r.oor !== 0) {
   fail("0.1 is a whole multiple of 0.01, so nothing requantizes and clamped is EXACTLY 0: " + reason(r));
 }
-if (r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0 || r.duplicate !== 0) {
+if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
   fail("counters moved on a clean backward read: " + reason(r));
 }
-if (r.malformed) { fail("a clean NEW-READS-OLD is not malformed: " + reason(r)); }
+if (r.damaged) { fail("a clean NEW-READS-OLD is not malformed: " + reason(r)); }
 if (r.refused !== 0) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
 `, filepath.Join(corpus, "old_cfloat_res_refine.bin"), aim)
 	out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src)

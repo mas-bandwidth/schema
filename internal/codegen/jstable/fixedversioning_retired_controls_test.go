@@ -42,8 +42,8 @@ for (const poison of [0x5A, 0xFF]) {
   plan.image.fill(poison);
   const r = new TableFixedReport();
   const n = TLoad(back, 2, data, data.length, plan, r);
-  if (n !== 2 || r.refused || r.malformed || r.unknown !== %d || r.widened !== %d ||
-      r.kindMismatch || r.clamped || r.duplicate) { fail("FX1 C++ read: " + n + " " + reason(r)); }
+  if (n !== 2 || r.refused || r.damaged || r.unknown !== %d || r.widened !== %d ||
+      r.mismatch || r.oor || r.repeated) { fail("FX1 C++ read: " + n + " " + reason(r)); }
   const v = back[0];
   if (v.keep !== 4242 || v.narrow !== 40000 || v.nested.a !== 111 || v.nested.b !== 222 ||
       v.blobLength !== 4 || [222,173,190,239,0,0].some((b,i) => v.blob[i] !== b)) {
@@ -84,8 +84,8 @@ for (const [flag, present] of [[1,1],[2,7],[255,128],[0,0]]) {
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
   const n = TLoad(back, 3, data, data.length, plan, r);
-  if (n !== 3 || r.refused || r.malformed || r.unknown || r.kindMismatch || r.clamped ||
-      r.duplicate || r.widened !== %d) { fail("arm/flag report: " + n + " " + reason(r)); }
+  if (n !== 3 || r.refused || r.damaged || r.unknown || r.mismatch || r.oor ||
+      r.repeated || r.widened !== %d) { fail("arm/flag report: " + n + " " + reason(r)); }
   const a = back[0], b = back[1], c = back[2];
   if (a.flag !== (flag !== 0) || a.notePresent !== (present !== 0) ||
       a.note !== (present ? 44 : 0)) { fail("noncanonical/zero flags: " + show(a)); }
@@ -213,7 +213,7 @@ function load(data, count=1, clamped=0) {
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
   const n = TLoad(back,count,data,data.length,plan,r);
-  if (n !== count || r.refused || r.malformed || r.unknown || r.kindMismatch || r.widened || r.duplicate || r.clamped !== clamped) {
+  if (n !== count || r.refused || r.damaged || r.unknown || r.mismatch || r.widened || r.repeated || r.oor !== clamped) {
     fail("optional load " + loadIndex + " expected clamps=" + clamped + ": " + n + " " + reason(r));
   }
   return back[0];
@@ -327,7 +327,7 @@ const back=[new T()], plan=TNewPlan(4096,4096);
 for (const [outer,tag,inner,ordinal,clamps] of [[1,1,1,2,0],[0,9,7,9,0],[1,1,0,9,0],[2,1,7,9,1],[2,1,255,2,0],[1,9,1,2,1],[1,2,7,9,0]]) {
   data.set([outer,tag,inner,ordinal],at+4); plan.image.fill(0x5A);
   const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r), got=back[0];
-  if(n!==1 || r.refused || r.malformed || r.unknown || r.kindMismatch || r.widened || r.duplicate || r.clamped!==clamps) {
+  if(n!==1 || r.refused || r.damaged || r.unknown || r.mismatch || r.widened || r.repeated || r.oor!==clamps) {
     fail("nested guards "+[outer,tag,inner,ordinal]+" expected clamps="+clamps+" "+reason(r));
   }
   if(got.head!==0x11223344 || got.tail!==0x55667788 || got.optPresent!==(outer!==0)) { fail("optional guard neighbours/presence"); }
@@ -353,8 +353,8 @@ const data=readFileSync(%q), back=[new T()], plan=TNewPlan(4096,4096);
 const before=show(back); plan.image.fill(0x5A);
 const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r);
 const hash=new DataView(data.buffer,data.byteOffset,data.length).getBigUint64(8,true);
-if(n!==-1 || r.refused!==TableFixedRefusal.LayoutNewer || r.layoutHash!==hash || r.malformed ||
-   r.unknown || r.kindMismatch || r.widened || r.clamped || r.duplicate) { fail("FX2 outside FX1 lineage: "+reason(r)); }
+if(n!==-1 || r.refused!==TableFixedRefusal.LayoutNewer || r.layoutHash!==hash || r.damaged ||
+   r.unknown || r.mismatch || r.widened || r.oor || r.repeated) { fail("FX2 outside FX1 lineage: "+reason(r)); }
 if(show(back)!==before || plan.image.some(b=>b!==0x5A)) { fail("unknown reference version wrote destination"); }
 `, filepath.Join(corpus, "fx2.bin"))
 	if out, err := jsRunVersionProbe(t, node, jsReadSchema(t, "FX1"), nil, 0, "FxRoot", body); err != nil {

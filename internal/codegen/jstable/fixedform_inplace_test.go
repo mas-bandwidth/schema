@@ -67,7 +67,7 @@ func jsIdentityDoor(t *testing.T, load, root string) {
 	decl := fmt.Sprintf("const identity = entries === %sFixedIdentity && holeN === 0;", root)
 	door := fmt.Sprintf("if (identity) {\n"+
 		"      %sFixedDecode(values[k], srcView, at + 8, stage);\n"+
-		"      if (stage.refused !== 0) { report.refused = stage.refused; report.malformed = stage.malformed; return -1; }\n"+
+		"      if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }\n"+
 		"      at += recordBytes;\n"+
 		"      continue;\n"+
 		"    }", root)
@@ -193,7 +193,7 @@ function show(v) {
     : (typeof x === "number" && !Number.isFinite(x)) ? "f" + String(x) : x);
 }
 function rep(r) {
-  return [r.refused, r.malformed, r.unknown, r.kindMismatch, r.clamped, r.widened, r.duplicate, r.layoutHash].map(String).join(",");
+  return [r.refused, r.damaged, r.unknown, r.mismatch, r.oor, r.widened, r.repeated, r.layoutHash].map(String).join(",");
 }
 function same(a, b) { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) return false; } return true; }
 // a seeded xorshift32: the same files on every run
@@ -222,7 +222,7 @@ function compare(label, bytes, n) {
   }
   if (na < 0) { outcomes.refused++; return; }
   outcomes.ok++;
-  if (ra.clamped > 0) { outcomes.clamped++; }
+  if (ra.oor > 0) { outcomes.clamped++; }
   const sa = new Uint8Array(A.ROOTFixedMeasure(na)), sb = new Uint8Array(B.ROOTFixedMeasure(nb));
   if (A.ROOTFixedSave(va, na, sa) !== sa.length || B.ROOTFixedSave(vb, nb, sb) !== sb.length) { fail(label + ": a loaded value did not save"); return; }
   if (!same(sa, sb)) { fail(label + ": the two loads save back to different bytes"); }

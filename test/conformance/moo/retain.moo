@@ -4,7 +4,9 @@
 -- back the surfaces it carries:
 --
 --   retain       LoadRetain the wire at the row's two capacities, MeasureRetain,
---                SaveRetain, the counters `<retained>,<retain_lost>,<unknown> <save lost>\n`
+--                SaveRetain: `read\n` and the §16 text of the known value, or
+--                `refused\n` alone (the store's byte cost is local, never
+--                compared)
 --   retain-save  the same round trip, the SAVED BYTES
 --
 -- through the emitted table_retain.moo and the descriptors the unit's
@@ -27,7 +29,7 @@ return function(ctx: any): { [string]: Surface }
 
 	-- one row's answer: the counters line and the saved bytes, or nil (with a
 	-- reason on the case) when this leg cannot write it
-	type Answer = { counters: string, saves: { buffer } }
+	type Answer = { text: string, saves: { buffer } }
 
 	local function sameBytes(a: buffer, b: buffer): boolean
 		return buffer.len(a) == buffer.len(b) and buffer.readstring(a, 0, buffer.len(a)) == buffer.readstring(b, 0, buffer.len(b))
@@ -54,9 +56,9 @@ return function(ctx: any): { [string]: Surface }
 		end
 		local v = R.LoadRetain(rootName, wire, report, store)
 		if v == nil or report.damaged then
-			return nil, f[2] .. ": retained load refused"
+			return { text = "refused\n", saves = {} }, nil
 		end
-		local retained, lost, unknown = report.retained, report.retainLost, report.unknown
+		local lost = report.retainLost
 		local size, why = R.MeasureRetain(rootName, v, store)
 		if size == nil or size < 0 then
 			return nil, f[2] .. ": retaining measure refused " .. tostring(if why ~= nil then why.name else nil)
@@ -71,7 +73,13 @@ return function(ctx: any): { [string]: Surface }
 		if again == nil or not sameBytes(again, out) or second.retainLost ~= saveLost then
 			return nil, f[2] .. ": save is not repeatable"
 		end
-		return { counters = string.format("%d,%d,%d %d\n", retained, lost, unknown, saveLost), saves = { out } }, nil
+		local J: any = ctx.module(unit, "json")
+		local d: any = (ctx.module(unit, "schema_tables") :: any).lookup(rootName)
+		local text = if J ~= nil then "read\n" .. J.toJson(d, v) else nil
+		if text == nil then
+			return nil, f[2] .. ": the unit has no text module for the retained value"
+		end
+		return { text = text, saves = { out } }, nil
 	end
 
 	local function rows(saves: boolean)
@@ -88,7 +96,9 @@ return function(ctx: any): { [string]: Surface }
 				error("retain: " .. (why or f[2]), 0)
 			end
 			if not saves then
-				ctx.say(f[2], a.counters)
+				ctx.say(f[2], a.text)
+			elseif #a.saves == 0 then
+				error("retain-save: " .. f[2] .. ": retained load refused", 0)
 			else
 				ctx.say(f[2], buffer.tostring(a.saves[1]))
 			end

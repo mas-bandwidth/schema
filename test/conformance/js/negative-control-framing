@@ -18,8 +18,8 @@ src=build/tables-generated-js
 out=build/js-conformance-negative-framing-$mode
 case "$mode" in
 entry-bound)
-    anchor='count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) \/ 8))) { report.malformed = true; return null; }'
-    sabotage='count > BigInt(Math.floor((bytes.length - 9) \/ 8))) { report.malformed = true; return null; } \/\/ SABOTAGED: no entry bound'
+    anchor='count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) \/ 8))) { report.damaged = true; return null; }'
+    sabotage='count > BigInt(Math.floor((bytes.length - 9) \/ 8))) { report.damaged = true; return null; } \/\/ SABOTAGED: no entry bound'
     rows='frame_entries_4097'
     ;;
 *)

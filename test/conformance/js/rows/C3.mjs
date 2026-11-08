@@ -136,7 +136,7 @@ function readProduction(bytes) {
   // clamp that fired on every read below would read as a pass.
   const bytes = lawfulFile();
   const r = readProduction(bytes);
-  check(r.n === 1 && r.report.clamped === 0 && r.report.refused === 0 && !r.report.malformed,
+  check(r.n === 1 && r.report.oor === 0 && r.report.refused === 0 && !r.report.damaged,
     "C3 IDENTITY: a lawful record of this build's own layout reads and clamps nothing");
   check(r.v.nameLength === 16 && r.v.link.tagLength === 8 && r.v.link.value === 7,
     "C3 IDENTITY: the lawful lengths land as written (name 16, tag 8, value 7)");
@@ -149,12 +149,12 @@ function readProduction(bytes) {
   const bytes = lawfulFile();
   plant(bytes, AT_NAME, 9999);
   const r = readProduction(bytes);
-  check(r.n === 1 && r.report.refused === 0 && !r.report.malformed,
+  check(r.n === 1 && r.report.refused === 0 && !r.report.damaged,
     "C3 IDENTITY: a forged name length past the cap is a clamp and not a refusal — the record still reads");
   check(r.v.nameLength === 16,
     "C3 IDENTITY: a forged name length of 9999 over string(16) lands the reader's own bound 16 (got " + r.v.nameLength + ")");
-  check(r.report.clamped === 1,
-    "C3 IDENTITY: a forged name length past the cap moves clamped exactly once (got " + r.report.clamped + ")");
+  check(r.report.oor === 1,
+    "C3 IDENTITY: a forged name length past the cap moves clamped exactly once (got " + r.report.oor + ")");
   // THE CLAMP IS THE USED LENGTH AND NOTHING ELSE: the payload's copy is
   // whole, so all sixteen planted bytes sit behind the clamped length.
   let whole = true;
@@ -170,8 +170,8 @@ function readProduction(bytes) {
   const bytes = lawfulFile();
   plant(bytes, AT_NAME, -7);
   const r = readProduction(bytes);
-  check(r.v.nameLength === 0 && r.report.clamped === 1,
-    "C3 IDENTITY: a forged NEGATIVE name length lands 0 with one clamp (got length " + r.v.nameLength + ", clamped " + r.report.clamped + ")");
+  check(r.v.nameLength === 0 && r.report.oor === 1,
+    "C3 IDENTITY: a forged NEGATIVE name length lands 0 with one clamp (got length " + r.v.nameLength + ", clamped " + r.report.oor + ")");
 }
 
 {
@@ -181,8 +181,8 @@ function readProduction(bytes) {
   const bytes = lawfulFile();
   plant(bytes, AT_NAME, 16);
   const r = readProduction(bytes);
-  check(r.v.nameLength === 16 && r.report.clamped === 0,
-    "C3 IDENTITY: a name length AT the bound 16 is not a clamp and moves no counter (got length " + r.v.nameLength + ", clamped " + r.report.clamped + ")");
+  check(r.v.nameLength === 16 && r.report.oor === 0,
+    "C3 IDENTITY: a name length AT the bound 16 is not a clamp and moves no counter (got length " + r.v.nameLength + ", clamped " + r.report.oor + ")");
 }
 
 {
@@ -191,8 +191,8 @@ function readProduction(bytes) {
   const bytes = lawfulFile();
   plant(bytes, AT_TAG, 9999);
   const r = readProduction(bytes);
-  check(r.v.link.tagLength === 8 && r.report.clamped === 1 && r.v.nameLength === 16,
-    "C3 IDENTITY: a forged tag length over the nested string(8) lands that field's own cap 8 with one clamp (got " + r.v.link.tagLength + ", clamped " + r.report.clamped + ")");
+  check(r.v.link.tagLength === 8 && r.report.oor === 1 && r.v.nameLength === 16,
+    "C3 IDENTITY: a forged tag length over the nested string(8) lands that field's own cap 8 with one clamp (got " + r.v.link.tagLength + ", clamped " + r.report.oor + ")");
 }
 
 // ---- THE RUN'S TEXT OP, THE NARROW FLAVOUR --------------------------------
@@ -214,7 +214,7 @@ function runText(length) {
   const dv = new DataView(dst.buffer);
   const r = new home.TableFixedReport();
   home.TableFixedRun(textPlan, 1, src, sv, 0, dst, dv, null, r);
-  return { length: dv.getInt32(0, true), clamped: r.clamped, payload: dst.subarray(4) };
+  return { length: dv.getInt32(0, true), clamped: r.oor, payload: dst.subarray(4) };
 }
 
 {
@@ -222,8 +222,8 @@ function runText(length) {
   // past 16, so it clamps to 16 and counts once — the same bound the
   // identity path lands, from the other half of §4.4's one loop.
   const got = runText(9999);
-  check(got.length === 16 && got.clamped === 1,
-    "C3 RUN: a forged length of 9999 over a narrow text entry of cap 16 lands 16 with one clamped (got length " + got.length + ", clamped " + got.clamped + ")");
+  check(got.length === 16 && got.oor === 1,
+    "C3 RUN: a forged length of 9999 over a narrow text entry of cap 16 lands 16 with one clamped (got length " + got.length + ", clamped " + got.oor + ")");
   let whole = true;
   for (let i = 0; i < 16; i++) { whole = whole && got.payload[i] === 0x61 + i; }
   check(whole,
@@ -234,15 +234,15 @@ function runText(length) {
   // THE NEGATIVE LENGTH through the op: the word is read through a signed
   // view, so -1 is negative, not a cap of four billion (0xFFFFFFFF).
   const got = runText(-1);
-  check(got.length === 0 && got.clamped === 1,
-    "C3 RUN: a forged NEGATIVE length lands 0 with one clamp — the word is signed, never 2^32-1 (got length " + got.length + ", clamped " + got.clamped + ")");
+  check(got.length === 0 && got.oor === 1,
+    "C3 RUN: a forged NEGATIVE length lands 0 with one clamp — the word is signed, never 2^32-1 (got length " + got.length + ", clamped " + got.oor + ")");
 }
 
 {
   // AT THE BOUND the op counts nothing: 16 is the entry's own cap.
   const got = runText(16);
-  check(got.length === 16 && got.clamped === 0,
-    "C3 RUN: a length AT the bound 16 is not a clamp and moves no counter (got length " + got.length + ", clamped " + got.clamped + ")");
+  check(got.length === 16 && got.oor === 0,
+    "C3 RUN: a length AT the bound 16 is not a clamp and moves no counter (got length " + got.length + ", clamped " + got.oor + ")");
 }
 
 process.exit(failed);

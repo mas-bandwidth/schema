@@ -531,7 +531,13 @@ func jobRunsOn(jobBody string) string {
 			if before, _, found := strings.Cut(rest, "#"); found {
 				rest = before
 			}
-			return strings.TrimSpace(rest)
+			v := strings.TrimSpace(rest)
+			// A matrix job whose rows name their runner: a row on the fleet
+			// makes the whole job a self-hosted job for every check here.
+			if strings.Contains(v, "matrix.") && strings.Contains(jobBody, "runner: [self-hosted") {
+				return "[self-hosted] by matrix row, " + v
+			}
+			return v
 		}
 	}
 	return ""
@@ -670,8 +676,9 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 		expr = strings.TrimSpace(strings.TrimSuffix(rest, "}}"))
 	}
 	expr = stripOuterParens(expr)
-	if expr == "!cancelled()" {
-		// A job-level cancelled() guard never decides self-hosted admission.
+	if expr == "!cancelled()" || expr == "always()" {
+		// A job-level cancelled() or always() guard never decides self-hosted
+		// admission.
 		return true, nil
 	}
 	if parts := splitTopLevelOp(expr, "||"); len(parts) > 1 {
@@ -834,6 +841,12 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	case "needs.plan.outputs.legs":
 		return ev.PlanLegs, nil
 	default:
+		if strings.HasPrefix(tok, "needs.") && strings.Contains(tok, ".outputs.") {
+			// An upstream output this model does not carry: a non-empty
+			// placeholder, so the job is admitted exactly when its event and
+			// fork conditions admit it.
+			return "<output>", nil
+		}
 		return "", fmt.Errorf("unknown CI token %q", tok)
 	}
 }
@@ -1074,7 +1087,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		errs = append(errs, "ci-fast.yml triggered on schedule")
 	}
 
-	// 8. workflow_dispatch runs all 12 self-hosted jobs across the 5 workflows.
+	// 8. workflow_dispatch runs every self-hosted job of a workflow it can
+	// start, except a job whose own if: is an explicit list of events that
+	// does not name it (a push-and-pull-request replay, say).
 	dispatchEv := ciEvent{
 		Name:     "workflow_dispatch",
 		Branch:   "main",
@@ -1083,6 +1098,15 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanLegs: planLegs,
 	}
 	for _, sh := range shJobs {
+		if !workflowTriggersOn(wfs[sh.Workflow], dispatchEv) {
+			continue
+		}
+		if strings.Contains(sh.IfCond, "github.event_name ==") && !strings.Contains(sh.IfCond, "workflow_dispatch") {
+			if _, err := jobSelectsSelfHosted(wfs[sh.Workflow], sh.Job, dispatchEv); err != nil {
+				errs = append(errs, fmt.Sprintf("workflow_dispatch eval error on %s: %v", sh.Key(), err))
+			}
+			continue
+		}
 		if ok, err := jobSelectsSelfHosted(wfs[sh.Workflow], sh.Job, dispatchEv); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("workflow_dispatch did not select self-hosted %s (err=%v)", sh.Key(), err))
 		}
@@ -1111,14 +1135,49 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		gotKeys = append(gotKeys, sh.Key())
 	}
 	wantKeys := []string{
+		"caa-self-test.yml:caa-self-test",
+		"certify.yml:inline-gate",
+		"certify.yml:negative-controls-nightly",
+		"certify.yml:negative-controls-nightly-matrix",
+		"certify.yml:release-differential",
+		"certify.yml:release-gates",
+		"certify.yml:release-targets",
+		"certify.yml:test",
+		"certify.yml:vuln",
+		"ci-fast.yml:block-gate",
+		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:leg-gate",
+		"ci-fast.yml:lint-fast",
+		"ci-fast.yml:plan",
+		"ci-full.yml:conformance",
+		"ci-full.yml:conformance-matrix",
+		"ci-full.yml:cpp-lock",
+		"ci-full.yml:cs-fuzz",
+		"ci-full.yml:cs-tables",
+		"ci-full.yml:dart-fuzz",
+		"ci-full.yml:generated",
 		"ci-full.yml:go-test",
+		"ci-full.yml:js-fuzz",
 		"ci-full.yml:leg-tagged",
+		"ci-full.yml:lint",
+		"ci-full.yml:negative-controls",
+		"ci-full.yml:negative-controls-matrix",
 		"ci-full.yml:pins",
+		"ci-full.yml:proof",
+		"ci-full.yml:shape-gate",
+		"ci-full.yml:vuln",
+		"cla.yml:caa",
+		"leg.yml:leg-matrix",
+		"leg.yml:legs",
+		"lobster-fixed-proof-qualification.yml:baseline",
+		"lobster-fixed-proof-qualification.yml:native",
 		"nightly-conformance.yml:coverage",
 		"nightly-conformance.yml:cpp-writes",
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
+		"promotion-tag.yml:tag",
+		"python-leg.yml:test",
+		"release.yml:release",
 		"roadmap.yml:roadmap",
 		"schema-c-runs-hostile-corpus.yml:corpus",
 		"schema-c-runs-hostile-corpus.yml:negative-control",
@@ -1128,10 +1187,13 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-cs-runs-hostile-corpus.yml:negative-control",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-dart-generated-strict-analyze-gate.yml:nightly",
+		"schema-dart-nightly-fuzz.yml:nightly",
+		"schema-dart-nightly-fuzz.yml:replay",
 		"schema-dart-runs-hostile-corpus.yml:corpus",
 		"schema-dart-runs-hostile-corpus.yml:negative-control",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
+		"schema-engine-is-the-oracle.yml:oracle-independence",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
 		"schema-java-runs-hostile-corpus.yml:corpus",
 		"schema-java-runs-hostile-corpus.yml:negative-control",
@@ -1145,14 +1207,22 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-lua-resource-bounds.yml:nightly",
 		"schema-lua-runs-hostile-corpus.yml:fast",
 		"schema-lua-runs-hostile-corpus.yml:nightly",
+		"schema-lua-version-differential.yml:differential",
+		"schema-lua-version-differential.yml:negative-control",
+		"schema-lua-version-differential.yml:static",
 		"schema-luau-generated-analyze-strict-gate.yml:luau-analyze-strict",
 		"schema-luau-nightly-fuzz.yml:nightly",
 		"schema-luau-nightly-fuzz.yml:replay",
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
 		"schema-luau-runs-hostile-corpus.yml:negative-control",
+		"schema-moo-generated-analyze-strict-gate.yml:gate",
+		"schema-moo-nightly-fuzz.yml:nightly",
+		"schema-moo-nightly-fuzz.yml:wiring",
 		"schema-rust-runs-hostile-corpus.yml:corpus",
 		"schema-rust-runs-hostile-corpus.yml:negative-control",
+		"schema-shared-hostile-corpus.yml:drift",
+		"schema-shared-hostile-corpus.yml:negative-control",
 		"schema-squirrel-all-port-differential.yml:fast",
 		"schema-squirrel-all-port-differential.yml:nightly",
 		"schema-squirrel-nightly-fuzz.yml:fuzz",

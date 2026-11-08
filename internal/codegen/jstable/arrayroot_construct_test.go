@@ -94,7 +94,7 @@ let failed=false;
 for(const c of cases){
  const r=new m.TableVariableReport();const v=m[c.root+"FromJson"](c.input,r);
  const ok=v!==null;
- if(ok!==c.ok || r.clamped!==c.clamped || r.kindMismatch!==c.mismatch || (c.reason && r.reason!==c.reason)
+ if(ok!==c.ok || r.oor!==c.clamped || r.mismatch!==c.mismatch || (c.reason && r.reason!==c.reason)
    || (ok && (hex(m[c.root+"Save"](v))!==c.wire || m[c.root+"ToJson"](v)!==c.text))){
    console.log(c.name+" DIFF "+JSON.stringify({ok,r,text:ok?m[c.root+"ToJson"](v):null,want:c})); failed=true;
  }else{console.log(c.name+" OK");}

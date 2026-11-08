@@ -255,7 +255,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 		maps.Copy(out, cooks)
 	}
-	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3.1), form byte 1: tolerant
+	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3.1), form byte 1: strict
 	// wire reading and canonical byte layout for card constructs.
 	variable, err := generateVariableFiles(u, wide)
 	if err != nil {

@@ -150,12 +150,12 @@ check(imageView.getInt32(8, true) === 0,
   "E8 append: appended c lands as 0 default (got " + imageView.getInt32(8, true) + ")");
 
 // No counters fire: the old writer named everything the new reader knows.
-check(report.unknown === 0 && report.clamped === 0 && report.kindMismatch === 0,
+check(report.unknown === 0 && report.oor === 0 && report.mismatch === 0,
   "E8 append: no counter fires (unknown=" + report.unknown +
-  ", clamped=" + report.clamped + ", kindMismatch=" + report.kindMismatch + ")");
-check(!report.malformed && report.refused === 0,
+  ", clamped=" + report.oor + ", kindMismatch=" + report.mismatch + ")");
+check(!report.damaged && report.refused === 0,
   "E8 append: no refusal or malformed (refused=" + report.refused +
-  ", malformed=" + report.malformed + ")");
+  ", malformed=" + report.damaged + ")");
 
 // ---- THE DEPRECATION HALF: same layout, different meaning ----
 // A deprecated field does NOT change the layout — the slot stays where it is.
@@ -208,9 +208,9 @@ check(oldImageView.getInt32(4, true) === 20,
 // compile time and carried on the plan (the census, §5.9 #6).
 check(census2.unknown === 1,
   "E8 deprecation: one unknown for appended c (census got " + census2.unknown + ")");
-check(!report2.malformed && report2.refused === 0,
+check(!report2.damaged && report2.refused === 0,
   "E8 deprecation: no refusal or malformed (refused=" + report2.refused +
-  ", malformed=" + report2.malformed + ")");
+  ", malformed=" + report2.damaged + ")");
 
 if (failed) {
   console.log("FAILED");

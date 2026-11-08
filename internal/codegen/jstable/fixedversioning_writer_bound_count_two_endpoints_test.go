@@ -57,13 +57,13 @@ for (let i = 4; i < 8; i++) {
 if (back[0].lead !== 0xAAAAAAAA || back[0].trail !== 0xBBBBBBBB) {
   fail("the row moved a neighbour: " + show(back[0]));
 }
-if (r.clamped !== 1) {
+if (r.oor !== 1) {
   fail("the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: " + reason(r));
 }
-if (r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0) {
+if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0) {
   fail("counters moved on a clean clamped read: " + reason(r));
 }
-if (r.malformed) { fail("a count inside the writer's bound is not malformed: " + reason(r)); }
+if (r.damaged) { fail("a count inside the writer's bound is not malformed: " + reason(r)); }
 if (r.refused !== 0) { fail("a count inside the writer's bound is not a refusal: " + reason(r)); }
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"))
 	out, err := jsRunVersionProbe(t, node, newer, []string{writer, distractor}, 0, table, src)

@@ -80,7 +80,7 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.x < -5) { value.x = -5; report.clamped++; } else if (value.x > 5) { value.x = 5; report.clamped++; }",
+		"if (value.x < -5) { value.x = -5; report.oor++; } else if (value.x > 5) { value.x = 5; report.oor++; }",
 		"C7 a ranged scalar clamps at both declared ends and counts each")
 }
 
@@ -113,7 +113,7 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.q < 0) { value.q = 0; report.clamped++; } else if (value.q > 1) { value.q = 1; report.clamped++; }",
+		"if (value.q < 0) { value.q = 0; report.oor++; } else if (value.q > 1) { value.q = 1; report.oor++; }",
 		"R30 the compressed float clamps to the reader's min/max, the bounds following the float")
 }
 
@@ -138,7 +138,7 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.p.type > 2) { value.p.type = 0; report.clamped++; }",
+		"if (value.p.type > 2) { value.p.type = 0; report.oor++; }",
 		"C9 a union tag past the arm count lands None and counts")
 }
 
@@ -162,7 +162,7 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.tier > 3) { value.tier = 0; report.clamped++; }",
+		"if (value.tier > 3) { value.tier = 0; report.oor++; }",
 		"C10 an enum ordinal past the enum's top value lands None and counts")
 }
 
@@ -264,7 +264,7 @@ fixed table T
     vals [..4]int32
 }
 `, "T")
-	t02Has(t, t02Norm(body), "if (n < 0) { n = 0; report.clamped++; }",
+	t02Has(t, t02Norm(body), "if (n < 0) { n = 0; report.oor++; }",
 		"C1 a count below zero clamps to zero and counts")
 }
 
@@ -281,6 +281,6 @@ fixed table T
     vals [..4]int32
 }
 `, "T")
-	t02Has(t, t02Norm(body), "else if (n > 4) { n = 4; report.clamped++; }",
+	t02Has(t, t02Norm(body), "else if (n > 4) { n = 4; report.oor++; }",
 		"C2 a count above the max clamps to the max and counts")
 }

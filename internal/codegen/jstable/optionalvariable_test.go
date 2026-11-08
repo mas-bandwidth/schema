@@ -217,7 +217,7 @@ import { pathToFileURL } from "node:url";
 const spec = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const m = await import(pathToFileURL(process.argv[3]).href);
 const hex = (b) => b === null || b === undefined ? "null" : Buffer.from(b).toString("hex");
-const clean = (r) => r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && r.duplicate === 0 && !r.malformed;
+const clean = (r) => r.unknown === 0 && r.mismatch === 0 && r.widened === 0 && r.oor === 0 && r.repeated === 0 && !r.damaged;
 const say = (what, c, ok, detail) => console.log(what + " " + c.name + (ok ? " OK" : " DIFF " + detail));
 
 for (const c of spec) {

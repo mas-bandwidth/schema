@@ -121,11 +121,11 @@ const cooked=await import(new URL("ProbeCook.js",base).href);
 const decode=b=>Buffer.from(b).toString("utf8");
 for(const c of spec){
  const report=new m.TableVariableReport(),value=m.WhereFromJson(c.Input,report);
- expect(value!==null&&!report.malformed&&report.clamped===0,"JSON read "+JSON.stringify(report));
+ expect(value!==null&&!report.damaged&&report.oor===0,"JSON read "+JSON.stringify(report));
  expect(m.WhereToJson(value).trim()===c.Text.trim(),"Go JSON pin");
  expect(hex(m.WhereSave(value))===c.Wire&&m.WhereMeasure(value)===c.Wire.length/2,"Go wire pin");
  const rr=new m.TableVariableReport(),back=m.WhereLoad(bytes(c.Wire),rr);
- expect(back!==null&&!rr.malformed&&rr.clamped===0&&m.WhereToJson(back)===m.WhereToJson(value),"wire read "+JSON.stringify(rr));
+ expect(back!==null&&!rr.damaged&&rr.oor===0&&m.WhereToJson(back)===m.WhereToJson(value),"wire read "+JSON.stringify(rr));
  expect(m.WhereLoadMeasure(bytes(c.Wire))===c.Region,"Go region pin got="+m.WhereLoadMeasure(bytes(c.Wire))+" want="+c.Region);
  const n=m.WhereCookMeasure(value),cook=new Uint8Array(Math.max(n,0));
  expect(n>0&&m.WhereCookFrom(value,cook,1)&&hex(cook)===c.Cook,"Go cook pin gotSize="+n+" wantSize="+c.Cook.length/2);
@@ -159,7 +159,7 @@ for(const field of ["rules","first","capped","running"]){
   expect(m.WhereSave(value)===null&&m.WhereMeasure(value)===-1&&m.WhereToJson(value)===null,"bad writer "+field);
  }
  const source=new m.Where();source[field]=[{value:"xyz"}];const wire=m.WhereSave(source),at=Buffer.from(wire).indexOf(Buffer.from("xyz"));
- for(const byte of [0,255]){const damaged=wire.slice();damaged[at]=byte;const r=new m.TableVariableReport();expect(m.WhereLoad(damaged,r)===null&&r.malformed,"bad wire "+field);}
+ for(const byte of [0,255]){const damaged=wire.slice();damaged[at]=byte;const r=new m.TableVariableReport();expect(m.WhereLoad(damaged,r)===null&&r.damaged,"bad wire "+field);}
 }
 for(const bad of ["x\u0000y","\ud800"]){
  const value=new m.Where();value.byname.set(bad,1);
@@ -167,11 +167,11 @@ for(const bad of ["x\u0000y","\ud800"]){
 }
 for(const mode of ["wire","json"]){
  const r=new m.TableVariableReport(),v=mode==="wire"?m.BoundedLoad(bytes(spec[2].Wire),r):m.BoundedFromJson(spec[2].Input,r);
- expect(v!==null&&!r.malformed&&r.clamped===6&&v.byname.size===0,"bounded read of long text "+mode+" "+JSON.stringify(r));
+ expect(v!==null&&!r.damaged&&r.oor===6&&v.byname.size===0,"bounded read of long text "+mode+" "+JSON.stringify(r));
  expect(v.rules[0].value==="éééé"&&v.first[1].value==="éééé"&&v.capped[0].value==="éééé"&&v.running[0].value==="éééé","codepoint clamp");
 }
 const mapSource=new m.Where();mapSource.byname.set("xyz",1);const mapWire=m.WhereSave(mapSource),keyAt=Buffer.from(mapWire).indexOf(Buffer.from("xyz"));
-for(const byte of [0,255]){const damaged=mapWire.slice();damaged[keyAt]=byte;const r=new m.TableVariableReport();expect(m.WhereLoad(damaged,r)===null&&r.malformed,"malformed map key");}
+for(const byte of [0,255]){const damaged=mapWire.slice();damaged[keyAt]=byte;const r=new m.TableVariableReport();expect(m.WhereLoad(damaged,r)===null&&r.damaged,"malformed map key");}
 const longWire=bytes(spec[2].Wire);expect(m.WhereLoad(longWire.subarray(0,100),new m.TableVariableReport())===null,"truncated long text");
 console.log("UNBOUNDED TEXT OK");
 `
