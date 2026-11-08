@@ -625,7 +625,7 @@ func gooseVersionProbe(t *testing.T, c gooseVersionCase) gooseVersionResult {
 	}
 	b.WriteString("    var report = schema_rt::FixedEvolveReport { .. };\n")
 	fmt.Fprintf(&b, "    let n = %s::%sFixedEvolveLoad(values[0..%d], data, report);\n", ns, c.root, c.capacity)
-	b.WriteString("    print(\"report \", n, \" \", schema_rt::fixed_evolve_refusal_name(report.reason), \" \", report.clamped, \" \", report.widened, \" \", report.unknown, \" \", report.kind_mismatch, \" \", (if report.malformed { 1 } else { 0 }), \" \", report.hash);\n")
+	b.WriteString("    print(\"report \", n, \" \", schema_rt::fixed_evolve_refusal_name(report.reason), \" \", report.oor, \" \", report.widened, \" \", report.unknown, \" \", report.mismatch, \" \", (if report.damaged { 1 } else { 0 }), \" \", report.hash);\n")
 	if c.twice {
 		b.WriteString("    var again = schema_rt::FixedEvolveReport { .. };\n")
 		fmt.Fprintf(&b, "    let n2 = %s::%sFixedEvolveLoad(values[0..%d], data, again);\n", ns, c.root, c.capacity)

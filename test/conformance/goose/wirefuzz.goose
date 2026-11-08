@@ -140,11 +140,11 @@ fn main() {
             // a message read has no region and no builder completion
             mout.push(1);
             put_i32(mout, mrep.unknown);
-            put_i32(mout, mrep.kind_mismatch);
+            put_i32(mout, mrep.mismatch);
             put_i32(mout, mrep.widened);
-            put_i32(mout, mrep.clamped);
-            put_i32(mout, mrep.duplicate);
-            mout.push(flag(mrep.malformed) as! u8);
+            put_i32(mout, mrep.oor);
+            put_i32(mout, mrep.repeated);
+            mout.push(flag(mrep.damaged) as! u8);
             mout.push(flag(mrep.reason != 0) as! u8);
             put_le(mout, 0xFFFFFFFFFFFFFFFF, 8); // measure: no region (-1)
             put_i32(mout, 0);
@@ -192,11 +192,11 @@ fn main() {
         // Whole-load discard applies to both value-only and variable roots.
         out.push(if root >= 0 && !report.stopped { 1 } else { 0 });
         put_i32(out, report.unknown);
-        put_i32(out, report.kind_mismatch);
+        put_i32(out, report.mismatch);
         put_i32(out, report.widened);
-        put_i32(out, report.clamped);
-        put_i32(out, report.duplicate);
-        out.push(flag(report.malformed) as! u8);
+        put_i32(out, report.oor);
+        put_i32(out, report.repeated);
+        out.push(flag(report.body_damaged) as! u8);
         out.push(flag(report.refused || report.non_finite) as! u8);
         put_le(out, 0xFFFFFFFFFFFFFFFF, 8); // measure: no region (-1)
         put_i32(out, report.retained);

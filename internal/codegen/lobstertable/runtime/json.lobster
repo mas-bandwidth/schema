@@ -2825,8 +2825,9 @@ def j_escape(w:JsonWriter, c:int) -> bool:
         return false
     return true
 
-// j_write_string emits one JSON string; a byte outside a well-formed UTF-8
-// sequence is written as U+FFFD, one per maximal subpart (§16.3).
+// j_write_string emits one JSON string. Storage holding a byte outside a
+// well-formed UTF-8 sequence has no text spelling: the writer refuses it as
+// text_ill_formed (W0, docs/SPEC-TABLES.md §16.14), never a U+FFFD.
 def j_write_string(w:JsonWriter, s:string):
     j_raw(w, "\"")
     let n = length(s)
@@ -2848,6 +2849,7 @@ def j_write_string(w:JsonWriter, s:string):
         else:
             let width = j_utf8_sequence(s, i)
             if width < 0:
+                j_fail(w, "text_ill_formed")
                 j_raw(w, j_utf8(0xFFFD))
                 i += -width
             else:
@@ -2855,8 +2857,9 @@ def j_write_string(w:JsonWriter, s:string):
                 i += width
     j_raw(w, "\"")
 
-// j_write_wstring is a wide field's text: code units back to UTF-8, an
-// unpaired surrogate as U+FFFD (§16.2, §16.3).
+// j_write_wstring is a wide field's text: code units back to UTF-8. An
+// unpaired surrogate has no text spelling and refuses as text_ill_formed
+// (W0, docs/SPEC-TABLES.md §16.14).
 def j_write_wstring(w:JsonWriter, units:[int]):
     j_raw(w, "\"")
     var i = 0
@@ -2868,6 +2871,7 @@ def j_write_wstring(w:JsonWriter, units:[int]):
                 code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)
                 i++
         if code >= 0xD800 and code <= 0xDFFF:
+            j_fail(w, "text_ill_formed")
             code = 0xFFFD
         if not j_escape(w, code):
             j_raw(w, j_utf8(code))
@@ -2913,7 +2917,7 @@ def json_write(rec:Record) -> string, string:
     root.open = true
     if not j_count_record(w, rec):
         return "", w.err
-    if not j_write_value(w, rec, 0):
+    if not j_write_value(w, rec, 0) or w.err != "":
         return "", w.err
     push(w.parts, "\n")
     return concat_string(w.parts, ""), ""
