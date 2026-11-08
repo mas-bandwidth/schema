@@ -277,7 +277,7 @@ func javaPinFault(p javaPin, v javaPinVerdict) string {
 		if !v.loaded || r[2] != "false" || r[3] != "false" {
 			return bad("a value")
 		}
-	case "kind_mismatch", "clamped":
+	case "kind_mismatch", "out_of_range":
 		// the strict read refuses the whole load: no value, no counter (§4)
 		if v.loaded || r[2] != "false" || r[3] != "true" {
 			return bad("no value, refused for " + p.strict + ", not damaged")
