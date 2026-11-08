@@ -103,9 +103,9 @@ func jsonOptionalRun(t *testing.T, edit func(map[string][]byte)) []string {
 	b.WriteString("fn probe(name: const u8[:]) {\n")
 	b.WriteString("    var text: u8[>..] = [];\n    if !read_file(name, text) { print(\"read-failed\"); return; }\n")
 	fmt.Fprintf(&b, "    var v = %s::NewRoot();\n    var r = schema_rt::json_report();\n", ns)
-	fmt.Fprintf(&b, "    let ok = %s::RootFromJsonTolerant(v, text, r);\n", ns)
-	b.WriteString("    if !ok || r.malformed { print(\"refused\"); return; }\n")
-	b.WriteString("    print(r.unknown, \",\", r.kind_mismatch, \",\", r.widened, \",\", r.clamped, \",\", r.duplicate, \",false,read\");\n")
+	fmt.Fprintf(&b, "    let ok = %s::RootFromJson(v, text, r);\n", ns)
+	b.WriteString("    if !ok || r.damaged { print(\"refused\"); return; }\n")
+	b.WriteString("    print(r.unknown, \",\", r.mismatch, \",\", r.widened, \",\", r.oor, \",\", r.repeated, \",false,read\");\n")
 	fmt.Fprintf(&b, "    var out: u8[>..] = [];\n    let n = %s::RootToJson(v, out);\n    if n != out.len { print(\"short\"); }\n    hex(out);\n", ns)
 	b.WriteString("}\n\nfn main() {\n")
 	inputs := map[string][]byte{}

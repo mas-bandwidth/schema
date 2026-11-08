@@ -24,10 +24,24 @@
 CPP_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 CPP_HOSTILE_BUILD    := build/cpp-hostile
 CPP_HOSTILE_FINDINGS ?= test/cpp-hostile/known-findings.tsv
-CPP_HOSTILE_SANITIZE ?= -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+# -g1, not -g: line tables are all a sanitizer report needs to name file and
+# line, and full -g made GCC's variable tracking 81% of compiling
+# unit_messagedemo.cpp (218 of 270 s, -ftime-report, g++ 16; the whole
+# ToolMessage read inlines into one function). That one object outran the
+# 2-minute per-commit rule on its own; at -g1 it compiles in about a quarter.
+CPP_HOSTILE_SANITIZE ?= -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g1
 CPP_HOSTILE_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -O1 -ffp-contract=off -pthread $(CPP_HOSTILE_SANITIZE)
 CPP_HOSTILE_CFLAGS   := -std=c99 -Wall -Wextra -Werror -O1 $(CPP_HOSTILE_SANITIZE)
-CPP_HOSTILE_JOBS     ?= 4
+# -O1 is load-bearing, not a speed choice: the case thread has a fixed 512 KiB
+# stack (test/c-hostile/main.c), and at -O0 the sanitizers' unshared frames
+# overflow it on five accepting cases (measured 2026-11-07), so -O0 would move
+# the stack-depth verdicts. The compile time is bought back with -g1, cores and ccache.
+# One compile per core: the objects are independent, only the link is serial.
+CPP_HOSTILE_JOBS     ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+# ccache when the host has it: an unchanged generated unit is not recompiled.
+# It keys on the preprocessed source and the flags, so a changed unit, header
+# or flag always compiles fresh.
+CPP_HOSTILE_CCACHE   ?= $(shell command -v ccache 2>/dev/null)
 
 CPP_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
@@ -54,14 +68,15 @@ $(CPP_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-cpp-runs-hostile-c
 # objects build in parallel; the link is the one serial step.
 $(CPP_HOSTILE_BUILD)/case: $(CPP_HOSTILE_BUILD)/generated/.stamp $(wildcard test/cpp-hostile/*.cpp test/cpp-hostile/*.hpp) test/c-hostile/main.c test/c-hostile/hostile.h
 	@rm -rf $(CPP_HOSTILE_BUILD)/obj && mkdir -p $(CPP_HOSTILE_BUILD)/obj
+	@echo "cpp-hostile: compiling with $(CPP_HOSTILE_JOBS) jobs$(if $(CPP_HOSTILE_CCACHE), through ccache)"
 	@{ for unit in $(CPP_HOSTILE_UNITS); do \
 		name=$${unit%%:*}; \
 		echo "$$name test/cpp-hostile/unit_$$name.cpp"; \
 		for src in $(CPP_HOSTILE_BUILD)/generated/$$name/*.cpp; do echo "$$name $$src"; done; \
 	done; } | \
 	xargs -P $(CPP_HOSTILE_JOBS) -L 1 sh -c 'out=$(CPP_HOSTILE_BUILD)/obj/$$0-$$(basename $$1 .cpp).o; \
-		$(CXX) $(CPP_HOSTILE_CXXFLAGS) -I$(CPP_HOSTILE_BUILD)/generated/$$0 -Itest/cpp-hostile -Itest/c-hostile -Itest/tables -I$(SERIALIZE) -c $$1 -o $$out'
-	$(CC) $(CPP_HOSTILE_CFLAGS) -Itest/c-hostile -c test/c-hostile/main.c -o $(CPP_HOSTILE_BUILD)/obj/main.o
+		$(CPP_HOSTILE_CCACHE) $(CXX) $(CPP_HOSTILE_CXXFLAGS) -I$(CPP_HOSTILE_BUILD)/generated/$$0 -Itest/cpp-hostile -Itest/c-hostile -Itest/tables -I$(SERIALIZE) -c $$1 -o $$out'
+	$(CPP_HOSTILE_CCACHE) $(CC) $(CPP_HOSTILE_CFLAGS) -Itest/c-hostile -c test/c-hostile/main.c -o $(CPP_HOSTILE_BUILD)/obj/main.o
 	$(CXX) $(CPP_HOSTILE_SANITIZE) -pthread $(CPP_HOSTILE_BUILD)/obj/*.o -o $@
 
 $(CPP_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go internal/ci/hostilecorpus/*.go)

@@ -88,7 +88,7 @@ fn load(root: const u8[:], file: const u8[:], retaining: bool) {
             schema_rt::save_table(conformance_unit(), root, data, vals, nodes, v, out)
         };
     }
-    write_stdout(str("load/", root, "/", file, "/", mode, " ", yes(v >= 0), " ", yes(report.malformed), " ", yes(mismatch), " ", refusal, " ", hex(out), "\n"));
+    write_stdout(str("load/", root, "/", file, "/", mode, " ", yes(v >= 0), " ", yes(report.body_damaged), " ", yes(mismatch), " ", refusal, " ", hex(out), "\n"));
 }
 
 fn main() {
