@@ -68,6 +68,28 @@ var vtCells = []vtCell{
 	// ?[..N]T and ?[N]T: the message tool's trace, marks, modes,
 	// checkpoints and snapshots
 	{"optional-arrays", []string{"message_trace", "message_save", "message_empty", "trace_elem_kind", "trace_count_past_bound", "marks_unknown_variant"}},
+	// *bytes and *string, at every size class, and one blob from two slots
+	{"blobs", []string{"blob_small", "blob_empty", "blob_large", "blob_str8", "blob_str16", "blob_equal_bytes", "blob_shared", "blob_shared_string"}},
+	// maps of every key and value class, a widened key and a key of the
+	// wrong kind at the root
+	{"maps", []string{"map_cells", "map_chunks", "map_crews", "map_depth", "map_docs", "map_empty", "map_full", "map_pairs", "map_slots", "map_spans", "map_text", "map_trails", "map_runs", "map_key_widen", "map_depth_root_kind", "list_of_maps"}},
+	// an arm of every field kind: tbla's int, enum, pointer, bytes, string
+	// and body arms read across a schema change, the stream's arms, an arm
+	// past its frame, and escape kinds at an arm
+	{"union-arms-any", []string{"stream_arm_first", "stream_arm_pointer", "stream_arm_tag", "a2_arm_enum_as_int", "a2_arm_pointer_as_int", "a2_arm_bytes_as_string", "a2_arm_length_off_width", "a1_arm_moved_width_as_a2", "a1_arm_one_width_as_a2", "a1_arm_as_string_as_a2", "a1_arm_as_body_as_a2", "a1_arm_body_as_a2", "a1_arm_unknown_as_a2", "nested_arm_trailing", "escape_arm"}},
+	// string, bytes and flags defaults (tblw's Badge, Ship), a table renamed
+	// with was (Ship was Vessel), and §4.2's value defaults at and off
+	{"defaults-and-table-rename", []string{"w1_fleet", "w1_fleet_default", "w2_fleet", "w1_fleet_as_w2", "w2_fleet_as_w1", "w1_fleet_default_as_w2"}},
+	// a renamed variant, field and two arms (tblr2), read both ways
+	{"renames", []string{"r1_cfg", "r1_ping", "r2_cfg", "r1_cfg_as_r2", "r1_ping_as_r2", "r2_cfg_as_r1"}},
+	// the id table: 10 and 20 vocabularies, two peers' tables, the escape
+	// kinds at a field, an element and a payload-free field
+	{"id-table-wire", []string{"vocab_wide", "vocab_low", "peer_a", "peer_b", "vocab9_wide", "vocab9_low", "login_full", "match_full", "escape_unnamed_field", "escape_named_field", "escape_element", "nopayload_named_field"}},
+	// wstring(N), kind 33: captions, a narrow arm, a stamp, a wide list
+	{"wstring", []string{"wide_empty", "wide_title", "wide_sites", "wide_narrow_arm", "wide_stamp", "widelist_wide"}},
+	// []T: tables, scalars, empty, erased, mixed, nested, maps, a migration
+	// from a bounded array, and a widened element
+	{"unbounded-arrays", []string{"list_tables", "list_scalars", "list_empty", "list_erased", "list_mixed", "list_shared", "list_nested", "list_of_maps", "list_migrates", "list_scalar_widen"}},
 }
 
 // vtCellFailures runs one row and answers what differs and how many cases
