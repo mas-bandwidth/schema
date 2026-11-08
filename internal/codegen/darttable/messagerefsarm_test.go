@@ -79,7 +79,7 @@ func TestMessageRefsAndUnknownArmDart(t *testing.T) {
 			if err != nil {
 				n, g.Refused = -1, true
 			}
-						wantN := n
+			wantN := n
 			if g.Refused && wantN < 0 {
 				wantN = 0 // STRICT VERDICT: a refused batch load delivers no body
 			}

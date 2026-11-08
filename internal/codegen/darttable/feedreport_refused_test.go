@@ -69,9 +69,9 @@ func TestWireFeedCountPastBodyRefusedDart(t *testing.T) {
 // dartReport is the six counters every leg prints, in the manifest's order,
 // and the refusal.
 type dartReport struct {
-	unknown      int
-	widened      int
-	refused      bool
+	unknown int
+	widened int
+	refused bool
 }
 
 func (r dartReport) String() string {
