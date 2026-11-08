@@ -662,49 +662,6 @@ public final class Driver {
         return f.length > 5 && "no-text".equals(f[5]);
     }
 
-    // sharesABlob answers whether two slots of the value graph hold the SAME
-    // String or byte[] instance: the one node a tolerant load keeps for a blob
-    // two slots name (docs/SPEC-TABLES.md §2.5), which every writer refuses.
-    private static boolean sharesABlob(Object root) {
-        java.util.IdentityHashMap<Object, Boolean> seen = new java.util.IdentityHashMap<>();
-        java.util.IdentityHashMap<Object, Boolean> blobs = new java.util.IdentityHashMap<>();
-        java.util.ArrayDeque<Object> work = new java.util.ArrayDeque<>();
-        work.push(root);
-        while (!work.isEmpty()) {
-            Object o = work.pop();
-            if (seen.put(o, Boolean.TRUE) != null) {
-                continue;
-            }
-            if (o instanceof java.util.List) {
-                for (Object e : (java.util.List<?>) o) {
-                    if (e instanceof String || e instanceof byte[]) {
-                        if (!"".equals(e) && blobs.put(e, Boolean.TRUE) != null) return true;
-                    } else if (e != null) {
-                        work.push(e);
-                    }
-                }
-                continue;
-            }
-            if (o instanceof java.util.Map || o.getClass().isArray() || o.getClass().getName().startsWith("java.")) {
-                continue;
-            }
-            for (java.lang.reflect.Field fd : o.getClass().getFields()) {
-                if (java.lang.reflect.Modifier.isStatic(fd.getModifiers())) continue;
-                Object v;
-                try { v = fd.get(o); } catch (IllegalAccessException e) { continue; }
-                if (v == null) continue;
-                if (v instanceof String || v instanceof byte[]) {
-                    // an empty String is the shared "" default literal, never a
-                    // node the load handed out, so it is not counted
-                    if (!"".equals(v) && blobs.put(v, Boolean.TRUE) != null) return true;
-                } else if (!fd.getType().isPrimitive()) {
-                    work.push(v);
-                }
-            }
-        }
-        return false;
-    }
-
     private static void spillAbsent(String out, String name) throws IOException {
         Files.write(Path.of(out, name + ".absent"), new byte[0]);
     }
@@ -734,6 +691,8 @@ public final class Driver {
         byte[] toJson(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("toJson", valueType).invoke(null, value); }
         int count(Object report, String field) throws ReflectiveOperationException { try { return reportType.getField(field).getInt(report); } catch (NoSuchFieldException e) { return 0; } }
         boolean flag(Object report, String field) throws ReflectiveOperationException { try { return reportType.getField(field).getBoolean(report); } catch (NoSuchFieldException e) { return false; } }
+        // the name of the refusal the read reported, or null
+        String reason(Object report) throws ReflectiveOperationException { Object r = reportType.getField("reason").get(report); return r == null ? null : String.valueOf(r); }
     }
 
     // A root declared `fixed table` is a form 3 file, read and written by its
@@ -828,6 +787,118 @@ public final class Driver {
         catch (ClassNotFoundException | NoSuchMethodException absent) { return null; }
     }
 
+    // THE CANONICAL WRITE-BACK (test/conformance/README.md, READ, THEN WRITE):
+    // an accepted read writes its value back as `<case>.wire`. A root declared
+    // `fixed table` writes form 3 (docs/SPEC-TABLES.md "The three wires",
+    // §3.4), so its value is carried into the fixed form's Value and saved by
+    // <Root>Fixed; every other root saves through its variable writer.
+    private static int spillWriteBack(String out, String[] f, VariableCodec codec, Object value) throws IOException, ReflectiveOperationException {
+        FixedCodec fixed = fixedCodec(f[2], f[3]);
+        byte[] wire;
+        if (fixed != null) {
+            Object values = fixed.newValues();
+            toFixed(value, java.lang.reflect.Array.get(values, 0));
+            wire = fixed.save(values, 1);
+        } else {
+            wire = codec.save(value);
+        }
+        // a value the writer refuses (a cycle a sabotaged reader let through)
+        // leaves no `<case>.wire`: the row goes red, the other rows answer
+        if (wire == null) {
+            System.err.println(f[1] + ": the write-back save refused the value");
+            return 0;
+        }
+        spill(out, f[1] + ".wire", wire);
+        return 0;
+    }
+
+    // toFixed copies a variable-form Value into the fixed form's Value of the
+    // same table, field by field by name: a number narrows to the fixed slot's
+    // width, a string or bytes fills the inline array and its Length, a list
+    // fills the inline array and its Count, and a nested table recurses. The
+    // driver owns this bridge; the generated code gives the two forms
+    // separate Value classes.
+    private static void toFixed(Object src, Object dst) throws ReflectiveOperationException {
+        for (java.lang.reflect.Field d : dst.getClass().getFields()) {
+            if (java.lang.reflect.Modifier.isStatic(d.getModifiers())) continue;
+            java.lang.reflect.Field s;
+            // a union's selected arm is `tag` in the variable form and `type`
+            // in the fixed form
+            String name = d.getName().equals("type") && !hasField(src, "type") ? "tag" : d.getName();
+            try { s = src.getClass().getField(name); } catch (NoSuchFieldException none) { continue; }
+            Object sv = s.get(src);
+            Class<?> t = d.getType();
+            if (sv != null && !t.isPrimitive() && t.isInstance(sv) && !java.lang.reflect.Modifier.isFinal(d.getModifiers())) {
+                // one class both forms share (a 128-bit value): the reference
+                d.set(dst, sv);
+            } else if (t.isPrimitive()) {
+                d.set(dst, narrow(sv, t));
+            } else if (t == byte[].class && !(sv instanceof List)) {
+                byte[] from = sv instanceof String ? ((String) sv).getBytes(java.nio.charset.StandardCharsets.UTF_8) : (byte[]) sv;
+                byte[] into = (byte[]) d.get(dst);
+                if (from == null) from = new byte[0];
+                if (into == null || (!java.lang.reflect.Modifier.isFinal(d.getModifiers()) && into.length < from.length)) {
+                    into = from.clone();
+                    d.set(dst, into);
+                } else {
+                    System.arraycopy(from, 0, into, 0, Math.min(from.length, into.length));
+                }
+                setCount(dst, d.getName() + "Length", from.length);
+            } else if (t.isArray()) {
+                List<?> list = sv instanceof List ? (List<?>) sv : arrayList(sv);
+                Object into = d.get(dst);
+                Class<?> ct = t.getComponentType();
+                for (int i = 0; i < list.size() && i < java.lang.reflect.Array.getLength(into); i++) {
+                    Object e = list.get(i);
+                    if (ct.isPrimitive()) {
+                        java.lang.reflect.Array.set(into, i, narrow(e, ct));
+                    } else if (ct.isInstance(e)) {
+                        java.lang.reflect.Array.set(into, i, e);
+                    } else {
+                        Object de = java.lang.reflect.Array.get(into, i);
+                        if (de == null) { de = ct.getConstructor().newInstance(); java.lang.reflect.Array.set(into, i, de); }
+                        toFixed(e, de);
+                    }
+                }
+                setCount(dst, d.getName() + "Count", list.size());
+            } else if (sv != null) {
+                Object into = d.get(dst);
+                if (into == null) { into = t.getConstructor().newInstance(); d.set(dst, into); }
+                toFixed(sv, into);
+            }
+        }
+    }
+
+    private static boolean hasField(Object o, String name) {
+        try { o.getClass().getField(name); return true; } catch (NoSuchFieldException none) { return false; }
+    }
+
+    private static List<?> arrayList(Object array) {
+        List<Object> out = new ArrayList<>();
+        if (array != null) {
+            for (int i = 0; i < java.lang.reflect.Array.getLength(array); i++) out.add(java.lang.reflect.Array.get(array, i));
+        }
+        return out;
+    }
+
+    private static void setCount(Object dst, String name, int n) throws ReflectiveOperationException {
+        try { dst.getClass().getField(name).setInt(dst, n); } catch (NoSuchFieldException none) { }
+    }
+
+    private static Object narrow(Object v, Class<?> t) {
+        if (t == boolean.class) return v instanceof Boolean ? v : (Object) (((Number) v).longValue() != 0);
+        long bits = v instanceof Boolean ? (((Boolean) v) ? 1 : 0) : v instanceof Character ? (long) (Character) v : 0;
+        Number n = v instanceof Number ? (Number) v : Long.valueOf(bits);
+        if (t == byte.class) return n.byteValue();
+        if (t == short.class) return n.shortValue();
+        if (t == int.class) return n.intValue();
+        if (t == long.class) return n.longValue();
+        if (t == float.class) return n.floatValue();
+        if (t == double.class) return n.doubleValue();
+        if (t == char.class) return (char) n.intValue();
+        return v;
+    }
+
     // The value half of a `report` and `json-hostile` answer
     // (test/conformance/README.md): the report line, then the §16 text of the
     // value the read left. Null when the writer refuses the value.
@@ -858,6 +929,7 @@ public final class Driver {
                 } else {
                     byte[] answer = withValue(codec, value, "read\n");
                     if (answer == null) return failInt(f[1] + ": toJson refused the value");
+                    if (spillWriteBack(out, f, codec, value) != 0) return 1;
                     spill(out, f[1], answer);
                 }
             } catch (java.lang.reflect.InvocationTargetException thrown) {
@@ -894,15 +966,16 @@ public final class Driver {
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
-                if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
-                byte[] saved = codec.save(value);
-                if (saved == null && sharesABlob(value)) {
-                    // §2.5: a blob two slots name is refused by every writer; the
-                    // tolerant load kept the one node, so the save refuses it by
-                    // name rather than writing the reference's bytes
-                    Files.write(Path.of(out, f[1] + ".absent"), "blob_shared".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                if (value == null && "blob_shared".equals(codec.reason(report))) {
+                    // §2.5: a blob belongs to one slot, and the one read refuses
+                    // a file whose two slots name one blob. That refusal is this
+                    // row's answer (the corpus marks it wire-refused); any other
+                    // refusal of a corpus instance is a failure.
+                    spillAbsentReason(out, f[1], "blob_shared");
                     continue;
                 }
+                if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                byte[] saved = codec.save(value);
                 if (saved == null) return failInt(f[1] + ": save refused the value");
                 spill(out, f[1], saved);
             } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": wire codec failed: " + failure); }
@@ -931,6 +1004,7 @@ public final class Driver {
                 if (refused) { spill(out, f[1], line); continue; }
                 byte[] answer = withValue(codec, value, line);
                 if (answer == null) return failInt(f[1] + ": toJson refused the value");
+                if (spillWriteBack(out, f, codec, value) != 0) return 1;
                 spill(out, f[1], answer);
             } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": report codec failed: " + failure); }
         }
@@ -968,6 +1042,7 @@ public final class Driver {
                 boolean refused = codec.flag(report, "refused") || codec.flag(report, "damaged") || value == null;
                 boolean noValue = f.length > 5 && f[5].equals("no-value");
                 byte[] head = (refused ? "refused\n" : "read\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                if (!refused && spillWriteBack(out, f, codec, value) != 0) return 1;
                 if (refused || noValue) { spill(out, f[1], head); continue; }
                 byte[] text = codec.toJson(value);
                 // a value the read handed back that the text writer refuses
@@ -1206,10 +1281,33 @@ public final class Driver {
                     spillAbsentReason(out, f[1] + "-be", refusal);
                     continue;
                 }
+                // THE CONSTRUCTION RECIPE (test/conformance/harness/cookinput.go):
+                // the value is read from the line's text input, or from the
+                // instance's wire where the line names none, and a share pair
+                // then points the alias slot at the source slot's blob. The
+                // cook accepts a shared blob in memory (§7.6) though neither the
+                // wire nor the text can spell one.
                 Object report = codec.variable.report();
-                Object value = codec.variable.load(Files.readAllBytes(Paths.get(inst[4])), report);
-                if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "damaged")) {
-                    return failInt(f[1] + ": cook input did not load");
+                Object value;
+                if (f.length > 2 && !f[2].equals("-")) {
+                    value = codec.variable.fromJson(Files.readAllBytes(Paths.get(f[2])), report);
+                    if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "damaged")) {
+                        return failInt(f[1] + ": cook input text did not read");
+                    }
+                } else {
+                    value = codec.variable.load(Files.readAllBytes(Paths.get(inst[4])), report);
+                    if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "damaged")) {
+                        return failInt(f[1] + ": cook input did not load");
+                    }
+                }
+                if (f.length > 4 && !f[3].equals("-")) {
+                    try {
+                        Object blob = value.getClass().getField(f[3]).get(value);
+                        if (blob == null) return failInt(f[1] + ": the share source " + f[3] + " is empty");
+                        value.getClass().getField(f[4]).set(value, blob);
+                    } catch (NoSuchFieldException missing) {
+                        return failInt(f[1] + ": the share recipe " + f[3] + ":" + f[4] + " did not apply");
+                    }
                 }
                 long size = codec.measure(value);
                 if (size < 1) { return failInt(f[1] + ": cookMeasure refused"); }
@@ -1394,7 +1492,10 @@ public final class Driver {
             roots.add(tblrt1.NodeRetain.loadRetain(wire, store, report));
             stores.add(store);
             if (report.damaged || report.refused || roots.contains(null)) {
-                return failInt(f[1] + ": the retaining load refused " + f[4]);
+                // THE ONE READ'S VERDICT is the answer (test/conformance/README.md):
+                // a refused retaining read owes the refusal alone, and no bytes
+                if (!saved) spill(out, f[1], "refused\n");
+                continue;
             }
             java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
             tblrt1.TableVariable.Report save = new tblrt1.TableVariable.Report();
@@ -1409,7 +1510,16 @@ public final class Driver {
             if (saved) {
                 spill(out, f[1], bytes.toByteArray());
             } else {
-                spill(out, f[1], report.retained + "," + report.retainLost + "," + report.unknown + " " + save.retainLost + "\n");
+                // the verdict, then the §16 text of the known value the read
+                // left: retention keeps the unknown records for the save and
+                // never changes the value a reader of this build sees
+                byte[] text = tblrt1.NodeVariable.toJson(roots.get(0));
+                if (text == null) return failInt(f[1] + ": toJson refused the value");
+                byte[] head = "read\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                byte[] both = new byte[head.length + text.length];
+                System.arraycopy(head, 0, both, 0, head.length);
+                System.arraycopy(text, 0, both, head.length, text.length);
+                spill(out, f[1], both);
             }
         }
         return 0;
