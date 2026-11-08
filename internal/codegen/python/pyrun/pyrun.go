@@ -26,6 +26,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // The pins make/python-toolchain.mk builds (docs/PORT-PYTHON.md, THE PIN).
@@ -60,6 +62,12 @@ func Mypy(t testing.TB) string {
 
 func pin(t testing.TB, env, dist, exe string) string {
 	t.Helper()
+	// A test that runs a pin shells out to a toolchain, so it is behind the
+	// slow gate like every other leg's (internal/slowtest); make test-python
+	// sets SCHEMA_SLOW=1, and there a missing pin refuses by name below.
+	if !slowtest.Enabled() {
+		t.Skipf("SCHEMA_SLOW: this test shells out to the pinned %s; set SCHEMA_SLOW=1 to run it (make test-python does)", env)
+	}
 	if p := os.Getenv(env); p != "" {
 		if _, err := os.Stat(p); err != nil {
 			t.Fatalf("%s=%s does not resolve (%v): run make dist-python (docs/PORT-PYTHON.md, THE PIN)", env, p, err)

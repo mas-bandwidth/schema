@@ -17,7 +17,7 @@
 # the target through the compiler's driver in the tagged build.
 .PHONY: test-python update-goldens-python
 test-python: python-toolchain-check python-toolchain-negative-control
-	go test ./internal/codegen/python/... -count=1
+	SCHEMA_SLOW=1 go test ./internal/codegen/python/... -count=1
 	go test -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
 
