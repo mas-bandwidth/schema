@@ -4312,15 +4312,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         if Process.get(:elixir_json_bad, false) do
           {acc, seen, report}
         else
+          # A KEYED OBJECT'S KEYS ARE KEYS: any key named twice refuses the
+          # whole read, a known variant, an unknown one or "None" alike
+          # (internal/tabletext/read.go readKeyed, docs/SPEC-TABLES.md §16.2).
+          if MapSet.member?(seen, name), do: throw(:wire_damaged)
+          seen = MapSet.put(seen, name)
+
           if Map.has_key?(f.key_ids, name) do
-            # A rejected occurrence is still a seen slot, but cannot replace it.
-            report =
-              if MapSet.member?(seen, name),
-                do: throw(:wire_damaged),
-                else: report
-
-            seen = MapSet.put(seen, name)
-
             case json_read_field(f.item, input, report) do
               {:skip, report} -> {acc, seen, report}
               {v, report} -> {Map.put(acc, name, v), seen, report}
@@ -5196,12 +5194,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 point = 0x10000 + (code - 0xD800) * 1024 + low - 0xDC00
                 json_string(tail, [<<point::utf8>> | acc])
               else
-                _ -> json_string(r, [<<0xFFFD::utf8>> | acc])
+                # A LONE SURROGATE SPELLS NO CODE POINT: the read refuses the
+                # text, never replaces it (strict-only, docs/SPEC-TABLES.md §16.3)
+                _ -> :error
               end
 
+            _ when code in 0xD800..0xDFFF ->
+              :error
+
             _ ->
-              point = if code in 0xD800..0xDFFF, do: 0xFFFD, else: code
-              json_string(r, [<<point::utf8>> | acc])
+              json_string(r, [<<code::utf8>> | acc])
           end
         else
           _ -> :error
