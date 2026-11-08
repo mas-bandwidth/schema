@@ -147,15 +147,17 @@ export function Load(wire) {
 export function FromJSON(text) {
   const report = new TableVariableReport();
   const root = CardFromJson(decodeUtf8(text), report);
-  normalizeEnums(root);
-  if (report.malformed) {
+  // the one strict read hands back no value for damage, a changed kind or a
+  // value out of range (docs/SPEC-TABLES.md §4)
+  if (root === null || report.damaged) {
     return { record: null, error: new CardError("cards: JSON is malformed", "malformed") };
   }
-  if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0) {
+  normalizeEnums(root);
+  if (report.unknown > 0 || report.mismatch > 0 || report.oor > 0) {
     return {
       record: null,
       error: new CardError(
-        `cards: JSON has loss events (unknown=${report.unknown} kindMismatch=${report.kindMismatch} clamped=${report.clamped}): refused, never truncated`,
+        `cards: JSON has loss events (unknown=${report.unknown} mismatch=${report.mismatch} out_of_range=${report.oor}): refused, never truncated`,
         "malformed",
       ),
     };
@@ -764,13 +766,13 @@ function lossErr(report) {
   if (report.retainLost > 0) {
     return new CardError(`cards: upgrade: ${report.retainLost} retained field(s) lost, refusing to replace`, "retain-lost");
   }
-  if (report.kindMismatch > 0) {
-    return new CardError(`cards: upgrade: ${report.kindMismatch} kind mismatch(es), refusing to replace`, "malformed");
+  if (report.mismatch > 0) {
+    return new CardError(`cards: upgrade: ${report.mismatch} kind mismatch(es), refusing to replace`, "malformed");
   }
-  if (report.clamped > 0) {
-    return new CardError(`cards: upgrade: ${report.clamped} clamped value(s), refusing to replace`, "malformed");
+  if (report.oor > 0) {
+    return new CardError(`cards: upgrade: ${report.oor} out-of-range value(s), refusing to replace`, "malformed");
   }
-  if (report.malformed) {
+  if (report.damaged) {
     return new CardError("cards: upgrade: malformed wire, refusing to replace", "malformed");
   }
   return null;
@@ -783,9 +785,9 @@ export function ReadStrict(wire) {
   const { record, report, error } = Load(wire);
   if (error !== null) return { record: null, report, error };
   if (report.unknown > 0) return { record: null, report, error: new CardError(`cards: strict: ${report.unknown} unknown field(s), unsupported data`, "unknown-present") };
-  if (report.kindMismatch > 0) return { record: null, report, error: new CardError(`cards: strict: ${report.kindMismatch} kind mismatch(es), unsupported data`, "malformed") };
-  if (report.clamped > 0) return { record: null, report, error: new CardError(`cards: strict: ${report.clamped} clamped value(s), unsupported data`, "malformed") };
-  if (report.malformed) return { record: null, report, error: new CardError("cards: strict: malformed wire, unsupported data", "malformed") };
+  if (report.mismatch > 0) return { record: null, report, error: new CardError(`cards: strict: ${report.mismatch} kind mismatch(es), unsupported data`, "malformed") };
+  if (report.oor > 0) return { record: null, report, error: new CardError(`cards: strict: ${report.oor} out-of-range value(s), unsupported data`, "malformed") };
+  if (report.damaged) return { record: null, report, error: new CardError("cards: strict: malformed wire, unsupported data", "malformed") };
   return { record, report, error: null };
 }
 
@@ -794,9 +796,9 @@ export function ReadStrict(wire) {
 // refuseLossy names the read events that make a record unsafe to hash or
 // rewrite (docs/SPEC-TABLES.md §4, §6.6).
 function refuseLossy(report) {
-  if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0 || report.retainLost > 0 || report.malformed) {
+  if (report.unknown > 0 || report.mismatch > 0 || report.oor > 0 || report.retainLost > 0 || report.damaged) {
     throw new CardError(
-      `cards: record has loss events (unknown=${report.unknown} kindMismatch=${report.kindMismatch} clamped=${report.clamped} retainLost=${report.retainLost} malformed=${report.malformed}): refused, never hashed or rewritten`,
+      `cards: record has loss events (unknown=${report.unknown} mismatch=${report.mismatch} out_of_range=${report.oor} retainLost=${report.retainLost} damaged=${report.damaged}): refused, never hashed or rewritten`,
       "unknown-present",
     );
   }

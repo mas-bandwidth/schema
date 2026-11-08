@@ -888,8 +888,15 @@ async function surfaceWire(lines, outDir) {
   for (const f of kind(lines, "instance")) {
     const codec = await wireCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
-    const v = codec.load(new Uint8Array(readFileSync(f[4])), codec.report());
-    if (v === null) { fail(f[1] + ": load refused " + f[4]); }
+    const r = codec.report();
+    const v = codec.load(new Uint8Array(readFileSync(f[4])), r);
+    if (v === null) {
+      // A BLOB TWO SLOTS NAME IS REFUSED BY THE ONE STRICT READ (§2.5, §6.5),
+      // by its own name, which is the wire refusal the harness holds a
+      // wire-refused instance to.
+      if (r.sharedBlob > 0) { writeFileSync(join(outDir, f[1] + ".absent"), "blob_shared"); continue; }
+      fail(f[1] + ": load refused " + f[4]);
+    }
     const saved = codec.save(v);
     if (saved === null) {
       // THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): a blob two slots
@@ -1088,8 +1095,30 @@ async function surfaceCookWrite(lines, outDir) {
     if (typeof loadValue !== "function" || typeof measure !== "function" || typeof from !== "function") {
       fail(f[1] + ": cook write surface missing from " + row[2]);
     }
-    const value = loadValue(new Uint8Array(readFileSync(inst[4])), new m.TableVariableReport());
-    if (value === null) { fail(f[1] + ": cook input did not load"); }
+    // THE RECIPE (test/conformance/harness/cookinput.go), derived as
+    // `cook-write <case> <input> <source> <alias>`: the value is built from
+    // the input text, or from the instance's wire when the input is `-`, and a
+    // named source and alias then name one blob from both fields. The cook
+    // packs a graph as it finds it, so a blob two slots name reaches it only
+    // this way: the wire that spells one is refused by the one strict read
+    // (§2.5, §6.5).
+    const input = f.length > 2 && f[2] !== "-" ? f[2] : "";
+    let value;
+    if (input !== "") {
+      const fromJson = m[inst[3] + "FromJson"];
+      if (typeof fromJson !== "function") { fail(f[1] + ": cook input text reader missing from " + row[2]); }
+      value = fromJson(readJsonTextFile(input), new m.TableVariableReport());
+    } else {
+      value = loadValue(new Uint8Array(readFileSync(inst[4])), new m.TableVariableReport());
+    }
+    if (value === null || value === undefined) { fail(f[1] + ": cook input did not load"); }
+    const source = f.length > 4 ? f[3] : "-", alias = f.length > 4 ? f[4] : "-";
+    if (source !== "-") {
+      if (value[source] === null || value[source] === undefined || value[alias] === null || value[alias] === undefined) {
+        fail(f[1] + ": shared blob recipe needs two populated blob fields: " + source + ":" + alias);
+      }
+      value[alias] = value[source];
+    }
     const size = measure(value);
     if (typeof size !== "number" || size < 1) { fail(f[1] + ": cook measure refused"); }
     for (const order of [1, 2]) {
