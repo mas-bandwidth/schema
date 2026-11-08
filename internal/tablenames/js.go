@@ -374,6 +374,7 @@ func init() {
 		Name{Name: "TableVariableScratch", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableSkip", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableStoredText", What: "the JavaScript variable-form runtime module"},
+		Name{Name: "TableVariableStrictMark", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableTextArray", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableTextCount", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableTextExtent", What: "the JavaScript variable-form runtime module"},
