@@ -624,9 +624,24 @@ func (g *gen) emitFixedScatter(st *ir.Struct) {
 func (g *gen) emitFixedScatterField(f *ir.Field, off int64) {
 	base := off
 	if f.Type.Optional {
-		g.pf("    value.%s_present = b[%d] != 0;\n", f.Name, base)
+		// A PRESENT BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
+		// §4.5), and the payload under an absent one is slack (§3.4): unspecified
+		// on read, never a refusal, so the scatter lands it at slack depth.
+		g.pf("    if b[%d] > 1 && report.slack == 0 {\n        report.damaged = true;\n    }\n", base)
+		g.pf("    value.%s_present = b[%d] == 1;\n", f.Name, base)
+		g.pf("    let %s_slack = u32::from(!value.%s_present);\n", f.Name, f.Name)
+		g.pf("    report.slack += %s_slack;\n", f.Name)
 		base += ir.TableFixedPresentBytes
 	}
+	g.emitFixedScatterValue(f, base)
+	if f.Type.Optional {
+		g.pf("    report.slack -= %s_slack;\n", f.Name)
+	}
+}
+
+// emitFixedScatterValue lands one field's value (its payload, for an optional)
+// from the image at base.
+func (g *gen) emitFixedScatterValue(f *ir.Field, base int64) {
 	switch {
 	case f.KeyEnum != "":
 		g.emitFixedScatterSlots(f, base, f.KeyEnumRef.Max)
@@ -634,7 +649,7 @@ func (g *gen) emitFixedScatterField(f *ir.Field, off int64) {
 		g.emitFixedScatterSlots(f, base, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
 		g.emitFixedScatterCount(f.Name+"_count", base, f.ArrayBound)
-		g.emitFixedScatterSlots(f, base+ir.TableFixedCountBytes, f.ArrayBound)
+		g.emitFixedScatterCountedSlots(f, base+ir.TableFixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
 		g.emitFixedScatterCount(f.Name+"_length", base, f.Type.Size)
 		g.pf("    value.%s = [0u8; %d];\n", f.Name, f.Type.Size+1)
@@ -667,6 +682,22 @@ func (g *gen) emitFixedScatterCount(member string, at, bound int64) {
 	g.pf("        let held = raw.clamp(0, %d);\n", bound)
 	g.pf("        if held != raw {\n            report.held += 1;\n        }\n")
 	g.pf("        value.%s = held;\n", member)
+	g.pf("    }\n")
+}
+
+// emitFixedScatterCountedSlots lands a counted array's slots: the ones past
+// the live count are slack (§3.4), landed at slack depth so no content rule
+// fires on them.
+func (g *gen) emitFixedScatterCountedSlots(f *ir.Field, base, count int64) {
+	elem := ir.TableFixedElementBytes(f)
+	if count == 0 {
+		return
+	}
+	g.pf("    for i in 0..%d {\n", count)
+	g.pf("        let slack = u32::from(i as i32 >= value.%s_count);\n", f.Name)
+	g.pf("        report.slack += slack;\n")
+	g.emitFixedScatterElement(f, fixedSlotOffset(base, elem), fmt.Sprintf("value.%s[i]", f.Name), 8)
+	g.pf("        report.slack -= slack;\n")
 	g.pf("    }\n")
 }
 
@@ -705,7 +736,10 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		g.pf("%s", set(ind+"    ", "b[at] != 0"))
+		// A BOOL BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
+		// §4.5), on live bytes only (§3.4's slack rule).
+		g.pf("%s    if b[at] > 1 && report.slack == 0 {\n%s        report.damaged = true;\n%s    }\n", ind, ind, ind)
+		g.pf("%s", set(ind+"    ", "b[at] == 1"))
 	case ir.TFloat32:
 		g.pf("%s", set(ind+"    ", "f32::from_le_bytes(b[at..at + 4].try_into().expect(\"four bytes\"))"))
 	case ir.TFloat64:
@@ -968,8 +1002,11 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%s    if held != raw {\n%s        report.held += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s    arm.value_count = held;\n%s}\n", ind, ind)
 		if f.ArrayBound > 0 {
+			// the slots past the live count are slack (§3.4)
 			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+			g.pf("%s    let slack = u32::from(i as i32 >= arm.value_count);\n%s    report.slack += slack;\n", ind, ind)
 			g.emitFixedScatterElement(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), "arm.value[i]", indent+4)
+			g.pf("%s    report.slack -= slack;\n", ind)
 			g.pf("%s}\n", ind)
 		}
 	case f.Type.Kind == ir.TString:
@@ -1449,6 +1486,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        }\n")
 	g.pf("        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);\n")
 	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))
+	g.pf("        // DAMAGE DISCARDS THE WHOLE LOAD: a bool or present byte other than\n")
+	g.pf("        // 0 or 1 on live data (FIXED-FORM-ALGORITHM §4.5); the caller resets.\n")
+	g.pf("        if report.damaged {\n            return None;\n        }\n")
 	if finite {
 		g.pf("        // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs\n")
 		g.pf("        // FIRST, before the bounds pass, over the storage the run just wrote,\n")
