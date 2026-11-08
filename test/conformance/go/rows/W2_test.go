@@ -77,13 +77,13 @@ func TestRowW2(t *testing.T) {
 	plan := make([]tblp3.TableFixedEntry, 256)
 	var r tblp3.TableReport
 	nn := tblp3.ChainFixedLoad(back, buf, plan, &r)
-	w2Check(nn == 1 && r.Verdict == tblp3.TableOpenOk && !r.Malformed,
+	w2Check(nn == 1 && r.Verdict == tblp3.TableOpenOk && !r.Refused(),
 		"absent optional: the record reads")
 	w2Check(!back[0].LinkPresent && back[0].Link.Value == 0 &&
 		back[0].Link.TagLength == 0,
 		"absent optional: the flag reads false and the payload reads the wire's zeros")
-	w2Check(r.Clamped == 0 && r.Unknown == 0 && r.KindMismatch == 0 &&
-		r.Widened == 0 && r.Duplicate == 0,
+	w2Check(r.Unknown == 0 &&
+		r.Widened == 0,
 		"absent optional: a clean read moves no counter")
 
 	// ---- THE DISCRIMINATING HALF: the SAME payload PRESENT reaches the wire,

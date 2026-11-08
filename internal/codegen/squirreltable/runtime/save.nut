@@ -290,7 +290,7 @@ local edgesOf;
 local shapeEdges;
 local armEdges;
 
-shapeEdges = function(T, d, val, out, holder = null, key = null) {
+shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) {
   if (d.shape == "ptr") {
     if (val != null) out.append({ kind = "t", d = tableDesc(T, d.table), v = val });
     return;
@@ -301,11 +301,11 @@ shapeEdges = function(T, d, val, out, holder = null, key = null) {
     return;
   }
   if (d.shape == "tab") {
-    edgesOf(T, tableDesc(T, d.table), val, out);
+    edgesOf(T, tableDesc(T, d.table), val, out, every);
     return;
   }
   if (d.shape == "union") {
-    armEdges(T, unionDesc(T, d.table), val, out);
+    armEdges(T, unionDesc(T, d.table), val, out, every);
     return;
   }
   if (d.shape == "map") {
@@ -315,8 +315,8 @@ shapeEdges = function(T, d, val, out, holder = null, key = null) {
     local vd = d.mapvalue;
     foreach (i in mapWriteOrder(val, kd.member)) {
       local ent = val[i];
-      shapeEdges(T, kd, ent[kd.member], out, ent, kd.member);
-      shapeEdges(T, vd, ent[vd.member], out, ent, vd.member);
+      shapeEdges(T, kd, ent[kd.member], out, ent, kd.member, every);
+      shapeEdges(T, vd, ent[vd.member], out, ent, vd.member, every);
     }
     return;
   }
@@ -335,26 +335,28 @@ shapeEdges = function(T, d, val, out, holder = null, key = null) {
       }
     } else if (e.shape == "tab") {
       local td = tableDesc(T, e.table);
-      for (local i = 0; i < n; i++) edgesOf(T, td, val[i], out);
+      for (local i = 0; i < n; i++) edgesOf(T, td, val[i], out, every);
     } else if (e.shape == "union") {
       local u = unionDesc(T, e.table);
-      for (local i = 0; i < n; i++) armEdges(T, u, val[i], out);
+      for (local i = 0; i < n; i++) armEdges(T, u, val[i], out, every);
     }
   }
 };
 
-edgesOf = function(T, c, v, out) {
+// With every set, a field under a FALSE guard is walked too: the load stored
+// it, and the cycle check (_M.cyclic) counts every slot the load stored.
+edgesOf = function(T, c, v, out, every = false) {
   foreach (fd in c.fields) {
-    if (!guardHolds(fd, v)) continue;
+    if (!every && !guardHolds(fd, v)) continue;
     if (fd.optional && !v[fd.member + "Present"]) continue;
     local val = v[fd.member];
     if (fd.shape == "tab" && val == null) continue;
     if (fd.shape == "arr" && val == null) continue;
-    shapeEdges(T, fd, val, out, v, fd.member);
+    shapeEdges(T, fd, val, out, v, fd.member, every);
   }
 };
 
-armEdges = function(T, u, inst, out) {
+armEdges = function(T, u, inst, out, every = false) {
   if (inst == null) return;
   local t = inst.Type;
   if (t == null || t == 0) return;
@@ -363,7 +365,7 @@ armEdges = function(T, u, inst, out) {
   if (arm == null) return;
   local p = arm.payload;
   if (p == null) return;
-  shapeEdges(T, p, inst[p.member], out, inst, p.member);
+  shapeEdges(T, p, inst[p.member], out, inst, p.member, every);
 };
 
 local number = function(T, c, root, cook = false) {
@@ -810,12 +812,161 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
   return writePrim(w, d, val, ids);
 };
 
+local putFixedU = function(b, off, w, v) {
+  for (local i = 0; i < w; i++) {
+    b[off + i] = v & 0xff;
+    v = v >>> 8;
+  }
+};
+
+local fixedWriteBody, fixedWriteField, fixedWritePayload, fixedWriteElement;
+
+fixedWriteBody = function(T, c, v, out, off) {
+  local fresh = null;
+  foreach (fd in c.fields) {
+    local src = v;
+    if (fd.deprecated) {
+      if (fresh == null) fresh = c.make();
+      src = fresh;
+    }
+    if (!fixedWriteField(T, c.name, fd, src, out, off)) return false;
+    off += fd.fb;
+  }
+  return true;
+};
+
+fixedWriteField = function(T, owner, fd, v, out, off) {
+  if (fd.optional) {
+    if (!v[fd.member + "Present"]) return true;
+    out[off] = 1;
+    return fixedWritePayload(T, owner, fd.name, fd, v[fd.member], out, off + 1);
+  }
+  return fixedWritePayload(T, owner, fd.name, fd, v[fd.member], out, off);
+};
+
+fixedWritePayload = function(T, owner, fname, fd, val, out, off) {
+  if (fd.shape == "arr") {
+    if (fd.counted) {
+      local n = val.len();
+      if (n < 0 || n > fd.bound) return false;
+      putFixedU(out, off, 4, n);
+      for (local i = 0; i < n; i++) {
+        if (!fixedWriteElement(T, owner, fname, fd.elem, val[i], out, off + 4 + i * fd.eb)) return false;
+      }
+      return true;
+    }
+    for (local i = 0; i < fd.fcount; i++) {
+      if (!fixedWriteElement(T, owner, fname, fd.elem, val[i], out, off + i * fd.eb)) return false;
+    }
+    return true;
+  }
+  if (fd.shape == "str" || fd.shape == "bytes") {
+    if (val.len() > fd.bound) return false;
+    putFixedU(out, off, 4, val.len());
+    for (local i = 0; i < val.len(); i++) out[off + 4 + i] = val[i] & 0xff;
+    return true;
+  }
+  if (fd.shape == "wstr") {
+    if (!wideFits(val, fd.bound)) return false;
+    putFixedU(out, off, 4, val.len());
+    for (local i = 0; i < val.len(); i++) {
+      putFixedU(out, off + 4 + 2 * i, 2, val[i]);
+    }
+    return true;
+  }
+  return fixedWriteElement(T, owner, fname, fd, val, out, off);
+};
+
+fixedWriteElement = function(T, owner, fname, e, val, out, off) {
+  if (e.shape == "tab") {
+    return fixedWriteBody(T, tableDesc(T, e.table), val, out, off);
+  }
+  if (e.shape == "union") {
+    local ud = unionDesc(T, e.table);
+    local t = (val == null || val.Type == null) ? 0 : val.Type;
+    if (t < 0 || t > ud.arms.len()) return false;
+    putFixedU(out, off, ud.tagw, t);
+    if (t == 0) return true;
+    local arm = ud.arms[t - 1];
+    if (arm.payload == null) return true;
+    return fixedWritePayload(T, ud.name, arm.name, arm.payload, val[arm.payload.member], out, off + ud.tagw);
+  }
+  if (e.shape == "enum") {
+    if (val == null) {
+      putFixedU(out, off, e.sw, 0);
+      return true;
+    }
+    for (local i = 0; i < e.variants.len(); i++) {
+      local pair = e.variants[i];
+      if (pair[0] == val) {
+        if (pair.len() > 2 && pair[2]) {
+          _M.SaveReason <- "invalid_value: " + owner + "." + fname + " names the deprecated variant " + val;
+          return false;
+        }
+        putFixedU(out, off, e.sw, i + 1);
+        return true;
+      }
+    }
+    return false;
+  }
+  if (e.shape == "bool") {
+    if (val) out[off] = 1;
+    return true;
+  }
+  if (e.shape == "float") {
+    if (!floatFinite(e, val)) return refuseNonFinite(e);
+    if (e.f32) putFixedU(out, off, 4, narrowF32(val.tofloat()));
+    else putFixedU(out, off, 8, castf2i(val.tofloat()));
+    return true;
+  }
+  if (e.shape == "int" || e.shape == "flags") {
+    if (e.sw == 16) {
+      putFixedU(out, off, 8, val[0]);
+      putFixedU(out, off + 8, 8, val[1]);
+    } else {
+      putFixedU(out, off, e.sw, val);
+    }
+    return true;
+  }
+  return false;
+};
+
+local saveFixed = function(T, c, value) {
+  if (!c.femit) {
+    _M.SaveReason <- "layout_unsupported";
+    return null;
+  }
+  local L = c.layout.len();
+  local total = 20 + L + 8 + c.fsize;
+  local out = blob(total);
+  out[0] = 3;
+  putFixedU(out, 8, 8, c.lhash);
+  putFixedU(out, 16, 4, L);
+  for (local i = 0; i < L; i++) out[20 + i] = c.layout[i] & 0xff;
+  local rec = 20 + L;
+  putFixedU(out, rec, 8, c.lhash);
+  if (!fixedWriteBody(T, c, value, out, rec + 8)) return null;
+  if (("integrity" in c) && c.integrity != null && c.integrity != "") {
+    local n = out.len();
+    local ext = blob(n + 4);
+    for (local i = 0; i < n; i++) ext[i] = out[i];
+    local chk = crc32c(out, n);
+    ext[n] = chk & 0xff;
+    ext[n + 1] = (chk >>> 8) & 0xff;
+    ext[n + 2] = (chk >>> 16) & 0xff;
+    ext[n + 3] = (chk >>> 24) & 0xff;
+    out = ext;
+  }
+  return out;
+};
+
 // THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
 // the node table LAST in the root body under the reserved id at kind 12, the
 // terminator, then the id table and its count.
 _M.save <- function(T, rootName, value, retain = null) {
   _M.SaveReason <- null;
   local c = tableDesc(T, rootName);
+  if (c.fixed) return saveFixed(T, c, value);
   local numbered = number(T, c, value);
   if (numbered == null) return null;
   local nodes = numbered.nodes;
@@ -882,6 +1033,51 @@ _M.measure <- function(T, rootName, value, retain = null) {
   local b = _M.save(T, rootName, value, retain);
   if (b == null) return -1;
   return b.len();
+};
+
+// cyclic reports whether a LOADED graph holds a cycle (docs/SPEC-TABLES.md
+// §3.1, §4; internal/tablewire decodenodes.go cyclic). No writer produces one,
+// so a cyclic wire is damage. The vertices are the root and every record the
+// load placed, reached from the root or not, so a cycle among orphans is still
+// a cycle; verts lists the records as { d, v }. The edges are every pointer
+// slot a vertex's by-value closure STORES, a slot under a false guard
+// included. Each vertex is entered once: a pointer to an OPEN vertex is a
+// cycle, and a pointer to a CLOSED one is a legal share, so the walk is linear
+// in vertices plus slots, and it holds its own stack.
+_M.cyclic <- function(T, root, value, verts) {
+  local all = [{ d = tableDesc(T, root), v = value }];
+  local at = {};
+  at[value] <- 0;
+  foreach (x in verts) {
+    if (x.v in at) continue;
+    at[x.v] <- all.len();
+    all.append(x);
+  }
+  local mark = array(all.len(), 0); // 0 unvisited, 1 open, 2 closed
+  local outOf = function(k) {
+    local out = [];
+    edgesOf(T, all[k].d, all[k].v, out, true);
+    return out;
+  };
+  for (local start = 0; start < all.len(); start++) {
+    if (mark[start] != 0) continue;
+    mark[start] = 1;
+    local stack = [{ k = start, edges = outOf(start), i = 0 }];
+    while (stack.len() > 0) {
+      local top = stack[stack.len() - 1];
+      if (top.i >= top.edges.len()) { mark[top.k] = 2; stack.pop(); continue; }
+      local e = top.edges[top.i];
+      top.i = top.i + 1;
+      if (e.kind != "t" || !(e.v in at)) continue;
+      local t = at[e.v];
+      if (mark[t] == 1) return true;
+      if (mark[t] == 0) {
+        mark[t] = 1;
+        stack.append({ k = t, edges = outOf(t), i = 0 });
+      }
+    }
+  }
+  return false;
 };
 
 // Shared canonical traversal for the cooked writer. The public wire surface

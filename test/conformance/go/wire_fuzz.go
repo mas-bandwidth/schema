@@ -131,7 +131,7 @@ func wireFuzz(builder bool) error {
 				saved = c.save(value, buffer)
 			}
 		}
-		for _, v := range []any{loaded, rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, rep.refused, regionBytes, retained, lost, saved} {
+		for _, v := range []any{loaded, rep.unknown, int32(0), rep.widened, int32(0), int32(0), false, rep.refused, regionBytes, retained, lost, saved} {
 			if err := write(v); err != nil {
 				return err
 			}

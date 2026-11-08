@@ -39,7 +39,7 @@ func wideColumns(f *ir.Field) string {
 		if f.Required {
 			fmt.Fprintf(&b, ", RequiredValidWide = delegate (UInt128 raw) { %s v = unchecked((%s)raw); return v >= %s && v <= %s; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(hi, f.Type.Signed))
 		}
-		fmt.Fprintf(&b, ", ClampWide = delegate (UInt128 raw, TableReport r) { %s v = unchecked((%s)raw); if (v < %s) { r.Clamped++; return %s; } if (v > %s) { r.Clamped++; return %s; } return raw; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(lo, false), wideLiteral(hi, f.Type.Signed), wideLiteral(hi, false))
+		fmt.Fprintf(&b, ", RangeWide = delegate (UInt128 raw, TableReport r) { %s v = unchecked((%s)raw); if (v < %s || v > %s) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } return raw; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(hi, f.Type.Signed))
 	}
 	return b.String()
 }

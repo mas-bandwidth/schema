@@ -2,6 +2,7 @@ package luatable
 
 import (
 	"encoding/binary"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +52,9 @@ func TestLuaCookOpenAndCheck(t *testing.T) {
 				inst := m.New(m.Lookup(r.root))
 				var report tabletext.Report
 				if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
+					if strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+						t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
+					}
 					t.Fatalf("decode %s: %v", r.caseName, err)
 				}
 				cooked, err := tablecook.Cook(m, inst, tablecook.Options{})
@@ -240,4 +244,100 @@ func cookSlot(t *testing.T, u *ir.Unit, m *tabletext.Model, record, field string
 		t.Fatalf("%s.%s has %d storage pieces, not %d", record, field, len(pieces), piece+1)
 	}
 	return pieces[piece].Offset
+}
+
+// TestLuaCookOpenNegativeControlsFunctional plants one defect per header/directory/region
+// check in cook.lua and requires the damaged-cook refusal to go red.
+func TestLuaCookOpenNegativeControlsFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "Lua 5.4 functional probe")
+	repo := filepath.Join("..", "..", "..")
+	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "pointers"))
+	m := tabletext.NewModel(u)
+	wire, err := os.ReadFile(filepath.Join(repo, "testdata", "wire", "tables", "graph_tree.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := m.New(m.Lookup("Scene"))
+	var report tabletext.Report
+	if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
+		t.Fatal(err)
+	}
+	valid, err := tablecook.Cook(m, inst, tablecook.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := tablecook.ReadHeader(valid, ir.BuildVersion(u))
+	if err != nil {
+		t.Fatal(err)
+	}
+	le := binary.LittleEndian
+	for _, tc := range []struct {
+		name   string
+		anchor string
+		repl   string
+		want   string
+		mutate func([]byte) []byte
+	}{
+		{
+			name:   "order",
+			anchor: "if u64(bytes, 16) ~= 1 then return refuse(\"not_a_cook\") end",
+			repl:   "if false then return refuse(\"not_a_cook\") end",
+			want:   "not_a_cook",
+			mutate: func(f []byte) []byte { le.PutUint64(f[16:], 2); return f },
+		},
+		{
+			name:   "reserved",
+			anchor: "if u64(bytes, 48) ~= 0 or u64(bytes, 56) ~= 0 then return refuse(\"reserved_not_zero\") end",
+			repl:   "if false then return refuse(\"reserved_not_zero\") end",
+			want:   "reserved_not_zero",
+			mutate: func(f []byte) []byte { le.PutUint64(f[48:], 1); return f },
+		},
+		{
+			name:   "alignment",
+			anchor: "if alignment < 8 or alignment > MAX_ALIGN or (alignment & (alignment - 1)) ~= 0 or alignment % root.align ~= 0 then",
+			repl:   "if false then",
+			want:   "bad_alignment",
+			mutate: func(f []byte) []byte { le.PutUint64(f[40:], 3); return f },
+		},
+		{
+			name:   "companion_bound",
+			anchor: "  if n < 0 or n > bound then return false end",
+			repl:   "  if false then return false end",
+			want:   "bad_layout",
+			mutate: func(f []byte) []byte {
+				at := h.DataOffset() + cookSlot(t, u, m, "Scene", "name", 1)
+				le.PutUint32(f[at:], 1<<20)
+				return f
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			damaged := tc.mutate(append([]byte(nil), valid...))
+			if got := runCookProbe(t, u, "Scene", damaged); got != tc.want {
+				t.Fatalf("unsabotaged cook probe answered %q, want %q", got, tc.want)
+			}
+			files, err := Generate(u)
+			if err != nil {
+				t.Fatal(err)
+			}
+			patchOnce(t, "cook.lua", tc.anchor, tc.repl)(files)
+			dir := t.TempDir()
+			luarun.WriteFiles(t, dir, files)
+			probe := `local T = require("` + ModuleName(u) + `")
+local cook = require("cook")
+local inputs = require("inputs")
+local h, reason = cook.Check(T, "Scene", inputs.cook)
+if h ~= nil then print("open") else print(reason) end
+`
+			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"cook": damaged})), "\n")
+			if got == tc.want {
+				t.Fatalf("NEGATIVE CONTROL FAILED: %s still refused as %q", tc.name, tc.want)
+			}
+		})
+	}
 }

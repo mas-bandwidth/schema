@@ -7,10 +7,10 @@
 // includes this file, and lists its roots with the macros below, exporting
 // the same hc_bindings_<unit> name the C units export.
 //
-// Every read is the TOLERANT one where the port has one, as the engine's
-// verdict is: a named refusal is its reason, a read that did not land or
-// reported damage is `damaged`, and anything else is accepted. The message
-// form has only the plain LoadMessages, which is what it calls.
+// Every read is the plain (strict) one, as the engine's verdict is: a
+// named refusal is its reason, a read that did not land or reported
+// damage is `damaged`, and anything else is accepted. The message form
+// has only the plain LoadMessages, which is what it calls.
 
 #ifndef SCHEMA_CPP_HOSTILE_HPP
 #define SCHEMA_CPP_HOSTILE_HPP
@@ -47,7 +47,7 @@
         HC_CPP_REASON( allocation_failed ) \
         HC_CPP_REASON( wire_damaged ) \
         HC_CPP_REASON( malformed ) \
-        HC_CPP_REASON( clamped ) \
+        HC_CPP_REASON( out_of_range ) \
         HC_CPP_REASON( kind_mismatch ) \
         HC_CPP_REASON( integrity_mismatch ) \
         HC_CPP_REASON( blob_shared ) \
@@ -60,10 +60,15 @@
     } \
     static bool hc_refused( const HC_NS::TableReport & report, bool landed ) \
     { \
-        hc_trace( report.refused, report.malformed, (int) (HC_NS::TableRefuseReason) report.reason, landed ); \
-        if ( report.refused ) { hc_refuse( hc_reason( report.reason ) ); return true; } \
-        if ( !landed || report.malformed ) { hc_refuse( "damaged" ); return true; } \
-        return false; \
+        hc_trace( report.refused, report.damaged, (int) report.refuse_reason, landed ); \
+        if ( landed && !report.refused && !report.damaged ) { return false; } \
+        if ( report.refused ) \
+        { \
+            const HC_NS::TableRefuseReason reason = ( report.refuse_reason == HC_NS::ok || report.refuse_reason == HC_NS::unknown_form ) ? (HC_NS::TableRefuseReason) report.reason : report.refuse_reason; \
+            if ( reason == HC_NS::newer_form || reason == HC_NS::message_form_as_file || reason == HC_NS::no_vocabulary || reason == HC_NS::second_announcement || reason == HC_NS::vocabulary_too_large || reason == HC_NS::batch_too_large || reason == HC_NS::count_over_extent_cap || reason == HC_NS::non_finite_float ) { hc_refuse( hc_reason( reason ) ); return true; } \
+        } \
+        hc_refuse( "damaged" ); \
+        return true; \
     }
 
 // the text writer's answer, digested by the driver
@@ -89,14 +94,21 @@
     { \
         std::unique_ptr<HC_NS::TYPE> value( new HC_NS::TYPE() ); \
         HC_NS::TableReport report; \
-        const bool ok = HC_NS::TYPE##LoadTolerant( *value, data, size, &report ); \
+        if ( size > 0 && data[0] == HC_NS::kTableFixedForm ) \
+        { \
+            std::vector<HC_NS::TableFixedEntry> plan( 1024 ); \
+            const int64_t n = HC_NS::TYPE##FixedLoad( value.get(), 1, data, size, plan.data(), (int32_t) plan.size(), NULL, &report ); \
+            if ( !hc_refused( report, n == 1 ) ) { hc_accepted_##TYPE( *value ); } \
+            return; \
+        } \
+        const bool ok = HC_NS::TYPE##Load( *value, data, size, &report ); \
         if ( !hc_refused( report, ok ) ) { hc_accepted_##TYPE( *value ); } \
     } \
     static void hc_text_##TYPE( const uint8_t * data, int64_t size ) \
     { \
         std::unique_ptr<HC_NS::TYPE> value( new HC_NS::TYPE() ); \
         HC_NS::TableReport report; \
-        const bool ok = HC_NS::TYPE##FromJsonTolerant( *value, (const char *) data, size, &report ); \
+        const bool ok = HC_NS::TYPE##FromJson( *value, (const char *) data, size, &report ); \
         if ( !hc_refused( report, ok ) ) { hc_accepted_##TYPE( *value ); } \
     }
 
@@ -123,7 +135,7 @@
         const int64_t extent = HC_NS::TYPE##LoadMeasure( data, size ); \
         std::vector<uint8_t> region( (size_t) ( extent > 0 ? extent : 1 ), 0 ); \
         HC_NS::TableReport report; \
-        const HC_NS::TYPE * root = HC_NS::TYPE##LoadTolerant( region.data(), extent, data, size, &report ); \
+        const HC_NS::TYPE * root = HC_NS::TYPE##Load( region.data(), extent, data, size, &report ); \
         if ( !hc_refused( report, root != NULL ) ) { hc_accepted_##TYPE( root ); } \
     } \
     static void hc_wire_retain_##TYPE( const uint8_t * data, int64_t size ) \
@@ -154,7 +166,7 @@
     { \
         HC_NS::TYPE##Builder builder; \
         HC_NS::TableReport report; \
-        const bool ok = HC_NS::TYPE##FromJsonTolerant( builder, (const char *) data, size, &report ); \
+        const bool ok = HC_NS::TYPE##FromJson( builder, (const char *) data, size, &report ); \
         if ( hc_refused( report, ok ) ) { return; } \
         if ( !builder.Lock() ) { hc_error( "Lock refused the decoded value" ); return; } \
         hc_accepted_##TYPE( builder.AsConst() ); \

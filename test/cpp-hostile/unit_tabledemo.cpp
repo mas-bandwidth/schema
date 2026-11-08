@@ -4,6 +4,7 @@
 #include "NestedTable.h"
 #include "KeyedTable.h"
 #include "PackTable.h"
+#include "GuardedTable.h"
 #define HC_NS tabledemo
 #include "hostile.hpp"
 
@@ -12,6 +13,7 @@ HC_FIXED( RootConfig )
 HC_FIXED( PackConfig )
 HC_FIXED( GlobalSettings )
 HC_FIXED( ShipEntry )
+HC_VAR( Patrol )
 HC_ANNOUNCE()
 
 extern "C" const hc_binding_t * hc_bindings_tabledemo( int * count )
@@ -23,6 +25,7 @@ extern "C" const hc_binding_t * hc_bindings_tabledemo( int * count )
         { HC_FIXED_ROW( "tables/examples", "PackConfig", PackConfig ); row.announce = hc_announce; rows.push_back( row ); }
         { HC_FIXED_ROW( "tables/examples", "GlobalSettings", GlobalSettings ); rows.push_back( row ); }
         { HC_FIXED_ROW( "tables/examples", "ShipEntry", ShipEntry ); rows.push_back( row ); }
+        { HC_VAR_ROW( "tables/examples/Guarded.schema", "Patrol", Patrol ); rows.push_back( row ); }
     }
     *count = (int) rows.size();
     return rows.data();

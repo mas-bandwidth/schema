@@ -336,11 +336,11 @@ fixed table T
 	}
 }
 
-// t03LoadBody is the emitted TOLERANT load's body, the one that walks the
-// plan (the plain FixedLoad is the strict wrapper around it, SPEC-TABLES
+// t03LoadBody is the emitted fixed load walk's body, the one that walks the
+// plan (the plain FixedLoad is the strict entry around it, SPEC-TABLES
 // §6.5), or the whole header.
 func t03LoadBody(hdr string) string {
-	i := strings.Index(hdr, "FixedLoadTolerant(")
+	i := strings.Index(hdr, "FixedLoadWalk(")
 	if i < 0 {
 		return hdr
 	}
@@ -380,7 +380,7 @@ fixed table T
 // — the four forward-read clamps are retired; each is TableFixedReason::layout_unknown now. An
 // unknown hash refuses TableFixedReason::layout_unknown before any record. THE COUNT CLAMP ACROSS
 // BOUNDS is the clause the first half proves: the SAME forged count past the
-// reader's bound is clamped on the reader's OWN hash (the hostile, known-layout
+// reader's bound is out_of_range on the reader's OWN hash (the hostile, known-layout
 // half §5.6 keeps) and lands TableFixedReason::layout_unknown under an UNKNOWN hash (the retiree),
 // with no counter moved and nothing decoded. The range clamp across versions is
 // the same refusal: the load's only bounds pass runs over storage after a plan,
@@ -453,7 +453,7 @@ int main()
     TReset( back[ 0 ] );
     memset( &r, 0, sizeof( r ) );
     n = TFixedLoad( back, 1, hostile, written, plan, 512, NULL, &r );
-    printf( "hostile n=%lld clamped=%d cob=%d\n", (long long) n, r.clamped, (int) ( r.reason == count_over_bound ) );
+    printf( "hostile n=%lld refused=%d cob=%d\n", (long long) n, r.refused, (int) ( r.reason == count_over_bound ) );
 
     /* THE CROSS-VERSION HALF IS RETIRED: the SAME forged count under an UNKNOWN
        hash — a newer writer's file — lands TableFixedReason::layout_unknown before any record. No
@@ -465,15 +465,15 @@ int main()
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
     n = TFixedLoad( back, 1, newer, written, plan, 512, NULL, &r );
-    printf( "newer n=%lld refused=%d newer=%d widened=%d clamped=%d poisoned=%d\n",
+    printf( "newer n=%lld refused=%d newer=%d widened=%d out_of_range=%d poisoned=%d\n",
             (long long) n, (int) r.refused, (int) ( r.reason == TableFixedReason::layout_unknown ),
-            r.widened, r.clamped, (int) ( ( (const uint8_t *) &back[ 0 ] )[ 0 ] == 0x5A ) );
+            r.widened, r.refused, (int) ( ( (const uint8_t *) &back[ 0 ] )[ 0 ] == 0x5A ) );
     return 0;
 }
 `)
 	for _, want := range []string{
-		"hostile n=-1 clamped=0 cob=1",
-		"newer n=-1 refused=1 newer=1 widened=0 clamped=0 poisoned=1",
+		"hostile n=-1 refused=1 cob=1",
+		"newer n=-1 refused=1 newer=1 widened=0 out_of_range=1 poisoned=1",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("R15: the probe output %q does not carry %q", strings.TrimSpace(out), want)
@@ -510,15 +510,15 @@ int main()
     static TableFixedEntry plan[ 64 ];
     TableReport r; memset( &r, 0, sizeof( r ) );
     const int64_t k = BoundsFixedLoad( &back, 1, buf, n, plan, 64, NULL, &r );
-    printf( "n=%lld k=%lld x=%lld y=%u clamped=%d widened=%d\n",
-            (long long) n, (long long) k, (long long) back.x, back.y, r.clamped, r.widened );
+    printf( "n=%lld k=%lld x=%lld y=%u out_of_range=%d widened=%d\n",
+            (long long) n, (long long) k, (long long) back.x, back.y, r.refused, r.widened );
     return 0;
 }
 `)
 	if !strings.Contains(out, "x=-2147483648") || !strings.Contains(out, "y=4294967295") {
 		t.Errorf("E3/other-required-widens: the boundaries did not round trip: %s", out)
 	}
-	if !strings.Contains(out, "clamped=0") || !strings.Contains(out, "widened=0") {
+	if !strings.Contains(out, "out_of_range=0") || !strings.Contains(out, "widened=0") {
 		t.Errorf("E3/other-required-widens: a clean round trip moved a counter: %s", out)
 	}
 }
@@ -611,7 +611,7 @@ fixed table T
 	t03Has(t, runtime, "case kTableFixedOrdinal:", "R20 an older enum's ordinal is remapped")
 	t03Has(t, runtime, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }", "R20 the ordinal is resolved through the plan's table")
 	t03Has(t, runtime, "map[1 + j] = landed;", "R20 the older enum's ordinals are the reader's")
-	t03Has(t, hdr, "TableFixedClampKnownRanges(", "R20 the writer's known ranges are clamped after the walk")
+	t03Has(t, hdr, "TableFixedClampKnownRanges(", "R20 the writer's known ranges are out_of_range after the walk")
 }
 
 // ---- cpp/R21 ---------------------------------------------------------------
@@ -650,7 +650,7 @@ fixed table T
 // clamping to the writer's bounds". The band edge is the u16 top 65535, the
 // value just below 2^16 = 65536: widened into a u32 it is ZERO-extended to
 // 65535, never sign-extended to 0xFFFFFFFF, and `widened` fires once with
-// `clamped` at zero because 65535 is inside the writer's own uint16 set. The
+// `out_of_range` at zero because 65535 is inside the writer's own uint16 set. The
 // bounds pass clamps a forged value to the WRITER's declared bound and never
 // the reader's wider own (bill §12.5): the same 150 is 100 on the writer's
 // 0..100 with one clamp and rides whole at 150 on the reader's 0..200.
@@ -660,7 +660,7 @@ fixed table T
 // through the leg's own TableFixedRun; the bounds pass is the leg's own
 // TableFixedClampKnownRanges, the same function the emitted BandFixedLoad calls
 // with the WRITER's ranges. The negative control is the reader's wider range,
-// so a pass that clamped to the reader's bound would be seen.
+// so a pass that out_of_range to the reader's bound would be seen.
 func t03R29(t *testing.T) {
 	u := t03Unit(t, `package probe
 
@@ -731,22 +731,22 @@ int main()
     memcpy( &held_w, writer, 4 );
     memcpy( &held_r, reader, 4 );
 
-    printf( "v=%u; widened=%d; widen_clamped=%d; writer=%u; writer_clamped=%d; reader=%u; reader_clamped=%d\n",
-            out_v, r.widened, r.clamped, held_w, rw.clamped, held_r, rr.clamped );
+    printf( "v=%u; widened=%d; widen_out_of_range=%d; writer=%u; writer_out_of_range=%d; reader=%u; reader_out_of_range=%d\n",
+            out_v, r.widened, r.refused, held_w, rw.refused, held_r, rr.refused );
     return 0;
 }
 `)
 	// THE LANDED VALUE AND THE TWO COUNTERS: 65535 zero-extended across the
-	// band edge, one widened, nothing clamped; then the writer's bound and its
+	// band edge, one widened, nothing out_of_range; then the writer's bound and its
 	// one clamp, against the reader's wider range landing 150 whole.
 	for _, want := range []string{
 		"v=65535",
 		"widened=1",
-		"widen_clamped=0",
+		"widen_out_of_range=0",
 		"writer=100",
-		"writer_clamped=1",
+		"writer_out_of_range=1",
 		"reader=150",
-		"reader_clamped=0",
+		"reader_out_of_range=0",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("R29: the probe output %q does not carry %q", strings.TrimSpace(out), want)

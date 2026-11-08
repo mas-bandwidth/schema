@@ -55,11 +55,21 @@ $(RUST_HOSTILE_BUILD)/.stamp: bin/schema make/schema-rust-runs-hostile-corpus.mk
 	@for schema in $(RUST_HOSTILE_SCHEMAS); do \
 		case "$$schema" in schemas/probe.schema) src=test/rust-hostile/probe.schema ;; *) src=$$schema ;; esac; \
 		crate=hc_$$(printf '%s' "$$schema" | tr -c 'A-Za-z0-9' '_' | tr 'A-Z' 'a-z'); \
-		./bin/schema generate --lang rust --out $(RUST_HOSTILE_BUILD)/units/$$crate/src $$src > /dev/null || exit 1; \
-		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s" }\n' \
-			$$crate "$(abspath $(SERIALIZE_RS))" > $(RUST_HOSTILE_BUILD)/units/$$crate/Cargo.toml; \
+		if ! ./bin/schema generate --lang rust --out $(RUST_HOSTILE_BUILD)/units/$$crate/src $$src > /dev/null 2>$(RUST_HOSTILE_BUILD)/units/$$crate.err; then \
+			rm -rf $(RUST_HOSTILE_BUILD)/units/$$crate; \
+			dir=$$(dirname "$$src"); \
+			crate=hc_$$(printf '%s' "$$dir" | tr -c 'A-Za-z0-9' '_' | tr 'A-Z' 'a-z'); \
+			if [ ! -d $(RUST_HOSTILE_BUILD)/units/$$crate/src ]; then \
+				./bin/schema generate --lang rust --out $(RUST_HOSTILE_BUILD)/units/$$crate/src $$dir > /dev/null || { echo "rust-hostile: $$schema generates neither alone nor as $$dir" >&2; exit 1; }; \
+			fi; \
+		fi; \
+		rm -f $(RUST_HOSTILE_BUILD)/units/hc_$$(printf '%s' "$$schema" | tr -c 'A-Za-z0-9' '_' | tr 'A-Z' 'a-z').err; \
+		if [ ! -f $(RUST_HOSTILE_BUILD)/units/$$crate/Cargo.toml ]; then \
+			printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s" }\n' \
+				$$crate "$(abspath $(SERIALIZE_RS))" > $(RUST_HOSTILE_BUILD)/units/$$crate/Cargo.toml; \
+			printf '%s = { path = "../units/%s" }\n' $$crate $$crate >> $(RUST_HOSTILE_BUILD)/runner/Cargo.toml; \
+		fi; \
 		printf '%s\t%s\t%s\n' $$crate $$schema "$(abspath $(RUST_HOSTILE_BUILD))/units/$$crate/src" >> $(RUST_HOSTILE_BUILD)/units.tsv; \
-		printf '%s = { path = "../units/%s" }\n' $$crate $$crate >> $(RUST_HOSTILE_BUILD)/runner/Cargo.toml; \
 	done
 	@touch $@
 

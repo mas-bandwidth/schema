@@ -1,0 +1,56 @@
+{
+  "name": "  /é",
+  "icon": "AQ==",
+  "experience": 4294967295,
+  "tilt": 127,
+  "heading": -32768,
+  "timestamp": -1,
+  "badge": 255,
+  "port": 65535,
+  "epoch": 1,
+  "precision": 1e+23,
+  "ratings": [
+    7.0385313e-26,
+    7.038531e-26,
+    16777216,
+    -0.1
+  ],
+  "has_loadout": false,
+  "loadout": {
+    "grade": "Silver",
+    "grades": [],
+    "podium": [
+      "None",
+      "None",
+      "None"
+    ],
+    "perks": [],
+    "primary": {
+      "damage": 21,
+      "speed": 500,
+      "penetration": 1,
+      "channel": 0,
+      "homing": false,
+      "effect": {}
+    },
+    "backups": [
+      {
+        "damage": 21,
+        "speed": 500,
+        "penetration": 1,
+        "channel": 0,
+        "homing": false,
+        "effect": {}
+      },
+      {
+        "damage": 21,
+        "speed": 500,
+        "penetration": 1,
+        "channel": 0,
+        "homing": false,
+        "effect": {}
+      }
+    ],
+    "attachments": []
+  }
+}

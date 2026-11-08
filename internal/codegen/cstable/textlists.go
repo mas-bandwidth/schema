@@ -42,7 +42,7 @@ public static partial class TableWire
     internal static bool TextTotalKeep(TableFieldInfo field, int length, ref long spent, TableReport report)
     {
         if(field.TextTotal==0){return true;}spent+=length;
-        if(spent<=field.TextTotal){return true;}report.Clamped++;TextClamp(report,field);return false;
+        if(spent<=field.TextTotal){return true;}TextTotalRefuse(report,field);return false;
     }
     public static ReadOnlySpan<byte> TextAt(object value, TableFieldInfo field, int index, out bool present)
     {

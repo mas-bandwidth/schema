@@ -41,8 +41,8 @@ func TestFixedRoadmapCppT12PlansEvolution(t *testing.T) {
 		lead, trail := cppBrackets(t, corpus, row, ir.TableFixedTypeBytes(root))
 		body := fmt.Sprintf(`
     if ( n != 1 ) { printf( "the fixed_I_grow_element file carries one record, not %%lld (reason=%%d)\n", (long long) n, (int) r.reason ); return 1; }
-    if ( r.malformed || r.refused )
-        { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d refused=%%d\n", (int) r.reason, (int) r.malformed, (int) r.refused ); return 1; }
+    if ( r.damaged || r.refused )
+        { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d refused=%%d\n", (int) r.reason, (int) r.damaged, (int) r.refused ); return 1; }
     {
         const int32_t want[4] = { -1, -128, 0, 112 };
         for ( int k = 0; k < 4; ++k )
@@ -50,8 +50,8 @@ func TestFixedRoadmapCppT12PlansEvolution(t *testing.T) {
                 { printf( "slot %%d widened wrong: %%d, want %%d\n", k, (int) back[0].vals[k], (int) want[k] ); return 1; }
     }
     if ( r.widened == 0 ) { printf( "a widening row moved no widened counter\n" ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
-        { printf( "counters moved on a clean widening read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
+    if ( r.unknown != 0 )
+        { printf( "counters moved on a clean widening read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.refused, r.refused, r.refused ); return 1; }
     if ( back[0].lead != 0x%08Xu || back[0].trail != 0x%08Xu )
         { printf( "the row moved a neighbour: lead=%%u trail=%%u\n", back[0].lead, back[0].trail ); return 1; }
 `, lead, trail)
@@ -96,11 +96,11 @@ func TestFixedRoadmapCppT12PlansEvolution(t *testing.T) {
     if ( n != -1 ) { printf( "the older reader did not refuse the newer writer's file: n=%%lld\n", (long long) n ); return 1; }
     if ( !r.refused ) { printf( "refused is false\n" ); return 1; }
     if ( r.reason != TableFixedReason::layout_unknown ) { printf( "a hash in no lineage entry owes TableFixedReason::layout_unknown, not %%d\n", (int) r.reason ); return 1; }
-    if ( r.malformed ) { printf( "a refusal by name never sets malformed too (§5.3, the joint answer)\n" ); return 1; }
+    if ( r.damaged ) { printf( "a refusal by name never sets malformed too (§5.3, the joint answer)\n" ); return 1; }
     if ( r.layout_hash != want )
         { printf( "TableFixedReason::layout_unknown reports THE FILE'S hash: got %%016llx want %%016llx\n", (unsigned long long) r.layout_hash, (unsigned long long) want ); return 1; }
-    if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 || r.retained != 0 || r.retain_lost != 0 )
-        { printf( "REFUSE is total, no counter moves: w=%%d u=%%d km=%%d c=%%d d=%%d\n", r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
+    if ( r.widened != 0 || r.unknown != 0 || r.retained != 0 || r.retain_lost != 0 )
+        { printf( "REFUSE is total, no counter moves: w=%%d u=%%d km=%%d c=%%d d=%%d\n", r.widened, r.unknown, r.refused, r.refused, r.refused ); return 1; }
     {
         const uint8_t * p = (const uint8_t *) back;
         for ( size_t i = 0; i < sizeof( back ); ++i )

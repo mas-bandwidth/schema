@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -27,50 +26,20 @@ type lobsterPin struct {
 	wire                        []byte
 }
 
-// pinRun reads one wire through the strict read, the tolerant read and the
-// region measure, and prints "<strict>|<tolerant report>|<tolerant
-// reason>|<measure size>,<whole>,<refused>".
+// The shared corpus supplies bytes; only the strict reference verdict and
+// complete values are compared. Diagnostic reason columns are intentionally local.
 const pinRun = `
 def pinrun(root:string, file:string):
     let data = read_file(file)
     assert data
-    let rep = schema_rt.LoadReport {}
-    let rec, reason = schema_rt.load_strict(root, data, rep)
-    let tol = schema_rt.LoadReport {}
-    schema_rt.load_tolerant(root, data, tol)
-    let size, whole, refused = schema_rt.load_measure(root, data)
-    print((if reason == "": "ok" else: reason) + "|" + report_line(tol) + "|" + tol.reason + "|" + "{size},{whole},{refused}")
+    let rec = schema_rt.load(root, data, schema_rt.LoadReport {})
+    if not rec:
+        print("refused|nil")
+        return
+    labels = []
+    push(labels, rec)
+    print("read|" + drec(rec))
 `
-
-// lobsterPinFault answers how Lobster's answer differs from one pin row, or ""
-// when it agrees. The strict column is load_strict's reason. A row whose strict
-// answer is count_over_extent_cap also holds the tolerant report: no counter
-// moved, malformed unset, refused (§2.9). The measure column is held as its
-// verdict, since load_measure answers a size or not and not why: a size is a
-// whole read the framing does not refuse. The form column is the tolerant
-// report's reason.
-func lobsterPinFault(p lobsterPin, line string) string {
-	f := strings.Split(line, "|")
-	if len(f) != 4 {
-		return fmt.Sprintf("the program printed %q", line)
-	}
-	var bad []string
-	if f[0] != p.strict {
-		bad = append(bad, "strict "+f[0]+", want "+p.strict)
-	}
-	if p.strict == "count_over_extent_cap" && f[1] != "0,0,0,0,0,false,refused" {
-		bad = append(bad, "tolerant report "+f[1]+", want 0,0,0,0,0,false,refused")
-	}
-	if p.form != "-" && f[2] != p.form {
-		bad = append(bad, "form "+f[2]+", want "+p.form)
-	}
-	m := strings.Split(f[3], ",")
-	sized := len(m) == 3 && m[1] == "true" && m[2] == "false"
-	if p.measure != "-" && (p.measure == "ok") != sized {
-		bad = append(bad, "measure "+f[3]+", want "+p.measure)
-	}
-	return strings.Join(bad, "; ")
-}
 
 // lobsterPinRows reads the shared pin table, by its schema column.
 func lobsterPinRows(t *testing.T) map[string][]lobsterPin {
@@ -104,7 +73,7 @@ func lobsterPinRows(t *testing.T) map[string][]lobsterPin {
 
 // lobsterPinFaults runs one schema's rows, with edit applied to the emitted
 // runtime when it is set, and answers each row's fault by name.
-func lobsterPinFaults(t *testing.T, schema string, pins []lobsterPin, edit func(dir string)) map[string]string {
+func lobsterPinFaults(t *testing.T, schema string, pins []lobsterPin, sabotage bool) (map[string]string, int) {
 	t.Helper()
 	src := filepath.Join(t.TempDir(), "Probe.schema")
 	if err := os.WriteFile(src, []byte(lobsterPinSchemas[schema]), 0o644); err != nil {
@@ -114,8 +83,31 @@ func lobsterPinFaults(t *testing.T, schema string, pins []lobsterPin, edit func(
 	if err != nil {
 		t.Fatalf("the surface refuses the %s unit: %v", schema, err)
 	}
-	if edit != nil {
-		edit(g.dir)
+	if sabotage {
+		path := filepath.Join(g.dir, "load.lobster")
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := strings.Index(string(src), "\ndef load(")
+		end := strings.Index(string(src), "\n// RELEASE (")
+		if start < 0 || end <= start {
+			t.Fatal("single read refusal boundary missing")
+		}
+		boundary := string(src[start:end])
+		const fixedFrom = "        return fixed_record_codec(root).read_fixed(data, report)"
+		const fixedTo = "        let rec = fixed_record_codec(root).read_fixed(data, report)\n        if not rec:\n            return new_record(table_of(root))\n        return rec"
+		if strings.Count(boundary, "return nil") != 4 || strings.Count(boundary, fixedFrom) != 1 {
+			t.Fatal("single read refusal sites changed")
+		}
+		// Fixed previous-form and empty inputs refuse before native dispatch;
+		// variable refusals arrive after the walk. Sabotage each public exit.
+		boundary = strings.ReplaceAll(boundary, "return nil", "return new_record(table_of(root))")
+		boundary = strings.Replace(boundary, fixedFrom, fixedTo, 1)
+		mutant := string(src[:start]) + boundary + string(src[end:])
+		if err := os.WriteFile(path, []byte(mutant), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var b strings.Builder
 	for _, m := range g.mods {
@@ -146,77 +138,43 @@ func lobsterPinFaults(t *testing.T, schema string, pins []lobsterPin, edit func(
 		t.Fatalf("%d lines for %d rows: %q", len(out), len(pins), out)
 	}
 	faults := map[string]string{}
+	refused := 0
 	for i, p := range pins {
-		if fault := lobsterPinFault(p, out[i]); fault != "" {
-			faults[p.name] = fault
+		verdict, value := goLoad(g.u, "Root", p.wire)
+		if verdict == "refused" {
+			refused++
+		}
+		want := verdict + "|" + value
+		if out[i] != want {
+			faults[p.name] = fmt.Sprintf("got %s, want %s", out[i], want)
 		}
 	}
-	return faults
+	return faults, refused
 }
 
-// TestLobsterLoadRefusalPins holds the Lobster load to every row of
-// internal/codegen/goosetable/testdata/load_refusal_reasons.tsv, the table Go,
-// Goose and MOO are held to (docs/SPEC-TABLES.md §2.9, §6.5): the strict read's
-// one reason, the form refusal and the measure verdict. A `[]` or map count
-// above the int32 storage cap refuses as count_over_extent_cap with no counter
-// moved, a widening element kind included; of two refusals in one read, the
-// first in read order names it.
+// Every existing reason-pin wire remains covered after reason comparison retires.
 func TestLobsterLoadRefusalPins(t *testing.T) {
 	t.Parallel()
 	for schema, pins := range lobsterPinRows(t) {
 		t.Run(schema, func(t *testing.T) {
 			t.Parallel()
-			for name, fault := range lobsterPinFaults(t, schema, pins, nil) {
+			faults, _ := lobsterPinFaults(t, schema, pins, false)
+			for name, fault := range faults {
 				t.Errorf("%s: %s", name, fault)
 			}
 		})
 	}
 }
 
-// TestLobsterLoadRefusalPinsNegativeControl plants two faults in the emitted
-// runtime and requires each to turn exactly its own rows red: a widening
-// counted before the cap check turns values_widened_over_cap red, and a load
-// that never names the verdict's damage turns the wire_damaged rows red.
+// Returning a default value on refusal must fail the unchanged value/verdict oracle.
 func TestLobsterLoadRefusalPinsNegativeControl(t *testing.T) {
 	t.Parallel()
-	rows := lobsterPinRows(t)
-	plant := func(from, to string, times int) func(string) {
-		return func(dir string) {
-			path := filepath.Join(dir, "load.lobster")
-			src, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if n := strings.Count(string(src), from); n != times {
-				t.Fatalf("the emitted load.lobster holds %q %d times, want %d", from, n, times)
-			}
-			if err := os.WriteFile(path, []byte(strings.ReplaceAll(string(src), from, to)), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	for _, c := range []struct {
-		name, schema string
-		edit         func(string)
-		want         []string
-	}{
-		{"widened", "measure", plant("        let widened = ek != f.ek\n", "        let widened = false\n        if ek != f.ek:\n            rep.widened++\n", 1),
-			[]string{"values_widened_over_cap"}},
-		{"damaged", "measure", plant("    if rep.damaged:\n        return \"wire_damaged\"\n", "", 1),
-			[]string{"cut_last", "empty", "form_only"}},
-		{"damaged", "fixed", plant("    if rep.damaged:\n        return \"wire_damaged\"\n", "", 1),
-			[]string{"fixed_bool_two", "fixed_dup_ids", "fixed_early_end"}},
-	} {
-		t.Run(c.name+"/"+c.schema, func(t *testing.T) {
+	for schema, pins := range lobsterPinRows(t) {
+		t.Run(schema, func(t *testing.T) {
 			t.Parallel()
-			faults := lobsterPinFaults(t, c.schema, rows[c.schema], c.edit)
-			var got []string
-			for name := range faults {
-				got = append(got, name)
-			}
-			sort.Strings(got)
-			if strings.Join(got, ",") != strings.Join(c.want, ",") {
-				t.Errorf("the %s control turned %v red, want %v", c.name, got, c.want)
+			faults, refused := lobsterPinFaults(t, schema, pins, true)
+			if refused == 0 || len(faults) != refused {
+				t.Fatalf("default-on-refusal sabotage changed %d rows, want %d refused rows", len(faults), refused)
 			}
 		})
 	}

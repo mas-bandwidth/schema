@@ -64,7 +64,7 @@ test-squirrel: conformance-negative-control-squirrel-framing
 .PHONY: conformance-negative-control-squirrel-cycle
 conformance-negative-control-squirrel-cycle: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@sh test/conformance/squirrel/negative-control cycle load.nut \
-		's/if (!report.malformed \&\& _require("schema_table_save").numberForCook/if (false \&\& _require("schema_table_save").numberForCook/' \
+		's/if (_require("schema_table_save").cyclic/if (false \&\& _require("schema_table_save").cyclic/' \
 		framing wire report
 
 test-squirrel: conformance-negative-control-squirrel-cycle

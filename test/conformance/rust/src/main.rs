@@ -1322,6 +1322,65 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
             None => spill_absent(out, &name),
         }
     }
+    // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
+    // wire, then the line's damage put into storage in code, then ToJson,
+    // which must refuse. This leg's ToJson is <root>_to_json_checked, one walk
+    // that is measure and write at once, so one call answers for both.
+    for f in manifest.of_kind("json-write-refusal") {
+        let data = slurp(&f[4]);
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
+            let mut report = Default::default();
+            let Some(mut v) = load(&data, &mut report) else {
+                fail(&format!("{}: load refused {}", f[1], f[4]));
+            };
+            match damage_text(&mut v, &f[5]) {
+                Damage::Placed => Some(match to_json(&v) {
+                    Some(text) => text.into_bytes(),
+                    None => b"refused\n".to_vec(),
+                }),
+                // the row asks for a value this leg cannot hold, so the
+                // writer is never asked: ABSENT, not a refusal it did not make
+                Damage::NotHeld => None,
+            }
+        });
+        let name = format!("{}.json", f[1]);
+        match answer.flatten() {
+            Some(text) => spill(out, &name, &text),
+            None => spill_absent(out, &name),
+        }
+    }
+}
+
+// What a json-write-refusal line's damage did to storage.
+enum Damage {
+    // the damage is in the value, for ToJson to answer
+    Placed,
+    // the storage type cannot hold it: a narrow string is a Rust String,
+    // which is well-formed UTF-8 by construction, so the bytes 61 FF 62 are
+    // refused by String::from_utf8 before any value holds them, and no
+    // text that is not text reaches the writer; the row answers ABSENT
+    NotHeld,
+}
+
+// damage_text puts into a fixed root's top-level text field what no read
+// delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the
+// bytes 61 FF 62 in a narrow field, the units 0061 D800 0062 in a wide one.
+// The field is reached by the root's concrete type.
+fn damage_text(value: &mut dyn std::any::Any, damage: &str) -> Damage {
+    if damage == "none" {
+        return Damage::Placed;
+    }
+    match damage.split_once(':') {
+        Some(("narrow", _)) => match String::from_utf8(vec![0x61, 0xff, 0x62]) {
+            Ok(_) => fail("61 FF 62 read as UTF-8"),
+            Err(_) => Damage::NotHeld,
+        },
+        Some(("wide", "label")) if value.is::<widedemo::Stamp>() => {
+            value.downcast_mut::<widedemo::Stamp>().unwrap().label = vec![0x61, 0xd800, 0x62];
+            Damage::Placed
+        }
+        _ => fail(&format!("damage {damage:?} names no text field this driver reaches")),
+    }
 }
 
 // JSON-HOSTILE (docs/SPEC-TABLES.md §16.2, §16.3; FORMAT.md): one tree per

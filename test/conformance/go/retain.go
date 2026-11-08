@@ -54,7 +54,7 @@ func retainSurface(lines []line, out string, saves bool) error {
 			report = tblrt1.TableReport{}
 		}
 		root := tblrt1.NodeLoadRetain(region, wire, &store, &report)
-		if root == nil || report.Malformed {
+		if root == nil || report.Refused() {
 			return fmt.Errorf("%s load failed: %+v", f[1], report)
 		}
 		retained, lost, unknown := report.Retained, report.RetainLost, report.Unknown

@@ -12,7 +12,8 @@
 package compiler
 
 func init() {
-	// Squirrel carries the value default (docs/SPEC-TABLES.md §4, §16.2);
-	// registering it here lets the table surface walk the construct.
+	// Squirrel carries the value default on both the packet wire (SPEC §4.2)
+	// and the table wire (docs/SPEC-TABLES.md §4, §16.2).
+	registerPacketValueDefaultCarrier("squirrel")
 	valueDefaultTargets = append(valueDefaultTargets, "squirrel")
 }

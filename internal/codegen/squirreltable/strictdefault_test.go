@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // strictDefaultPrelude is the strict-by-default probe (docs/SPEC-TABLES.md
@@ -101,6 +102,7 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 	}
 	dir := t.TempDir()
 	mods := map[string]string{}
+	parsed := map[string]*ir.Unit{}
 	refused := map[string]bool{}
 	ensure := func(key string) bool {
 		if _, ok := mods[key]; ok {
@@ -136,6 +138,7 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 			writeFile(t, filepath.Join(outDir, name), data)
 		}
 		mods[key] = squirreltable.ModuleName(u)
+		parsed[key] = u
 		return true
 	}
 
@@ -164,7 +167,7 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 		want := strictName(t, r.name, pin)
 		if len(inputs[r.name]) == 0 {
 			want = "wire_damaged"
-		} else if f := formName(inputs[r.name][0], false); f != "" {
+		} else if f := formName(inputs[r.name][0], parsed[r.unit].Tables[r.root].FixedDeclared); f != "" {
 			want = f
 		}
 		fmt.Fprintf(&p, "runLoad(%q, %q, %q, %q);\n", r.unit, mods[r.unit], r.root, r.name)
@@ -265,7 +268,7 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 			if c.want == "malformed" && (twinValue != "null" || !strings.HasSuffix(twinCounters, ",true")) {
 				t.Errorf("load %s: malformed read retained a value or lost its verdict", c.key)
 			}
-			if c.want != "malformed" && c.want != "wire_damaged" && c.want != "newer_form" && c.want != "message_form_as_file" && twinValue != "val" {
+			if c.want != "malformed" && c.want != "wire_damaged" && c.want != "newer_form" && c.want != "message_form_as_file" && c.want != "previous_form" && twinValue != "val" {
 				t.Errorf("load %s: loadTolerant did not keep the recovered value", c.key)
 			}
 		}

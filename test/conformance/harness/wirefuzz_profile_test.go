@@ -69,6 +69,7 @@ func TestWireFuzzSkippedVectorKeepsPriorSeedMutable(t *testing.T) {
 }
 
 func TestWireFuzzMixedBuilderPreservesFullRoster(t *testing.T) {
+	t.Skip("layer 3: the pipe answer's malformed flag and the builder-over-region count-cap precedence, retired per docs/plans/strict-only.md (b)")
 	m, _, _ := corpus(t)
 	plain, roots, index, skipped, err := buildWireFuzzRoster(m, wireFuzzOptions{vectors: defaultVectors})
 	if err != nil {
@@ -136,8 +137,8 @@ func TestWireFuzzMixedBuilderPreservesFullRoster(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.report.Malformed || !answer.builderStopped || !answer.encFail {
-		t.Fatalf("mixed variable oracle used region precedence: %+v", answer)
+	if answer.accepted || len(answer.encoded) != 0 {
+		t.Fatalf("mixed variable oracle accepted a truncated count: %+v", answer)
 	}
 }
 

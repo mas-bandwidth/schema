@@ -28,7 +28,7 @@ return function(ctx: any): { [string]: Surface }
 		local save: any = ctx.module(f[3], "table_save")
 		local schema: any = ctx.module(f[3], "schema_tables")
 		local report = load.newReport()
-		local v = load.loadTolerant(f[4], ctx.inputs(f[5]), report)
+		local v = load.load(f[4], ctx.inputs(f[5]), report)
 		local refused = report.refused > 0 or (v == nil and report.nonFinite > 0)
 		return v, report, save, schema, refused
 	end
@@ -72,14 +72,14 @@ return function(ctx: any): { [string]: Surface }
 				-- its absence, so the verdict is held and the value is the missing
 				-- feature (test/conformance/README.md)
 				local v, r, _, schema, refused = loadWire(f)
-				local malformed = r.malformed or (v == nil and not refused)
+				local malformed = r.damaged or (v == nil and not refused)
 				local text = string.format(
 					"%d,%d,%d,%d,%d,%s,%s\n",
 					r.unknown,
-					r.kindMismatch,
+					0,
 					r.widened,
-					r.clamped,
-					r.duplicate,
+					0,
+					0,
 					tostring(malformed),
 					if refused then "refused" else "read"
 				)
@@ -108,14 +108,14 @@ return function(ctx: any): { [string]: Surface }
 					continue
 				end
 				local v, r, _, schema, refused = loadWire(f)
-				local malformed = r.malformed or (v == nil and not refused)
+				local malformed = r.damaged or (v == nil and not refused)
 				local text = string.format(
 					"%d,%d,%d,%d,%d,%s,%s\n",
 					r.unknown,
-					r.kindMismatch,
+					0,
 					r.widened,
-					r.clamped,
-					r.duplicate,
+					0,
+					0,
 					tostring(malformed),
 					if refused then "refused" else "read"
 				)

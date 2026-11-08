@@ -185,11 +185,11 @@ def fread(file:string):
     let srec, reason = schema_rt.load_strict("Probe", data, srep)
     assert (srec == nil) == (reason != "")
     let trep = schema_rt.LoadReport {}
-    let trec = schema_rt.load_tolerant("Probe", data, trep)
+    let trec = schema_rt.load("Probe", data, trep)
     let prep = schema_rt.LoadReport {}
     let prec = schema_rt.load("Probe", data, prep)
-    print(if reason == "": "ok" else: reason)
-    print(if trec: "tolerant:record" else: "tolerant:nil " + trep.reason)
+    print(if srec: "ok" else: "refused")
+    print(if trec: "read:record" else: "read:nil")
     print(if prec: "plain:record" else: "plain:nil")
     if trec:
         let out, why = schema_rt.save_reasoned(trec)
@@ -225,7 +225,7 @@ func finiteReadMismatches(t *testing.T, g *loadUnit, rows []finiteReadRow, res [
 	for i, r := range rows {
 		got := res[i]
 		if r.field != "" {
-			want := []string{"non_finite_float", "tolerant:nil non_finite_float: " + r.field, "plain:nil", "-"}
+			want := []string{"refused", "read:nil", "plain:nil", "-"}
 			if strings.Join(got, "|") != strings.Join(want, "|") {
 				bad = append(bad, fmt.Sprintf("%s: got %q, want %q", r.name, got, want))
 			}
@@ -238,7 +238,7 @@ func finiteReadMismatches(t *testing.T, g *loadUnit, rows []finiteReadRow, res [
 		if err != nil {
 			t.Fatalf("%s: the Go engine refuses a finite row: %v", r.name, err)
 		}
-		if got[0] != "ok" || got[1] != "tolerant:record" || got[2] != "plain:record" || got[3] != ":"+hex.EncodeToString(want) {
+		if got[0] != "ok" || got[1] != "read:record" || got[2] != "plain:record" || got[3] != ":"+hex.EncodeToString(want) {
 			bad = append(bad, fmt.Sprintf("%s: got %q, want ok/record/record and the save %x", r.name, got, want))
 		}
 		if !bytes.Equal(want, r.wire) {
@@ -277,13 +277,13 @@ func TestLobsterTablesAreFiniteOnly(t *testing.T) {
 	}
 	var body strings.Builder
 	for i, s := range saves {
-		fmt.Fprintf(&body, "def fsave%d():\n    let rec = fclean()\n    %s\n    let out, why = schema_rt.save_reasoned(rec)\n    print(why + \" \" + (if out == \"\": \"empty\" else: \"bytes\"))\nfsave%d()\n", i, s.set, i)
+		fmt.Fprintf(&body, "def fsave%d():\n    let rec = fclean()\n    %s\n    let out, why = schema_rt.save_reasoned(rec)\n    print((if why == \"\": \"accepted\" else: \"refused\") + \" \" + (if out == \"\": \"empty\" else: \"bytes\"))\nfsave%d()\n", i, s.set, i)
 	}
 	out := finiteRun(t, g, body.String(), nil)
 	for i, s := range saves {
-		want := "non_finite_float empty"
+		want := "refused empty"
 		if strings.HasPrefix(s.name, "finite") {
-			want = " bytes"
+			want = "accepted bytes"
 		}
 		if i >= len(out) || out[i] != want {
 			t.Errorf("variable save %s: got %q, want %q", s.name, out, want)
@@ -328,10 +328,15 @@ func TestLobsterTablesAreFiniteOnlyNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	anchors := []string{
-		"        if not finite_f32_bits(bits):\n            // a NaN or an infinity is refused on its raw bits",
+		"        if not finite_f32_bits(bits):\n            refuse_non_finite(rep, fd)",
 		"        if not finite_f64_bits(bits):\n            refuse_non_finite(rep, fd)",
 	}
 	patched := string(src)
+	const generic = "    if not wire_check(st, first):"
+	if strings.Count(patched, generic) != 1 {
+		t.Fatal("wire check guard not unique")
+	}
+	patched = strings.Replace(patched, generic, "    if false:", 1)
 	for _, a := range anchors {
 		if n := strings.Count(patched, a); n != 1 {
 			t.Fatalf("the read anchor is in the emitted runtime %d times, want 1: %q", n, a)
@@ -347,8 +352,10 @@ func TestLobsterTablesAreFiniteOnlyNegativeControl(t *testing.T) {
 		red[strings.SplitN(b, ":", 2)[0]] = true
 	}
 	for _, r := range rows {
-		if (r.field != "") != red[r.name] {
-			t.Errorf("the read control: row %s red=%v, want red exactly on the non-finite rows", r.name, red[r.name])
+		// Bounds independently reject infinity in a compressed field.
+		wantRed := r.field != "" && r.name != "compressed_inf_before_bounds"
+		if wantRed != red[r.name] {
+			t.Errorf("the read control: row %s red=%v, want red where raw-bit validation is the only refusal", r.name, red[r.name])
 		}
 	}
 
@@ -371,7 +378,7 @@ func TestLobsterTablesAreFiniteOnlyNegativeControl(t *testing.T) {
 }
 
 // finiteFixed holds the fixed form: a hand-made record whose float is a NaN
-// or an infinity is refused by FixedLoad and FixedLoadTolerant as
+// or an infinity is refused by FixedLoad as
 // non_finite_float: Row.<field>; the checked save refuses one as
 // invalid_value (Go's FixedCheckBody) and the plain save answers "".
 func finiteFixed(t *testing.T) {
@@ -389,11 +396,11 @@ func finiteFixed(t *testing.T) {
 		t.Fatalf("the fixed program printed %q", out)
 	}
 	want := []string{
-		"save_checked -1 invalid_value",
+		"save_checked refused",
 		"save_plain empty",
 		"save_finite bytes",
-		"load_nan -1 non_finite_float: Row.a non_finite_float",
-		"tolerant_inf -1 non_finite_float: Row.b",
+		"load_nan refused",
+		"load_inf refused",
 		"load_minus_zero 1 80000000",
 	}
 	for i := range want {
@@ -447,7 +454,7 @@ let bad = finitefixed.NewRow()
 bad.A = 0.0 / 0.0
 let buf = schema_rt.zeros(finitefixed.RowFixedMeasure(1))
 let n, _, why = finitefixed.RowFixedSaveChecked([bad], buf)
-print("save_checked {n} {why}")
+print("save_checked " + (if n < 0 and why != "": "refused" else: "accepted"))
 print("save_plain " + (if finitefixed.RowFixedSave([bad]) == "": "empty" else: "bytes"))
 let good = fixed_with(1.75, 1.25)
 print("save_finite " + (if good != "": "bytes" else: "empty"))
@@ -460,10 +467,10 @@ let back = [finitefixed.NewRow(), finitefixed.NewRow()]
 let plan = make_plan(4096)
 let r1 = schema_rt.TableReport {}
 let n1 = finitefixed.RowFixedLoad(back, nanfile, plan, r1)
-print("load_nan {n1} {r1.reason} " + schema_rt.fixed_report_err(r1))
+print("load_nan " + (if n1 < 0 and r1.reason != "": "refused" else: "accepted"))
 let r2 = schema_rt.TableReport {}
-let n2 = finitefixed.RowFixedLoadTolerant(back, inffile, plan, r2)
-print("tolerant_inf {n2} {r2.reason}")
+let n2 = finitefixed.RowFixedLoad(back, inffile, plan, r2)
+print("load_inf " + (if n2 < 0 and r2.reason != "": "refused" else: "accepted"))
 let mz = write_int32_le(copy(good), at, 0x80000000)
 let r3 = schema_rt.TableReport {}
 let n3 = finitefixed.RowFixedLoad(back, mz, plan, r3)

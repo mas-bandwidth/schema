@@ -34,7 +34,7 @@ func TestJavaFixLoadoutLengthDamageRefused(t *testing.T) {
 	u := unitFromDir(t, filepath.Join(repo, "tables", "examples"))
 
 	ans := goOracleLoadout(t, u, "LoadoutConfig", wire)
-	if !ans.report.Malformed {
+	if !ans.report.Refused {
 		t.Fatalf("oracle did not report malformed; this mutant does not pin the cause")
 	}
 	leg := javaLoadout(t, u, "LoadoutConfig", wire)
@@ -53,7 +53,7 @@ func goOracleLoadout(t *testing.T, u *ir.Unit, root string, wire []byte) oracleL
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables[root])
 	report := new(tabletext.Report)
-	if _, err := tablewire.DecodeRegion(model, value, wire, report); err != nil {
+	if _, err := tablewire.DecodeRegion(model, value, wire, report); err != nil && !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
 	encoded, eerr := tablewire.Encode(model, value)

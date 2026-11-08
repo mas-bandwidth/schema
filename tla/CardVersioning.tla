@@ -1,6 +1,6 @@
 ----------------------------- MODULE CardVersioning -----------------------------
 \* A bounded model of the cards Upgrade wrapper's retained round trip
-\* (tables/cards/upgrade.go, docs/SPEC-TABLES.md §4, §5, §6.6). One atomic
+\* (tables/cards/upgrade.go, docs/SPEC-TABLES.md §4, §5, §6.5, §6.6). One atomic
 \* attempt: keep the pre-attempt input, derive known/defaulted and retained data
 \* plus ONE accumulating report across load and save, then publish a replacement
 \* on fully checked success or refuse with the original slot unchanged.
@@ -17,20 +17,28 @@
 \*     result, never append unbounded history;
 \*   - a card carries no writer label, matching §4's versionless wire: the
 \*     report's unknown depends only on physically present content, so a
-\*     "compatible" writer label alone forces no unknown count.
+\*     "compatible" writer label alone forces no unknown count;
+\*   - THE ONE READ (§6.5, 2026-11-03): Read returns the whole value or
+\*     refuses with none. A kind mismatch, an out-of-range value and a
+\*     malformed or failed card refuse; there is no tolerant read and no
+\*     kind_mismatch, clamped or malformed counter. ReadStrict IS Read.
 
 EXTENDS Naturals, FiniteSets, TLC
 
-\* The four fault switches. The positive cfg holds all four FALSE; each reversed
+\* The five fault switches. The positive cfg holds all five FALSE; each reversed
 \* cfg turns exactly one TRUE and checks TypeOK plus its named invariant.
 CONSTANTS DropRetained,    \* drop a present retained scalar on a successful Upgrade
           SuppressUnknown, \* suppress a physically encountered unknown's count
           ChangeBody,      \* change the body on Upgrade
-          RefuseShipped    \* refuse a supported SHIPPED case
+          RefuseShipped,   \* refuse a supported SHIPPED case
+          TolerantRead     \* the retired tolerant read: a kind mismatch or an
+                           \* out-of-range value reads its default and the
+                           \* read returns a value
 ASSUME DropRetained \in BOOLEAN
 ASSUME SuppressUnknown \in BOOLEAN
 ASSUME ChangeBody \in BOOLEAN
 ASSUME RefuseShipped \in BOOLEAN
+ASSUME TolerantRead \in BOOLEAN
 
 \* ----------------------------------------------------------------------------
 \* The finite instance.
@@ -56,13 +64,17 @@ Slot == {1, 2}                             \* the two record slots \*
 
 Card == [fields : [F -> Val], body : BodySym, framing : Framing]
 
-Report == [unknown : 0..4, retained : 0..4, retainLost : 0..4,
-           kindMismatch : 0..4, clamped : 0..4, malformed : BOOLEAN, failed : BOOLEAN]
+\* The report's counters, all per-language diagnostics (§4): kind_mismatch,
+\* clamped and malformed are refusals now, not counters.
+Report == [unknown : 0..4, retained : 0..4, retainLost : 0..4]
 
-Observation == [kind : {"none", "write", "read", "strict", "upgrade"},
+\* What a refused read hands back: nothing. A distinct value outside Card.
+NoCard == [fields |-> [f \in F |-> "default"], body |-> "bodyA", framing |-> "none"]
+
+Observation == [kind : {"none", "write", "read", "upgrade"},
                 status : {"empty", "ok", "refused"},
                 reader : D, slot : Slot,
-                input : Card, out : Card,
+                input : Card, out : Card \cup {NoCard},
                 report : Report, cap : Cap, published : BOOLEAN]
 
 \* The fields each declaration can name. "renamed" is known to all three (the
@@ -79,7 +91,8 @@ Present(c) == { f \in F : c.fields[f] # "default" }
 \*   known field, scalar/opaque value  -> "known"      (reads through, silent)
 \*   known field, node index (kind 17) -> "kindMismatch"
 \*   known field, wrong kind           -> "kindMismatch"
-\*   known field, out of bound         -> "clamped"
+\*   known field, out of range         -> "clamped" (refuses out_of_range;
+\*                                        the label names the retired clamp)
 \*   known field, unknown variant      -> "excluded"   (§6.6: field is the reader's)
 \*   unknown field, scalar/opaque      -> "retained"   (unknown retainable)
 \*   unknown field, lossy payload      -> "excluded"   (§6.6 six excluded classes)
@@ -119,21 +132,22 @@ RetainLostCount(d, c, cap) ==
 UpgradeReport(d, c, cap) ==
   [ unknown |-> IF SuppressUnknown THEN 0 ELSE UnknownCount(d, c),
     retained |-> Cardinality(RetainedKept(d, c, cap)),
-    retainLost |-> RetainLostCount(d, c, cap),
-    kindMismatch |-> Cardinality(KindMismatchFields(d, c)),
-    clamped |-> Cardinality(ClampedFields(d, c)),
-    malformed |-> (c.framing = "malformed"),
-    failed |-> (c.framing = "failed") ]
+    retainLost |-> RetainLostCount(d, c, cap) ]
 
-\* The tolerant plain read (no retention): known values plus the read report.
+\* THE ONE READ's condition set on a card (§4, §6.5): framing damage or a
+\* failed call, a kind mismatch in a known field, a value out of the reader's
+\* range in a known field. An unknown field, an unknown variant and an absent
+\* field are evolution and do not refuse.
+ReadRefuses(d, c) ==
+  \/ c.framing # "ok"
+  \/ KindMismatchFields(d, c) # {}
+  \/ ClampedFields(d, c) # {}
+
+\* The plain read (no retention): known values plus the read report.
 ReadReport(d, c) ==
   [ unknown |-> UnknownCount(d, c),
     retained |-> 0,
-    retainLost |-> 0,
-    kindMismatch |-> Cardinality(KindMismatchFields(d, c)),
-    clamped |-> Cardinality(ClampedFields(d, c)),
-    malformed |-> (c.framing = "malformed"),
-    failed |-> (c.framing = "failed") ]
+    retainLost |-> 0 ]
 
 ReadView(d, c) ==
   [ fields |-> [ f \in F |-> IF f \in Present(c) /\ Classify(d, f, c.fields[f]) = "known"
@@ -214,16 +228,16 @@ FixtureCards == { legacyCard, currentCard, removedCard, compatibleCard,
 
 EmptyCard == CardOf("default", "default", "default", "default", "bodyA", "ok")
 
-ZeroReport == [unknown |-> 0, retained |-> 0, retainLost |-> 0, kindMismatch |-> 0,
-               clamped |-> 0, malformed |-> FALSE, failed |-> FALSE]
+ZeroReport == [unknown |-> 0, retained |-> 0, retainLost |-> 0]
 
 \* ----------------------------------------------------------------------------
 \* The actions. Init establishes the finite declarations, fixture records and an
 \* empty last-result observation. Write replaces a slot with one allowed
 \* fixture, including its body (old superseded values are not owed). Read
-\* creates a decoded view and report without replacing stored wire. Upgrade is
-\* ONE atomic attempt that publishes on fully checked success or refuses with
-\* the original slot unchanged. ReadStrict is a policy observation over Read.
+\* returns the whole decoded view with its report, or refuses with no view and
+\* no counter, without replacing stored wire; ReadStrict is the same call
+\* (§6.5). Upgrade is ONE atomic attempt that publishes on fully checked
+\* success or refuses with the original slot unchanged.
 \* ----------------------------------------------------------------------------
 
 VARIABLES slot, last
@@ -245,20 +259,13 @@ Write ==
 
 Read ==
   \E r \in Slot, d \in D :
-    /\ UNCHANGED slot
-    /\ last' = [ kind |-> "read", status |-> "ok", reader |-> d, slot |-> r,
-                 input |-> slot[r], out |-> ReadView(d, slot[r]),
-                 report |-> ReadReport(d, slot[r]), cap |-> 0, published |-> FALSE ]
-
-ReadStrict ==
-  \E r \in Slot, d \in D :
-    LET rep == ReadReport(d, slot[r])
-        ok  == rep.unknown = 0 /\ rep.kindMismatch = 0 /\ rep.clamped = 0
-               /\ ~rep.malformed /\ ~rep.failed
+    LET c == slot[r]
+        refused == ReadRefuses(d, c) /\ ~(TolerantRead /\ c.framing = "ok")
     IN /\ UNCHANGED slot
-       /\ last' = [ kind |-> "strict", status |-> IF ok THEN "ok" ELSE "refused",
-                    reader |-> d, slot |-> r,
-                    input |-> slot[r], out |-> ReadView(d, slot[r]), report |-> rep,
+       /\ last' = [ kind |-> "read", status |-> IF refused THEN "refused" ELSE "ok",
+                    reader |-> d, slot |-> r, input |-> c,
+                    out |-> IF refused THEN NoCard ELSE ReadView(d, c),
+                    report |-> IF refused THEN ZeroReport ELSE ReadReport(d, c),
                     cap |-> 0, published |-> FALSE ]
 
 Upgrade ==
@@ -273,7 +280,7 @@ Upgrade ==
                     input |-> c, out |-> IF ok THEN out ELSE c, report |-> rep,
                     cap |-> cap, published |-> ok ]
 
-Next == Write \/ Read \/ ReadStrict \/ Upgrade
+Next == Write \/ Read \/ Upgrade
 
 Spec == Init /\ [][Next]_vars
 
@@ -295,7 +302,7 @@ NoFieldLost ==
 \* Read/Upgrade, successful or refused, preserves the stored body byte-symbol
 \* exactly; only Write may replace it.
 BodyUnchanged ==
-  last.kind \in {"read", "strict", "upgrade"} => last.out.body = last.input.body
+  last.kind \in {"read", "upgrade"} /\ last.out # NoCard => last.out.body = last.input.body
 
 \* A refused Upgrade returns no replacement and keeps the entire original input,
 \* not just its body.
@@ -303,6 +310,15 @@ RefusalKeepsOriginal ==
   last.kind = "upgrade" /\ last.status = "refused" =>
     /\ slot[last.slot] = last.input
     /\ ~last.published
+
+\* THE ONE READ (§4, §6.5): a read refuses exactly when the condition set
+\* holds, hands back no view and moves no counter; otherwise it returns the
+\* whole view.
+ReadIsWholeOrRefused ==
+  last.kind = "read" =>
+    /\ (last.status = "refused") = ReadRefuses(last.reader, last.input)
+    /\ last.status = "refused" => last.out = NoCard /\ last.report = ZeroReport
+    /\ last.status = "ok" => last.out = ReadView(last.reader, last.input)
 
 ExpectedUnknown(d, c) == UnknownCount(d, c)
 

@@ -431,7 +431,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("   nothing to validate and nothing to fix up. On any failure it returns 0\n")
 	g.pf("   and points at nothing.\n")
 	g.pf("\n")
-	g.pf("   There is ONE entry point, and no tolerant twin: the block form is same-build\n")
+	g.pf("   There is ONE entry point, and no strict twin: the block form is same-build\n")
 	g.pf("   by construction — both sides are generated from one declaration at one build\n")
 	g.pf("   and ship together — so a consumer older than its producer is not a case. A\n")
 	g.pf("   mismatch is a refusal; regenerate both sides. Data that must outlive the\n")

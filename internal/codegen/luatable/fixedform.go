@@ -250,18 +250,7 @@ func fixedFieldRefusal(st *ir.Struct, f *ir.Field) string {
 		return ": a pointer (docs/SPEC-TABLES.md §2.1) is not fixed"
 	case f.Array == ir.ArrayList:
 		return ": an unbounded array (docs/SPEC-TABLES.md §2.9) is not fixed"
-	case f.Type.Kind == ir.TFixed:
-		return ": a fixed/ufixed (docs/SPEC-TABLES.md §15) is not fixed"
-	case f.Type.Kind == ir.TInt && f.Type.Width == 128:
-		return ": an int128 (docs/SPEC-TABLES.md §3) is not fixed"
-	case f.Type.Kind == ir.TNamed:
-		if r, ok := f.Type.Ref.(*ir.Union); ok {
-			for _, v := range r.Variants {
-				if v.F != nil && v.F.Type.Kind == ir.TFixed {
-					return ": a union arm holding a fixed/ufixed (docs/SPEC-TABLES.md §15) is not fixed"
-				}
-			}
-		}
+
 	}
 	return ""
 }
@@ -320,21 +309,12 @@ func fixedFinite(st *ir.Struct) bool {
 // fixedRoots is every table of a unit the fixed form is emitted for.
 func fixedRoots(u *ir.Unit) []*ir.Struct {
 	var out []*ir.Struct
-	for _, st := range u.Tables {
-		if !st.IsTable || st.IsMapEntry() || fixedRefusal(st) != "" {
-			continue
-		}
-		// the CLOSURE's own refusal (docs/SPEC-TABLES.md §3.4, §5.5): a
-		// pointer, map, unbounded array or guarded branch below this table
-		// keeps it on form 1 and out of the layout walk, which cannot express a
-		// cycle (docs/FIXED-FORM-ALGORITHM.md §1).
-		if !ir.TableFixedSupported(st, 0) || !fixedFinite(st) {
+	for _, st := range ir.TableFixedFormRoots(u) {
+		if fixedRefusal(st) != "" || !ir.TableFixedSupported(st, 0) || !fixedFinite(st) {
 			continue
 		}
 		out = append(out, st)
 	}
-	// u.Tables is a map: the roots are emitted in name order, so one unit
-	// generates one file.
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
@@ -390,7 +370,16 @@ func emitFixedForm(m *Module) error {
 			if e.Retired {
 				m.Printf("  -- RETIRED: %s\n", e.Reason)
 			}
-			m.Printf("  { hash = %s, layout = %s, record = %d },\n", idLit(e.Wire), lua.ByteString(e.Layout), e.Record)
+			if len(e.Layout) > 1024 {
+				m.Printf("  {\n    hash = %s,\n    layout = table.concat({\n", idLit(e.Wire))
+				for i := 0; i < len(e.Layout); i += 20 {
+					end := min(i+20, len(e.Layout))
+					m.Printf("      %s,\n", lua.ByteString(e.Layout[i:end]))
+				}
+				m.Printf("    }),\n    record = %d,\n  },\n", e.Record)
+			} else {
+				m.Printf("  { hash = %s, layout = %s, record = %d },\n", idLit(e.Wire), lua.ByteString(e.Layout), e.Record)
+			}
 		}
 		m.Printf("}\n")
 		m.Printf("_M.Fixed[%q].floor = %d\n", st.Name, floor)
@@ -411,6 +400,18 @@ func emitFixedForm(m *Module) error {
 	m.Printf("  local f = _M.Fixed[name]\n")
 	m.Printf("  return F.write(_M, f.table, value)\n")
 	m.Printf("end\n\n")
+	m.Printf("function _M.FixedMeasure(name, count)\n")
+	m.Printf("  local f = _M.Fixed[name]\n")
+	m.Printf("  return F.measure(_M, f.table, count)\n")
+	m.Printf("end\n\n")
+	m.Printf("function _M.FixedSave(name, values)\n")
+	m.Printf("  local f = _M.Fixed[name]\n")
+	m.Printf("  return F.save(_M, f.table, values)\n")
+	m.Printf("end\n\n")
+	m.Printf("function _M.FixedLoad(name, buf, cap)\n")
+	m.Printf("  local f = _M.Fixed[name]\n")
+	m.Printf("  return F.load(_M, f.table, buf, true, cap)\n")
+	m.Printf("end\n\n")
 	return nil
 }
 
@@ -419,7 +420,15 @@ func emitFixedForm(m *Module) error {
 // declared storage width).
 func emitFixedTables(m *Module, roots []*ir.Struct) {
 	m.Printf("\n-- fixed storage widths (docs/FIXED-FORM-ALGORITHM.md §3)\n")
-	for _, st := range roots {
+	emittedStruct := map[string]bool{}
+	emitStructWidths := func(st *ir.Struct) {
+		if st == nil || st.IsMapEntry() || emittedStruct[st.Name] {
+			return
+		}
+		if fixedRefusal(st) != "" || !ir.TableFixedSupported(st, 0) || !fixedFinite(st) {
+			return
+		}
+		emittedStruct[st.Name] = true
 		m.Printf("_M.Tables[%q].fixed_size = %d\n", st.Name, fixedTypeBytesAt(st, 0))
 		m.Printf("_M.FixedFields[%q] = {", st.Name)
 		for i, f := range st.Fields {
@@ -430,29 +439,46 @@ func emitFixedTables(m *Module, roots []*ir.Struct) {
 		}
 		m.Printf(" }\n")
 	}
+	for _, st := range roots {
+		emitStructWidths(st)
+	}
 	seen := map[string]bool{}
+	var fixedUnions []*ir.Union
+	var visitField func(f *ir.Field)
 	var visitType func(t ir.FieldType)
+	visitField = func(f *ir.Field) {
+		if f == nil {
+			return
+		}
+		if f.KeyEnumRef != nil && !seen["E:"+f.KeyEnumRef.Name] {
+			seen["E:"+f.KeyEnumRef.Name] = true
+			m.Printf("_M.FixedEnums[%q] = %d\n", f.KeyEnumRef.Name, f.KeyEnumRef.StorageBits/8)
+		}
+		visitType(f.Type)
+	}
 	visitType = func(t ir.FieldType) {
 		if t.Kind == ir.TNamed {
 			switch r := t.Ref.(type) {
 			case *ir.Enum:
-				if !seen[r.Name] {
-					seen[r.Name] = true
+				if !seen["E:"+r.Name] {
+					seen["E:"+r.Name] = true
 					m.Printf("_M.FixedEnums[%q] = %d\n", r.Name, r.StorageBits/8)
 				}
 			case *ir.Struct:
-				if !seen[r.Name] {
-					seen[r.Name] = true
+				if !seen["S:"+r.Name] {
+					seen["S:"+r.Name] = true
+					emitStructWidths(r)
 					for _, f := range r.Fields {
-						visitType(f.Type)
+						visitField(f)
 					}
 				}
 			case *ir.Union:
-				if !seen[r.Name] {
-					seen[r.Name] = true
+				if !seen["U:"+r.Name] {
+					seen["U:"+r.Name] = true
+					fixedUnions = append(fixedUnions, r)
 					for _, v := range r.Variants {
 						if v.F != nil {
-							visitType(v.F.Type)
+							visitField(v.F)
 						}
 					}
 				}
@@ -460,14 +486,27 @@ func emitFixedTables(m *Module, roots []*ir.Struct) {
 		}
 	}
 	for _, st := range roots {
+		seen["S:"+st.Name] = true
 		for _, f := range st.Fields {
-			visitType(f.Type)
+			visitField(f)
 		}
 	}
-	// A table-side union reaches this emission only through a fixed root's own
-	// closure. The runtime reads it from _M.FixedUnions when a union field is
-	// written; a unit with no such root emits none.
-	_ = m.Unions
+	for _, un := range fixedUnions {
+		slots := armSlots(un)
+		m.Printf("_M.FixedUnions[%q] = { tag = %d, arms = {", un.Name, ir.StorageBitsFor(un.Max)/8)
+		for i, v := range un.Variants {
+			if i > 0 {
+				m.Printf(",")
+			}
+			var sz, el int64
+			if v.F != nil {
+				sz = fixedFieldBytesAt(v.F, 0)
+				el = fixedElementBytesAt(v.F, 0)
+			}
+			m.Printf(" { slot = %q, size = %d, elem = %d }", slots[i], sz, el)
+		}
+		m.Printf(" } }\n")
+	}
 }
 
 var _ = fmt.Sprintf

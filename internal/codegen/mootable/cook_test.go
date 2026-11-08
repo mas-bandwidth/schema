@@ -58,7 +58,7 @@ func cookProbe(g *generatedUnit, rootName string, lead, extent int, null, compar
 	var b strings.Builder
 	b.WriteString("--!strict\n" + valueDump)
 	b.WriteString(g.requireAll())
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal C = require(\"./table_cookread\")\n")
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal F = require(\"./table_fixed\")\nlocal St = require(\"./schema_tables\")\nlocal C = require(\"./table_cookread\")\n")
 	data := "inputs.cook"
 	if null {
 		data = "nil"
@@ -70,7 +70,7 @@ func cookProbe(g *generatedUnit, rootName string, lead, extent int, null, compar
 		return b.String()
 	}
 	fmt.Fprintf(&b, "local cooked, refusal = C.read(h)\nif cooked == nil then print(\"READ \" .. refusal.name .. \" \" .. refusal.field) return end\n")
-	fmt.Fprintf(&b, "local report = load.newReport()\nlocal wire = load.loadTolerant(%q, inputs.wire, report)\n", rootName)
+	fmt.Fprintf(&b, "local report = load.newReport()\nlocal d = St.lookup(%[1]q)\nlocal wire: any\nif d.fixed then\n\tlocal vals = F.load(d, F.lookup(%[1]q) :: any, inputs.wire, report)\n\twire = if vals ~= nil then vals[1] else nil\nelse\n\twire = load.load(%[1]q, inputs.wire, report)\nend\n", rootName)
 	b.WriteString(`local a, z = dump(wire), dump(cooked)
 if a ~= z then
 	local i, n = 1, math.min(#a, #z)
@@ -95,7 +95,7 @@ func TestMooCookReadAgreesWithTheLoad(t *testing.T) {
 	cache := map[string]*generatedUnit{}
 	compared := 0
 	for _, row := range manifestRows(t) {
-		if row.kind != "instance" {
+		if row.kind != "instance" || row.blobShared {
 			continue
 		}
 		g, ok := cache[row.unit]

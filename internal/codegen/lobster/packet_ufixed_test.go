@@ -100,6 +100,7 @@ func runUfixed(t *testing.T, files map[string][]byte) string {
 }
 
 func TestLobsterUnsignedFixedGoldens(t *testing.T) {
+	t.Parallel()
 	got := runUfixed(t, generateUfixed(t))
 	if want := "bench_mixed ok\nunsigned_probe ok\n"; got != want {
 		t.Fatalf("ufixed goldens:\n%s\nwant:\n%s", got, want)
@@ -115,6 +116,7 @@ var ufixedOwnDeclaration = []struct{ from, to string }{
 }
 
 func TestLobsterUnsignedFixedGoldensNegativeControl(t *testing.T) {
+	t.Parallel()
 	files := generateUfixed(t)
 	for _, p := range ufixedOwnDeclaration {
 		name := "Bench.lobster"

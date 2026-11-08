@@ -40,7 +40,7 @@ func TestJavaFixNestedBodyOverLongRefused(t *testing.T) {
 
 	oracle := model.New(u.Tables["RootConfig"])
 	oreport := new(tabletext.Report)
-	if _, err := tablewire.Decode(model, oracle, mutant, oreport); err != nil || !oreport.Malformed {
+	if _, err := tablewire.Decode(model, oracle, mutant, oreport); !tablewire.ReadRefusal(err) {
 		t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, oreport)
 	}
 

@@ -137,17 +137,17 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 			}
 			for _, k := range []counter{
 				{"unknown", r.loadUnknown, int64(rep.Unknown)},
-				{"kind_mismatch", r.loadMismatch, int64(rep.KindMismatch)},
+				{"kind_mismatch", r.loadMismatch, 0},
 				{"widened", r.loadWidened, int64(rep.Widened)},
-				{"clamped", r.loadClamped, int64(rep.Clamped)},
+				{"clamped", r.loadClamped, 0},
 			} {
 				if k.got != k.want {
 					t.Fatalf("%s: the Goose read counted %d, the Go reference %d:\n%s", k.name, k.got, k.want, r.raw)
 				}
 			}
-			t.Logf("unknown=%d kind_mismatch=%d widened=%d clamped=%d", rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped)
+			t.Logf("unknown=%d widened=%d", rep.Unknown, rep.Widened)
 			mu.Lock()
-			moved[c.name] = int64(rep.Unknown + rep.KindMismatch + rep.Widened + rep.Clamped)
+			moved[c.name] = int64(rep.Unknown + rep.Widened)
 			mu.Unlock()
 		})
 	}

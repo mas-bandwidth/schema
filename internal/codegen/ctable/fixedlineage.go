@@ -36,7 +36,7 @@ type FixedLineageEntry struct {
 	Reason  string
 	// Ranges are the WRITER's ranged integer leaves, on the raw scale
 	// (docs/FIXED-FORM-ALGORITHM.md §4.5): a record read under this entry is
-	// clamped to them first, then to this reader's own ranges.
+	// out_of_range to them first, then to this reader's own ranges.
 	Ranges []ir.TableFixedWriterRange
 }
 

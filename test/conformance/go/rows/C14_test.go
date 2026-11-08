@@ -12,10 +12,9 @@ func TestRowC14(t *testing.T) {
 	// not its slack; an optional's payload only when present
 	// (docs/FIXED-FORM-ALGORITHM.md §4.6).
 	//
-	// Build a Cfg with Mode out of range, ItemsCount=1 and Items[0] out of
-	// range, and Items[4] out of range but BEYOND the live count.  After
-	// save+load the slack element Items[4] must retain its original value,
-	// because the bounds pass only walks the live count.
+	// Build a Cfg with ItemsCount=1, then forge Items[4] out of range BEYOND
+	// the live count: the read keeps the slack value, because the bounds pass
+	// only walks the live count.
 	//
 	// Wire layout (CfgFixedWriteBody):
 	//   [0..4)   a      float32
@@ -31,13 +30,12 @@ func TestRowC14(t *testing.T) {
 	var v tblv2.Cfg
 	tblv2.CfgReset(&v)
 
-	// Save in-range values: the writer now refuses what its reader would
-	// clamp, so the hostile storage values are forged into the saved bytes
-	// below (C12 forges a bool byte the same way).
+	// Save in-range values: the writer refuses what its reader would refuse,
+	// so the hostile storage values are forged into the saved bytes below.
 	v.Mode = tblv2.ModeBeta // in range; forged out of range below
 	v.ItemsCount = 1
-	v.Items[0] = 7   // in range; forged out of range below
-	v.Items[4] = 500 // ranges 0..255; in SLACK — must NOT clamp, forged below
+	v.Items[0] = 7 // in range; forged out of range below
+	v.Items[4] = 9 // ranges 0..255; in SLACK, forged out of range below
 
 	buf := make([]byte, tblv2.CfgFixedMeasure(1))
 	n := tblv2.CfgFixedSave([]tblv2.Cfg{v}, buf)
@@ -46,50 +44,30 @@ func TestRowC14(t *testing.T) {
 	}
 	data := buf[:n]
 
-	// Three storage values out of range. Items[4] is in the slack
-	// (ItemsCount=1), so the pass must NOT clamp it.
+	// Items[4] out of range in the slack (ItemsCount=1) is not walked, and the
+	// file reads with the slack value kept; the same value in a live element,
+	// or an enum byte past its variants, refuses (docs/SPEC-TABLES.md §4).
 	bodyAt := tblv2.TableFixedHeaderBytes + 4 + len(tblv2.CfgFixedLayout) + 8
-	body := data[bodyAt : bodyAt+tblv2.CfgFixedBodyBytes]
-	body[5] = 99                                  // enum past {Alpha=1, Beta=2}; will clamp
-	binary.LittleEndian.PutUint32(body[54:], 300) // ranges 0..255; will clamp (live)
-	binary.LittleEndian.PutUint32(body[70:], 500) // ranges 0..255; SLACK — must NOT clamp
-
 	plan := make([]tblv2.TableFixedEntry, 64)
-	var scratch [1]tblv2.Cfg
-	var report tblv2.TableReport
-	scratch[0] = tblv2.Cfg{}
-	// The row pins the clamp itself (values and count), which the plain read now
-	// refuses (docs/SPEC-TABLES.md §6.5), so it reads through the tolerant twin.
-	got := tblv2.CfgFixedLoadTolerant(scratch[:], data, plan, &report)
-	if got != 1 {
-		t.Fatalf("CfgFixedLoad: got %d records, want 1", got)
+	read := func(forge func(body []byte)) (tblv2.Cfg, int64, tblv2.TableReport) {
+		wire := append([]byte(nil), data...)
+		forge(wire[bodyAt : bodyAt+tblv2.CfgFixedBodyBytes])
+		var scratch [1]tblv2.Cfg
+		var report tblv2.TableReport
+		got := tblv2.CfgFixedLoad(scratch[:], wire, plan, &report)
+		return scratch[0], got, report
 	}
-	if report.Malformed {
-		t.Fatal("CfgFixedLoad: malformed")
+	slack := func(body []byte) { binary.LittleEndian.PutUint32(body[70:], 500) }
+	if v, got, report := read(slack); got != 1 || report.Err() != nil || v.Items[4] != 500 || v.ItemsCount != 1 || v.Items[0] != 7 {
+		t.Fatalf("slack out of range: got=%d %+v items=%v count=%d", got, report, v.Items, v.ItemsCount)
 	}
-	if report.Verdict != tblv2.TableOpenOk {
-		t.Fatal("CfgFixedLoad: refused")
+	live := func(body []byte) { slack(body); binary.LittleEndian.PutUint32(body[54:], 300) }
+	if _, got, report := read(live); got != -1 || report.Err() == nil {
+		t.Fatalf("live element out of range read: got=%d %+v", got, report)
 	}
-
-	// The LIVE count ItemsCount=1 means ONE item was walked.  Items[0]=300
-	// should be clamped to 255.  Items[4]=500 is in the SLACK (index >=
-	// ItemsCount) so it must NOT be clamped and must retain its value.
-	// Mode=99 is clamped to ModeNone (=0).
-	if report.Clamped != 2 {
-		t.Fatalf("clamped=%d, want 2 (Mode=99->ModeNone=%d, Items[0]=%d->255; Items[4]=%d must NOT clamp)",
-			report.Clamped, tblv2.ModeNone, v.Items[0], v.Items[4])
-	}
-	if scratch[0].Mode != tblv2.ModeNone {
-		t.Fatalf("Mode=%d, want %d (ModeNone, clamped)", scratch[0].Mode, tblv2.ModeNone)
-	}
-	if scratch[0].Items[0] != 255 {
-		t.Fatalf("Items[0]=%d, want 255 (clamped)", scratch[0].Items[0])
-	}
-	if scratch[0].Items[4] != 500 {
-		t.Fatalf("Items[4]=%d, want 500 (slack, must NOT be clamped)", scratch[0].Items[4])
-	}
-	if scratch[0].ItemsCount != 1 {
-		t.Fatalf("ItemsCount=%d, want 1 (live count preserved)", scratch[0].ItemsCount)
+	mode := func(body []byte) { slack(body); body[5] = 99 }
+	if _, got, report := read(mode); got != -1 || report.Err() == nil {
+		t.Fatalf("enum byte past its variants read: got=%d %+v", got, report)
 	}
 }
 

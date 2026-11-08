@@ -9,7 +9,7 @@ static partial class Program
         {
             using var builder=new Widelistdemo.WideBuilder();
             var inner=new Widelistdemo.TableReport(); builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
-            if(inner.Refused || inner.Malformed) { return new Widelistdemo.Wide(); }
+            if(inner.Refused || inner.Damaged) { return new Widelistdemo.Wide(); }
             return Widelistdemo.Schema.TableWire.CopyRegion(Widelistdemo.Schema.WideTableType(),(IntPtr)builder.GetRoot(),true);
         };
         Find("featurewitnesses","Root").PartialLoad=(bytes,report)=>

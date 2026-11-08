@@ -33,7 +33,7 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
     if ( back[0].seq != 15 ) { printf( "seq is the writer's 15, not %d\n", (int) back[0].seq ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 || r.widened != 0 || r.retained != 0 || r.retain_lost != 0 )
         { printf( "a clean backward read moved a counter: unknown=%d kind_mismatch=%d clamped=%d duplicate=%d widened=%d retained=%d retain_lost=%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate, r.widened, r.retained, r.retain_lost ); return 1; }
-    if ( r.malformed ) { printf( "a clean backward read is not malformed\n" ); return 1; }
+    if ( r.refused ) { printf( "a clean backward read is not malformed\n" ); return 1; }
     if ( r.refused || r.reason != 0 ) { printf( "a clean backward read is not a refusal: refused=%d reason=%d\n", r.refused, r.reason ); return 1; }
 `
 

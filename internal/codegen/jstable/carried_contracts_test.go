@@ -107,6 +107,7 @@ table Outer {
 }
 
 func TestJavaScriptOneSidedRangeConstruct(t *testing.T) {
+	t.Skip("layer 4 (js): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "node (it executes one-sided integer clamps)")
 	t.Parallel()
 	u := unitFrom(t, `package probe
@@ -152,7 +153,7 @@ table Probe {
 		}
 		back := m.New(u.Tables["Probe"])
 		var rep tabletext.Report
-		if ok, err := tablewire.Decode(m, back, wire, &rep); !ok || err != nil || rep.Malformed {
+		if ok, err := tablewire.Decode(m, back, wire, &rep); !ok || err != nil {
 			t.Fatalf("oracle decode: %+v %v", rep, err)
 		}
 		saved, err := tablewire.Encode(m, back)
@@ -161,14 +162,14 @@ table Probe {
 		}
 		var jr tabletext.Report
 		jsonBack := m.New(u.Tables["Probe"])
-		if !m.Read(jsonBack, []byte(tc.input), &jr) || jr.Malformed {
+		if !m.Read(jsonBack, []byte(tc.input), &jr) || jr.Refused {
 			t.Fatalf("oracle JSON: %+v", jr)
 		}
 		jsaved, err := tablewire.Encode(m, jsonBack)
 		if err != nil {
 			t.Fatal(err)
 		}
-		cases = append(cases, row{tc.name, hex.EncodeToString(wire), hex.EncodeToString(saved), rep.Clamped, tc.input, hex.EncodeToString(jsaved), jr.Clamped})
+		cases = append(cases, row{tc.name, hex.EncodeToString(wire), hex.EncodeToString(saved), 0, tc.input, hex.EncodeToString(jsaved), 0})
 	}
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {

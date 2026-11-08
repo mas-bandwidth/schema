@@ -916,7 +916,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == pair.items[0].text )
                 {
-                    *why = "text_duplicate_key";
+                    *why = "text_repeated_key";
                     return false;
                 }
             }
@@ -989,7 +989,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == slot )
                 {
-                    *why = "text_duplicate_key";
+                    *why = "text_repeated_key";
                     return false;
                 }
             }
@@ -1045,13 +1045,13 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == tag )
                 {
-                    *why = "text_duplicate_key";
+                    *why = "text_repeated_key";
                     return false;
                 }
             }
             // A UNION HOLDS ONE ARM (docs/SPEC-TABLES.md §16.9.2, Go
             // internal/codegen/gotable/textform.go union): two different arms
-            // is the wrong shape, and the same arm twice is a duplicate.
+            // is the wrong shape, and the same arm twice is a repeated.
             if ( !seen.empty() )
             {
                 *why = "text_kind_mismatch";
@@ -1165,7 +1165,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == n.items[i].text )
                 {
-                    *why = "text_duplicate_key";
+                    *why = "text_repeated_key";
                     return false;
                 }
             }
@@ -1244,7 +1244,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     }
     // A FIXED-POINT TOKEN IS EXACT (docs/SPEC-TABLES.md §16.9.2, Go
     // internal/codegen/gotable/textform.go integer): scaled by 2^F it must be
-    // an integer, so 0.1 is text_kind_mismatch and never a clamped raw unit.
+    // an integer, so 0.1 is text_kind_mismatch and never a out_of_range raw unit.
     if ( f->frac_bits != 0 )
     {
         const double scaled = d * (double) ( (uint64_t) 1 << f->frac_bits );
@@ -1447,7 +1447,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         {
             if ( seen[k] == found )
             {
-                *why = "text_duplicate_key";
+                *why = "text_repeated_key";
                 return false;
             }
         }
@@ -1717,8 +1717,8 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 		g.pf("    std::string json;\n")
 		g.pf("    if ( !TableTextFormToJson( text, bytes, %sTableType(), json, refusal ) ) { return false; }\n", st.Name)
 		g.pf("    TableReport report;\n")
-		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-		g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
+		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )\n", st.Name)
+		g.pf("    {\n        *refusal = report.refused != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 		g.pf("    return true;\n}\n\n")
 		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %sBuilder & builder, const char ** refusal )\n{\n", st.Name, st.Name)
 		loadDoc("builder")
@@ -1731,8 +1731,8 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 		g.pf("    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }\n")
 		g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
 		g.pf("    TableReport report;\n")
-		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-		g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
+		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )\n", st.Name)
+		g.pf("    {\n        *refusal = report.refused != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 		g.pf("    return true;\n}\n\n")
 		return
 	}
@@ -1740,8 +1740,8 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	g.pf("    std::string json;\n")
 	g.pf("    if ( !TableTextFormToJson( text, bytes, %sTableType(), json, refusal ) ) { return false; }\n", st.Name)
 	g.pf("    TableReport report;\n")
-	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-	g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
+	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )\n", st.Name)
+	g.pf("    {\n        *refusal = report.refused != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 	g.pf("    return true;\n}\n\n")
 	g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %s & value, const char ** refusal )\n{\n", st.Name, st.Name)
 	loadDoc("value")
@@ -1754,8 +1754,8 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	g.pf("    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }\n")
 	g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
 	g.pf("    TableReport report;\n")
-	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-	g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
+	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )\n", st.Name)
+	g.pf("    {\n        *refusal = report.refused != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 	g.pf("    return true;\n}\n\n")
 }
 

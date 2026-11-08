@@ -15,7 +15,13 @@ package luatable
 //     then again under a kind that widens is the widened key, so the map keeps
 //     its entries (§2.8);
 //   - wire_length_overflow: a length near 2^63 is bounded before the cursor
-//     moves, so it cannot wrap the cursor negative (§3).
+//     moves, so it cannot wrap the cursor negative (§3);
+//   - pointer_orphan_cycle: a cycle among records the root never reaches is
+//     a cyclic wire, because the check's vertices are every placed record
+//     (§3.1, §4); the plant walks the save's numbering from the root;
+//   - map_duplicate_pointer_past_table: a pointer index past the node table
+//     is damage even in a map entry a later duplicate key replaces (§2.8,
+//     §3.1); the plant lets the replaced entry's slots resolve to nothing.
 
 import (
 	"fmt"
@@ -43,6 +49,12 @@ var luaVectorCases = []luaVectorCase{
 	{"wire_length_overflow", "pointers", "Scene",
 		"    local n = r_leb(r)\n    if r.bad or not fits(r, n) then return false end",
 		"    local n = r_leb(r)\n    if r.bad or n < 0 or r.at + n > r.lim then return false end", 1},
+	{"pointer_orphan_cycle", "pointers", "Scene",
+		"if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then",
+		"if not report.malformed and D.number_nodes(T, desc, root, false) == nil then", 1},
+	{"map_duplicate_pointer_past_table", "maps", "Chunks",
+		"if pp.holder == out and pp.key == last then pp.holder = ctx.sink end",
+		"if pp.holder == out and pp.key == last then pp.holder, pp.index = ctx.sink, 0 end", 1},
 }
 
 const luaVectorProbe = `local T = require(inputs.module)
@@ -58,7 +70,7 @@ local line = "measure=" .. (inputs.whole == "1" and tostring(m) or "-") ..
   " root=" .. tostring(v ~= nil) .. " malformed=" .. tostring(r.malformed) ..
   " refused=" .. tostring((r.refused or 0) > 0)
 if not r.malformed then
-  line = line .. string.format(" unknown=%d kind=%d widened=%d", r.unknown, r.kindMismatch, r.widened)
+  line = line .. string.format(" unknown=%d widened=%d", r.unknown, r.widened)
 end
 print(line)
 `
@@ -91,17 +103,17 @@ func luaVectorOracle(t *testing.T, u *ir.Unit, root string, wire []byte) (string
 	var rep tabletext.Report
 	ok, err := tablewire.DecodeRegion(m, m.New(def), wire, &rep)
 	refusedLoad := tablewire.Refused(err)
-	if err != nil && !refusedLoad {
+	if err != nil && !refusedLoad && !tablewire.ReadRefusal(err) {
 		t.Fatalf("the Go engine refused the root itself: %v", err)
 	}
-	malformed := rep.Malformed || !ok
+	malformed := rep.Refused || !ok || tablewire.ReadRefusal(err)
 	ms := "-"
 	if whole {
 		ms = strconv.FormatInt(measured, 10)
 	}
 	line := fmt.Sprintf("measure=%s root=%t malformed=%t refused=%t", ms, !malformed && !refusedLoad, malformed, refusedLoad)
 	if !malformed {
-		line += fmt.Sprintf(" unknown=%d kind=%d widened=%d", rep.Unknown, rep.KindMismatch, rep.Widened)
+		line += fmt.Sprintf(" unknown=%d widened=%d", rep.Unknown, rep.Widened)
 	}
 	return line, whole
 }

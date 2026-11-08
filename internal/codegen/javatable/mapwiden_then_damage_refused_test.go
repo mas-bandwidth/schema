@@ -106,7 +106,7 @@ public final class Driver {
 	}
 	model := tabletext.NewModel(u)
 	want := new(tabletext.Report)
-	if _, err := tablewire.Decode(model, model.New(u.Tables["Slots"]), mutant, want); err != nil || !want.Malformed {
+	if _, err := tablewire.Decode(model, model.New(u.Tables["Slots"]), mutant, want); !tablewire.ReadRefusal(err) {
 		t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, want)
 	}
 	if gotFields := strings.Split(javaReport, ","); len(gotFields) != 7 || gotFields[5] != "true" {

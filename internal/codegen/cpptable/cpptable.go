@@ -4,7 +4,7 @@
 // measure/save/load codecs and reflection descriptors for the whole
 // TABLE CLOSURE (every table plus everything one references, transitively).
 //
-// The wire is neutral, evolution-tolerant TLV: field identity is the name
+// The wire is neutral, evolution-strict TLV: field identity is the name
 // hash, unknown fields skip, absent fields default, changed kinds skip
 // (never misdecode), out-of-range values clamp, damage discards the whole
 // load (docs/SPEC-TABLES.md §4) — and every event lands in the TableReport.
@@ -572,9 +572,9 @@ const tableRefuseReasonLaterValues = `
     invalid_value,         // a writer handed a value outside the declaration: a count, a value or an ordinal past its bound, or ill-formed text (§3.1, §11)
     allocation_failed,     // an allocation the codec asked for was refused (§7.6)
     wire_damaged,          // a read that reached damage rather than a refusal: the report's verdict is damage (§4)
-    malformed,             // a tolerant read that saw a malformed body; the report counts it (§4)
-    clamped,               // a tolerant read that clamped a value to its declared bound; the report counts it (§4)
-    kind_mismatch,         // a wire field whose kind does not match the declaration; the report counts it (§4)
+    malformed,             // a read that met a malformed body: a refusal reason, never a counted verdict (§4)
+    out_of_range,          // a value outside its declared bound: a refusal reason, the retired spelling's ordinal (§4)
+    kind_mismatch,         // a wire field whose kind does not match the declaration: a refusal reason (§4)
     base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
     base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
     integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
@@ -812,23 +812,17 @@ struct TableMessageReason
 #define SCHEMA_HAS_FLOOR 1
 #endif
 
-// The table-wire read report — the permissive contract's ledger. Silence
+// The table-wire read report — the strict read's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 struct TableReport
 {
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
-    int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     // a kind that GREW since the writer (docs/SPEC-TABLES.md §4): an integer
     // kind read into a wider one of the same signedness, or f32 into f64,
     // decoded EXACTLY. One count per field or per map. It is the one counter
     // that names no loss: the bytes were not the shape this reader declares,
     // and the number survived.
     int32_t widened = 0;
-    int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
-    int32_t duplicate = 0;
     // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
     // field became required lacks it. Counted once per body that ends without
     // one of its required fields (or after a body below it did), and the
@@ -836,12 +830,7 @@ struct TableReport
     // The strict reads refuse it with the missing_required reason.
     int32_t missing_required = 0;
     char missing_required_fields[256] = {};
-    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
-    // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
-    // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
-    // the ONE node, never a copy per slot, and the strict read refuses
-    // blob_shared. The Go oracle is internal/codegen/gotable/gotable.go.
-    int32_t blob_shared = 0;
+    bool damaged = false;    // damage: the whole load is refused, nothing of it is used
     // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
     // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
     // zero counters and a false flag are what a clean read prints too, so the
@@ -853,10 +842,10 @@ struct TableReport
     TableMessageReason reason = newer_form;
     // WHOLE-FILE DAMAGE can have a named cause even when it is not a refusal:
     // integrity_mismatch is §2.14's checked-trailer damage. Read this member
-    // when malformed is true; the reason above remains the message refusal name.
+    // when damaged is true; the reason above remains the message refusal name.
     TableRefuseReason damage_reason = ok;
     // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
-    // the reason duplicate is: a caller has one report type and not two. Both
+    // the reason repeated is: a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
     // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
@@ -868,7 +857,7 @@ struct TableReport
     // unknown, widened and retained alone leave it ok.
     TableRefuseReason refuse_reason = ok;
     // THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
-    // an infinity is refused on its raw bits by every read, the tolerant one
+    // an infinity is refused on its raw bits by every read, the strict one
     // included, so a read that moves this refuses as non_finite_float and
     // lands nothing. It is a count only so a read can tell its own refusal
     // from a caller's report that already held one.
@@ -2143,10 +2132,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n// your choice. See the LICENSE exception in the schema compiler; the compiler is\n// AGPL-3.0, its output is not.\n", f.Base)
 		fmt.Fprintf(&h, "// package %s — protocol id 0x%016x (packets only: tables version by field id, not by protocol id)\n", u.Package, u.ProtocolId)
 		if unitHas128(u, closure) {
-			h.WriteString("// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): includable from\n")
+			h.WriteString("// The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): includable from\n")
 			h.WriteString("// any TU — the one thing taken from serialize.h is the 128-bit storage type.\n\n")
 		} else {
-			h.WriteString("// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize\n")
+			h.WriteString("// The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize\n")
 			h.WriteString("// dependency — includable from any TU.\n\n")
 		}
 		// The C spellings, as serialize.h uses them: <stdint.h>, not <cstdint>.

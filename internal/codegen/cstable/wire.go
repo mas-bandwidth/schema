@@ -435,10 +435,10 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		}
 		// JSON parsing lands in the full 64-bit domain first. Do not narrow
 		// to field storage or round either bound through double before clamping.
-		fmt.Fprintf(&b, ", ClampJsonInteger = delegate (ulong raw, TableReport r) { %s v = %s; if (v < %s) { r.Clamped++; v = %s; } else if (v > %s) { r.Clamped++; v = %s; } return unchecked((ulong)v); }", typ, value, csIntLit(f.IntMin, signed, 8), csIntLit(f.IntMin, signed, 8), csIntLit(f.IntMax, signed, 8), csIntLit(f.IntMax, signed, 8))
+		fmt.Fprintf(&b, ", RangeJsonInteger = delegate (ulong raw, TableReport r) { %s v = %s; if (v < %s || v > %s) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } return raw; }", typ, value, csIntLit(f.IntMin, signed, 8), csIntLit(f.IntMax, signed, 8))
 	} else if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		high := (uint64(1) << f.Type.Width) - 1
-		fmt.Fprintf(&b, ", ClampJsonInteger = delegate (ulong raw, TableReport r) { if (raw > %dul) { r.Clamped++; return %dul; } return raw; }", high, high)
+		fmt.Fprintf(&b, ", RangeJsonInteger = delegate (ulong raw, TableReport r) { if (raw > %dul) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } return raw; }", high)
 	}
 	if f.Required && f.HasIntRange && tableKindWidth(kind) <= 8 {
 		typ := csFieldType(f.Type)
@@ -464,23 +464,23 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		signed := f.Type.Kind == ir.TInt && f.Type.Signed
 		low, high := tableClampEnds(f, width)
 		if low {
-			fmt.Fprintf(&c, "if (v < %s) { r.Clamped++; v = %s; } ", csIntLit(f.IntMin, signed, width), csIntLit(f.IntMin, signed, width))
+			fmt.Fprintf(&c, "if (v < %s) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", csIntLit(f.IntMin, signed, width))
 		}
 		if high {
-			fmt.Fprintf(&c, "if (v > %s) { r.Clamped++; v = %s; } ", csIntLit(f.IntMax, signed, width), csIntLit(f.IntMax, signed, width))
+			fmt.Fprintf(&c, "if (v > %s) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", csIntLit(f.IntMax, signed, width))
 		}
 	} else if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-		fmt.Fprintf(&c, "if (v > %dul) { r.Clamped++; v = %d; } ", (uint64(1)<<f.Type.Width)-1, (uint64(1)<<f.Type.Width)-1)
+		fmt.Fprintf(&c, "if (v > %dul) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", (uint64(1)<<f.Type.Width)-1)
 	}
 	if f.HasFloatRange {
 		lit := formatFloat64
 		if kind == tkF32 {
 			lit = formatFloat32
 		}
-		fmt.Fprintf(&c, "if (v < %s) { r.Clamped++; v = %s; } else if (v > %s) { r.Clamped++; v = %s; } ", lit(f.FMin), lit(f.FMin), lit(f.FMax), lit(f.FMax))
+		fmt.Fprintf(&c, "if (v < %s || v > %s) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", lit(f.FMin), lit(f.FMax))
 	}
 	fmt.Fprintf(&c, "return %s;", csRawGet("v", f.Type))
-	fmt.Fprintf(&b, ", ClampRaw = delegate (ulong raw, TableReport r) { %s }", c.String())
+	fmt.Fprintf(&b, ", RangeRaw = delegate (ulong raw, TableReport r) { %s }", c.String())
 	return b.String()
 }
 
@@ -1230,17 +1230,21 @@ public static partial class TableWire
         report.Refused = true; report.Reason = report.NonFiniteReason;
         return true;
     }
+    internal static bool Fail(TableReport report, string reason)
+    { if (!report.Refused) { report.Refused = true; report.Reason = reason; } return false; }
+    internal static bool FailRange(TableReport report, TableFieldInfo f)
+    { return Fail(report, "out_of_range: " + f.Name); }
     static bool Compatible(byte from, byte to, TableReport report)
     {
         if (from == to) { return true; }
         if (Widen(from, to)) { report.Widened++; return true; }
-        report.KindMismatch++; return false;
+        return Fail(report, "kind_mismatch");
     }
     internal static bool CountRefused(TableReport report)
     { return report.Refused && report.Reason == "count_over_extent_cap"; }
     static bool CollectionCap(TableReport report)
     { report.Refused = true; report.Reason = "count_over_extent_cap"; return false; }
-    static bool Damage(TableReport report) { report.Malformed = true; return false; }
+    static bool Damage(TableReport report) { report.Damaged = true; return false; }
     static bool EndsEarly(Reader r)
     {
         while (r.Ref(out ulong reference, out _))
@@ -1270,7 +1274,7 @@ public static partial class TableWire
             if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
             { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
-            if (f.ClampWide != null) { wide = f.ClampWide(wide, report); }
+            if (f.RangeWide != null) { wide = f.RangeWide(wide, report); if (report.Refused) { return false; } }
             f.SetWide(value, index, wide); return true;
         }
         ulong raw;
@@ -1290,10 +1294,10 @@ public static partial class TableWire
             { int shift = 64 - width * 8; raw = unchecked((ulong)((long)(raw << shift) >> shift)); }
             // A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on the
             // tolerant read (docs/SPEC-TABLES.md §6.5), as the Go oracle counts it.
-            if (kind == 1) { if (raw > 1) { report.Malformed = true; } raw = raw == 0 ? 0ul : 1ul; }
+            if (kind == 1 && raw > 1) { return Damage(report); }
             if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw)) { NonFinite(f, report); return true; }
             if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
-            if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
+            if (f.RangeRaw != null) { raw = f.RangeRaw(raw, report); if (report.Refused) { return false; } }
         }
         if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)raw; }
         else { f.SetRaw(value, index, raw); }
@@ -1305,8 +1309,7 @@ public static partial class TableWire
         {
             Reader text = r; if (framed && !r.Slice(out text)) { return Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
-            int before = report.Clamped; bool good = ReadText(text.Buffer, f.GetChild(value,index), f.Table.Fields[0], report);
-            if (report.Clamped != before) { TextClamp(report,f); } return good;
+            return ReadText(text.Buffer, f.GetChild(value,index), f.Table.Fields[0], report);
         }
         if (kind == 17)
         {
@@ -1318,8 +1321,7 @@ public static partial class TableWire
             Reader sub = r;
             if (framed && !r.Slice(out sub)) { return Damage(report); }
             object child = f.GetChild(value, index);
-            int before = report.Clamped; ReadBody(ref sub, child, f.Table, report, true);
-            if (f.TextList && report.Clamped != before) { TextClamp(report,f); }
+            ReadBody(ref sub, child, f.Table, report, true);
             if (report.Refused) { return false; }
             if (sub.Offset != sub.Buffer.Length) { f.Table.Reset(child); Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
@@ -1452,7 +1454,7 @@ public static partial class TableWire
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-            if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
+            if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
             {
@@ -1470,11 +1472,7 @@ public static partial class TableWire
     {
         if (!TextValid(text)) { return Damage(report); }
         int keep = text.Length;
-        if (keep > f.ArrayBound)
-        {
-            keep = f.ArrayBound; report.Clamped++;
-            while (keep > 0 && (text[keep] & 0xc0) == 0x80) { keep--; }
-        }
+        if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
         if (value != null) { if(f.Unbounded){f.EnsureCount(value,keep);} text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
         return true;
     }
@@ -1494,17 +1492,13 @@ public static partial class TableWire
             }
         }
         int keep = text.Length / 2;
-        if (keep > f.ArrayBound)
-        {
-            keep = f.ArrayBound; report.Clamped++;
-            if (keep > 0 && (text[keep * 2 - 1] & 0xfc) == 0xd8) { keep--; }
-        }
+        if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
         char[] storage = f.GetChars(value);
         for (int i = 0; i < keep; i++) { storage[i] = (char)(text[i * 2] | text[i * 2 + 1] << 8); }
         f.SetCount(value, keep); return true;
     }
-    internal static void TextClamp(TableReport report, TableFieldInfo field)
-    { if (field.TextList && report.ClampedField == null) { report.ClampedField = field.TextField; } }
+    internal static bool TextTotalRefuse(TableReport report, TableFieldInfo field)
+    { return Fail(report, "length_over_bound: " + field.TextField); }
     internal static bool TextValid(ReadOnlySpan<byte> text)
     {
         for (int i = 0; i < text.Length;)
@@ -1563,7 +1557,7 @@ public static partial class TableWire
             else
             {
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
+                if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
                 int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                 int decoded = 0; long textSpent = 0;
                 for (int i = 0; i < keep; i++)
@@ -1632,7 +1626,7 @@ public static partial class TableWire
     internal static bool RequiredMissing(TableReport report, string missing)
     {
         if (missing == null) { return !report.Refused; }
-        if (!report.Refused) { report.MissingRequired++; report.Reason = "missing_required: " + missing; }
+        if (!report.Refused) { report.Reason = "missing_required: " + missing; }
         report.Refused = true;
         return false;
     }
@@ -1675,11 +1669,7 @@ public static partial class TableWire
             }
             int beforeWidened = report.Widened;
             if (Widen(kind, Kind(field)) && !r.Has(Width(kind))) { return Damage(report); }
-            if (!Compatible(kind, Kind(field), report))
-            {
-                if (!r.Skip(kind)) { return Damage(report); }
-                continue;
-            }
+            if (!Compatible(kind, Kind(field), report)) { return false; }
             if (field.MapKey) { report.Widened = beforeWidened; }
             if (!ReadField(ref r, value, field, kind, report, out bool placed)) { return false; }
             if (field.Required && placed) { seen[field.Ordinal >> 6] |= 1ul << (field.Ordinal & 63); }
@@ -1738,21 +1728,21 @@ public static partial class TableWire
         if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
         if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
-        bool malformedBefore = report.Malformed;
-        report.Malformed = false;
+        bool damagedBefore = report.Damaged;
+        report.Damaged = false;
         // Managed collections grow only after each bounded element. The actual
         // read chooses a storage-cap refusal and earns preceding events; the
         // region extent scan can visit map values their keys would not admit.
         if (type.Variable) { r.Graph = ReadGraph(r, value, type, report); }
         bool complete = ReadBody(ref r, value, type, report, false);
-        if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
-        if (report.Refused) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
+        if (NonFiniteRefused(report)) { report.Damaged |= damagedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
+        if (report.Refused) { report.Damaged |= damagedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
-        if (r.Graph != null && r.Graph.Good && !report.Malformed && Cyclic(r.Graph, value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); }
+        if (r.Graph != null && r.Graph.Good && !report.Damaged && Cyclic(r.Graph, value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); }
         // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the
         // walk decoded is handed back, and the verdict is the damage.
-        if (report.Malformed) { type.Reset(value); return Finish(report, Verdict.Damaged); }
-        report.Malformed = malformedBefore;
+        if (report.Damaged) { type.Reset(value); return Finish(report, Verdict.Damaged); }
+        report.Damaged = damagedBefore;
         if (!complete) { type.Reset(value); return Finish(report, Verdict.BodyStopped); }
         return Finish(report, Verdict.Ok);
     }

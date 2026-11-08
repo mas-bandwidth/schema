@@ -77,13 +77,13 @@ func TestFixedCT19PayloadFreeLines(t *testing.T) {
 		t.Fatalf("%v\n%s", err, body)
 	}
 
-	// The bounds pass clamps a tag past the arm set to None and counts it
-	// (internal/codegen/ctable/fixedform.go:974-975; ALGORITHM §4.6).
+	// The bounds pass refuses a tag past the arm set
+	// (internal/codegen/ctable/fixedform.go; ALGORITHM §4.6).
 	if !strings.Contains(header, "(uint32_t) value->pick.type > 3u") {
 		t.Fatalf("the fixed clamp does not compare Pick's tag to the arm set:\n%s", header)
 	}
-	if !strings.Contains(header, "value->pick.type = PICK_TYPE_NONE; (*clamped)++") {
-		t.Fatalf("the fixed clamp does not clamp a tag past the arm set to None:\n%s", header)
+	if !strings.Contains(header, "(*out_of_range)++") {
+		t.Fatalf("the fixed bounds pass does not refuse a tag past the arm set:\n%s", header)
 	}
 
 	// THE NEGATIVE CONTROL, IN MEMORY: the same assertion over a copy with one
@@ -146,15 +146,15 @@ func TestFixedRoadmapCT19PayloadFreeArms(t *testing.T) {
     if ( n < 0 ) { printf( "alpha save failed\n" ); return 1; }
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-        { printf( "alpha load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+    if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        { printf( "alpha load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_ALPHA ) { printf( "alpha arm=%d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].lead != -2147483647 - 1 || back[0].trail != 2147483647 )
         { printf( "alpha moved a neighbour: lead=%d trail=%d\n", (int) back[0].lead, (int) back[0].trail ); return 1; }
     if ( back[0].pick.as.alpha != -2147483647 - 1 )
         { printf( "alpha payload=%d\n", (int) back[0].pick.as.alpha ); return 1; }
-    if ( r.refused || r.malformed || r.clamped || r.widened )
-        { printf( "alpha report dirty: refused=%d malformed=%d clamped=%d widened=%d\n", r.refused, r.malformed, r.clamped, r.widened ); return 1; }
+    if ( r.refused || r.widened )
+        { printf( "alpha report dirty: refused=%d widened=%d\n", r.refused, r.widened ); return 1; }
 
     /* RECORD 2 — the payload-free arm quiet: its case writes nothing under the
        tag (ALGORITHM §3.1), so the arm's storage is the prefill's zeros. */
@@ -175,13 +175,13 @@ func TestFixedRoadmapCT19PayloadFreeArms(t *testing.T) {
     }
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-        { printf( "quiet load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+    if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        { printf( "quiet load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_QUIET ) { printf( "quiet arm=%d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].lead != 2147483647 || back[0].trail != -2147483647 - 1 )
         { printf( "quiet moved a neighbour: lead=%d trail=%d\n", (int) back[0].lead, (int) back[0].trail ); return 1; }
-    if ( r.refused || r.malformed || r.clamped || r.widened )
-        { printf( "quiet report dirty: refused=%d malformed=%d clamped=%d widened=%d\n", r.refused, r.malformed, r.clamped, r.widened ); return 1; }
+    if ( r.refused || r.widened )
+        { printf( "quiet report dirty: refused=%d widened=%d\n", r.refused, r.widened ); return 1; }
 
     /* RECORD 3 — the other payload-free arm signal, the same zeros under the tag. */
     v.lead = -2147483647 - 1;
@@ -198,22 +198,22 @@ func TestFixedRoadmapCT19PayloadFreeArms(t *testing.T) {
     }
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-        { printf( "signal load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+    if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        { printf( "signal load refused=%d malformed=%d reason=%d\n", r.refused, r.refused, (int) r.reason ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_SIGNAL ) { printf( "signal arm=%d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].lead != -2147483647 - 1 || back[0].trail != 2147483647 )
         { printf( "signal moved a neighbour: lead=%d trail=%d\n", (int) back[0].lead, (int) back[0].trail ); return 1; }
-    if ( r.refused || r.malformed || r.clamped || r.widened )
-        { printf( "signal report dirty: refused=%d malformed=%d clamped=%d widened=%d\n", r.refused, r.malformed, r.clamped, r.widened ); return 1; }
+    if ( r.refused || r.widened )
+        { printf( "signal report dirty: refused=%d widened=%d\n", r.refused, r.widened ); return 1; }
 `)
 	})
 
 	t.Run("tag-past-the-arm-set", func(t *testing.T) {
 		t.Parallel()
 		cT10Run(t, t19PayloadFree, "Root", `
-    /* A tag byte forged past the arm set (alpha=1, quiet=2, signal=3) reads with
-       the tag clamped to None and clamped counted once — the union case of the
-       bounds pass (internal/codegen/ctable/fixedform.go:974-975, ALGORITHM §4.6)
+    /* A tag byte forged past the arm set (alpha=1, quiet=2, signal=3) refuses
+       the whole load — the union case of the bounds pass
+       (internal/codegen/ctable/fixedform.go, ALGORITHM §4.6)
        — and never a payload read. */
     v.lead = 12345;
     v.trail = -12345;
@@ -226,14 +226,14 @@ func TestFixedRoadmapCT19PayloadFreeArms(t *testing.T) {
     }
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
-        { printf( "forged load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
+    if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != -1 )
+        { printf( "forged load was not refused\n" ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "forged refusal missing: refused=%d reason=%d\n", r.refused, r.refuse_reason ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_NONE )
         { printf( "forged tag=%d, want None\n", (int) back[0].pick.type ); return 1; }
-    if ( r.clamped != 1 )
-        { printf( "forged clamped=%d, want 1\n", r.clamped ); return 1; }
-    if ( back[0].lead != 12345 || back[0].trail != -12345 )
-        { printf( "forged moved a neighbour: lead=%d trail=%d\n", (int) back[0].lead, (int) back[0].trail ); return 1; }
+    if ( back[0].lead != 0 || back[0].trail != 0 )
+        { printf( "forged landed a neighbour: lead=%d trail=%d\n", (int) back[0].lead, (int) back[0].trail ); return 1; }
 `)
 	})
 }

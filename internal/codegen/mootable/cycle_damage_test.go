@@ -35,10 +35,10 @@ func cycleProbe(g *generatedUnit, root string) string {
 		"local mods: { any } = {\n" + mods.String() + "}\n" +
 		fmt.Sprintf(`local root = %q
 local function line(path: string, v: any, rep: any)
-	print(string.format("%%s %%d %%s", path, if v ~= nil then 1 else 0, tostring(rep.malformed)))
+	print(string.format("%%s %%d %%s", path, if v ~= nil then 1 else 0, tostring(rep.damaged)))
 end
 local rep = L.newReport()
-line("tolerant", L.loadTolerant(root, inputs.wire, rep), rep)
+line("tolerant", L.load(root, inputs.wire, rep), rep)
 rep = L.newReport()
 line("strict", L.ReadStrict(root, inputs.wire, rep), rep)
 rep = L.newReport()
@@ -109,13 +109,13 @@ func TestMooCyclicWireIsDamage(t *testing.T) {
 func TestMooCyclicWireNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
-	const anchor = "if _numberingGood and not report.malformed and cyclic() then"
+	const anchor = "if _numberingGood and not report.bodyDamaged and cyclic() then"
 	got := runCycleVectors(t, func(t *testing.T, g *generatedUnit) {
 		src := string(g.files["table_load.moo"])
 		if strings.Count(src, anchor) != 1 {
 			t.Fatal("cycle control anchor must occur exactly once")
 		}
-		changed := strings.Replace(src, anchor, "if _numberingGood and not report.malformed and false then", 1)
+		changed := strings.Replace(src, anchor, "if _numberingGood and not report.bodyDamaged and false then", 1)
 		if err := os.WriteFile(filepath.Join(g.dir, "table_load.moo"), []byte(changed), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -133,11 +133,11 @@ func TestMooCyclicWireNegativeControl(t *testing.T) {
 func mapKeyWidenProbe(g *generatedUnit, root string) string {
 	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal L = require(\"./table_load\")\nlocal R = require(\"./table_retain\")\n" + g.requireAll() +
 		fmt.Sprintf(`local function line(path: string, rep: any)
-	print(string.format("%%s %%d,%%d,%%d,%%d,%%d,%%s", path, rep.unknown, rep.kindMismatch, rep.widened,
-		rep.clamped, rep.duplicate, tostring(rep.malformed)))
+	print(string.format("%%s %%d,%%d,%%d,%%d,%%d,%%s", path, rep.unknown, 0, rep.widened,
+		0, 0, tostring(rep.damaged)))
 end
 local rep = L.newReport()
-L.loadTolerant(%q, inputs.wire, rep)
+L.load(%q, inputs.wire, rep)
 line("tolerant", rep)
 rep = L.newReport()
 R.LoadRetain(%q, inputs.wire, rep, R.newStore(%d, nil))

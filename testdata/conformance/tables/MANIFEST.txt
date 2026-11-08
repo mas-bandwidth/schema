@@ -83,34 +83,33 @@ unit tblw2     test/tables/W2.schema
 unit tblr1     test/tables/R1.schema
 unit tblr2     test/tables/R2.schema
 
-instance root_full            tabledemo RootConfig    testdata/wire/tables/root_full.bin
-instance root_default         tabledemo RootConfig    testdata/wire/tables/root_default.bin
-instance profile_elide        tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin
-instance text_escapes          tabledemo ProfileConfig testdata/wire/tables/text_escapes.bin
-instance text_escapes_raw      tabledemo ProfileConfig testdata/wire/tables/text_escapes_raw.bin
-instance text_float_exp        tabledemo ProfileConfig testdata/wire/tables/text_float_exp.bin
-instance text_float_small      tabledemo ProfileConfig testdata/wire/tables/text_float_small.bin
-instance text_float_misc       tabledemo ProfileConfig testdata/wire/tables/text_float_misc.bin
-instance text_float64_big      tabledemo ProfileConfig testdata/wire/tables/text_float64_big.bin
-instance text_float64_ties     tabledemo ProfileConfig testdata/wire/tables/text_float64_ties.bin
-instance text_negative_zero    tabledemo ProfileConfig testdata/wire/tables/text_negative_zero.bin
-instance text_uint64_two_to_63 tabledemo ProfileConfig testdata/wire/tables/text_uint64_two_to_63.bin
-instance text_icon_pad_one     tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_one.bin
-instance text_icon_pad_two     tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_two.bin
-instance text_icon_sixteen     tabledemo ProfileConfig testdata/wire/tables/text_icon_sixteen.bin
-instance loadout_full         tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin
-instance wide_blob            tabledemo WideBlob      testdata/wire/tables/wide_blob.bin
-instance archive              tabledemo ArchiveConfig testdata/wire/tables/archive.bin
-instance keyed_config         tabledemo KeyedConfig   testdata/wire/tables/keyed_config.bin
-instance keyed_default        tabledemo KeyedConfig   testdata/wire/tables/keyed_default.bin
-instance v1_cfg               tblv1     Cfg           testdata/wire/tables/v1_cfg.bin
-instance v1_seams             tblv1     Cfg           testdata/wire/tables/v1_seams.bin
-instance v2_cfg               tblv2     Cfg           testdata/wire/tables/v2_cfg.bin
-instance v2_seams             tblv2     Cfg           testdata/wire/tables/v2_seams.bin
-instance chain_value          tblp1     Chain         testdata/wire/tables/chain_value.bin
-instance chain_value_empty    tblp1     Chain         testdata/wire/tables/chain_value_empty.bin
-instance chain_optional       tblp3     Chain         testdata/wire/tables/chain_optional.bin
-instance chain_optional_empty tblp3     Chain         testdata/wire/tables/chain_optional_empty.bin
+instance root_full            tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin
+instance root_default         tabledemo RootConfig    testdata/conformance/tables/wire/root_default.bin
+instance profile_elide        tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin
+instance text_escapes          tabledemo ProfileConfig testdata/conformance/tables/wire/text_escapes.bin
+instance text_escapes_raw      tabledemo ProfileConfig testdata/conformance/tables/wire/text_escapes_raw.bin
+instance text_float_exp        tabledemo ProfileConfig testdata/conformance/tables/wire/text_float_exp.bin
+instance text_float_small      tabledemo ProfileConfig testdata/conformance/tables/wire/text_float_small.bin
+instance text_float_misc       tabledemo ProfileConfig testdata/conformance/tables/wire/text_float_misc.bin
+instance text_float64_big      tabledemo ProfileConfig testdata/conformance/tables/wire/text_float64_big.bin
+instance text_float64_ties     tabledemo ProfileConfig testdata/conformance/tables/wire/text_float64_ties.bin
+instance text_negative_zero    tabledemo ProfileConfig testdata/conformance/tables/wire/text_negative_zero.bin
+instance text_uint64_two_to_63 tabledemo ProfileConfig testdata/conformance/tables/wire/text_uint64_two_to_63.bin
+instance text_icon_pad_one     tabledemo ProfileConfig testdata/conformance/tables/wire/text_icon_pad_one.bin
+instance text_icon_pad_two     tabledemo ProfileConfig testdata/conformance/tables/wire/text_icon_pad_two.bin
+instance text_icon_sixteen     tabledemo ProfileConfig testdata/conformance/tables/wire/text_icon_sixteen.bin
+instance loadout_full         tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin
+instance archive              tabledemo ArchiveConfig testdata/conformance/tables/wire/archive.bin
+instance keyed_config         tabledemo KeyedConfig   testdata/conformance/tables/wire/keyed_config.bin
+instance keyed_default        tabledemo KeyedConfig   testdata/conformance/tables/wire/keyed_default.bin
+instance v1_cfg               tblv1     Cfg           testdata/conformance/tables/wire/v1_cfg.bin
+instance v1_seams             tblv1     Cfg           testdata/conformance/tables/wire/v1_seams.bin
+instance v2_cfg               tblv2     Cfg           testdata/conformance/tables/wire/v2_cfg.bin
+instance v2_seams             tblv2     Cfg           testdata/conformance/tables/wire/v2_seams.bin
+instance chain_value          tblp1     Chain         testdata/conformance/tables/wire/chain_value.bin
+instance chain_value_empty    tblp1     Chain         testdata/conformance/tables/wire/chain_value_empty.bin
+instance chain_optional       tblp3     Chain         testdata/conformance/tables/wire/chain_optional.bin
+instance chain_optional_empty tblp3     Chain         testdata/conformance/tables/wire/chain_optional_empty.bin
 
 # THE VARIABLE CLASS (§3.1), and the four shapes the numbering has to get right.
 # Three carry a text (§16.7): a tree reads and writes as nested tables, and
@@ -138,26 +137,26 @@ instance graph_deep           graphdemo Scene         testdata/wire/tables/graph
 # same three depths — history counted in the root with a live None slot,
 # pending fixed inside the transaction with its None element riding in place,
 # origins counted inside the insert.
-instance message_open         messagedemo ToolMessage testdata/wire/tables/message_open.bin
-instance message_transaction  messagedemo ToolMessage testdata/wire/tables/message_transaction.bin
-instance message_ping         messagedemo ToolMessage testdata/wire/tables/message_ping.bin
-instance message_save         messagedemo ToolMessage testdata/wire/tables/message_save.bin
-instance message_empty        messagedemo ToolMessage testdata/wire/tables/message_empty.bin
-instance message_batch        messagedemo ToolMessage testdata/wire/tables/message_batch.bin
-instance message_trace        messagedemo ToolMessage testdata/wire/tables/message_trace.bin
+instance message_open         messagedemo ToolMessage testdata/conformance/tables/wire/message_open.bin
+instance message_transaction  messagedemo ToolMessage testdata/conformance/tables/wire/message_transaction.bin
+instance message_ping         messagedemo ToolMessage testdata/conformance/tables/wire/message_ping.bin
+instance message_save         messagedemo ToolMessage testdata/conformance/tables/wire/message_save.bin
+instance message_empty        messagedemo ToolMessage testdata/conformance/tables/wire/message_empty.bin
+instance message_batch        messagedemo ToolMessage testdata/conformance/tables/wire/message_batch.bin
+instance message_trace        messagedemo ToolMessage testdata/conformance/tables/wire/message_trace.bin
 # THE GENERAL ARMS (§2.6): an arm is a field line, so an arm may be a scalar, a
 # string, an enum, a flags mask, a bytes buffer, a bounded array, another union
 # or a POINTER. message_arms carries a fixed-array arm in the root body, a flags
 # arm and a nested-union arm in the batch; message_arm_edits carries the bounded
 # scalar, counted-array, bytes and enum arms inside a transaction's edits;
 # message_ack is the PAYLOAD-FREE arm, the arm id with L = 0.
-instance message_arms         messagedemo ToolMessage testdata/wire/tables/message_arms.bin
-instance message_arm_edits    messagedemo ToolMessage testdata/wire/tables/message_arm_edits.bin
-instance message_ack          messagedemo ToolMessage testdata/wire/tables/message_ack.bin
-instance m1_open              tblm1       Msg         testdata/wire/tables/m1_open.bin
-instance m1_save              tblm1       Msg         testdata/wire/tables/m1_save.bin
-instance m2_close             tblm2       Msg         testdata/wire/tables/m2_close.bin
-instance m2_open              tblm2       Msg         testdata/wire/tables/m2_open.bin
+instance message_arms         messagedemo ToolMessage testdata/conformance/tables/wire/message_arms.bin
+instance message_arm_edits    messagedemo ToolMessage testdata/conformance/tables/wire/message_arm_edits.bin
+instance message_ack          messagedemo ToolMessage testdata/conformance/tables/wire/message_ack.bin
+instance m1_open              tblm1       Msg         testdata/conformance/tables/wire/m1_open.bin
+instance m1_save              tblm1       Msg         testdata/conformance/tables/wire/m1_save.bin
+instance m2_close             tblm2       Msg         testdata/conformance/tables/wire/m2_close.bin
+instance m2_open              tblm2       Msg         testdata/conformance/tables/wire/m2_open.bin
 instance stream_chain         streamdemo  Feed        testdata/wire/tables/stream_chain.bin
 instance stream_header        streamdemo  Feed        testdata/wire/tables/stream_header.bin
 instance stream_parts         streamdemo  Feed        testdata/wire/tables/stream_parts.bin
@@ -194,7 +193,7 @@ instance blob_empty           blobdemo    Catalog     testdata/wire/tables/blob_
 instance blob_large           blobdemo    Catalog     testdata/wire/tables/blob_large.bin
 # The Go wire writer names its §2.5 refusal for this instance, and so does every
 # port refused-by= lists; the reference still writes the bytes (§2.5).
-instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared refused-by=js,dart,lua,luau,lobster
+instance blob_shared blobdemo Catalog testdata/wire/tables/blob_shared.bin no-text wire-refused
 # THE STRING TERMINATOR, at the two lengths that can see it (§6.3): a *string
 # node carries one zero byte after its data, and the node's extent is rounded
 # to the arena's alignment like every node's. At a length that is not a
@@ -216,7 +215,7 @@ instance blob_str16           blobdemo    Catalog     testdata/wire/tables/blob_
 # is a string with no first key to carry `&node`, so a shared blob has no
 # spelling (§16.7).
 instance blob_equal_bytes      blobdemo    Catalog     testdata/wire/tables/blob_equal_bytes.bin  no-text
-instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob_shared_string.bin no-text go-refusal=blob_shared refused-by=lua,lobster
+instance blob_shared_string mapdemo Docs testdata/wire/tables/blob_shared_string.bin no-text wire-refused
 
 # WIDE TEXT, kind 33 (§3). wide_empty is the ELISION: wide text takes no
 # specified default (SPEC.md §4.12), so an empty wstring writes no line at all.
@@ -226,11 +225,11 @@ instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob
 # ways (§4.2). wide_narrow_arm is the same union at its kind 12 arm, so a
 # respelling between the two text kinds is an ordinary kind mismatch in both
 # directions rather than UTF-8 bytes read as code units.
-instance wide_empty           widedemo    Caption     testdata/wire/tables/wide_empty.bin
-instance wide_title           widedemo    Caption     testdata/wire/tables/wide_title.bin
-instance wide_sites           widedemo    Caption     testdata/wire/tables/wide_sites.bin
-instance wide_narrow_arm      widedemo    Caption     testdata/wire/tables/wide_narrow_arm.bin
-instance wide_stamp           widedemo    Stamp       testdata/wire/tables/wide_stamp.bin
+instance wide_empty           widedemo    Caption     testdata/conformance/tables/wire/wide_empty.bin
+instance wide_title           widedemo    Caption     testdata/conformance/tables/wire/wide_title.bin
+instance wide_sites           widedemo    Caption     testdata/conformance/tables/wire/wide_sites.bin
+instance wide_narrow_arm      widedemo    Caption     testdata/conformance/tables/wire/wide_narrow_arm.bin
+instance wide_stamp           widedemo    Stamp       testdata/conformance/tables/wire/wide_stamp.bin
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
@@ -430,7 +429,6 @@ cook-write root_full              testdata/conformance/tables/cook-write/root_fu
 cook-write root_default           testdata/conformance/tables/cook-write/root_default.cook testdata/conformance/tables/cook-write/root_default-be.cook
 cook-write profile_elide          testdata/conformance/tables/cook-write/profile_elide.cook testdata/conformance/tables/cook-write/profile_elide-be.cook
 cook-write loadout_full           testdata/conformance/tables/cook-write/loadout_full.cook testdata/conformance/tables/cook-write/loadout_full-be.cook
-cook-write wide_blob              testdata/conformance/tables/cook-write/wide_blob.cook testdata/conformance/tables/cook-write/wide_blob-be.cook
 cook-write archive                testdata/conformance/tables/cook-write/archive.cook testdata/conformance/tables/cook-write/archive-be.cook
 cook-write keyed_config           testdata/conformance/tables/cook-write/keyed_config.cook testdata/conformance/tables/cook-write/keyed_config-be.cook
 cook-write keyed_default          testdata/conformance/tables/cook-write/keyed_default.cook testdata/conformance/tables/cook-write/keyed_default-be.cook
@@ -474,7 +472,7 @@ cook-write stream_arm_tag         testdata/conformance/tables/cook-write/stream_
 cook-write blob_small             testdata/conformance/tables/cook-write/blob_small.cook testdata/conformance/tables/cook-write/blob_small-be.cook
 cook-write blob_empty             testdata/conformance/tables/cook-write/blob_empty.cook testdata/conformance/tables/cook-write/blob_empty-be.cook
 cook-write blob_large             testdata/conformance/tables/cook-write/blob_large.cook testdata/conformance/tables/cook-write/blob_large-be.cook
-cook-write blob_shared            testdata/conformance/tables/cook-write/blob_shared.cook testdata/conformance/tables/cook-write/blob_shared-be.cook
+cook-write blob_shared            testdata/conformance/tables/cook-write/blob_shared.cook testdata/conformance/tables/cook-write/blob_shared-be.cook input=testdata/conformance/tables/cook-input/blob_shared.json share=thumb:alias
 cook-write blob_str8              testdata/conformance/tables/cook-write/blob_str8.cook testdata/conformance/tables/cook-write/blob_str8-be.cook
 cook-write blob_str16             testdata/conformance/tables/cook-write/blob_str16.cook testdata/conformance/tables/cook-write/blob_str16-be.cook
 
@@ -668,113 +666,113 @@ forgery cook_open_directory_entry      cook Scene Scene 0    0x1030       8     
 # spelled per row: the bytes it produces load CLEAN in the generated backend —
 # report all zero — and re-save byte-identically. That half is
 # test/tables/hostile_main.cpp's, which reads these very rows.
-json-hostile array-past-bound             tabledemo RootConfig  testdata/conformance/tables/json-hostile/array-past-bound             0,0,0,2,0,false,read
-json-hostile base64-empty                 tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-empty                 0,0,0,0,0,false,read
-json-hostile base64-unpadded              tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-unpadded              0,0,0,0,0,false,read
-json-hostile bits-at-max                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/bits-at-max                  0,0,0,0,0,false,read
-json-hostile bits-over-range              tabledemo RootConfig  testdata/conformance/tables/json-hostile/bits-over-range              0,0,0,1,0,false,read
-json-hostile bytes-not-base64             tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-not-base64             0,1,0,0,0,false,read
-json-hostile bytes-overlong               tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-overlong               0,0,0,1,0,false,read
-json-hostile comment-block-first          tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-block-first          0,0,0,0,0,false,read
-json-hostile comment-line-first           tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-line-first           0,0,0,0,0,false,read
-json-hostile comment-block-between        tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-block-between        0,0,0,0,0,false,read
-json-hostile comment-inside-string        tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-inside-string        0,0,0,0,0,false,read
-json-hostile comment-last-line            tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-last-line            0,0,0,0,0,false,read
-json-hostile comment-unclosed             tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-unclosed             refused
-json-hostile comment-slash-star-slash     tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-slash-star-slash     refused
+json-hostile array-past-bound              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/array-past-bound   refused
+json-hostile base64-empty                  tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-empty       read
+json-hostile base64-unpadded               tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-unpadded    read
+json-hostile bits-at-max                   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/bits-at-max        read
+json-hostile bits-over-range               tabledemo  RootConfig  testdata/conformance/tables/json-hostile/bits-over-range    refused
+json-hostile bytes-not-base64              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/bytes-not-base64   refused
+json-hostile bytes-overlong                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/bytes-overlong     refused
+json-hostile comment-block-first           tabledemo  RootConfig  testdata/conformance/tables/json-hostile/comment-block-first read
+json-hostile comment-line-first            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/comment-line-first read
+json-hostile comment-block-between         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/comment-block-between read
+json-hostile comment-inside-string         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/comment-inside-string read
+json-hostile comment-last-line             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/comment-last-line  read
+json-hostile comment-unclosed              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/comment-unclosed   refused
+json-hostile comment-slash-star-slash      tabledemo  RootConfig  testdata/conformance/tables/json-hostile/comment-slash-star-slash refused
 # THE RESERVED PREFIX (§16.7): a key beginning with `&` is how a shared node is
 # named, and no declaration may take one — so a FIXED reader meeting it is not
 # meeting a field it lacks. It refuses, counted, rather than skipping the key
 # and reading a shared graph as a tree with an empty object at every reference.
-json-hostile reserved-ampersand-key       tabledemo RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key       refused
-json-hostile reserved-ampersand-in-skipped-value tabledemo RootConfig testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value 1,0,0,0,0,false,read
-json-hostile dup-key                      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key                      0,0,0,0,1,false,read
-json-hostile dup-key-array                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-array                0,0,0,0,1,false,read
-json-hostile dup-key-placeable            tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable            0,0,0,0,1,false,read
-json-hostile dup-key-rejected-element     tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-element     0,1,0,0,1,false,read
-json-hostile dup-key-rejected-float       tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-float       0,1,0,0,1,false,read
-json-hostile dup-key-rejected-keyed       tabledemo PackConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-keyed       0,1,0,0,1,false,read
-json-hostile dup-key-rejected-nested      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-nested      0,1,0,0,1,false,read
-json-hostile dup-key-rejected-scalar      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-scalar      0,1,0,0,1,false,read
-json-hostile dup-key-table                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-table                0,0,0,0,1,false,read
-json-hostile dup-key-union                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-union                0,0,0,0,1,false,read
-json-hostile dup-key-wrong-shape          tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-wrong-shape          0,1,0,0,1,false,read
-json-hostile enum-unknown-name            tabledemo RootConfig  testdata/conformance/tables/json-hostile/enum-unknown-name            1,0,0,0,0,false,read
-json-hostile flags-unknown-name           tabledemo RootConfig  testdata/conformance/tables/json-hostile/flags-unknown-name           1,0,0,0,0,false,read
-json-hostile guard-key-after-fields       tabledemo RootConfig  testdata/conformance/tables/json-hostile/guard-key-after-fields       0,0,0,0,0,false,read
-json-hostile json-key-declared-name       tabledemo PackConfig  testdata/conformance/tables/json-hostile/json-key-declared-name       1,0,0,0,0,false,read
-json-hostile keyed-duplicate-mixed        tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-mixed        2,0,0,0,1,false,read
-json-hostile keyed-duplicate-none         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-none         2,0,0,0,0,false,read
-json-hostile keyed-duplicate-slot         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-slot         0,0,0,0,1,false,read
-json-hostile keyed-duplicate-unknown      tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-unknown      2,0,0,0,0,false,read
-json-hostile keyed-none-key               tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-none-key               1,0,0,0,0,false,read
-json-hostile keyed-unknown-key            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-unknown-key            1,0,0,0,0,false,read
-json-hostile keyed-wrong-shape            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-wrong-shape            0,1,0,0,0,false,read
-json-hostile nesting-past-depth-cap       tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-past-depth-cap       refused
-json-hostile null-optional                tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-optional                0,0,0,0,0,false,read
-json-hostile null-scalar                  tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-scalar                  0,1,0,0,0,false,read
-json-hostile num-bare-minus               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-bare-minus               refused
-json-hostile num-double-dot               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-double-dot               refused
-json-hostile num-double-minus             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-double-minus             refused
-json-hostile num-float32-midpoint         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-midpoint         0,1,0,0,0,false,read
-json-hostile num-float32-overflow         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-overflow         0,1,0,0,0,false,read
-json-hostile num-float32-subnormal        tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-subnormal        0,0,0,0,0,false,read
-json-hostile num-float32-upper-band       tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-upper-band       0,0,0,0,0,false,read
-json-hostile num-float64-overflow         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float64-overflow         0,1,0,0,0,false,read
-json-hostile num-fraction                 tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-fraction                 0,1,0,0,0,false,read
-json-hostile num-int-overflow             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow             0,0,0,2,0,false,read
-json-hostile num-int64-min                tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int64-min                0,0,0,0,0,false,read
-json-hostile num-integral-forms           tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms           0,0,0,0,0,false,read
-json-hostile num-leading-plus             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-leading-plus             refused
-json-hostile num-leading-zero             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-leading-zero             refused
-json-hostile num-negative-unsigned        tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-unsigned        0,0,0,1,0,false,read
-json-hostile num-negative-zero            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero            0,0,0,0,0,false,read
-json-hostile num-no-exp-digits            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-no-exp-digits            refused
-json-hostile num-no-int                   tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-no-int                   refused
-json-hostile num-three-part               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-three-part               refused
-json-hostile num-trailing-dot             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-trailing-dot             refused
-json-hostile num-trailing-plus            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-trailing-plus            refused
-json-hostile num-two-exponents            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-two-exponents            refused
+json-hostile reserved-ampersand-key        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key refused
+json-hostile reserved-ampersand-in-skipped-value tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value read
+json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
+json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
+json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused
+json-hostile dup-key-rejected-element      tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-element refused
+json-hostile dup-key-rejected-float        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-float refused
+json-hostile dup-key-rejected-keyed        tabledemo  PackConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-keyed refused
+json-hostile dup-key-rejected-nested       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-nested refused
+json-hostile dup-key-rejected-scalar       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-scalar refused
+json-hostile dup-key-table                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-table      refused
+json-hostile dup-key-union                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-union      refused
+json-hostile dup-key-wrong-shape           tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-wrong-shape refused
+json-hostile enum-unknown-name             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/enum-unknown-name  read
+json-hostile flags-unknown-name            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/flags-unknown-name read
+json-hostile guard-key-after-fields        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/guard-key-after-fields read
+json-hostile json-key-declared-name        tabledemo  PackConfig  testdata/conformance/tables/json-hostile/json-key-declared-name read
+json-hostile keyed-duplicate-mixed         tabledemo  PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-mixed refused
+json-hostile keyed-duplicate-none          tabledemo  PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-none refused
+json-hostile keyed-duplicate-slot          tabledemo  PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-slot refused
+json-hostile keyed-duplicate-unknown       tabledemo  PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-unknown refused
+json-hostile keyed-none-key                tabledemo  PackConfig  testdata/conformance/tables/json-hostile/keyed-none-key     read
+json-hostile keyed-unknown-key             tabledemo  PackConfig  testdata/conformance/tables/json-hostile/keyed-unknown-key  read
+json-hostile keyed-wrong-shape             tabledemo  PackConfig  testdata/conformance/tables/json-hostile/keyed-wrong-shape  refused
+json-hostile nesting-past-depth-cap        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/nesting-past-depth-cap refused
+json-hostile null-optional                 tabledemo  PackConfig  testdata/conformance/tables/json-hostile/null-optional      read
+json-hostile null-scalar                   tabledemo  PackConfig  testdata/conformance/tables/json-hostile/null-scalar        refused
+json-hostile num-bare-minus                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-bare-minus     refused
+json-hostile num-double-dot                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-double-dot     refused
+json-hostile num-double-minus              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-double-minus   refused
+json-hostile num-float32-midpoint          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float32-midpoint refused
+json-hostile num-float32-overflow          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float32-overflow refused
+json-hostile num-float32-subnormal         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float32-subnormal read
+json-hostile num-float32-upper-band        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float32-upper-band read
+json-hostile num-float64-overflow          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float64-overflow refused
+json-hostile num-fraction                  tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-fraction       refused
+json-hostile num-int-overflow              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow   refused
+json-hostile num-int64-min                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-min      read
+json-hostile num-integral-forms            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms read
+json-hostile num-leading-plus              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-leading-plus   refused
+json-hostile num-leading-zero              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-leading-zero   refused
+json-hostile num-negative-unsigned         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-negative-unsigned refused
+json-hostile num-negative-zero             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero  read
+json-hostile num-no-exp-digits             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-no-exp-digits  refused
+json-hostile num-no-int                    tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-no-int         refused
+json-hostile num-three-part                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-three-part     refused
+json-hostile num-trailing-dot              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-trailing-dot   refused
+json-hostile num-trailing-plus             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-trailing-plus  refused
+json-hostile num-two-exponents             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-two-exponents  refused
 # THE SPELLINGS A VALUE ROW PINS (docs/SPEC-TABLES.md §16.1, §16.2, §16.3): each
 # reads clean, so the verdict is silent and the row holds every leg to the
 # oracle's VALUE — exponent-form tokens, the float32 minimum subnormal's
 # correctly rounded token, both zeros, both float maxima, the int64 and uint64
 # extremes at and past 2^63 and saturated past each 64-bit end, every escape
 # the writer spells, raw non-ASCII, and each base64 padding length.
-json-hostile num-exponent-forms         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-exponent-forms         0,0,0,0,0,false,read
-json-hostile num-float32-min-subnormal  tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-min-subnormal  0,0,0,0,0,false,read
-json-hostile num-negative-zero-floats   tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero-floats   0,0,0,0,0,false,read
-json-hostile num-float-max              tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float-max              0,0,0,0,0,false,read
-json-hostile num-int64-extremes         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int64-extremes         0,0,0,0,0,false,read
-json-hostile num-uint64-max             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-uint64-max             0,0,0,0,0,false,read
-json-hostile num-uint64-two-to-63       tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-uint64-two-to-63       0,0,0,0,0,false,read
-json-hostile num-int64-past-extremes    tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int64-past-extremes    0,0,0,3,0,false,read
-json-hostile str-writer-escapes         tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-writer-escapes         0,0,0,0,0,false,read
-json-hostile str-raw-non-ascii          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-raw-non-ascii          0,0,0,0,0,false,read
-json-hostile base64-padding-one         tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-padding-one         0,0,0,0,0,false,read
-json-hostile base64-padding-two         tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-padding-two         0,0,0,0,0,false,read
-json-hostile base64-padding-none        tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-padding-none        0,0,0,0,0,false,read
-json-hostile base64-sixteen             tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-sixteen             0,0,0,0,0,false,read
-json-hostile optional-present-empty       tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-present-empty       0,0,0,0,0,false,read
-json-hostile optional-wrong-shape         tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-wrong-shape         0,1,0,0,0,false,read
-json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-clamp-boundary           0,0,0,1,0,false,read
+json-hostile num-exponent-forms            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-exponent-forms read
+json-hostile num-float32-min-subnormal     tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float32-min-subnormal read
+json-hostile num-negative-zero-floats      tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero-floats read
+json-hostile num-float-max                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float-max      read
+json-hostile num-int64-extremes            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-extremes read
+json-hostile num-uint64-max                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-max     read
+json-hostile num-uint64-two-to-63          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-two-to-63 read
+json-hostile num-int64-past-extremes       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-past-extremes refused
+json-hostile str-writer-escapes            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-writer-escapes read
+json-hostile str-raw-non-ascii             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-raw-non-ascii  read
+json-hostile base64-padding-one            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-padding-one read
+json-hostile base64-padding-two            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-padding-two read
+json-hostile base64-padding-none           tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-padding-none read
+json-hostile base64-sixteen                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-sixteen     read
+json-hostile optional-present-empty        tabledemo  PackConfig  testdata/conformance/tables/json-hostile/optional-present-empty read
+json-hostile optional-wrong-shape          tabledemo  PackConfig  testdata/conformance/tables/json-hostile/optional-wrong-shape refused
+json-hostile str-clamp-boundary            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-clamp-boundary refused
 # str-illformed-at-bound: the ill-formed 0xFF byte is REFUSED BY NAME at the
 # string site, before any clamp (§16.3): it does not spell a code point, so
 # there is nothing to clamp — the read answers `string_not_utf8: <root>`.
 # HELD FIRST IN GO (§16.3): Go, C, C++, Rust, C#, JavaScript, Dart, Java, moo, Lobster, Squirrel, Lua, Luau, Elixir and Goose carry the rule,
 # every other port keeps the counters it answered before the ruling until its port.
-json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,1,0,false,read
-json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
-json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
-json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
+json-hostile str-illformed-at-bound        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound refused
+json-hostile str-lone-lead-surrogate       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate refused
+json-hostile str-lone-trail-surrogate      tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate refused
+json-hostile str-surrogate-pair            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair read
 # THE NUL ESCAPE INTO BOUNDED TEXT (§16.3): a \u0000 escape that would land
 # U+0000 in a bounded string(N) field is refused as text_holds_zero, naming the
 # field. A zero in a value the read only SKIPS is not the event, and \u0001
 # reads clean. The ports that carry the str-zero-escape rows below carry this
 # refusal; every other port stores the zero as text and keeps the counters its
 # reader gives until its port.
-json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
-json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-byte-bounded         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded refused
+json-hostile str-zero-byte-bounded-nested  tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested refused
 # THE ZERO RULE IN THE TEXT (§16.3): "A JSON string the read would PLACE in text
 # storage ... and that decodes to U+0000 ... refuses the read: FromJson returns
 # false, the report is Malformed, and Reason reads text_holds_zero:
@@ -785,37 +783,37 @@ json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/confo
 # 0,0,0,0,0,false,read, until its port. The map-key row uses the existing
 # `mapdemo` unit's Text root, whose names field is map[string(8)]string(16);
 # tabledemo's RootConfig has no string-keyed map.
-json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
-json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-value         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value refused
+json-hostile str-zero-escape-map-key       mapdemo    Text        testdata/conformance/tables/json-hostile/str-zero-escape-map-key refused
 # A duplicate KEY in a map is last-wins and counted (§2.8): listdemo's Army
 # root carries a roster map, so this row exercises the readMap duplicate counter.
-json-hostile list-map-dup-key              listdemo Army          testdata/conformance/tables/json-hostile/list-map-dup-key             0,0,0,0,1,false,read
-json-hostile str-zero-escape-unknown-key  tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key   1,0,0,0,0,false,read
-json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,0,false,read
-json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
-json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    0,1,0,0,0,false,read
-json-hostile union-table-arm-nested-unknown messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-nested-unknown 1,0,0,0,0,false,read
+json-hostile list-map-dup-key              listdemo   Army        testdata/conformance/tables/json-hostile/list-map-dup-key   refused
+json-hostile str-zero-escape-unknown-key   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key read
+json-hostile union-table-arm-unknown       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown read
+json-hostile union-table-arm-two-keys      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys refused
+json-hostile union-table-arm-wrong-shape   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape refused
+json-hostile union-table-arm-nested-unknown messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-nested-unknown read
 # THE GENERAL ARMS in the text (§16.2): an arm value takes the arm's own row,
 # and a value of the wrong shape for that row is a KIND MISMATCH — the union
 # reads None and the enclosing object continues. A payload-free arm's value is
 # null, and anything else is that same mismatch; a POINTER arm's null is a null
 # pointer with the arm SELECTED, not None.
-json-hostile arm-scalar-string             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-string             0,1,0,0,0,false,read
-json-hostile arm-scalar-null               messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-null               0,1,0,0,0,false,read
-json-hostile arm-void-not-null             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-void-not-null             0,1,0,0,0,false,read
-json-hostile arm-pointer-null              streamdemo  Feed        testdata/conformance/tables/json-hostile/arm-pointer-null              0,0,0,0,0,false,read
-json-hostile pointer-array-element-shape    streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-element-shape    0,1,0,0,0,false,read
-json-hostile pointer-array-shared-label     streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-shared-label     0,0,0,0,0,false,read
-json-hostile union-array-element-shape      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-shape      0,1,0,0,0,false,read
-json-hostile union-array-element-two-keys   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-two-keys   refused
-json-hostile union-array-element-unknown    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-unknown    1,0,0,0,0,false,read
-json-hostile optional-array-shape           messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-shape           0,1,0,0,0,false,read
-json-hostile optional-array-null            messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-null            0,0,0,0,0,false,read
-json-hostile optional-array-element-shape   messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-element-shape   0,1,0,0,0,false,read
-json-hostile trailing-commas              tabledemo RootConfig  testdata/conformance/tables/json-hostile/trailing-commas              0,0,0,0,0,false,read
-json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
-json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,0,false,read
-json-hostile unknown-key                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/unknown-key                  1,0,0,0,0,false,read
+json-hostile arm-scalar-string             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-string  refused
+json-hostile arm-scalar-null               messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-scalar-null    refused
+json-hostile arm-void-not-null             messagedemo ToolMessage testdata/conformance/tables/json-hostile/arm-void-not-null  refused
+json-hostile arm-pointer-null              streamdemo Feed        testdata/conformance/tables/json-hostile/arm-pointer-null   read
+json-hostile pointer-array-element-shape   streamdemo Feed        testdata/conformance/tables/json-hostile/pointer-array-element-shape refused
+json-hostile pointer-array-shared-label    streamdemo Feed        testdata/conformance/tables/json-hostile/pointer-array-shared-label read
+json-hostile union-array-element-shape     messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-shape refused
+json-hostile union-array-element-two-keys  messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-two-keys refused
+json-hostile union-array-element-unknown   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-unknown read
+json-hostile optional-array-shape          messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-shape refused
+json-hostile optional-array-null           messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-null read
+json-hostile optional-array-element-shape  messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-element-shape refused
+json-hostile trailing-commas               tabledemo  RootConfig  testdata/conformance/tables/json-hostile/trailing-commas    read
+json-hostile union-two-keys                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/union-two-keys     refused
+json-hostile union-unknown-arm             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm  read
+json-hostile unknown-key                   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/unknown-key        read
 # A TEXT LIST'S TOTAL in the text (docs/SPEC-TABLES.md §2.13, §16.2), over the
 # witness root's `labels [..4]string(8) | total=8`: the read keeps the longest
 # prefix whose bytes are within the total and drops the element that would
@@ -824,37 +822,37 @@ json-hostile unknown-key                  tabledemo RootConfig  testdata/conform
 # holds exactly 8 bytes and reads clean (feature_full's "é" and "schema" are the
 # same boundary as an instance); `after-clamp` clamps its first element at M,
 # counted, and then the total drops "a", counted again.
-json-hostile text-total-past              featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-past              0,0,0,1,0,false,read
-json-hostile text-total-at                featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-at                0,0,0,0,0,false,read
-json-hostile text-total-after-clamp       featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-after-clamp       0,0,0,2,0,false,read
+json-hostile text-total-past               featurewitnesses Root        testdata/conformance/tables/json-hostile/text-total-past    refused
+json-hostile text-total-at                 featurewitnesses Root        testdata/conformance/tables/json-hostile/text-total-at      read
+json-hostile text-total-after-clamp        featurewitnesses Root        testdata/conformance/tables/json-hostile/text-total-after-clamp refused
 # A COUNT PAST [..N] AND THE TOTAL, BOTH COUNTED (§2.13): five labels on the
 # [..4] list, where "abc" carries the sum to 9 and the total drops it and the
 # tail. The fifth element is past the count bound as well, and that clamp is
 # counted beside the total's, so the text and the wire (report
 # text_total_and_count, the same five labels) both answer two clamps.
-json-hostile text-total-and-count         featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-and-count         0,0,0,2,0,false,read
+json-hostile text-total-and-count          featurewitnesses Root        testdata/conformance/tables/json-hostile/text-total-and-count refused
 
 # THE SHARING CONSTRUCT'S OWN EDGES (docs/SPEC-TABLES.md §16.7), over the
 # pointered root: `&node` is a LABEL — with fields after it, it defines a node
 # once; alone, it names that node again; the other two readings are refused — the FIRST key of a
 # pointer's object and nothing else. Three rows are not refusals, and they are the differential's
 # point — both engines have to place the same graph and count the same event.
-json-hostile label-undefined                graphdemo Scene       testdata/conformance/tables/json-hostile/label-undefined                refused
-json-hostile label-defined-twice            graphdemo Scene       testdata/conformance/tables/json-hostile/label-defined-twice            refused
-json-hostile label-before-definition        graphdemo Scene       testdata/conformance/tables/json-hostile/label-before-definition        refused
-json-hostile label-not-first-key            graphdemo Scene       testdata/conformance/tables/json-hostile/label-not-first-key            refused
-json-hostile label-on-the-root              graphdemo Scene       testdata/conformance/tables/json-hostile/label-on-the-root              refused
-json-hostile label-in-by-value-nesting      graphdemo Scene       testdata/conformance/tables/json-hostile/label-in-by-value-nesting      refused
-json-hostile label-not-an-integer           graphdemo Scene       testdata/conformance/tables/json-hostile/label-not-an-integer           refused
-json-hostile label-zero                     graphdemo Scene       testdata/conformance/tables/json-hostile/label-zero                     refused
-json-hostile label-negative                 graphdemo Scene       testdata/conformance/tables/json-hostile/label-negative                 refused
-json-hostile label-leading-zero             graphdemo Scene       testdata/conformance/tables/json-hostile/label-leading-zero             refused
-json-hostile label-overflow                 graphdemo Scene       testdata/conformance/tables/json-hostile/label-overflow                 refused
-json-hostile label-self-reference           graphdemo Scene       testdata/conformance/tables/json-hostile/label-self-reference           refused
-json-hostile label-type-mismatch            graphdemo Scene       testdata/conformance/tables/json-hostile/label-type-mismatch            0,1,0,0,0,false,read
-json-hostile label-dropped-definition       graphdemo Scene       testdata/conformance/tables/json-hostile/label-dropped-definition       0,0,0,1,0,false,read
-json-hostile label-in-unknown-key           graphdemo Scene       testdata/conformance/tables/json-hostile/label-in-unknown-key           1,0,0,0,0,false,read
-json-hostile shared-node-by-label           graphdemo Scene       testdata/conformance/tables/json-hostile/shared-node-by-label           0,0,0,0,0,false,read
+json-hostile label-undefined               graphdemo  Scene       testdata/conformance/tables/json-hostile/label-undefined    refused
+json-hostile label-defined-twice           graphdemo  Scene       testdata/conformance/tables/json-hostile/label-defined-twice refused
+json-hostile label-before-definition       graphdemo  Scene       testdata/conformance/tables/json-hostile/label-before-definition refused
+json-hostile label-not-first-key           graphdemo  Scene       testdata/conformance/tables/json-hostile/label-not-first-key refused
+json-hostile label-on-the-root             graphdemo  Scene       testdata/conformance/tables/json-hostile/label-on-the-root  refused
+json-hostile label-in-by-value-nesting     graphdemo  Scene       testdata/conformance/tables/json-hostile/label-in-by-value-nesting refused
+json-hostile label-not-an-integer          graphdemo  Scene       testdata/conformance/tables/json-hostile/label-not-an-integer refused
+json-hostile label-zero                    graphdemo  Scene       testdata/conformance/tables/json-hostile/label-zero         refused
+json-hostile label-negative                graphdemo  Scene       testdata/conformance/tables/json-hostile/label-negative     refused
+json-hostile label-leading-zero            graphdemo  Scene       testdata/conformance/tables/json-hostile/label-leading-zero refused
+json-hostile label-overflow                graphdemo  Scene       testdata/conformance/tables/json-hostile/label-overflow     refused
+json-hostile label-self-reference          graphdemo  Scene       testdata/conformance/tables/json-hostile/label-self-reference refused
+json-hostile label-type-mismatch           graphdemo  Scene       testdata/conformance/tables/json-hostile/label-type-mismatch refused
+json-hostile label-dropped-definition      graphdemo  Scene       testdata/conformance/tables/json-hostile/label-dropped-definition refused
+json-hostile label-in-unknown-key          graphdemo  Scene       testdata/conformance/tables/json-hostile/label-in-unknown-key read
+json-hostile shared-node-by-label          graphdemo  Scene       testdata/conformance/tables/json-hostile/shared-node-by-label read
 
 # THE WIDE SCALARS (docs/SPEC-TABLES.md §3, §16.2): every scalar the type wire
 # carries, in a table — the fixed-point family at every width and signedness,
@@ -865,9 +863,9 @@ json-hostile shared-node-by-label           graphdemo Scene       testdata/confo
 # mismatches), two ranges tightened (clamps on the raw scale), two fields gone.
 unit scalars     tables/scalars
 unit tblscalars2 test/tables/Scalars2.schema
-instance scalars_full    scalars SimState testdata/wire/tables/scalars_full.bin
-instance scalars_default scalars SimState testdata/wire/tables/scalars_default.bin
-instance scalars_edges   scalars SimState testdata/wire/tables/scalars_edges.bin
+instance scalars_full    scalars SimState testdata/conformance/tables/wire/scalars_full.bin
+instance scalars_default scalars SimState testdata/conformance/tables/wire/scalars_default.bin
+instance scalars_edges   scalars SimState testdata/conformance/tables/wire/scalars_edges.bin
 report scalars_full_as_2  tblscalars2 SimState testdata/wire/tables/scalars_full.bin
 report scalars_edges_as_2 tblscalars2 SimState testdata/wire/tables/scalars_edges.bin
 # a PLAIN TOP-LEVEL SCALAR field, written narrower than the declaration: the
@@ -883,36 +881,36 @@ cook-write scalars_edges   testdata/conformance/tables/cook-write/scalars_edges.
 # one as the wrong shape, never rounding; out of range clamps on the raw scale;
 # a magnitude past 128 bits saturates and counts; a 128-bit integer takes any
 # integral token, exact past 2^53
-json-hostile fixed-fraction-too-fine  scalars SimState testdata/conformance/tables/json-hostile/fixed-fraction-too-fine  0,1,0,0,0,false,read
-json-hostile fixed-exact-fraction     scalars SimState testdata/conformance/tables/json-hostile/fixed-exact-fraction     0,0,0,0,0,false,read
-json-hostile fixed-integral-token     scalars SimState testdata/conformance/tables/json-hostile/fixed-integral-token     0,0,0,0,0,false,read
-json-hostile fixed-over-range         scalars SimState testdata/conformance/tables/json-hostile/fixed-over-range         0,0,0,3,0,false,read
-json-hostile fixed-huge-exponent      scalars SimState testdata/conformance/tables/json-hostile/fixed-huge-exponent      0,0,0,3,0,false,read
-json-hostile fixed-below-resolution   scalars SimState testdata/conformance/tables/json-hostile/fixed-below-resolution   0,2,0,0,0,false,read
-json-hostile fixed-negative-zero      scalars SimState testdata/conformance/tables/json-hostile/fixed-negative-zero      0,0,0,0,0,false,read
-json-hostile fixed-at-bound           scalars SimState testdata/conformance/tables/json-hostile/fixed-at-bound           0,0,0,0,0,false,read
-json-hostile ufixed-negative          scalars SimState testdata/conformance/tables/json-hostile/ufixed-negative          0,0,0,2,0,false,read
-json-hostile fixed-array-elements     scalars SimState testdata/conformance/tables/json-hostile/fixed-array-elements     0,2,0,2,0,false,read
-json-hostile fixed-wrong-shape        scalars SimState testdata/conformance/tables/json-hostile/fixed-wrong-shape        0,2,0,0,0,false,read
-json-hostile int128-beyond-int64      scalars SimState testdata/conformance/tables/json-hostile/int128-beyond-int64      0,0,0,0,0,false,read
-json-hostile int128-over-range        scalars SimState testdata/conformance/tables/json-hostile/int128-over-range        0,0,0,2,0,false,read
-json-hostile int128-fractional        scalars SimState testdata/conformance/tables/json-hostile/int128-fractional        0,1,0,0,0,false,read
-json-hostile int128-integral-forms    scalars SimState testdata/conformance/tables/json-hostile/int128-integral-forms    0,0,0,0,0,false,read
-json-hostile uint128-max              scalars SimState testdata/conformance/tables/json-hostile/uint128-max              0,0,0,0,0,false,read
-json-hostile uint128-over             scalars SimState testdata/conformance/tables/json-hostile/uint128-over             0,0,0,2,0,false,read
-json-hostile uint128-negative         scalars SimState testdata/conformance/tables/json-hostile/uint128-negative         0,0,0,1,0,false,read
-json-hostile int128-saturated-below   scalars SimState testdata/conformance/tables/json-hostile/int128-saturated-below   0,0,0,2,0,false,read
-json-hostile fixed-nested-type        scalars SimState testdata/conformance/tables/json-hostile/fixed-nested-type        0,1,0,1,0,false,read
+json-hostile fixed-fraction-too-fine       scalars    SimState    testdata/conformance/tables/json-hostile/fixed-fraction-too-fine refused
+json-hostile fixed-exact-fraction          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-exact-fraction read
+json-hostile fixed-integral-token          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-integral-token read
+json-hostile fixed-over-range              scalars    SimState    testdata/conformance/tables/json-hostile/fixed-over-range   refused
+json-hostile fixed-huge-exponent           scalars    SimState    testdata/conformance/tables/json-hostile/fixed-huge-exponent refused
+json-hostile fixed-below-resolution        scalars    SimState    testdata/conformance/tables/json-hostile/fixed-below-resolution refused
+json-hostile fixed-negative-zero           scalars    SimState    testdata/conformance/tables/json-hostile/fixed-negative-zero read
+json-hostile fixed-at-bound                scalars    SimState    testdata/conformance/tables/json-hostile/fixed-at-bound     read
+json-hostile ufixed-negative               scalars    SimState    testdata/conformance/tables/json-hostile/ufixed-negative    refused
+json-hostile fixed-array-elements          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-array-elements refused
+json-hostile fixed-wrong-shape             scalars    SimState    testdata/conformance/tables/json-hostile/fixed-wrong-shape  refused
+json-hostile int128-beyond-int64           scalars    SimState    testdata/conformance/tables/json-hostile/int128-beyond-int64 read
+json-hostile int128-over-range             scalars    SimState    testdata/conformance/tables/json-hostile/int128-over-range  refused
+json-hostile int128-fractional             scalars    SimState    testdata/conformance/tables/json-hostile/int128-fractional  refused
+json-hostile int128-integral-forms         scalars    SimState    testdata/conformance/tables/json-hostile/int128-integral-forms read
+json-hostile uint128-max                   scalars    SimState    testdata/conformance/tables/json-hostile/uint128-max        read
+json-hostile uint128-over                  scalars    SimState    testdata/conformance/tables/json-hostile/uint128-over       refused
+json-hostile uint128-negative              scalars    SimState    testdata/conformance/tables/json-hostile/uint128-negative   refused
+json-hostile int128-saturated-below        scalars    SimState    testdata/conformance/tables/json-hostile/int128-saturated-below refused
+json-hostile fixed-nested-type             scalars    SimState    testdata/conformance/tables/json-hostile/fixed-nested-type  refused
 
 # THE BYTE BUFFER's text rules (§2.5, §16.2): `""` and `null` are two values;
 # a body that is not base64, or not a string at all, is `kind_mismatch` with
 # the reference left null; and an `&node` label inside a value a mismatch
 # SKIPPED defines nothing, so a later reference to it is one more mismatch.
-json-hostile blob-empty-string            blobdemo Catalog testdata/conformance/tables/json-hostile/blob-empty-string            0,0,0,0,0,false,read
-json-hostile blob-null                    blobdemo Catalog testdata/conformance/tables/json-hostile/blob-null                    0,0,0,0,0,false,read
-json-hostile blob-not-base64              blobdemo Catalog testdata/conformance/tables/json-hostile/blob-not-base64              0,1,0,0,0,false,read
-json-hostile blob-wrong-shape             blobdemo Catalog testdata/conformance/tables/json-hostile/blob-wrong-shape             0,2,0,0,0,false,read
-json-hostile blob-label-in-skipped-value  blobdemo Catalog testdata/conformance/tables/json-hostile/blob-label-in-skipped-value  0,2,0,0,0,false,read
+json-hostile blob-empty-string             blobdemo   Catalog     testdata/conformance/tables/json-hostile/blob-empty-string  read
+json-hostile blob-null                     blobdemo   Catalog     testdata/conformance/tables/json-hostile/blob-null          read
+json-hostile blob-not-base64               blobdemo   Catalog     testdata/conformance/tables/json-hostile/blob-not-base64    refused
+json-hostile blob-wrong-shape              blobdemo   Catalog     testdata/conformance/tables/json-hostile/blob-wrong-shape   refused
+json-hostile blob-label-in-skipped-value   blobdemo   Catalog     testdata/conformance/tables/json-hostile/blob-label-in-skipped-value refused
 
 # ---- THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3) --------------------------
 #
@@ -948,39 +946,39 @@ connection graph_conn   graphdemo   0xfdaabe4726d81d5c testdata/wire/tables/grap
 # The three backend messages of schema#523, each in both instances: 106 / 273 /
 # 104 bytes as files against 52 / 148 / 43 as messages, and 10 / 43 / 10 against
 # 3 / 11 / 3 at their declared defaults. A count that moves is a wire that moved.
-instance login_full     backenddemo LoginRequest  testdata/wire/tables/login_full.bin
-instance login_default  backenddemo LoginRequest  testdata/wire/tables/login_default.bin
-instance match_full     backenddemo MatchResult   testdata/wire/tables/match_full.bin
-instance match_default  backenddemo MatchResult   testdata/wire/tables/match_default.bin
-instance store_full     backenddemo StorePurchase testdata/wire/tables/store_full.bin
-instance store_default  backenddemo StorePurchase testdata/wire/tables/store_default.bin
+instance login_full     backenddemo LoginRequest  testdata/conformance/tables/wire/login_full.bin
+instance login_default  backenddemo LoginRequest  testdata/conformance/tables/wire/login_default.bin
+instance match_full     backenddemo MatchResult   testdata/conformance/tables/wire/match_full.bin
+instance match_default  backenddemo MatchResult   testdata/conformance/tables/wire/match_default.bin
+instance store_full     backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin
+instance store_default  backenddemo StorePurchase testdata/conformance/tables/wire/store_default.bin
 
-message login_full    backend_conn LoginRequest  testdata/wire/tables/login_full.bin    testdata/wire/tables/login_full_message.bin
-message login_default backend_conn LoginRequest  testdata/wire/tables/login_default.bin testdata/wire/tables/login_default_message.bin
-message match_full    backend_conn MatchResult   testdata/wire/tables/match_full.bin    testdata/wire/tables/match_full_message.bin
-message match_default backend_conn MatchResult   testdata/wire/tables/match_default.bin testdata/wire/tables/match_default_message.bin
-message store_full    backend_conn StorePurchase testdata/wire/tables/store_full.bin    testdata/wire/tables/store_full_message.bin
-message store_default backend_conn StorePurchase testdata/wire/tables/store_default.bin testdata/wire/tables/store_default_message.bin
+message login_full    backend_conn LoginRequest  testdata/conformance/tables/wire/login_full.bin    testdata/wire/tables/login_full_message.bin
+message login_default backend_conn LoginRequest  testdata/conformance/tables/wire/login_default.bin testdata/wire/tables/login_default_message.bin
+message match_full    backend_conn MatchResult   testdata/conformance/tables/wire/match_full.bin    testdata/wire/tables/match_full_message.bin
+message match_default backend_conn MatchResult   testdata/conformance/tables/wire/match_default.bin testdata/wire/tables/match_default_message.bin
+message store_full    backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin    testdata/wire/tables/store_full_message.bin
+message store_default backend_conn StorePurchase testdata/conformance/tables/wire/store_default.bin testdata/wire/tables/store_default_message.bin
 
 # and the four the rules a value alone cannot reach: a WIDE vocabulary whose
 # slots fall on both sides of the one-byte boundary, a POINTERED root, which is
 # a variable table and so the named refusal row, and a TWO-PEER pair
 # whose units announce different vocabularies and each decode the other's
 # messages against the table THAT peer announced.
-instance vocab_wide vocabdemo Wide09 testdata/wire/tables/vocab_wide.bin
-instance vocab_low  vocabdemo Wide00 testdata/wire/tables/vocab_low.bin
-instance peer_a     backenddemo StorePurchase testdata/wire/tables/peer_a.bin
-instance peer_b     vocabdemo   Wide00        testdata/wire/tables/peer_b.bin
-instance vocab9_wide vocab9demo Wide19 testdata/wire/tables/vocab9_wide.bin
-instance vocab9_low  vocab9demo Wide00 testdata/wire/tables/vocab9_low.bin
+instance vocab_wide vocabdemo Wide09 testdata/conformance/tables/wire/vocab_wide.bin
+instance vocab_low  vocabdemo Wide00 testdata/conformance/tables/wire/vocab_low.bin
+instance peer_a     backenddemo StorePurchase testdata/conformance/tables/wire/peer_a.bin
+instance peer_b     vocabdemo   Wide00        testdata/conformance/tables/wire/peer_b.bin
+instance vocab9_wide vocab9demo Wide19 testdata/conformance/tables/wire/vocab9_wide.bin
+instance vocab9_low  vocab9demo Wide00 testdata/conformance/tables/wire/vocab9_low.bin
 
-message vocab_wide vocab_conn   Wide09        testdata/wire/tables/vocab_wide.bin testdata/wire/tables/vocab_wide_message.bin
-message vocab_low  vocab_conn   Wide00        testdata/wire/tables/vocab_low.bin  testdata/wire/tables/vocab_low_message.bin
+message vocab_wide vocab_conn   Wide09        testdata/conformance/tables/wire/vocab_wide.bin testdata/wire/tables/vocab_wide_message.bin
+message vocab_low  vocab_conn   Wide00        testdata/conformance/tables/wire/vocab_low.bin  testdata/wire/tables/vocab_low_message.bin
 message graph_tree graph_conn   Scene         testdata/wire/tables/graph_tree.bin -
-message peer_a     backend_conn StorePurchase testdata/wire/tables/peer_a.bin     testdata/wire/tables/peer_a_message.bin
-message peer_b     vocab_conn   Wide00        testdata/wire/tables/peer_b.bin     testdata/wire/tables/peer_b_message.bin
-message vocab9_wide vocab9_conn Wide19 testdata/wire/tables/vocab9_wide.bin testdata/wire/tables/vocab9_wide_message.bin
-message vocab9_low  vocab9_conn Wide00 testdata/wire/tables/vocab9_low.bin  testdata/wire/tables/vocab9_low_message.bin
+message peer_a     backend_conn StorePurchase testdata/conformance/tables/wire/peer_a.bin     testdata/wire/tables/peer_a_message.bin
+message peer_b     vocab_conn   Wide00        testdata/conformance/tables/wire/peer_b.bin     testdata/wire/tables/peer_b_message.bin
+message vocab9_wide vocab9_conn Wide19 testdata/conformance/tables/wire/vocab9_wide.bin testdata/wire/tables/vocab9_wide_message.bin
+message vocab9_low  vocab9_conn Wide00 testdata/conformance/tables/wire/vocab9_low.bin  testdata/wire/tables/vocab9_low_message.bin
 
 # THE `was` ROWS (docs/SPEC-TABLES.md §5, SPEC §4.2). w1_fleet carries string,
 # bytes and flags fields OFF their declared defaults beside a node holding every
@@ -1004,9 +1002,9 @@ report w1_fleet_default_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet_default.
 # pong. r2_cfg is r1_cfg's value written by the renamed unit, byte-identical.
 # The cross reads are silent, and `make tables-wasrows-negative-control`
 # strips the four attributes and watches unknown count.
-instance r1_cfg               tblr1       Cfg         testdata/wire/tables/r1_cfg.bin
-instance r1_ping              tblr1       Cfg         testdata/wire/tables/r1_ping.bin
-instance r2_cfg               tblr2       Cfg         testdata/wire/tables/r2_cfg.bin
+instance r1_cfg               tblr1       Cfg         testdata/conformance/tables/wire/r1_cfg.bin
+instance r1_ping              tblr1       Cfg         testdata/conformance/tables/wire/r1_ping.bin
+instance r2_cfg               tblr2       Cfg         testdata/conformance/tables/wire/r2_cfg.bin
 report r1_cfg_as_r2 tblr2 Cfg testdata/wire/tables/r1_cfg.bin
 report r1_ping_as_r2 tblr2 Cfg testdata/wire/tables/r1_ping.bin
 report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
@@ -1037,47 +1035,13 @@ report r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
 #
 #   refusal <forgery> <reason>
 #
-refusal cook_magic_byte0          not_a_cook
-refusal cook_magic_block          not_a_cook
-refusal cook_byte_order_2         not_a_cook
-refusal cook_magic_reversed       foreign_order
-refusal cook_build_zero           wrong_build_version
-refusal cook_build_one_bit        wrong_build_version
-refusal cook_reserved0_one        reserved_not_zero
-refusal cook_reserved1_one        reserved_not_zero
-refusal cook_alignment_3          bad_alignment
-refusal cook_alignment_128        bad_alignment
-refusal cook_alignment_4          bad_alignment
-refusal cook_data_length_long     truncated
-refusal cook_attribution_short    truncated
-refusal cook_data_length_under_root truncated
-refusal cook_claim_one_short      truncated
-refusal cook_claim_8              truncated
-refusal cook_lead_1               unaligned_base
-refusal cook_null_buffer          unaligned_base
-refusal cook_build_and_short      wrong_build_version
-refusal cook_alignment_and_short  bad_alignment
-refusal cook_open_forward_delta   ok
-refusal block_magic_foreign       not_a_cook
-refusal block_magic_swapped       foreign_order
-refusal block_build_version       wrong_build_version
-refusal block_byte_order          not_a_cook
-refusal block_array_unaligned     bad_layout
-refusal block_array_in_prologue   bad_layout
-refusal block_array_escapes       bad_layout
-refusal block_pitch               bad_layout
-refusal block_count_past_extent   bad_layout
-refusal block_count_past_maximum  bad_layout
-refusal block_offset_overflow     bad_layout
-refusal block_extent_padding      truncated
-refusal block_base_unaligned      unaligned_base
 
 # ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) ------------------------------
 #
 # THE RT SET is the reader and the two newer builds: RT1 cannot name what RT2
 # and RT3 wrote, and every row below is one §6.6 owes. The wires are the same
-# pinned vectors test/tables/retain_main.cpp writes, and the counters are the
-# hand-authored expectation.
+# pinned vectors test/tables/retain_main.cpp writes. Every readable row also
+# names the canonical save wire its retained unknowns write back.
 #
 # `capacity` is `full`, a buffer the whole load fits in, or `short`, ONE BYTE
 # SHORT of the last record: a record's byte cost is the port's own, so the
@@ -1091,21 +1055,21 @@ unit tblrt3 test/tables/RT3.schema
 # THE ROUND TRIP AT DEPTH, and the two capacities. The first save is a pinned
 # byte string of its own: moving a field changes the order ids are first used
 # in, so the trailer is permuted and every reference moves with it.
-retain retain_round_trip   tblrt1 Node testdata/wire/tables/retain_rt2.bin full  full 9,2,11 0 testdata/wire/tables/retain_rt1_save.bin
-retain retain_truncated    tblrt1 Node testdata/wire/tables/retain_rt2.bin short full 8,3,11 0 -
-retain retain_ids_short    tblrt1 Node testdata/wire/tables/retain_rt2.bin full  2    9,2,11 1 testdata/wire/tables/retain_rt1_save_id_short.bin
+retain retain_round_trip   tblrt1 Node testdata/wire/tables/retain_rt2.bin        full  full testdata/wire/tables/retain_rt1_save.bin
+retain retain_truncated    tblrt1 Node testdata/wire/tables/retain_rt2.bin        short full -
+retain retain_ids_short    tblrt1 Node testdata/wire/tables/retain_rt2.bin        full  2    testdata/wire/tables/retain_rt1_save_id_short.bin
 
-# THE FIVE EXCLUDED CLASSES a wire can carry to the unknown arm, one row each
-# and one retain_lost each, with `retained` unmoved. The NODE-INDEX class's row
+# THE FIVE EXCLUDED CLASSES a wire can carry to the unknown arm, one row each.
+# The NODE-INDEX class's row
 # is the RECURSIVE shape, which is the widest case it has: an unknown outer
 # table holding a nested pointer three bodies down. The SIXTH class, the
 # reserved node-table field, has no row, because it is excluded by construction
 # and a test cannot reach it.
-retain retain_node_index   tblrt1 Node testdata/wire/tables/retain_excluded_2.bin full full 0,1,1 0 -
-retain retain_enum_variant tblrt1 Node testdata/wire/tables/retain_excluded_3.bin full full 0,1,1 0 -
-retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bin full full 0,1,1 0 -
-retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full full 0,1,1 0 -
-retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full full 0,1,1 0 -
+retain retain_node_index   tblrt1 Node testdata/wire/tables/retain_excluded_2.bin full  full testdata/wire/tables/retain_excluded_2_save.bin
+retain retain_enum_variant tblrt1 Node testdata/wire/tables/retain_excluded_3.bin full  full testdata/wire/tables/retain_excluded_3_save.bin
+retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bin full  full testdata/wire/tables/retain_excluded_4_save.bin
+retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full  full testdata/wire/tables/retain_excluded_5_save.bin
+retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full  full testdata/wire/tables/retain_rt3_save.bin
 
 
 # Unbounded arrays: existing C++ wire pins now shared by every port.
@@ -1191,111 +1155,111 @@ report map_depth_root_kind mapdemo Depth testdata/wire/tables/fuzz-vectors/map_d
 # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a row whose input
 # is damaged owes the verdict `malformed` and no value, and the harness scores
 # that refusal alone, never a counter or a value.
-framing frame_form_zero                       tblr1 Cfg testdata/wire/tables/framing/frame_form_zero.bin                       refused -
-framing frame_form_two_as_file                tblr1 Cfg testdata/wire/tables/framing/frame_form_two_as_file.bin                refused -
-framing frame_form_four_planned               tblr1 Cfg testdata/wire/tables/framing/frame_form_four_planned.bin               refused -
-framing frame_empty_table                     tblr1 Cfg testdata/wire/tables/framing/frame_empty_table.bin                     0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
-framing frame_seven_bytes                     tblr1 Cfg testdata/wire/tables/framing/frame_seven_bytes.bin                     malformed            -
-framing frame_eight_bytes                     tblr1 Cfg testdata/wire/tables/framing/frame_eight_bytes.bin                     malformed            -
-framing frame_nine_bytes                      tblr1 Cfg testdata/wire/tables/framing/frame_nine_bytes.bin                      malformed            -
-framing frame_count_past_front                tblr1 Cfg testdata/wire/tables/framing/frame_count_past_front.bin                malformed            -
-framing frame_unreferenced_entry              tblr1 Cfg testdata/wire/tables/framing/frame_unreferenced_entry.bin              0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
-framing frame_count_one_over                  tblr1 Cfg testdata/wire/tables/framing/frame_count_one_over.bin                  malformed            -
-framing frame_slack_after_terminator          tblr1 Cfg testdata/wire/tables/framing/frame_slack_after_terminator.bin          malformed            -
-framing frame_duplicate_entry                 tblr1 Cfg testdata/wire/tables/framing/frame_duplicate_entry.bin                 malformed            -
-framing frame_entries_4096                    tblr1 Cfg testdata/wire/tables/framing/frame_entries_4096.bin                    0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
-framing frame_entries_4097                    tblr1 Cfg testdata/wire/tables/framing/frame_entries_4097.bin                    malformed            -
-framing frame_ref_last_slot                   tblr1 Cfg testdata/wire/tables/framing/frame_ref_last_slot.bin                   0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing frame_ref_above_count                 tblr1 Cfg testdata/wire/tables/framing/frame_ref_above_count.bin                 malformed            -
-framing frame_ref_non_canonical               tblr1 Cfg testdata/wire/tables/framing/frame_ref_non_canonical.bin               malformed            -
-framing frame_terminator_non_canonical        tblr1 Cfg testdata/wire/tables/framing/frame_terminator_non_canonical.bin        malformed            -
-framing frame_leb_eleven_bytes                tblr1 Cfg testdata/wire/tables/framing/frame_leb_eleven_bytes.bin                malformed            -
-framing frame_leb_tenth_byte_overflow         tblr1 Cfg testdata/wire/tables/framing/frame_leb_tenth_byte_overflow.bin         malformed            -
-framing frame_kind_unknown_37                 tblr1 Cfg testdata/wire/tables/framing/frame_kind_unknown_37.bin                 malformed            -
-framing frame_kind_reserved_34                tblr1 Cfg testdata/wire/tables/framing/frame_kind_reserved_34.bin                malformed            -
-framing frame_kind_zero                       tblr1 Cfg testdata/wire/tables/framing/frame_kind_zero.bin                       malformed            -
-framing frame_unknown_id_fixed_width          tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_fixed_width.bin          1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing frame_unknown_id_length               tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_length.bin               1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing frame_unknown_id_union                tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union.bin                1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing frame_unknown_id_union_empty          tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union_empty.bin          1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing frame_unknown_id_reference            tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_reference.bin            1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing frame_kind_mismatch_skips_by_wire_kind tblr1 Cfg testdata/wire/tables/framing/frame_kind_mismatch_skips_by_wire_kind.bin 0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_multiplier.json
-framing frame_repeat_last_wins                tblr1 Cfg testdata/wire/tables/framing/frame_repeat_last_wins.bin                0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_gold.json
-framing frame_reserved_build_version_id       tblr1 Cfg testdata/wire/tables/framing/frame_reserved_build_version_id.bin       malformed            -
-framing nested_terminator_early               tblr1 Cfg testdata/wire/tables/framing/nested_terminator_early.bin               malformed            -
-framing nested_L_exact                        tblr1 Cfg testdata/wire/tables/framing/nested_L_exact.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver_multiplier.json
-framing nested_L_plus_one                     tblr1 Cfg testdata/wire/tables/framing/nested_L_plus_one.bin                     malformed            -
-framing nested_L_past_body                    tblr1 Cfg testdata/wire/tables/framing/nested_L_past_body.bin                    malformed            -
-framing nested_unknown_id_inside              tblr1 Cfg testdata/wire/tables/framing/nested_unknown_id_inside.bin              1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver_multiplier.json
-framing nested_ref_above_count_inside         tblr1 Cfg testdata/wire/tables/framing/nested_ref_above_count_inside.bin         malformed            -
-framing array_L0_inert                        tblr1 Cfg testdata/wire/tables/framing/array_L0_inert.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing array_L1_inert                        tblr1 Cfg testdata/wire/tables/framing/array_L1_inert.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing array_L2_empty                        tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
-framing array_count_at_bound                  tblr1 Cfg testdata/wire/tables/framing/array_count_at_bound.bin                  0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_grades_four.json
-framing array_count_bound_plus_one            tblr1 Cfg testdata/wire/tables/framing/array_count_bound_plus_one.bin            0,0,0,1,0,false,read testdata/conformance/tables/framing/cfg_grades_four.json
-framing array_count_over_length               tblr1 Cfg testdata/wire/tables/framing/array_count_over_length.bin               malformed            -
-framing array_header_crosses_L_unbounded      listdemo Ints testdata/wire/tables/framing/array_header_crosses_L_unbounded.bin  malformed            -
-framing array_header_crosses_L_bounded        tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_bounded.bin        malformed            -
-framing array_header_crosses_L_kind_mismatch  tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_kind_mismatch.bin  0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing array_elem_kind_mismatch              tblr1 Cfg testdata/wire/tables/framing/array_elem_kind_mismatch.bin              0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
-framing array_count_non_canonical             tblr1 Cfg testdata/wire/tables/framing/array_count_non_canonical.bin             malformed            -
-framing array_header_incomplete_at_end        tblr1 Cfg testdata/wire/tables/framing/array_header_incomplete_at_end.bin        malformed            -
-framing array_elem_terminator_early           listdemo Bounded testdata/wire/tables/framing/array_elem_terminator_early.bin    malformed            -
-framing array_elem_L_past_body                listdemo Bounded testdata/wire/tables/framing/array_elem_L_past_body.bin         malformed            -
-framing map_header_crosses_L_kind_mismatch    listdemo Squad testdata/wire/tables/framing/map_header_crosses_L_kind_mismatch.bin 0,1,0,0,0,false,read testdata/conformance/tables/framing/squad_empty_50.json
-framing map_header_crosses_L                  listdemo Squad testdata/wire/tables/framing/map_header_crosses_L.bin             malformed            -
-framing map_entry_terminator_early            listdemo Squad testdata/wire/tables/framing/map_entry_terminator_early.bin       malformed            -
-framing map_entry_L_past_map                  listdemo Squad testdata/wire/tables/framing/map_entry_L_past_map.bin             malformed            -
-framing map_descending                        listdemo Squad testdata/wire/tables/framing/map_descending.bin                   malformed            -
-framing map_count_over_length                 listdemo Squad testdata/wire/tables/framing/map_count_over_length.bin            malformed            -
-framing map_L1_inert                          listdemo Squad testdata/wire/tables/framing/map_L1_inert.bin                     0,0,0,0,0,false,read testdata/conformance/tables/framing/squad_empty_50.json
-framing map_header_crosses_L_dart_mutant      listdemo Army testdata/wire/tables/framing/map_header_crosses_L_dart_mutant.bin  malformed            -
-framing keyed_header_crosses_L                tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L.bin                malformed            -
-framing keyed_header_crosses_L_kind_mismatch  tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L_kind_mismatch.bin  0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing keyed_key_zero                        tblr1 Cfg testdata/wire/tables/framing/keyed_key_zero.bin                        malformed            -
-framing keyed_unknown_key                     tblr1 Cfg testdata/wire/tables/framing/keyed_unknown_key.bin                     1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_tally_gold_3.json
-framing keyed_triple_L_past_body              tblr1 Cfg testdata/wire/tables/framing/keyed_triple_L_past_body.bin              malformed            -
-framing keyed_count_over_length               tblr1 Cfg testdata/wire/tables/framing/keyed_count_over_length.bin               malformed            -
-framing keyed_elem_kind_mismatch              tblr1 Cfg testdata/wire/tables/framing/keyed_elem_kind_mismatch.bin              0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
-framing keyed_L1_inert                        tblr1 Cfg testdata/wire/tables/framing/keyed_L1_inert.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing union_arm_L_not_width                 tblr1 Cfg testdata/wire/tables/framing/union_arm_L_not_width.bin                 malformed            -
-framing union_arm_width_exact                 tblr1 Cfg testdata/wire/tables/framing/union_arm_width_exact.bin                 0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_amount_42.json
-framing union_arm_L_past_body                 tblr1 Cfg testdata/wire/tables/framing/union_arm_L_past_body.bin                 malformed            -
-framing union_body_arm_terminator_early       tblr1 Cfg testdata/wire/tables/framing/union_body_arm_terminator_early.bin       malformed            -
-framing union_void_arm_L_nonzero              tblr1 Cfg testdata/wire/tables/framing/union_void_arm_L_nonzero.bin              malformed            -
-framing union_void_arm                        tblr1 Cfg testdata/wire/tables/framing/union_void_arm.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_ping.json
-framing union_unknown_arm                     tblr1 Cfg testdata/wire/tables/framing/union_unknown_arm.bin                     1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing union_arm_zero_in_field               tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin               0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing node_clean                            graphdemo ListNode testdata/wire/tables/framing/node_clean.bin                   0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_2.json
-framing node_count_disagrees                  graphdemo ListNode testdata/wire/tables/framing/node_count_disagrees.bin         malformed            -
-framing node_record_L_past_field              graphdemo ListNode testdata/wire/tables/framing/node_record_L_past_field.bin     malformed            -
-framing node_bytes_left_over                  graphdemo ListNode testdata/wire/tables/framing/node_bytes_left_over.bin         malformed            -
-framing node_field_wrong_kind                 graphdemo ListNode testdata/wire/tables/framing/node_field_wrong_kind.bin        malformed            -
-framing node_type_ref_zero                    graphdemo ListNode testdata/wire/tables/framing/node_type_ref_zero.bin           malformed            -
-framing node_index_above_count                graphdemo ListNode testdata/wire/tables/framing/node_index_above_count.bin       malformed            -
-framing node_index_null                       graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin              0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_null.json
-framing node_reserved_id_in_record            graphdemo ListNode testdata/wire/tables/framing/node_reserved_id_in_record.bin   malformed            -
-framing node_unknown_to_fixed_reader          tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin          1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing node_table_L_past_body                graphdemo ListNode testdata/wire/tables/framing/node_table_L_past_body.bin       malformed            -
+framing frame_form_zero                         tblr1 Cfg testdata/wire/tables/framing/frame_form_zero.bin                  refused -
+framing frame_form_two_as_file                  tblr1 Cfg testdata/wire/tables/framing/frame_form_two_as_file.bin           refused -
+framing frame_form_four_planned                 tblr1 Cfg testdata/wire/tables/framing/frame_form_four_planned.bin          refused -
+framing frame_empty_table                       tblr1 Cfg testdata/wire/tables/framing/frame_empty_table.bin                read    testdata/conformance/tables/framing/cfg_default.json
+framing frame_seven_bytes                       tblr1 Cfg testdata/wire/tables/framing/frame_seven_bytes.bin                refused -
+framing frame_eight_bytes                       tblr1 Cfg testdata/wire/tables/framing/frame_eight_bytes.bin                refused -
+framing frame_nine_bytes                        tblr1 Cfg testdata/wire/tables/framing/frame_nine_bytes.bin                 refused -
+framing frame_count_past_front                  tblr1 Cfg testdata/wire/tables/framing/frame_count_past_front.bin           refused -
+framing frame_unreferenced_entry                tblr1 Cfg testdata/wire/tables/framing/frame_unreferenced_entry.bin         read    testdata/conformance/tables/framing/cfg_default.json
+framing frame_count_one_over                    tblr1 Cfg testdata/wire/tables/framing/frame_count_one_over.bin             refused -
+framing frame_slack_after_terminator            tblr1 Cfg testdata/wire/tables/framing/frame_slack_after_terminator.bin     refused -
+framing frame_duplicate_entry                   tblr1 Cfg testdata/wire/tables/framing/frame_duplicate_entry.bin            refused -
+framing frame_entries_4096                      tblr1 Cfg testdata/wire/tables/framing/frame_entries_4096.bin               read    testdata/conformance/tables/framing/cfg_default.json
+framing frame_entries_4097                      tblr1 Cfg testdata/wire/tables/framing/frame_entries_4097.bin               refused -
+framing frame_ref_last_slot                     tblr1 Cfg testdata/wire/tables/framing/frame_ref_last_slot.bin              read    testdata/conformance/tables/framing/cfg_silver.json
+framing frame_ref_above_count                   tblr1 Cfg testdata/wire/tables/framing/frame_ref_above_count.bin            refused -
+framing frame_ref_non_canonical                 tblr1 Cfg testdata/wire/tables/framing/frame_ref_non_canonical.bin          refused -
+framing frame_terminator_non_canonical          tblr1 Cfg testdata/wire/tables/framing/frame_terminator_non_canonical.bin   refused -
+framing frame_leb_eleven_bytes                  tblr1 Cfg testdata/wire/tables/framing/frame_leb_eleven_bytes.bin           refused -
+framing frame_leb_tenth_byte_overflow           tblr1 Cfg testdata/wire/tables/framing/frame_leb_tenth_byte_overflow.bin    refused -
+framing frame_kind_unknown_37                   tblr1 Cfg testdata/wire/tables/framing/frame_kind_unknown_37.bin            refused -
+framing frame_kind_reserved_34                  tblr1 Cfg testdata/wire/tables/framing/frame_kind_reserved_34.bin           refused -
+framing frame_kind_zero                         tblr1 Cfg testdata/wire/tables/framing/frame_kind_zero.bin                  refused -
+framing frame_unknown_id_fixed_width            tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_fixed_width.bin     read    testdata/conformance/tables/framing/cfg_silver.json
+framing frame_unknown_id_length                 tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_length.bin          refused -
+framing frame_unknown_id_union                  tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union.bin           read    testdata/conformance/tables/framing/cfg_silver.json
+framing frame_unknown_id_union_empty            tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union_empty.bin     read    testdata/conformance/tables/framing/cfg_silver.json
+framing frame_unknown_id_reference              tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_reference.bin       refused -
+framing frame_kind_mismatch_skips_by_wire_kind  tblr1 Cfg testdata/wire/tables/framing/frame_kind_mismatch_skips_by_wire_kind.bin refused -
+framing frame_repeat_last_wins                  tblr1 Cfg testdata/wire/tables/framing/frame_repeat_last_wins.bin           refused -
+framing frame_reserved_build_version_id         tblr1 Cfg testdata/wire/tables/framing/frame_reserved_build_version_id.bin  refused -
+framing nested_terminator_early                 tblr1 Cfg testdata/wire/tables/framing/nested_terminator_early.bin          refused -
+framing nested_L_exact                          tblr1 Cfg testdata/wire/tables/framing/nested_L_exact.bin                   read    testdata/conformance/tables/framing/cfg_silver_multiplier.json
+framing nested_L_plus_one                       tblr1 Cfg testdata/wire/tables/framing/nested_L_plus_one.bin                refused -
+framing nested_L_past_body                      tblr1 Cfg testdata/wire/tables/framing/nested_L_past_body.bin               refused -
+framing nested_unknown_id_inside                tblr1 Cfg testdata/wire/tables/framing/nested_unknown_id_inside.bin         read    testdata/conformance/tables/framing/cfg_silver_multiplier.json
+framing nested_ref_above_count_inside           tblr1 Cfg testdata/wire/tables/framing/nested_ref_above_count_inside.bin    refused -
+framing array_L0_inert                          tblr1 Cfg testdata/wire/tables/framing/array_L0_inert.bin                   refused -
+framing array_L1_inert                          tblr1 Cfg testdata/wire/tables/framing/array_L1_inert.bin                   refused -
+framing array_L2_empty                          tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin                   read    testdata/conformance/tables/framing/cfg_default.json
+framing array_count_at_bound                    tblr1 Cfg testdata/wire/tables/framing/array_count_at_bound.bin             read    testdata/conformance/tables/framing/cfg_grades_four.json
+framing array_count_bound_plus_one              tblr1 Cfg testdata/wire/tables/framing/array_count_bound_plus_one.bin       refused -
+framing array_count_over_length                 tblr1 Cfg testdata/wire/tables/framing/array_count_over_length.bin          refused -
+framing array_header_crosses_L_unbounded        listdemo Ints testdata/wire/tables/framing/array_header_crosses_L_unbounded.bin refused -
+framing array_header_crosses_L_bounded          tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_bounded.bin   refused -
+framing array_header_crosses_L_kind_mismatch    tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_kind_mismatch.bin refused -
+framing array_elem_kind_mismatch                tblr1 Cfg testdata/wire/tables/framing/array_elem_kind_mismatch.bin         refused -
+framing array_count_non_canonical               tblr1 Cfg testdata/wire/tables/framing/array_count_non_canonical.bin        refused -
+framing array_header_incomplete_at_end          tblr1 Cfg testdata/wire/tables/framing/array_header_incomplete_at_end.bin   refused -
+framing array_elem_terminator_early             listdemo Bounded testdata/wire/tables/framing/array_elem_terminator_early.bin      refused -
+framing array_elem_L_past_body                  listdemo Bounded testdata/wire/tables/framing/array_elem_L_past_body.bin           refused -
+framing map_header_crosses_L_kind_mismatch      listdemo Squad testdata/wire/tables/framing/map_header_crosses_L_kind_mismatch.bin refused -
+framing map_header_crosses_L                    listdemo Squad testdata/wire/tables/framing/map_header_crosses_L.bin             refused -
+framing map_entry_terminator_early              listdemo Squad testdata/wire/tables/framing/map_entry_terminator_early.bin       refused -
+framing map_entry_L_past_map                    listdemo Squad testdata/wire/tables/framing/map_entry_L_past_map.bin             refused -
+framing map_descending                          listdemo Squad testdata/wire/tables/framing/map_descending.bin                   refused -
+framing map_count_over_length                   listdemo Squad testdata/wire/tables/framing/map_count_over_length.bin            refused -
+framing map_L1_inert                            listdemo Squad testdata/wire/tables/framing/map_L1_inert.bin                     refused -
+framing map_header_crosses_L_dart_mutant        listdemo Army testdata/wire/tables/framing/map_header_crosses_L_dart_mutant.bin refused -
+framing keyed_header_crosses_L                  tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L.bin           refused -
+framing keyed_header_crosses_L_kind_mismatch    tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L_kind_mismatch.bin refused -
+framing keyed_key_zero                          tblr1 Cfg testdata/wire/tables/framing/keyed_key_zero.bin                   refused -
+framing keyed_unknown_key                       tblr1 Cfg testdata/wire/tables/framing/keyed_unknown_key.bin                read    testdata/conformance/tables/framing/cfg_tally_gold_3.json
+framing keyed_triple_L_past_body                tblr1 Cfg testdata/wire/tables/framing/keyed_triple_L_past_body.bin         refused -
+framing keyed_count_over_length                 tblr1 Cfg testdata/wire/tables/framing/keyed_count_over_length.bin          refused -
+framing keyed_elem_kind_mismatch                tblr1 Cfg testdata/wire/tables/framing/keyed_elem_kind_mismatch.bin         refused -
+framing keyed_L1_inert                          tblr1 Cfg testdata/wire/tables/framing/keyed_L1_inert.bin                   refused -
+framing union_arm_L_not_width                   tblr1 Cfg testdata/wire/tables/framing/union_arm_L_not_width.bin            refused -
+framing union_arm_width_exact                   tblr1 Cfg testdata/wire/tables/framing/union_arm_width_exact.bin            read    testdata/conformance/tables/framing/cfg_amount_42.json
+framing union_arm_L_past_body                   tblr1 Cfg testdata/wire/tables/framing/union_arm_L_past_body.bin            refused -
+framing union_body_arm_terminator_early         tblr1 Cfg testdata/wire/tables/framing/union_body_arm_terminator_early.bin  refused -
+framing union_void_arm_L_nonzero                tblr1 Cfg testdata/wire/tables/framing/union_void_arm_L_nonzero.bin         refused -
+framing union_void_arm                          tblr1 Cfg testdata/wire/tables/framing/union_void_arm.bin                   read    testdata/conformance/tables/framing/cfg_ping.json
+framing union_unknown_arm                       tblr1 Cfg testdata/wire/tables/framing/union_unknown_arm.bin                read    testdata/conformance/tables/framing/cfg_silver.json
+framing union_arm_zero_in_field                 tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin          read    testdata/conformance/tables/framing/cfg_silver.json
+framing node_clean                              graphdemo ListNode testdata/wire/tables/framing/node_clean.bin                       read    testdata/conformance/tables/framing/listnode_1_to_2.json
+framing node_count_disagrees                    graphdemo ListNode testdata/wire/tables/framing/node_count_disagrees.bin             refused -
+framing node_record_L_past_field                graphdemo ListNode testdata/wire/tables/framing/node_record_L_past_field.bin         refused -
+framing node_bytes_left_over                    graphdemo ListNode testdata/wire/tables/framing/node_bytes_left_over.bin             refused -
+framing node_field_wrong_kind                   graphdemo ListNode testdata/wire/tables/framing/node_field_wrong_kind.bin            refused -
+framing node_type_ref_zero                      graphdemo ListNode testdata/wire/tables/framing/node_type_ref_zero.bin               refused -
+framing node_index_above_count                  graphdemo ListNode testdata/wire/tables/framing/node_index_above_count.bin           refused -
+framing node_index_null                         graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin                  refused -
+framing node_reserved_id_in_record              graphdemo ListNode testdata/wire/tables/framing/node_reserved_id_in_record.bin       refused -
+framing node_unknown_to_fixed_reader            tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin     refused -
+framing node_table_L_past_body                  graphdemo ListNode testdata/wire/tables/framing/node_table_L_past_body.bin           refused -
 # The rows the law-home's findings settled (docs/LAYERS/1-framing.md, N6, N7,
 # N9), each written into SPEC-TABLES.
-framing frame_empty_buffer                    tblr1 Cfg testdata/wire/tables/framing/frame_empty_buffer.bin                    malformed            -
-framing frame_kind_unknown_37_named           tblr1 Cfg testdata/wire/tables/framing/frame_kind_unknown_37_named.bin           malformed            -
-framing frame_kind_reserved_34_named          tblr1 Cfg testdata/wire/tables/framing/frame_kind_reserved_34_named.bin          malformed            -
-framing frame_kind_zero_named                 tblr1 Cfg testdata/wire/tables/framing/frame_kind_zero_named.bin                 malformed            -
-framing node_table_twice                      graphdemo ListNode testdata/wire/tables/framing/node_table_twice.bin             0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_3.json
+framing frame_empty_buffer                      tblr1 Cfg testdata/wire/tables/framing/frame_empty_buffer.bin               refused -
+framing frame_kind_unknown_37_named             tblr1 Cfg testdata/wire/tables/framing/frame_kind_unknown_37_named.bin      refused -
+framing frame_kind_reserved_34_named            tblr1 Cfg testdata/wire/tables/framing/frame_kind_reserved_34_named.bin     refused -
+framing frame_kind_zero_named                   tblr1 Cfg testdata/wire/tables/framing/frame_kind_zero_named.bin            refused -
+framing node_table_twice                        graphdemo ListNode testdata/wire/tables/framing/node_table_twice.bin                 refused -
 # Finding N1, ruled (Glenn, 2026-10-31): damage discards the whole load, so
 # the two vectors held on it are refusal rows.
-framing nested_terminator_missing             tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin             malformed            -
-framing nested_damage_midway                  tblr1 Cfg testdata/wire/tables/framing/nested_damage_midway.bin                  malformed            -
+framing nested_terminator_missing               tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin        refused -
+framing nested_damage_midway                    tblr1 Cfg testdata/wire/tables/framing/nested_damage_midway.bin             refused -
 # T8 (docs/LAYERS/1-framing.md): a cyclic wire is damage (§3.1, §4; Glenn,
 # 2026-10-31); a chain, and a diamond chain of 82 SHARED nodes and 2^40 paths
 # that a reader must load in linear time, are legal.
-framing node_cycle_self                       graphdemo ListNode testdata/wire/tables/framing/node_cycle_self.bin              malformed            -
-framing node_cycle_to_root                    graphdemo ListNode testdata/wire/tables/framing/node_cycle_to_root.bin           malformed            -
-framing node_cycle_mid                        graphdemo ListNode testdata/wire/tables/framing/node_cycle_mid.bin               malformed            -
-framing node_diamond_chain                    graphdemo Scene    testdata/wire/tables/framing/node_diamond_chain.bin           0,0,0,0,0,false,read testdata/conformance/tables/framing/scene_diamond_chain.json
-framing node_chain_two                        graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin               0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_2_to_3.json
+framing node_cycle_self                         graphdemo ListNode testdata/wire/tables/framing/node_cycle_self.bin                  refused -
+framing node_cycle_to_root                      graphdemo ListNode testdata/wire/tables/framing/node_cycle_to_root.bin               refused -
+framing node_cycle_mid                          graphdemo ListNode testdata/wire/tables/framing/node_cycle_mid.bin                   refused -
+framing node_diamond_chain                      graphdemo Scene testdata/wire/tables/framing/node_diamond_chain.bin               read    testdata/conformance/tables/framing/scene_diamond_chain.json
+framing node_chain_two                          graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin                   read    testdata/conformance/tables/framing/listnode_1_to_2_to_3.json
 
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no
@@ -1306,3 +1270,108 @@ framing node_chain_two                        graphdemo ListNode testdata/wire/t
 unit widelist tables/widelist
 instance widelist_wide widelist Wide testdata/wire/tables/widelist_wide.bin
 cook-write widelist_wide testdata/conformance/tables/cook-write/widelist_wide.cook testdata/conformance/tables/cook-write/widelist_wide-be.cook
+
+# THE CANONICAL WRITER'S ROWS (docs/SPEC-TABLES.md §16.14): each instance is
+# built to separate a choice an implementation could make differently, so the
+# json-write surface, which compares bytes, goes red on the leg that makes it.
+# map_key_order: string, signed and unsigned keys of every map in Fleet given
+# out of order — "7" before "10", "-32768" before "-3", "" first, a proper
+# prefix before its extension, and "｡" (EF BD A1) before "😀" (F0 9F 98 80),
+# the pair UTF-16 code unit order reverses. map_text_order: the same over
+# Text's three maps, with every escape class in a key and in a value, base64
+# at every padding length and the int32 extremes as keys. feature_key_order:
+# the unbounded `map[string]V` key and an optional map, with a pre-epoch
+# timestamp one nanosecond before 1970. feature_stamp_frac: a fraction with
+# trailing zeros and an offset spelled `+00:00`, which write as `.12` and `Z`.
+# text_float32_double_round: the float32 0x15AE43FE and 0x15AE43FD, the only
+# positive float32 values whose `%.*g` loop stops at a different precision
+# when the read-back is twice rounded (through a double, then narrowed), with
+# the integer extremes of ProfileConfig. graph_chain_text: a 128-node chain,
+# so its deepest node sits at the depth cap every walk carries (§16.2), indented
+# 2 spaces a level, with a shared node defined deep in `head` and referenced
+# from `alias`; every reader must take it and every writer must write it.
+instance map_key_order             mapdemo           Fleet         testdata/wire/tables/map_key_order.bin
+instance map_text_order            mapdemo           Text          testdata/wire/tables/map_text_order.bin
+instance feature_key_order         featurewitnesses  Root          testdata/wire/tables/feature_key_order.bin
+instance feature_stamp_frac        featurewitnesses  Root          testdata/wire/tables/feature_stamp_frac.bin
+instance text_float32_double_round tabledemo         ProfileConfig testdata/conformance/tables/wire/text_float32_double_round.bin
+instance graph_chain_text          graphdemo         Scene         testdata/wire/tables/graph_chain_text.bin
+
+# THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): json-write
+# answers `refused` for each, and a text is a failure. graph_chain_past_cap is
+# graph_chain_text one node longer, 129 deep, one past the cap: a wire carries
+# it and no writer may (its wire is graph_chain_text.bin decoded by
+# internal/tablewire, one ListNode appended to the chain, and encoded again).
+# text_refuse_illformed and text_refuse_unpaired hold, in code, what no wire
+# and no text can deliver — a narrow field's ill-formed UTF-8
+# and a wide field's unpaired surrogate — and the writer refuses rather than
+# replacing either with U+FFFD.
+json-write-refusal graph_chain_past_cap  graphdemo Scene         testdata/wire/tables/graph_chain_past_cap.bin none
+json-write-refusal text_refuse_illformed tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin       narrow:name
+json-write-refusal text_refuse_unpaired  widedemo  Stamp         testdata/conformance/tables/wire/wide_stamp.bin          wide:label
+report previous_form_root_full tabledemo RootConfig testdata/wire/tables/root_full.bin
+report previous_form_root_default tabledemo RootConfig testdata/wire/tables/root_default.bin
+report previous_form_profile_elide tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin
+report previous_form_text_escapes tabledemo ProfileConfig testdata/wire/tables/text_escapes.bin
+report previous_form_text_escapes_raw tabledemo ProfileConfig testdata/wire/tables/text_escapes_raw.bin
+report previous_form_text_float_exp tabledemo ProfileConfig testdata/wire/tables/text_float_exp.bin
+report previous_form_text_float_small tabledemo ProfileConfig testdata/wire/tables/text_float_small.bin
+report previous_form_text_float_misc tabledemo ProfileConfig testdata/wire/tables/text_float_misc.bin
+report previous_form_text_float64_big tabledemo ProfileConfig testdata/wire/tables/text_float64_big.bin
+report previous_form_text_float64_ties tabledemo ProfileConfig testdata/wire/tables/text_float64_ties.bin
+report previous_form_text_negative_zero tabledemo ProfileConfig testdata/wire/tables/text_negative_zero.bin
+report previous_form_text_uint64_two_to_63 tabledemo ProfileConfig testdata/wire/tables/text_uint64_two_to_63.bin
+report previous_form_text_icon_pad_one tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_one.bin
+report previous_form_text_icon_pad_two tabledemo ProfileConfig testdata/wire/tables/text_icon_pad_two.bin
+report previous_form_text_icon_sixteen tabledemo ProfileConfig testdata/wire/tables/text_icon_sixteen.bin
+report previous_form_loadout_full tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin
+report previous_form_wide_blob tabledemo WideBlob testdata/wire/tables/wide_blob.bin
+report previous_form_archive tabledemo ArchiveConfig testdata/wire/tables/archive.bin
+report previous_form_keyed_config tabledemo KeyedConfig testdata/wire/tables/keyed_config.bin
+report previous_form_keyed_default tabledemo KeyedConfig testdata/wire/tables/keyed_default.bin
+report previous_form_v1_cfg tblv1 Cfg testdata/wire/tables/v1_cfg.bin
+report previous_form_v1_seams tblv1 Cfg testdata/wire/tables/v1_seams.bin
+report previous_form_v2_cfg tblv2 Cfg testdata/wire/tables/v2_cfg.bin
+report previous_form_v2_seams tblv2 Cfg testdata/wire/tables/v2_seams.bin
+report previous_form_chain_value tblp1 Chain testdata/wire/tables/chain_value.bin
+report previous_form_chain_value_empty tblp1 Chain testdata/wire/tables/chain_value_empty.bin
+report previous_form_chain_optional tblp3 Chain testdata/wire/tables/chain_optional.bin
+report previous_form_chain_optional_empty tblp3 Chain testdata/wire/tables/chain_optional_empty.bin
+report previous_form_message_open messagedemo ToolMessage testdata/wire/tables/message_open.bin
+report previous_form_message_transaction messagedemo ToolMessage testdata/wire/tables/message_transaction.bin
+report previous_form_message_ping messagedemo ToolMessage testdata/wire/tables/message_ping.bin
+report previous_form_message_save messagedemo ToolMessage testdata/wire/tables/message_save.bin
+report previous_form_message_empty messagedemo ToolMessage testdata/wire/tables/message_empty.bin
+report previous_form_message_batch messagedemo ToolMessage testdata/wire/tables/message_batch.bin
+report previous_form_message_trace messagedemo ToolMessage testdata/wire/tables/message_trace.bin
+report previous_form_message_arms messagedemo ToolMessage testdata/wire/tables/message_arms.bin
+report previous_form_message_arm_edits messagedemo ToolMessage testdata/wire/tables/message_arm_edits.bin
+report previous_form_message_ack messagedemo ToolMessage testdata/wire/tables/message_ack.bin
+report previous_form_m1_open tblm1 Msg testdata/wire/tables/m1_open.bin
+report previous_form_m1_save tblm1 Msg testdata/wire/tables/m1_save.bin
+report previous_form_m2_close tblm2 Msg testdata/wire/tables/m2_close.bin
+report previous_form_m2_open tblm2 Msg testdata/wire/tables/m2_open.bin
+report previous_form_wide_empty widedemo Caption testdata/wire/tables/wide_empty.bin
+report previous_form_wide_title widedemo Caption testdata/wire/tables/wide_title.bin
+report previous_form_wide_sites widedemo Caption testdata/wire/tables/wide_sites.bin
+report previous_form_wide_narrow_arm widedemo Caption testdata/wire/tables/wide_narrow_arm.bin
+report previous_form_wide_stamp widedemo Stamp testdata/wire/tables/wide_stamp.bin
+report previous_form_scalars_full scalars SimState testdata/wire/tables/scalars_full.bin
+report previous_form_scalars_default scalars SimState testdata/wire/tables/scalars_default.bin
+report previous_form_scalars_edges scalars SimState testdata/wire/tables/scalars_edges.bin
+report previous_form_login_full backenddemo LoginRequest testdata/wire/tables/login_full.bin
+report previous_form_login_default backenddemo LoginRequest testdata/wire/tables/login_default.bin
+report previous_form_match_full backenddemo MatchResult testdata/wire/tables/match_full.bin
+report previous_form_match_default backenddemo MatchResult testdata/wire/tables/match_default.bin
+report previous_form_store_full backenddemo StorePurchase testdata/wire/tables/store_full.bin
+report previous_form_store_default backenddemo StorePurchase testdata/wire/tables/store_default.bin
+report previous_form_vocab_wide vocabdemo Wide09 testdata/wire/tables/vocab_wide.bin
+report previous_form_vocab_low vocabdemo Wide00 testdata/wire/tables/vocab_low.bin
+report previous_form_peer_a backenddemo StorePurchase testdata/wire/tables/peer_a.bin
+report previous_form_peer_b vocabdemo Wide00 testdata/wire/tables/peer_b.bin
+report previous_form_vocab9_wide vocab9demo Wide19 testdata/wire/tables/vocab9_wide.bin
+report previous_form_vocab9_low vocab9demo Wide00 testdata/wire/tables/vocab9_low.bin
+report previous_form_r1_cfg tblr1 Cfg testdata/wire/tables/r1_cfg.bin
+report previous_form_r1_ping tblr1 Cfg testdata/wire/tables/r1_ping.bin
+report previous_form_r2_cfg tblr2 Cfg testdata/wire/tables/r2_cfg.bin
+report previous_form_text_float32_double_round tabledemo ProfileConfig testdata/wire/tables/text_float32_double_round.bin

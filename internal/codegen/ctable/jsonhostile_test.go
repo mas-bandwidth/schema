@@ -75,13 +75,13 @@ int main(void)
         /* Tolerant read */
         CHECK(probe_builder_init(&b));
         memset(&r, 0, sizeof(r));
-        ok = probe_from_json_tolerant(&b, c->text, len, &r);
+        ok = probe_from_json(&b, c->text, len, &r);
         if (c->expect_ok) {
-            CHECK(ok && !r.malformed);
+            CHECK(ok && !r.refused);
             CHECK(r.unknown == c->unknown && r.kind_mismatch == c->kind_mismatch &&
                   r.widened == c->widened && r.clamped == c->clamped && r.duplicate == c->duplicate);
         } else {
-            CHECK(!ok && r.malformed);
+            CHECK(!ok && r.refused);
         }
         probe_builder_shutdown(&b);
 
@@ -90,7 +90,7 @@ int main(void)
         memset(&r, 0, sizeof(r));
         ok = probe_from_json(&b, c->text, len, &r);
         if (c->strict_reason == SCHEMA_TABLE_REFUSE_OK) {
-            CHECK(ok && !r.malformed && r.refuse_reason == SCHEMA_TABLE_REFUSE_OK);
+            CHECK(ok && r.refuse_reason == SCHEMA_TABLE_REFUSE_OK);
         } else {
             CHECK(!ok && r.refuse_reason == c->strict_reason);
         }
@@ -109,7 +109,7 @@ int main(void)
         CHECK(probe_builder_init(&b));
         memset(&r, 0, sizeof(r));
         CHECK(probe_from_json(&b, pair_json, (int64_t)strlen(pair_json), &r));
-        CHECK(r.refuse_reason == SCHEMA_TABLE_REFUSE_OK && !r.malformed && r.clamped == 0);
+        CHECK(r.refuse_reason == SCHEMA_TABLE_REFUSE_OK && r.clamped == 0);
         root = probe_builder_root(&b);
         CHECK(root->name_length == 4 && memcmp(root->name, "\xf0\x9d\x84\x9e", 4) == 0);
         CHECK(root->wide_length == 2 && root->wide[0] == 0xd834 && root->wide[1] == 0xdd1e);
@@ -120,7 +120,7 @@ int main(void)
         CHECK(probe_builder_init(&b));
         memset(&r, 0, sizeof(r));
         CHECK(probe_from_json(&b, lone_lead_json, (int64_t)strlen(lone_lead_json), &r));
-        CHECK(r.refuse_reason == SCHEMA_TABLE_REFUSE_OK && !r.malformed);
+        CHECK(r.refuse_reason == SCHEMA_TABLE_REFUSE_OK && !r.refused);
         root = probe_builder_root(&b);
         CHECK(root->name_length == 4 && memcmp(root->name, "\xef\xbf\xbd" "A", 4) == 0);
         CHECK(root->wide_length == 2 && root->wide[0] == 0xfffd && root->wide[1] == 0x0041);
@@ -131,7 +131,7 @@ int main(void)
         CHECK(probe_builder_init(&b));
         memset(&r, 0, sizeof(r));
         CHECK(probe_from_json(&b, lone_trail_json, (int64_t)strlen(lone_trail_json), &r));
-        CHECK(r.refuse_reason == SCHEMA_TABLE_REFUSE_OK && !r.malformed);
+        CHECK(r.refuse_reason == SCHEMA_TABLE_REFUSE_OK && !r.refused);
         root = probe_builder_root(&b);
         CHECK(root->name_length == 3 && memcmp(root->name, "\xef\xbf\xbd", 3) == 0);
         CHECK(root->wide_length == 1 && root->wide[0] == 0xfffd);
@@ -142,7 +142,7 @@ int main(void)
         CHECK(probe_builder_init(&b));
         memset(&r, 0, sizeof(r));
         CHECK(probe_from_json(&b, inverted_json, (int64_t)strlen(inverted_json), &r));
-        CHECK(r.refuse_reason == SCHEMA_TABLE_REFUSE_OK && !r.malformed);
+        CHECK(r.refuse_reason == SCHEMA_TABLE_REFUSE_OK && !r.refused);
         root = probe_builder_root(&b);
         CHECK(root->name_length == 6 && memcmp(root->name, "\xef\xbf\xbd\xef\xbf\xbd", 6) == 0);
         CHECK(root->wide_length == 2 && root->wide[0] == 0xfffd && root->wide[1] == 0xfffd);

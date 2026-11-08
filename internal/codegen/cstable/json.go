@@ -272,6 +272,9 @@ public static class TableJson
         public bool Measuring;
         public long Offset;
         public bool Overflow;
+        // storage that is not text (ill-formed UTF-8, an unpaired surrogate)
+        // refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
+        public bool Invalid;
         internal TableWire.Graph Graph;
 
         public void Raw(ReadOnlySpan<byte> data)
@@ -411,15 +414,10 @@ public static class TableJson
         o.Put((byte)(0x80 | (code & 0x3f)));
     }
 
-    // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
-    // byte-transparent — the wire imposes no encoding (§3) and a string may
-    // hold anything — so the WRITER is where that obligation is met: a byte
-    // that is not part of a well-formed sequence is written as U+FFFD, one per
-    // bad byte, and never raw. A text this walk writes is therefore readable by
-    // any conforming parser, which a raw byte would not be. The cost is stated
-    // plainly: for a string holding invalid UTF-8, the round trip is NOT
-    // byte-identical, because the alternative is emitting a text that is not
-    // JSON.
+    // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts
+    // anything else into storage, so a byte that is not part of a well-formed
+    // sequence was put there by a program: the write REFUSES (invalid_value,
+    // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
     static void WriteString(ref Out o, ReadOnlySpan<byte> s)
     {
         o.Put((byte)'"');
@@ -431,7 +429,7 @@ public static class TableJson
             int width;
             if (Utf8(s, i, out width) < 0)
             {
-                WriteUtf8(ref o, 0xfffd); // one per bad byte
+                o.Invalid = true; // not text: the write refuses (§16.14 W0)
             }
             else
             {
@@ -585,11 +583,11 @@ public static class TableJson
         return n;
     }
 
-    // A float writes at the SHORTEST precision that reads back as the same
-    // value at the field's own width, so a round trip is exact and a text stays
-    // readable. Non-finite values have no JSON spelling at all, and the writer
-    // REFUSES rather than losing one silently — the same rule measure and save
-    // already apply to an enum value no variant names (§5).
+    // A float writes by §16.14's W12: C's %.*g at the first precision whose
+    // text reads back as the same value at the field's own width. Non-finite
+    // values have no JSON spelling at all, and the writer REFUSES rather than
+    // losing one silently — the same rule measure and save already apply to an
+    // enum value no variant names (§5).
     static bool WriteFloat(ref Out o, double value, bool single)
     {
         if (!Finite(value)) { return false; }
@@ -602,17 +600,21 @@ public static class TableJson
             length = FormatG(value, digits, text);
             if (length <= 0) { return false; }
             if (digits >= high) { break; }
-            double back;
-            if (!double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out back))
-            {
-                continue;
-            }
+            // the read-back is ONE correctly rounded conversion at the field's
+            // own width (§16.14, W12): a float32 parses as a float, never as a
+            // double then narrowed, because rounding twice parts from once
             if (single)
             {
-                if ((double)(float)back == value) { break; }
+                float back32;
+                if (float.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out back32)
+                    && (double)back32 == value) { break; }
+                continue;
             }
-            else if (back == value) { break; }
+            double back;
+            if (double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out back)
+                && back == value) { break; }
         }
         for (int i = 0; i < length; i++) { o.Put((byte)text[i]); }
         return true;
@@ -1076,7 +1078,7 @@ public static class TableJson
                             // UTF-8 encoding: encoding it anyway would manufacture
                             // CESU-8 — invalid UTF-8 — out of input that was valid
                             // JSON, so it reads as the replacement character
-                            if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+                            if (code >= 0xd800 && code <= 0xdfff) { return RefuseText(ref input, "malformed: string_lone_surrogate"); }
                             unitLength = EncodeUtf8(code, unit);
                             break;
                         }
@@ -1135,7 +1137,7 @@ public static class TableJson
                 }
             }
         }
-        if (clamped) { input.Report.Clamped++; }
+        if (clamped) { return RefuseText(ref input, "length_over_bound"); }
         length = placed;
         return true;
     }
@@ -1372,8 +1374,7 @@ public static class TableJson
             object child=f.GetChild(owner,index);TableFieldInfo field=f.Table.Fields[0];f.Table.Reset(child);
             if(field.Optional&&ValueShape(text,ref input)=='z'){return Literal(text,ref input,"null");}
             if(field.Optional){field.SetPresent(child,true);}
-            int before=input.Report.Clamped;bool good=ReadField(text,ref input,child,field,depth);
-            if(input.Report.Clamped!=before){TableWire.TextClamp(input.Report,f);}return good;
+            return ReadField(text,ref input,child,field,depth);
         }
         if (f.Kind == 36) { return ReadTimestamp(text, ref input, owner, f, index); }
         if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
@@ -1408,8 +1409,7 @@ public static class TableJson
                 char wanted = payload == null ? 'z' : Shape(payload);
                 if (ValueShape(text, ref input) != wanted && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
                 {
-                    input.Report.KindMismatch++;
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    return RefuseText(ref input, "kind_mismatch");
                 }
                 else
                 {
@@ -1475,8 +1475,7 @@ public static class TableJson
                 if (c == 0) { input.Bad = true; return false; }
                 if (c != '"')
                 {
-                    input.Report.KindMismatch++;
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    return RefuseText(ref input, "kind_mismatch");
                 }
                 else
                 {
@@ -1533,21 +1532,18 @@ public static class TableJson
             // reads clean writes back.
             if (!Finite(value))
             {
-                input.Report.KindMismatch++;
-                return true;
+                return RefuseText(ref input, "kind_mismatch");
             }
             if (f.HasRange)
             {
-                if (value < f.RangeMin) { value = f.RangeMin; input.Report.Clamped++; }
-                else if (value > f.RangeMax) { value = f.RangeMax; input.Report.Clamped++; }
+                if (value < f.RangeMin || value > f.RangeMax) { return RefuseText(ref input, "out_of_range"); }
             }
             if (single)
             {
                 float narrow = (float)value;
                 if (!Finite(narrow))
                 {
-                    input.Report.KindMismatch++;
-                    return true;
+                    return RefuseText(ref input, "kind_mismatch");
                 }
                 f.SetRaw(owner, index, TableFloatToBits(narrow));
             }
@@ -1574,14 +1570,13 @@ public static class TableJson
             double d = TokenDouble(token.Slice(0, length), false);
             if (!Finite(d))
             {
-                input.Report.KindMismatch++;
-                return true;
+                return RefuseText(ref input, "kind_mismatch");
             }
             if (isSigned)
             {
                 if (d >= 9223372036854775808.0) { value2 = long.MaxValue; saturated = true; }
                 else if (d < -9223372036854775808.0) { value2 = long.MinValue; saturated = true; }
-                else if (d != (double)(long)d) { input.Report.KindMismatch++; return true; }
+                else if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
                 else { value2 = (long)d; }
             }
             else
@@ -1590,20 +1585,20 @@ public static class TableJson
                 {
                     // a negative for an unsigned field clamps to zero, as the
                     // exact digit path already does
-                    if (d != (double)(long)d) { input.Report.KindMismatch++; return true; }
+                    if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
                     value2 = 0;
                     saturated = true;
                 }
                 else if (d >= 18446744073709551616.0) { value2 = unchecked((long)ulong.MaxValue); saturated = true; }
-                else if (d != (double)(ulong)d) { input.Report.KindMismatch++; return true; }
+                else if (d != (double)(ulong)d) { return RefuseText(ref input, "kind_mismatch"); }
                 else { value2 = unchecked((long)(ulong)d); }
             }
         }
-        if (saturated) { input.Report.Clamped++; }
+        if (saturated) { return RefuseText(ref input, "out_of_range"); }
         // Exact typed bounds preserve integers above 2^53 and unsigned values
         // above Int64.MaxValue. The field's storage-width clamp follows this.
-        if (f.ClampJsonInteger != null)
-        { value2 = unchecked((long)f.ClampJsonInteger(unchecked((ulong)value2), input.Report)); }
+        if (f.RangeJsonInteger != null)
+        { value2 = unchecked((long)f.RangeJsonInteger(unchecked((ulong)value2), input.Report)); if (input.Report.Refused) { input.Bad = true; return false; } }
         // the field's own storage width is the last bound: a value past it
         // clamps rather than wrapping, which is what the wire does too
         if (f.ElemWidth < 8)
@@ -1612,8 +1607,7 @@ public static class TableJson
             {
                 long high = (1L << (f.ElemWidth * 8 - 1)) - 1;
                 long low = -high - 1;
-                if (value2 > high) { value2 = high; input.Report.Clamped++; }
-                else if (value2 < low) { value2 = low; input.Report.Clamped++; }
+                if (value2 > high || value2 < low) { return RefuseText(ref input, "out_of_range"); }
             }
             else
             {
@@ -1624,10 +1618,9 @@ public static class TableJson
                     // negative long, lands the field's CEILING: the domain is
                     // established before any cast, so the saturation is one
                     // clamp and the domain bound is the other
-                    value2 = (long)high;
-                    input.Report.Clamped++;
+                    return RefuseText(ref input, "out_of_range");
                 }
-                else if ((ulong)value2 > high) { value2 = (long)high; input.Report.Clamped++; }
+                else if ((ulong)value2 > high) { return RefuseText(ref input, "out_of_range"); }
             }
         }
         // at eight bytes the storage IS the parser's width, and an unsigned
@@ -1726,8 +1719,7 @@ public static class TableJson
             {
                 // a body that is not base64 is the wrong shape for the kind:
                 // the field keeps its default and the event is counted
-                input.Report.KindMismatch++;
-                return true;
+                return RefuseText(ref input, "kind_mismatch");
             }
             byte[] storage = f.GetBuffer(value);
             Array.Clear(storage, 0, f.ArrayBound);
@@ -1755,7 +1747,7 @@ public static class TableJson
                     }
                 }
             }
-            if (clamped) { input.Report.Clamped++; }
+            if (clamped) { return RefuseText(ref input, "length_over_bound"); }
             PutCount(value, f, placed);
             return true;
         }
@@ -1797,7 +1789,7 @@ public static class TableJson
                 if (slot >= 0)
                 {
                     ulong bit = 1ul << (slot & 63);
-                    if ((seen[slot >> 6] & bit) != 0) { input.Report.Duplicate++; }
+                    if ((seen[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
                     seen[slot >> 6] |= bit;
                 }
                 if (slot < 0)
@@ -1807,8 +1799,7 @@ public static class TableJson
                 }
                 else if (ValueShape(text, ref input) != shape)
                 {
-                    input.Report.KindMismatch++;
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    return RefuseText(ref input, "kind_mismatch");
                 }
                 else if (!ReadScalar(text, ref input, value, f, slot, depth + 1))
                 {
@@ -1834,33 +1825,20 @@ public static class TableJson
             // re-establishment a nested table and a union arm already get.
             ResetSlots(value, f);
             PutCount(value, f, 0);
-            int placed = 0; long textSpent = 0; bool textFull = false; int textSeen = 0;
+            int placed = 0; long textSpent = 0;
             char shape = ElementShape(f);
             for (; ; )
             {
                 byte c = Peek(text, ref input);
                 if (c == ']') { input.Pos++; break; }
                 if (c == 0) { input.Bad = true; return false; }
-                if (textFull)
+                if (placed >= f.ArrayBound)
                 {
-                    // the total dropped this element; one past [..N] is counted
-                    // as well, as the wire counts its count clamp (§2.13)
-                    if (++textSeen > f.ArrayBound) { input.Report.Clamped++; }
-                    if (!SkipValue(text,ref input,depth+1)) { return false; }
-                }
-                else if (placed >= f.ArrayBound)
-                {
-                    // more elements than the reader's bound: the bounded prefix
-                    // is kept and the excess counts, the wire's rule (§4)
-                    input.Report.Clamped++; TableWire.TextClamp(input.Report,f);
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    return RefuseText(ref input, "count_over_bound");
                 }
                 else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                 {
-                    if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
-                    input.Report.KindMismatch++;
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
-                    placed++;
+                    return RefuseText(ref input, "kind_mismatch");
                 }
                 else
                 {
@@ -1869,9 +1847,9 @@ public static class TableJson
                     if(f.TextTotal>0){
                         object child=f.GetChild(value,placed);TableFieldInfo element=f.Table.Fields[0];
                         int length=element.Optional&&!element.GetPresent(child)?0:Count(child,element);
-                        if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){f.Table.Reset(child);textFull=true;textSeen=placed+1;}
+                        if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){return false;}
                     }
-                    if(!textFull){placed++;}
+                    placed++;
                 }
                 c = Peek(text, ref input);
                 if (c == ',') { input.Pos++; continue; }
@@ -1929,7 +1907,7 @@ public static class TableJson
                 // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
                 // 16.7): never a field this build lacks, always a construct it
                 // cannot honor. MALFORMED and refused, never counted as unknown.
-                input.Report.Malformed = true;
+                input.Report.Damaged = true;
                 input.Bad = true;
                 return false;
             }
@@ -1945,7 +1923,7 @@ public static class TableJson
                 if (index < info.NumFields)
                 {
                     ulong bit = 1ul << (index & 63);
-                    if ((seen[index >> 6] & bit) != 0) { input.Report.Duplicate++; }
+                    if ((seen[index >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
                     seen[index >> 6] |= bit;
                 }
                 // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this
@@ -1968,8 +1946,7 @@ public static class TableJson
                     {
                         // the wrong JSON type for the kind: skipped, never
                         // coerced
-                        input.Report.KindMismatch++;
-                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        return RefuseText(ref input, "kind_mismatch");
                     }
                     else if (!ReadField(text, ref input, value, f, depth))
                     {
@@ -2021,7 +1998,7 @@ public static class TableJson
         {
             // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
             // the walk placed before the damage is handed back.
-            input.Report.Malformed = true;
+            input.Report.Damaged = true;
             info.Reset(value);
             return false;
         }
@@ -2035,13 +2012,14 @@ public static class TableJson
         o.Measuring = measuring;
         o.Offset = 0;
         o.Overflow = false;
+        o.Invalid = false;
         if (info.Variable) { o.Graph = TableWire.Number(value, info); if (o.Graph == null) { return -1; } }
         if (!WriteValue(ref o, value, info, 0)) { return -1; }
         // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every
         // writer emits it — this one, the C++ walk and schema unpack — and
         // every reader accepts a text with or without.
         o.Put((byte)'\n');
-        if (o.Overflow) { return -1; }
+        if (o.Overflow || o.Invalid) { return -1; }
         return o.Offset;
     }
 }

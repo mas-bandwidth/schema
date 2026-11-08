@@ -1095,16 +1095,16 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.emitVariableLoadMeasure(st)
 	g.emitVariableLoad(st)
 
-	g.pf("// %sLoadBuilderTolerant: the TOOL's path — the same tolerant decode into a fresh\n", n)
+	g.pf("// %sLoadBuilderWalk: the TOOL's path — the same strict decode into a fresh\n", n)
 	g.pf("// builder, so loaded data can be edited and locked again. The numbering is\n")
 	g.pf("// the same one; what differs is where a node lives and therefore what a\n")
 	g.pf("// resolved slot holds — an arena offset here, a self-relative delta there.\n")
-	g.pf("inline bool %sLoadBuilderTolerant( %sBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("inline bool %sLoadBuilderWalk( %sBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    const int32_t non_finite_before = out->non_finite_floats;\n")
-	g.pf("    const bool malformed_before = out->malformed;\n")
-	g.pf("    out->malformed = false;\n")
+	g.pf("    const bool damaged_before = out->damaged;\n")
+	g.pf("    out->damaged = false;\n")
 	g.pf("    TableIdTable ids_table;\n")
 	g.pf("    int64_t body_bytes = 0;\n")
 	if st.Integrity != "" {
@@ -1114,22 +1114,22 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		// Go oracle's tableIntegrityOpen, internal/codegen/gotable/integrity.go);
 		// the read then proceeds over the file without it.
 		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n")
-		g.pf("        out->malformed = true;\n        out->damage_reason = integrity_mismatch;\n        return false;\n    }\n")
+		g.pf("        out->damaged = true;\n        out->damage_reason = integrity_mismatch;\n        return false;\n    }\n")
 		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
-	g.pf("        if ( verdict == TableOpenDamaged )\n        {\n            out->malformed = true;\n            out->refuse_reason = wire_damaged;\n        }\n")
-	g.pf("        else\n        {\n            out->malformed = malformed_before;\n            out->refused = true;\n            out->refuse_reason = unknown_form;\n        }\n")
+	g.pf("        if ( verdict == TableOpenDamaged )\n        {\n            out->damaged = true;\n            out->refuse_reason = wire_damaged;\n        }\n")
+	g.pf("        else\n        {\n            out->damaged = damaged_before;\n            out->refused = true;\n            out->refuse_reason = unknown_form;\n        }\n")
 	g.pf("        return false;\n    }\n")
 	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )\n    {\n")
-	g.pf("        out->malformed = true; // a byte no field claims, before the table (§3)\n")
+	g.pf("        out->damaged = true; // a byte no field claims, before the table (§3)\n")
 	g.pf("        out->refuse_reason = wire_damaged;\n")
 	g.pf("        return false;\n    }\n")
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    %s * root = builder.GetRoot();\n", n)
-	g.pf("    if ( root == NULL )\n    {\n        out->malformed = true;\n        return false;\n    }\n")
+	g.pf("    if ( root == NULL )\n    {\n        out->damaged = true;\n        return false;\n    }\n")
 	g.pf("    uint64_t type_id = 0;\n")
 	g.pf("    const uint8_t * body = NULL;\n")
 	g.pf("    int64_t length = 0;\n")
@@ -1144,7 +1144,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    // builder reaches, and the entries come back zeroed.\n")
 	g.pf("    const TableAllocator allocator = builder.arena.allocator;\n")
 	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );\n")
-	g.pf("    if ( directory == NULL )\n    {\n        out->malformed = true;\n        return false;\n    }\n")
+	g.pf("    if ( directory == NULL )\n    {\n        out->damaged = true;\n        return false;\n    }\n")
 	g.pf("    directory[0].offset = (uint64_t) builder.root_ref.value;\n")
 	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
 	g.pf("    TableNodeMap nodes;\n")
@@ -1167,7 +1167,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	if g.rootReachesStringBlob(st) {
 		// the text blob rule (§3.1), on the builder's path as on the region's
 		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )\n            {\n")
-		g.pf("                out->malformed = true;\n")
+		g.pf("                out->damaged = true;\n")
 		g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
 		g.pf("                directory[k + 1].type_id = type_id;\n")
 		g.pf("                k++;\n                continue;\n            }\n")
@@ -1182,7 +1182,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("            k++;\n")
 	g.pf("        }\n")
 	g.pf("        nodes.good = TableNodeScanWhole( scan );\n")
-	g.pf("        if ( nodes.good ) { out->unknown += unknown_records; }\n        else\n        {\n            out->malformed = true;\n        }\n")
+	g.pf("        if ( nodes.good ) { out->unknown += unknown_records; }\n        else\n        {\n            out->damaged = true;\n        }\n")
 	g.pf("    }\n")
 	g.pf("    if ( nodes.good )\n    {\n")
 	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );\n")
@@ -1207,7 +1207,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	} else {
 		g.pf("    bool ok = %sLoadBody( r, nodes, *root );\n", n)
 	}
-	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)\n")
+	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the strict one too (§3.3)\n")
 	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }\n")
 	g.pf("    if ( out->missing_required != missing_before ) { ok = false; }\n")
 	if g.anyExtent {
@@ -1217,16 +1217,16 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		g.pf("    // stops at the count, so a NaN this read met came before it, and the first\n")
 		g.pf("    // refusal in read order names the read\n")
 		g.pf("    ok = ok && !nodes.refused;\n")
-		g.pf("    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )\n    {\n        out->refused = true;\n        out->reason = count_over_extent_cap;\n        out->refuse_reason = count_over_extent_cap;\n    }\n")
+		g.pf("    if ( nodes.refused && !out->damaged && out->non_finite_floats == non_finite_before )\n    {\n        out->refused = true;\n        out->reason = count_over_extent_cap;\n        out->refuse_reason = count_over_extent_cap;\n    }\n")
 	}
 	g.pf("    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)\n")
-	g.pf("    if ( ok && !out->malformed && nodes.good )\n    {\n")
+	g.pf("    if ( ok && !out->damaged && nodes.good )\n    {\n")
 	g.pf("        TableCycle cycle;\n")
 	g.pf("        TableArenaCtx cycle_ctx = { &builder.arena };\n")
 	g.pf("        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &%sCycleOrdinal ) &&\n", n)
 	g.pf("            TableCycleAcyclic( cycle, cycle_ctx, &%sCycleNode<TableArenaCtx> );\n", n)
 	g.pf("        TableCycleEnd( cycle );\n")
-	g.pf("        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one\n")
+	g.pf("        if ( !acyclic ) { out->damaged = true; } // a cycle: no writer produces one\n")
 	g.pf("    }\n")
 	g.pf("    table_release( allocator, directory );\n")
 	g.pf("    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does\n")
@@ -1234,12 +1234,12 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    // node the walk placed is reachable from it and the builder holds\n")
 	g.pf("    // nothing to use. The nodes stay in the arena, unreachable, until the\n")
 	g.pf("    // builder is destroyed; Lock packs from the root and never sees them.\n")
-	g.pf("    if ( out->malformed || !ok ) { %sReset( *root ); }\n", n)
-	g.pf("    if ( out->malformed ) { return false; }\n")
-	g.pf("    out->malformed = malformed_before;\n")
+	g.pf("    if ( out->damaged || !ok ) { %sReset( *root ); }\n", n)
+	g.pf("    if ( out->damaged ) { return false; }\n")
+	g.pf("    out->damaged = damaged_before;\n")
 	g.pf("    return ok;\n}\n\n")
 	g.pf("// The PLAIN %sLoadBuilder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):\n", n)
-	g.pf("// it refuses whatever the strict read refuses — malformed, clamped,\n")
+	g.pf("// it refuses whatever the strict read refuses — malformed, out_of_range,\n")
 	g.pf("// kind-mismatched, an unknown form or wire damage — with false as its\n")
 	g.pf("// refusal value and the supplied report overwritten with this read's report\n")
 	g.pf("// and its reason set. unknown and widened alone never refuse.\n")
@@ -1247,15 +1247,15 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
-	g.pf("    const bool decoded = %sLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );\n", n)
-	g.pf("    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )\n    {\n")
+	g.pf("    const bool decoded = %sLoadBuilderWalk( builder, wire_file, wire_file_bytes, out );\n", n)
+	g.pf("    if ( !decoded || out->damaged || out->refused || out->refused || out->refused || out->refused || out->missing_required )\n    {\n")
 	g.pf("        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).\n")
 	g.pf("        if ( out->refuse_reason == ok )\n        {\n")
 	g.pf("            if ( out->refused ) { out->refuse_reason = unknown_form; }\n")
-	g.pf("            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }\n")
-	g.pf("            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7\n")
-	g.pf("            else if ( out->clamped ) { out->refuse_reason = clamped; }\n")
-	g.pf("            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }\n")
+	g.pf("            else if ( out->damaged ) { out->refuse_reason = wire_damaged; }\n")
+	g.pf("            else if ( out->refused ) { out->refuse_reason = blob_shared; } // §2.5, §16.7\n")
+	g.pf("            else if ( out->refused ) { out->refuse_reason = out_of_range; }\n")
+	g.pf("            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }\n")
 	g.pf("            else\n            {\n                out->refuse_reason = wire_damaged;\n            }\n")
 	g.pf("        }\n")
 	g.pf("        %s * refused_root = builder.GetRoot();\n", n)
@@ -1270,7 +1270,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 
 // emitVariableReadStrict emits §6.5's STRICT read for a variable root: ONE
 // call, its OWN builder, the root or a refusal with ONE typed reason. It is
-// emitted after LoadBuilderTolerant because it drives that builder, and the
+// emitted after LoadBuilderWalk because it drives that builder, and the
 // caller never measures and never Init's. The packed root it returns is the
 // caller's to release with the allocator it passed.
 func (g *tableGen) emitVariableReadStrict(st *ir.Struct) {
@@ -1292,15 +1292,15 @@ func (g *tableGen) emitVariableReadStrict(st *ir.Struct) {
 	g.pf("    if ( size < 0 && why != count_over_extent_cap )\n    {\n        if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }\n        return NULL;\n    }\n")
 	g.pf("    %sBuilder builder( allocator );\n", n)
 	g.pf("    TableReport report;\n")
-	g.pf("    const bool decoded = %sLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );\n", n)
-	g.pf("    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )\n    {\n")
+	g.pf("    const bool decoded = %sLoadBuilderWalk( builder, wire_file, wire_file_bytes, &report );\n", n)
+	g.pf("    if ( !decoded || report.damaged || report.refused || report.refused || report.refused || report.refused || report.missing_required )\n    {\n")
 	g.pf("        if ( reason != NULL )\n        {\n")
 	g.pf("            if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }\n")
 	g.pf("            else if ( report.refused ) { *reason = unknown_form; }\n")
-	g.pf("            else if ( report.malformed ) { *reason = wire_damaged; }\n")
-	g.pf("            else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7\n")
-	g.pf("            else if ( report.clamped ) { *reason = clamped; }\n")
-	g.pf("            else if ( report.kind_mismatch ) { *reason = kind_mismatch; }\n")
+	g.pf("            else if ( report.damaged ) { *reason = wire_damaged; }\n")
+	g.pf("            else if ( report.refused ) { *reason = blob_shared; } // §2.5, §16.7\n")
+	g.pf("            else if ( report.refused ) { *reason = out_of_range; }\n")
+	g.pf("            else if ( report.refused ) { *reason = kind_mismatch; }\n")
 	g.pf("            else\n            {\n                *reason = wire_damaged;\n            }\n")
 	g.pf("        }\n")
 	g.pf("        return NULL;\n    }\n")
@@ -1765,16 +1765,16 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	if g.retain {
 		verb = "LoadRetain"
 	}
-	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
-	// OWN (docs/SPEC-TABLES.md §6.5). The full decode runs under the TOLERANT
+	// THE PLAIN NAME IS THE STRICT READ; THE STRICT READ HAS A NAME OF ITS
+	// OWN (docs/SPEC-TABLES.md §6.5). The full decode runs under the STRICT
 	// name; the plain name is a thin wrapper that refuses whatever the strict
 	// read refuses. The retain family is outside the rule (§6.6) and keeps
-	// only its tolerant name.
+	// only its strict name.
 	loadName := verb
 	if !g.retain {
-		loadName = "LoadTolerant"
+		loadName = "LoadWalk"
 	}
-	g.pf("// %s%s: decode the tolerant wire into the caller's exact-sized region and\n", n, loadName)
+	g.pf("// %s%s: decode the strict wire into the caller's exact-sized region and\n", n, loadName)
 	g.pf("// return the root. LOAD IS A SCAN: the decode follows no reference, and a\n")
 	g.pf("// cyclic graph is refused afterwards by one linear pass over the node\n")
 	g.pf("// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load\n")
@@ -1790,8 +1790,8 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    const int32_t non_finite_before = out->non_finite_floats;\n")
-	g.pf("    const bool malformed_before = out->malformed;\n")
-	g.pf("    out->malformed = false;\n")
+	g.pf("    const bool damaged_before = out->damaged;\n")
+	g.pf("    out->damaged = false;\n")
 	if g.retain {
 		g.pf("    TableRetainReset( retain, TableNodeMap(), NULL );\n")
 	}
@@ -1807,30 +1807,30 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		// Go oracle's tableIntegrityOpen, internal/codegen/gotable/integrity.go);
 		// the read then proceeds over the file without it.
 		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n")
-		g.pf("        out->malformed = true;\n        out->damage_reason = integrity_mismatch;\n        return NULL;\n    }\n")
+		g.pf("        out->damaged = true;\n        out->damage_reason = integrity_mismatch;\n        return NULL;\n    }\n")
 		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
-	g.pf("        if ( verdict == TableOpenDamaged )\n        {\n            out->malformed = true;\n            out->refuse_reason = wire_damaged;\n        }\n")
-	g.pf("        else\n        {\n            out->malformed = malformed_before;\n            out->refused = true;\n            out->refuse_reason = unknown_form;\n            if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }\n            else\n            {\n                out->reason = newer_form;\n            }\n        }\n")
+	g.pf("        if ( verdict == TableOpenDamaged )\n        {\n            out->damaged = true;\n            out->refuse_reason = wire_damaged;\n        }\n")
+	g.pf("        else\n        {\n            out->damaged = damaged_before;\n            out->refused = true;\n            out->refuse_reason = unknown_form;\n            if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }\n            else\n            {\n                out->reason = newer_form;\n            }\n        }\n")
 	g.pf("        return NULL;\n    }\n")
 	g.pf("    if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )\n    {\n")
-	g.pf("        out->malformed = true; // a byte no field claims, before the table (§3)\n")
+	g.pf("        out->damaged = true; // a byte no field claims, before the table (§3)\n")
 	g.pf("        out->refuse_reason = wire_damaged;\n")
 	g.pf("        return NULL;\n    }\n")
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	if !g.anyExtent {
-		g.pf("    if ( region == NULL || region_bytes < (int64_t) sizeof( %s ) )\n    {\n        out->malformed = true;\n        return NULL;\n    }\n", n)
-		g.pf("    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )\n    {\n        out->malformed = true;\n        return NULL;\n    }\n")
+		g.pf("    if ( region == NULL || region_bytes < (int64_t) sizeof( %s ) )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n", n)
+		g.pf("    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n")
 		g.pf("    memset( region, 0, (size_t) region_bytes );\n")
 		g.pf("    uint64_t type_id = 0;\n")
 		g.pf("    const uint8_t * body = NULL;\n")
 		g.pf("    int64_t length = 0;\n\n")
 		g.pf("    // the record count and the data bytes, from the FRAMING alone\n")
 		g.pf("    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed\n")
-		g.emitRootDataBytes(st, "    ", "out->malformed = true;", "return NULL;")
+		g.emitRootDataBytes(st, "    ", "out->damaged = true;", "return NULL;")
 		g.pf("    int64_t records = 0;\n")
 		g.pf("    {\n")
 		g.pf("        TableReport counting;\n")
@@ -1838,11 +1838,11 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 		g.pf("            records++;\n")
 		g.pf("            int64_t storage = %sNodeStorage( type_id, %slength%s );\n", n, g.nodeStorageArg(st), g.nodeStorageArgTail(st))
-		g.pf("            if ( storage == kTableNodeRefused )\n            {\n                out->malformed = true;\n                return NULL;\n            }\n")
+		g.pf("            if ( storage == kTableNodeRefused )\n            {\n                out->damaged = true;\n                return NULL;\n            }\n")
 		g.pf("            if ( storage > 0 ) { data += storage; }\n")
 		g.pf("        }\n    }\n")
 		g.pf("    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );\n")
-		g.pf("    if ( data + attribution > region_bytes )\n    {\n        out->malformed = true;\n        return NULL;\n    }\n\n")
+		g.pf("    if ( data + attribution > region_bytes )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n\n")
 	} else {
 		g.pf("    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )\n    {\n        memset( region, 0, (size_t) region_bytes );\n    }\n")
 		g.pf("    uint64_t type_id = 0;\n")
@@ -1869,7 +1869,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("        %s * root = builder.GetRoot();\n", n)
 		g.pf("        const TableAllocator allocator = builder.arena.allocator;\n")
 		g.pf("        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;\n")
-		g.pf("        if ( directory == NULL )\n        {\n            out->malformed = true;\n            return NULL;\n        }\n")
+		g.pf("        if ( directory == NULL )\n        {\n            out->damaged = true;\n            return NULL;\n        }\n")
 		g.pf("        directory[0].offset = (uint64_t) builder.root_ref.value;\n")
 		g.pf("        directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
 		g.pf("        TableNodeMap nodes;\n")
@@ -1890,7 +1890,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("                uint32_t at = %sNodeAlloc( type_id, builder.main, length );\n", n)
 		if g.rootReachesStringBlob(st) {
 			g.pf("                if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )\n                {\n")
-			g.pf("                    out->malformed = true;\n")
+			g.pf("                    out->damaged = true;\n")
 			g.pf("                    directory[k + 1].offset = kTableNodeAbsent;\n")
 			g.pf("                    directory[k + 1].type_id = type_id;\n")
 			g.pf("                    k++;\n                    continue;\n                }\n")
@@ -1901,9 +1901,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("            }\n")
 		g.pf("            nodes.good = TableNodeScanWhole( scan );\n")
 		if g.retain {
-			g.pf("            if ( nodes.good )\n            {\n                out->unknown += unknown_records;\n                out->retain_lost += unknown_records;\n            }\n            else\n            {\n                out->malformed = true;\n            }\n")
+			g.pf("            if ( nodes.good )\n            {\n                out->unknown += unknown_records;\n                out->retain_lost += unknown_records;\n            }\n            else\n            {\n                out->damaged = true;\n            }\n")
 		} else {
-			g.pf("            if ( nodes.good ) { out->unknown += unknown_records; }\n            else\n            {\n                out->malformed = true;\n            }\n")
+			g.pf("            if ( nodes.good ) { out->unknown += unknown_records; }\n            else\n            {\n                out->damaged = true;\n            }\n")
 		}
 		g.pf("        }\n")
 		g.pf("        if ( nodes.good )\n        {\n")
@@ -1937,15 +1937,15 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		if g.retain {
 			g.pf("        TableRetainReset( retain, TableNodeMap(), NULL );\n")
 		}
-		g.pf("        if ( TableNonFiniteRefused( out, non_finite_before ) )\n        {\n            out->malformed = out->malformed || malformed_before;\n            return NULL;\n        }\n")
-		g.pf("        if ( nodes.refused && !out->malformed )\n        {\n            out->refused = true;\n            out->reason = count_over_extent_cap;\n            out->refuse_reason = count_over_extent_cap;\n            out->malformed = malformed_before;\n            return NULL;\n        }\n")
-		g.pf("        out->malformed = true;\n")
+		g.pf("        if ( TableNonFiniteRefused( out, non_finite_before ) )\n        {\n            out->damaged = out->damaged || damaged_before;\n            return NULL;\n        }\n")
+		g.pf("        if ( nodes.refused && !out->damaged )\n        {\n            out->refused = true;\n            out->reason = count_over_extent_cap;\n            out->refuse_reason = count_over_extent_cap;\n            out->damaged = damaged_before;\n            return NULL;\n        }\n")
+		g.pf("        out->damaged = true;\n")
 		g.pf("        return NULL;\n")
 		g.pf("    }\n")
-		g.pf("    if ( region == NULL || region_bytes < (int64_t) sizeof( %s ) )\n    {\n        out->malformed = true;\n        return NULL;\n    }\n", n)
-		g.pf("    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )\n    {\n        out->malformed = true;\n        return NULL;\n    }\n")
+		g.pf("    if ( region == NULL || region_bytes < (int64_t) sizeof( %s ) )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n", n)
+		g.pf("    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n")
 		g.pf("    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );\n")
-		g.pf("    if ( data + attribution > region_bytes )\n    {\n        out->malformed = true;\n        return NULL;\n    }\n\n")
+		g.pf("    if ( data + attribution > region_bytes )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n\n")
 	}
 	g.pf("    TableNodeMap nodes;\n")
 	g.pf("    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check\n")
@@ -1984,7 +1984,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		// every slot naming it reads null, which is what an absent directory
 		// entry already resolves to
 		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )\n            {\n")
-		g.pf("                out->malformed = true;\n")
+		g.pf("                out->damaged = true;\n")
 		g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
 		g.pf("                directory[k + 1].type_id = type_id;\n")
 		g.pf("                k++;\n                continue;\n            }\n")
@@ -2013,9 +2013,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("        // A NODE RECORD whose type id this reader cannot name is one of the\n")
 		g.pf("        // SIX EXCLUDED CLASSES (§6.6): it is a whole node, and putting one\n")
 		g.pf("        // back means renumbering a graph the writer numbers from its own edges.\n")
-		g.pf("        if ( nodes.good )\n        {\n            out->unknown += unknown_records;\n            out->retain_lost += unknown_records;\n        }\n        else\n        {\n            out->malformed = true;\n        }\n")
+		g.pf("        if ( nodes.good )\n        {\n            out->unknown += unknown_records;\n            out->retain_lost += unknown_records;\n        }\n        else\n        {\n            out->damaged = true;\n        }\n")
 	} else {
-		g.pf("        if ( nodes.good ) { out->unknown += unknown_records; }\n        else\n        {\n            out->malformed = true;\n        }\n")
+		g.pf("        if ( nodes.good ) { out->unknown += unknown_records; }\n        else\n        {\n            out->damaged = true;\n        }\n")
 	}
 	g.pf("    }\n\n")
 	g.pf("    // PASS TWO: decode each body into its own storage. A forward index\n")
@@ -2049,12 +2049,12 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	} else {
 		g.pf("    %sLoadBody( r, nodes, *root );\n", n)
 	}
-	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing\n")
+	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and nothing\n")
 	g.pf("    // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)\n")
 	if g.retain {
-		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) )\n    {\n        out->malformed = out->malformed || malformed_before;\n        memset( region, 0, (size_t) region_bytes );\n        TableRetainReset( retain, nodes, region );\n        return NULL;\n    }\n")
+		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) )\n    {\n        out->damaged = out->damaged || damaged_before;\n        memset( region, 0, (size_t) region_bytes );\n        TableRetainReset( retain, nodes, region );\n        return NULL;\n    }\n")
 	} else {
-		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) )\n    {\n        out->malformed = out->malformed || malformed_before;\n        memset( region, 0, (size_t) region_bytes );\n        return NULL;\n    }\n")
+		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) )\n    {\n        out->damaged = out->damaged || damaged_before;\n        memset( region, 0, (size_t) region_bytes );\n        return NULL;\n    }\n")
 	}
 
 	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer
@@ -2062,7 +2062,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	// the directory this load already holds, allocating nothing, and a cycle
 	// anywhere refuses the whole load. The type ids the check borrowed as
 	// scratch are put back from the wire's own records.
-	g.pf("    if ( !out->malformed && nodes.good )\n    {\n")
+	g.pf("    if ( !out->damaged && nodes.good )\n    {\n")
 	g.pf("        TableCycle cycle;\n")
 	g.pf("        TableRegionCtx cycle_ctx;\n")
 	g.pf("        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &%sCycleOrdinal ) &&\n", n)
@@ -2075,20 +2075,20 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("            while ( TableNodeScanNext( scan, type_id, body, length ) )\n            {\n                TableCycleRestore( cycle, k + 1, type_id );\n                k++;\n            }\n")
 	g.pf("        }\n")
 	g.pf("        TableCycleEnd( cycle );\n")
-	g.pf("        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one\n")
+	g.pf("        if ( !acyclic ) { out->damaged = true; } // a cycle: no writer produces one\n")
 	g.pf("    }\n")
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the region
 	// holds no root and the retention store holds nothing.
 	if g.retain {
-		g.pf("    if ( out->malformed )\n    {\n        memset( region, 0, (size_t) region_bytes );\n        TableRetainReset( retain, nodes, region );\n        return NULL;\n    } // damage discards the whole load (§4)\n")
+		g.pf("    if ( out->damaged )\n    {\n        memset( region, 0, (size_t) region_bytes );\n        TableRetainReset( retain, nodes, region );\n        return NULL;\n    } // damage discards the whole load (§4)\n")
 	} else {
-		g.pf("    if ( out->malformed )\n    {\n        memset( region, 0, (size_t) region_bytes );\n        return NULL;\n    } // damage discards the whole load (§4)\n")
+		g.pf("    if ( out->damaged )\n    {\n        memset( region, 0, (size_t) region_bytes );\n        return NULL;\n    } // damage discards the whole load (§4)\n")
 	}
-	g.pf("    out->malformed = malformed_before;\n")
+	g.pf("    out->damaged = damaged_before;\n")
 	g.pf("    return root;\n}\n\n")
 	if !g.retain {
 		g.pf("// The PLAIN %sLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it\n", n)
-		g.pf("// refuses whatever the strict read refuses — malformed, clamped,\n")
+		g.pf("// refuses whatever the strict read refuses — malformed, out_of_range,\n")
 		g.pf("// kind-mismatched, an unknown form or wire damage — with a NULL root and\n")
 		g.pf("// the supplied report overwritten with this read's report and its reason\n")
 		g.pf("// set. unknown and widened alone never refuse.\n")
@@ -2097,16 +2097,16 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("    TableReport ignored;\n")
 		g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 		g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
-		g.pf("    const %s * root = %sLoadTolerant( region, region_bytes, wire_file, wire_file_bytes,%s out );\n",
+		g.pf("    const %s * root = %sLoadWalk( region, region_bytes, wire_file, wire_file_bytes,%s out );\n",
 			n, n, g.retainLoadParam())
-		g.pf("    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )\n    {\n")
+		g.pf("    if ( root == NULL || out->damaged || out->refused || out->refused || out->refused || out->refused || out->missing_required )\n    {\n")
 		g.pf("        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).\n")
 		g.pf("        if ( out->refuse_reason == ok )\n        {\n")
 		g.pf("            if ( out->refused ) { out->refuse_reason = unknown_form; }\n")
-		g.pf("            else if ( out->malformed ) { out->refuse_reason = wire_damaged; }\n")
-		g.pf("            else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7\n")
-		g.pf("            else if ( out->clamped ) { out->refuse_reason = clamped; }\n")
-		g.pf("            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }\n")
+		g.pf("            else if ( out->damaged ) { out->refuse_reason = wire_damaged; }\n")
+		g.pf("            else if ( out->refused ) { out->refuse_reason = blob_shared; } // §2.5, §16.7\n")
+		g.pf("            else if ( out->refused ) { out->refuse_reason = out_of_range; }\n")
+		g.pf("            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }\n")
 		g.pf("            else\n            {\n                out->refuse_reason = wire_damaged;\n            }\n")
 		g.pf("        }\n")
 		g.pf("        return NULL;\n    }\n")

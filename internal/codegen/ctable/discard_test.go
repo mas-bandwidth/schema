@@ -80,7 +80,7 @@ func discardProbeWire(t *testing.T, u *ir.Unit, root string) []byte {
 	}
 	wire[at] = 37
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
 	}
 	return wire
@@ -113,8 +113,8 @@ static void value_rows( void )
 {
     Root v; TableReport r;
     root_reset( &v ); memset( &r, 0, sizeof( r ) );
-    if ( root_load_tolerant( &v, fixed_wire, (int64_t) sizeof( fixed_wire ), &r ) ) { FAIL( "value", "load_tolerant answered 1 on damage" ); }
-    else if ( !r.malformed ) { FAIL( "value", "the report does not say malformed" ); }
+    if ( root_load( &v, fixed_wire, (int64_t) sizeof( fixed_wire ), &r ) ) { FAIL( "value", "load answered 1 on damage" ); }
+    else if ( !r.refused ) { FAIL( "value", "the report does not say malformed" ); }
     else if ( !root_is_reset( &v ) ) { printf( "value: a=%d b=%d n=%d\n", (int) v.a, (int) v.b, (int) v.inner.n ); FAIL( "value", "a damaged load handed back what it decoded" ); }
     root_reset( &v );
     if ( root_load( &v, fixed_wire, (int64_t) sizeof( fixed_wire ), &r ) || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED || !root_is_reset( &v ) )
@@ -129,9 +129,9 @@ static void region_rows( void )
     TableReport r; TableRetain retain; const Graph * root;
     if ( need <= 0 || region == NULL ) { FAIL( "region", "load_measure" ); free( region ); return; }
     memset( &r, 0, sizeof( r ) );
-    root = graph_load_tolerant( region, need, graph_wire, (int64_t) sizeof( graph_wire ), &r );
-    if ( root != NULL ) { printf( "region: a=%d b=%d\n", (int) root->a, (int) root->b ); FAIL( "region", "load_tolerant handed back a root on damage" ); }
-    else if ( !r.malformed ) { FAIL( "region", "the report does not say malformed" ); }
+    root = graph_load( region, need, graph_wire, (int64_t) sizeof( graph_wire ), &r );
+    if ( root != NULL ) { printf( "region: a=%d b=%d\n", (int) root->a, (int) root->b ); FAIL( "region", "load handed back a root on damage" ); }
+    else if ( !r.refused ) { FAIL( "region", "the report does not say malformed" ); }
     memset( &r, 0, sizeof( r ) );
     if ( graph_load( region, need, graph_wire, (int64_t) sizeof( graph_wire ), &r ) != NULL || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
     { FAIL( "region strict", "the strict region load did not refuse the damage" ); }
@@ -139,7 +139,7 @@ static void region_rows( void )
     memset( &r, 0, sizeof( r ) );
     if ( graph_load_retain( region, need, graph_wire, (int64_t) sizeof( graph_wire ), &retain, &r ) != NULL )
     { FAIL( "retain", "load_retain handed back a root on damage" ); }
-    else if ( !r.malformed || retain.used != 0 || retain.count != 0 ) { FAIL( "retain", "the report is not malformed or the retention store is not empty" ); }
+    else if ( !r.refused || retain.used != 0 || retain.count != 0 ) { FAIL( "retain", "the report is not malformed or the retention store is not empty" ); }
     free( region );
 }
 
@@ -148,8 +148,8 @@ static void builder_rows( void )
     GraphBuilder b; TableReport r; Graph * root;
     if ( !graph_builder_init( &b ) ) { FAIL( "builder", "builder_init" ); return; }
     memset( &r, 0, sizeof( r ) );
-    if ( graph_load_builder_tolerant( &b, graph_wire, (int64_t) sizeof( graph_wire ), &r ) ) { FAIL( "builder", "load_builder_tolerant answered 1 on damage" ); }
-    else if ( !r.malformed ) { FAIL( "builder", "the report does not say malformed" ); }
+    if ( graph_load_builder( &b, graph_wire, (int64_t) sizeof( graph_wire ), &r ) ) { FAIL( "builder", "load_builder_tolerant answered 1 on damage" ); }
+    else if ( !r.refused ) { FAIL( "builder", "the report does not say malformed" ); }
     else if ( ( root = graph_builder_root( &b ) ) != NULL && !graph_is_reset( root ) )
     { printf( "builder: a=%d b=%d\n", (int) root->a, (int) root->b ); FAIL( "builder", "the builder's root kept what the damaged load decoded" ); }
     graph_builder_shutdown( &b );
@@ -159,11 +159,11 @@ static void text_rows( void )
 {
     Root v; GraphBuilder b; TableReport r; Graph * root;
     root_reset( &v ); memset( &r, 0, sizeof( r ) );
-    if ( root_from_json_tolerant( &v, fixed_text, (int64_t) strlen( fixed_text ), &r ) ) { FAIL( "text", "from_json_tolerant answered 1 on a cut text" ); }
+    if ( root_from_json( &v, fixed_text, (int64_t) strlen( fixed_text ), &r ) ) { FAIL( "text", "from_json answered 1 on a cut text" ); }
     else if ( !root_is_reset( &v ) ) { printf( "text: a=%d n=%d\n", (int) v.a, (int) v.inner.n ); FAIL( "text", "a damaged text read handed back what it decoded" ); }
     if ( !graph_builder_init( &b ) ) { FAIL( "graph text", "builder_init" ); return; }
     memset( &r, 0, sizeof( r ) );
-    if ( graph_from_json_tolerant( &b, graph_text, (int64_t) strlen( graph_text ), &r ) ) { FAIL( "graph text", "from_json_tolerant answered 1 on a cut text" ); }
+    if ( graph_from_json( &b, graph_text, (int64_t) strlen( graph_text ), &r ) ) { FAIL( "graph text", "from_json answered 1 on a cut text" ); }
     else if ( ( root = graph_builder_root( &b ) ) != NULL && !graph_is_reset( root ) )
     { printf( "graph text: a=%d n=%d\n", (int) root->a, (int) root->inner.n ); FAIL( "graph text", "a damaged text read left what it decoded in the root" ); }
     graph_builder_shutdown( &b );
@@ -180,7 +180,7 @@ static void message_rows( void )
     n = root_save_messages( values, 2, wire, sizeof( wire ), &r );
     if ( n < 2 ) { FAIL( "message", "save_messages" ); return; }
     memset( &r, 0, sizeof( r ) );
-    if ( root_load_messages_tolerant( values, &count, &voc, wire, n - 1, &r ) || count != 0 || !root_is_reset( &values[0] ) || !root_is_reset( &values[1] ) )
+    if ( root_load_messages( values, &count, &voc, wire, n - 1, &r ) || count != 0 || !root_is_reset( &values[0] ) || !root_is_reset( &values[1] ) )
     { FAIL( "message", "a damaged batch was not discarded whole" ); }
 }
 
@@ -438,7 +438,7 @@ func TestPointerNamingAnOpenNodeIsRefusedC(t *testing.T) {
 	}
 	wire[at+1] = 2
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("the engine does not refuse the cycle: ok=%v err=%v %+v", ok, err, report)
 	}
 	body := fmt.Sprintf(`
@@ -448,13 +448,13 @@ func TestPointerNamingAnOpenNodeIsRefusedC(t *testing.T) {
     TableReport g; GraphBuilder builder; TableReport br; Graph * broot; int64_t i;
     if ( region == NULL ) { return 1; }
     memset( &g, 0, sizeof( g ) );
-    if ( graph_load_tolerant( region, need > 0 ? need : 4096, cyclic, (int64_t) sizeof( cyclic ), &g ) != NULL ) { printf( "cycle: the region load handed back a cyclic graph\n" ); free( region ); return 1; }
-    if ( !g.malformed ) { printf( "cycle: the region load did not say malformed\n" ); free( region ); return 1; }
+    if ( graph_load( region, need > 0 ? need : 4096, cyclic, (int64_t) sizeof( cyclic ), &g ) != NULL ) { printf( "cycle: the region load handed back a cyclic graph\n" ); free( region ); return 1; }
+    if ( !g.refused ) { printf( "cycle: the region load did not say malformed\n" ); free( region ); return 1; }
     for ( i = 0; i < ( need > 0 ? need : 4096 ); i++ ) { if ( region[i] != 0 ) { printf( "cycle: the region was not zeroed on refusal\n" ); free( region ); return 1; } }
     free( region );
     if ( !graph_builder_init( &builder ) ) { return 1; }
     memset( &br, 0, sizeof( br ) );
-    if ( graph_load_builder_tolerant( &builder, cyclic, (int64_t) sizeof( cyclic ), &br ) || !br.malformed ) { printf( "cycle: the builder load did not refuse\n" ); graph_builder_shutdown( &builder ); return 1; }
+    if ( graph_load_builder( &builder, cyclic, (int64_t) sizeof( cyclic ), &br ) || !br.refused ) { printf( "cycle: the builder load did not refuse\n" ); graph_builder_shutdown( &builder ); return 1; }
     broot = graph_builder_root( &builder );
     if ( broot != NULL && ( broot->a != 0 || broot->b != 0 || broot->next.value != 0 ) ) { printf( "cycle: the builder root was not reset\n" ); graph_builder_shutdown( &builder ); return 1; }
     graph_builder_shutdown( &builder );
@@ -538,7 +538,7 @@ func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
 		try[i] = 0
 		root := m.New(def)
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil || report.Malformed {
+		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil {
 			continue
 		}
 		left, _ := root.FieldByKey("left")
@@ -578,21 +578,21 @@ func cycleProbe(wire []byte, load bool, onFail string) string {
         int built;
         if ( region == NULL || retain_region == NULL ) { return 1; }
         memset( &g, 0, sizeof( g ) );
-        root = node_load_tolerant( region, cap, wire, (int64_t) sizeof( wire ), &g );
-        if ( ( root != NULL ? 1 : 0 ) != want || ( g.malformed ? 1 : 0 ) == want ) { printf( "%s: the region load: root=%%d malformed=%%d\n", root != NULL ? 1 : 0, (int) g.malformed ); free( region ); free( retain_region ); return 1; }
+        root = node_load( region, cap, wire, (int64_t) sizeof( wire ), &g );
+        if ( ( root != NULL ? 1 : 0 ) != want || ( g.refused ? 1 : 0 ) == want ) { printf( "%s: the region load: root=%%d malformed=%%d\n", root != NULL ? 1 : 0, (int) g.refused ); free( region ); free( retain_region ); return 1; }
         memset( &retain, 0, sizeof( retain ) );
         retain.bytes = store; retain.capacity = (int64_t) sizeof( store );
         retain.ids = ids; retain.id_capacity = 16;
         memset( &rr, 0, sizeof( rr ) );
         kept = node_load_retain( retain_region, 1 << 16, wire, (int64_t) sizeof( wire ), &retain, &rr );
-        if ( ( kept != NULL ? 1 : 0 ) != want || ( rr.malformed ? 1 : 0 ) == want ) { printf( "%s: the retaining load: root=%%d malformed=%%d\n", kept != NULL ? 1 : 0, (int) rr.malformed ); free( region ); free( retain_region ); return 1; }
+        if ( ( kept != NULL ? 1 : 0 ) != want || ( rr.refused ? 1 : 0 ) == want ) { printf( "%s: the retaining load: root=%%d malformed=%%d\n", kept != NULL ? 1 : 0, (int) rr.refused ); free( region ); free( retain_region ); return 1; }
         if ( !want && ( retain.used != 0 || retain.count != 0 ) ) { printf( "%s: the retaining store was not cleared\n" ); free( region ); free( retain_region ); return 1; }
         free( region );
         free( retain_region );
         if ( !node_builder_init( &builder ) ) { return 1; }
         memset( &br, 0, sizeof( br ) );
-        built = node_load_builder_tolerant( &builder, wire, (int64_t) sizeof( wire ), &br );
-        if ( ( built ? 1 : 0 ) != want || ( br.malformed ? 1 : 0 ) == want ) { printf( "%s: the builder load: ok=%%d malformed=%%d\n", built, (int) br.malformed ); node_builder_shutdown( &builder ); return 1; }
+        built = node_load_builder( &builder, wire, (int64_t) sizeof( wire ), &br );
+        if ( ( built ? 1 : 0 ) != want || ( br.refused ? 1 : 0 ) == want ) { printf( "%s: the builder load: ok=%%d malformed=%%d\n", built, (int) br.refused ); node_builder_shutdown( &builder ); return 1; }
         node_builder_shutdown( &builder );
     }
 `, cBytes(wire), want, onFail, onFail, onFail, onFail)

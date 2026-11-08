@@ -217,7 +217,7 @@ namespace Bench
         {
             int clamped = 0;
             FixedTableFixedClampBody(value, ref clamped);
-            if (report != null) { report.Clamped += clamped; }
+            if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
         }
 
         // ---- FixedTable, the fixed form ----
@@ -1467,8 +1467,7 @@ namespace Bench
                     case TableFixedWire.Count:
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                             FixedTableFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -1477,8 +1476,7 @@ namespace Bench
                             uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
                             uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
-                            if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -1511,7 +1509,7 @@ namespace Bench
                                 {
                                     v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                                 }
-                                if (raw > count) { forgedOrdinal++; }
+                                if (raw > count) { return "out_of_range"; }
                             }
                             FixedTableFixedSetRaw(dst, p.Dst, v, report);
                             break;
@@ -2035,7 +2033,7 @@ namespace Bench
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -2052,14 +2050,14 @@ namespace Bench
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                     return -1;
                 }
             }
@@ -2126,11 +2124,11 @@ namespace Bench
                 // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
-                census_kind = lane.KindMismatch;
+                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -2147,7 +2145,7 @@ namespace Bench
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     for (int j = 0; j < k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new FixedTable(); }
@@ -2159,24 +2157,30 @@ namespace Bench
                 if (run_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = FixedTableFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 FixedTableFixedClamp(values[k], report);
-                if (report != null) { report.Clamped += forgedOrdinal; }
+                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                if (report != null && report.Refused)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    report.Verdict = TableWire.Verdict.Refused;
+                    return -1;
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
             {
                 report.Unknown += census_unknown;
-                report.KindMismatch += census_kind;
+                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -2203,7 +2207,7 @@ namespace Bench
             byte[] widenScratch = Array.Empty<byte>();
             int forgedOrdinal = 0;
             string run_why = FixedTableFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);
-            if (report != null) { report.Clamped += forgedOrdinal; }
+            if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
             if (run_why != null && report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
         }
     }

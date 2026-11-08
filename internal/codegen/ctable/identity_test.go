@@ -92,7 +92,7 @@ func fromNeedle(t *testing.T, s, needle string) string {
 
 func identityLoad(t *testing.T, h, name string) string {
 	t.Helper()
-	load := fromNeedle(t, h, name+"_fixed_load_tolerant")
+	load := fromNeedle(t, h, name+"_fixed_load")
 	body, _, found := strings.Cut(load, "\n}\n")
 	if !found {
 		t.Fatalf("%s_fixed_load not closed", name)
@@ -305,29 +305,26 @@ int main(void)
     CHECK(held_fixed_save(&value, 1, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = held_fixed_load_tolerant(&loaded, 1, file, need, plan, 64, NULL, &report);
+    n = held_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
     CHECK(n == 1);
-    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(!report.refused);
     CHECK(loaded.marks_count == 1 && loaded.marks[0] == 7);
     CHECK(loaded.marks[1] == 0 && loaded.marks[2] == 0 && loaded.marks[3] == 0);
     CHECK(loaded.label_length == 2 && loaded.label[0] == 'h' && loaded.label[1] == 'i' && loaded.label[2] == 0);
     layout_bytes = table_fixed_get32(file + kTableFixedHeaderBytes);
     body = file + kTableFixedHeaderBytes + 4 + layout_bytes + 8;
-    /* A CLAMPED TEXT LENGTH MUST STILL BE TEXT: the bounds pass holds the used
-       bytes to UTF-8 with no zero among them. Eight valid bytes, then a length
-       past the bound, so the one loop's text op clamps and the pass still sees
-       a well-formed payload. */
+    /* A LENGTH PAST ITS BOUND REFUSES THE WHOLE LOAD: eight valid bytes,
+       then a length past the bound, so the read lands nothing. */
     memcpy(body + 4 + 16 + 4, "abcdefgh", 8);
     table_fixed_put32(body, 99);
     table_fixed_put32(body + 4 + 16, 99);
     memset(&loaded, 0, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = held_fixed_load_tolerant(&loaded, 1, file, need, plan, 64, NULL, &report);
-    CHECK(n == 1);
-    CHECK(report.clamped == 2);
-    CHECK(loaded.marks_count == 4);
-    CHECK(loaded.label_length == 8);
-    CHECK(loaded.label[0] == 'a' && loaded.label[7] == 'h' && loaded.label[8] == 0);
+    n = held_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
+    CHECK(n == -1);
+    CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+    CHECK(loaded.marks_count == 0);
+    CHECK(loaded.label_length == 0);
     return 0;
 }
 `, identityCCFlags()...)
@@ -347,7 +344,7 @@ __attribute__((noinline))
 #endif
 static int64_t load_flat(Flat *loaded, const uint8_t *file, int64_t need, TableFixedEntry *plan, TableReport *report)
 {
-    return flat_fixed_load_tolerant(loaded, 1, file, need, plan, 8, NULL, report);
+    return flat_fixed_load(loaded, 1, file, need, plan, 8, NULL, report);
 }
 int main(void)
 {
@@ -364,7 +361,7 @@ int main(void)
     memset(&report, 0, sizeof(report));
     n = load_flat(&loaded, file, need, plan, &report);
     CHECK(n == 1);
-    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(!report.refused);
     CHECK(loaded.a == 1 && loaded.b == 2);
     CHECK((int64_t)sizeof(loaded) == 8);
     return 0;

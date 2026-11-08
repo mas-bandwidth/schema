@@ -95,7 +95,7 @@ static SCHEMA_UNUSED int table_json_read_blob( TableJsonIn * in, void * slot, co
     TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph;
     TableRef * ref=(TableRef *)slot;
     int64_t mark, symbols=0, pad=0, length, placed=0, at;
-    int malformed=0, held=0;
+    int damaged=0, held=0;
     uint32_t accumulator=0;
     uint8_t * data;
     if(graph==NULL || table_json_peek(in)!='"') { in->bad=1; return 0; }
@@ -120,25 +120,25 @@ static SCHEMA_UNUSED int table_json_read_blob( TableJsonIn * in, void * slot, co
         if(c=='"') { break; }
         step=table_json_base64_step(in,c);
         if(step<0) { return 0; }
-        if(step==0) { malformed=1; continue; }
-        if(malformed) { continue; }
+        if(step==0) { damaged=1; continue; }
+        if(damaged) { continue; }
         if(c=='=') { pad++; continue; }
-        if(pad>0) { malformed=1; continue; }
-        if(table_json_base64_value((uint8_t)c)<0) { malformed=1; continue; }
+        if(pad>0) { damaged=1; continue; }
+        if(table_json_base64_value((uint8_t)c)<0) { damaged=1; continue; }
         symbols++;
     }
-    if(!malformed)
+    if(!damaged)
     {
         if(pad>0)
         {
-            if(pad>2 || (symbols+pad)%4!=0 || symbols%4<2) { malformed=1; }
+            if(pad>2 || (symbols+pad)%4!=0 || symbols%4<2) { damaged=1; }
         }
         else if(symbols%4==1)
         {
-            malformed=1;
+            damaged=1;
         }
     }
-    if(malformed) { in->report->kind_mismatch++; return 1; }
+    if(damaged) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; return 1; }
     length=symbols*6/8;
     data=table_bytes_emplace(graph->worker,ref,length);
     if(data==NULL) { in->bad=1; return 0; }
@@ -195,7 +195,7 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
         if ( entry->open ) { in->bad = 1; return 0; }
         ((TableRef *)slot)->value = 0;
         if ( entry->type == NULL ) { return 1; }
-        if ( entry->type != f->table ) { in->report->kind_mismatch++; return 1; }
+        if ( entry->type != f->table ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; return 1; }
         ((TableRef *)slot)->value = entry->node; return 1;
     }
     node = table_json_emplace(graph,slot,f->table);
@@ -278,7 +278,7 @@ static SCHEMA_UNUSED int table_json_read_graph( TableWorker * worker, void * roo
     int ok;
     memset(&graph,0,sizeof(graph)); graph.worker = worker; graph.labels.allocator=worker->arena!=NULL ? worker->arena->allocator : table_default_allocator();
     memset(&in,0,sizeof(in)); in.text = text; in.size = bytes; in.report = report ? report : &ignored; in.graph = &graph;
-    if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->malformed = 1; return 0; }
+    if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     info->reset(root);
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
     {
@@ -286,7 +286,7 @@ static SCHEMA_UNUSED int table_json_read_graph( TableWorker * worker, void * roo
         ok = table_json_read_table(&in,root,info,0);
         if ( ok ) { table_json_space(&in); if ( in.pos != in.size ) { in.bad = 1; } }
         table_release(graph.labels.allocator,graph.labels.entries);
-        if ( in.bad || !ok ) { if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = 1; } return 0; }
+        if ( in.bad || !ok ) { if ( in.bad || in.report->missing_required == missing_before ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; } return 0; }
     }
     return 1;
 }
@@ -309,7 +309,7 @@ static SCHEMA_UNUSED int64_t table_json_write_graph( const void * root, const Ta
     if ( ok ) { ok = table_json_write_value(&out,root,info,0); }
     table_release(graph.nodes.allocator,graph.nodes.entries);
     if ( !ok ) { return -1; }
-    table_json_put(&out,'\n'); return out.overflow ? -1 : out.offset;
+    table_json_put(&out,'\n'); return out.overflow || out.invalid ? -1 : out.offset;
 }
 /* ---- json graph walk: end ---- */
 
@@ -350,7 +350,7 @@ static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,co
         if(element==NULL) { in->bad=1; return 0; }
         if(f->kind==13 || f->text_list!=0) { f->table->reset(element); }
         if(table_json_value_shape(in)!=shape && !((f->kind==17 || f->text_list==2) && table_json_value_shape(in)=='z')) {
-            in->report->kind_mismatch++; if(!table_json_skip_value(in,depth+1)) { return 0; }
+            in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; if(!table_json_skip_value(in,depth+1)) { return 0; }
         } else if(!table_json_read_scalar(in,element,f,depth+1)) { return 0; }
         else if(f->text_total>0 && !schema_table_json_text_total_keep_(in,element,f,&spent)) {
             full=1; table_sequence_erase(graph->worker->arena,list,element,f->elem_size);
@@ -489,24 +489,24 @@ static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,con
             in->pos=scan.pos; token[length]=0;
             if(table_json_peek(in)!=':') { in->bad=1; return 0; } in->pos++;
             if(key->kind==12) {
-                if(scratch.clamped || length>key->array_bound) { in->report->clamped++; place=0; }
+                if((scratch.refused && scratch.refuse_reason==SCHEMA_TABLE_REFUSE_OUT_OF_RANGE) || length>key->array_bound) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; place=0; }
             } else {
                 int fits=0;
-                if(scratch.clamped) { in->report->kind_mismatch++; place=0; }
+                if(scratch.refused) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; place=0; }
                 else if(!table_json_map_key_value(token,length,key,&number,&fits)) { in->bad=1; return 0; }
-                else if(!fits) { in->report->kind_mismatch++; place=0; }
+                else if(!fits) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; place=0; }
             }
             before=map->count; entry=place ? f->place(graph->worker,map,token,length,number) : NULL;
             if(place && entry==NULL) { in->bad=1; return 0; }
         }
-        if(entry!=NULL && map->count==before) { in->report->duplicate++; }
+        if(entry!=NULL && map->count==before) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
         c=table_json_value_shape(in);
         if(entry==NULL) { if(!table_json_skip_value(in,depth+1)) { return 0; } }
         else if(value->optional && c=='z') {
             if(!table_json_literal(in,"null")) { return 0; }
         } else {
             if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
-                in->report->kind_mismatch++; if(!table_json_skip_value(in,depth+1)) { return 0; }
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; if(!table_json_skip_value(in,depth+1)) { return 0; }
             } else if(!table_json_read_field(in,entry,value,depth+1)) { return 0; }
             if(value->optional) { table_json_set_raw((uint8_t *)entry+value->present_offset,1,1); }
         }

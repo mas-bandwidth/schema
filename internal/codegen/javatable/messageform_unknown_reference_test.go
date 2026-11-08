@@ -54,7 +54,7 @@ func TestJavaFixMessageUnknownReferenceRefused(t *testing.T) {
 		batch[i] = tabletext.NewModel(u).New(u.Tables["MatchResult"])
 	}
 	rep := &tabletext.Report{}
-	if _, _, derr := tablewire.DecodeMessages(tabletext.NewModel(u), batch, mutant, v, rep); derr != nil || !rep.Malformed {
+	if _, _, derr := tablewire.DecodeMessages(tabletext.NewModel(u), batch, mutant, v, rep); !tablewire.ReadRefusal(derr) {
 		t.Fatalf("oracle does not read the batch as damaged: %v %+v", derr, rep)
 	}
 

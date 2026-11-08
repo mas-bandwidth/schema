@@ -18,7 +18,7 @@
 --   <generated tree> the repo-relative tree make/moo-conformance.mk writes
 --
 -- THE ROSTER. A FORM-1 entry is driven through the unit's table_load.moo
--- (loadTolerant) and table_save.moo; with RETAIN set, through table_retain.moo
+-- (load) and table_save.moo; with RETAIN set, through table_retain.moo
 -- (LoadRetain, SaveRetain) over one store at the harness's two capacities. A
 -- FORM-2 entry is a MESSAGE batch, driven through table_message.moo
 -- (LoadMessages, SaveMessages) against the vocabulary the unit's own
@@ -541,7 +541,7 @@ local function answer(e: Entry, wire: buffer): buffer
 				kept = u.R.newStore(RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
 				v = u.R.LoadRetain(root, wire, report, kept)
 			else
-				v = u.L.loadTolerant(root, wire, report)
+				v = u.L.load(root, wire, report)
 			end
 		end
 		-- A FIXED root always loads: a refused or damaged wire answers the
@@ -562,11 +562,11 @@ local function answer(e: Entry, wire: buffer): buffer
 	local b = buffer.create(n)
 	buffer.writeu8(b, 0, if v ~= nil then 1 else 0)
 	buffer.writei32(b, 1, count(report.unknown))
-	buffer.writei32(b, 5, count(report.kindMismatch))
+	buffer.writei32(b, 5, count(0))
 	buffer.writei32(b, 9, count(report.widened))
-	buffer.writei32(b, 13, count(report.clamped))
-	buffer.writei32(b, 17, count(report.duplicate))
-	buffer.writeu8(b, 21, if report.malformed then 1 else 0)
+	buffer.writei32(b, 13, count(0))
+	buffer.writei32(b, 17, count(0))
+	buffer.writeu8(b, 21, if v == nil or report.damaged then 1 else 0)
 	buffer.writeu8(b, 22, if refused then 1 else 0)
 	-- an i64 as two little-endian halves (a moo number is Q48.16)
 	if measure < 0 then

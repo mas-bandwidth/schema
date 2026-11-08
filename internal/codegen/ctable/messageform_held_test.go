@@ -79,9 +79,9 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
     CHECK(count == 0);
-    CHECK(report.refused && !report.malformed && report.reason == SCHEMA_TABLE_NO_VOCABULARY);
+    CHECK(report.refused && report.reason == SCHEMA_TABLE_NO_VOCABULARY);
     return 0;
 }
 `
@@ -103,7 +103,7 @@ int main(void)
     int64_t before = v.count;
     TableReport second; memset(&second, 0, sizeof(second));
     CHECK(!announce_read(&v, ann, (int64_t)sizeof(ann), &second));
-    CHECK(second.refused && !second.malformed && second.reason == SCHEMA_TABLE_SECOND_ANNOUNCEMENT);
+    CHECK(second.refused && second.reason == SCHEMA_TABLE_SECOND_ANNOUNCEMENT);
     CHECK(v.count == before);
     /* a refused FIRST announcement is terminal: every announcement after it is
        refused as second_announcement, and every body is refused for want of a
@@ -121,7 +121,7 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport body; memset(&body, 0, sizeof(body));
-    CHECK(!root_load_messages_tolerant(storage, &count, &w, wire, (int64_t)sizeof(wire), &body));
+    CHECK(!root_load_messages(storage, &count, &w, wire, (int64_t)sizeof(wire), &body));
     CHECK(count == 0 && body.reason == SCHEMA_TABLE_NO_VOCABULARY);
     return 0;
 }
@@ -139,14 +139,14 @@ int main(void)
     TableVocabulary v = table_vocabulary(small, 1);
     TableReport report; memset(&report, 0, sizeof(report));
     CHECK(!announce_read(&v, ann, (int64_t)sizeof(ann), &report));
-    CHECK(report.refused && !report.malformed && report.reason == SCHEMA_TABLE_VOCABULARY_TOO_LARGE && !v.announced);
+    CHECK(report.refused && report.reason == SCHEMA_TABLE_VOCABULARY_TOO_LARGE && !v.announced);
     /* the vocabulary bytes past MaxBytes */
     TableMessageEntry entries[kTableMessageEntriesHere];
     TableVocabulary b = table_vocabulary(entries, kTableMessageEntriesHere);
     b.max_bytes = 4;
     TableReport br; memset(&br, 0, sizeof(br));
     CHECK(!announce_read(&b, ann, (int64_t)sizeof(ann), &br));
-    CHECK(br.refused && !br.malformed && br.reason == SCHEMA_TABLE_VOCABULARY_TOO_LARGE && !b.announced);
+    CHECK(br.refused && br.reason == SCHEMA_TABLE_VOCABULARY_TOO_LARGE && !b.announced);
     return 0;
 }
 `
@@ -193,7 +193,7 @@ static int refusal_is_malformed(const uint8_t * data, size_t bytes)
     TableVocabulary v = table_vocabulary(entries, kTableMessageEntriesHere);
     TableReport report; memset(&report, 0, sizeof(report));
     int ok = announce_read(&v, data, (int64_t)bytes, &report);
-    return !ok && report.malformed && !report.refused && !v.announced;
+    return !ok && report.refused && !v.announced;
 }
 int main(void)
 {
@@ -225,7 +225,7 @@ int main(void)
         size_t bytes = announcement(out, fields, fn);
         TableReport report; memset(&report, 0, sizeof(report));
         CHECK(!announce_read(&v, out, (int64_t)bytes, &report));
-        CHECK(report.malformed && v.build_version == version && !v.announced);
+        CHECK(report.refused && v.build_version == version && !v.announced);
     }
     return 0;
 }
@@ -259,8 +259,8 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 2 && report.refused && !report.malformed && report.reason == SCHEMA_TABLE_BATCH_TOO_LARGE);
+    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(count == 2 && report.refused && report.reason == SCHEMA_TABLE_BATCH_TOO_LARGE);
     CHECK(storage[0].a == 0 && storage[0].b == 0 && storage[0].c == 0);
     return 0;
 }
@@ -287,10 +287,10 @@ int main(void)
     for(i = 0; i < 3; i++) { root_reset(storage + i); storage[i].a = 7; }
     int64_t count = 3;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
     CHECK(count == 0);
     for(i = 0; i < 3; i++) CHECK(storage[i].a == 0);
-    CHECK(report.malformed && !report.refused);
+    CHECK(report.refused);
     return 0;
 }
 `
@@ -311,8 +311,8 @@ int main(void)
     Root storage[1]; root_reset(storage); storage[0].a = 7;
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 0 && storage[0].a == 0 && report.malformed && !report.refused);
+    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(count == 0 && storage[0].a == 0 && report.refused);
     return 0;
 }
 `
@@ -334,8 +334,8 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages_tolerant(storage, &count, &v, form1, (int64_t)sizeof(form1), &report));
-    CHECK(count == 0 && report.refused && !report.malformed && report.reason == SCHEMA_TABLE_NEWER_FORM);
+    CHECK(!root_load_messages(storage, &count, &v, form1, (int64_t)sizeof(form1), &report));
+    CHECK(count == 0 && report.refused && report.reason == SCHEMA_TABLE_NEWER_FORM);
     /* a form-2 batch handed to the FILE reader -- the announcement's form-1
        reader -- refuses by name and moves no counter. */
     TableMessageEntry e2[kTableMessageEntriesHere];
@@ -343,7 +343,7 @@ int main(void)
     uint8_t form2[] = { 2, 0, 0 };
     TableReport r2; memset(&r2, 0, sizeof(r2));
     CHECK(!announce_read(&w, form2, (int64_t)sizeof(form2), &r2));
-    CHECK(r2.refused && !r2.malformed && r2.reason == SCHEMA_TABLE_MESSAGE_FORM_AS_FILE);
+    CHECK(r2.refused && r2.reason == SCHEMA_TABLE_MESSAGE_FORM_AS_FILE);
     return 0;
 }
 `
@@ -393,15 +393,15 @@ static int load_one(const TableVocabulary * v, const uint8_t * buf, int64_t n, R
     root_reset(storage);
     *count = 1;
     memset(report, 0, sizeof(*report));
-    return root_load_messages_tolerant(storage, count, v, buf, n, report);
+    return root_load_messages(storage, count, v, buf, n, report);
 }
 static int expect_ok(const char * row, const TableVocabulary * v, const uint8_t * buf, int64_t n)
 {
     Root storage; int64_t count; TableReport report; int ok;
     ok = load_one(v, buf, n, &storage, &count, &report);
-    if (!(ok && !report.malformed && report.unknown == 1 && storage.a == 0 && count == 1)) {
+    if (!(ok && report.unknown == 1 && storage.a == 0 && count == 1)) {
         fprintf(stderr, "%s: ok=%d malformed=%d unknown=%d a=%d count=%lld\n",
-            row, ok, report.malformed, (int)report.unknown, (int)storage.a, (long long)count);
+            row, ok, report.refused, (int)report.unknown, (int)storage.a, (long long)count);
         return 1;
     }
     return 0;
@@ -410,8 +410,8 @@ static int expect_bad(const char * row, const TableVocabulary * v, const uint8_t
 {
     Root storage; int64_t count; TableReport report; int ok;
     ok = load_one(v, buf, n, &storage, &count, &report);
-    if (!(!ok && report.malformed && count == 0)) {
-        fprintf(stderr, "%s: ok=%d malformed=%d count=%lld\n", row, ok, report.malformed, (long long)count);
+    if (!(!ok && report.refused && count == 0)) {
+        fprintf(stderr, "%s: ok=%d malformed=%d count=%lld\n", row, ok, report.refused, (long long)count);
         return 1;
     }
     return 0;
@@ -597,7 +597,7 @@ func cMessageManifestRows(t *testing.T) {
 				if st := unit.Tables[row[3]]; st == nil || !st.FixedDeclared {
 					t.Fatalf("message row %s: %s is not a fixed table, and the message form is fixed tables only", row[1], row[3])
 				}
-				source += fmt.Sprintf("%s values[1];if(!%s_load_messages_tolerant(values,&count,&v,wire,sizeof(wire),&report))return 4;", row[3], fn)
+				source += fmt.Sprintf("%s values[1];if(!%s_load_messages(values,&count,&v,wire,sizeof(wire),&report))return 4;", row[3], fn)
 				// "A batch of bodies is the unit this form reads and writes." (§3.3)
 				source += fmt.Sprintf("if(count!=1||%s_measure_messages(values,count,&report)!=sizeof(wire)||%s_save_messages(values,count,out,sizeof(out),&report)!=sizeof(wire))return 5;return memcmp(out,wire,sizeof(wire));}\n", fn, fn)
 			}

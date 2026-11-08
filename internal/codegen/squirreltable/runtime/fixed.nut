@@ -5,6 +5,10 @@
 // host's order (docs/PORT-SQUIRREL.md, BYTE BUFFERS).
 local _M = vargv[0];
 
+// THE LOAD REPORT: widened counts the leaves a selected older plan read at a
+// narrower kind than the reader declares, stale-reset on entry to every load.
+_M.FixedWidened <- 0;
+
 local nib = function(c) { return c <= '9' ? c - '0' : c - 'a' + 10; };
 
 _M.blobOfHex <- function(s) {
@@ -37,6 +41,14 @@ _M.get <- function(b, at, w) {
   if (w == 1) { local v = b[at]; return v >= 128 ? v - 256 : v; }
   if (w == 2) { local v = b[at] | b[at+1] << 8; return v >= 0x8000 ? v - 65536 : v; }
   if (w == 4) { return _M.geti32(b, at); }
+  return _M.u64le(b, at);
+};
+
+// ONE UNSIGNED LEAF AT ITS DECLARED STORAGE WIDTH, ZERO-EXTENDED (SPEC §4.3).
+_M.getu <- function(b, at, w) {
+  if (w == 1) { return b[at] & 0xff; }
+  if (w == 2) { return (b[at] & 0xff) | ((b[at+1] & 0xff) << 8); }
+  if (w == 4) { return _M.u32le(b, at) & 0xffffffff; }
   return _M.u64le(b, at);
 };
 

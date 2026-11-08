@@ -123,9 +123,9 @@ int main(void)
     CHECK(signed_ints_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = signed_ints_fixed_load_tolerant(loaded, 2, file, need, plan, 64, NULL, &report);
+    n = signed_ints_fixed_load(loaded, 2, file, need, plan, 64, NULL, &report);
     CHECK(n == 2);
-    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(!report.refused);
     CHECK(loaded[0].i8 == INT8_MIN && loaded[0].i16 == INT16_MIN && loaded[0].i32 == INT32_MIN && loaded[0].i64 == INT64_MIN);
     CHECK(loaded[1].i8 == INT8_MAX && loaded[1].i16 == INT16_MAX && loaded[1].i32 == INT32_MAX && loaded[1].i64 == INT64_MAX);
     return 0;
@@ -162,9 +162,9 @@ int main(void)
     CHECK(unsigned_ints_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = unsigned_ints_fixed_load_tolerant(loaded, 2, file, need, plan, 64, NULL, &report);
+    n = unsigned_ints_fixed_load(loaded, 2, file, need, plan, 64, NULL, &report);
     CHECK(n == 2);
-    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(!report.refused);
     CHECK(loaded[0].u8 == 0 && loaded[0].u16 == 0 && loaded[0].u32 == 0 && loaded[0].u64 == 0);
     CHECK(loaded[1].u8 == UINT8_MAX && loaded[1].u16 == UINT16_MAX && loaded[1].u32 == UINT32_MAX && loaded[1].u64 == UINT64_MAX);
     return 0;
@@ -204,7 +204,7 @@ int main(void)
     value[0].bounded = serialize_int128_from_int64(0);
     value[1].bounded = serialize_int128_from_int64(-1000);  /* the declared min */
     value[2].bounded = serialize_int128_from_int64(1000);   /* the declared max */
-    value[3].bounded = serialize_int128_from_int64(2000);   /* past the max: clamped to 1000 */
+    value[3].bounded = serialize_int128_from_int64(2000);   /* past the max: the read refuses */
     need = signed_wide_fixed_measure(4);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(signed_wide_fixed_save(value, 4, file, (int64_t)sizeof(file)) == need);
@@ -222,17 +222,11 @@ int main(void)
     }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = signed_wide_fixed_load_tolerant(loaded, 4, file, need, plan, 64, NULL, &report);
-    CHECK(n == 4);
-    CHECK(!report.malformed && !report.refused && report.clamped == 1);
-    CHECK(serialize_int128_equal(loaded[0].wide, value[0].wide));
-    CHECK(serialize_int128_equal(loaded[1].wide, value[1].wide));
-    CHECK(serialize_int128_equal(loaded[2].wide, value[2].wide));
-    CHECK(serialize_int128_equal(loaded[3].wide, value[3].wide));
-    CHECK(serialize_int128_equal(loaded[0].bounded, serialize_int128_from_int64(0)));
-    CHECK(serialize_int128_equal(loaded[1].bounded, serialize_int128_from_int64(-1000)));
-    CHECK(serialize_int128_equal(loaded[2].bounded, serialize_int128_from_int64(1000)));
-    CHECK(serialize_int128_equal(loaded[3].bounded, serialize_int128_from_int64(1000)));  /* the declared max held */
+    n = signed_wide_fixed_load(loaded, 4, file, need, plan, 64, NULL, &report);
+    CHECK(n == -1);
+    CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+    CHECK(serialize_int128_equal(loaded[0].wide, serialize_int128_make(0, 0)));
+    CHECK(serialize_int128_equal(loaded[3].bounded, serialize_int128_from_int64(0)));
     return 0;
 }
 `,
@@ -283,9 +277,9 @@ int main(void)
     }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = unsigned_wide_fixed_load_tolerant(loaded, 4, file, need, plan, 64, NULL, &report);
+    n = unsigned_wide_fixed_load(loaded, 4, file, need, plan, 64, NULL, &report);
     CHECK(n == 4);
-    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(!report.refused);
     CHECK(serialize_uint128_equal(loaded[0].u128, value[0].u128));
     CHECK(serialize_uint128_equal(loaded[1].u128, value[1].u128));
     CHECK(serialize_uint128_equal(loaded[2].u128, value[2].u128));
@@ -315,17 +309,17 @@ int main(void)
     int64_t need, n;
     memset(&value, 0, sizeof(value));
     value[0].v = 4095;  /* the width bound 2^12 - 1 */
-    value[1].v = 4096;  /* one past the bound: the read-side pass clamps to 4095 */
+    value[1].v = 4096;  /* one past the bound: the read refuses */
     need = bits_value_fixed_measure(2);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(bits_value_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = bits_value_fixed_load_tolerant(loaded, 2, file, need, plan, 64, NULL, &report);
-    CHECK(n == 2);
-    CHECK(!report.malformed && !report.refused && report.clamped == 1);
-    CHECK(loaded[0].v == 4095);
-    CHECK(loaded[1].v == 4095);  /* the width bound held the value, and counted once */
+    n = bits_value_fixed_load(loaded, 2, file, need, plan, 64, NULL, &report);
+    CHECK(n == -1);
+    CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+    CHECK(loaded[0].v == 0);
+    CHECK(loaded[1].v == 0);  /* a value past the width bound refuses the whole load */
     return 0;
 }
 `,
@@ -359,9 +353,9 @@ int main(void)
     CHECK(float32_value_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = float32_value_fixed_load_tolerant(loaded, 3, file, need, plan, 64, NULL, &report);
+    n = float32_value_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
     CHECK(n == 3);
-    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(!report.refused);
     CHECK(loaded[0].v == 1.5f && loaded[1].v == FLT_MAX && loaded[2].v == -FLT_MAX);
     return 0;
 }
@@ -396,9 +390,9 @@ int main(void)
     CHECK(float64_value_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = float64_value_fixed_load_tolerant(loaded, 3, file, need, plan, 64, NULL, &report);
+    n = float64_value_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
     CHECK(n == 3);
-    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(!report.refused);
     CHECK(loaded[0].v == 1.5 && loaded[1].v == DBL_MAX && loaded[2].v == -DBL_MAX);
     return 0;
 }
@@ -427,19 +421,17 @@ int main(void)
     value[0].v = 1.0f;        /* the declared max, in range */
     value[1].v = -1.0f;       /* the declared min, in range */
     value[2].v = 0.123456f;   /* off the 0.01 grid: it rides as the float, never requantized */
-    value[3].v = 2.0f;        /* above max: clamped to 1.0f */
-    value[4].v = -2.0f;       /* below min: clamped to -1.0f */
+    value[3].v = 2.0f;        /* above max: the read refuses */
+    value[4].v = -2.0f;       /* below min: the read refuses */
     need = compressed_float_fixed_measure(5);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(compressed_float_fixed_save(value, 5, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = compressed_float_fixed_load_tolerant(loaded, 5, file, need, plan, 64, NULL, &report);
-    CHECK(n == 5);
-    CHECK(!report.malformed && !report.refused && report.clamped == 2);
-    CHECK(loaded[0].v == 1.0f && loaded[1].v == -1.0f);
-    CHECK(loaded[2].v == 0.123456f);
-    CHECK(loaded[3].v == 1.0f && loaded[4].v == -1.0f);
+    n = compressed_float_fixed_load(loaded, 5, file, need, plan, 64, NULL, &report);
+    CHECK(n == -1);
+    CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+    CHECK(loaded[0].v == 0 && loaded[3].v == 0);
     return 0;
 }
 `,
@@ -467,18 +459,17 @@ int main(void)
     value[0].v = 32768;    /* 0.5 in whole units */
     value[1].v = 65536;    /* 1.0, the declared max */
     value[2].v = -65536;   /* -1.0, the declared min */
-    value[3].v = 131072;   /* 2.0: clamped to the raw max 65536 */
-    value[4].v = -131072;  /* -2.0: clamped to the raw min -65536 */
+    value[3].v = 131072;   /* 2.0: the read refuses */
+    value[4].v = -131072;  /* -2.0: the read refuses */
     need = fixed_point_fixed_measure(5);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(fixed_point_fixed_save(value, 5, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = fixed_point_fixed_load_tolerant(loaded, 5, file, need, plan, 64, NULL, &report);
-    CHECK(n == 5);
-    CHECK(!report.malformed && !report.refused && report.clamped == 2);
-    CHECK(loaded[0].v == 32768 && loaded[1].v == 65536 && loaded[2].v == -65536);
-    CHECK(loaded[3].v == 65536 && loaded[4].v == -65536);
+    n = fixed_point_fixed_load(loaded, 5, file, need, plan, 64, NULL, &report);
+    CHECK(n == -1);
+    CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+    CHECK(loaded[0].v == 0 && loaded[3].v == 0);
     return 0;
 }
 `,
@@ -513,7 +504,7 @@ int main(void)
     memset(&value, 0, sizeof(value));
     value[0].v = 32768;   /* 0.5 in whole units */
     value[1].v = 65536;   /* 1.0, the declared max */
-    value[2].v = 131072;  /* 2.0: clamped to the raw max 65536 */
+    value[2].v = 131072;  /* 2.0: the read refuses */
     /* w's declared max is 2^32 whole units, so the raw scaled max is 2^64:
        its storage image has a NONZERO HIGH 64-BIT LIMB, and the value one
        raw unit past the max clamps back onto that limb */
@@ -536,13 +527,11 @@ int main(void)
     }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = u_fixed_point_fixed_load_tolerant(loaded, 3, file, need, plan, 64, NULL, &report);
-    CHECK(n == 3);
-    CHECK(!report.malformed && !report.refused && report.clamped == 2);
-    CHECK(loaded[0].v == 32768 && loaded[1].v == 65536 && loaded[2].v == 65536);
+    n = u_fixed_point_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
+    CHECK(n == -1);
+    CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+    CHECK(loaded[0].v == 0);
     CHECK(serialize_uint128_equal(loaded[0].w, serialize_uint128_make(0, 0)));
-    CHECK(serialize_uint128_equal(loaded[1].w, serialize_uint128_make(1, 0)));
-    CHECK(serialize_uint128_equal(loaded[2].w, serialize_uint128_make(1, 0)));  /* the declared max held */
     return 0;
 }
 `,
@@ -577,9 +566,9 @@ int main(void)
     CHECK(flags_value_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = flags_value_fixed_load_tolerant(loaded, 3, file, need, plan, 64, NULL, &report);
+    n = flags_value_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
     CHECK(n == 3);
-    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(!report.refused);
     CHECK(loaded[0].caps == (CAPS_JUMP | CAPS_FLY));
     CHECK(loaded[1].caps == (CAPS_JUMP | CAPS_CROUCH | CAPS_FLY));
     CHECK(loaded[2].caps == 0);

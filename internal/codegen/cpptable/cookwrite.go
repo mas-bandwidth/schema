@@ -92,7 +92,7 @@ inline void table_cook_put128( uint8_t * at, uint64_t lo, uint64_t hi, TableByte
 // used prefix and leaves the rest, which is what makes a string's unused tail a
 // consequence of one memset rather than a rule per buffer. A used length past
 // the buffer, or below zero, is a value no reader could have produced and it is
-// clamped rather than trusted: this writes inside the caller's buffer on every
+// out_of_range rather than trusted: this writes inside the caller's buffer on every
 // input.
 inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, int64_t capacity )
 {
