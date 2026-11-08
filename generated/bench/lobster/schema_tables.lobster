@@ -88,6 +88,9 @@ class TableDescriptor:
     id:int
     table:bool
     fixed:bool
+    // Public root forms; nested values traverse under the enclosing root.
+    json_form:bool = true
+    cook_form:bool = true
     variable:bool
     integrity:bool = false
     place_tables:[string]
