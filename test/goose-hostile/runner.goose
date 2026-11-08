@@ -5,14 +5,20 @@
 //   runner.goose <corpus dir> <schema path>
 //
 // For every manifest case of that schema whose CARRIER this port reads, the
-// generated tolerant read is handed the raw input and the runner prints one
+// generated strict read is handed the raw input and the runner prints one
 // line: `<name> accept <saved wire hex> <text hex>` or `<name> refuse
 // <reason>`, the text the value's canonical text (§16.1) without its last
 // newline, `-` for a root with no text form. The
-// reason is read off the engine's own report, never off the input: `damaged`
-// for a malformed read the engine did not refuse, `count_refusal`,
-// `non_finite_float`, and a form refusal by the name the load's report gives
-// it (`message_form_as_file`, `newer_form`). A case whose carrier the port
+// reason is read off the engine's own report, never off the input:
+// `count_refusal`, `non_finite_float`, a form refusal by the name the load's
+// report gives it (`message_form_as_file`, `newer_form`), and `damaged` for
+// every other read the strict read refuses (schema_rt::load_error: damage, a
+// value out of range, a kind mismatch, a text list past its count or total;
+// docs/plans/strict-only.md). A FIXED root's file form (form byte 3,
+// docs/SPEC-TABLES.md §3.4) goes through that root's own <Root>FixedLoad, picked
+// by the form byte (conformance_fixed, glued by make/goose-hostile.sh), as the
+// C++ runner does; any other form byte goes through the variable read, which
+// names it. A case whose carrier the port
 // does not read yet is `<name> absent <carrier>`. The make target holds the
 // lines to the manifest.
 import os;
@@ -58,6 +64,31 @@ fn main() {
             write_stderr(str("runner: cannot read ", f[4], "\n"));
             exit(1);
         }
+        if data.len > 0 && data[0] == 3 {
+            var fsaved: u8[>..] = [];
+            var ftext: u8[>..] = [];
+            let fr = conformance_fixed(f[3], data, fsaved, ftext);
+            if fr >= 0 {
+                if fr == 0 {
+                    out.append(" accept ");
+                    hex(out, fsaved);
+                    if ftext.len > 0 {
+                        out.push(' ');
+                        hex(out, ftext[0..ftext.len - 1]);
+                    } else {
+                        out.append(" -");
+                    }
+                } else if fr == schema_rt::FixedRefuseNewerForm {
+                    out.append(" refuse newer_form");
+                } else if fr == schema_rt::FixedRefuseMessageFormAsFile {
+                    out.append(" refuse message_form_as_file");
+                } else {
+                    out.append(" refuse damaged");
+                }
+                out.push('\n');
+                continue;
+            }
+        }
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
@@ -66,11 +97,11 @@ fn main() {
             out.append(" refuse non_finite_float\n");
         } else if report.count_refused {
             out.append(" refuse count_refusal\n");
-        } else if report.refused {
+        } else if report.reason == schema_rt::LoadRefuseNewerForm || report.reason == schema_rt::LoadRefuseMessageFormAsFile {
             out.append(" refuse ");
             out.append(schema_rt::load_refusal_name(report.reason));
             out.push('\n');
-        } else if root < 0 || report.malformed || report.stopped {
+        } else if report.refused || schema_rt::load_error(report, root) != schema_rt::LoadRefuseOk {
             out.append(" refuse damaged\n");
         } else {
             var saved: u8[>..<] = [];
