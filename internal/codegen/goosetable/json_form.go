@@ -12,7 +12,6 @@
 //
 // Per table, the surface is §16.1's, in Goose's spelling:
 //
-//	<T>FromJsonTolerant(v: T&, text: const u8[:], report: schema_rt::JsonReport&) -> bool
 //	<T>FromJson(v: T&, text: const u8[:], report: schema_rt::JsonReport&) -> bool  // strict: a clean report
 //	<T>ToJson(v: const T&, out: u8[>..]&) -> i64                                  // appends; -1 refused
 //	<T>ToJsonMeasure(v: const T&) -> i64
@@ -652,20 +651,15 @@ func isStructOrUnion(f *ir.Field) bool {
 func (e *jsonEmit) emitRoot(st *ir.Struct) {
 	n := st.Name
 	typ := e.structType(st)
-	e.declare(n+"FromJsonTolerant", n+"FromJson", n+"ToJson", n+"ToJsonMeasure")
-	e.p(0, "// %sFromJsonTolerant fills v from one text (docs/SPEC-TABLES.md §16.1): false, with", n)
-	e.p(0, "// report.malformed, when the text is not JSON or a value is refused by name, and v is")
+	e.declare(n+"FromJson", n+"ToJson", n+"ToJsonMeasure")
+	e.p(0, "// %sFromJson fills v from one text (docs/SPEC-TABLES.md §16.1): false, with", n)
+	e.p(0, "// report.damaged, when the text is not JSON or a value is refused by name, and v is")
 	e.p(0, "// then back at its declared defaults.")
-	e.p(0, "fn %sFromJsonTolerant(v: %s&, text: const u8[:], report: schema_rt::JsonReport&) -> bool {", n, typ)
+	e.p(0, "fn %sFromJson(v: %s&, text: const u8[:], report: schema_rt::JsonReport&) -> bool {", n, typ)
 	e.p(1, "v = %s { .. };", typ)
 	e.p(1, "if schema_rt::json_from(v, %sDescriptor, _%sJsonShapes, text, report, _%sJsonRead) { return true; }", n, n, n)
 	e.p(1, "v = %s { .. };", typ)
 	e.p(1, "return false;")
-	e.p(0, "}\n")
-	e.p(0, "// %sFromJson is the strict read: the text must match the schema exactly (§6.5).", n)
-	e.p(0, "fn %sFromJson(v: %s&, text: const u8[:], report: schema_rt::JsonReport&) -> bool {", n, typ)
-	e.p(1, "if !%sFromJsonTolerant(v, text, report) { return false; }", n)
-	e.p(1, "return schema_rt::json_clean(report);")
 	e.p(0, "}\n")
 	e.p(0, "// %sToJson appends v's canonical text and answers its length, or -1 (§16.1, §16.3).", n)
 	e.p(0, "fn %sToJson(v: const %s&, out: u8[>..]&) -> i64 {", n, typ)
