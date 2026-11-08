@@ -87,15 +87,26 @@ jobs:
   # this line. A cap raised to fit a growing suite stops meaning anything.
   test:
     name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - { os: fleet, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: macos-latest, runner: macos-latest }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Go first: every later step runs under tools/pgroup (go run).
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
 
       # Siblings cloned exactly where README.md tells a newcomer to put them —
       # CI exercises the documented path rather than a special one. The
@@ -105,17 +116,13 @@ jobs:
       - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
+          rm -rf serialize serialize.c serialize.go serialize.rs serialize.cs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
 
@@ -125,6 +132,7 @@ jobs:
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -179,7 +187,7 @@ jobs:
       - name: install the Lobster pin
         run: |
           set -euo pipefail
-          if [ "$RUNNER_OS" = Linux ]; then
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ] && [ "$RUNNER_OS" = Linux ]; then
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           fi
@@ -212,8 +220,13 @@ jobs:
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
-          python3 -m venv "$RUNNER_TEMP/clang-format"
-          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
+            "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          else
+            rm -rf "$RUNNER_TEMP/clang-format"
+            python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
+            python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
+          fi
           echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/clang-format/bin/clang-format" --version
 
@@ -242,7 +255,7 @@ jobs:
       - name: make test
         env:
           SCHEMA_SKIP_LEGS: ${{ runner.os == 'macOS' && 'goose,luau' || '' }}
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: make test RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`
@@ -304,8 +317,11 @@ jobs:
   # cancelled gate proves nothing), so each target gets a job of its own with
   # the hour to itself, and a failing language is named by its job.
   release-targets:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     outputs:
       targets: ${{ steps.list.outputs.targets }}
     steps:
@@ -324,8 +340,11 @@ jobs:
     needs: release-targets
     if: needs.release-targets.outputs.targets != '[]'
     name: release-gates (${{ matrix.target }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 60
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix:
@@ -336,6 +355,7 @@ jobs:
       - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
+          rm -rf serialize serialize.c serialize.go serialize.rs serialize.cs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
@@ -344,6 +364,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -356,6 +377,7 @@ jobs:
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -406,8 +428,10 @@ jobs:
         if: matrix.target == 'tables-lobster-release' || matrix.target == 'tables-wire-fuzz-release-lobster'
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
           make dist-lobster
 
       # The Squirrel leg's pinned sq (make/squirrel.mk): tables-squirrel-release's
@@ -433,14 +457,14 @@ jobs:
 
       - name: ${{ matrix.target }}
         if: '!startsWith(matrix.target, ''tables-wire-fuzz-release-'')'
-        run: make "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: make "${{ matrix.target }}" RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       # THE RELEASE WIRE-FUZZ GATE (make/wire-fuzz-release.mk): one leg's six
       # independent runs (both arms, seeds 1-3, at WIRE_FUZZ_RELEASE_N), side
       # by side on every core, each a row of the table the job prints.
       - name: ${{ matrix.target }} (both arms, seeds 1-3)
         if: startsWith(matrix.target, 'tables-wire-fuzz-release-')
-        run: make -j"$(nproc)" "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: make -j"$(nproc)" "${{ matrix.target }}" RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job so the legs run concurrently instead of
@@ -475,25 +499,35 @@ jobs:
   # Match the full test job's 60-minute budget; every precondition and check
   # remains in place, and the job still has a bounded execution time.
   inline-gate:
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, leg: go }
-          - { os: macos-latest,  leg: go }
-          - { os: macos-latest,  leg: cpp }
-          - { os: macos-latest,  leg: c }
-          - { os: macos-latest,  leg: rust }
-          - { os: macos-latest,  leg: cs }
+          - { os: fleet,         leg: go,   runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: macos-latest,  leg: go,   runner: macos-latest }
+          - { os: macos-latest,  leg: cpp,  runner: macos-latest }
+          - { os: macos-latest,  leg: c,    runner: macos-latest }
+          - { os: macos-latest,  leg: rust, runner: macos-latest }
+          - { os: macos-latest,  leg: cs,   runner: macos-latest }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Go first: every later step runs under tools/pgroup (go run).
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
 
       - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
+          rm -rf serialize serialize.c serialize.go serialize.rs serialize.cs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
@@ -505,10 +539,6 @@ jobs:
       # step below builds the whole tree, exactly as the single-job flow did
       # before the fan-out — the gate legs verdict the same artifacts they
       # always have.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
 
@@ -518,6 +548,7 @@ jobs:
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -558,7 +589,7 @@ jobs:
       - name: install the Lobster pin
         run: |
           set -euo pipefail
-          if [ "$RUNNER_OS" = Linux ]; then
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ] && [ "$RUNNER_OS" = Linux ]; then
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           fi
@@ -583,8 +614,13 @@ jobs:
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
-          python3 -m venv "$RUNNER_TEMP/clang-format"
-          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
+            "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          else
+            rm -rf "$RUNNER_TEMP/clang-format"
+            python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
+            python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
+          fi
           echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/clang-format/bin/clang-format" --version
 
@@ -613,7 +649,7 @@ jobs:
       - name: make test
         env:
           SCHEMA_SKIP_LEGS: ${{ runner.os == 'macOS' && 'goose,luau' || '' }}
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: make test RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest
@@ -632,7 +668,7 @@ jobs:
       # built the tree on every leg, and the smoke needs one extra C++ compile
       # and one dotnet run.
       - name: gate 2 smoke — the block form still writes what the hand mirror does
-        if: matrix.os == 'ubuntu-latest' && matrix.leg == 'go'
+        if: matrix.os == 'fleet' && matrix.leg == 'go'
         run: make tables-block-gate2-smoke
 
   # A new CVE lands with no commit, so govulncheck is the one gate whose
@@ -641,11 +677,15 @@ jobs:
   # trigger substitutes for the other. It rides there under `make vuln` and
   # here under `make vuln-strict`; the block on the step says why.
   vuln:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: stable
           cache: false
@@ -679,14 +719,18 @@ jobs:
   # else. Go, the runner's C++ compiler, the tags, and the serialize runtime
   # the target fetches at its pin.
   release-differential:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 20
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # the newest v tag and its tree are the previous side
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -709,13 +753,17 @@ jobs:
   # the package's own test reads both files to prove each one runs the plan
   # rather than a typed list.
   negative-controls-nightly-matrix:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -730,8 +778,11 @@ jobs:
   negative-controls-nightly:
     name: negative controls, nightly (${{ matrix.name }})
     needs: negative-controls-nightly-matrix
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 60
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.negative-controls-nightly-matrix.outputs.matrix) }}
@@ -745,6 +796,7 @@ jobs:
       - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
+          rm -rf serialize serialize.c serialize.go serialize.rs serialize.cs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
@@ -753,6 +805,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -768,7 +821,7 @@ jobs:
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.dotnet != ''
+        if: (matrix.dotnet != '') && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -829,8 +882,10 @@ jobs:
         if: matrix.lobster != ''
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
           make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
 
       # The pinned Squirrel interpreter for a row naming `squirrel`, as
@@ -854,7 +909,7 @@ jobs:
           status=0
           # shellcheck disable=SC2086
           make -k $targets \
-            RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
+            RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
             2>&1 | tee controls.log || status=1
           if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
