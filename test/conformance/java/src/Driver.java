@@ -828,7 +828,7 @@ public final class Driver {
                     // §2.5: a blob two slots name is refused by every writer; the
                     // tolerant load kept the one node, so the save refuses it by
                     // name rather than writing the reference's bytes
-                    Files.write(Path.of(out, f[1] + ".absent"), "blob_shared".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    spillAbsentReason(out, f[1], "blob_shared");
                     continue;
                 }
                 if (saved == null) return failInt(f[1] + ": save refused the value");
