@@ -13,7 +13,7 @@ for mode in wire json; do
     go run ./tools/sabotage -name "$sabotage" -out "$dir/source.gotext" "$source"
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$PWD" "$source" "$PWD" "$dir" > "$dir/overlay.json"
     go build -overlay="$dir/overlay.json" -o "$dir/schema" ./cmd/schema
-    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2 scalars scalars2 caption pointers blobs p2 w1 w2 lists widelist maps stream g1 backend vocab vocab9 r1 r2 rt1; do
+    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2 scalars scalars2 caption pointers blobs p2 w1 w2 lists widelist maps stream g1 backend vocab vocab9 r1 r2 rt1 featurewitnesses; do
         case "$unit" in
             examples|block|messages) input=tables/$unit ;;
             v1) input=test/tables/V1.schema ;; v2) input=test/tables/V2.schema ;;
@@ -40,6 +40,7 @@ for mode in wire json; do
             r1) input=test/tables/R1.schema ;;
             r2) input=test/tables/R2.schema ;;
             rt1) input=test/tables/RT1.schema ;;
+            featurewitnesses) input=testdata/conformance/feature-witnesses/full/Features.schema ;;
         esac
         "$dir/schema" generate --lang cs --out "$dir/generated/$unit" "$input"
     done
@@ -52,7 +53,9 @@ for mode in wire json; do
             --seed 24845619678 --n 0 > "$dir/log" 2>&1; then
             echo 'NEGATIVE CONTROL FAILED: duplicate identities accepted'; exit 1
         fi
-        grep -Fq 'report differs' "$dir/log" || { cat "$dir/log"; exit 1; }
+        # Strict-only (docs/plans/strict-only.md): a repeated field id is damage,
+        # so the sabotaged leg ACCEPTS what the oracle refuses.
+        grep -Fq 'read acceptance differs: the leg says true, the oracle says false' "$dir/log" || { cat "$dir/log"; exit 1; }
         echo 'C# wire negative control: duplicate identity rejection is observed'
     else
         printf 'cs %s %s/checker/schemaconformance.dll\n' "$dotnet" "$dir" > "$dir/drivers"

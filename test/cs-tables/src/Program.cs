@@ -342,7 +342,7 @@ static partial class Program
             Demo.TableReport report = new Demo.TableReport();
             Demo.RootConfig root = new Demo.RootConfig();
             Check(Demo.Schema.RootConfigLoad(root, golden, report), "root_full loads");
-            Check(!report.Malformed && report.Unknown == 0 && report.KindMismatch == 0 && report.Clamped == 0,
+            Check(!report.Damaged && report.Unknown == 0 && !report.Refused,
                 "root_full: silence — the data matched this reader's schema exactly");
             Check(GetString(root.VersionNote, root.VersionNoteLength) == "golden-v1", "root_full version_note");
             Check(root.WeaponsCount == 2, "root_full weapons count");
@@ -380,7 +380,7 @@ static partial class Program
             Demo.ProfileConfig profile = new Demo.ProfileConfig();
             profile.Loadout.Grade = Demo.Grade.Gold; // junk the reset must erase
             Check(Demo.Schema.ProfileConfigLoad(profile, golden, report), "profile_elide loads");
-            Check(!report.Malformed && report.Unknown == 0, "profile_elide: silence");
+            Check(!report.Damaged && report.Unknown == 0, "profile_elide: silence");
             Check(profile.Experience == 1 && profile.HasLoadout, "profile_elide fields");
             Check(profile.Loadout.Grade == Demo.Grade.Silver, "profile_elide: the elided nesting reads its declared defaults");
         }
@@ -389,7 +389,7 @@ static partial class Program
             Demo.TableReport report = new Demo.TableReport();
             Demo.LoadoutConfig loadout = new Demo.LoadoutConfig();
             Check(Demo.Schema.LoadoutConfigLoad(loadout, golden, report), "loadout_full loads");
-            Check(!report.Malformed && report.Unknown == 0, "loadout_full: silence");
+            Check(!report.Damaged && report.Unknown == 0, "loadout_full: silence");
             Check(loadout.Grade == Demo.Grade.Bronze && loadout.GradesCount == 3, "loadout_full grade/grades");
             Check(loadout.Primary.Effect.Type == Demo.EffectType.Buff &&
                   loadout.Primary.Effect.Buff.Multiplier == 0.5f, "loadout_full nested union");
@@ -401,7 +401,7 @@ static partial class Program
             Demo.TableReport report = new Demo.TableReport();
             Demo.WideBlob blob = new Demo.WideBlob();
             Check(Demo.Schema.WideBlobLoad(blob, golden, report), "wide_blob loads");
-            Check(!report.Malformed && report.Clamped == 0, "wide_blob: silence");
+            Check(!report.Damaged && !report.Refused, "wide_blob: silence");
             Check(blob.LabelLength == 70000 && blob.Label[69999] == (byte)('a' + (69999 % 26)), "wide_blob label");
             Check(blob.PayloadLength == 100 && blob.Payload[99] == unchecked((byte)(99 * 7 + 3)), "wide_blob payload");
             Check(blob.SamplesCount == 70000 && blob.Samples[69999] == unchecked((ushort)(69999 * 37 + 11)), "wide_blob samples");
@@ -419,7 +419,7 @@ static partial class Program
             V1.TableReport report = new V1.TableReport();
             V1.Cfg cfg = new V1.Cfg();
             Check(V1.Schema.CfgLoad(cfg, golden, report), "v1_cfg loads");
-            Check(!report.Malformed && report.Unknown == 0 && report.Clamped == 0, "v1_cfg: silence");
+            Check(!report.Damaged && report.Unknown == 0 && !report.Refused, "v1_cfg: silence");
             Check(cfg.A == 9 && cfg.B == 8.5f && cfg.Mode == V1.Mode.Alpha, "v1_cfg scalars");
             Check(GetString(cfg.Name, cfg.NameLength) == "aged", "v1_cfg name");
             Check(cfg.ItemsCount == 3 && cfg.Items[2] == 255, "v1_cfg items");
@@ -431,7 +431,7 @@ static partial class Program
             V2.TableReport report = new V2.TableReport();
             V2.Cfg cfg = new V2.Cfg();
             Check(V2.Schema.CfgLoad(cfg, golden, report), "v2_cfg loads");
-            Check(!report.Malformed && report.Unknown == 0 && report.Clamped == 0, "v2_cfg: silence");
+            Check(!report.Damaged && report.Unknown == 0 && !report.Refused, "v2_cfg: silence");
             Check(cfg.A == 7.5f && !cfg.C && cfg.Mode == V2.Mode.Alpha, "v2_cfg scalars");
             Check(GetString(cfg.Title, cfg.TitleLength) == "fresh", "v2_cfg title");
             Check(cfg.Inner.Factor == 9.5f && cfg.Inner.Gain == 4.0f, "v2_cfg inner");
@@ -551,7 +551,7 @@ static partial class Program
                 new byte[] { 2, 4 }, U32(42), new byte[] { 0 }), "items", "a");
             V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
             Check(!V1.Schema.CfgLoad(value, wire, report), "bounded elements: a count the body cannot cover refuses the load");
-            Check(report.Malformed && value.A == 5 && value.ItemsCount == 0, "bounded elements: the damaged load is discarded whole");
+            Check(report.Damaged && value.A == 5 && value.ItemsCount == 0, "bounded elements: the damaged load is discarded whole");
         }
     }
 
@@ -597,7 +597,7 @@ static partial class Program
         byte[] spliced = SharedVocabSplice(a, b);
         Demo.RootConfig got = new Demo.RootConfig();
         Demo.TableReport report = new Demo.TableReport();
-        Check(Demo.Schema.RootConfigLoad(got, spliced, report) && !report.Malformed, "counted tail: load two occurrences");
+        Check(Demo.Schema.RootConfigLoad(got, spliced, report) && !report.Damaged, "counted tail: load two occurrences");
         Check(got.WeaponsCount == 1, "counted tail: later count wins");
         Check(got.Weapons[0].Damage == 5.0f, "counted tail: live prefix kept");
         Check(got.Weapons[1].Damage == 21.0f, "counted tail: slot 1 restored to default");
@@ -621,7 +621,7 @@ static partial class Program
             "all-default: load");
         Check(outWeapon.Damage == 21.0f && outWeapon.Speed == 500.0f && outWeapon.Penetration == 1,
             "all-default: declared defaults restored");
-        Check(!report.Malformed && report.Unknown == 0, "all-default: silence");
+        Check(!report.Damaged && report.Unknown == 0, "all-default: silence");
     }
 
     // ---- guarded fields stay off the wire when the guard says so ----
@@ -671,11 +671,22 @@ static partial class Program
 
         V1.TableReport report = new V1.TableReport();
         V1.Cfg outCfg = new V1.Cfg();
+        // a is f32 on the wire and i32 here: a kind mismatch refuses the whole
+        // load (docs/SPEC-TABLES.md §4, strict-only), and nothing lands.
+        Check(!V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report) && report.Refused && !report.Damaged,
+            "old reader: a is f32 on the wire, i32 here: the kind mismatch refuses the load");
+        Check(outCfg.A == 5 && outCfg.B == 1.5f && outCfg.NameLength == 0 && outCfg.ItemsCount == 0,
+            "old reader: the refused load leaves the v1 defaults");
+
+        // With a at its default the field is elided, and the rest is evolution.
+        v2.A = new V2.Cfg().A;
+        bytes = V2.Schema.CfgSave(v2, wire);
+        Check(bytes > 0 && bytes == V2.Schema.CfgMeasure(v2), "old reader: v2 saved without a");
+        report = new V1.TableReport();
         Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "old reader: load");
-        Check(!report.Malformed, "old reader: not malformed");
+        Check(!report.Damaged && !report.Refused, "old reader: not refused");
         Check(report.Unknown == 2, "old reader: c (top level) + gain (nested) unknown");
-        Check(report.KindMismatch == 1, "old reader: a is f32 on the wire, i32 here");
-        Check(outCfg.A == 5, "old reader: a skipped -> v1 default, never misdecoded");
+        Check(outCfg.A == 5, "old reader: a absent -> v1 default");
         Check(outCfg.B == 1.5f, "old reader: removed in v2 -> absent -> v1 default");
         Check(GetString(outCfg.Name, outCfg.NameLength) == "fresh", "old reader: was = \"name\" identity survived");
         Check(outCfg.Mode == V1.Mode.Alpha, "old reader: mode");
@@ -697,10 +708,20 @@ static partial class Program
 
         V2.TableReport report = new V2.TableReport();
         V2.Cfg outCfg = new V2.Cfg();
+        // a is i32 on the wire and f32 here: the kind mismatch refuses the whole load.
+        Check(!V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report) && report.Refused && !report.Damaged,
+            "new reader: a is i32 on the wire, f32 here: the kind mismatch refuses the load");
+        Check(outCfg.A == 5.0f && outCfg.C && outCfg.TitleLength == 0 && outCfg.Inner.Factor == new V2.Cfg().Inner.Factor,
+            "new reader: the refused load leaves the v2 defaults");
+
+        // With a at its default the field is elided, and the rest is evolution.
+        v1.A = new V1.Cfg().A;
+        bytes = V1.Schema.CfgSave(v1, wire);
+        Check(bytes > 0 && bytes == V1.Schema.CfgMeasure(v1), "new reader: v1 saved without a");
+        report = new V2.TableReport();
         Check(V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "new reader: load");
-        Check(!report.Malformed, "new reader: not malformed");
+        Check(!report.Damaged && !report.Refused, "new reader: not refused");
         Check(report.Unknown == 1, "new reader: b, removed in v2");
-        Check(report.KindMismatch == 1, "new reader: a is i32 on the wire, f32 here");
         Check(outCfg.A == 5.0f, "new reader: v2 default");
         Check(outCfg.C, "new reader: added in v2, absent in old data -> default");
         Check(GetString(outCfg.Title, outCfg.TitleLength) == "aged", "new reader: old name data lands in the renamed field");
@@ -727,7 +748,7 @@ static partial class Program
         V2.TableReport report = new V2.TableReport();
         V2.Cfg outCfg = new V2.Cfg();
         Check(V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "enum insert: load");
-        Check(!report.Malformed && report.Unknown == 0 && report.Clamped == 0, "enum insert: silence");
+        Check(!report.Damaged && report.Unknown == 0 && !report.Refused, "enum insert: silence");
         Check(outCfg.Grade == V2.Grade.Gold, "enum insert: Gold, NOT Silver (which holds ordinal 2 in V2)");
 
         V1.Cfg arrays = new V1.Cfg();
@@ -743,7 +764,7 @@ static partial class Program
         V2.TableReport report2 = new V2.TableReport();
         V2.Cfg out2 = new V2.Cfg();
         Check(V2.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report2), "enum insert arrays: load");
-        Check(!report2.Malformed && report2.Unknown == 0 && report2.Clamped == 0, "enum insert arrays: silence");
+        Check(!report2.Damaged && report2.Unknown == 0 && !report2.Refused, "enum insert arrays: silence");
         Check(out2.GradesCount == 2, "enum insert arrays: count");
         Check(out2.Grades[0] == V2.Grade.Gold && out2.Grades[1] == V2.Grade.Bronze, "enum insert arrays: counted elements");
         Check(out2.Podium[0] == V2.Grade.Bronze && out2.Podium[1] == V2.Grade.Gold && out2.Podium[2] == V2.Grade.None,
@@ -762,7 +783,7 @@ static partial class Program
         V1.TableReport report = new V1.TableReport();
         V1.Cfg outCfg = new V1.Cfg();
         Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "enum insert new data: load");
-        Check(!report.Malformed, "enum insert new data: not malformed");
+        Check(!report.Damaged, "enum insert new data: not damaged");
         Check(report.Unknown == 1, "enum insert new data: an id this reader cannot name");
         Check(outCfg.Grade == V1.Grade.None, "enum insert new data: None, never a neighbour's variant");
 
@@ -772,7 +793,7 @@ static partial class Program
         V1.TableReport report2 = new V1.TableReport();
         V1.Cfg out2 = new V1.Cfg();
         Check(V1.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report2), "enum insert moved ordinal: load");
-        Check(!report2.Malformed && report2.Unknown == 0, "enum insert moved ordinal: silence");
+        Check(!report2.Damaged && report2.Unknown == 0, "enum insert moved ordinal: silence");
         Check(out2.Grade == V1.Grade.Gold, "enum insert moved ordinal: lands correctly");
 
         V2.Cfg arrays = new V2.Cfg();
@@ -783,7 +804,7 @@ static partial class Program
         V1.TableReport report3 = new V1.TableReport();
         V1.Cfg out3 = new V1.Cfg();
         Check(V1.Schema.CfgLoad(out3, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report3), "enum insert array element: load");
-        Check(!report3.Malformed && report3.Unknown == 1, "enum insert array element: one unknown");
+        Check(!report3.Damaged && report3.Unknown == 1, "enum insert array element: one unknown");
         Check(out3.GradesCount == 2, "enum insert array element: count");
         Check(out3.Grades[0] == V1.Grade.Gold && out3.Grades[1] == V1.Grade.None,
             "enum insert array element: unnameable lands on None");
@@ -807,7 +828,7 @@ static partial class Program
         V2.TableReport report = new V2.TableReport();
         V2.Cfg outCfg = new V2.Cfg();
         Check(V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "union insert: load");
-        Check(!report.Malformed && report.Unknown == 0, "union insert: silence");
+        Check(!report.Damaged && report.Unknown == 0, "union insert: silence");
         Check(outCfg.Effect.Type == V2.EffectType.Ward, "union insert: Ward, NOT hex (which holds tag 2 in V2)");
         Check(outCfg.Effect.Ward.Charge == 7.5f, "union insert: arm payload");
     }
@@ -825,7 +846,7 @@ static partial class Program
         V1.TableReport report = new V1.TableReport();
         V1.Cfg outCfg = new V1.Cfg();
         Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "union insert new data: load");
-        Check(!report.Malformed, "union insert new data: not malformed");
+        Check(!report.Damaged, "union insert new data: not damaged");
         Check(report.Unknown == 1, "union insert new data: an arm id V1 cannot name");
         Check(outCfg.Effect.Type == V1.EffectType.None, "union insert new data: empty, never a neighbour's arm");
 
@@ -836,7 +857,7 @@ static partial class Program
         V1.TableReport report2 = new V1.TableReport();
         V1.Cfg out2 = new V1.Cfg();
         Check(V1.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report2), "union insert moved tag: load");
-        Check(!report2.Malformed && report2.Unknown == 0, "union insert moved tag: silence");
+        Check(!report2.Damaged && report2.Unknown == 0, "union insert moved tag: silence");
         Check(out2.Effect.Type == V1.EffectType.Ward && out2.Effect.Ward.Charge == -2.0f,
             "union insert moved tag: lands correctly");
     }
@@ -854,7 +875,7 @@ static partial class Program
         }, "effect", "ward", "charge", "grade", "Gold", "unknown");
         V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
         Check(V1.Schema.CfgLoad(value, wire, report), "repeated variant: load");
-        Check(!report.Malformed && report.Unknown == 2, "repeated variant: two unknown names");
+        Check(!report.Damaged && report.Unknown == 2, "repeated variant: two unknown names");
         Check(value.Effect.Type == V1.EffectType.None && value.Grade == V1.Grade.None,
             "repeated variant: last occurrence replaces earlier value");
     }
@@ -874,9 +895,19 @@ static partial class Program
 
         V2.TableReport report = new V2.TableReport();
         V2.Cfg outCfg = new V2.Cfg();
-        Check(V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "array bounds: load");
-        Check(!report.Malformed, "array bounds: a shrunk bound is not framing damage");
-        Check(report.Clamped == 1, "array bounds: slots — 6 offered, 3 kept");
+        // A count past the reader's bound refuses the whole load (strict-only):
+        // it is not framing damage, and nothing lands.
+        Check(!V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report) && report.Refused && !report.Damaged,
+            "array bounds: slots — 6 offered past v2's bound of 3 refuses the load");
+        Check(outCfg.SlotsCount == 0 && outCfg.Tally[0] == 0, "array bounds: the refused load leaves the defaults");
+
+        // Within the reader's bound, the bound is not wire identity: it reads.
+        wide.SlotsCount = 3;
+        bytes = V1.Schema.CfgSave(wide, wire);
+        Check(bytes > 0 && bytes == V1.Schema.CfgMeasure(wide), "array bounds: v1 saved within v2's bound");
+        report = new V2.TableReport();
+        Check(V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report) && !report.Refused && !report.Damaged,
+            "array bounds: load");
         Check(outCfg.SlotsCount == 3, "array bounds: bounded prefix");
         Check(outCfg.Slots[0] == 100 && outCfg.Slots[1] == 101 && outCfg.Slots[2] == 102, "array bounds: prefix values");
         Check(outCfg.Tally[0] == 10 && outCfg.Tally[1] == 11 && outCfg.Tally[2] == 12, "array bounds: tally prefix");
@@ -892,13 +923,10 @@ static partial class Program
 
         V1.TableReport report2 = new V1.TableReport();
         V1.Cfg out2 = new V1.Cfg();
-        Check(V1.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report2), "array bounds reverse: load");
-        Check(!report2.Malformed, "array bounds reverse: not malformed");
-        Check(report2.Clamped == 1, "array bounds reverse: tally — 4 offered, v1 keeps 3");
-        Check(out2.SlotsCount == 3, "array bounds reverse: under v1's bound, no clamp");
-        Check(out2.Slots[0] == 200 && out2.Slots[2] == 202, "array bounds reverse: values");
-        Check(out2.Slots[3] == 0 && out2.Slots[5] == 0, "array bounds reverse: the unwritten tail");
-        Check(out2.Tally[0] == 20 && out2.Tally[1] == 21 && out2.Tally[2] == 22, "array bounds reverse: tally prefix");
+        Check(!V1.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report2) && report2.Refused && !report2.Damaged,
+            "array bounds reverse: tally — 4 offered past v1's 3 refuses the load");
+        Check(out2.SlotsCount == 0 && out2.Slots[0] == 0 && out2.Tally[0] == 0,
+            "array bounds reverse: the refused load leaves the defaults");
     }
 
     // ---- a value no variant names has no wire identity ----
@@ -931,7 +959,7 @@ static partial class Program
         byte[] wire = Fixture(new byte[] { 1,14,5,30,3,2,3,4,0 }, "grades", "Gold", "unknown", "Bronze");
         V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
         Check(V1.Schema.CfgLoad(value, wire, report), "enum elements: load");
-        Check(!report.Malformed && report.Unknown == 1, "enum elements: one unknown");
+        Check(!report.Damaged && report.Unknown == 1, "enum elements: one unknown");
         Check(value.GradesCount == 3 && value.Grades[0] == V1.Grade.Gold &&
             value.Grades[1] == V1.Grade.None && value.Grades[2] == V1.Grade.Bronze, "enum elements: named values survive");
     }
@@ -987,7 +1015,7 @@ static partial class Program
         Demo.TableReport report = new Demo.TableReport();
         Demo.WideBlob outBlob = new Demo.WideBlob();
         Check(Demo.Schema.WideBlobLoad(outBlob, buffer, report), "wide extents: load");
-        Check(!report.Malformed && report.Unknown == 0 && report.Clamped == 0, "wide extents: silence");
+        Check(!report.Damaged && report.Unknown == 0 && !report.Refused, "wide extents: silence");
         Check(outBlob.LabelLength == 70000 && outBlob.Label[69999] == (byte)'w', "wide extents: label");
         Check(outBlob.PayloadLength == 70000 && outBlob.Payload[69999] == (byte)(69999 & 0xff), "wide extents: payload");
         Check(outBlob.SamplesCount == 70000 && outBlob.Samples[69999] == unchecked((ushort)69999), "wide extents: samples");
@@ -997,23 +1025,36 @@ static partial class Program
             new byte[] { 2,12,2,(byte)'o',(byte)'k',0 }), "samples", "label");
         Demo.TableReport report2 = new Demo.TableReport(); Demo.WideBlob out2 = new Demo.WideBlob();
         Check(!Demo.Schema.WideBlobLoad(out2, wire, report2), "wide prefix: a count the payload cannot cover refuses the load");
-        Check(report2.Malformed && out2.SamplesCount == 0 && out2.LabelLength == new Demo.WideBlob().LabelLength,
+        Check(report2.Damaged && out2.SamplesCount == 0 && out2.LabelLength == new Demo.WideBlob().LabelLength,
             "wide prefix: bounded payload cannot fabricate 70000 elements, and the damaged load is discarded whole");
     }
 
-    // ---- clamping: hostile or stale numerics clamp and count ----
+    // ---- out of range: hostile or stale numerics refuse the whole load (strict-only, no read clamps) ----
 
     static void TestClamping()
     {
         V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
         byte[] wire = Fixture(Join(new byte[] { 1,4 }, U32(2000), new byte[] { 0 }), "a");
-        Check(V1.Schema.CfgLoad(value, wire, report) && report.Clamped == 1 && value.A == 1000, "integer clamp");
+        Check(!V1.Schema.CfgLoad(value, wire, report) && report.Refused && !report.Damaged && value.A == 5,
+            "integer out of range: refuses the load and leaves the default");
         Demo.WeaponConfig weapon = new Demo.WeaponConfig(); Demo.TableReport bits = new Demo.TableReport();
-        Check(Demo.Schema.WeaponConfigLoad(weapon, Fixture(new byte[] { 1,6,200,0 }, "channel"), bits) &&
-            bits.Clamped == 1 && weapon.Channel == 63, "bits width clamp");
+        Check(!Demo.Schema.WeaponConfigLoad(weapon, Fixture(new byte[] { 1,6,200,0 }, "channel"), bits) &&
+            bits.Refused && !bits.Damaged && weapon.Channel == new Demo.WeaponConfig().Channel,
+            "bits width out of range: refuses the load and leaves the default");
         report = new V1.TableReport();
         wire = Fixture(Join(new byte[] { 1,12,40 }, Encoding.UTF8.GetBytes(new string('y',40)), new byte[] { 0 }), "name");
-        Check(V1.Schema.CfgLoad(value, wire, report) && report.Clamped == 1 && value.NameLength == 32, "string bound clamp");
+        Check(!V1.Schema.CfgLoad(value, wire, report) && report.Refused && !report.Damaged && value.NameLength == 0,
+            "string past its bound: refuses the load and leaves the default");
+        // In range at the bound, each reads.
+        report = new V1.TableReport();
+        wire = Fixture(Join(new byte[] { 1,4 }, U32(1000), new byte[] { 0 }), "a");
+        Check(V1.Schema.CfgLoad(value, wire, report) && !report.Refused && value.A == 1000, "integer at its max reads");
+        bits = new Demo.TableReport();
+        Check(Demo.Schema.WeaponConfigLoad(weapon, Fixture(new byte[] { 1,6,63,0 }, "channel"), bits) &&
+            !bits.Refused && weapon.Channel == 63, "bits width at its max reads");
+        report = new V1.TableReport();
+        wire = Fixture(Join(new byte[] { 1,12,32 }, Encoding.UTF8.GetBytes(new string('y',32)), new byte[] { 0 }), "name");
+        Check(V1.Schema.CfgLoad(value, wire, report) && !report.Refused && value.NameLength == 32, "string at its bound reads");
     }
 
     // ---- malformed framing: the flag is raised and the whole load is discarded (§4) ----
@@ -1024,26 +1065,26 @@ static partial class Program
         foreach (byte form in new byte[] { 0,2,3,255 })
         {
             V1.TableReport r = new V1.TableReport();
-            Check(!V1.Schema.CfgLoad(value, new byte[] { form }, r) && r.Refused && !r.Malformed,
+            Check(!V1.Schema.CfgLoad(value, new byte[] { form }, r) && r.Refused && !r.Damaged,
                 "unknown form refuses before trailer damage");
             Check(r.Reason == (form == 2 ? "message_form_as_file" : "newer_form"), "named form refusal");
         }
         V1.TableReport report = new V1.TableReport();
-        Check(!V1.Schema.CfgLoad(value, new byte[] { 1 }, report) && report.Malformed, "known form with missing trailer is damaged");
+        Check(!V1.Schema.CfgLoad(value, new byte[] { 1 }, report) && report.Damaged, "known form with missing trailer is damaged");
         report = new V1.TableReport();
-        Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 1,4,0,0 }, "a"), report) && report.Malformed,
+        Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 1,4,0,0 }, "a"), report) && report.Damaged,
             "truncated scalar stops root");
         report = new V1.TableReport();
-        Check(!V1.Schema.CfgLoad(value, Fixture(Join(new byte[] { 1,4 }, U32(42)), "a"), report) && report.Malformed && value.A == 5,
+        Check(!V1.Schema.CfgLoad(value, Fixture(Join(new byte[] { 1,4 }, U32(42)), "a"), report) && report.Damaged && value.A == 5,
             "missing root terminator discards the whole load");
         report = new V1.TableReport();
         Check(!V1.Schema.CfgLoad(value, Fixture(Join(new byte[] { 1,4 }, U32(42), new byte[] { 0,99 }), "a"), report) && value.A == 5,
             "slack before vocabulary defaults the entire file");
         report = new V1.TableReport();
-        Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 0 }, "a", "a"), report) && report.Malformed,
+        Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 0 }, "a", "a"), report) && report.Damaged,
             "duplicate vocabulary entry is damaged");
         report = new V1.TableReport();
-        Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 0x80,0 }), report) && report.Malformed,
+        Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 0x80,0 }), report) && report.Damaged,
             "noncanonical reference is damaged");
     }
 
@@ -1308,9 +1349,8 @@ static partial class Program
             Demo.TableReport report = new Demo.TableReport();
             Demo.KeyedConfig cfg = new Demo.KeyedConfig();
             Check(Demo.Schema.KeyedConfigLoad(cfg, golden, report), "keyed_config loads");
-            Check(!report.Malformed && report.Unknown == 0 && report.KindMismatch == 0 && report.Clamped == 0,
+            Check(!report.Damaged && report.Unknown == 0 && !report.Refused,
                 "keyed_config: silence");
-            Check(report.Duplicate == 0, "keyed_config: duplicate is the text form's counter — a wire read leaves it zero");
             Check(cfg.Teams[(int)Demo.Team.Red].SpawnCount == 8, "keyed: Red's slot");
             Check(GetString(cfg.Teams[(int)Demo.Team.Green].Banner, cfg.Teams[(int)Demo.Team.Green].BannerLength) == "green",
                 "keyed: Green's slot");
@@ -1335,7 +1375,7 @@ static partial class Program
             V1.TableReport report = new V1.TableReport();
             V1.Cfg cfg = new V1.Cfg();
             Check(V1.Schema.CfgLoad(cfg, golden, report), "v1_seams loads");
-            Check(!report.Malformed && report.Unknown == 0 && report.Clamped == 0, "v1_seams: silence");
+            Check(!report.Damaged && report.Unknown == 0 && !report.Refused, "v1_seams: silence");
             Check(cfg.Bank[(int)V1.Slot.Alpha].Power == 11 && cfg.Bank[(int)V1.Slot.Beta].Power == 22
                 && cfg.Bank[(int)V1.Slot.Gamma].Power == 33, "v1_seams: keyed table slots");
             Check(cfg.Tokens[(int)V1.Slot.Delta] == 104 && cfg.Ranks[(int)V1.Slot.Alpha] == V1.Grade.Gold,
@@ -1349,36 +1389,33 @@ static partial class Program
             V2.TableReport report = new V2.TableReport();
             V2.Cfg cfg = new V2.Cfg();
             Check(V2.Schema.CfgLoad(cfg, golden, report), "v2_seams loads");
-            Check(!report.Malformed && report.Unknown == 0, "v2_seams: silence");
+            Check(!report.Damaged && report.Unknown == 0, "v2_seams: silence");
             Check(cfg.Bank[(int)V2.Slot.Sigma].Power == 55, "v2_seams: the appended slot");
             Check(!cfg.TierPresent && cfg.Tier == 0, "v2_seams: an absent optional stays absent at its default");
             Check(cfg.Ledger[(int)V2.Grade.Bronze] == 7 && cfg.Ledger[(int)V2.Grade.Gold] == 9,
                 "v2_seams: the keyed ledger");
         }
-        // the pointer's bytes, read by the two spellings C# carries: a REPORTED
-        // edit, not a decode. The pointer rides as a node index under kind 17,
-        // so a T or ?T reader counts one kind mismatch, leaves the field at its
-        // declared default and reads the rest of the body on; the node table
-        // rides under the reserved id 0xFFFF and is one unknown field to a
-        // reader that cannot name it (docs/SPEC-TABLES.md §2.3, §3.1)
+        // the pointer's bytes, read by the two spellings C# carries. The pointer
+        // rides as a node index under kind 17, so a T or ?T reader meets a kind
+        // mismatch, and under strict-only a kind mismatch refuses the whole load
+        // (docs/SPEC-TABLES.md §2.3, §3.1, §4): nothing lands, the value stays at
+        // its declared defaults
         {
             byte[] golden = ReadGolden("chain_pointer");
             P1.TableReport r1 = new P1.TableReport();
             P1.Chain byValue = new P1.Chain();
             byValue.Link.Value = 7; // junk the reset must erase
-            Check(P1.Schema.ChainLoad(byValue, golden, r1), "chain_pointer loads into a by-value nesting");
-            Check(!r1.Malformed && r1.KindMismatch == 1 && r1.Unknown == 1,
-                "*T through T: one kind mismatch for the index, one unknown for the node table");
-            Check(GetString(byValue.Name, byValue.NameLength) == "chain" && byValue.Link.Value == 0,
-                "*T through T: the field takes its declared default and the rest of the body reads on");
+            Check(!P1.Schema.ChainLoad(byValue, golden, r1) && r1.Refused && !r1.Damaged,
+                "*T through T: the node index is a kind mismatch that refuses the load");
+            Check(byValue.NameLength == new P1.Chain().NameLength && byValue.Link.Value == 0,
+                "*T through T: the refused load leaves the declared defaults");
             P3.TableReport r3 = new P3.TableReport();
             P3.Chain optional = new P3.Chain();
             optional.LinkPresent = true; // junk the reset must erase
-            Check(P3.Schema.ChainLoad(optional, golden, r3), "chain_pointer loads into an optional");
-            Check(!r3.Malformed && r3.KindMismatch == 1 && r3.Unknown == 1,
-                "*T through ?T: one kind mismatch for the index, one unknown for the node table");
-            Check(!optional.LinkPresent && optional.Link.Value == 0 && GetString(optional.Name, optional.NameLength) == "chain",
-                "*T through ?T: absent, at its default, and the rest of the body reads on");
+            Check(!P3.Schema.ChainLoad(optional, golden, r3) && r3.Refused && !r3.Damaged,
+                "*T through ?T: the node index is a kind mismatch that refuses the load");
+            Check(!optional.LinkPresent && optional.Link.Value == 0 && optional.NameLength == new P3.Chain().NameLength,
+                "*T through ?T: absent, and the refused load leaves the declared defaults");
         }
         {
             byte[] golden = ReadGolden("chain_value_empty");
@@ -1392,9 +1429,8 @@ static partial class Program
             byte[] golden = ReadGolden("chain_pointer_empty");
             P1.TableReport r1 = new P1.TableReport();
             P1.Chain byValue = new P1.Chain();
-            Check(P1.Schema.ChainLoad(byValue, golden, r1), "chain_pointer_empty loads into a by-value nesting");
-            Check(!r1.Malformed && r1.KindMismatch == 1 && r1.Unknown == 1 && byValue.Link.Value == 0,
-                "a non-null empty pointee is still an index: reported, and the field reads as the declared default by value");
+            Check(!P1.Schema.ChainLoad(byValue, golden, r1) && r1.Refused && !r1.Damaged && byValue.Link.Value == 0,
+                "a non-null empty pointee is still an index: a kind mismatch that refuses the load");
         }
     }
 
@@ -1448,19 +1484,27 @@ static partial class Program
         long bytes = V1.Schema.CfgSave(v1, wire);
         Check(bytes > 0, "keyed evolution: v1 saved");
 
+        // `a` changed kind (i32 -> f32) and `ledger` changed ENCODING
+        // (positional -> keyed): either is a kind mismatch, and under
+        // strict-only a kind mismatch refuses the whole load.
         V2.TableReport report = new V2.TableReport();
         V2.Cfg newReader = new V2.Cfg();
+        Check(!V2.Schema.CfgLoad(newReader, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report) && report.Refused && !report.Damaged,
+            "keyed evolution: a and ledger changed kind, so v2 refuses the v1 seams");
+        Check(newReader.Bank[(int)V2.Slot.Beta].Power == 0 && newReader.Tokens[(int)V2.Slot.Delta] == 0,
+            "keyed evolution: the refused load leaves the defaults");
+
+        // With those two at their defaults (elided), the keyed slots are evolution.
+        v1.A = new V1.Cfg().A;
+        Array.Clear(v1.Ledger);
+        bytes = V1.Schema.CfgSave(v1, wire);
+        Check(bytes > 0, "keyed evolution: v1 saved without a and ledger");
+        report = new V2.TableReport();
         Check(V2.Schema.CfgLoad(newReader, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "keyed evolution: v2 reads v1");
-        Check(!report.Malformed, "keyed evolution: not malformed");
-        // Gamma was REMOVED in V2, so its slot is a key V2 cannot name: 2 of
-        // them (bank and tokens carry a Gamma slot; ranks does not)
+        Check(!report.Damaged && !report.Refused, "keyed evolution: not refused");
         // Gamma was REMOVED in V2, so V1's two Gamma slots (bank and ranks)
-        // are keys V2 cannot name; `a` changed kind and `ledger` changed
-        // ENCODING, positional to keyed. The C++ leg pins the same four counts
-        // on the same bytes.
+        // are keys V2 cannot name.
         Check(report.Unknown == 2, "keyed evolution: two Gamma slots V2 cannot name — counted, never misplaced");
-        Check(report.KindMismatch == 2, "keyed evolution: a (i32 -> f32) and ledger (positional -> keyed)");
-        Check(report.Clamped == 0, "keyed evolution: nothing clamped");
         // BETA SLID from ordinal 2 to 3 and still lands in its own home
         Check(newReader.Bank[(int)V2.Slot.Beta].Power == 22,
             "keyed evolution: Beta rode by NAME — a positional encoding would have put it in Omega's slot");
@@ -1476,12 +1520,17 @@ static partial class Program
         bytes = V2.Schema.CfgSave(v2, wire);
         V1.TableReport back = new V1.TableReport();
         V1.Cfg oldReader = new V1.Cfg();
+        Check(!V1.Schema.CfgLoad(oldReader, new ReadOnlySpan<byte>(wire, 0, (int)bytes), back) && back.Refused && !back.Damaged,
+            "keyed evolution reverse: a and ledger again refuse the load");
+        v2.A = new V2.Cfg().A;
+        v2.Ledger[(int)V2.Grade.Bronze] = 0; v2.Ledger[(int)V2.Grade.Gold] = 0;
+        bytes = V2.Schema.CfgSave(v2, wire);
+        back = new V1.TableReport();
         Check(V1.Schema.CfgLoad(oldReader, new ReadOnlySpan<byte>(wire, 0, (int)bytes), back), "keyed evolution: v1 reads v2");
-        Check(!back.Malformed, "keyed evolution reverse: not malformed");
+        Check(!back.Damaged && !back.Refused, "keyed evolution reverse: not refused");
         Check(oldReader.Bank[(int)V1.Slot.Beta].Power == 22, "keyed evolution reverse: Beta found its home");
         Check(oldReader.Bank[(int)V1.Slot.Gamma].Power == 0, "keyed evolution reverse: Gamma unsent, keeps its default");
         Check(back.Unknown == 2, "keyed evolution reverse: Omega and Sigma are names V1 does not have");
-        Check(back.KindMismatch == 2, "keyed evolution reverse: a and ledger again");
 
         // THE NEGATIVE CONTROL, in the data: the keyed body's whole point is
         // that Beta's slot is found by NAME. Under a positional encoding
@@ -1507,9 +1556,9 @@ static partial class Program
 
         V2.TableReport report = new V2.TableReport();
         V2.Cfg outCfg = new V2.Cfg();
-        Check(V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "keyed vs positional: load");
-        Check(report.KindMismatch == 1, "keyed vs positional: a positional body under a keyed field is a KIND MISMATCH");
-        Check(!report.Malformed, "keyed vs positional: skipped, not damaged");
+        Check(!V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report) && report.Refused,
+            "keyed vs positional: a positional body under a keyed field is a KIND MISMATCH, and it refuses the load");
+        Check(!report.Damaged, "keyed vs positional: refused, not damaged");
         Check(outCfg.Ledger[(int)V2.Grade.Bronze] == 0 && outCfg.Ledger[(int)V2.Grade.Silver] == 0,
             "keyed vs positional: the array is left at its declared defaults, never misdecoded");
 
@@ -1519,8 +1568,8 @@ static partial class Program
         bytes = V2.Schema.CfgSave(v2, wire);
         V1.TableReport back = new V1.TableReport();
         V1.Cfg old = new V1.Cfg();
-        Check(V1.Schema.CfgLoad(old, new ReadOnlySpan<byte>(wire, 0, (int)bytes), back), "keyed vs positional reverse: load");
-        Check(back.KindMismatch == 1, "keyed vs positional reverse: a keyed body under a positional field is a KIND MISMATCH");
+        Check(!V1.Schema.CfgLoad(old, new ReadOnlySpan<byte>(wire, 0, (int)bytes), back) && back.Refused && !back.Damaged,
+            "keyed vs positional reverse: a keyed body under a positional field is a KIND MISMATCH, and it refuses the load");
         Check(old.Ledger[1] == 0 && old.Ledger[2] == 0, "keyed vs positional reverse: left at defaults");
     }
 
@@ -1533,12 +1582,12 @@ static partial class Program
             new byte[] { 3,4 }, U32(42), new byte[] { 0 }), "tokens", "Beta", "a");
         V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
         Check(!V1.Schema.CfgLoad(value, wire, report), "null key: the load is refused");
-        Check(report.Malformed && report.Unknown == 0 && value.Tokens[(int)V1.Slot.Beta] == 0 && value.A == 5,
+        Check(report.Damaged && report.Unknown == 0 && value.Tokens[(int)V1.Slot.Beta] == 0 && value.A == 5,
             "null key: damage discards the whole load");
         payload = Join(new byte[] { 4,2,2,4 }, U32(88), new byte[] { 3,4 }, U32(99));
         wire = Fixture(Join(new byte[] { 1,16 }, Var((ulong)payload.Length), payload, new byte[] { 0 }), "tokens", "unknown", "Delta");
         report = new V1.TableReport();
-        Check(V1.Schema.CfgLoad(value, wire, report) && !report.Malformed && report.Unknown == 1 &&
+        Check(V1.Schema.CfgLoad(value, wire, report) && !report.Damaged && report.Unknown == 1 &&
             value.Tokens[(int)V1.Slot.Delta] == 99, "unknown key: skip and continue");
     }
 

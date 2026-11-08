@@ -97,15 +97,15 @@ local W = S.require("schema_table_save");
 local J = S.require("schema_table_json");
 local function show(x) { return x == null ? "<null>" : ("" + x); }
 local function counters(r) {
-  return r.unknown + "," + r.kindMismatch + "," + r.widened + "," + r.clamped + "," +
-    (("duplicate" in r) ? r.duplicate : 0) + "," + (r.malformed ? "true" : "false");
+  return r.unknown + "," + r.mismatch + "," + r.widened + "," + r.oor + "," +
+    (("repeated" in r) ? r.repeated : 0) + "," + (r.bodyDamaged ? "true" : "false");
 }
-local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
-local v = L.loadTolerant(T, "Root", inputs.wire, r);
+local r = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
+local v = L.loadWalk(T, "Root", inputs.wire, r);
 print("wire=" + (v == null ? "null" : show(v.Ship) + "|" + show(v.Fleet[0]) + "|" + show(v.ByRole[0]) + "|" + show(v.Pick.Ship) + "|" + counters(r)) + "\n");
 
 local recs = [T.Root()];
-local n = T.RootFixedLoadTolerant(inputs.fixed, recs, null);
+local n = T.RootFixedLoad(inputs.fixed, recs, null);
 print("fixed=" + n + "|" + show(recs[0].Ship) + "|" + show(recs[0].Fleet[0]) + "|" + show(recs[0].ByRole[0]) + "|" + show(recs[0].Pick.Ship) + "|" +
   (T.FixedReason == null ? "-" : T.FixedReason) + "\n");
 
@@ -118,7 +118,7 @@ local mn = T.RootLoadMessages(decoded, vocab, inputs.message, mr);
 print("message=" + ok + "|" + mn + "|" + show(decoded[0].Ship) + "|" + show(decoded[0].Fleet[0]) + "|" + show(decoded[0].ByRole[0]) + "|" + show(decoded[0].Pick.Ship) + "|" + counters(mr) + "\n");
 
 local jr = {};
-local jv = J.FromJsonTolerant(T, "Root", inputs.json, jr);
+local jv = J.fromJsonWalk(T, "Root", inputs.json, jr);
 print("json=" + (jv == null ? "null" : show(jv.Ship) + "|" + show(jv.Fleet[0]) + "|" + show(jv.ByRole[0]) + "|" + show(jv.Pick.Ship) + "|" + counters(jr)) + "\n");
 
 local bad = T.Root();
@@ -152,11 +152,11 @@ local T = S.require("__MODULE__");
 local L = S.require("schema_table_load");
 local J = S.require("schema_table_json");
 local function show(x) { return x == null ? "<null>" : ("" + x); }
-local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
-local v = L.loadTolerant(T, "Root", inputs.wire, r);
+local r = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
+local v = L.loadWalk(T, "Root", inputs.wire, r);
 print("wire=" + show(v.Ship) + "|" + show(v.Fleet[0]) + "|" + show(v.ByRole[0]) + "|" + show(v.Pick.Ship) + "|" + r.unknown + "\n");
 local recs = [T.Root()];
-local n = T.RootFixedLoadTolerant(inputs.fixed, recs, null);
+local n = T.RootFixedLoad(inputs.fixed, recs, null);
 print("fixed=" + n + "|" + show(recs[0].Ship) + "|" + show(recs[0].Fleet[0]) + "|" + show(recs[0].ByRole[0]) + "|" + show(recs[0].Pick.Ship) + "\n");
 local vocab = {};
 local ar = {};
@@ -166,7 +166,7 @@ local rr = {};
 local mn = T.RootLoadMessages(decoded, vocab, inputs.message, rr);
 print("message=" + ok + "|" + mn + "|" + show(decoded[0].Ship) + "|" + show(decoded[0].Fleet[0]) + "|" + show(decoded[0].ByRole[0]) + "|" + show(decoded[0].Pick.Ship) + "|" + rr.unknown + "\n");
 local jr = {};
-local jv = J.FromJsonTolerant(T, "Root", inputs.json, jr);
+local jv = J.fromJsonWalk(T, "Root", inputs.json, jr);
 print("json=" + show(jv.Ship) + "|" + show(jv.Fleet[0]) + "|" + show(jv.ByRole[0]) + "|" + show(jv.Pick.Ship) + "|" + jr.unknown + "\n");
 `
 

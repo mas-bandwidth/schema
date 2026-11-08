@@ -58,7 +58,7 @@ func TestSquirrelAnnounceReadsFormBeforeLength(t *testing.T) {
 	var script strings.Builder
 	fmt.Fprintf(&script, "local I=dofile(\"inputs.nut\",true);local T=dofile(\"schema_module.nut\",true).require(%q);\n", module)
 	for _, in := range inputs {
-		fmt.Fprintf(&script, "{local V={};local ar={};T.AnnounceRead(V,I[%q],ar);print(%q+\"|\"+(ar.malformed?\"malformed\":\"\")+\"|\"+(ar.refused?\"refused\":\"\")+\"|\"+((ar.reason==null)?\"\":ar.reason)+\"\\n\");}\n", in.name, in.name)
+		fmt.Fprintf(&script, "{local V={};local ar={};T.AnnounceRead(V,I[%q],ar);print(%q+\"|\"+(ar.bodyDamaged?\"malformed\":\"\")+\"|\"+(ar.refused?\"refused\":\"\")+\"|\"+((ar.reason==null)?\"\":ar.reason)+\"\\n\");}\n", in.name, in.name)
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script.String()))
 	blobs := map[string][]byte{}

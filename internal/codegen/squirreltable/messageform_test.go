@@ -343,7 +343,7 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		for i := range constructors {
 			constructors[i] = "T." + row.root + "()"
 		}
-		fmt.Fprintf(&script, " local out=[%s]; local rr={}; local n=T.%sLoadMessages(out,v,I[%q],rr); if(n!=%d) print(%q+\":load:\"+n+\":\"+rr.reason+\":\"+rr.malformed+\"\\n\");\n", strings.Join(constructors, ","), row.root, row.name+"_batch", count, row.name)
+		fmt.Fprintf(&script, " local out=[%s]; local rr={}; local n=T.%sLoadMessages(out,v,I[%q],rr); if(n!=%d) print(%q+\":load:\"+n+\":\"+rr.reason+\":\"+rr.bodyDamaged+\"\\n\");\n", strings.Join(constructors, ","), row.root, row.name+"_batch", count, row.name)
 		fmt.Fprintf(&script, " local mr={}; local size=T.%sMeasureMessages(out,mr); local b=blob(size); local sr={}; local got=T.%sSaveMessages(out,b,sr); if(got!=size || !same(b,I[%q])) print(%q+\":save:\"+got+\":\"+size+\"\\n\"); else print(%q+\":ok\\n\"); } }\n", row.root, row.root, row.name+"_batch", row.name, row.name)
 	}
 	for _, key := range []string{"backend_conn", "vocab_conn", "vocab9_conn", "graph_conn"} {
@@ -355,7 +355,7 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		name := "parsed_" + conn.unit
 		inputs[name+"_ann"] = addUnknownAnnouncementField(mustRead(t, filepath.Join(root, conn.file)), 0x0123456789abcdef)
 		module := squirreltable.ModuleName(u)
-		fmt.Fprintf(&script, `{ local T=dofile(%q,true).require(%q); local v={}; local ar={}; if(T.AnnounceRead(v,I[%q],ar) && ar.unknown==1) print(%q+":ok\n"); else print(%q+":fail:"+ar.reason+":"+ar.malformed+"\n"); }`+"\n", conn.unit+"/schema_module.nut", module, name+"_ann", name, name)
+		fmt.Fprintf(&script, `{ local T=dofile(%q,true).require(%q); local v={}; local ar={}; if(T.AnnounceRead(v,I[%q],ar) && ar.unknown==1) print(%q+":ok\n"); else print(%q+":fail:"+ar.reason+":"+ar.bodyDamaged+"\n"); }`+"\n", conn.unit+"/schema_module.nut", module, name+"_ann", name, name)
 	}
 	if conn, ok := connections["vocab_conn"]; ok {
 		peer := mustRead(t, filepath.Join(root, conn.file))
@@ -364,18 +364,18 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		shapePeer, shapeCount := announcementWithPeerEntry(units[conn.unit], ir.TableVocabularyEntry{Id: 0x1234567890abcdef, Kind: ir.TableKindString, Shape: ir.TableMessageShape{Max: 5}})
 		inputs["unknown_body_ann"] = addUnknownAnnouncementField(shapePeer, 0x1020304050607080)
 		inputs["unknown_body_batch"] = messageBatchTwoUnknownString(ir.TableMessageRefBits(shapeCount), uint64(shapeCount), "ok", 5)
-		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; if(T.AnnounceRead(v,I["alternate_ann"],ar)) print("alternate:ok:"+v.Count+"\n"); else print("alternate:fail:"+ar.reason+":"+ar.malformed+"\n"); }
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; if(T.AnnounceRead(v,I["alternate_ann"],ar)) print("alternate:ok:"+v.Count+"\n"); else print("alternate:fail:"+ar.reason+":"+ar.bodyDamaged+"\n"); }
 `)
-		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; if(T.AnnounceRead(v,I["alternate_unknown_ann"],ar) && ar.unknown==1) print("alternate_unknown:ok\n"); else print("alternate_unknown:fail:"+ar.unknown+":"+ar.reason+":"+ar.malformed+"\n"); }
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; if(T.AnnounceRead(v,I["alternate_unknown_ann"],ar) && ar.unknown==1) print("alternate_unknown:ok\n"); else print("alternate_unknown:fail:"+ar.unknown+":"+ar.reason+":"+ar.bodyDamaged+"\n"); }
 `)
-		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; if(!T.AnnounceRead(v,I["alternate_unknown_ann"],ar) || ar.unknown!=1) print("alternate_batch:announce_fail\n"); else { local out=[T.Wide09()]; local rr={}; local n=T.Wide09LoadMessages(out,v,I["vocab_wide_batch"],rr); local m={}; local z=T.Wide09MeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.Wide09SaveMessages(out,b,sr); if(n==1 && w==z && same(b,I["vocab_wide_batch"])) print("alternate_batch:ok\n"); else print("alternate_batch:fail:"+n+":"+rr.malformed+"\n"); } }
+		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; if(!T.AnnounceRead(v,I["alternate_unknown_ann"],ar) || ar.unknown!=1) print("alternate_batch:announce_fail\n"); else { local out=[T.Wide09()]; local rr={}; local n=T.Wide09LoadMessages(out,v,I["vocab_wide_batch"],rr); local m={}; local z=T.Wide09MeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.Wide09SaveMessages(out,b,sr); if(n==1 && w==z && same(b,I["vocab_wide_batch"])) print("alternate_batch:ok\n"); else print("alternate_batch:fail:"+n+":"+rr.bodyDamaged+"\n"); } }
 `)
-		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; if(!T.AnnounceRead(v,I["unknown_body_ann"],ar) || ar.unknown!=1) print("unknown_body:announce_fail\n"); else { local out=[T.Wide00(),T.Wide00()]; local rr={}; local n=T.Wide00LoadMessages(out,v,I["unknown_body_batch"],rr); if(n==2 && rr.unknown==1 && !rr.malformed) print("unknown_body:ok\n"); else print("unknown_body:fail:"+n+":"+rr.unknown+":"+rr.malformed+"\n"); } }
+		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; if(!T.AnnounceRead(v,I["unknown_body_ann"],ar) || ar.unknown!=1) print("unknown_body:announce_fail\n"); else { local out=[T.Wide00(),T.Wide00()]; local rr={}; local n=T.Wide00LoadMessages(out,v,I["unknown_body_batch"],rr); if(n==2 && rr.unknown==1 && !rr.bodyDamaged) print("unknown_body:ok\n"); else print("unknown_body:fail:"+n+":"+rr.unknown+":"+rr.bodyDamaged+"\n"); } }
 `)
 		enumPeer, enumCount := announcementWithPeerEntry(units[conn.unit], ir.TableVocabularyEntry{Id: 0x2234567890abcdef, Kind: ir.TableKindEnum})
 		inputs["bad_enum_ref_ann"] = enumPeer
 		inputs["bad_enum_ref_batch"] = messageBatchWithInnerRef(ir.TableMessageRefBits(enumCount), uint64(enumCount), uint64(enumCount+1))
-		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["bad_enum_ref_ann"],ar); local out=[T.Wide00()]; local rr={}; local n=T.Wide00LoadMessages(out,v,I["bad_enum_ref_batch"],rr); if(n==0 && rr.malformed) print("bad_enum_ref:ok\n"); else print("bad_enum_ref:fail:"+n+":"+rr.malformed+"\n"); }
+		script.WriteString(`{ local T=dofile("vocabdemo/schema_module.nut",true).require("VocabdemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["bad_enum_ref_ann"],ar); local out=[T.Wide00()]; local rr={}; local n=T.Wide00LoadMessages(out,v,I["bad_enum_ref_batch"],rr); if(n==0 && rr.bodyDamaged) print("bad_enum_ref:ok\n"); else print("bad_enum_ref:fail:"+n+":"+rr.bodyDamaged+"\n"); }
 `)
 	}
 	if units["backenddemo"] != nil {
@@ -392,9 +392,9 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		nestedAnn, nestedCount := announcementWithPeerEntry(units["backenddemo"], ir.TableVocabularyEntry{Id: 0x334567890abcdef1, Kind: ir.TableKindTable})
 		inputs["reserved_nested_ann"] = nestedAnn
 		inputs["reserved_nested_batch"] = messageBatchRefs(ir.TableMessageRefBits(nestedCount), uint64(nestedCount), uint64(nodeSlot), 0, 0)
-		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["backend_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_node_batch"],rr);if(n==0&&rr.malformed)print("reserved_node:ok\n");else print("reserved_node:fail:"+n+":"+rr.malformed+"\n");}
+		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["backend_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_node_batch"],rr);if(n==0&&rr.bodyDamaged)print("reserved_node:ok\n");else print("reserved_node:fail:"+n+":"+rr.bodyDamaged+"\n");}
 `)
-		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["reserved_nested_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_nested_batch"],rr);if(n==0&&rr.malformed)print("reserved_nested:ok\n");else print("reserved_nested:fail:"+n+":"+rr.malformed+"\n");}
+		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["reserved_nested_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_nested_batch"],rr);if(n==0&&rr.bodyDamaged)print("reserved_nested:ok\n");else print("reserved_nested:fail:"+n+":"+rr.bodyDamaged+"\n");}
 `)
 		login := units["backenddemo"].Tables["LoginRequest"]
 		var playerID ir.TableVocabularyEntry
@@ -431,7 +431,7 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 			}
 		}
 		inputs["wrong_enum_sort_batch"] = messageBatchEnumField(ir.TableMessageRefBits(len(vocab)), uint64(regionSlot), uint64(variantSlot))
-		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={};local ar={};T.AnnounceRead(v,I["wrong_enum_sort_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["wrong_enum_sort_batch"],rr);if(n==0&&rr.malformed)print("wrong_enum_sort:ok\n");else print("wrong_enum_sort:fail:"+n+":"+rr.malformed+"\n"); }
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={};local ar={};T.AnnounceRead(v,I["wrong_enum_sort_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["wrong_enum_sort_batch"],rr);if(n==0&&rr.bodyDamaged)print("wrong_enum_sort:ok\n");else print("wrong_enum_sort:fail:"+n+":"+rr.bodyDamaged+"\n"); }
 `)
 		purchase := units["backenddemo"].Tables["StorePurchase"]
 		var sku ir.TableVocabularyEntry
@@ -451,10 +451,10 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		}
 		inputs["wide_string_ann"] = announcementWithChangedEntry(units["backenddemo"], sku, peerSKU)
 		inputs["wide_string_batch"] = messageBatchWithUnknownString(ir.TableMessageRefBits(len(ir.TableVocabulary(units["backenddemo"]))), uint64(skuSlot), strings.Repeat("x", 33), 40)
-		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["wide_string_ann"],ar); local out=[T.StorePurchase()]; local rr={}; local n=T.StorePurchaseLoadMessages(out,v,I["wide_string_batch"],rr); if(n==1 && rr.clamped==1 && !rr.malformed) print("wide_string_clamp:ok\n"); else print("wide_string_clamp:fail:"+n+":"+rr.clamped+":"+rr.malformed+"\n"); }
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["wide_string_ann"],ar); local out=[T.StorePurchase()]; local rr={}; local n=T.StorePurchaseLoadMessages(out,v,I["wide_string_batch"],rr); if(n==1 && rr.oor==1 && !rr.bodyDamaged) print("wide_string_clamp:ok\n"); else print("wide_string_clamp:fail:"+n+":"+rr.oor+":"+rr.bodyDamaged+"\n"); }
 `)
-		script.WriteString("{ local T=dofile(\"backenddemo/schema_module.nut\",true).require(\"BackenddemoTables\"); local v={}; local ar={}; if(!T.AnnounceRead(v,I[\"changed_shape_ann\"],ar)) print(\"changed_shape:announce_fail\\n\"); else { local out=[T.LoginRequest()]; local rr={}; local n=T.LoginRequestLoadMessages(out,v,I[\"login_full_batch\"],rr); local m={}; local z=T.LoginRequestMeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.LoginRequestSaveMessages(out,b,sr); if(n==1 && rr.kindMismatch==0 && w==z && same(b,I[\"login_full_batch\"])) print(\"changed_shape:ok\\n\"); else print(\"changed_shape:fail:\"+n+\":\"+rr.kindMismatch+\":\"+rr.malformed+\"\\n\"); } }\n")
-		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["backend_ann"],ar); local storage=[T.Envelope(),T.Envelope(),T.Envelope()]; local rr={}; local n=T.EnvelopeLoadMessages(storage,v,I["damaged"],rr); if(n==0 && rr.malformed && storage[0].Payload.Type==0 && storage[1].Payload.Type==0) { print("damage:ok\n"); } else { print("damage:bad:"+n+"\n"); } }
+		script.WriteString("{ local T=dofile(\"backenddemo/schema_module.nut\",true).require(\"BackenddemoTables\"); local v={}; local ar={}; if(!T.AnnounceRead(v,I[\"changed_shape_ann\"],ar)) print(\"changed_shape:announce_fail\\n\"); else { local out=[T.LoginRequest()]; local rr={}; local n=T.LoginRequestLoadMessages(out,v,I[\"login_full_batch\"],rr); local m={}; local z=T.LoginRequestMeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.LoginRequestSaveMessages(out,b,sr); if(n==1 && rr.mismatch==0 && w==z && same(b,I[\"login_full_batch\"])) print(\"changed_shape:ok\\n\"); else print(\"changed_shape:fail:\"+n+\":\"+rr.mismatch+\":\"+rr.bodyDamaged+\"\\n\"); } }\n")
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["backend_ann"],ar); local storage=[T.Envelope(),T.Envelope(),T.Envelope()]; local rr={}; local n=T.EnvelopeLoadMessages(storage,v,I["damaged"],rr); if(n==0 && rr.bodyDamaged && storage[0].Payload.Type==0 && storage[1].Payload.Type==0) { print("damage:ok\n"); } else { print("damage:bad:"+n+"\n"); } }
 `)
 	}
 	script.WriteString("print(\"done\\n\");\n")
@@ -605,8 +605,8 @@ func TestSquirrelMessageFormSetsPresentOptionalField(t *testing.T) {
 	wrongVoid.Kind = 0
 	inputs := map[string][]byte{"wrong_union_sort_ann": announcementWithChangedEntry(u, voidEntry, wrongVoid)}
 	module := squirreltable.ModuleName(u)
-	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q); local v={};local ar={}; if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("announce:fail\n");return;} local x=T.InsertText();x.Modes=[];x.ModesPresent=true;local mr={};local z=T.InsertTextMeasureMessages([x],mr);local b=blob(z);local sr={};T.InsertTextSaveMessages([x],b,sr);local out=[T.InsertText()];local rr={};local n=T.InsertTextLoadMessages(out,v,b,rr);if(n==1&&out[0].ModesPresent)print("optional:ok\n");else print("optional:fail:"+n+":"+rr.malformed+"\n");`, module)
-	script += `local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require("` + module + `");local x=T.ToolMessage();local tag=0;foreach(a in T.ToolBodyDescriptor.arms)if(a.member=="Ack")tag=a.tag;x.Body.Type=tag;local mr={};local z=T.ToolMessageMeasureMessages([x],mr);local b=blob(z);local sr={};T.ToolMessageSaveMessages([x],b,sr);local v={};local ar={};T.AnnounceRead(v,I["wrong_union_sort_ann"],ar);local out=[T.ToolMessage()];local rr={};local n=T.ToolMessageLoadMessages(out,v,b,rr);if(n==0&&rr.malformed)print("wrong_union_sort:ok\n");else print("wrong_union_sort:fail:"+n+":"+rr.malformed+"\n");`
+	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q); local v={};local ar={}; if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("announce:fail\n");return;} local x=T.InsertText();x.Modes=[];x.ModesPresent=true;local mr={};local z=T.InsertTextMeasureMessages([x],mr);local b=blob(z);local sr={};T.InsertTextSaveMessages([x],b,sr);local out=[T.InsertText()];local rr={};local n=T.InsertTextLoadMessages(out,v,b,rr);if(n==1&&out[0].ModesPresent)print("optional:ok\n");else print("optional:fail:"+n+":"+rr.bodyDamaged+"\n");`, module)
+	script += `local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require("` + module + `");local x=T.ToolMessage();local tag=0;foreach(a in T.ToolBodyDescriptor.arms)if(a.member=="Ack")tag=a.tag;x.Body.Type=tag;local mr={};local z=T.ToolMessageMeasureMessages([x],mr);local b=blob(z);local sr={};T.ToolMessageSaveMessages([x],b,sr);local v={};local ar={};T.AnnounceRead(v,I["wrong_union_sort_ann"],ar);local out=[T.ToolMessage()];local rr={};local n=T.ToolMessageLoadMessages(out,v,b,rr);if(n==0&&rr.bodyDamaged)print("wrong_union_sort:ok\n");else print("wrong_union_sort:fail:"+n+":"+rr.bodyDamaged+"\n");`
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 	out := string(sqrun.Run(t, dir, "main.nut", inputs))
 	if !strings.Contains(out, "optional:ok") {
@@ -634,7 +634,7 @@ func TestSquirrelBytesMessagePairs(t *testing.T) {
 			writeFile(t, filepath.Join(dir, name), b)
 		}
 	}
-	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("bytes:announce_fail\n");return;}local x=T.ProfileConfig();local b=blob(2);b[0]=0x41;b[1]=0x42;x.Icon=b;local mr={};local z=T.ProfileConfigMeasureMessages([x],mr);local wire=blob(z);local sr={};local w=T.ProfileConfigSaveMessages([x],wire,sr);local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,wire,rr);if(n==1&&w==z&&out[0].Icon.len()==2&&out[0].Icon[0]==0x41&&out[0].Icon[1]==0x42&&!rr.malformed)print("bytes:ok\n");else print("bytes:fail:"+n+":"+rr.malformed+":"+rr.unknown+"\n");`, squirreltable.ModuleName(u))
+	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("bytes:announce_fail\n");return;}local x=T.ProfileConfig();local b=blob(2);b[0]=0x41;b[1]=0x42;x.Icon=b;local mr={};local z=T.ProfileConfigMeasureMessages([x],mr);local wire=blob(z);local sr={};local w=T.ProfileConfigSaveMessages([x],wire,sr);local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,wire,rr);if(n==1&&w==z&&out[0].Icon.len()==2&&out[0].Icon[0]==0x41&&out[0].Icon[1]==0x42&&!rr.bodyDamaged)print("bytes:ok\n");else print("bytes:fail:"+n+":"+rr.bodyDamaged+":"+rr.unknown+"\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 	inputs := map[string][]byte{"ann": announcementWithEntries(u, ir.TableVocabulary(u))}
 	out := string(sqrun.Run(t, dir, "main.nut", inputs))
@@ -671,7 +671,7 @@ func TestSquirrelMessageWidensAndSignExtends(t *testing.T) {
 	ann := announcementWithEntries(u, changed)
 	refBits := ir.TableMessageRefBits(len(entries))
 	batch := messageBatchScalar(refBits, smallSlot, 0xfe, 8)
-	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].SmallA==-2&&rr.widened==1&&rr.kindMismatch==0&&!rr.malformed)print("widen:ok\n");else print("widen:fail:"+n+":"+out[0].SmallA+":"+rr.widened+":"+rr.kindMismatch+":"+rr.malformed+"\n");`, squirreltable.ModuleName(u))
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].SmallA==-2&&rr.widened==1&&rr.mismatch==0&&!rr.bodyDamaged)print("widen:ok\n");else print("widen:fail:"+n+":"+out[0].SmallA+":"+rr.widened+":"+rr.mismatch+":"+rr.bodyDamaged+"\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
 	if !strings.Contains(out, "widen:ok") {
@@ -724,7 +724,7 @@ func TestSquirrelMessageUnsignedRangeClampAcrossSignBit(t *testing.T) {
 			if tc.field == "u64_low" {
 				field = "U64Low"
 			}
-			script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("u64range:announce_fail\n");return;}local out=[T.RangedUnsigned()];local rr={};local n=T.RangedUnsignedLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].%s==1&&rr.clamped==0&&!rr.malformed)print("u64range:ok\n");else print("u64range:fail:"+n+":"+out[0].%s+":"+rr.clamped+":"+rr.malformed+"\n");`, squirreltable.ModuleName(u), field, field)
+			script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("u64range:announce_fail\n");return;}local out=[T.RangedUnsigned()];local rr={};local n=T.RangedUnsignedLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].%s==1&&rr.oor==0&&!rr.bodyDamaged)print("u64range:ok\n");else print("u64range:fail:"+n+":"+out[0].%s+":"+rr.oor+":"+rr.bodyDamaged+"\n");`, squirreltable.ModuleName(u), field, field)
 			writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 			out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
 			if !strings.Contains(out, "u64range:ok") {
@@ -798,7 +798,7 @@ func TestSquirrelMessageWidenFloat32ToFloat64(t *testing.T) {
 	peer := ir.TableVocabularyEntry{Id: target.Id, Kind: ir.TableKindF32, Shape: ir.TableMessageShape{Packing: ir.TableMessageRaw}}
 	ann := announcementWithChangedEntry(u, target, peer)
 	batch := messageBatchScalar(ir.TableMessageRefBits(len(entries)), slot, 0x3fa00000, 32)
-	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-float:announce_fail\n");return;}local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Precision==1.25&&rr.widened==1&&rr.kindMismatch==0&&!rr.malformed)print("widen-float:ok\n");else print("widen-float:fail:"+n+":"+out[0].Precision+":"+rr.widened+":"+rr.kindMismatch+":"+rr.malformed+"\n");`, squirreltable.ModuleName(u))
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-float:announce_fail\n");return;}local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Precision==1.25&&rr.widened==1&&rr.mismatch==0&&!rr.bodyDamaged)print("widen-float:ok\n");else print("widen-float:fail:"+n+":"+out[0].Precision+":"+rr.widened+":"+rr.mismatch+":"+rr.bodyDamaged+"\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
 	if !strings.Contains(out, "widen-float:ok") {
@@ -834,7 +834,7 @@ func TestSquirrelMessageWidenArrayElements(t *testing.T) {
 	}
 	ann := announcementWithEntries(u, changed)
 	batch := messageBatchArrayElements(ir.TableMessageRefBits(len(entries)), slot, []uint64{5, 7})
-	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-array:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Few.len()==2&&out[0].Few[0]==5&&out[0].Few[1]==7&&rr.widened==2&&rr.kindMismatch==0&&!rr.malformed)print("widen-array:ok\n");else print("widen-array:fail:"+n+":"+out[0].Few.len()+":"+rr.widened+":"+rr.kindMismatch+":"+rr.malformed+"\n");`, squirreltable.ModuleName(u))
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-array:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Few.len()==2&&out[0].Few[0]==5&&out[0].Few[1]==7&&rr.widened==2&&rr.mismatch==0&&!rr.bodyDamaged)print("widen-array:ok\n");else print("widen-array:fail:"+n+":"+out[0].Few.len()+":"+rr.widened+":"+rr.mismatch+":"+rr.bodyDamaged+"\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
 	if !strings.Contains(out, "widen-array:ok") {
