@@ -17,8 +17,8 @@ import (
 
 // agCts is the report's six counters, a comparable tuple.
 type agCts struct {
-	unknown, kindMismatch, widened, clamped, duplicate int
-	malformed                                          bool
+	unknown, kindChanged, widened, outOfRange, repeatedKey int
+	damaged                                                bool
 }
 
 // agAnswer is the Lua leg's answer for one wire.
@@ -54,9 +54,9 @@ local wire = inputs.wire
 local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-                 clamped = 0, widened = 0, duplicate = 0 }
-local v = load.LoadTolerant(T, "` + root + `", wire, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+                 outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = load.loadWalk(T, "` + root + `", wire, report)
 local savedHex = "none"
 local loaded = 0
 if v ~= nil then
@@ -64,9 +64,9 @@ if v ~= nil then
   local b = save.Save(T, "` + root + `", v)
   if b ~= nil then savedHex = hex(b) end
 end
-print(table.concat({ loaded, report.unknown, report.kindMismatch,
-  report.widened, report.clamped, report.duplicate,
-  tostring(report.malformed), report.refused, savedHex }, "|"))
+print(table.concat({ loaded, report.unknown, report.kindChanged,
+  report.widened, report.outOfRange, report.repeatedKey,
+  tostring(report.damaged), report.refused, savedHex }, "|"))
 `
 }
 
@@ -80,7 +80,7 @@ local wire = inputs.wire
 local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local ok, v = pcall(T.ReadFixedTolerant, "` + root + `", wire)
+local ok, v = pcall(T.ReadFixed, "` + root + `", wire)
 local savedHex = "none"
 local loaded = 0
 if ok then
@@ -101,13 +101,13 @@ func agParseLine(line string) (agAnswer, error) {
 		return a, fmt.Errorf("probe line has %d fields, want 9: %q", len(f), line)
 	}
 	a.loaded = f[0] == "1"
-	n := []*int{&a.counts.unknown, &a.counts.kindMismatch, &a.counts.widened, &a.counts.clamped, &a.counts.duplicate}
+	n := []*int{&a.counts.unknown, &a.counts.kindChanged, &a.counts.widened, &a.counts.outOfRange, &a.counts.repeatedKey}
 	for i, p := range n {
 		if _, err := fmt.Sscanf(f[1+i], "%d", p); err != nil {
 			return a, fmt.Errorf("probe line %q field %d: %w", line, 1+i, err)
 		}
 	}
-	a.counts.malformed = f[6] == "true"
+	a.counts.damaged = f[6] == "true"
 	a.refused = f[7] != "0"
 	if f[8] == "none" {
 		a.saveFail = true
@@ -141,16 +141,16 @@ func agEngine(m *tabletext.Model, def *ir.Struct, data []byte) agOracle {
 	case tablewire.ReadRefusal(derr):
 		// the strict read refuses the whole load (docs/SPEC-TABLES.md §4):
 		// the leg owes the refusal, and nothing decoded is compared
-		o.counts.malformed = true
+		o.counts.damaged = true
 		return o
 	case derr != nil:
 		o.noRoot = true
 		return o
 	default:
 		o.counts = agCts{
-			unknown:   rep.Unknown,
-			widened:   rep.Widened,
-			malformed: rep.Refused || !ok,
+			unknown: rep.Unknown,
+			widened: rep.Widened,
+			damaged: rep.Refused || !ok,
 		}
 	}
 	enc, eerr := tablewire.Encode(m, inst)
@@ -168,10 +168,10 @@ func agVerdict(a agAnswer, o agOracle) string {
 	if o.noRoot {
 		return "the engine refused the root itself"
 	}
-	if o.counts.malformed {
+	if o.counts.damaged {
 		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the leg
 		// owes the refusal, and no counter or saved byte is compared
-		if !a.counts.malformed || a.loaded {
+		if !a.counts.damaged || a.loaded {
 			return fmt.Sprintf("the engine discards a damaged load; the Lua load says %+v (loaded=%t)", a.counts, a.loaded)
 		}
 		return ""

@@ -27,26 +27,26 @@ local refusal = require("refusal")
 local retain = require("retain")
 local inputs = require("inputs")
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0, blobShared = 0,
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+    outOfRange = 0, widened = 0, repeatedKey = 0, sharedBlob = 0,
     missingRequired = 0, wireDamaged = false, reason = "",
     retained = 0, retainLost = 0 }
 end
 local function counters(r)
-  return r.unknown + r.kindMismatch + r.clamped + r.widened + r.duplicate
-    + (r.blobShared or 0) + (r.missingRequired or 0)
+  return r.unknown + r.kindChanged + r.outOfRange + r.widened + r.repeatedKey
+    + (r.sharedBlob or 0) + (r.missingRequired or 0)
 end
 local function line(name, path, v, r, kept)
   local reason = r.reason
   if reason == nil or reason == "" then reason = "-" end
   print(string.format("%%s %%s %%s %%s %%d %%s %%d %%d", name, path,
-    v == nil and "nil" or "value", reason, r.refused, tostring(r.malformed),
+    v == nil and "nil" or "value", reason, r.refused, tostring(r.damaged),
     counters(r), kept))
 end
 for _, name in ipairs({ %s }) do
   local wire = inputs[name]
   local r = report()
-  line(name, "tolerant", load.LoadTolerant(T, "Root", wire, r), r, 0)
+  line(name, "tolerant", load.loadWalk(T, "Root", wire, r), r, 0)
   r = report()
   line(name, "load", load.Load(T, "Root", wire, r), r, 0)
   local ok, got = pcall(refusal.ReadStrict, T, "Root", wire)

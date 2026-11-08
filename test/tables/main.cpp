@@ -191,8 +191,8 @@ static void test_round_trip()
 
     tabledemo::TableReport report;
     tabledemo::RootConfig out;
-    CHECK( tabledemo::RootConfigLoadTolerant( out, buffer, wrote, &report ) );
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+    CHECK( tabledemo::RootConfigLoad( out, buffer, wrote, &report ) );
+    CHECK( report.unknown == 0 && !report.damaged );
 
     CHECK( strcmp( out.version_note, "v-one" ) == 0 && out.version_note_length == 5 );
     CHECK( out.weapons_count == 2 );
@@ -361,8 +361,8 @@ static void test_bounded_elements()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( !tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( report.malformed );
+    CHECK( !tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( report.damaged );
 
     // A body covering one full element plus slack also refuses the whole load.
     {
@@ -381,8 +381,8 @@ static void test_bounded_elements()
 
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( !tblv1::CfgLoadTolerant( out2, wire, n, &report2 ) );
-    CHECK( report2.malformed );
+    CHECK( !tblv1::CfgLoad( out2, wire, n, &report2 ) );
+    CHECK( report2.damaged );
 }
 
 // ---- all-default: everything elides, decode restores every default ----
@@ -398,9 +398,9 @@ static void test_all_default()
     tabledemo::TableReport report;
     tabledemo::WeaponConfig out;
     out.damage = -1.0f; // garbage that the prefill must erase
-    CHECK( tabledemo::WeaponConfigLoadTolerant( out, buffer, wrote, &report ) );
+    CHECK( tabledemo::WeaponConfigLoad( out, buffer, wrote, &report ) );
     CHECK( out.damage == 21.0f && out.speed == 500.0f && out.penetration == 1 );
-    CHECK( !report.malformed && report.unknown == 0 );
+    CHECK( !report.damaged && report.unknown == 0 );
 }
 
 // ---- guarded fields stay off the wire when the guard says so ----
@@ -428,7 +428,7 @@ static void test_guard()
 
     tabledemo::TableReport report;
     tabledemo::PatrolBuilder out;
-    CHECK( tabledemo::PatrolLoadBuilderTolerant( out, buffer, wrote, &report ) );
+    CHECK( tabledemo::PatrolLoadBuilder( out, buffer, wrote, &report ) );
     const tabledemo::Patrol * back = out.GetRoot();
     CHECK( back != NULL );
     CHECK( back->speed == 1.0f );    // untaken side decodes to declared defaults
@@ -454,13 +454,26 @@ static void test_evolution_old_reader_new_data()
     int64_t bytes = tblv2::CfgSave( v2, wire, sizeof( wire ) );
     CHECK( bytes > 0 && bytes == tblv2::CfgMeasure( v2 ) );
 
+    // a: f32 on the wire against v1's i32 is a KIND MISMATCH, and the strict
+    // read refuses the whole load (docs/SPEC-TABLES.md §4): nothing lands,
+    // never a misdecoded a and never the rest of the record without it.
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &report ) );
-    CHECK( !report.malformed );
+    out.b = 2.5f; // non-default, so the reset to defaults is visible
+    CHECK( !tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( report.refuse_reason == tblv1::kind_mismatch );
+    CHECK( out.a == 5 && out.b == 1.5f && out.name_length == 0 && out.items_count == 0 );
+
+    // With a at its default it elides, so no field changed kind and the
+    // evolution rules alone are left: unknown skips, absent defaults, and the
+    // rename keeps identity.
+    v2.a = 5.0f;
+    bytes = tblv2::CfgSave( v2, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv2::CfgMeasure( v2 ) );
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged && report.refuse_reason == tblv1::ok );
     CHECK( report.unknown == 2 );       // c (top level) + gain (nested)
-    CHECK( report.kind_mismatch == 1 ); // a: f32 wire vs v1's i32 expectation
-    CHECK( out.a == 5 );                // a skipped -> v1 default, never misdecoded
+    CHECK( out.a == 5 );                // a elided -> v1 default
     CHECK( out.b == 1.5f );             // removed in v2 -> absent -> v1 default
     CHECK( strcmp( out.name, "fresh" ) == 0 ); // v2 title carries was = "name": identity survived the rename
     CHECK( out.mode == tblv1::Mode::Alpha );
@@ -480,12 +493,22 @@ static void test_evolution_new_reader_old_data()
     int64_t bytes = tblv1::CfgSave( v1, wire, sizeof( wire ) );
     CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( v1 ) );
 
+    // a: i32 on the wire against v2's f32 is a KIND MISMATCH (not a
+    // widening: the signedness family changed), so the whole load refuses.
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
-    CHECK( !report.malformed );
+    out.c = false; // non-default, so the reset to defaults is visible
+    CHECK( !tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( report.refuse_reason == tblv2::kind_mismatch );
+    CHECK( out.a == 5.0f && out.c == true && out.title_length == 0 );
+
+    // a at its default elides: the evolution rules alone remain.
+    v1.a = 5;
+    bytes = tblv1::CfgSave( v1, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( v1 ) );
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged && report.refuse_reason == tblv2::ok );
     CHECK( report.unknown == 1 );       // b, removed in v2
-    CHECK( report.kind_mismatch == 1 ); // a: i32 wire vs v2's f32 expectation
     CHECK( out.a == 5.0f );             // v2 default
     CHECK( out.c == true );             // added in v2, absent in old data -> default
     CHECK( strcmp( out.title, "aged" ) == 0 ); // old "name" data lands in the renamed field
@@ -515,8 +538,8 @@ static void test_evolution_enum_insert_old_data()
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
-    CHECK( !report.malformed && report.unknown == 0 && report.clamped == 0 );
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged && report.unknown == 0 );
     CHECK( out.grade == tblv2::Grade::Gold ); // NOT Silver, which holds ordinal 2 in V2
 
     // and the same inside an enum ARRAY, both shapes: elements carry variant
@@ -533,8 +556,8 @@ static void test_evolution_enum_insert_old_data()
 
     tblv2::TableReport report2;
     tblv2::Cfg out2;
-    CHECK( tblv2::CfgLoadTolerant( out2, wire, bytes, &report2 ) );
-    CHECK( !report2.malformed && report2.unknown == 0 && report2.clamped == 0 );
+    CHECK( tblv2::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( !report2.damaged && report2.unknown == 0 );
     CHECK( out2.grades_count == 2 );
     CHECK( out2.grades[0] == tblv2::Grade::Gold && out2.grades[1] == tblv2::Grade::Bronze );
     CHECK( out2.podium[0] == tblv2::Grade::Bronze );
@@ -553,8 +576,8 @@ static void test_evolution_enum_insert_new_data()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &report ) );
-    CHECK( !report.malformed );
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged );
     CHECK( report.unknown == 1 );                 // an id this reader cannot name
     CHECK( out.grade == tblv1::Grade::None );     // never a neighbour's variant
 
@@ -564,8 +587,8 @@ static void test_evolution_enum_insert_new_data()
     bytes = tblv2::CfgSave( gold, wire, sizeof( wire ) );
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::CfgLoadTolerant( out2, wire, bytes, &report2 ) );
-    CHECK( !report2.malformed && report2.unknown == 0 );
+    CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( !report2.damaged && report2.unknown == 0 );
     CHECK( out2.grade == tblv1::Grade::Gold );
 
     // the array direction: one element V1 knows, one it does not
@@ -576,8 +599,8 @@ static void test_evolution_enum_insert_new_data()
     bytes = tblv2::CfgSave( arrays, wire, sizeof( wire ) );
     tblv1::TableReport report3;
     tblv1::Cfg out3;
-    CHECK( tblv1::CfgLoadTolerant( out3, wire, bytes, &report3 ) );
-    CHECK( !report3.malformed && report3.unknown == 1 );
+    CHECK( tblv1::CfgLoad( out3, wire, bytes, &report3 ) );
+    CHECK( !report3.damaged && report3.unknown == 1 );
     CHECK( out3.grades_count == 2 );
     CHECK( out3.grades[0] == tblv1::Grade::Gold );
     CHECK( out3.grades[1] == tblv1::Grade::None );
@@ -601,8 +624,8 @@ static void test_evolution_union_insert_old_data()
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
-    CHECK( !report.malformed && report.unknown == 0 );
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged && report.unknown == 0 );
     CHECK( out.effect.type == tblv2::EffectType::Ward ); // NOT hex, which holds tag 2 in V2
     CHECK( out.effect.ward.charge == 7.5f );
 }
@@ -620,8 +643,8 @@ static void test_evolution_union_insert_new_data()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &report ) );
-    CHECK( !report.malformed );
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged );
     CHECK( report.unknown == 1 );                          // an arm id V1 cannot name
     CHECK( out.effect.type == tblv1::EffectType::None );   // empty, never a neighbour's arm
 
@@ -633,8 +656,8 @@ static void test_evolution_union_insert_new_data()
     bytes = tblv2::CfgSave( ward, wire, sizeof( wire ) );
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::CfgLoadTolerant( out2, wire, bytes, &report2 ) );
-    CHECK( !report2.malformed && report2.unknown == 0 );
+    CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( !report2.damaged && report2.unknown == 0 );
     CHECK( out2.effect.type == tblv1::EffectType::Ward && out2.effect.ward.charge == -2.0f );
 }
 
@@ -676,8 +699,8 @@ static void test_repeated_id_unnameable_variant()
     tblv1::TableReport report;
     tblv1::Cfg out;
     out.effect.type = tblv1::EffectType::Boost; // junk the prefill must erase
-    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( !report.malformed );
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( !report.damaged );
     CHECK( report.unknown == 2 ); // one arm id, one variant id
     // both vocabularies land on the SAME answer: the reader's empty value,
     // never the arm or variant an earlier occurrence decoded
@@ -692,9 +715,9 @@ static void test_repeated_id_unnameable_variant()
 
 static void test_evolution_array_bounds()
 {
-    // WRITER'S BOUND LARGER: the count exceeds the reader's, so the reader
-    // keeps the bounded PREFIX and counts clamped — not malformed, which is
-    // reserved for a count the BODY cannot cover
+    // WRITER'S BOUND LARGER: the count exceeds the reader's, so the strict
+    // read refuses the whole load as out_of_range — not damage, which is
+    // reserved for a count the BODY cannot cover — and never keeps a prefix
     tblv1::Cfg wide;
     wide.slots_count = 6;                                    // v2's bound is 3
     for ( int32_t i = 0; i < 6; i++ ) wide.slots[i] = 100 + i;
@@ -706,17 +729,26 @@ static void test_evolution_array_bounds()
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
-    CHECK( !report.malformed );          // a shrunk bound is not framing damage
-    CHECK( report.clamped == 1 );        // slots: 6 offered, 3 kept
+    CHECK( !tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged );          // a shrunk bound is not framing damage
+    CHECK( report.refuse_reason == tblv2::out_of_range ); // slots: 6 offered, v2 holds 3
+    CHECK( out.slots_count == 0 && out.tally[0] == 0 );   // nothing landed
+
+    // within the reader's bound the same field loads whole
+    wide.slots_count = 3;
+    bytes = tblv1::CfgSave( wide, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( wide ) );
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged && report.refuse_reason == tblv2::ok );
     CHECK( out.slots_count == 3 );
     CHECK( out.slots[0] == 100 && out.slots[1] == 101 && out.slots[2] == 102 );
     // tally GREW in v2: the count is short of the bound, so the tail defaults
     CHECK( out.tally[0] == 10 && out.tally[1] == 11 && out.tally[2] == 12 );
     CHECK( out.tally[3] == 0 );
 
-    // WRITER'S BOUND SMALLER, the other direction: nothing clamps, and the
-    // reader's extra capacity holds its declared defaults
+    // WRITER'S BOUND SMALLER, the other direction: slots fits v1's larger
+    // bound, but a v2 tally carries 4 elements against v1's [3], and that
+    // refuses as out_of_range
     tblv2::Cfg narrow;
     narrow.slots_count = 3;
     for ( int32_t i = 0; i < 3; i++ ) narrow.slots[i] = 200 + i;
@@ -727,13 +759,21 @@ static void test_evolution_array_bounds()
 
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::CfgLoadTolerant( out2, wire, bytes, &report2 ) );
-    CHECK( !report2.malformed );
-    CHECK( report2.clamped == 1 );       // tally: 4 offered, v1 keeps 3
-    CHECK( out2.slots_count == 3 );      // under v1's bound of 6: no clamp
+    CHECK( !tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( !report2.damaged );
+    CHECK( report2.refuse_reason == tblv1::out_of_range ); // tally: 4 offered, v1 holds 3
+    CHECK( out2.slots_count == 0 && out2.tally[0] == 0 );
+
+    // an all-default tally elides, and then the reader's extra slots capacity
+    // holds its declared defaults
+    for ( int32_t i = 0; i < 4; i++ ) narrow.tally[i] = 0;
+    bytes = tblv2::CfgSave( narrow, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv2::CfgMeasure( narrow ) );
+    CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( !report2.damaged && report2.refuse_reason == tblv1::ok );
+    CHECK( out2.slots_count == 3 );      // under v1's bound of 6
     CHECK( out2.slots[0] == 200 && out2.slots[2] == 202 );
     CHECK( out2.slots[3] == 0 && out2.slots[5] == 0 ); // the unwritten tail
-    CHECK( out2.tally[0] == 20 && out2.tally[1] == 21 && out2.tally[2] == 22 );
 }
 
 // a value no variant names has no wire identity: measure and save refuse it,
@@ -790,8 +830,8 @@ static void test_unnameable_enum_element_read()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( !report.malformed && report.unknown == 1 );
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( !report.damaged && report.unknown == 1 );
     CHECK( out.grades_count == 3 );
     CHECK( out.grades[0] == tblv1::Grade::Gold );
     CHECK( out.grades[1] == tblv1::Grade::None );   // never a neighbour's variant
@@ -873,8 +913,8 @@ static void test_wide_extents()
 
     tabledemo::TableReport report;
     static tabledemo::WideBlob out;
-    CHECK( tabledemo::WideBlobLoadTolerant( out, buffer, need, &report ) );
-    CHECK( !report.malformed && report.unknown == 0 && report.clamped == 0 );
+    CHECK( tabledemo::WideBlobLoad( out, buffer, need, &report ) );
+    CHECK( !report.damaged && report.unknown == 0 );
     CHECK( out.label_length == 70000 && out.label[69999] == 'w' && out.label[70000] == 0 );
     CHECK( out.payload_length == 70000 && out.payload[69999] == (uint8_t) ( 69999 & 0xff ) );
     CHECK( out.samples_count == 70000 && out.samples[69999] == (uint16_t) 69999 );
@@ -904,13 +944,14 @@ static void test_wide_extents()
 
     tabledemo::TableReport report2;
     static tabledemo::WideBlob out2;
-    CHECK( !tabledemo::WideBlobLoadTolerant( out2, wire, n, &report2 ) );
-    CHECK( report2.malformed );
+    CHECK( !tabledemo::WideBlobLoad( out2, wire, n, &report2 ) );
+    CHECK( report2.damaged );
 
     free( buffer );
 }
 
-// ---- clamping: hostile or stale numerics clamp and count ----
+// ---- out of range: a hostile or stale numeric past its bound refuses the
+// ---- whole load (docs/SPEC-TABLES.md §4); it is never clamped and kept ----
 
 static void test_clamping()
 {
@@ -931,10 +972,10 @@ static void test_clamping()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( report.clamped == 1 && out.a == 1000 );
+    CHECK( !tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( report.refuse_reason == tblv1::out_of_range && out.a == 5 );
 
-    // bits(6) width clamp: a u8 payload of 200 clamps to 63
+    // bits(6) width: a u8 payload of 200 is past 63 and refuses
     const tabledemo::TableFieldInfo * ch = demo_field( tabledemo::WeaponConfigTableType(), "channel" );
     CHECK( ch != NULL && ch->kind == 6 );
     uint8_t wire2[32];
@@ -948,11 +989,12 @@ static void test_clamping()
 
     tabledemo::TableReport report2;
     tabledemo::WeaponConfig weapon;
-    CHECK( tabledemo::WeaponConfigLoadTolerant( weapon, wire2, n, &report2 ) );
-    CHECK( report2.clamped == 1 && weapon.channel == 63 );
+    weapon.channel = 7; // non-default, so the reset is visible
+    CHECK( !tabledemo::WeaponConfigLoad( weapon, wire2, n, &report2 ) );
+    CHECK( report2.refuse_reason == tabledemo::out_of_range && weapon.channel == tabledemo::WeaponConfig().channel );
 
-    // an over-long string — a future schema widened string(32) — clamps to
-    // capacity, stays NUL-terminated, and counts
+    // an over-long string — a future schema widened string(32) — refuses,
+    // and the field is left at its empty default, still NUL-terminated
     const tblv1::TableFieldInfo * nameInfo = v1_field( tblv1::CfgTableType(), "name" );
     uint8_t wire4[96];
     {
@@ -966,8 +1008,8 @@ static void test_clamping()
 
     tblv1::TableReport report4;
     tblv1::Cfg out4;
-    CHECK( tblv1::CfgLoadTolerant( out4, wire4, n, &report4 ) );
-    CHECK( report4.clamped == 1 && out4.name_length == 32 && out4.name[32] == 0 );
+    CHECK( !tblv1::CfgLoad( out4, wire4, n, &report4 ) );
+    CHECK( report4.refuse_reason == tblv1::out_of_range && out4.name_length == 0 && out4.name[0] == 0 );
 }
 
 // A LENGTH IS A 64-BIT NUMBER (docs/SPEC-TABLES.md §3), and the clamp takes it
@@ -1006,8 +1048,8 @@ static void test_malformed()
     // a file of the form this reader carries, with no room for a trailer: the
     // table cannot be read whole, so the whole wire is malformed (§3)
     uint8_t one_byte[1] = { 1 };
-    CHECK( !tblv1::CfgLoadTolerant( out, one_byte, 1, &report ) );
-    CHECK( report.malformed );
+    CHECK( !tblv1::CfgLoad( out, one_byte, 1, &report ) );
+    CHECK( report.damaged );
 
     // and a FORM BYTE this reader does not carry is a REFUSAL and never
     // damage, whatever else is wrong with the file: the form is read FIRST
@@ -1017,14 +1059,14 @@ static void test_malformed()
         uint8_t foreign[1] = { form };
         tblv1::TableReport refused;
         CHECK( tblv1::CfgLoadVerdict( out, foreign, 1, &refused ) == tblv1::TableOpenRefused );
-        CHECK( refused.refused && !refused.malformed );
-        CHECK( refused.unknown == 0 && refused.kind_mismatch == 0 && refused.clamped == 0 && refused.duplicate == 0 );
+        CHECK( refused.refused && !refused.damaged );
+        CHECK( refused.unknown == 0 );
     }
     {
         uint8_t foreign[1] = { 0xFF };
         tblv1::TableReport refused;
         CHECK( tblv1::CfgLoadVerdict( out, foreign, 1, &refused ) == tblv1::TableOpenRefused );
-        CHECK( refused.refused && !refused.malformed );
+        CHECK( refused.refused && !refused.damaged );
     }
 
     // a valid field reference whose payload is truncated mid-scalar
@@ -1039,8 +1081,8 @@ static void test_malformed()
         truncated_bytes = b.finish( truncated );
     }
     tblv1::TableReport report2;
-    CHECK( !tblv1::CfgLoadTolerant( out, truncated, truncated_bytes, &report2 ) );
-    CHECK( report2.malformed );
+    CHECK( !tblv1::CfgLoad( out, truncated, truncated_bytes, &report2 ) );
+    CHECK( report2.damaged );
 
     // Damage after good fields still refuses the whole load. The
     // id table is the last thing in the file and a reader finds it from the
@@ -1059,8 +1101,8 @@ static void test_malformed()
     }
     tblv1::TableReport report3;
     tblv1::Cfg out3;
-    CHECK( !tblv1::CfgLoadTolerant( out3, cut, cut_bytes, &report3 ) );
-    CHECK( report3.malformed );
+    CHECK( !tblv1::CfgLoad( out3, cut, cut_bytes, &report3 ) );
+    CHECK( report3.damaged );
 }
 
 // ---- reflection: walk, identify, and read fields with no schema files ----
@@ -1224,7 +1266,7 @@ static void test_cross_file()
 
     tabledemo::TableReport report;
     static tabledemo::ArchiveConfig out;
-    CHECK( tabledemo::ArchiveConfigLoadTolerant( out, buffer, wrote, &report ) );
+    CHECK( tabledemo::ArchiveConfigLoad( out, buffer, wrote, &report ) );
     CHECK( strcmp( out.root.version_note, "deep" ) == 0 );
     CHECK( out.root.weapons_count == 1 && out.root.weapons[0].homing );
     CHECK( out.count == 5 );
@@ -1263,7 +1305,7 @@ static void test_parallel_shape()
     {
         tabledemo::TableReport report;
         tabledemo::ProfileConfig out;
-        CHECK( tabledemo::ProfileConfigLoadTolerant( out, buffer + offset, sizes[i], &report ) );
+        CHECK( tabledemo::ProfileConfigLoad( out, buffer + offset, sizes[i], &report ) );
         CHECK( out.experience == (uint32_t) ( 100 + i ) );
         offset += sizes[i];
     }
@@ -1429,9 +1471,9 @@ static void test_pointer_lifecycle()
     CHECK( region_need - attribution == builder.RegionBytes() ); // the two forms agree on the data
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, wrote, &report );
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
     CHECK( loaded != NULL );
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+    CHECK( report.unknown == 0 && !report.damaged );
     check_scene( loaded );
 
     // a loaded region re-saves to the same bytes
@@ -1444,8 +1486,8 @@ static void test_pointer_lifecycle()
     // wrong — not a partial decode of the writer's data
     uint8_t * tight = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport short_report;
-    const graphdemo::Scene * partial = graphdemo::SceneLoadTolerant( tight, region_need - 8, wire, wrote, &short_report );
-    CHECK( partial == NULL && short_report.malformed );
+    const graphdemo::Scene * partial = graphdemo::SceneLoad( tight, region_need - 8, wire, wrote, &short_report );
+    CHECK( partial == NULL && short_report.damaged );
     free( tight );
 
     free( region );
@@ -1566,8 +1608,8 @@ static void test_pointer_shared_node()
         CHECK( dag_attribution == 5 * 16 ); // the root and its four nodes
         uint8_t * dag_region = (uint8_t *) malloc( (size_t) dag_need );
         graphdemo::TableReport dag_report;
-        const graphdemo::Scene * dag = graphdemo::SceneLoadTolerant( dag_region, dag_need, dag_wire, dag_wrote, &dag_report );
-        CHECK( dag != NULL && !dag_report.malformed && dag_report.unknown == 0 && dag_report.kind_mismatch == 0 );
+        const graphdemo::Scene * dag = graphdemo::SceneLoad( dag_region, dag_need, dag_wire, dag_wrote, &dag_report );
+        CHECK( dag != NULL && !dag_report.damaged && dag_report.unknown == 0 );
         const graphdemo::TreeNode * dt = graphdemo::TreeNodeAt( dag->tree );
         CHECK( graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( dt->left )->left ) ==
                graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( dt->right )->left ) );
@@ -1603,8 +1645,8 @@ static void test_pointer_shared_node()
         int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
         uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
         graphdemo::TableReport report;
-        const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, wrote, &report );
-        CHECK( loaded != NULL && !report.malformed );
+        const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+        CHECK( loaded != NULL && !report.damaged );
         CHECK( graphdemo::ListNodeAt( loaded->head )->value == 1234 );
         CHECK( graphdemo::ListNodeAt( loaded->head ) == graphdemo::ListNodeAt( loaded->alias ) );
         free( region );
@@ -1692,8 +1734,8 @@ static void test_pointer_long_chain()
     CHECK( attribution == (int64_t) ( count + 1 ) * 16 ); // one entry a node, the root's included
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, need, &report );
-    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, need, &report );
+    CHECK( loaded != NULL && !report.damaged && report.unknown == 0 );
     int walked = 0;
     for ( const graphdemo::ListNode * at = graphdemo::ListNodeAt( loaded->head ); at != NULL; at = graphdemo::ListNodeAt( at->next ) )
     {
@@ -1835,19 +1877,16 @@ static void test_pointer_evolution_old_reader_new_data()
     CHECK( wrote > 0 );
 
     // P1 has `link` as a BY-VALUE nesting, so it meets an INDEX where it wants
-    // a body: a kind mismatch, counted, and the field keeps its declared
-    // defaults. The node table rides under a reserved id P1 cannot name, so it
-    // is skipped by its length and counted UNKNOWN once per transport field —
-    // which is what an "a build without kind 17" difference looks like (§4).
-    // The rest of the root's body reads on, which is the whole point of writing
-    // the table LAST.
+    // a body: a kind mismatch, and the strict read refuses the whole load
+    // (docs/SPEC-TABLES.md §4) rather than keep the rest of the root without
+    // it. It is never misread as damage: the framing is sound.
     tblp1::Chain out;
+    set_string( out.name, out.name_length, "junk" ); // the refusal must reset it
     tblp1::TableReport report;
-    CHECK( tblp1::ChainLoadTolerant( out, wire, wrote, &report ) );
-    CHECK( !report.malformed );
-    CHECK( report.kind_mismatch == 1 );
-    CHECK( report.unknown == 1 );
-    CHECK( strcmp( out.name, "chain" ) == 0 );
+    CHECK( !tblp1::ChainLoad( out, wire, wrote, &report ) );
+    CHECK( !report.damaged );
+    CHECK( report.refuse_reason == tblp1::kind_mismatch );
+    CHECK( out.name_length == 0 );
     CHECK( out.link.value == 0 );      // the declared default: nothing was decoded
     CHECK( out.link.tag_length == 0 );
 }
@@ -1865,27 +1904,25 @@ static void test_pointer_evolution_new_reader_old_data()
     CHECK( wrote > 0 && wrote == tblp1::ChainMeasure( v1 ) );
 
     // P2 has `link` as a POINTER: it meets a BODY where it wants an index, and
-    // that is a kind mismatch, counted, with the pointer left null. It is the
-    // edit kind 17 exists to make loud — four bytes of index and four bytes of
-    // a plausible length are the same four bytes to a shared kind.
+    // that is a kind mismatch, which refuses the whole load. It is the edit
+    // kind 17 exists to make loud — four bytes of index and four bytes of a
+    // plausible length are the same four bytes to a shared kind.
     int64_t region_need = tblp2::ChainLoadMeasure( wire, wrote );
-    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    uint8_t * region = (uint8_t *) malloc( (size_t) ( region_need > 0 ? region_need : 1 ) );
     tblp2::TableReport report;
-    const tblp2::Chain * out = tblp2::ChainLoadTolerant( region, region_need, wire, wrote, &report );
-    CHECK( out != NULL );
-    CHECK( !report.malformed && report.unknown == 0 );
-    CHECK( report.kind_mismatch == 1 );
-    CHECK( strcmp( out->name, "aged" ) == 0 );
-    CHECK( tblp2::LinkAt( out->link ) == NULL );
+    const tblp2::Chain * out = tblp2::ChainLoad( region, region_need, wire, wrote, &report );
+    CHECK( out == NULL );
+    CHECK( !report.damaged );
+    CHECK( report.refuse_reason == tblp2::kind_mismatch );
     free( region );
 
-    // and into a BUILDER — the tool's path: the same verdict, and the builder
-    // is still usable afterwards
+    // and into a BUILDER — the tool's path: the same verdict, the root back
+    // at its defaults, and the builder is still usable afterwards
     tblp2::ChainBuilder builder;
     tblp2::TableReport builder_report;
-    CHECK( tblp2::ChainLoadBuilderTolerant( builder, wire, wrote, &builder_report ) );
-    CHECK( !builder_report.malformed && builder_report.kind_mismatch == 1 );
-    CHECK( strcmp( builder.GetRoot()->name, "aged" ) == 0 );
+    CHECK( !tblp2::ChainLoadBuilder( builder, wire, wrote, &builder_report ) );
+    CHECK( !builder_report.damaged && builder_report.refuse_reason == tblp2::kind_mismatch );
+    CHECK( builder.GetRoot()->name_length == 0 );
     CHECK( builder.GetRoot()->link.null() );
     tblp2::TableSlot<tblp2::Link> added = builder.Alloc<tblp2::Link>();
     added->value = 88;
@@ -1919,7 +1956,7 @@ static void test_pointer_null_and_empty()
     int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, wrote, &report );
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
     // the distinction survives: an empty pointee is NOT null
     CHECK( loaded != NULL && graphdemo::ListNodeAt( loaded->head ) != NULL );
     CHECK( graphdemo::ListNodeAt( loaded->head )->value == 0 );
@@ -2066,8 +2103,8 @@ static void test_depth_agrees_through_by_value_nesting()
     int64_t region_need = graphdemo::SceneLoadMeasure( wire, need );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * loaded = graphdemo::SceneLoadTolerant( region, region_need, wire, need, &report );
-    CHECK( loaded != NULL && !report.malformed ); // the wire agrees with Lock
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, need, &report );
+    CHECK( loaded != NULL && !report.damaged ); // the wire agrees with Lock
     int walked = 0;
     for ( const graphdemo::ListNode * node = graphdemo::ListNodeAt( loaded->ground.head );
           node != NULL; node = graphdemo::ListNodeAt( node->next ) )
@@ -2176,9 +2213,9 @@ static void test_cross_file_pointer_unit()
     CHECK( region_need - album_attribution == builder.RegionBytes() );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
-    const graphdemo::Album * loaded = graphdemo::AlbumLoadTolerant( region, region_need, wire, need, &report );
+    const graphdemo::Album * loaded = graphdemo::AlbumLoad( region, region_need, wire, need, &report );
     CHECK( loaded != NULL );
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+    CHECK( report.unknown == 0 && !report.damaged );
     CHECK( loaded->tint.b == 30 && loaded->stamp.seq == 42 );
     CHECK( graphdemo::TallyAt( loaded->marker.note )->hits == 7 );
     CHECK( graphdemo::TallyAt( graphdemo::MarkerAt( loaded->pin )->note )->hits == 9 );
@@ -2202,8 +2239,8 @@ static void test_optional_round_trip()
     out.tier_present = true;              // junk the prefill must erase
     out.tier = 99;
     tblv1::TableReport absent_report;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &absent_report ) );
-    CHECK( !absent_report.malformed && absent_report.unknown == 0 );
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &absent_report ) );
+    CHECK( !absent_report.damaged && absent_report.unknown == 0 );
     CHECK( !out.extra_present && !out.tier_present && !out.mark_present );
     CHECK( out.extra.factor == 2.5f );    // absent reads as the declared default
     CHECK( out.tier == 0 );
@@ -2222,8 +2259,8 @@ static void test_optional_round_trip()
 
     tblv1::TableReport set_report;
     tblv1::Cfg back;
-    CHECK( tblv1::CfgLoadTolerant( back, wire, bytes, &set_report ) );
-    CHECK( !set_report.malformed && set_report.unknown == 0 && set_report.kind_mismatch == 0 );
+    CHECK( tblv1::CfgLoad( back, wire, bytes, &set_report ) );
+    CHECK( !set_report.damaged && set_report.unknown == 0 );
     CHECK( back.extra_present && back.extra.factor == 8.5f );
     CHECK( back.tier_present && back.tier == 42 );
     CHECK( back.mark_present && back.mark == tblv1::Grade::Gold );
@@ -2242,8 +2279,8 @@ static void test_optional_round_trip()
 
     tblv1::TableReport empty_report;
     tblv1::Cfg empty_back;
-    CHECK( tblv1::CfgLoadTolerant( empty_back, wire, bytes, &empty_report ) );
-    CHECK( !empty_report.malformed && empty_report.unknown == 0 );
+    CHECK( tblv1::CfgLoad( empty_back, wire, bytes, &empty_report ) );
+    CHECK( !empty_report.damaged && empty_report.unknown == 0 );
     CHECK( empty_back.extra_present );    // <- the assertion elision would break
     CHECK( empty_back.tier_present );
     CHECK( empty_back.mark_present );
@@ -2300,43 +2337,40 @@ static void test_optional_three_way_evolution()
     int64_t wrote = tblp3::ChainSave( optional, wire, sizeof( wire ) );
     tblp1::Chain into_value;
     tblp1::TableReport r1;
-    CHECK( tblp1::ChainLoadTolerant( into_value, wire, wrote, &r1 ) );
-    CHECK( !r1.malformed && r1.unknown == 0 && r1.kind_mismatch == 0 );
+    CHECK( tblp1::ChainLoad( into_value, wire, wrote, &r1 ) );
+    CHECK( !r1.damaged && r1.unknown == 0 );
     CHECK( into_value.link.value == 66 && strcmp( into_value.name, "one" ) == 0 );
 
     // ?T -> *T: a NESTED BODY where an INDEX is declared is a kind mismatch,
-    // counted and skipped, and the pointer stays null. The old promise was that
+    // and the strict read refuses the whole load. The old promise was that
     // this reinterpreted silently; the flat form spends a kind so it cannot.
     int64_t region_need = tblp2::ChainLoadMeasure( wire, wrote );
-    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    uint8_t * region = (uint8_t *) malloc( (size_t) ( region_need > 0 ? region_need : 1 ) );
     tblp2::TableReport r2;
-    const tblp2::Chain * into_pointer = tblp2::ChainLoadTolerant( region, region_need, wire, wrote, &r2 );
-    CHECK( into_pointer != NULL && !r2.malformed );
-    CHECK( r2.kind_mismatch == 1 && r2.unknown == 0 );
-    CHECK( tblp2::LinkAt( into_pointer->link ) == NULL );
-    CHECK( strcmp( into_pointer->name, "one" ) == 0 ); // the rest of the body reads on
+    const tblp2::Chain * into_pointer = tblp2::ChainLoad( region, region_need, wire, wrote, &r2 );
+    CHECK( into_pointer == NULL && !r2.damaged );
+    CHECK( r2.refuse_reason == tblp2::kind_mismatch );
     free( region );
 
     // by value -> ?T: a nested body that rode lands PRESENT
     wrote = tblp1::ChainSave( by_value, wire, sizeof( wire ) );
     tblp3::Chain from_value;
     tblp3::TableReport r3;
-    CHECK( tblp3::ChainLoadTolerant( from_value, wire, wrote, &r3 ) );
-    CHECK( !r3.malformed && r3.unknown == 0 && r3.kind_mismatch == 0 );
+    CHECK( tblp3::ChainLoad( from_value, wire, wrote, &r3 ) );
+    CHECK( !r3.damaged && r3.unknown == 0 );
     CHECK( from_value.link_present && from_value.link.value == 66 );
 
-    // *T -> ?T: the INDEX is a kind mismatch where a body is declared, and the
-    // node table rides under a reserved id this reader cannot name, so it is
-    // skipped by its length and counted UNKNOWN — which is exactly the
-    // difference §4 exists to report: "a build without kind 17".
+    // *T -> ?T: the INDEX is a kind mismatch where a body is declared, which
+    // refuses the whole load — "a build without kind 17" is reported by the
+    // refusal, never by a partial value.
     wrote = tblp2::ChainSave( builder, wire, sizeof( wire ) );
     tblp3::Chain from_pointer;
+    from_pointer.link_present = true; // the refusal must reset it
     tblp3::TableReport r4;
-    CHECK( tblp3::ChainLoadTolerant( from_pointer, wire, wrote, &r4 ) );
-    CHECK( !r4.malformed );
-    CHECK( r4.kind_mismatch == 1 && r4.unknown == 1 );
-    CHECK( !from_pointer.link_present );
-    CHECK( strcmp( from_pointer.name, "one" ) == 0 );
+    CHECK( !tblp3::ChainLoad( from_pointer, wire, wrote, &r4 ) );
+    CHECK( !r4.damaged );
+    CHECK( r4.refuse_reason == tblp3::kind_mismatch );
+    CHECK( !from_pointer.link_present && from_pointer.name_length == 0 );
 
     // ---- and where the three DIVERGE, which is at all-default. A by-value T
     // ---- has no presence bit, so it cannot tell "absent" from "present with
@@ -2363,8 +2397,8 @@ static void test_optional_three_way_evolution()
     // nothing was lost, the elision IS the meaning
     tblp3::Chain from_bare;
     tblp3::TableReport r7;
-    CHECK( tblp3::ChainLoadTolerant( from_bare, wire, w_bare_value, &r7 ) );
-    CHECK( !r7.malformed && r7.unknown == 0 && r7.kind_mismatch == 0 );
+    CHECK( tblp3::ChainLoad( from_bare, wire, w_bare_value, &r7 ) );
+    CHECK( !r7.damaged && r7.unknown == 0 );
     CHECK( !from_bare.link_present );
 
     // a NULL pointer and an ABSENT optional are the same absence
@@ -2373,23 +2407,22 @@ static void test_optional_three_way_evolution()
     wrote = tblp2::ChainSave( bare, wire, sizeof( wire ) );
     tblp3::Chain from_null;
     tblp3::TableReport r5;
-    CHECK( tblp3::ChainLoadTolerant( from_null, wire, wrote, &r5 ) );
-    CHECK( !r5.malformed && !from_null.link_present );
+    CHECK( tblp3::ChainLoad( from_null, wire, wrote, &r5 ) );
+    CHECK( !r5.damaged && !from_null.link_present );
 
-    // and a PRESENT all-default optional read as a POINTER is the same reported
-    // mismatch as any other: presence rode, and the reader that wanted an index
-    // says so rather than inventing a node
+    // and a PRESENT all-default optional read as a POINTER is the same
+    // refused mismatch as any other: presence rode, and the reader that wanted
+    // an index says so rather than inventing a node
     tblp3::Chain empty_present;
     set_string( empty_present.name, empty_present.name_length, "one" );
     empty_present.link_present = true;
     wrote = tblp3::ChainSave( empty_present, wire, sizeof( wire ) );
     region_need = tblp2::ChainLoadMeasure( wire, wrote );
-    region = (uint8_t *) malloc( (size_t) region_need );
+    region = (uint8_t *) malloc( (size_t) ( region_need > 0 ? region_need : 1 ) );
     tblp2::TableReport r6;
-    const tblp2::Chain * empty_pointer = tblp2::ChainLoadTolerant( region, region_need, wire, wrote, &r6 );
-    CHECK( empty_pointer != NULL );
-    CHECK( r6.kind_mismatch == 1 );
-    CHECK( tblp2::LinkAt( empty_pointer->link ) == NULL );
+    const tblp2::Chain * empty_pointer = tblp2::ChainLoad( region, region_need, wire, wrote, &r6 );
+    CHECK( empty_pointer == NULL );
+    CHECK( r6.refuse_reason == tblp2::kind_mismatch );
     free( region );
 }
 
@@ -2421,8 +2454,8 @@ static void test_keyed_round_trip()
 
     tabledemo::TableReport report;
     tabledemo::KeyedConfig back;
-    CHECK( tabledemo::KeyedConfigLoadTolerant( back, wire, bytes, &report ) );
-    CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
+    CHECK( tabledemo::KeyedConfigLoad( back, wire, bytes, &report ) );
+    CHECK( !report.damaged && report.unknown == 0 );
 
     CHECK( back.teams[tabledemo::Team::Blue].spawn_count == 8 );
     CHECK( strcmp( back.teams[tabledemo::Team::Blue].banner, "blue" ) == 0 );
@@ -2575,8 +2608,8 @@ static void test_keyed_iteration()
     CHECK( bytes > 0 );
     tabledemo::KeyedConfig back;
     tabledemo::TableReport report;
-    CHECK( tabledemo::KeyedConfigLoadTolerant( back, wire, bytes, &report ) );
-    CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( tabledemo::KeyedConfigLoad( back, wire, bytes, &report ) );
+    CHECK( !report.damaged && report.unknown == 0 );
     for ( auto [ team, config ] : back.teams )
     {
         CHECK( config.spawn_count == 9 + (int32_t) team );
@@ -2676,8 +2709,8 @@ static void test_keyed_evolution_old_data()
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::CfgLoadTolerant( out, wire, bytes, &report ) );
-    CHECK( !report.malformed && report.kind_mismatch == 0 );
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged );
     CHECK( report.unknown == 1 ); // Gamma's slot: a key this reader cannot name
 
     CHECK( out.bank[tblv2::Slot::Alpha].power == 10 );
@@ -2712,8 +2745,8 @@ static void test_keyed_evolution_new_data()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, bytes, &report ) );
-    CHECK( !report.malformed && report.kind_mismatch == 0 );
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.damaged );
     CHECK( report.unknown == 3 ); // Omega and Sigma in bank, Sigma in tokens
 
     CHECK( out.bank[tblv1::Slot::Alpha].power == 1 );
@@ -2742,9 +2775,10 @@ static void test_keyed_versus_positional_is_a_kind_mismatch()
 
     tblv2::TableReport to_keyed;
     tblv2::Cfg keyed_out;
-    CHECK( tblv2::CfgLoadTolerant( keyed_out, wire, bytes, &to_keyed ) );
-    CHECK( !to_keyed.malformed && to_keyed.unknown == 0 );
-    CHECK( to_keyed.kind_mismatch == 1 );  // seen, counted, skipped
+    keyed_out.ledger[tblv2::Grade::Gold] = 3; // the refusal must reset it
+    CHECK( !tblv2::CfgLoad( keyed_out, wire, bytes, &to_keyed ) );
+    CHECK( !to_keyed.damaged );
+    CHECK( to_keyed.refuse_reason == tblv2::kind_mismatch ); // seen, refused whole
     for ( auto [ grade, tokens ] : keyed_out.ledger )  // and NEVER decoded as slots
     {
         (void) grade;
@@ -2760,9 +2794,10 @@ static void test_keyed_versus_positional_is_a_kind_mismatch()
 
     tblv1::TableReport to_positional;
     tblv1::Cfg positional_out;
-    CHECK( tblv1::CfgLoadTolerant( positional_out, wire, bytes, &to_positional ) );
-    CHECK( !to_positional.malformed && to_positional.unknown == 0 );
-    CHECK( to_positional.kind_mismatch == 1 );
+    positional_out.ledger[0] = 3; // the refusal must reset it
+    CHECK( !tblv1::CfgLoad( positional_out, wire, bytes, &to_positional ) );
+    CHECK( !to_positional.damaged );
+    CHECK( to_positional.refuse_reason == tblv1::kind_mismatch );
     for ( int32_t i = 0; i < 3; i++ )
     {
         CHECK( positional_out.ledger[i] == 0 );
@@ -2803,8 +2838,8 @@ static void test_keyed_none_key_is_malformed()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( !tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( report.malformed );
+    CHECK( !tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( report.damaged );
 }
 
 // ---- #261: a repeated enum-ARRAY id whose second occurrence carries an
@@ -2842,8 +2877,8 @@ static void test_repeated_id_unnameable_enum_element()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( !report.malformed );
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( !report.damaged );
     CHECK( report.unknown == 2 ); // two element ids this reader cannot name
     // the LAST occurrence wins, and an element with no name lands on None —
     // never on the variant the FIRST occurrence decoded into that slot
@@ -2886,9 +2921,9 @@ static void test_keyed_and_optional_in_a_variable_table()
     CHECK( need > 0 );
     uint8_t * region = (uint8_t *) malloc( (size_t) need );
     graphdemo::TableReport report;
-    const graphdemo::Depot * loaded = graphdemo::DepotLoadTolerant( region, need, wire, wrote, &report );
+    const graphdemo::Depot * loaded = graphdemo::DepotLoad( region, need, wire, wrote, &report );
     CHECK( loaded != NULL );
-    CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( !report.damaged && report.unknown == 0 );
     CHECK( strcmp( loaded->name, "depot" ) == 0 );
     CHECK( loaded->spare_present && loaded->spare.build == 7 );
     for ( int32_t tier = int32_t( graphdemo::Tier::Low ); tier <= int32_t( graphdemo::Tier::High ); tier++ )
@@ -2986,9 +3021,9 @@ static void test_keyed_variable_oracle()
         CHECK( region_need > 0 );
         uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
         graphdemo::TableReport report;
-        const graphdemo::Depot * loaded = graphdemo::DepotLoadTolerant( region, region_need, wire, need, &report );
+        const graphdemo::Depot * loaded = graphdemo::DepotLoad( region, region_need, wire, need, &report );
         CHECK( loaded != NULL );
-        CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
+        CHECK( !report.damaged && report.unknown == 0 );
         CHECK( strcmp( loaded->name, name ) == 0 );
         CHECK( loaded->spare_present == spare_present );
         for ( int32_t slot = 1; slot < 3; slot++ )
@@ -3157,14 +3192,14 @@ static void reload_table_golden( const char * name,
     static T value;
     new ( &value ) T(); // the read path's own reset: value-init, in place
     Report report;
-    if ( !load( value, golden_pinned, pinned, &report ) || report.malformed )
+    if ( !load( value, golden_pinned, pinned, &report ) || report.damaged )
     {
         printf( "FAIL table wire golden %s does not load\n", name );
         failures++;
         return;
     }
     // its own writer's bytes: nothing in them is unknown, nothing mismatches
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( report.unknown == 0 );
 
     const int64_t wrote = save( value, golden_again, sizeof( golden_again ) );
     if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
@@ -3187,8 +3222,8 @@ static void reload_pointer_golden( const char * name )
     const int64_t need = tblp2::ChainLoadMeasure( golden_pinned, pinned );
     uint8_t * region = (uint8_t *) malloc( (size_t) need );
     tblp2::TableReport report;
-    const tblp2::Chain * root = tblp2::ChainLoadTolerant( region, need, golden_pinned, pinned, &report );
-    if ( root == NULL || report.malformed )
+    const tblp2::Chain * root = tblp2::ChainLoad( region, need, golden_pinned, pinned, &report );
+    if ( root == NULL || report.damaged )
     {
         printf( "FAIL table wire golden %s does not load\n", name );
         failures++;
@@ -3198,7 +3233,7 @@ static void reload_pointer_golden( const char * name )
     // its own writer's bytes: nothing in them is unknown, nothing mismatches —
     // and the reserved node-table id is NOT unknown to a reader holding the
     // numbering (§3.1)
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( report.unknown == 0 );
     const int64_t wrote = tblp2::ChainSave( root, golden_again, sizeof( golden_again ) );
     if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
     {
@@ -3554,12 +3589,10 @@ static void check_json_round_trip( const T & value,
         failures++;
         return;
     }
-    if ( report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
-         report.duplicate != 0 || report.malformed )
+    if ( report.unknown != 0 || report.widened != 0 || report.refuse_reason != tabledemo::ok || report.damaged )
     {
-        printf( "FAIL %s: a text this build wrote reported %d/%d/%d/%d/%d\n", what,
-                report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
-                (int) report.malformed );
+        printf( "FAIL %s: a text this build wrote reported %d/%d/%d/%d\n", what,
+                report.unknown, report.widened, (int) report.refuse_reason, (int) report.damaged );
         failures++;
     }
 
@@ -3689,7 +3722,7 @@ static void test_json_corpus_round_trip()
         CHECK( tblv1::CfgToJson( cfg, text.data(), size ) == size );
         tblv1::Cfg back;
         tblv1::TableReport report;
-        CHECK( tblv1::CfgFromJsonTolerant( back, text.data(), size, &report ) );
+        CHECK( tblv1::CfgFromJson( back, text.data(), size, &report ) );
         uint8_t a[4096], b[4096];
         int64_t na = tblv1::CfgSave( cfg, a, sizeof( a ) );
         int64_t nb = tblv1::CfgSave( back, b, sizeof( b ) );
@@ -3706,14 +3739,14 @@ static void test_json_dialect()
 
     // trailing commas: the authoring files this section exists for carry them
     const char * trailing = "{ \"slot\": 3, \"power\": 1.5, }";
-    CHECK( tabledemo::AttachmentFromJsonTolerant( value, trailing, (int64_t) strlen( trailing ), &report ) );
+    CHECK( tabledemo::AttachmentFromJson( value, trailing, (int64_t) strlen( trailing ), &report ) );
     CHECK( value.slot == 3 && value.power == 1.5f );
-    CHECK( report.unknown == 0 && !report.malformed );
+    CHECK( report.unknown == 0 && !report.damaged );
 
     // ... in arrays too
     tabledemo::LoadoutConfig loadout;
     const char * array_trailing = "{ \"grades\": [ \"Gold\", \"Bronze\", ], }";
-    CHECK( tabledemo::LoadoutConfigFromJsonTolerant( loadout, array_trailing, (int64_t) strlen( array_trailing ), &report ) );
+    CHECK( tabledemo::LoadoutConfigFromJson( loadout, array_trailing, (int64_t) strlen( array_trailing ), &report ) );
     CHECK( loadout.grades_count == 2 && loadout.grades[0] == tabledemo::Grade::Gold );
 
     // THE COMMENT ROWS (docs/SPEC-TABLES.md §16.2, §16.5): comments are accepted
@@ -3731,22 +3764,22 @@ static void test_json_dialect()
             "{ \"slot\": 3, // after a value\n"
             "  /* between a key and its value */ \"power\": /* here */ 1.5, }\n"
             "// the last line, with no trailing newline";
-        CHECK( tabledemo::AttachmentFromJsonTolerant( value, commented, (int64_t) strlen( commented ), &comment_report ) );
+        CHECK( tabledemo::AttachmentFromJson( value, commented, (int64_t) strlen( commented ), &comment_report ) );
         CHECK( value.slot == 3 && value.power == 1.5f );
-        CHECK( comment_report.unknown == 0 && !comment_report.malformed );
+        CHECK( comment_report.unknown == 0 && !comment_report.damaged );
         tabledemo::Attachment stripped;
         tabledemo::TableReport stripped_report;
         const char * plain = "{ \"slot\": 3, \"power\": 1.5 }";
-        CHECK( tabledemo::AttachmentFromJsonTolerant( stripped, plain, (int64_t) strlen( plain ), &stripped_report ) );
+        CHECK( tabledemo::AttachmentFromJson( stripped, plain, (int64_t) strlen( plain ), &stripped_report ) );
         CHECK( memcmp( &stripped, &value, sizeof( value ) ) == 0 );
     }
     {
         tabledemo::LoadoutConfig commented_loadout;
         tabledemo::TableReport comment_report;
         const char * array_comment = "{ \"grades\": [ \"Gold\", /* between two elements */ \"Bronze\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( commented_loadout, array_comment, (int64_t) strlen( array_comment ), &comment_report ) );
+        CHECK( tabledemo::LoadoutConfigFromJson( commented_loadout, array_comment, (int64_t) strlen( array_comment ), &comment_report ) );
         CHECK( commented_loadout.grades_count == 2 && commented_loadout.grades[1] == tabledemo::Grade::Bronze );
-        CHECK( !comment_report.malformed );
+        CHECK( !comment_report.damaged );
     }
     {
         // a `//` and a `/*` INSIDE a string value are ordinary text, and survive
@@ -3754,8 +3787,8 @@ static void test_json_dialect()
         tabledemo::RootConfig noted;
         tabledemo::TableReport text_report;
         const char * inside = "{ \"version_note\": \"// not /*\" }";
-        CHECK( tabledemo::RootConfigFromJsonTolerant( noted, inside, (int64_t) strlen( inside ), &text_report ) );
-        CHECK( !text_report.malformed );
+        CHECK( tabledemo::RootConfigFromJson( noted, inside, (int64_t) strlen( inside ), &text_report ) );
+        CHECK( !text_report.damaged );
         CHECK( noted.version_note_length == 9 && memcmp( noted.version_note, "// not /*", 9 ) == 0 );
         char back[4096];
         const int64_t wrote = tabledemo::RootConfigToJson( noted, back, sizeof( back ) );
@@ -3764,52 +3797,54 @@ static void test_json_dialect()
     {
         tabledemo::TableReport unclosed_report;
         const char * unclosed = "{ \"slot\": 3 /* open";
-        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, unclosed, (int64_t) strlen( unclosed ), &unclosed_report ) );
-        CHECK( unclosed_report.malformed );
+        CHECK( !tabledemo::AttachmentFromJson( value, unclosed, (int64_t) strlen( unclosed ), &unclosed_report ) );
+        CHECK( unclosed_report.damaged );
         tabledemo::TableReport slash_star_slash_report;
         const char * slash_star_slash = "{ /*/ \"slot\": 3 }";
-        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, slash_star_slash, (int64_t) strlen( slash_star_slash ), &slash_star_slash_report ) );
-        CHECK( slash_star_slash_report.malformed );
+        CHECK( !tabledemo::AttachmentFromJson( value, slash_star_slash, (int64_t) strlen( slash_star_slash ), &slash_star_slash_report ) );
+        CHECK( slash_star_slash_report.damaged );
         tabledemo::TableReport lone_slash_report;
         const char * lone = "{ / \"slot\": 3 }";
-        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, lone, (int64_t) strlen( lone ), &lone_slash_report ) );
-        CHECK( lone_slash_report.malformed );
+        CHECK( !tabledemo::AttachmentFromJson( value, lone, (int64_t) strlen( lone ), &lone_slash_report ) );
+        CHECK( lone_slash_report.damaged );
     }
 
     // whitespace anywhere, and a text that is not an object at all
     const char * spaced = "  \t\n { \n \"slot\" \t : \n 2 \n } \n ";
-    CHECK( tabledemo::AttachmentFromJsonTolerant( value, spaced, (int64_t) strlen( spaced ), &report ) );
+    CHECK( tabledemo::AttachmentFromJson( value, spaced, (int64_t) strlen( spaced ), &report ) );
     CHECK( value.slot == 2 );
     tabledemo::TableReport not_object;
     const char * scalar = "42";
-    CHECK( !tabledemo::AttachmentFromJsonTolerant( value, scalar, 2, &not_object ) );
-    CHECK( not_object.malformed );
+    CHECK( !tabledemo::AttachmentFromJson( value, scalar, 2, &not_object ) );
+    CHECK( not_object.damaged );
 
     // trailing rubbish after the one text is not one text
     tabledemo::TableReport trailing_junk;
     const char * two = "{ \"slot\": 1 } { \"slot\": 2 }";
-    CHECK( !tabledemo::AttachmentFromJsonTolerant( value, two, (int64_t) strlen( two ), &trailing_junk ) );
-    CHECK( trailing_junk.malformed );
+    CHECK( !tabledemo::AttachmentFromJson( value, two, (int64_t) strlen( two ), &trailing_junk ) );
+    CHECK( trailing_junk.damaged );
 
     // an absent key keeps the field's DECLARED default, exactly as an absent
     // field does on the wire (docs/SPEC-TABLES.md §4)
     tabledemo::WeaponConfig weapon;
     const char * partial = "{ \"homing\": true }";
-    CHECK( tabledemo::WeaponConfigFromJsonTolerant( weapon, partial, (int64_t) strlen( partial ), &report ) );
+    CHECK( tabledemo::WeaponConfigFromJson( weapon, partial, (int64_t) strlen( partial ), &report ) );
     CHECK( weapon.homing && weapon.damage == 21.0f && weapon.speed == 500.0f );
 
     // unknown keys are skipped and counted, whatever they carry
     tabledemo::TableReport unknown;
     const char * strange = "{ \"nope\": { \"deep\": [ 1, 2, { \"x\": null } ] }, \"slot\": 4, \"also\": \"text\" }";
-    CHECK( tabledemo::AttachmentFromJsonTolerant( value, strange, (int64_t) strlen( strange ), &unknown ) );
+    CHECK( tabledemo::AttachmentFromJson( value, strange, (int64_t) strlen( strange ), &unknown ) );
     CHECK( value.slot == 4 );
-    CHECK( unknown.unknown == 2 && !unknown.malformed );
+    CHECK( unknown.unknown == 2 && !unknown.damaged );
 
-    // a duplicate key is LAST WINS, and the repeat is counted
+    // a duplicate key REFUSES the whole read (docs/SPEC-TABLES.md §16.2):
+    // never last-wins, and the value is back at its defaults
     tabledemo::TableReport duplicate;
     const char * repeated = "{ \"slot\": 1, \"slot\": 6, \"slot\": 2 }";
-    CHECK( tabledemo::AttachmentFromJsonTolerant( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
-    CHECK( value.slot == 2 && duplicate.duplicate == 2 );
+    value.slot = 5;
+    CHECK( !tabledemo::AttachmentFromJson( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
+    CHECK( value.slot == tabledemo::Attachment().slot && duplicate.refuse_reason == tabledemo::malformed );
 
     // A KIND 12 PAYLOAD IS WELL-FORMED UTF-8 (docs/SPEC-TABLES.md §3), so a
     // byte in a string body that is not part of a well-formed sequence is not
@@ -3823,30 +3858,31 @@ static void test_json_dialect()
         int n = snprintf( text, sizeof( text ), "{ \"name\": \"ab\xc3\" }" );
         CHECK( n > 0 );
         tabledemo::TableReport raw;
-        CHECK( !tabledemo::ProfileConfigFromJsonTolerant( stray, text, n, &raw ) );
-        CHECK( raw.malformed && raw.clamped == 0 );
+        CHECK( !tabledemo::ProfileConfigFromJson( stray, text, n, &raw ) );
+        CHECK( raw.damaged );
     }
 
-    // a lone surrogate ESCAPE is valid JSON input with no UTF-8 encoding:
-    // it reads as U+FFFD rather than manufacturing CESU-8 out of it
+    // a lone surrogate ESCAPE names no scalar value, so it refuses the read
+    // malformed (docs/SPEC-TABLES.md §16.3, §16.12): never U+FFFD, and never
+    // CESU-8 manufactured out of it
     {
         tabledemo::ProfileConfig lone;
         tabledemo::TableReport lone_report;
         const char * text = "{ \"name\": \"\\udc00x\\ud800\" }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( lone, text, (int64_t) strlen( text ), &lone_report ) );
-        CHECK( lone.name_length == 7 );
-        CHECK( strcmp( lone.name, "\xef\xbf\xbd" "x" "\xef\xbf\xbd" ) == 0 );
+        CHECK( !tabledemo::ProfileConfigFromJson( lone, text, (int64_t) strlen( text ), &lone_report ) );
+        CHECK( lone_report.damaged && lone_report.refuse_reason == tabledemo::malformed );
+        CHECK( lone.name_length == 0 );
         // ... and a well-formed pair still decodes to the character it names
         tabledemo::ProfileConfig pair;
         const char * emoji = "{ \"name\": \"\\ud83d\\ude00\" }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( pair, emoji, (int64_t) strlen( emoji ), &lone_report ) );
+        CHECK( tabledemo::ProfileConfigFromJson( pair, emoji, (int64_t) strlen( emoji ), &lone_report ) );
         CHECK( pair.name_length == 4 && strcmp( pair.name, "\xf0\x9f\x98\x80" ) == 0 );
     }
 
     // string escapes both ways, including a surrogate pair
     tabledemo::ProfileConfig profile;
     const char * escapes = "{ \"name\": \"a\\\"b\\\\c\\nd\\u00e9e\\ud83d\\ude00\" }";
-    CHECK( tabledemo::ProfileConfigFromJsonTolerant( profile, escapes, (int64_t) strlen( escapes ), &report ) );
+    CHECK( tabledemo::ProfileConfigFromJson( profile, escapes, (int64_t) strlen( escapes ), &report ) );
     CHECK( strcmp( profile.name, "a\"b\\c\nd\xc3\xa9""e\xf0\x9f\x98\x80" ) == 0 );
 }
 
@@ -3854,8 +3890,8 @@ static void test_json_dialect()
 
 static void test_json_hostile_kinds()
 {
-    // a key present with the WRONG JSON TYPE is skipped and counted, never
-    // coerced: the field keeps its default and the read carries on
+    // a key present with the WRONG JSON TYPE is a kind mismatch, never
+    // coerced: the whole read refuses and the value is left at its defaults
     struct { const char * text; const char * what; } wrong[] = {
         { "{ \"experience\": \"12\" }",      "string where a number is declared" },
         { "{ \"experience\": true }",        "bool where a number is declared" },
@@ -3875,11 +3911,11 @@ static void test_json_hostile_kinds()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
-        if ( !ok || report.kind_mismatch != 1 || report.malformed )
+        bool ok = tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        if ( ok || report.refuse_reason != tabledemo::kind_mismatch || report.damaged )
         {
-            printf( "FAIL json kind mismatch (%s): ok=%d mismatch=%d malformed=%d\n",
-                    row.what, ok, report.kind_mismatch, (int) report.malformed );
+            printf( "FAIL json kind mismatch (%s): ok=%d reason=%d damaged=%d\n",
+                    row.what, ok, (int) report.refuse_reason, (int) report.damaged );
             failures++;
         }
         CHECK( value.experience == 0 && value.name_length == 0 && !value.has_loadout );
@@ -3890,8 +3926,8 @@ static void test_json_hostile_kinds()
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"grade\": 3, \"perks\": 5 }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.kind_mismatch == 2 );
+        CHECK( !tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::kind_mismatch );
         CHECK( value.grade == tabledemo::Grade::Silver ); // the declared default
         CHECK( value.perks == 0 );
     }
@@ -3902,45 +3938,47 @@ static void test_json_hostile_kinds()
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"grade\": \"Platinum\", \"perks\": [ \"Turbo\", \"Warp\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.grade == tabledemo::Grade::None );
         CHECK( value.perks == tabledemo::Perks_Turbo );
         CHECK( report.unknown == 2 );
     }
 
     // a fraction where an INTEGER is declared is the wrong shape for the kind,
-    // not framing damage: counted and skipped, never rounded into place
+    // not framing damage: refused, never rounded into place
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"experience\": 12.5, \"badge\": 3 }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.experience == 0 && value.badge == 3 );
-        CHECK( report.kind_mismatch == 1 && !report.malformed );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.experience == 0 && value.badge == tabledemo::ProfileConfig().badge );
+        CHECK( report.refuse_reason == tabledemo::kind_mismatch && !report.damaged );
     }
 }
 
 static void test_json_hostile_overflow()
 {
-    // every integer width, over its ceiling and under its floor: CLAMPED and
-    // counted, never wrapped (docs/SPEC-TABLES.md §4)
+    // every integer width, over its ceiling and under its floor: REFUSED as
+    // out_of_range, never wrapped and never clamped (docs/SPEC-TABLES.md §4).
+    // expect is the field's declared default, where the refusal leaves it.
+    const tabledemo::ProfileConfig fresh;
     struct { const char * text; const char * field; int64_t expect; } rows[] = {
-        { "{ \"tilt\": 999 }",                          "tilt+",  127 },
-        { "{ \"tilt\": -999 }",                         "tilt-",  -128 },
-        { "{ \"badge\": 300 }",                         "badge",  255 },
-        { "{ \"badge\": -1 }",                          "badge-", 0 },
-        { "{ \"heading\": 40000 }",                     "head+",  32767 },
-        { "{ \"heading\": -40000 }",                    "head-",  -32768 },
-        { "{ \"port\": 70000 }",                        "port",   65535 },
-        { "{ \"experience\": 5000000000 }",             "exp",    4294967295ll },
-        { "{ \"timestamp\": 99999999999999999999 }",    "time+",  9223372036854775807ll },
-        { "{ \"timestamp\": -99999999999999999999 }",   "time-",  -9223372036854775807ll - 1 },
+        { "{ \"tilt\": 999 }",                          "tilt+",  fresh.tilt },
+        { "{ \"tilt\": -999 }",                         "tilt-",  fresh.tilt },
+        { "{ \"badge\": 300 }",                         "badge",  fresh.badge },
+        { "{ \"badge\": -1 }",                          "badge-", fresh.badge },
+        { "{ \"heading\": 40000 }",                     "head+",  fresh.heading },
+        { "{ \"heading\": -40000 }",                    "head-",  fresh.heading },
+        { "{ \"port\": 70000 }",                        "port",   fresh.port },
+        { "{ \"experience\": 5000000000 }",             "exp",    (int64_t) fresh.experience },
+        { "{ \"timestamp\": 99999999999999999999 }",    "time+",  fresh.timestamp },
+        { "{ \"timestamp\": -99999999999999999999 }",   "time-",  fresh.timestamp },
     };
     for ( const auto & row : rows )
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report ) );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report ) );
         int64_t got = 0;
         if ( strncmp( row.field, "tilt", 4 ) == 0 ) { got = value.tilt; }
         else if ( strncmp( row.field, "badge", 5 ) == 0 ) { got = value.badge; }
@@ -3948,10 +3986,10 @@ static void test_json_hostile_overflow()
         else if ( strncmp( row.field, "port", 4 ) == 0 ) { got = value.port; }
         else if ( strncmp( row.field, "exp", 3 ) == 0 ) { got = (int64_t) value.experience; }
         else { got = value.timestamp; }
-        if ( got != row.expect || report.clamped == 0 || report.malformed )
+        if ( got != row.expect || report.refuse_reason != tabledemo::out_of_range || report.damaged )
         {
-            printf( "FAIL json overflow (%s): got %lld want %lld clamped=%d\n",
-                    row.field, (long long) got, (long long) row.expect, report.clamped );
+            printf( "FAIL json overflow (%s): got %lld want %lld reason=%d\n",
+                    row.field, (long long) got, (long long) row.expect, (int) report.refuse_reason );
             failures++;
         }
     }
@@ -3961,123 +3999,121 @@ static void test_json_hostile_overflow()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"epoch\": 18446744073709551615 }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.epoch == 18446744073709551615ull && report.clamped == 0 );
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.epoch == 18446744073709551615ull );
     }
-    // ... and past THAT it saturates at the ceiling
+    // ... and past THAT it is out of range and refuses
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"epoch\": 99999999999999999999999 }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.epoch == 18446744073709551615ull && report.clamped == 1 );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.epoch == fresh.epoch && report.refuse_reason == tabledemo::out_of_range );
     }
     // A MAGNITUDE IN THE HIGH HALF IS A MAGNITUDE, not a negative (§16.2). It
-    // is the field's own DOMAIN that bounds it, established before the value
-    // reaches storage, so a narrower unsigned field clamps at its CEILING.
-    // Reading the interpreter's own signed lane instead lands zero, the floor,
-    // for a value larger than any this field can hold.
+    // is the field's own DOMAIN that bounds it, so a narrower unsigned field
+    // refuses it as out_of_range. Reading the interpreter's own signed lane
+    // instead would see a small negative, or a zero, and could land it.
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"badge\": 18446744073709551615, \"experience\": 18446744073709551615 }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.badge == 255 );
-        CHECK( value.experience == 4294967295u );
-        CHECK( report.clamped == 2 && report.kind_mismatch == 0 );
+        const char * text = "{ \"badge\": 18446744073709551615 }";
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.badge == fresh.badge );
+        CHECK( report.refuse_reason == tabledemo::out_of_range );
+        const char * text2 = "{ \"experience\": 18446744073709551615 }";
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text2, (int64_t) strlen( text2 ), &report ) );
+        CHECK( value.experience == fresh.experience );
+        CHECK( report.refuse_reason == tabledemo::out_of_range );
     }
-    // A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO whatever its
+    // A NEGATIVE TOKEN IN AN UNSIGNED FIELD IS OUT OF RANGE whatever its
     // spelling (§16.2): -1e30 is a magnitude past every width and a sign, and
-    // both halves are known before anything is cast. Reading it through a
-    // signed lane makes it the wrong SHAPE for the kind instead, which is the
-    // answer the page gives a fraction and not a negative.
+    // both halves are known before anything is cast.
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"experience\": -1e30 }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.experience == 0 );
-        CHECK( report.clamped != 0 && report.kind_mismatch == 0 );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.experience == fresh.experience );
+        CHECK( report.refuse_reason == tabledemo::out_of_range );
     }
 
-    // a DECLARED range clamps before the storage width does
+    // a DECLARED range bounds before the storage width does: 500 is inside
+    // i32 and outside | min = 0, max = 10, and bits(6) bounds channel at 63
     {
         tabledemo::WeaponConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"penetration\": 500, \"channel\": 4000 }";
-        CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.penetration == 10 );  // | min = 0, max = 10
-        CHECK( value.channel == 63 );      // bits(6): the width IS the range
-        CHECK( report.clamped == 2 );
+        const char * text = "{ \"penetration\": 500 }";
+        CHECK( !tabledemo::WeaponConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.penetration == tabledemo::WeaponConfig().penetration );
+        CHECK( report.refuse_reason == tabledemo::out_of_range );
+        const char * text2 = "{ \"channel\": 64 }";
+        CHECK( !tabledemo::WeaponConfigFromJson( value, text2, (int64_t) strlen( text2 ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::out_of_range );
+        const char * text3 = "{ \"penetration\": 10, \"channel\": 63 }"; // the bounds themselves land
+        CHECK( tabledemo::WeaponConfigFromJson( value, text3, (int64_t) strlen( text3 ), &report ) );
+        CHECK( value.penetration == 10 && value.channel == 63 );
     }
 
-    // a float range clamps the same way
+    // a float range refuses the same way
     {
         tabledemo::Attachment value;
         tabledemo::TableReport report;
         const char * text = "{ \"slot\": -5 }";
-        CHECK( tabledemo::AttachmentFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.slot == 0 && report.clamped == 1 );
+        value.slot = 3;
+        CHECK( !tabledemo::AttachmentFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.slot == tabledemo::Attachment().slot && report.refuse_reason == tabledemo::out_of_range );
     }
 }
 
 static void test_json_hostile_extents()
 {
-    // a string longer than the field CLAMPS AT A CODE POINT BOUNDARY: the
-    // storage never holds half a character
+    // a string longer than the field REFUSES the whole read: the storage
+    // never holds a prefix the input did not spell whole (docs/SPEC-TABLES.md §4)
     {
         tabledemo::RootConfig value;   // version_note is string(16)
         tabledemo::TableReport report;
-        // 15 ASCII bytes, then a 2-byte character that cannot fit in the 16th
+        // 15 ASCII bytes, then a 2-byte character: 17 bytes against 16
         const char * text = "{ \"version_note\": \"123456789012345\xc3\xa9\" }";
-        CHECK( tabledemo::RootConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.version_note_length == 15 );
-        CHECK( strcmp( value.version_note, "123456789012345" ) == 0 );
-        CHECK( report.clamped == 1 );
+        CHECK( !tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.version_note_length == 0 );
+        CHECK( report.refuse_reason == tabledemo::out_of_range );
     }
     {
-        // and a 3-byte character that WOULD have fit at 14 does
+        // exactly at the bound, a multi-byte character included, lands whole
         tabledemo::RootConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"version_note\": \"1234567890123\xe2\x9c\x93X\" }";
-        CHECK( tabledemo::RootConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        const char * text = "{ \"version_note\": \"1234567890123\xe2\x9c\x93\" }";
+        CHECK( tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.version_note_length == 16 );
-        CHECK( report.clamped == 1 ); // the trailing X did not fit
-    }
-    {
-        // A CLAMP IS A PREFIX (docs/SPEC-TABLES.md §16.2): once one code point
-        // does not fit, the scan stops placing. A later SHORTER code point must
-        // not slip into the room the long one left, because that would store a
-        // string the input never spelled, "123456789012\xe2\x9c\x93X" out of
-        // "123456789012\xe2\x9c\x93\xe2\x9c\x93X", and the counter alone
-        // cannot tell the two apart.
-        tabledemo::RootConfig value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"version_note\": \"123456789012\xe2\x9c\x93\xe2\x9c\x93X\" }";
-        CHECK( tabledemo::RootConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.version_note_length == 15 );
-        CHECK( strcmp( value.version_note, "123456789012\xe2\x9c\x93" ) == 0 );
-        CHECK( report.clamped == 1 );
+        CHECK( strcmp( value.version_note, "1234567890123\xe2\x9c\x93" ) == 0 );
+        // and one ASCII byte past it refuses
+        const char * over = "{ \"version_note\": \"1234567890123\xe2\x9c\x93X\" }";
+        CHECK( !tabledemo::RootConfigFromJson( value, over, (int64_t) strlen( over ), &report ) );
+        CHECK( value.version_note_length == 0 && report.refuse_reason == tabledemo::out_of_range );
     }
 
-    // more array elements than the reader's bound: the bounded prefix is kept
-    // and the excess counts, the wire's rule
+    // more array elements than the reader's bound refuse the whole read, the
+    // wire's rule: never a kept prefix
     {
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"grades\": [ \"Gold\", \"Gold\", \"Gold\", \"Gold\", \"Gold\", \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.grades_count == 4 && report.clamped == 2 );
+        CHECK( !tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.grades_count == 0 && report.refuse_reason == tabledemo::out_of_range );
+        const char * four = "{ \"grades\": [ \"Gold\", \"Gold\", \"Gold\", \"Gold\" ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( value, four, (int64_t) strlen( four ), &report ) );
+        CHECK( value.grades_count == 4 );
     }
     // fewer than a FIXED array's extent: the tail keeps its defaults
     {
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"podium\": [ \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.podium[0] == tabledemo::Grade::Gold );
         CHECK( value.podium[1] == tabledemo::Grade::None && value.podium[2] == tabledemo::Grade::None );
-        CHECK( report.clamped == 0 );
+        CHECK( report.refuse_reason == tabledemo::ok );
     }
 
     // base64 both ways, and a body that is not base64 at all
@@ -4085,25 +4121,25 @@ static void test_json_hostile_extents()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"icon\": \"AQID/w==\" }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.icon_length == 4 );
         CHECK( value.icon[0] == 0x01 && value.icon[1] == 0x02 && value.icon[2] == 0x03 && value.icon[3] == 0xff );
-        CHECK( report.kind_mismatch == 0 );
+        CHECK( report.refuse_reason == tabledemo::ok );
     }
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"icon\": \"not base64 at all!\" }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.icon_length == 0 && report.kind_mismatch == 1 && !report.malformed );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.icon_length == 0 && report.refuse_reason == tabledemo::kind_mismatch && !report.damaged );
     }
     {
-        // a base64 body longer than bytes(16) clamps and counts
+        // a base64 body longer than bytes(16) refuses
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"icon\": \"QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=\" }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.icon_length == 16 && report.clamped == 1 );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.icon_length == 0 && report.refuse_reason == tabledemo::out_of_range );
     }
 }
 
@@ -4114,34 +4150,34 @@ static void test_json_hostile_unions()
 
     // {} and an absent key are both None
     const char * empty = "{ \"effect\": {} }";
-    CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, empty, (int64_t) strlen( empty ), &report ) );
+    CHECK( tabledemo::WeaponConfigFromJson( value, empty, (int64_t) strlen( empty ), &report ) );
     CHECK( value.effect.type == tabledemo::EffectType::None );
 
     // ONE key, the arm's name
     const char * one = "{ \"effect\": { \"debuff\": { \"amount\": 12 } } }";
-    CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, one, (int64_t) strlen( one ), &report ) );
+    CHECK( tabledemo::WeaponConfigFromJson( value, one, (int64_t) strlen( one ), &report ) );
     CHECK( value.effect.type == tabledemo::EffectType::Debuff && value.effect.debuff.amount == 12 );
 
     // an arm this build cannot name reads as None and counts
     tabledemo::TableReport unknown_arm;
     const char * strange = "{ \"effect\": { \"hex\": { \"power\": 3 } } }";
-    CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
+    CHECK( tabledemo::WeaponConfigFromJson( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
     CHECK( value.effect.type == tabledemo::EffectType::None && unknown_arm.unknown == 1 );
 
     // TWO keys is not a one-of, and the walk will not choose for you
     tabledemo::TableReport two;
     const char * both = "{ \"effect\": { \"buff\": { \"multiplier\": 2.0 }, \"debuff\": { \"amount\": 1 } } }";
-    CHECK( !tabledemo::WeaponConfigFromJsonTolerant( value, both, (int64_t) strlen( both ), &two ) );
-    CHECK( two.malformed );
+    CHECK( !tabledemo::WeaponConfigFromJson( value, both, (int64_t) strlen( both ), &two ) );
+    CHECK( two.damaged );
 
-    // a selected arm is RE-ESTABLISHED, never overlaid on the last one: a
-    // repeated key that names a different arm leaves nothing of the first
+    // a repeated key REFUSES the read whole (§16.2): neither arm lands, and
+    // nothing of either is overlaid on the value
     tabledemo::TableReport repeat;
     const char * again = "{ \"effect\": { \"buff\": { \"multiplier\": 9.0 } }, "
                          "\"effect\": { \"debuff\": { \"amount\": 4 } } }";
-    CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, again, (int64_t) strlen( again ), &repeat ) );
-    CHECK( value.effect.type == tabledemo::EffectType::Debuff && value.effect.debuff.amount == 4 );
-    CHECK( repeat.duplicate == 1 );
+    CHECK( !tabledemo::WeaponConfigFromJson( value, again, (int64_t) strlen( again ), &repeat ) );
+    CHECK( value.effect.type == tabledemo::EffectType::None );
+    CHECK( repeat.refuse_reason == tabledemo::malformed );
 }
 
 static void test_json_hostile_framing()
@@ -4166,10 +4202,10 @@ static void test_json_hostile_framing()
     for ( const auto & row : broken )
     {
         tabledemo::TableReport report;
-        bool ok = tabledemo::AttachmentFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
-        if ( ok || !report.malformed )
+        bool ok = tabledemo::AttachmentFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        if ( ok || !report.damaged )
         {
-            printf( "FAIL json framing (%s): ok=%d malformed=%d\n", row.what, ok, (int) report.malformed );
+            printf( "FAIL json framing (%s): ok=%d malformed=%d\n", row.what, ok, (int) report.damaged );
             failures++;
         }
     }
@@ -4183,8 +4219,8 @@ static void test_json_hostile_framing()
         for ( int i = 0; i < 400; i++ ) { deep.push_back( ']' ); }
         deep.push_back( '}' );
         tabledemo::TableReport report;
-        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, deep.data(), (int64_t) deep.size(), &report ) );
-        CHECK( report.malformed );
+        CHECK( !tabledemo::AttachmentFromJson( value, deep.data(), (int64_t) deep.size(), &report ) );
+        CHECK( report.damaged );
     }
     // a nesting the walk CAN take is still taken
     {
@@ -4196,19 +4232,19 @@ static void test_json_hostile_framing()
         const char * tail = ", \"slot\": 5 }";
         deep.insert( deep.end(), tail, tail + strlen( tail ) );
         tabledemo::TableReport report;
-        CHECK( tabledemo::AttachmentFromJsonTolerant( value, deep.data(), (int64_t) deep.size(), &report ) );
-        CHECK( value.slot == 5 && report.unknown == 1 && !report.malformed );
+        CHECK( tabledemo::AttachmentFromJson( value, deep.data(), (int64_t) deep.size(), &report ) );
+        CHECK( value.slot == 5 && report.unknown == 1 && !report.damaged );
     }
 
     // a NULL text, and a negative size
     {
         tabledemo::TableReport report;
-        CHECK( !tabledemo::AttachmentFromJsonTolerant( value, NULL, 0, &report ) );
-        CHECK( report.malformed );
+        CHECK( !tabledemo::AttachmentFromJson( value, NULL, 0, &report ) );
+        CHECK( report.damaged );
     }
     // ... and no report at all is legal: the walk owns one when the caller
     // does not
-    CHECK( !tabledemo::AttachmentFromJsonTolerant( value, "{", 1, NULL ) );
+    CHECK( !tabledemo::AttachmentFromJson( value, "{", 1, NULL ) );
 }
 
 // ---- the writer refuses what the text cannot name, exactly as measure and
@@ -4275,14 +4311,14 @@ static void test_json_guards()
     tabledemo::PatrolBuilder value;
     tabledemo::TableReport report;
     const char * after = "{ \"speed\": 2.5, \"active\": true }";
-    CHECK( tabledemo::PatrolFromJsonTolerant( value, after, (int64_t) strlen( after ), &report ) );
+    CHECK( tabledemo::PatrolFromJson( value, after, (int64_t) strlen( after ), &report ) );
     CHECK( value.GetRoot() != NULL && value.GetRoot()->active && value.GetRoot()->speed == 2.5f );
 
     // and a guarded field placed with the guard FALSE is elided on the way
     // out, so the wire never sees it either
     tabledemo::PatrolBuilder ignored;
     const char * no_guard = "{ \"speed\": 2.5 }";
-    CHECK( tabledemo::PatrolFromJsonTolerant( ignored, no_guard, (int64_t) strlen( no_guard ), &report ) );
+    CHECK( tabledemo::PatrolFromJson( ignored, no_guard, (int64_t) strlen( no_guard ), &report ) );
     CHECK( ignored.GetRoot() != NULL && !ignored.GetRoot()->active );
     uint8_t wire[512];
     int64_t wrote = tabledemo::PatrolSave( ignored, wire, sizeof( wire ) );
@@ -4307,16 +4343,16 @@ static void test_json_key_attribute()
     jsonkeys::Ship ship;
     jsonkeys::TableReport report;
     const char * text = "{ \"type\": 3, \"label\": \"Hauler\", \"hp\": 250 }";
-    CHECK( jsonkeys::ShipFromJsonTolerant( ship, text, (int64_t) strlen( text ), &report ) );
+    CHECK( jsonkeys::ShipFromJson( ship, text, (int64_t) strlen( text ), &report ) );
     CHECK( ship.ship_type == 3 && ship.hit_points == 250 );
     CHECK( strcmp( ship.name, "Hauler" ) == 0 );
-    CHECK( report.unknown == 0 && !report.malformed );
+    CHECK( report.unknown == 0 && !report.damaged );
 
     // the SCHEMA name is not a key: it reads as unknown
     jsonkeys::Ship other;
     jsonkeys::TableReport by_name;
     const char * schema_names = "{ \"ship_type\": 3, \"name\": \"Hauler\" }";
-    CHECK( jsonkeys::ShipFromJsonTolerant( other, schema_names, (int64_t) strlen( schema_names ), &by_name ) );
+    CHECK( jsonkeys::ShipFromJson( other, schema_names, (int64_t) strlen( schema_names ), &by_name ) );
     CHECK( other.ship_type == 0 && by_name.unknown == 2 );
 
     // and the text the writer produces uses the keys, round-tripping clean
@@ -4327,7 +4363,7 @@ static void test_json_key_attribute()
     CHECK( strstr( out.data(), "\"type\"" ) != NULL );
     CHECK( strstr( out.data(), "\"ship_type\"" ) == NULL );
     jsonkeys::Ship back;
-    CHECK( jsonkeys::ShipFromJsonTolerant( back, out.data(), size, &report ) );
+    CHECK( jsonkeys::ShipFromJson( back, out.data(), size, &report ) );
     uint8_t a[512], b[512];
     int64_t na = jsonkeys::ShipSave( ship, a, sizeof( a ) );
     int64_t nb = jsonkeys::ShipSave( back, b, sizeof( b ) );
@@ -4376,13 +4412,13 @@ static void test_json_fuzz_tokenizer()
         // defect
         tabledemo::TableReport report;
         tabledemo::ProfileConfig profile;
-        tabledemo::ProfileConfigFromJsonTolerant( profile, work.data(), (int64_t) work.size(), &report );
+        tabledemo::ProfileConfigFromJson( profile, work.data(), (int64_t) work.size(), &report );
         tabledemo::WeaponConfig weapon;
-        tabledemo::WeaponConfigFromJsonTolerant( weapon, work.data(), (int64_t) work.size(), &report );
+        tabledemo::WeaponConfigFromJson( weapon, work.data(), (int64_t) work.size(), &report );
         tabledemo::LoadoutConfig loadout;
-        tabledemo::LoadoutConfigFromJsonTolerant( loadout, work.data(), (int64_t) work.size(), &report );
+        tabledemo::LoadoutConfigFromJson( loadout, work.data(), (int64_t) work.size(), &report );
         tabledemo::RootConfig root;
-        tabledemo::RootConfigFromJsonTolerant( root, work.data(), (int64_t) work.size(), &report );
+        tabledemo::RootConfigFromJson( root, work.data(), (int64_t) work.size(), &report );
         // whatever came back is a legal instance: it must still save
         CHECK( tabledemo::RootConfigMeasure( root ) > 0 );
 
@@ -4392,7 +4428,7 @@ static void test_json_fuzz_tokenizer()
         // mutated text, however hostile, may reach that state.
         tabledemo::TableReport clean;
         tabledemo::ProfileConfig checked;
-        if ( tabledemo::ProfileConfigFromJsonTolerant( checked, work.data(), (int64_t) work.size(), &clean ) )
+        if ( tabledemo::ProfileConfigFromJson( checked, work.data(), (int64_t) work.size(), &clean ) )
         {
             if ( tabledemo::ProfileConfigToJsonMeasure( checked ) <= 0 )
             {
@@ -4557,9 +4593,9 @@ static void test_json_pinned_text()
         tabledemo::ProfileConfig profile;
         tabledemo::TableReport report;
         const char * unpadded = "{ \"icon\": \"AQI\" }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJson( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
         CHECK( profile.icon_length == 2 && profile.icon[0] == 1 && profile.icon[1] == 2 );
-        CHECK( !report.malformed );
+        CHECK( !report.damaged );
     }
 }
 
@@ -4590,11 +4626,11 @@ static void test_json_number_grammar()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report );
-        if ( ok || !report.malformed || report.clamped != 0 )
+        bool ok = tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report );
+        if ( ok || !report.damaged || report.refuse_reason == tabledemo::out_of_range )
         {
-            printf( "FAIL json number grammar (%s): ok=%d malformed=%d clamped=%d\n",
-                    text, ok, (int) report.malformed, report.clamped );
+            printf( "FAIL json number grammar (%s): ok=%d damaged=%d reason=%d\n",
+                    text, ok, (int) report.damaged, (int) report.refuse_reason );
             failures++;
         }
     }
@@ -4615,8 +4651,8 @@ static void test_json_number_grammar()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report ) );
-        if ( value.precision != row.expect || report.malformed || report.kind_mismatch != 0 )
+        CHECK( tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report ) );
+        if ( value.precision != row.expect || report.damaged || report.refuse_reason != tabledemo::ok )
         {
             printf( "FAIL json number accepted (%s): got %g want %g\n", row.text, value.precision, row.expect );
             failures++;
@@ -4643,11 +4679,11 @@ static void test_json_integral_spellings()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report ) );
-        if ( (int64_t) value.experience != row.expect || report.kind_mismatch != 0 || report.malformed )
+        CHECK( tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report ) );
+        if ( (int64_t) value.experience != row.expect || report.refuse_reason != tabledemo::ok || report.damaged )
         {
-            printf( "FAIL json integral spelling (%s): got %u want %lld kind=%d\n",
-                    row.text, value.experience, (long long) row.expect, report.kind_mismatch );
+            printf( "FAIL json integral spelling (%s): got %u want %lld reason=%d\n",
+                    row.text, value.experience, (long long) row.expect, (int) report.refuse_reason );
             failures++;
         }
     }
@@ -4663,37 +4699,39 @@ static void test_json_integral_spellings()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        if ( value.experience != 0 || report.kind_mismatch != 1 || report.malformed )
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        if ( value.experience != 0 || report.refuse_reason != tabledemo::kind_mismatch || report.damaged )
         {
-            printf( "FAIL json fraction (%s): experience=%u kind=%d\n", text, value.experience, report.kind_mismatch );
+            printf( "FAIL json fraction (%s): experience=%u reason=%d\n", text, value.experience, (int) report.refuse_reason );
             failures++;
         }
     }
 
-    // an integral spelling still meets the width and the declared range
+    // an integral spelling still meets the width and the declared range, and
+    // past them it refuses as out_of_range
+    const tabledemo::ProfileConfig fresh;
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"badge\": 3e2 }"; // 300 into a uint8
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.badge == 255 && report.clamped == 1 );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.badge == fresh.badge && report.refuse_reason == tabledemo::out_of_range );
     }
     {
         // signed, negative, and past the width
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"tilt\": -2e3 }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.tilt == -128 && report.clamped == 1 );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.tilt == fresh.tilt && report.refuse_reason == tabledemo::out_of_range );
     }
     {
-        // an integral value past every integer width saturates and counts
+        // an integral value past every integer width
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"epoch\": 1e30 }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.epoch == 18446744073709551615ull && report.clamped == 1 );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.epoch == fresh.epoch && report.refuse_reason == tabledemo::out_of_range );
     }
 }
 
@@ -4714,13 +4752,13 @@ static void test_json_no_infinity_reaches_storage()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
-        if ( !ok || report.kind_mismatch != 1 )
+        bool ok = tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        if ( ok || report.refuse_reason != tabledemo::kind_mismatch )
         {
-            printf( "FAIL json overflow (%s): ok=%d kind=%d\n", row.what, ok, report.kind_mismatch );
+            printf( "FAIL json overflow (%s): ok=%d reason=%d\n", row.what, ok, (int) report.refuse_reason );
             failures++;
         }
-        // the field kept its default, and the instance is still writable
+        // the refusal left the defaults, and the instance is still writable
         if ( tabledemo::ProfileConfigToJsonMeasure( value ) <= 0 )
         {
             printf( "FAIL json overflow (%s): the instance can no longer be written\n", row.what );
@@ -4728,22 +4766,21 @@ static void test_json_no_infinity_reaches_storage()
         }
     }
 
-    // -0 IS zero for an unsigned field, and reports nothing: a clamp count
-    // is an event, and that event did not happen
+    // -0 IS zero for an unsigned field, and is no refusal: it is in range
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"experience\": -0, \"precision\": -0 }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.experience == 0 && report.clamped == 0 && report.kind_mismatch == 0 );
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.experience == 0 );
     }
     {
-        // ... while a real negative for an unsigned field does clamp, and says so
+        // ... while a real negative for an unsigned field is out of range
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"experience\": -5 }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.experience == 0 && report.clamped == 1 );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.experience == 0 && report.refuse_reason == tabledemo::out_of_range );
     }
 
     // ... and a magnitude that DOES fit still lands exactly
@@ -4751,35 +4788,32 @@ static void test_json_no_infinity_reaches_storage()
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"precision\": 1e308, \"ratings\": [ 3.4e38 ] }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.precision == 1e308 && report.kind_mismatch == 0 );
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.precision == 1e308 );
         CHECK( tabledemo::ProfileConfigToJsonMeasure( value ) > 0 );
     }
 }
 
-static void test_json_duplicate_arrays_last_wins()
+static void test_json_duplicate_arrays_refuse()
 {
-    // "last wins" has to be true of an ARRAY key too, and it is wire-visible:
-    // a fixed array writes every slot, so a second, shorter occurrence must
-    // not leave the first occurrence's tail standing.
+    // A REPEATED KEY REFUSES THE WHOLE READ (docs/SPEC-TABLES.md §16.2), an
+    // ARRAY key included: there is no last-wins, so no first occurrence's tail
+    // can be left standing under a second, shorter one, and nothing of either
+    // occurrence lands.
     {
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"podium\": [ \"Bronze\", \"Silver\", \"Gold\" ], \"podium\": [ \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.podium[0] == tabledemo::Grade::Gold );
+        CHECK( !tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.podium[0] == tabledemo::Grade::None );
         CHECK( value.podium[1] == tabledemo::Grade::None );
         CHECK( value.podium[2] == tabledemo::Grade::None );
-        CHECK( report.duplicate == 1 );
+        CHECK( report.refuse_reason == tabledemo::malformed );
 
-        // and it matches the instance the SECOND occurrence alone describes
-        tabledemo::LoadoutConfig once;
+        // one occurrence alone lands
         const char * single = "{ \"podium\": [ \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( once, single, (int64_t) strlen( single ), &report ) );
-        uint8_t a[1024], b[1024];
-        int64_t na = tabledemo::LoadoutConfigSave( value, a, sizeof( a ) );
-        int64_t nb = tabledemo::LoadoutConfigSave( once, b, sizeof( b ) );
-        CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
+        CHECK( tabledemo::LoadoutConfigFromJson( value, single, (int64_t) strlen( single ), &report ) );
+        CHECK( value.podium[0] == tabledemo::Grade::Gold );
     }
     {
         // a counted array, and a fixed array of TABLES (whose elements go back
@@ -4789,29 +4823,29 @@ static void test_json_duplicate_arrays_last_wins()
         const char * text =
             "{ \"grades\": [ \"Gold\", \"Bronze\", \"Silver\" ], \"grades\": [ \"Bronze\" ],"
             "  \"backups\": [ { \"damage\": 1 }, { \"damage\": 2 } ], \"backups\": [ { \"damage\": 3 } ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.grades_count == 1 && value.grades[0] == tabledemo::Grade::Bronze );
-        CHECK( value.backups[0].damage == 3 );     // the SECOND occurrence's element
-        CHECK( value.backups[1].damage == 21.0f ); // the DECLARED default, not 2
-        CHECK( report.duplicate == 2 );
+        CHECK( !tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.grades_count == 0 );
+        CHECK( value.backups[0].damage == 21.0f && value.backups[1].damage == 21.0f ); // the DECLARED default
+        CHECK( report.refuse_reason == tabledemo::malformed );
     }
     {
         // bytes too
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"icon\": \"AQIDBAUG\", \"icon\": \"/w==\" }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.icon_length == 1 && value.icon[0] == 0xff );
-        CHECK( report.duplicate == 1 );
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.icon_length == 0 );
+        CHECK( report.refuse_reason == tabledemo::malformed );
     }
     {
         // and a float array, the review's own repro
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"ratings\": [ 1.5, 2.5, 3.5, 4.5 ], \"ratings\": [ 9.5 ] }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.ratings[0] == 9.5f && value.ratings[1] == 0.0f &&
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.ratings[0] == 0.0f && value.ratings[1] == 0.0f &&
                value.ratings[2] == 0.0f && value.ratings[3] == 0.0f );
+        CHECK( report.refuse_reason == tabledemo::malformed );
     }
 }
 
@@ -4819,7 +4853,7 @@ static void test_json_null_is_a_kind_mismatch()
 {
     // null is a JSON value with no field kind to land in — there is no
     // pointer row on this page — so it is the wrong shape everywhere, and it
-    // is skipped and counted like any other wrong shape.
+    // refuses the read like any other wrong shape.
     static const char * nulls[] = {
         "{ \"experience\": null }",
         "{ \"name\": null }",
@@ -4833,11 +4867,11 @@ static void test_json_null_is_a_kind_mismatch()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report );
-        if ( !ok || report.kind_mismatch != 1 || report.malformed )
+        bool ok = tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report );
+        if ( ok || report.refuse_reason != tabledemo::kind_mismatch || report.damaged )
         {
-            printf( "FAIL json null (%s): ok=%d kind=%d malformed=%d\n",
-                    text, ok, report.kind_mismatch, (int) report.malformed );
+            printf( "FAIL json null (%s): ok=%d reason=%d damaged=%d\n",
+                    text, ok, (int) report.refuse_reason, (int) report.damaged );
             failures++;
         }
     }
@@ -4845,10 +4879,13 @@ static void test_json_null_is_a_kind_mismatch()
     {
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"grades\": [ \"Gold\", null ], \"perks\": [ null ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.grades_count == 2 && value.grades[0] == tabledemo::Grade::Gold );
-        CHECK( report.kind_mismatch == 2 );
+        const char * text = "{ \"grades\": [ \"Gold\", null ] }";
+        CHECK( !tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.grades_count == 0 );
+        CHECK( report.refuse_reason == tabledemo::kind_mismatch );
+        const char * perks = "{ \"perks\": [ null ] }";
+        CHECK( !tabledemo::LoadoutConfigFromJson( value, perks, (int64_t) strlen( perks ), &report ) );
+        CHECK( value.perks == 0 && report.refuse_reason == tabledemo::kind_mismatch );
     }
 }
 
@@ -4893,8 +4930,8 @@ static void test_json_nested_guards()
         // it one, docs/SPEC-TABLES.md §2.2, §3.4)
         tabledemo::PatrolBuilder back;
         tabledemo::TableReport report;
-        CHECK( tabledemo::PatrolFromJsonTolerant( back, text.data(), size, &report ) );
-        CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+        CHECK( tabledemo::PatrolFromJson( back, text.data(), size, &report ) );
+        CHECK( !report.damaged && report.unknown == 0 );
         uint8_t a[512], b[512];
         int64_t na = tabledemo::PatrolSave( &value, a, sizeof( a ) );
         int64_t nb = tabledemo::PatrolSave( back, b, sizeof( b ) );
@@ -4914,7 +4951,7 @@ static void test_json_nested_guards()
         const char * text =
             "{ \"target_id\": 7, \"wander\": 1.5, \"note\": \"x\", \"speed\": 2.5,"
             "  \"has_target\": true, \"active\": true }";
-        CHECK( tabledemo::PatrolFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::PatrolFromJson( value, text, (int64_t) strlen( text ), &report ) );
         const tabledemo::Patrol * read = value.GetRoot();
         CHECK( read != NULL && read->active && read->has_target && read->target_id == 7 && read->speed == 2.5f );
 
@@ -4954,9 +4991,8 @@ static void test_json_nested_guards()
 
         tabledemo::PatrolBuilder back;
         tabledemo::TableReport report;
-        CHECK( tabledemo::PatrolFromJsonTolerant( back, text.data(), size, &report ) );
-        CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 &&
-               report.clamped == 0 && report.duplicate == 0 );
+        CHECK( tabledemo::PatrolFromJson( back, text.data(), size, &report ) );
+        CHECK( !report.damaged && report.unknown == 0 && report.refuse_reason == tabledemo::ok );
         uint8_t a[512], b[512];
         int64_t na = tabledemo::PatrolSave( &p, a, sizeof( a ) );
         int64_t nb = tabledemo::PatrolSave( back, b, sizeof( b ) );
@@ -5032,25 +5068,27 @@ static void test_json_optional_presence()
         CHECK( strstr( text.data(), "\"gunner\"" ) != NULL );
     }
 
-    // PRESENCE OF THE KEY IS THE PRESENCE — whatever the value
-    struct { const char * text; bool present; int kind_mismatch; const char * what; } rows[] = {
-        { "{ \"gunner\": { \"reaction\": 0.5 } }", true,  0, "a value" },
-        { "{ \"gunner\": {} }",                    true,  0, "an empty object" },
-        { "{ \"damage\": 1 }",                     false, 0, "no key at all" },
-        { "{ \"gunner\": null }",                  false, 0, "null reads as ABSENT" },
-        { "{ \"gunner\": 7 }",                     true,  1, "a wrong-typed value is still a present key" },
-        { "{ \"gunner\": \"x\" }",                 true,  1, "likewise a string" },
+    // PRESENCE OF THE KEY IS THE PRESENCE — and a wrong-typed value under it
+    // is a kind mismatch that refuses the read, leaving the optional absent
+    struct { const char * text; bool ok; bool present; const char * what; } rows[] = {
+        { "{ \"gunner\": { \"reaction\": 0.5 } }", true,  true,  "a value" },
+        { "{ \"gunner\": {} }",                    true,  true,  "an empty object" },
+        { "{ \"damage\": 1 }",                     true,  false, "no key at all" },
+        { "{ \"gunner\": null }",                  true,  false, "null reads as ABSENT" },
+        { "{ \"gunner\": 7 }",                     false, false, "a wrong-typed value refuses" },
+        { "{ \"gunner\": \"x\" }",                 false, false, "likewise a string" },
     };
     for ( const auto & row : rows )
     {
         tabledemo::TurretConfig value;
         tabledemo::TableReport report;
-        bool ok = tabledemo::TurretConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
-        if ( !ok || value.gunner_present != row.present || report.kind_mismatch != row.kind_mismatch )
+        bool ok = tabledemo::TurretConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        const tabledemo::TableRefuseReason want = row.ok ? tabledemo::ok : tabledemo::kind_mismatch;
+        if ( ok != row.ok || value.gunner_present != row.present || report.refuse_reason != want )
         {
-            printf( "FAIL json optional (%s): ok=%d present=%d want %d kind=%d want %d\n",
+            printf( "FAIL json optional (%s): ok=%d present=%d want %d reason=%d want %d\n",
                     row.what, ok, (int) value.gunner_present, (int) row.present,
-                    report.kind_mismatch, row.kind_mismatch );
+                    (int) report.refuse_reason, (int) want );
             failures++;
         }
     }
@@ -5059,20 +5097,24 @@ static void test_json_optional_presence()
     {
         tabledemo::TurretConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"damage\": null, \"gunner\": null }";
-        CHECK( tabledemo::TurretConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.kind_mismatch == 1 );       // damage only
+        const char * text = "{ \"gunner\": null }";
+        CHECK( tabledemo::TurretConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( !value.gunner_present && report.refuse_reason == tabledemo::ok );
+        const char * damage = "{ \"damage\": null, \"gunner\": null }";
+        CHECK( !tabledemo::TurretConfigFromJson( value, damage, (int64_t) strlen( damage ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::kind_mismatch ); // damage's null
         CHECK( !value.gunner_present );
         CHECK( value.damage == 10.0f );           // the declared default
     }
 
-    // last wins, and a null LAST leaves nothing of the value before it
+    // a repeated key refuses, even when the last occurrence is a null: no
+    // occurrence lands
     {
         tabledemo::TurretConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"gunner\": { \"reaction\": 9.5 }, \"gunner\": null }";
-        CHECK( tabledemo::TurretConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( !value.gunner_present && report.duplicate == 1 );
+        CHECK( !tabledemo::TurretConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( !value.gunner_present && report.refuse_reason == tabledemo::malformed );
         CHECK( value.gunner.reaction == 0.2f );   // back at its declared default
     }
 
@@ -5095,11 +5137,11 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Green\": { \"spawn_count\": 7 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.teams[tabledemo::Team::Green].spawn_count == 7 );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 );  // the declared default
         CHECK( value.teams[tabledemo::Team::Blue].spawn_count == 4 );
-        CHECK( report.unknown == 0 && !report.malformed );
+        CHECK( report.unknown == 0 && !report.damaged );
     }
 
     // "None" NAMES NO SLOT (§2.4): nothing is stored for it, so the key is
@@ -5108,7 +5150,7 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"None\": { \"spawn_count\": 3 }, \"Red\": { \"spawn_count\": 5 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( report.unknown == 1 );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 5 );
     }
@@ -5128,8 +5170,8 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Violet\": { \"spawn_count\": 3 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.unknown == 1 && !report.malformed );
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.unknown == 1 && !report.damaged );
     }
 
     // a keyed array is an OBJECT: an array is the wrong shape for it
@@ -5137,30 +5179,29 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": [ { \"spawn_count\": 3 } ] }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.kind_mismatch == 1 && !report.malformed );
+        CHECK( !tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::kind_mismatch && !report.damaged );
     }
-    // ... and a slot whose value is the wrong shape is counted, not coerced
+    // ... and a slot whose value is the wrong shape refuses, never coerced
     {
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": 5 } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.kind_mismatch == 1 );
+        CHECK( !tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::kind_mismatch );
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 );
     }
 
-    // last wins for a repeated keyed field: the second object replaces the
-    // first outright rather than overlaying it
+    // a repeated keyed field refuses: neither object lands
     {
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Blue\": { \"spawn_count\": 6 } },"
                             "  \"teams\": { \"Blue\": { \"spawn_count\": 7 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.teams[tabledemo::Team::Blue].spawn_count == 7 );
-        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 ); // back at its default
-        CHECK( report.duplicate == 1 );
+        CHECK( !tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.teams[tabledemo::Team::Blue].spawn_count == 4 );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 ); // at its default
+        CHECK( report.refuse_reason == tabledemo::malformed );
     }
 
     // trailing commas inside a keyed object, like everywhere else
@@ -5168,19 +5209,23 @@ static void test_json_keyed_arrays()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, }, }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 5 && !report.malformed );
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 5 && !report.damaged );
     }
 
     // a keyed array of SCALARS, on a plain `type`, keyed the same way
     {
         tabledemo::ScoreBoard value;
         tabledemo::TableReport report;
-        const char * text = "{ \"per_team\": { \"Blue\": 900, \"Green\": 200000 } }";
-        CHECK( tabledemo::ScoreBoardFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        const char * text = "{ \"per_team\": { \"Blue\": 900, \"Green\": 100000 } }";
+        CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.per_team[keyed_index( tabledemo::Team::Blue )] == 900 );
-        CHECK( value.per_team[keyed_index( tabledemo::Team::Green )] == 100000 ); // clamped to max
-        CHECK( report.clamped == 1 );
+        CHECK( value.per_team[keyed_index( tabledemo::Team::Green )] == 100000 ); // the declared max itself
+        // and past the declared max the whole read refuses
+        const char * over = "{ \"per_team\": { \"Blue\": 900, \"Green\": 200000 } }";
+        CHECK( !tabledemo::ScoreBoardFromJson( value, over, (int64_t) strlen( over ), &report ) );
+        CHECK( value.per_team[keyed_index( tabledemo::Team::Blue )] == 0 );
+        CHECK( report.refuse_reason == tabledemo::out_of_range );
     }
 }
 
@@ -5384,19 +5429,28 @@ static void test_golden_seams()
         pin_table_golden( "v2_seams", buffer, wrote );
     }
 
-    // the SAME BYTES across the generation step, both directions, with the
-    // counts pinned here and in the C# leg: two Gamma slots V2 cannot name,
-    // Omega and Sigma V1 cannot, and `a` and `ledger` changing kind each way
-    // (ledger is positional in V1 and KEYED in V2 — different kinds, so a
-    // reported edit rather than a quiet one, docs/SPEC-TABLES.md §3.2)
+    // the SAME BYTES across the generation step, both directions: `a` and
+    // `ledger` change kind each way (ledger is positional in V1 and KEYED in
+    // V2 — different kinds, so a reported edit rather than a quiet one,
+    // docs/SPEC-TABLES.md §3.2), and a kind change refuses the whole load.
+    // With those two at their defaults the rest of the seams load, and the
+    // counts are the slots each side cannot name: two Gamma slots V2 cannot
+    // name, Omega and Sigma V1 cannot.
     {
         static tblv1::Cfg v1;
         build_golden_v1_seams( v1 );
         int64_t v1_bytes = tblv1::CfgSave( v1, buffer, sizeof( buffer ) );
         tblv2::TableReport forward;
         static tblv2::Cfg new_reader;
-        CHECK( tblv2::CfgLoadTolerant( new_reader, buffer, v1_bytes, &forward ) );
-        CHECK( !forward.malformed && forward.unknown == 2 && forward.kind_mismatch == 2 && forward.clamped == 0 );
+        CHECK( !tblv2::CfgLoad( new_reader, buffer, v1_bytes, &forward ) );
+        CHECK( !forward.damaged && forward.refuse_reason == tblv2::kind_mismatch );
+        CHECK( new_reader.bank[tblv2::Slot::Beta].power == 0 ); // nothing landed
+
+        v1.a = tblv1::Cfg().a;
+        for ( int32_t i = 0; i < 3; i++ ) { v1.ledger[i] = 0; }
+        v1_bytes = tblv1::CfgSave( v1, buffer, sizeof( buffer ) );
+        CHECK( tblv2::CfgLoad( new_reader, buffer, v1_bytes, &forward ) );
+        CHECK( !forward.damaged && forward.unknown == 2 && forward.refuse_reason == tblv2::ok );
         CHECK( new_reader.bank[tblv2::Slot::Beta].power == 22 ); // by NAME, not by ordinal
         CHECK( new_reader.bank[tblv2::Slot::Omega].power == 0 );
 
@@ -5405,8 +5459,16 @@ static void test_golden_seams()
         int64_t v2_bytes = tblv2::CfgSave( v2, buffer, sizeof( buffer ) );
         tblv1::TableReport back;
         static tblv1::Cfg old_reader;
-        CHECK( tblv1::CfgLoadTolerant( old_reader, buffer, v2_bytes, &back ) );
-        CHECK( !back.malformed && back.unknown == 2 && back.kind_mismatch == 2 );
+        CHECK( !tblv1::CfgLoad( old_reader, buffer, v2_bytes, &back ) );
+        CHECK( !back.damaged && back.refuse_reason == tblv1::kind_mismatch );
+        CHECK( old_reader.bank[tblv1::Slot::Beta].power == 0 );
+
+        v2.a = tblv2::Cfg().a;
+        v2.ledger[tblv2::Grade::Bronze] = 0;
+        v2.ledger[tblv2::Grade::Gold] = 0;
+        v2_bytes = tblv2::CfgSave( v2, buffer, sizeof( buffer ) );
+        CHECK( tblv1::CfgLoad( old_reader, buffer, v2_bytes, &back ) );
+        CHECK( !back.damaged && back.unknown == 2 && back.refuse_reason == tblv1::ok );
         CHECK( old_reader.bank[tblv1::Slot::Beta].power == 22 );
         CHECK( old_reader.bank[tblv1::Slot::Gamma].power == 0 );
     }
@@ -5633,18 +5695,16 @@ static void check_graph_text_round_trip( const char * what, void ( *build )( gra
 
     graphdemo::SceneBuilder back;
     graphdemo::TableReport report;
-    if ( !graphdemo::SceneFromJsonTolerant( back, text.data(), size, &report ) )
+    if ( !graphdemo::SceneFromJson( back, text.data(), size, &report ) )
     {
         printf( "FAIL %s: FromJson refused its own text\n", what );
         failures++;
         return;
     }
-    if ( report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
-         report.duplicate != 0 || report.malformed )
+    if ( report.unknown != 0 || report.widened != 0 || report.refuse_reason != graphdemo::ok || report.damaged )
     {
-        printf( "FAIL %s: a text this build wrote reported %d/%d/%d/%d/%d\n", what,
-                report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
-                (int) report.malformed );
+        printf( "FAIL %s: a text this build wrote reported %d/%d/%d/%d\n", what,
+                report.unknown, report.widened, (int) report.refuse_reason, (int) report.damaged );
         failures++;
     }
     int64_t again = graphdemo::SceneMeasure( back );
@@ -5815,8 +5875,8 @@ static void test_json_variable_class()
         {
             graphdemo::SceneBuilder builder;
             graphdemo::TableReport report;
-            bool ok = graphdemo::SceneFromJsonTolerant( builder, refused[i], (int64_t) strlen( refused[i] ), &report );
-            if ( ok || !report.malformed )
+            bool ok = graphdemo::SceneFromJson( builder, refused[i], (int64_t) strlen( refused[i] ), &report );
+            if ( ok || !report.damaged )
             {
                 printf( "FAIL json variable: %s read as a text; it is malformed\n", refused[i] );
                 failures++;
@@ -5829,33 +5889,32 @@ static void test_json_variable_class()
             tabledemo::Attachment value;
             tabledemo::TableReport report;
             const char * text = "{ \"slot\": 1, \"&node\": 1 }";
-            CHECK( !tabledemo::AttachmentFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-            CHECK( report.malformed );
+            CHECK( !tabledemo::AttachmentFromJson( value, text, (int64_t) strlen( text ), &report ) );
+            CHECK( report.damaged );
             tabledemo::TableReport skipped;
             const char * inside = "{ \"mystery\": { \"&node\": 1 } }";
-            CHECK( tabledemo::AttachmentFromJsonTolerant( value, inside, (int64_t) strlen( inside ), &skipped ) );
-            CHECK( !skipped.malformed && skipped.unknown == 1 );
+            CHECK( tabledemo::AttachmentFromJson( value, inside, (int64_t) strlen( inside ), &skipped ) );
+            CHECK( !skipped.damaged && skipped.unknown == 1 );
         }
     }
 
     // RESOLUTION mirrors the wire's node rules (§3.1): a reference to a node of
-    // another table is a kind mismatch with the pointer null, and a definition
-    // the walk dropped keeps its label — its reference reads null, the drop
-    // counted once where it happened
+    // another table is a kind mismatch, and a definition inside an element
+    // past the array's bound is out of range; each refuses the whole read
     {
         graphdemo::SceneBuilder builder;
         graphdemo::TableReport report;
         const char * text = "{ \"settings\": { \"&node\": 1, \"quality\": 1 }, \"head\": { \"&node\": 1 } }";
-        CHECK( graphdemo::SceneFromJsonTolerant( builder, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.kind_mismatch == 1 && !report.malformed && report.unknown == 0 );
-        CHECK( builder.GetRoot()->head.null() && !builder.GetRoot()->settings.null() );
+        CHECK( !graphdemo::SceneFromJson( builder, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.refuse_reason == graphdemo::kind_mismatch && !report.damaged );
+        CHECK( builder.GetRoot()->head.null() && builder.GetRoot()->settings.null() );
     }
     {
         graphdemo::SceneBuilder builder;
         graphdemo::TableReport report;
         const char * text = "{ \"layers\": [ {}, {}, {}, {}, { \"head\": { \"&node\": 1, \"value\": 1 } } ], \"alias\": { \"&node\": 1 } }";
-        CHECK( graphdemo::SceneFromJsonTolerant( builder, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.clamped == 1 && !report.malformed && report.unknown == 0 );
+        CHECK( !graphdemo::SceneFromJson( builder, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.refuse_reason == graphdemo::out_of_range && !report.damaged );
         CHECK( builder.GetRoot()->alias.null() );
     }
     // a shared node read back IS one node: the two slots hold one arena offset
@@ -5863,8 +5922,8 @@ static void test_json_variable_class()
         graphdemo::SceneBuilder builder;
         graphdemo::TableReport report;
         const char * text = "{ \"head\": { \"&node\": 1, \"value\": 7 }, \"alias\": { \"&node\": 1 } }";
-        CHECK( graphdemo::SceneFromJsonTolerant( builder, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+        CHECK( graphdemo::SceneFromJson( builder, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.unknown == 0 && !report.damaged );
         graphdemo::Scene * root = builder.GetRoot();
         CHECK( !root->head.null() && root->head.value == root->alias.value );
         CHECK( graphdemo::ListNodeAt( builder.arena, root->head )->value == 7 );
@@ -5873,31 +5932,30 @@ static void test_json_variable_class()
 
 // ---- a keyed object's keys ARE keys (docs/SPEC-TABLES.md §16.2) ---------------
 //
-// Last-wins inside a keyed object was always true — each placement
-// re-establishes the slot — so the VALUE was right and only the ledger was
-// wrong, which is precisely why no round-trip test could see the repeat go
-// uncounted. It took the pack engine's two-sided gate to find it.
+// A variant named twice inside a keyed object is a repeated key, and a
+// repeated key REFUSES the whole read: there is no last-wins to re-establish
+// a slot and no ledger to count it in. It took the pack engine's two-sided
+// gate to find the old uncounted repeat; the strict read makes it loud.
 
 static void test_json_keyed_duplicate_keys()
 {
-    // one variant named twice: last wins, and the repeat is COUNTED
+    // one variant named twice refuses, and nothing of either lands
     {
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Red\": { \"spawn_count\": 9 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 9 );
-        CHECK( report.duplicate == 1 );
-        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+        CHECK( !tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 ); // the declared default
+        CHECK( report.refuse_reason == tabledemo::malformed && !report.damaged );
     }
 
-    // every repeat past the first counts, across variants
+    // a repeat after distinct variants refuses just the same
     {
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"teams\": { \"Red\": {}, \"Red\": {}, \"Red\": {}, \"Blue\": {}, \"Blue\": {} } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.duplicate == 3 ); // two extra Reds, one extra Blue
+        const char * text = "{ \"teams\": { \"Red\": {}, \"Blue\": {}, \"Blue\": {} } }";
+        CHECK( !tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::malformed );
     }
 
     // DISTINCT variants are not duplicates — the whole point of the key
@@ -5905,72 +5963,60 @@ static void test_json_keyed_duplicate_keys()
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": {}, \"Blue\": {}, \"Green\": {} } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.duplicate == 0 );
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::ok );
     }
 
-    // a repeated key that names NO slot is unknown twice, never a duplicate:
-    // it was never placed, so there is nothing for a second one to replace
+    // names no slot holds are unknown, once each, and land nothing...
     {
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"teams\": { \"Violet\": {}, \"Violet\": {}, \"None\": {}, \"None\": {} } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.unknown == 4 && report.duplicate == 0 );
+        const char * text = "{ \"teams\": { \"Violet\": {}, \"None\": {} } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.unknown == 2 && report.refuse_reason == tabledemo::ok );
     }
-
-    // last-wins is a WHOLE-VALUE replacement here too: the second occurrence
-    // does not overlay the first, it re-establishes the slot
+    // ... but a repeated key is a repeated key whether or not it names a
+    // slot: the TEXT repeats, and that refuses
     {
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 9, \"banner\": \"first\" },"
-                            "              \"Red\": { \"spawn_count\": 2 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 2 );
-        CHECK( value.teams[tabledemo::Team::Red].banner_length == 0 ); // nothing of the first survives
-        CHECK( report.duplicate == 1 );
-
-        // and the instance is the one the SECOND occurrence alone describes
-        tabledemo::KeyedConfig once;
-        const char * single = "{ \"teams\": { \"Red\": { \"spawn_count\": 2 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( once, single, (int64_t) strlen( single ), &report ) );
-        uint8_t a[4096], b[4096];
-        int64_t na = tabledemo::KeyedConfigSave( value, a, sizeof( a ) );
-        int64_t nb = tabledemo::KeyedConfigSave( once, b, sizeof( b ) );
-        CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
+        const char * text = "{ \"teams\": { \"Violet\": {}, \"Violet\": {} } }";
+        CHECK( !tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::malformed );
     }
 
-    // a keyed array of SCALARS counts the same way
+    // a keyed array of SCALARS refuses the same way
     {
         tabledemo::ScoreBoard value;
         tabledemo::TableReport report;
         const char * text = "{ \"per_team\": { \"Blue\": 1, \"Blue\": 2, \"Blue\": 3 } }";
-        CHECK( tabledemo::ScoreBoardFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.per_team[keyed_index( tabledemo::Team::Blue )] == 3 );
-        CHECK( report.duplicate == 2 );
+        CHECK( !tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.per_team[keyed_index( tabledemo::Team::Blue )] == 0 );
+        CHECK( report.refuse_reason == tabledemo::malformed );
     }
 
-    // a repeat NESTED one keyed object down still counts
+    // a repeat NESTED one keyed object down still refuses the whole read
     {
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"hulls\": { \"Gunship\": { \"turrets\": {"
                             "   \"Missile\": { \"damage\": 1 }, \"Missile\": { \"damage\": 2 } } } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].damage == 2.0f );
-        CHECK( report.duplicate == 1 );
+        CHECK( !tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].damage == tabledemo::TurretConfig().damage );
+        CHECK( report.refuse_reason == tabledemo::malformed );
     }
 
-    // the PINNED TEXT: a repeated key is a READ-side event only, so what the
-    // writer emits for the instance it lands on carries each variant exactly
-    // once — the repeat leaves no trace in the text, only in the ledger
+    // the PINNED TEXT: the writer emits each variant exactly once, in
+    // declaration order, so no text it writes can carry a repeat for a reader
+    // to refuse; the repeated spelling of the same content refuses
     {
         tabledemo::ScoreBoard value;
         tabledemo::TableReport report;
-        const char * text = "{ \"per_team\": { \"Red\": 4, \"Green\": 7, \"Green\": 9 } }";
-        CHECK( tabledemo::ScoreBoardFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.duplicate == 1 );
+        const char * repeated = "{ \"per_team\": { \"Red\": 4, \"Green\": 7, \"Green\": 9 } }";
+        CHECK( !tabledemo::ScoreBoardFromJson( value, repeated, (int64_t) strlen( repeated ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::malformed );
+        const char * text = "{ \"per_team\": { \"Green\": 9, \"Red\": 4 } }";
+        CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
 
         static const char * expected =
             "{\n"
@@ -6239,15 +6285,15 @@ static void reload_stream_golden( const char * name )
     const int64_t need = streamdemo::FeedLoadMeasure( golden_pinned, pinned );
     uint8_t * region = (uint8_t *) malloc( (size_t) need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * root = streamdemo::FeedLoadTolerant( region, need, golden_pinned, pinned, &report );
-    if ( root == NULL || report.malformed )
+    const streamdemo::Feed * root = streamdemo::FeedLoad( region, need, golden_pinned, pinned, &report );
+    if ( root == NULL || report.damaged )
     {
         printf( "FAIL table wire golden %s does not load\n", name );
         failures++;
         free( region );
         return;
     }
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( report.unknown == 0 );
     const int64_t wrote = streamdemo::FeedSave( root, golden_again, sizeof( golden_again ) );
     if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
     {
@@ -6319,8 +6365,8 @@ static void test_arm_retype_controls()
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
-        CHECK( report.widened == 1 && report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
+        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.widened == 1 && report.unknown == 0 && !report.damaged );
         CHECK( got.value.type == tbla2::ValueType::A );
         CHECK( got.value.a == 7 );
         CHECK( got.id == 11 && got.tail == 22 );
@@ -6329,16 +6375,16 @@ static void test_arm_retype_controls()
     // (2) ONE WIDTH, ONE LENGTH is a KIND MISMATCH here, because an ARM
     // HEADER CARRIES THE ARM'S KIND (§3): kind 4 against kind 10. A form
     // without that byte read the one width as the other and reported nothing,
-    // which is what the kind buys.
+    // which is what the kind buys; the strict read refuses the whole load.
     {
         const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::B );
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
-        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && report.clamped == 0 && !report.malformed );
+        CHECK( !tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.refuse_reason == tbla2::kind_mismatch && !report.damaged );
         CHECK( got.value.type == tbla2::ValueType::None );
-        CHECK( got.id == 11 && got.tail == 22 );
+        CHECK( got.id == 0 && got.tail == 0 ); // nothing landed, the siblings included
     }
 
     // (3) A SCALAR READ AS A STRING is a kind mismatch on the same rule:
@@ -6348,24 +6394,23 @@ static void test_arm_retype_controls()
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
-        CHECK( report.kind_mismatch == 1 && report.clamped == 0 && !report.malformed );
+        CHECK( !tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.refuse_reason == tbla2::kind_mismatch && !report.damaged );
         CHECK( got.value.type == tbla2::ValueType::None );
-        CHECK( got.id == 11 && got.tail == 22 );
+        CHECK( got.id == 0 && got.tail == 0 );
     }
 
-    // (4) FOUR BYTES READ AS A BODY: kind 10 against kind 13, a kind mismatch,
-    // the union None and the enclosing body continuing past it by L — the
-    // siblings still land
+    // (4) FOUR BYTES READ AS A BODY: kind 10 against kind 13, a kind mismatch
+    // and not damage — the framing is sound, L still covers the payload
     {
         const int64_t wrote = save_a1_arm( buffer, sizeof( buffer ), tbla1::ValueType::D );
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
-        CHECK( report.kind_mismatch == 1 && !report.malformed );
+        CHECK( !tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.refuse_reason == tbla2::kind_mismatch && !report.damaged );
         CHECK( got.value.type == tbla2::ValueType::None );
-        CHECK( got.id == 11 && got.tail == 22 );
+        CHECK( got.id == 0 && got.tail == 0 );
     }
 
     // (5) the arm beside them still round-trips, byte for byte
@@ -6374,8 +6419,8 @@ static void test_arm_retype_controls()
         CHECK( wrote > 0 );
         tbla2::Root got;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoadTolerant( got, buffer, wrote, &report ) );
-        CHECK( report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
+        CHECK( tbla2::RootLoad( got, buffer, wrote, &report ) );
+        CHECK( report.unknown == 0 && !report.damaged );
         CHECK( got.value.type == tbla2::ValueType::E && got.value.e.n == 5 );
         uint8_t again[256];
         const int64_t back = tbla2::RootSave( got, again, sizeof( again ) );
@@ -6396,8 +6441,8 @@ static void test_arm_empty_payloads()
     CHECK( wrote == tbla1::RootMeasure( zero ) );
     tbla1::Root got;
     tbla1::TableReport report;
-    CHECK( tbla1::RootLoadTolerant( got, buffer, wrote, &report ) );
-    CHECK( report.kind_mismatch == 0 && !report.malformed );
+    CHECK( tbla1::RootLoad( got, buffer, wrote, &report ) );
+    CHECK( !report.damaged );
     CHECK( got.value.type == tbla1::ValueType::A && got.value.a == 0 );
 
     // the empty end of a string arm, in the messages corpus where a string arm
@@ -6410,7 +6455,7 @@ static void test_arm_empty_payloads()
     CHECK( noted == messagedemo::ToolMessageMeasure( note ) );
     messagedemo::ToolMessage back;
     messagedemo::TableReport noteReport;
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, buffer, noted, &noteReport ) );
+    CHECK( messagedemo::ToolMessageLoad( back, buffer, noted, &noteReport ) );
     CHECK( back.body.type == messagedemo::ToolBodyType::Origin );
     CHECK( back.body.origin.type == messagedemo::OriginType::Note );
     CHECK( back.body.origin.note.value_length == 0 );
@@ -6423,8 +6468,8 @@ static void test_arm_empty_payloads()
     CHECK( wroteNone == messagedemo::ToolMessageMeasure( none ) );
     messagedemo::ToolMessage backNone;
     messagedemo::TableReport noneReport;
-    CHECK( messagedemo::ToolMessageLoadTolerant( backNone, buffer, wroteNone, &noneReport ) );
-    CHECK( noneReport.kind_mismatch == 0 && !noneReport.malformed );
+    CHECK( messagedemo::ToolMessageLoad( backNone, buffer, wroteNone, &noneReport ) );
+    CHECK( !noneReport.damaged );
     CHECK( backNone.body.type == messagedemo::ToolBodyType::Origin );
     CHECK( backNone.body.origin.type == messagedemo::OriginType::None );
     // and it round-trips to the SAME WIRE: the outer arm rides with L = 2 over
@@ -6455,8 +6500,8 @@ static void test_message_three_depths()
 
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, wrote, &report ) );
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, wrote, &report ) );
+    CHECK( report.unknown == 0 && !report.damaged );
     CHECK( back.body.type == messagedemo::ToolBodyType::Transact );
     CHECK( back.body.transact.edits_count == 3 );
     CHECK( back.body.transact.edits[0].body.type == messagedemo::EditBodyType::Insert );
@@ -6474,8 +6519,8 @@ static void test_message_three_depths()
     CHECK( messagedemo::ToolMessageToJson( m, text.data(), size ) == size );
     messagedemo::ToolMessage from_text;
     messagedemo::TableReport text_report;
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( from_text, text.data(), size, &text_report ) );
-    CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
+    CHECK( messagedemo::ToolMessageFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && !text_report.damaged );
     static uint8_t again[4096];
     CHECK( messagedemo::ToolMessageSave( from_text, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
@@ -6512,8 +6557,8 @@ static void test_message_evolution()
         int64_t wrote = tblm1::MsgSave( m1, wire, sizeof( wire ) );
         tblm2::Msg out;
         tblm2::TableReport report;
-        CHECK( tblm2::MsgLoadTolerant( out, wire, wrote, &report ) );
-        CHECK( report.unknown == 0 && !report.malformed );
+        CHECK( tblm2::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( report.unknown == 0 && !report.damaged );
         CHECK( out.body.type == tblm2::BodyType::Open && strcmp( out.body.open.path, "a.md" ) == 0 );
         CHECK( out.body.open.line == 0 ); // the grown field takes its default
     }
@@ -6526,8 +6571,8 @@ static void test_message_evolution()
         int64_t wrote = tblm1::MsgSave( m1, wire, sizeof( wire ) );
         tblm2::Msg out;
         tblm2::TableReport report;
-        CHECK( tblm2::MsgLoadTolerant( out, wire, wrote, &report ) );
-        CHECK( report.unknown == 1 && !report.malformed );
+        CHECK( tblm2::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( report.unknown == 1 && !report.damaged );
         CHECK( out.body.type == tblm2::BodyType::None );
     }
     {
@@ -6538,8 +6583,8 @@ static void test_message_evolution()
         int64_t wrote = tblm2::MsgSave( m2, wire, sizeof( wire ) );
         tblm1::Msg out;
         tblm1::TableReport report;
-        CHECK( tblm1::MsgLoadTolerant( out, wire, wrote, &report ) );
-        CHECK( report.unknown == 1 && !report.malformed );
+        CHECK( tblm1::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( report.unknown == 1 && !report.damaged );
         CHECK( out.body.type == tblm1::BodyType::None );
     }
     {
@@ -6553,8 +6598,8 @@ static void test_message_evolution()
         int64_t wrote = tblm2::MsgSave( m2, wire, sizeof( wire ) );
         tblm1::Msg out;
         tblm1::TableReport report;
-        CHECK( tblm1::MsgLoadTolerant( out, wire, wrote, &report ) );
-        CHECK( report.unknown == 1 && !report.malformed );
+        CHECK( tblm1::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( report.unknown == 1 && !report.damaged );
         CHECK( out.body.type == tblm1::BodyType::Open && strcmp( out.body.open.path, "d.md" ) == 0 );
     }
 }
@@ -6592,29 +6637,29 @@ static void test_message_json_hostile()
     // an arm this build cannot name reads as None and counts
     messagedemo::TableReport unknown_arm;
     const char * strange = "{ \"body\": { \"rename\": { \"path\": \"x\" } } }";
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
+    CHECK( messagedemo::ToolMessageFromJson( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
     CHECK( value.body.type == messagedemo::ToolBodyType::None && unknown_arm.unknown == 1 );
 
     // TWO keys is not a one-of
     messagedemo::TableReport two;
     const char * both = "{ \"body\": { \"open\": { \"path\": \"a\" }, \"save\": { \"path\": \"b\" } } }";
-    CHECK( !messagedemo::ToolMessageFromJsonTolerant( value, both, (int64_t) strlen( both ), &two ) );
-    CHECK( two.malformed );
+    CHECK( !messagedemo::ToolMessageFromJson( value, both, (int64_t) strlen( both ), &two ) );
+    CHECK( two.damaged );
 
     // AN ARM VALUE OF THE WRONG SHAPE IS A KIND MISMATCH (docs/SPEC-TABLES.md
-    // §16.2): the union reads None, the event is counted, and the enclosing
-    // object continues — the rule a FIELD value lives under, one key down
+    // §16.2), which refuses the whole read — the rule a FIELD value lives
+    // under, one key down
     messagedemo::TableReport shape;
     const char * wrong = "{ \"sequence\": 3, \"body\": { \"open\": 5 } }";
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, wrong, (int64_t) strlen( wrong ), &shape ) );
-    CHECK( shape.kind_mismatch == 1 && !shape.malformed );
-    CHECK( value.body.type == messagedemo::ToolBodyType::None && value.sequence == 3 );
+    CHECK( !messagedemo::ToolMessageFromJson( value, wrong, (int64_t) strlen( wrong ), &shape ) );
+    CHECK( shape.refuse_reason == messagedemo::kind_mismatch && !shape.damaged );
+    CHECK( value.body.type == messagedemo::ToolBodyType::None && value.sequence == 0 );
 
     // an unknown arm at DEPTH THREE counts once and the rest lands
     messagedemo::TableReport deep;
     const char * nested = "{ \"body\": { \"transact\": { \"edits\": [ { \"revision\": 1, \"body\": { \"insert\": { \"text\": \"t\", \"origin\": { \"robot\": { \"id\": 4 } } } } } ] } } }";
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, nested, (int64_t) strlen( nested ), &deep ) );
-    CHECK( deep.unknown == 1 && !deep.malformed );
+    CHECK( messagedemo::ToolMessageFromJson( value, nested, (int64_t) strlen( nested ), &deep ) );
+    CHECK( deep.unknown == 1 && !deep.damaged );
     CHECK( value.body.type == messagedemo::ToolBodyType::Transact && value.body.transact.edits_count == 1 );
     CHECK( value.body.transact.edits[0].body.insert.origin.type == messagedemo::OriginType::None );
     CHECK( strcmp( value.body.transact.edits[0].body.insert.text, "t" ) == 0 );
@@ -6643,8 +6688,8 @@ static void test_message_variable_arm()
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, wrote, &report );
-    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.damaged && report.unknown == 0 );
     if ( loaded == NULL ) return;
     const streamdemo::Chunk * c1 = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->frame.chunk.next );
     CHECK( c1 != NULL && c1->data[0] == 2 );
@@ -6661,8 +6706,8 @@ static void test_message_variable_arm()
     CHECK( streamdemo::FeedToJson( loaded, text.data(), size ) == size );
     streamdemo::FeedBuilder from_text;
     streamdemo::TableReport text_report;
-    CHECK( streamdemo::FeedFromJsonTolerant( from_text, text.data(), size, &text_report ) );
-    CHECK( text_report.unknown == 0 && !text_report.malformed );
+    CHECK( streamdemo::FeedFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && !text_report.damaged );
     CHECK( streamdemo::FeedSave( from_text, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
 
@@ -6772,8 +6817,8 @@ static void test_pointer_arrays()
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, wrote, &report );
-    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.damaged && report.unknown == 0 );
     if ( loaded == NULL ) return;
     check_stream_parts( loaded );
     CHECK( streamdemo::FeedSave( loaded, again, sizeof( again ) ) == wrote );
@@ -6790,8 +6835,8 @@ static void test_pointer_arrays()
     CHECK( strstr( text.data(), "null" ) != NULL );
     streamdemo::FeedBuilder from_text;
     streamdemo::TableReport text_report;
-    CHECK( streamdemo::FeedFromJsonTolerant( from_text, text.data(), size, &text_report ) );
-    CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
+    CHECK( streamdemo::FeedFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && !text_report.damaged );
     CHECK( streamdemo::FeedSave( from_text, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
 
@@ -6845,8 +6890,8 @@ static void test_payload_free_arm()
 
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, buffer, wrote, &report ) );
-    CHECK( report.kind_mismatch == 0 && report.unknown == 0 && !report.malformed );
+    CHECK( messagedemo::ToolMessageLoad( back, buffer, wrote, &report ) );
+    CHECK( report.unknown == 0 && !report.damaged );
     CHECK( back.body.type == messagedemo::ToolBodyType::Ack && back.sequence == 4 );
 
     // the text form: the arm's value is null, and it reads back
@@ -6856,18 +6901,18 @@ static void test_payload_free_arm()
     CHECK( strstr( text, "\"ack\": null" ) != NULL );
     messagedemo::ToolMessage fromText;
     messagedemo::TableReport textReport;
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( fromText, text, textBytes, &textReport ) );
-    CHECK( textReport.kind_mismatch == 0 && !textReport.malformed );
+    CHECK( messagedemo::ToolMessageFromJson( fromText, text, textBytes, &textReport ) );
+    CHECK( !textReport.damaged );
     CHECK( fromText.body.type == messagedemo::ToolBodyType::Ack );
 
     // an arm value of the wrong shape for a payload-free arm is a kind
-    // mismatch like any other: the union reads None and the object continues
+    // mismatch like any other, and refuses the whole read
     messagedemo::ToolMessage shaped;
     messagedemo::TableReport shapeReport;
     const char * wrong = "{ \"sequence\": 9, \"body\": { \"ack\": 5 } }";
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( shaped, wrong, (int64_t) strlen( wrong ), &shapeReport ) );
-    CHECK( shapeReport.kind_mismatch == 1 && !shapeReport.malformed );
-    CHECK( shaped.body.type == messagedemo::ToolBodyType::None && shaped.sequence == 9 );
+    CHECK( !messagedemo::ToolMessageFromJson( shaped, wrong, (int64_t) strlen( wrong ), &shapeReport ) );
+    CHECK( shapeReport.refuse_reason == messagedemo::kind_mismatch && !shapeReport.damaged );
+    CHECK( shaped.body.type == messagedemo::ToolBodyType::None && shaped.sequence == 0 );
 }
 
 // ---- THE GENERAL ARM'S REFLECTION ROW (docs/SPEC-TABLES.md §8.1) ----
@@ -7017,8 +7062,8 @@ static void test_pointer_walk_order()
     const int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, wrote, &report );
-    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.damaged && report.unknown == 0 );
     if ( loaded == NULL ) return;
     check_stream_arm_first( loaded );
     check_stream_arm_first_layout( loaded );
@@ -7101,8 +7146,8 @@ static void test_pointer_arm_shares_a_node()
     const int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, wrote, &report );
-    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.damaged && report.unknown == 0 );
     if ( loaded == NULL ) return;
     check_stream_arm_pointer( loaded );
     CHECK( streamdemo::FeedSave( loaded, again, sizeof( again ) ) == wrote );
@@ -7147,8 +7192,8 @@ static void test_pointer_arrays_elision()
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, with_nulls );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, with_nulls, &report );
-    CHECK( loaded != NULL && !report.malformed && loaded->parts_count == 2 );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, with_nulls, &report );
+    CHECK( loaded != NULL && !report.damaged && loaded->parts_count == 2 );
     if ( loaded != NULL )
     {
         CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->parts[0] ) == NULL );
@@ -7197,10 +7242,9 @@ static void test_form_byte_refusals()
         tblv1::TableReport report;
         CHECK( tblv1::CfgLoadVerdict( out, forged, bytes, &report ) == tblv1::TableOpenRefused );
         CHECK( report.refused && report.reason == tblv1::newer_form );
-        CHECK( !report.malformed );
-        CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
-        CHECK( report.clamped == 0 && report.duplicate == 0 );
-        CHECK( !tblv1::CfgLoadTolerant( out, forged, bytes, &report ) );
+        CHECK( !report.damaged );
+        CHECK( report.unknown == 0 );
+        CHECK( !tblv1::CfgLoad( out, forged, bytes, &report ) );
         CHECK( out.a == 5 ); // nothing was decoded: the declared default stands
     }
 
@@ -7213,7 +7257,7 @@ static void test_form_byte_refusals()
         tblv1::Cfg out;
         tblv1::TableReport report;
         CHECK( tblv1::CfgLoadVerdict( out, both, 3, &report ) == tblv1::TableOpenRefused );
-        CHECK( report.refused && !report.malformed );
+        CHECK( report.refused && !report.damaged );
     }
 
     // A VARIABLE ROOT'S MEASURE ANSWERS THE SAME REFUSAL BY NAME
@@ -7280,8 +7324,8 @@ static void test_unwritten_fields_are_not_edges()
     int64_t need = tblg1::GuardedLoadMeasure( wire, one );
     CHECK( need > 0 );
     std::vector<uint8_t> region( (size_t) need );
-    const tblg1::Guarded * loaded = tblg1::GuardedLoadTolerant( region.data(), need, wire, one, &report );
-    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 );
+    const tblg1::Guarded * loaded = tblg1::GuardedLoad( region.data(), need, wire, one, &report );
+    CHECK( loaded != NULL && !report.damaged && report.unknown == 0 );
     if ( loaded != NULL )
     {
         CHECK( tblg1::NodeAt( loaded->always ) != NULL && tblg1::NodeAt( loaded->always )->value == 1 );
@@ -7307,8 +7351,8 @@ static void test_unwritten_fields_are_not_edges()
     tblg1::TableReport control;
     int64_t control_need = tblg1::GuardedLoadMeasure( three_wire, three );
     std::vector<uint8_t> control_region( (size_t) control_need );
-    const tblg1::Guarded * all = tblg1::GuardedLoadTolerant( control_region.data(), control_need, three_wire, three, &control );
-    CHECK( all != NULL && !control.malformed );
+    const tblg1::Guarded * all = tblg1::GuardedLoad( control_region.data(), control_need, three_wire, three, &control );
+    CHECK( all != NULL && !control.damaged );
     if ( all != NULL )
     {
         CHECK( tblg1::NodeAt( all->resting ) != NULL && tblg1::NodeAt( all->resting )->value == 2 );
@@ -7354,7 +7398,7 @@ static void test_absent_optional_is_not_descended()
     CHECK( need > 0 );
     std::vector<uint8_t> region( (size_t) need );
     const tblg1::Guarded * loaded = tblg1::GuardedLoad( region.data(), need, wire, one, &report );
-    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 );
+    CHECK( loaded != NULL && !report.damaged && report.unknown == 0 );
     if ( loaded != NULL )
     {
         CHECK( tblg1::NodeAt( loaded->always ) != NULL && tblg1::NodeAt( loaded->always )->value == 1 );
@@ -7382,7 +7426,7 @@ static void test_absent_optional_is_not_descended()
     int64_t control_need = tblg1::GuardedLoadMeasure( two_wire, two );
     std::vector<uint8_t> control_region( (size_t) control_need );
     const tblg1::Guarded * all = tblg1::GuardedLoad( control_region.data(), control_need, two_wire, two, &control );
-    CHECK( all != NULL && !control.malformed );
+    CHECK( all != NULL && !control.damaged );
     if ( all != NULL )
     {
         CHECK( tblg1::NodeAt( all->optional.vertex ) != NULL && tblg1::NodeAt( all->optional.vertex )->value == 2 );
@@ -7396,9 +7440,9 @@ static void test_absent_optional_is_not_descended()
 // name's id, whatever the declaration-side storage width. K2 declares K1's two
 // field names with the spellings swapped, so one wire written under K1 and read
 // under K2 names both directions at once: kind 30 where the reader declares
-// kind 7, and kind 7 where it declares kind 30. Two kind mismatches, both
-// fields at their declared defaults, and no raw value ever read as a variant
-// name. The wire is pinned as a shared report row every leg reads.
+// kind 7, and kind 7 where it declares kind 30. Both fields stay at their
+// declared defaults, and no raw value is ever read as a variant name: the read refuses whole as kind_mismatch. The wire is pinned as a
+// shared report row every leg reads.
 static void test_enum_kind_against_the_raw_integer()
 {
     tblk1::Root src;
@@ -7411,8 +7455,8 @@ static void test_enum_kind_against_the_raw_integer()
 
     tblk2::Root out;
     tblk2::TableReport report;
-    CHECK( tblk2::RootLoadTolerant( out, wire, n, &report ) );
-    CHECK( report.kind_mismatch == 2 && report.unknown == 0 && !report.malformed );
+    CHECK( !tblk2::RootLoad( out, wire, n, &report ) );
+    CHECK( report.refuse_reason == tblk2::kind_mismatch && report.unknown == 0 && !report.damaged );
     CHECK( out.grade == 0 );                       // the enum's reference is not a number
     CHECK( out.raw == tblk2::Grade::None );        // and the number is not a variant
     // and the reverse direction, written under K2 and read under K1
@@ -7425,8 +7469,8 @@ static void test_enum_kind_against_the_raw_integer()
     pin_table_golden( "k2_as_k1", other, m );
     tblk1::Root out2;
     tblk1::TableReport report2;
-    CHECK( tblk1::RootLoadTolerant( out2, other, m, &report2 ) );
-    CHECK( report2.kind_mismatch == 2 && report2.unknown == 0 && !report2.malformed );
+    CHECK( !tblk1::RootLoad( out2, other, m, &report2 ) );
+    CHECK( report2.refuse_reason == tblk1::kind_mismatch && report2.unknown == 0 && !report2.damaged );
     CHECK( out2.grade == tblk1::Grade::None );
     CHECK( out2.raw == 0 );
 }
@@ -7454,10 +7498,10 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "escape_unnamed_field", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
-        CHECK( report.unknown == 1 && report.kind_mismatch == 0 && !report.malformed );
+        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.unknown == 1 && !report.damaged );
     }
-    // (2) AT A FIELD IT DOES NAME: an ordinary kind mismatch, the field at its default
+    // (2) AT A FIELD IT DOES NAME: an ordinary kind mismatch, which refuses the load
     {
         uint8_t wire[256];
         WireBuilder b;
@@ -7469,11 +7513,11 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "escape_named_field", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
-        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
+        CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.refuse_reason == messagedemo::kind_mismatch && report.unknown == 0 && !report.damaged );
         CHECK( out.sequence == 0 );
     }
-    // (3) AT AN ARM: the arm skips by its L, the union reads None, one mismatch
+    // (3) AT AN ARM: a kind mismatch, which refuses the load; the union reads None
     {
         uint8_t wire[256];
         WireBuilder b;
@@ -7487,8 +7531,8 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "escape_arm", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
-        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
+        CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.refuse_reason == messagedemo::kind_mismatch && report.unknown == 0 && !report.damaged );
         CHECK( out.body.type == messagedemo::ToolBodyType::None );
     }
     // BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the
@@ -7514,8 +7558,8 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "nested_arm_trailing", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
-        CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
+        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( !report.damaged && report.unknown == 0 );
         CHECK( out.body.type == messagedemo::ToolBodyType::Origin );
         CHECK( out.body.origin.type == messagedemo::OriginType::Pid && out.body.origin.pid == 5 );
         CHECK( out.sequence == 41 );
@@ -7542,11 +7586,11 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "nested_arm_trailing_top", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( !messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
-        CHECK( report.malformed );
+        CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.damaged );
     }
     // (4) AS AN ELEMENT KIND: the array's own identity, so the same rule one
-    // level in — the array reads empty and the field is skipped whole by its L
+    // level in — a kind mismatch that refuses the load, the array empty
     {
         uint8_t wire[256];
         WireBuilder b;
@@ -7561,8 +7605,8 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "escape_element", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
-        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
+        CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.refuse_reason == messagedemo::kind_mismatch && report.unknown == 0 && !report.damaged );
         CHECK( out.history_count == 0 );
     }
     // (5) KIND 32 AT A NAMED FIELD: the payload-free kind is the arm position's
@@ -7577,8 +7621,8 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "nopayload_named_field", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
-        CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
+        CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( report.refuse_reason == messagedemo::kind_mismatch && report.unknown == 0 && !report.damaged );
         CHECK( out.sequence == 0 );
     }
 }
@@ -7587,7 +7631,7 @@ static void test_escape_and_payload_free_kinds()
 //
 // A2 declares `a` as an int64 arm and `c` as a string(8) arm. Each row below
 // puts a payload of ANOTHER kind under one of those arm ids, from the grammar:
-// the arm skips by its L, the union reads None, and one kind mismatch counts.
+// a kind mismatch, which refuses the whole load, siblings included.
 // The fourth is the LENGTH pin — a reference-shaped arm whose L is not the
 // byte count of the reference it frames is that arm's own framing damage.
 static void test_arm_kind_pins()
@@ -7627,10 +7671,10 @@ static void test_arm_kind_pins()
         pin_table_golden( rows[i].name, wire, n );
         tbla2::Root out;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoadTolerant( out, wire, n, &report ) );
-        CHECK( report.kind_mismatch == 1 && !report.malformed );
+        CHECK( !tbla2::RootLoad( out, wire, n, &report ) );
+        CHECK( report.refuse_reason == tbla2::kind_mismatch && !report.damaged );
         CHECK( out.value.type == tbla2::ValueType::None );
-        CHECK( out.id == 11 && out.tail == 22 ); // the siblings still land
+        CHECK( out.id == 0 && out.tail == 0 ); // nothing landed, the siblings included
     }
     // AND THE LENGTH PIN: a kind 30 arm whose L is not the byte count of the
     // reference it frames is MALFORMED, refusing the whole load.
@@ -7651,14 +7695,14 @@ static void test_arm_kind_pins()
         pin_table_golden( "a2_arm_length_off_width", wire, n );
         tbla2::Root out;
         tbla2::TableReport report;
-        CHECK( !tbla2::RootLoadTolerant( out, wire, n, &report ) );
-        CHECK( report.malformed );
+        CHECK( !tbla2::RootLoad( out, wire, n, &report ) );
+        CHECK( report.damaged );
     }
 }
 
 // the element-kind separation (§3, §3.1): `parts` arriving as an array of
-// uint32 — element kind 8 where this reader declares 17 — is a kind mismatch,
-// counted, and the field stays empty; nothing reads a number as an index
+// uint32 — element kind 8 where this reader declares 17 — is a kind mismatch
+// that refuses the whole load; nothing reads a number as an index
 static void test_pointer_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
@@ -7676,18 +7720,16 @@ static void test_pointer_arrays_element_kind_mismatch()
     }
     pin_table_golden( "parts_elem_kind", wire, n );
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, (int64_t) n );
-    CHECK( region_need > 0 );
-    std::vector<uint8_t> region( (size_t) region_need );
+    std::vector<uint8_t> region( (size_t) ( region_need > 0 ? region_need : 1 ) );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, (int64_t) n, &report );
-    CHECK( loaded != NULL && !report.malformed );
-    CHECK( report.kind_mismatch == 1 );
-    if ( loaded != NULL ) CHECK( loaded->parts_count == 0 );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, (int64_t) n, &report );
+    CHECK( loaded == NULL && !report.damaged );
+    CHECK( report.refuse_reason == streamdemo::kind_mismatch );
 }
 
-// a count past the READER's bound keeps the bounded prefix and counts clamped
-// (§4): five slots against a bound of four. The wire is pinned as a shared
-// report row every leg reads.
+// a count past the READER's bound is out of range and refuses the whole load
+// (§4): five slots against a bound of four, never a kept prefix. The wire is
+// pinned as a shared report row every leg reads.
 static void test_pointer_arrays_count_past_bound()
 {
     uint8_t wire[64];
@@ -7705,13 +7747,11 @@ static void test_pointer_arrays_count_past_bound()
     }
     pin_table_golden( "parts_count_past_bound", wire, n );
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, n );
-    CHECK( region_need > 0 );
-    std::vector<uint8_t> region( (size_t) region_need );
+    std::vector<uint8_t> region( (size_t) ( region_need > 0 ? region_need : 1 ) );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, n, &report );
-    CHECK( loaded != NULL && !report.malformed );
-    CHECK( report.clamped == 1 );
-    if ( loaded != NULL ) CHECK( loaded->parts_count == 4 );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, n, &report );
+    CHECK( loaded == NULL && !report.damaged );
+    CHECK( report.refuse_reason == streamdemo::out_of_range );
 }
 
 // AN INDEX OUT OF RANGE is malformed and refuses the whole load (§3.1, §4):
@@ -7737,9 +7777,9 @@ static void test_pointer_arrays_index_out_of_range()
     CHECK( region_need > 0 );
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, n, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, n, &report );
     CHECK( loaded == NULL );
-    CHECK( report.malformed );
+    CHECK( report.damaged );
 }
 
 // ---- ARRAYS OF UNIONS (docs/SPEC-TABLES.md §2.6, §3) -----------------------
@@ -7815,8 +7855,8 @@ static void test_union_arrays()
 
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, wrote, &report ) );
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, wrote, &report ) );
+    CHECK( report.unknown == 0 && !report.damaged );
     check_message_batch( back );
     CHECK( messagedemo::ToolMessageSave( back, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
@@ -7831,8 +7871,8 @@ static void test_union_arrays()
     CHECK( strstr( text.data(), "{}" ) != NULL );
     messagedemo::ToolMessage from_text;
     messagedemo::TableReport text_report;
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( from_text, text.data(), size, &text_report ) );
-    CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
+    CHECK( messagedemo::ToolMessageFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && !text_report.damaged );
     check_message_batch( from_text );
     CHECK( messagedemo::ToolMessageSave( from_text, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
@@ -7892,15 +7932,15 @@ static void test_union_arrays_elision()
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_nones );
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_nones, &report ) );
-    CHECK( !report.malformed && back.history_count == 2 );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_nones, &report ) );
+    CHECK( !report.damaged && back.history_count == 2 );
     CHECK( back.history[0].type == messagedemo::ToolBodyType::None );
     CHECK( back.history[1].type == messagedemo::ToolBodyType::None );
 }
 
 // the element-kind separation (§3): `history` arriving as an array of TABLES —
-// element kind 13 where this reader declares 15 — is a kind mismatch, counted,
-// and the field stays empty; `[N]Body` ⇄ `[N]Table` is a reported edit. The
+// element kind 13 where this reader declares 15 — is a kind mismatch that
+// refuses the load; `[N]Body` ⇄ `[N]Table` is a reported edit. The
 // wire is pinned as a shared report row every leg reads.
 static void test_union_arrays_element_kind_mismatch()
 {
@@ -7921,8 +7961,8 @@ static void test_union_arrays_element_kind_mismatch()
     pin_table_golden( "batch_elem_kind", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
-    CHECK( !report.malformed && report.kind_mismatch == 1 );
+    CHECK( !messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.damaged && report.refuse_reason == messagedemo::kind_mismatch );
     CHECK( out.history_count == 0 );
 }
 
@@ -7950,8 +7990,8 @@ static void test_union_arrays_unknown_arm()
     pin_table_golden( "batch_unknown_arm", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
-    CHECK( !report.malformed && report.unknown == 1 );
+    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.damaged && report.unknown == 1 );
     CHECK( out.history_count == 1 );
     CHECK( out.history[0].type == messagedemo::ToolBodyType::None );
 }
@@ -7964,20 +8004,20 @@ static void test_union_arrays_json_hostile()
     // an element that is not an object is the wire's kind mismatch
     messagedemo::TableReport shape;
     const char * number = "{ \"history\": [ 5 ] }";
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, number, (int64_t) strlen( number ), &shape ) );
-    CHECK( shape.kind_mismatch == 1 && !shape.malformed );
+    CHECK( !messagedemo::ToolMessageFromJson( value, number, (int64_t) strlen( number ), &shape ) );
+    CHECK( shape.refuse_reason == messagedemo::kind_mismatch && !shape.damaged );
 
     // TWO keys in an element is not a one-of
     messagedemo::TableReport two;
     const char * both = "{ \"history\": [ { \"open\": { \"path\": \"a\" }, \"save\": { \"path\": \"b\" } } ] }";
-    CHECK( !messagedemo::ToolMessageFromJsonTolerant( value, both, (int64_t) strlen( both ), &two ) );
-    CHECK( two.malformed );
+    CHECK( !messagedemo::ToolMessageFromJson( value, both, (int64_t) strlen( both ), &two ) );
+    CHECK( two.damaged );
 
     // an arm no build declares reads as a None element and counts
     messagedemo::TableReport unknown_arm;
     const char * strange = "{ \"history\": [ { \"rename\": { \"path\": \"x\" } } ] }";
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
-    CHECK( unknown_arm.unknown == 1 && !unknown_arm.malformed );
+    CHECK( messagedemo::ToolMessageFromJson( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
+    CHECK( unknown_arm.unknown == 1 && !unknown_arm.damaged );
     CHECK( value.history_count == 1 && value.history[0].type == messagedemo::ToolBodyType::None );
 }
 
@@ -8060,8 +8100,8 @@ static void test_optional_arrays()
 
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, wrote, &report ) );
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, wrote, &report ) );
+    CHECK( report.unknown == 0 && !report.damaged );
     check_message_trace( back );
     CHECK( messagedemo::ToolMessageSave( back, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
@@ -8076,8 +8116,8 @@ static void test_optional_arrays()
     CHECK( strstr( text.data(), "\"checkpoints\"" ) != NULL );
     messagedemo::ToolMessage from_text;
     messagedemo::TableReport text_report;
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( from_text, text.data(), size, &text_report ) );
-    CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
+    CHECK( messagedemo::ToolMessageFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && !text_report.damaged );
     check_message_trace( from_text );
     CHECK( messagedemo::ToolMessageSave( from_text, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
@@ -8145,8 +8185,8 @@ static void test_optional_arrays_elision()
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_fixed );
     messagedemo::ToolMessage back;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_fixed, &report ) );
-    CHECK( !report.malformed && back.body.transact.checkpoints_present );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_fixed, &report ) );
+    CHECK( !report.damaged && back.body.transact.checkpoints_present );
     CHECK( !back.trace_present ); // the others stayed absent
 
     // the counted spelling, present and EMPTY: the TWO-byte body — the element
@@ -8156,8 +8196,8 @@ static void test_optional_arrays_elision()
     int64_t with_empty = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
     CHECK( with_empty == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_empty );
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_empty, &report ) );
-    CHECK( !report.malformed && back.trace_present && back.trace_count == 0 );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_empty, &report ) );
+    CHECK( !report.damaged && back.trace_present && back.trace_count == 0 );
     CHECK( !back.body.transact.checkpoints_present );
 
     // the fixed spelling over TABLE elements, present at all defaults: the
@@ -8168,8 +8208,8 @@ static void test_optional_arrays_elision()
     int64_t with_tables = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
     CHECK( with_tables == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 2 * ( 1 + 1 ) + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_tables );
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_tables, &report ) );
-    CHECK( !report.malformed && back.body.transact.snapshots_present );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_tables, &report ) );
+    CHECK( !report.damaged && back.body.transact.snapshots_present );
     CHECK( back.body.transact.snapshots[0].start.line == 0 && back.body.transact.snapshots[1].stop.column == 0 );
     CHECK( !back.trace_present && !back.marks_present );
 
@@ -8180,16 +8220,15 @@ static void test_optional_arrays_elision()
     int64_t with_enums = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
     CHECK( with_enums == wrote + ( 1 + 1 ) + 1 + ( 1 + 1 ) + 2 * 1 + 8 );
     CHECK( messagedemo::ToolMessageMeasure( m ) == with_enums );
-    CHECK( messagedemo::ToolMessageLoadTolerant( back, wire, with_enums, &report ) );
-    CHECK( !report.malformed && report.unknown == 0 && back.marks_present );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_enums, &report ) );
+    CHECK( !report.damaged && report.unknown == 0 && back.marks_present );
     CHECK( back.marks[0] == messagedemo::Mode::None && back.marks[1] == messagedemo::Mode::None );
     CHECK( !back.body.transact.snapshots_present );
 }
 
 // the element-kind separation under `?` (§2.3, §3): `trace` arriving with
-// element kind 8 where this reader declares 13 is a kind mismatch, counted,
-// and the field reads ABSENT — its declared default, exactly as a skipped
-// field's. The wire is pinned as a shared report row every leg reads.
+// element kind 8 where this reader declares 13 is a kind mismatch that
+// refuses the load, the field left ABSENT — its declared default. The wire is pinned as a shared report row every leg reads.
 static void test_optional_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
@@ -8208,14 +8247,14 @@ static void test_optional_arrays_element_kind_mismatch()
     pin_table_golden( "trace_elem_kind", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
-    CHECK( !report.malformed && report.kind_mismatch == 1 );
+    CHECK( !messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.damaged && report.refuse_reason == messagedemo::kind_mismatch );
     CHECK( !out.trace_present && out.trace_count == 0 );
 }
 
-// a count past the bound under `?` (§4): the prefix is kept, the excess is
-// counted clamped, and the field is PRESENT — it rode with its own element
-// kind. The wire is pinned as a shared report row every leg reads.
+// a count past the bound under `?` (§4) is out of range and refuses the whole
+// load: no prefix is kept and the field is not left present. The wire is
+// pinned as a shared report row every leg reads.
 static void test_optional_arrays_count_past_bound()
 {
     uint8_t wire[96];
@@ -8238,9 +8277,9 @@ static void test_optional_arrays_count_past_bound()
     pin_table_golden( "trace_count_past_bound", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
-    CHECK( !report.malformed && report.clamped == 1 );
-    CHECK( out.trace_present && out.trace_count == 3 );
+    CHECK( !messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.damaged && report.refuse_reason == messagedemo::out_of_range );
+    CHECK( !out.trace_present && out.trace_count == 0 );
 }
 
 // an id no variant names, in a FIXED optional enum array (§5): the slot takes
@@ -8266,8 +8305,8 @@ static void test_optional_arrays_enum_unknown_variant()
     pin_table_golden( "marks_unknown_variant", wire, (int64_t) n );
     messagedemo::ToolMessage out;
     messagedemo::TableReport report;
-    CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, (int64_t) n, &report ) );
-    CHECK( !report.malformed && report.unknown == 1 && report.kind_mismatch == 0 && report.clamped == 0 );
+    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.damaged && report.unknown == 1 );
     CHECK( out.marks_present );
     CHECK( out.marks[0] == messagedemo::Mode::Write && out.marks[1] == messagedemo::Mode::None );
 }
@@ -8292,34 +8331,33 @@ static void test_optional_arrays_enum_element_unnameable()
     CHECK( messagedemo::ToolMessageSave( m, wire, sizeof( wire ) ) == messagedemo::ToolMessageMeasure( m ) );
 }
 
-// the text form's three hostile shapes (§16.2): the key's presence is
-// presence, `null` is the absence, and an element of the wrong shape is the
-// per-element kind mismatch
+// the text form's three hostile shapes (§16.2): `null` is the absence, and a
+// wrong shape under the key or in an element is a kind mismatch that refuses
+// the whole read
 static void test_optional_arrays_json_hostile()
 {
-    // the wrong shape under the key: skipped, counted — and PRESENT, because
-    // the KEY is what presence reads in the text form
+    // the wrong shape under the key refuses, and leaves the field absent
     messagedemo::ToolMessage value;
     messagedemo::TableReport shape;
     const char * number = "{ \"trace\": 5 }";
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, number, (int64_t) strlen( number ), &shape ) );
-    CHECK( shape.kind_mismatch == 1 && !shape.malformed );
-    CHECK( value.trace_present && value.trace_count == 0 );
+    CHECK( !messagedemo::ToolMessageFromJson( value, number, (int64_t) strlen( number ), &shape ) );
+    CHECK( shape.refuse_reason == messagedemo::kind_mismatch && !shape.damaged );
+    CHECK( !value.trace_present && value.trace_count == 0 );
 
     // null is the absence, and the one key that resets
     messagedemo::TableReport null_report;
     const char * nulled = "{ \"trace\": null }";
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, nulled, (int64_t) strlen( nulled ), &null_report ) );
-    CHECK( null_report.unknown == 0 && null_report.kind_mismatch == 0 && !null_report.malformed );
+    CHECK( messagedemo::ToolMessageFromJson( value, nulled, (int64_t) strlen( nulled ), &null_report ) );
+    CHECK( null_report.unknown == 0 && !null_report.damaged );
     CHECK( !value.trace_present && value.trace_count == 0 );
 
-    // an element that is not an object is the per-element kind mismatch; the
-    // array is present with the element at its defaults
+    // an element that is not an object is the per-element kind mismatch, and
+    // it refuses the whole read as well
     messagedemo::TableReport elem;
     const char * bad_elem = "{ \"trace\": [ 5 ] }";
-    CHECK( messagedemo::ToolMessageFromJsonTolerant( value, bad_elem, (int64_t) strlen( bad_elem ), &elem ) );
-    CHECK( elem.kind_mismatch == 1 && !elem.malformed );
-    CHECK( value.trace_present && value.trace_count == 1 && value.trace[0].path_length == 0 );
+    CHECK( !messagedemo::ToolMessageFromJson( value, bad_elem, (int64_t) strlen( bad_elem ), &elem ) );
+    CHECK( elem.refuse_reason == messagedemo::kind_mismatch && !elem.damaged );
+    CHECK( !value.trace_present && value.trace_count == 0 );
 }
 
 // ---- the BYTE BUFFER corpus (docs/SPEC-TABLES.md §2.5): tables/blobs ----------
@@ -8436,9 +8474,9 @@ static void test_blob_lifecycle()
     CHECK( region_need > 0 );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region, region_need, wire, wrote, &report );
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region, region_need, wire, wrote, &report );
     CHECK( loaded != NULL );
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+    CHECK( report.unknown == 0 && !report.damaged );
     check_blob_catalog( loaded );
 
     // a loaded region re-saves to the same bytes
@@ -8448,15 +8486,14 @@ static void test_blob_lifecycle()
 
     // a region short of what LoadMeasure asked for refuses
     blobdemo::TableReport short_report;
-    CHECK( blobdemo::CatalogLoadTolerant( region, region_need - 8, wire, wrote, &short_report ) == NULL );
-    CHECK( short_report.malformed );
+    CHECK( blobdemo::CatalogLoad( region, region_need - 8, wire, wrote, &short_report ) == NULL );
+    CHECK( short_report.damaged );
     free( region );
 }
 
 // ONE BLOB RECORD NAMED FROM TWO SLOTS is blob_shared (docs/SPEC-TABLES.md
-// §2.5, §16.7): every writer refuses the graph by name, the tolerant read keeps
-// the ONE node and counts the extra slot, and the strict read refuses it. The
-// corpus's pinned shared wire is the hand-built legal input that read keeps.
+// §2.5, §16.7): every writer refuses the graph by name, and every read refuses
+// the corpus's pinned shared wire, a hand-built input, by the same name.
 static void test_blob_shared_node()
 {
     blobdemo::CatalogBuilder shared;
@@ -8477,26 +8514,14 @@ static void test_blob_shared_node()
     CHECK( blobdemo::CatalogSave( one_node, wire, sizeof( wire ) ) == -1 );
     CHECK( blobdemo::CatalogToJsonMeasure( one_node ) == -1 );
 
-    // THE TOLERANT READ KEEPS THE ONE NODE AND COUNTS IT; the strict read
-    // refuses the same bytes by name
+    // EVERY READ REFUSES THE SAME BYTES BY NAME (§2.5): there is no read that
+    // keeps the one node
     const int64_t pinned = read_table_golden( "blob_shared" );
     CHECK( pinned > 0 );
     if ( pinned > 0 )
     {
         const int64_t region_need = blobdemo::CatalogLoadMeasure( golden_pinned, pinned );
-        CHECK( region_need > 0 );
-        std::vector<uint8_t> region( (size_t) region_need );
-        blobdemo::TableReport report;
-        const blobdemo::Catalog * loaded =
-            blobdemo::CatalogLoadTolerant( region.data(), region_need, golden_pinned, pinned, &report );
-        CHECK( loaded != NULL && !report.malformed && report.blob_shared == 1 );
-        if ( loaded != NULL )
-        {
-            const blobdemo::TableBytesView thumb = blobdemo::TableBytesAt( loaded->thumb );
-            const blobdemo::TableBytesView alias = blobdemo::TableBytesAt( loaded->alias );
-            CHECK( thumb.data != NULL && thumb.data == alias.data && thumb.length == 4 );
-        }
-
+        std::vector<uint8_t> region( (size_t) ( region_need > 0 ? region_need : 1 ) );
         blobdemo::TableReport strict;
         CHECK( blobdemo::CatalogLoad( region.data(), region_need, golden_pinned, pinned, &strict ) == NULL );
         CHECK( strict.refuse_reason == blobdemo::blob_shared );
@@ -8530,8 +8555,8 @@ static void test_blob_null_and_empty()
     int64_t region_need = blobdemo::CatalogLoadMeasure( empty_wire, empty_wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, empty_wire, empty_wrote, &report );
-    CHECK( loaded != NULL && !report.malformed && report.kind_mismatch == 0 );
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, empty_wire, empty_wrote, &report );
+    CHECK( loaded != NULL && !report.damaged );
     if ( loaded != NULL )
     {
         blobdemo::TableBytesView tv = blobdemo::TableBytesAt( loaded->thumb );
@@ -8560,8 +8585,8 @@ static void test_blob_past_slab()
     int64_t region_need = blobdemo::CatalogLoadMeasure( wire, wrote );
     std::vector<uint8_t> region( (size_t) region_need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, wire, wrote, &report );
-    CHECK( loaded != NULL && !report.malformed );
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.damaged );
     if ( loaded != NULL )
     {
         blobdemo::TableBytesView tv = blobdemo::TableBytesAt( loaded->thumb );
@@ -8669,8 +8694,8 @@ static void test_blob_record_length_off_by_one()
     if ( region_need > 0 )
     {
         std::vector<uint8_t> region( (size_t) region_need );
-        const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, wire, wrote, &report );
-        CHECK( report.malformed );
+        const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, wrote, &report );
+        CHECK( report.damaged );
         if ( loaded != NULL )
         {
             CHECK( strcmp( loaded->name, "art" ) == 0 );                 // the root's own values survive
@@ -8706,13 +8731,11 @@ static void test_blob_kind_mismatch()
     }
 
     int64_t region_need = blobdemo::CatalogLoadMeasure( wire, (int64_t) n );
-    CHECK( region_need > 0 );
-    std::vector<uint8_t> region( (size_t) region_need );
+    std::vector<uint8_t> region( (size_t) ( region_need > 0 ? region_need : 1 ) );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region.data(), region_need, wire, (int64_t) n, &report );
-    CHECK( loaded != NULL && !report.malformed );
-    CHECK( report.kind_mismatch == 1 );
-    if ( loaded != NULL ) { CHECK( blobdemo::TableBytesAt( loaded->thumb ).data == NULL ); }
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region.data(), region_need, wire, (int64_t) n, &report );
+    CHECK( loaded == NULL && !report.damaged );
+    CHECK( report.refuse_reason == blobdemo::kind_mismatch );
 
     // `bytes(N)` bytes arriving under the *bytes field id: kind 14 against 17
     int64_t m = 0;
@@ -8728,13 +8751,11 @@ static void test_blob_kind_mismatch()
         m = b.finish( wire );
     }
     int64_t need2 = blobdemo::CatalogLoadMeasure( wire, (int64_t) m );
-    CHECK( need2 > 0 );
-    std::vector<uint8_t> region2( (size_t) need2 );
+    std::vector<uint8_t> region2( (size_t) ( need2 > 0 ? need2 : 1 ) );
     blobdemo::TableReport report2;
-    const blobdemo::Catalog * mixed = blobdemo::CatalogLoadTolerant( region2.data(), need2, wire, (int64_t) m, &report2 );
-    CHECK( mixed != NULL && !report2.malformed );
-    CHECK( report2.kind_mismatch == 1 );
-    if ( mixed != NULL ) { CHECK( blobdemo::TableBytesAt( mixed->thumb ).data == NULL ); }
+    const blobdemo::Catalog * mixed = blobdemo::CatalogLoad( region2.data(), need2, wire, (int64_t) m, &report2 );
+    CHECK( mixed == NULL && !report2.damaged );
+    CHECK( report2.refuse_reason == blobdemo::kind_mismatch );
 }
 
 // the cook (§7): every blob laid out header-plus-bytes in the region, views
@@ -8787,8 +8808,8 @@ static void test_blob_json()
     // one text, one wire: back through FromJson to the same bytes
     blobdemo::CatalogBuilder from_text;
     blobdemo::TableReport report;
-    CHECK( blobdemo::CatalogFromJsonTolerant( from_text, text.data(), size, &report ) );
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+    CHECK( blobdemo::CatalogFromJson( from_text, text.data(), size, &report ) );
+    CHECK( report.unknown == 0 && !report.damaged );
     static uint8_t again[8192];
     CHECK( blobdemo::CatalogSave( from_text, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
@@ -8798,8 +8819,8 @@ static void test_blob_json()
         const char * two = "{ \"thumb\": \"\", \"note\": \"\", \"head\": null }";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        CHECK( blobdemo::CatalogFromJsonTolerant( b, two, (int64_t) strlen( two ), &r ) );
-        CHECK( r.kind_mismatch == 0 && !r.malformed );
+        CHECK( blobdemo::CatalogFromJson( b, two, (int64_t) strlen( two ), &r ) );
+        CHECK( !r.damaged );
         blobdemo::TableArenaCtx ctx = { &b.arena };
         blobdemo::TableBytesView tv = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
         CHECK( tv.data != NULL && tv.length == 0 );                       // "" is PRESENT and empty
@@ -8826,32 +8847,32 @@ static void test_blob_json()
         std::string input = std::string( "{\"thumb\":\"" ) + row.first + "\"}";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        CHECK( blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r ) );
-        CHECK( r.kind_mismatch == 0 && !r.malformed );
+        CHECK( blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r ) );
+        CHECK( !r.damaged );
         blobdemo::TableArenaCtx ctx = { &b.arena };
         blobdemo::TableBytesView bytes = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
         CHECK( bytes.data != NULL && bytes.length == (int64_t) row.second.size() );
         CHECK( bytes.length == 0 || memcmp( bytes.data, row.second.data(), (size_t) bytes.length ) == 0 );
     }
     // Invalid Base64 (including mid-string padding, lone symbols, and lone '=')
-    // defaults the field and counts one kind mismatch (#715).
+    // is a kind mismatch that refuses the read (#715).
     for ( const char * invalid : { "Q=Q=A=A=", "Q", "=" } )
     {
         std::string input = std::string( "{\"thumb\":\"" ) + invalid + "\"}";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        bool ok = blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r );
-        CHECK( ok && !r.malformed && r.kind_mismatch == 1 );
+        bool ok = blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r );
+        CHECK( !ok && !r.damaged && r.refuse_reason == blobdemo::kind_mismatch );
     }
-    // A byte that is valid JSON and no base64 symbol defaults the field and
-    // counts one kind mismatch.
+    // A byte that is valid JSON and no base64 symbol is a kind mismatch that
+    // refuses the read.
     for ( unsigned char c : { (unsigned char) '!', (unsigned char) '-' } )
     {
         std::string input = std::string( "{\"thumb\":\"QQ" ) + (char) c + "AA\"}";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        bool ok = blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r );
-        CHECK( ok && !r.malformed && r.kind_mismatch == 1 );
+        bool ok = blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r );
+        CHECK( !ok && !r.damaged && r.refuse_reason == blobdemo::kind_mismatch );
     }
     // THE JSON LAYER DECIDES FIRST (docs/SPEC-TABLES.md §16.2): a raw control
     // byte (the NUL included), a backslash that begins no escape and a lone
@@ -8862,8 +8883,8 @@ static void test_blob_json()
         std::string input = std::string( "{\"thumb\":\"QQ" ) + (char) c + "AA\"}";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        bool ok = blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r );
-        CHECK( !ok || r.malformed );
+        bool ok = blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r );
+        CHECK( !ok || r.damaged );
     }
     // An escape is undone before the alphabet sees it: \/ is '/', a symbol,
     // and \u0041 is 'A'.
@@ -8872,8 +8893,8 @@ static void test_blob_json()
         std::string input = std::string( "{\"thumb\":\"" ) + escaped + "\"}";
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
-        CHECK( blobdemo::CatalogFromJsonTolerant( b, input.data(), (int64_t) input.size(), &r ) );
-        CHECK( r.kind_mismatch == 0 && !r.malformed );
+        CHECK( blobdemo::CatalogFromJson( b, input.data(), (int64_t) input.size(), &r ) );
+        CHECK( !r.damaged );
         blobdemo::TableArenaCtx ctx = { &b.arena };
         blobdemo::TableBytesView bytes = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
         CHECK( bytes.data != NULL && bytes.length == 1 );
@@ -8967,8 +8988,8 @@ static void test_blob_string_terminator()
         std::vector<uint8_t> region( (size_t) need );
         blobdemo::TableReport report;
         const blobdemo::Catalog * loaded =
-            blobdemo::CatalogLoadTolerant( region.data(), need, wire, wrote, &report );
-        CHECK( loaded != NULL && !report.malformed );
+            blobdemo::CatalogLoad( region.data(), need, wire, wrote, &report );
+        CHECK( loaded != NULL && !report.damaged );
         check_blob_terminated( loaded, length, "loaded region" );
     }
 }
@@ -9032,14 +9053,14 @@ static void reload_blob_golden( const char * name )
     const int64_t need = blobdemo::CatalogLoadMeasure( golden_pinned, pinned );
     std::vector<uint8_t> region( (size_t) need );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * root = blobdemo::CatalogLoadTolerant( region.data(), need, golden_pinned, pinned, &report );
-    if ( root == NULL || report.malformed )
+    const blobdemo::Catalog * root = blobdemo::CatalogLoad( region.data(), need, golden_pinned, pinned, &report );
+    if ( root == NULL || report.damaged )
     {
         printf( "FAIL table wire golden %s does not load\n", name );
         failures++;
         return;
     }
-    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( report.unknown == 0 );
     const int64_t wrote = blobdemo::CatalogSave( root, golden_again, sizeof( golden_again ) );
     if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
     {
@@ -9053,8 +9074,8 @@ static void test_blob_golden_reload()
 {
     reload_blob_golden( "blob_small" );
     reload_blob_golden( "blob_empty" );
-    // blob_shared is a TOLERANT read, never a re-save (§2.5, §16.7): its own
-    // case is test_blob_shared_node below.
+    // blob_shared refuses on every read, so it is never re-saved (§2.5,
+    // §16.7): its own case is test_blob_shared_node.
     reload_blob_golden( "blob_large" );
     reload_blob_golden( "blob_str8" );
     reload_blob_golden( "blob_str16" );
@@ -9132,8 +9153,8 @@ static void test_was_rows()
         const int64_t need = tblw1::FleetLoadMeasure( w1_default, nd );
         uint8_t * region = (uint8_t *) malloc( (size_t) need );
         tblw1::TableReport report;
-        const tblw1::Fleet * root = tblw1::FleetLoadTolerant( region, need, w1_default, nd, &report );
-        CHECK( root != NULL && !report.malformed && report.unknown == 0 );
+        const tblw1::Fleet * root = tblw1::FleetLoad( region, need, w1_default, nd, &report );
+        CHECK( root != NULL && !report.damaged && report.unknown == 0 );
         CHECK( strcmp( root->title, "fleet" ) == 0 && root->title_length == 5 );
         CHECK( tblw1::VesselAt( root->flagship ) == NULL && root->escorts_count == 0 );
         CHECK( strcmp( root->home.name, "untitled" ) == 0 && root->home.name_length == 8 );
@@ -9157,7 +9178,7 @@ static void test_was_rows()
         CHECK( cleared > at_default );
         tblw1::Vessel back;
         tblw1::TableReport report;
-        CHECK( tblw1::VesselLoadTolerant( back, buf, cleared, &report ) && report.unknown == 0 );
+        CHECK( tblw1::VesselLoad( back, buf, cleared, &report ) && report.unknown == 0 );
         CHECK( back.name_length == 0 && back.tag_length == 0 && back.caps == 0 );
     }
 
@@ -9167,8 +9188,8 @@ static void test_was_rows()
         const int64_t need = tblw2::FleetLoadMeasure( w1, n1 );
         uint8_t * region = (uint8_t *) malloc( (size_t) need );
         tblw2::TableReport report;
-        const tblw2::Fleet * root = tblw2::FleetLoadTolerant( region, need, w1, n1, &report );
-        CHECK( root != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+        const tblw2::Fleet * root = tblw2::FleetLoad( region, need, w1, n1, &report );
+        CHECK( root != NULL && !report.damaged && report.unknown == 0 );
         const tblw2::Ship * flagship = tblw2::ShipAt( root->flagship );
         CHECK( flagship != NULL && strcmp( flagship->name, "Aurora" ) == 0 && flagship->hull == 250 );
         CHECK( flagship->caps == tblw2::Caps_Crouch && flagship->tag_length == 3 && flagship->tag[2] == 'q' );
@@ -9185,8 +9206,8 @@ static void test_was_rows()
         const int64_t need = tblw1::FleetLoadMeasure( w2, n2 );
         uint8_t * region = (uint8_t *) malloc( (size_t) need );
         tblw1::TableReport report;
-        const tblw1::Fleet * root = tblw1::FleetLoadTolerant( region, need, w2, n2, &report );
-        CHECK( root != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+        const tblw1::Fleet * root = tblw1::FleetLoad( region, need, w2, n2, &report );
+        CHECK( root != NULL && !report.damaged && report.unknown == 0 );
         CHECK( tblw1::VesselAt( root->flagship ) != NULL && strcmp( tblw1::VesselAt( root->flagship )->name, "Aurora" ) == 0 );
         free( region );
     }
@@ -9255,8 +9276,8 @@ static void test_wasrows_vocabulary()
     {
         tblr2::Cfg out;
         tblr2::TableReport report;
-        CHECK( tblr2::CfgLoadTolerant( out, r1, n1, &report ) );
-        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.malformed == 0 );
+        CHECK( tblr2::CfgLoad( out, r1, n1, &report ) );
+        CHECK( report.unknown == 0 && report.damaged == 0 );
         CHECK( out.grade == tblr2::Grade::Argent );
         CHECK( out.effect.type == tblr2::EffectType::Shield && out.effect.shield.charge == 2.5f );
         CHECK( out.buff.mult == 1.5f );
@@ -9269,8 +9290,8 @@ static void test_wasrows_vocabulary()
     {
         tblr1::Cfg out;
         tblr1::TableReport report;
-        CHECK( tblr1::CfgLoadTolerant( out, r2, n2, &report ) );
-        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.malformed == 0 );
+        CHECK( tblr1::CfgLoad( out, r2, n2, &report ) );
+        CHECK( report.unknown == 0 && report.damaged == 0 );
         CHECK( out.grade == tblr1::Grade::Silver && out.effect.type == tblr1::EffectType::Ward );
         CHECK( out.effect.ward.charge == 2.5f && out.buff.multiplier == 1.5f && out.tally[tblr1::Grade::Silver] == 7 );
     }
@@ -9278,7 +9299,7 @@ static void test_wasrows_vocabulary()
     {
         tblr2::Cfg out;
         tblr2::TableReport report;
-        CHECK( tblr2::CfgLoadTolerant( out, r1_ping, np, &report ) );
+        CHECK( tblr2::CfgLoad( out, r1_ping, np, &report ) );
         CHECK( report.unknown == 0 && out.effect.type == tblr2::EffectType::Pong );
     }
 }
@@ -9296,7 +9317,7 @@ static void test_allocation_audit()
     const long long before = table_allocations.load();
     static tabledemo::RootConfig out;
     tabledemo::TableReport report;
-    CHECK( tabledemo::RootConfigLoadTolerant( out, wire, bytes, &report ) );
+    CHECK( tabledemo::RootConfigLoad( out, wire, bytes, &report ) );
     long long sum = 0;
     for ( int32_t i = 0; i < out.weapons_count; i++ ) { sum += out.weapons[i].channel; }
     for ( int32_t i = 0; i < out.profiles_count; i++ ) { sum += out.profiles[i].experience; }
@@ -9399,7 +9420,7 @@ int main()
     test_json_number_grammar();
     test_json_integral_spellings();
     test_json_no_infinity_reaches_storage();
-    test_json_duplicate_arrays_last_wins();
+    test_json_duplicate_arrays_refuse();
     test_json_null_is_a_kind_mismatch();
     test_json_nested_guards();
     test_json_keyed_and_optional_round_trip();

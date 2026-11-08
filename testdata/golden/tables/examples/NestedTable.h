@@ -134,7 +134,11 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    // A RECORD THAT LACKS A | required FIELD (§2.3): Go's TableRefuseMissingRequired,
+    // at Go's own value, so the two targets answer the same number. The report's
+    // missing_required count and missing_required_fields name the fields.
+    missing_required = 255
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -207,6 +211,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason missing_required = TableRefuseReason::missing_required;
     static constexpr TableRefuseReason no_vocabulary = ::tabledemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::tabledemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::tabledemo::vocabulary_too_large;
@@ -277,6 +282,14 @@ struct TableReport
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// TableAppendText is strcat for the report's missing_required_fields, with
+// the caller's own bound check before it: MSVC deprecates strcat (C4996),
+// and every C++ target compiles this header with warnings as errors.
+inline void TableAppendText( char * to, const char * text )
+{
+    memcpy( to + strlen( to ), text, strlen( text ) + 1 );
+}
 
 // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
 // packet wire's own): a NaN or an infinity, whatever its
@@ -5822,7 +5835,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch;; }
+        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
         return;
     }
     switch ( me.kind )
@@ -6082,7 +6095,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;;
+                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -7304,10 +7317,10 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;;
+            report->refused = true; report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;;
+        report->refused = true; report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -9562,7 +9575,7 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9603,15 +9616,15 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                        else if ( decoded_v > 100 ) { decoded_v = 100; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        else if ( decoded_v > 100 ) { decoded_v = 100; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                         value.count = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9625,8 +9638,8 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > 100 ) { decoded_v = 100; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > 100 ) { decoded_v = 100; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.count = decoded_v;
                 break;
             }
@@ -9706,17 +9719,16 @@ inline bool ArchiveConfigLoad( ArchiveConfig & value, const uint8_t * buffer, in
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = ArchiveConfigLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->damaged || out->refused || out->refused || out->refused || out->missing_required )
+    if ( verdict != TableOpenOk || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
-        // the same value ReadStrict returns, with out_of_range before kind_mismatch
-        // as Go's TableReport.Err() orders them, and damage before both.
+        // the walk names the condition it met where it met it; a refusal it
+        // left unnamed is a form, damage, or a missing required field.
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( verdict == TableOpenDamaged || out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -9805,7 +9817,7 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 13 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -9832,15 +9844,15 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 100ll ) { decoded_wide = 100ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 100ll ) { decoded_wide = 100ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.count = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -9855,8 +9867,8 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 100ll ) { decoded_wide = 100ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 100ll ) { decoded_wide = 100ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.count = decoded_v;
                 }
@@ -10987,7 +10999,7 @@ inline int64_t ArchiveConfigFixedLoad( ArchiveConfig * values, int64_t capacity,
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int64_t n = ArchiveConfigFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 ) { return -1; }
-    if ( out->damaged || out->refused || out->refused || out->refused )
+    if ( out->damaged || out->refused )
     {
         for ( int64_t k = 0; k < n; ++k ) { ArchiveConfigReset( values[k] ); }
         return -1;
@@ -11087,7 +11099,7 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11129,15 +11141,15 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                        else if ( decoded_v > 100 ) { decoded_v = 100; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        else if ( decoded_v > 100 ) { decoded_v = 100; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                         value.count = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11151,8 +11163,8 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
-                else if ( decoded_v > 100 ) { decoded_v = 100; r.report->refused = true; r.report->refuse_reason = out_of_range;; }
+                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                else if ( decoded_v > 100 ) { decoded_v = 100; r.report->refused = true; r.report->refuse_reason = out_of_range; }
                 value.count = decoded_v;
                 break;
             }

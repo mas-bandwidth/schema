@@ -134,7 +134,11 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    // A RECORD THAT LACKS A | required FIELD (§2.3): Go's TableRefuseMissingRequired,
+    // at Go's own value, so the two targets answer the same number. The report's
+    // missing_required count and missing_required_fields name the fields.
+    missing_required = 255
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -207,6 +211,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason missing_required = TableRefuseReason::missing_required;
     static constexpr TableRefuseReason no_vocabulary = ::armdemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::armdemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::armdemo::vocabulary_too_large;
@@ -277,6 +282,14 @@ struct TableReport
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// TableAppendText is strcat for the report's missing_required_fields, with
+// the caller's own bound check before it: MSVC deprecates strcat (C4996),
+// and every C++ target compiles this header with warnings as errors.
+inline void TableAppendText( char * to, const char * text )
+{
+    memcpy( to + strlen( to ), text, strlen( text ) + 1 );
+}
 
 // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
 // packet wire's own): a NaN or an infinity, whatever its
@@ -4392,7 +4405,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch;; }
+        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
         return;
     }
     switch ( me.kind )
@@ -4652,7 +4665,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;;
+                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -5938,10 +5951,10 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;;
+            report->refused = true; report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;;
+        report->refused = true; report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -9105,7 +9118,7 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9137,7 +9150,7 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.inner.type = InnerType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.inner.type = InnerType::Leaf;
@@ -9172,7 +9185,7 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.inner.type = InnerType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.inner.type = InnerType::Plain;
@@ -9465,7 +9478,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9497,7 +9510,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.outer.type = OuterType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.outer.type = OuterType::Inner;
@@ -9520,7 +9533,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                         {
                                             if ( arm_inner_kind != 13 )
                                             {
-                                                value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch;; break;
+                                                value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
                                             }
                                             value.outer.inner.type = InnerType::Leaf;
                                             LeafLoadBody( arm_inner, nodes, value.outer.inner.leaf );
@@ -9551,7 +9564,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch;; break;
+                                                value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
                                             }
                                             value.outer.inner.type = InnerType::Plain;
                                             if ( arm_inner.size != 4 ) { value.outer.inner.type = InnerType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
@@ -9598,7 +9611,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.outer.type = OuterType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.outer.type = OuterType::Plain;
@@ -9633,7 +9646,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9662,7 +9675,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -11020,16 +11033,14 @@ inline const Twig * TwigLoad( uint8_t * region, int64_t region_bytes, const uint
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Twig * root = TwigLoadWalk( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->damaged || out->refused || out->refused || out->refused || out->refused || out->missing_required )
+    if ( root == NULL || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -11209,16 +11220,14 @@ inline bool TwigLoadBuilder( TwigBuilder & builder, const uint8_t * wire_file, i
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = TwigLoadBuilderWalk( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->damaged || out->refused || out->refused || out->refused || out->refused || out->missing_required )
+    if ( !decoded || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -11254,16 +11263,14 @@ inline const Twig * TwigReadStrict( const uint8_t * wire_file, int64_t wire_file
     TwigBuilder builder( allocator );
     TableReport report;
     const bool decoded = TwigLoadBuilderWalk( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.damaged || report.refused || report.refused || report.refused || report.refused || report.missing_required )
+    if ( !decoded || report.damaged || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
             if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
-            else if ( report.refused ) { *reason = unknown_form; }
             else if ( report.damaged ) { *reason = wire_damaged; }
-            else if ( report.refused ) { *reason = blob_shared; } // §2.5, §16.7
-            else if ( report.refused ) { *reason = out_of_range; }
-            else if ( report.refused ) { *reason = kind_mismatch; }
+            else if ( report.refused ) { *reason = unknown_form; }
+            else if ( report.missing_required ) { *reason = missing_required; }
             else
             {
                 *reason = wire_damaged;
@@ -11979,16 +11986,14 @@ inline const Nest * NestLoad( uint8_t * region, int64_t region_bytes, const uint
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Nest * root = NestLoadWalk( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->damaged || out->refused || out->refused || out->refused || out->refused || out->missing_required )
+    if ( root == NULL || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -12168,16 +12173,14 @@ inline bool NestLoadBuilder( NestBuilder & builder, const uint8_t * wire_file, i
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = NestLoadBuilderWalk( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->damaged || out->refused || out->refused || out->refused || out->refused || out->missing_required )
+    if ( !decoded || out->damaged || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
         {
-            if ( out->refused ) { out->refuse_reason = unknown_form; }
-            else if ( out->damaged ) { out->refuse_reason = wire_damaged; }
-            else if ( out->refused ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
-            else if ( out->refused ) { out->refuse_reason = out_of_range; }
-            else if ( out->refused ) { out->refuse_reason = kind_mismatch; }
+            if ( out->damaged ) { out->refuse_reason = wire_damaged; }
+            else if ( out->refused ) { out->refuse_reason = unknown_form; }
+            else if ( out->missing_required ) { out->refuse_reason = missing_required; }
             else
             {
                 out->refuse_reason = wire_damaged;
@@ -12213,16 +12216,14 @@ inline const Nest * NestReadStrict( const uint8_t * wire_file, int64_t wire_file
     NestBuilder builder( allocator );
     TableReport report;
     const bool decoded = NestLoadBuilderWalk( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.damaged || report.refused || report.refused || report.refused || report.refused || report.missing_required )
+    if ( !decoded || report.damaged || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
             if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }
-            else if ( report.refused ) { *reason = unknown_form; }
             else if ( report.damaged ) { *reason = wire_damaged; }
-            else if ( report.refused ) { *reason = blob_shared; } // §2.5, §16.7
-            else if ( report.refused ) { *reason = out_of_range; }
-            else if ( report.refused ) { *reason = kind_mismatch; }
+            else if ( report.refused ) { *reason = unknown_form; }
+            else if ( report.missing_required ) { *reason = missing_required; }
             else
             {
                 *reason = wire_damaged;
@@ -12387,7 +12388,7 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12420,7 +12421,7 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.inner.type = InnerType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.inner.type = InnerType::Leaf;
@@ -12455,7 +12456,7 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.inner.type = InnerType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.inner.type = InnerType::Plain;
@@ -12755,7 +12756,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12788,7 +12789,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.outer.type = OuterType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.outer.type = OuterType::Inner;
@@ -12811,7 +12812,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                         {
                                             if ( arm_inner_kind != 13 )
                                             {
-                                                value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch;; break;
+                                                value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
                                             }
                                             value.outer.inner.type = InnerType::Leaf;
                                             LeafLoadBodyRetain( arm_inner, nodes, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
@@ -12842,7 +12843,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch;; break;
+                                                value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
                                             }
                                             value.outer.inner.type = InnerType::Plain;
                                             if ( arm_inner.size != 4 ) { value.outer.inner.type = InnerType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
@@ -12889,7 +12890,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.outer.type = OuterType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.outer.type = OuterType::Plain;
@@ -12924,7 +12925,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12953,7 +12954,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;;
+                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }

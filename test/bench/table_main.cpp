@@ -256,12 +256,10 @@ int main( int argc, char ** argv )
             fprintf( stderr, "record %d: Load refused its own Save\n", k );
             return 1;
         }
-        if ( report.malformed || report.unknown != 0 || report.kind_mismatch != 0 ||
-             report.clamped != 0 || report.duplicate != 0 )
+        if ( report.damaged || report.unknown != 0 || report.widened != 0 || (int) report.refuse_reason != 0 )
         {
-            fprintf( stderr, "record %d: a clean round-trip reported u=%d k=%d c=%d d=%d m=%d\n",
-                     k, report.unknown, report.kind_mismatch, report.clamped,
-                     report.duplicate, (int) report.malformed );
+            fprintf( stderr, "record %d: a clean round-trip reported u=%d w=%d damaged=%d reason=%d\n",
+                     k, report.unknown, report.widened, (int) report.damaged, (int) report.refuse_reason );
             return 1;
         }
         const int64_t rewrote = TableMixedSave( decoded, twin.data(), (int64_t) twin.size() );

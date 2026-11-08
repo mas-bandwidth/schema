@@ -48,7 +48,7 @@ table Holder
 local J = require("json")
 
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 
 -- THE ARRAY ROOT WRITE (§16.10): the table's text IS its one field's array
@@ -58,24 +58,24 @@ io.write(J.ToJson(T, "GoalList", v))
 
 -- THE ARRAY ROOT READ: a top-level array fills the field by its row
 local r1 = report()
-local g = J.FromJsonTolerant(T, "GoalList", '["a","b"]', r1)
-print(#g.goals, g.goals[1].value, g.goals[2].value, r1.malformed)
+local g = J.FromJson(T, "GoalList", '["a","b"]', r1)
+print(#g.goals, g.goals[1].value, g.goals[2].value, r1.damaged)
 
 -- AN OBJECT AT AN ARRAY ROOT: refused by name
 local r2 = report()
-J.FromJsonTolerant(T, "GoalList", '{"goals":["a"]}', r2)
-print(r2.malformed, r2.Reason or "")
+J.FromJson(T, "GoalList", '{"goals":["a"]}', r2)
+print(r2.damaged, r2.Reason or "")
 
 -- NESTED (§16.10): a by-value field of the array-root table is the array
 local r3 = report()
-local h = J.FromJsonTolerant(T, "Holder", '{"g":["x","y"]}', r3)
-print(h.g.goals[1].value, h.g.goals[2].value, r3.malformed)
+local h = J.FromJson(T, "Holder", '{"g":["x","y"]}', r3)
+print(h.g.goals[1].value, h.g.goals[2].value, r3.damaged)
 io.write(J.ToJson(T, "Holder", h))
 
 -- AN OBJECT WHERE THE NESTED ARRAY ROOT IS: the ordinary kind mismatch
 local r4 = report()
-J.FromJsonTolerant(T, "Holder", '{"g":{"goals":["a"]}}', r4)
-print(r4.kindMismatch, r4.malformed)
+J.FromJson(T, "Holder", '{"g":{"goals":["a"]}}', r4)
+print(r4.kindChanged, r4.damaged)
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)

@@ -7,9 +7,9 @@
 // value this port computed for itself.
 //
 // The rule: every writer refuses a graph whose two slots name one blob (by
-// name, blob_shared, never a bare -1); the tolerant read keeps the ONE node
-// and counts the extra slots in report.blob_shared; the strict read refuses
-// blob_shared.
+// name, blob_shared, never a bare -1); the read refuses it with the
+// blob_shared reason. The C++ read is strict-only (docs/plans/strict-only.md):
+// no tolerant read keeps the one node any more.
 package compiler
 
 import (
@@ -128,24 +128,11 @@ int main()
         CHECK( RootReadStrict( damaged, n, &why ) == NULL && why == blob_shared );
         TableReport r{};
         CHECK( RootLoad( region, (int64_t) sizeof region, damaged, n, &r ) == NULL );
-        CHECK( r.refuse_reason == blob_shared );
+        CHECK( r.refused && !r.damaged && r.refuse_reason == blob_shared );
         const int64_t size = RootLoadMeasure( damaged, n );
         CHECK( size > 0 && size < (int64_t) sizeof region );
         TableReport load{};
         CHECK( RootLoad( region, (int64_t) sizeof region, damaged, n, &load ) == NULL );
-    }
-
-    // THE TOLERANT READ KEEPS THE ONE NODE AND COUNTS IT.
-    {
-        const int64_t size = RootLoadMeasure( damaged, n );
-        TableReport r{};
-        const Root * v = RootLoadTolerant( region, (int64_t) sizeof region, damaged, n, &r );
-        CHECK( v != NULL && !r.malformed && r.blob_shared == 1 );
-        const TableBytesView a = TableBytesAt( v->f2 );
-        const TableBytesView b = TableBytesAt( v->u0.ptr );
-        CHECK( a.length != 0 && a.data != NULL && a.data == b.data );
-        CHECK( RootToJsonMeasure( v ) == -1 ); // a shared blob has no text spelling
-        (void) size;
     }
 
     // THE CLEAN WIRE STILL READS STRICT AND ROUND-TRIPS BYTE FOR BYTE.
@@ -200,7 +187,7 @@ int main()
         const int64_t m = RootMeasure( s );
         CHECK( m > 0 );
         CHECK( RootSave( s, saved, (int64_t) sizeof saved ) == m );
-        TableRefuseReason why = clamped;
+        TableRefuseReason why = out_of_range;
         const Root * v = RootReadStrict( saved, m, &why );
         CHECK( v != NULL && why == ok );
         CHECK( s.Lock() );
@@ -210,7 +197,7 @@ int main()
         CHECK( RootSaveRetain( packed, NULL, saved, sizeof saved, &retained_report ) == m );
     }
 
-    // TWO BLOBS READ TOLERANT WITH NO blob_shared COUNT.
+    // TWO BLOBS READ WHOLE: the plain read accepts them, no blob_shared refusal.
     {
         RootBuilder s;
         Root * q = s.GetRoot();
@@ -226,8 +213,8 @@ int main()
         const int64_t m = RootMeasure( s );
         CHECK( m > 0 && RootSave( s, saved, (int64_t) sizeof saved ) == m );
         TableReport r{};
-        const Root * v = RootLoadTolerant( region, (int64_t) sizeof region, saved, m, &r );
-        CHECK( v != NULL && !r.malformed && r.blob_shared == 0 && r.refuse_reason == ok );
+        const Root * v = RootLoad( region, (int64_t) sizeof region, saved, m, &r );
+        CHECK( v != NULL && !r.damaged && !r.refused && r.refuse_reason == ok );
         CHECK( TableBytesAt( v->f2 ).length == 3 && memcmp( TableBytesAt( v->f2 ).data, "abc", 3 ) == 0 );
         CHECK( TableBytesAt( v->u0.ptr ).length == 3 && memcmp( TableBytesAt( v->u0.ptr ).data, "xyz", 3 ) == 0 );
     }
@@ -276,7 +263,7 @@ int main()
 `
 
 // TestCPPBlobNamedTwice pins the C++ leg to the Go oracle above: the seed-24
-// wire's strict refusal, its tolerant keep-and-count, the writers' refusal of
+// wire's refusal by name, the writers' refusal of
 // a graph whose two slots name one blob, and the same value with two blobs
 // round-tripping.
 func TestCPPBlobNamedTwice(t *testing.T) {
@@ -290,12 +277,11 @@ func TestCPPBlobNamedTwice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	// The report member this card adds, and the reason every writer names.
-	// The assertion is the red at BASE: the counter is absent there.
+	// The read's refusal by name and the writers' shared-node mark: the
+	// assertion is the red when the rule is not emitted at all.
 	header := string(files["ProbeTable.h"])
 	for _, want := range []string{
-		"int32_t blob_shared = 0;",
-		"report->blob_shared++",
+		"report->refuse_reason = blob_shared",
 		"numbering.shared = true",
 	} {
 		if !strings.Contains(header, want) {

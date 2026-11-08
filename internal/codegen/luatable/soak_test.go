@@ -36,7 +36,7 @@ local load = require("load")
 local inputs = require("inputs")
 local PASSES, SAMPLE = %d, %d
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 -- the rows: the roots that license nothing, then the one that licenses a floor
 local rows = {

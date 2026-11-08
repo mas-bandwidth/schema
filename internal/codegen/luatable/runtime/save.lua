@@ -717,6 +717,7 @@ local function save_with(T, name, v, typed)
   if refused ~= nil then return nil, refused end
   local desc = T.Tables[name]
   if desc == nil then return nil end
+  if type(v) ~= "table" then return nil, "nil_root" end
   local nodes, why = number_nodes(T, desc, v)
   if nodes == nil then return nil, why end
   local idx = W()

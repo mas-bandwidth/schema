@@ -71,8 +71,8 @@ end
 -- TableReport: the runtime counts into the table it is handed.
 local function newReport()
   return {
-    retained = 0, retainLost = 0, widened = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, duplicate = 0, malformed = false, refused = 0, blobShared = 0,
+    retained = 0, retainLost = 0, widened = 0, unknown = 0, kindChanged = 0,
+    outOfRange = 0, repeatedKey = 0, damaged = false, refused = 0, sharedBlob = 0,
     missingRequired = 0, wireDamaged = false,
   }
 end
@@ -254,14 +254,14 @@ end
 
 -- ---- the owning facade (tables/cards/cards.go) -----------------------------------
 
--- readWire is the one tolerant read every facade read shares: the measure
+-- readWire is the one strict read every facade read shares: the measure
 -- first (a wire that is not a card), then the load into a zeroed report.
 local function readWire(wire)
   local report = newReport()
   if load_mod.LoadMeasure(T, ROOT, wire) == nil then
     return nil, refuse("cards: wire is not a card", "malformed", report), report
   end
-  local root = load_mod.LoadTolerant(T, ROOT, wire, report)
+  local root = load_mod.Load(T, ROOT, wire, report)
   if root == nil then return nil, refuse("cards: wire is malformed", "malformed", report), report end
   return root, nil, report
 end
@@ -287,12 +287,12 @@ end
 -- Bytes are published only on complete success.
 function M.FromJSON(text)
   local report = newReport()
-  local root = json_mod.FromJsonTolerant(T, ROOT, text, report)
-  if root == nil or report.malformed then return nil, refuse("cards: JSON is malformed", "malformed") end
-  if report.unknown > 0 or report.kindMismatch > 0 or report.clamped > 0 then
+  local root = json_mod.FromJson(T, ROOT, text, report)
+  if root == nil or report.damaged then return nil, refuse("cards: JSON is malformed", "malformed") end
+  if report.unknown > 0 or report.kindChanged > 0 or report.outOfRange > 0 then
     return nil, refuse(
       string.format("cards: JSON has loss events (unknown=%d kindMismatch=%d clamped=%d): refused, never truncated",
-        report.unknown, report.kindMismatch, report.clamped),
+        report.unknown, report.kindChanged, report.outOfRange),
       "malformed")
   end
   local cerr = checkCard(root)
@@ -625,15 +625,15 @@ local function lossErr(report)
     return refuse(string.format("cards: upgrade: %d retained field(s) lost, refusing to replace", report.retainLost),
       "retain-lost", report)
   end
-  if report.kindMismatch > 0 then
-    return refuse(string.format("cards: upgrade: %d kind mismatch(es), refusing to replace", report.kindMismatch),
+  if report.kindChanged > 0 then
+    return refuse(string.format("cards: upgrade: %d kind mismatch(es), refusing to replace", report.kindChanged),
       "malformed", report)
   end
-  if report.clamped > 0 then
-    return refuse(string.format("cards: upgrade: %d clamped value(s), refusing to replace", report.clamped),
+  if report.outOfRange > 0 then
+    return refuse(string.format("cards: upgrade: %d clamped value(s), refusing to replace", report.outOfRange),
       "malformed", report)
   end
-  if report.malformed then return refuse("cards: upgrade: malformed wire, refusing to replace", "malformed", report) end
+  if report.damaged then return refuse("cards: upgrade: malformed wire, refusing to replace", "malformed", report) end
   return nil
 end
 
@@ -686,15 +686,15 @@ function M.ReadStrict(wire)
     return nil, refuse(string.format("cards: strict: %d unknown field(s), unsupported data", report.unknown),
       "unknown-present", report)
   end
-  if report.kindMismatch > 0 then
-    return nil, refuse(string.format("cards: strict: %d kind mismatch(es), unsupported data", report.kindMismatch),
+  if report.kindChanged > 0 then
+    return nil, refuse(string.format("cards: strict: %d kind mismatch(es), unsupported data", report.kindChanged),
       "malformed", report)
   end
-  if report.clamped > 0 then
-    return nil, refuse(string.format("cards: strict: %d clamped value(s), unsupported data", report.clamped),
+  if report.outOfRange > 0 then
+    return nil, refuse(string.format("cards: strict: %d clamped value(s), unsupported data", report.outOfRange),
       "malformed", report)
   end
-  if report.malformed then
+  if report.damaged then
     return nil, refuse("cards: strict: malformed wire, unsupported data", "malformed", report)
   end
   return record, report
@@ -752,12 +752,12 @@ M.sha256hex = sha256hex
 -- refuseLossy names the read events that make a record unsafe to hash or
 -- rewrite (docs/SPEC-TABLES.md §4, §6.6).
 local function refuseLossy(report)
-  local lost = report.unknown > 0 or report.kindMismatch > 0 or report.clamped > 0 or report.retainLost > 0
-  if lost or report.malformed then
+  local lost = report.unknown > 0 or report.kindChanged > 0 or report.outOfRange > 0 or report.retainLost > 0
+  if lost or report.damaged then
     return refuse(
       string.format("cards: record has loss events (unknown=%d kindMismatch=%d clamped=%d retainLost=%d "
         .. "malformed=%s): refused, never hashed or rewritten",
-        report.unknown, report.kindMismatch, report.clamped, report.retainLost, tostring(report.malformed)),
+        report.unknown, report.kindChanged, report.outOfRange, report.retainLost, tostring(report.damaged)),
       "unknown-present", report)
   end
   return nil
@@ -811,7 +811,7 @@ local function edit(record, mutate)
   local lossy = refuseLossy(record.report)
   if lossy ~= nil then return nil, lossy end
   local report = newReport()
-  local root = load_mod.LoadTolerant(T, ROOT, record.wire, report)
+  local root = load_mod.Load(T, ROOT, record.wire, report)
   if root == nil then return nil, refuse("cards: reload into the fresh decode failed", "malformed") end
   lossy = refuseLossy(report)
   if lossy ~= nil then return nil, lossy end

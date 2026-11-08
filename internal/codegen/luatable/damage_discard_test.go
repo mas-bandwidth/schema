@@ -19,7 +19,7 @@ func TestLuaUnopenedDamageDiscardsTheRoot(t *testing.T) {
 			t.Fatalf("probe: %v: %s", err, stderr)
 		}
 		got, err := agParseLine(out)
-		if err != nil || !got.counts.malformed || got.loaded {
+		if err != nil || !got.counts.damaged || got.loaded {
 			t.Fatalf("damage returned a root: %q (%v)", out, err)
 		}
 	}
@@ -36,7 +36,7 @@ func TestLuaDamageDiscardNegativeControl(t *testing.T) {
 		}
 	}
 	files := maps.Clone(b.files)
-	const final = "  release(ctx)\n  if report.malformed then return nil end\n  return root"
+	const final = "  release(ctx)\n  if report.damaged then return nil end\n  return root"
 	files["load.lua"] = luaDiscardPatch(t, files["load.lua"], final, "  release(ctx)\n  return root")
 	red := 0
 	for _, why := range armVerdicts(t, b, u, files) {
@@ -49,14 +49,14 @@ func TestLuaDamageDiscardNegativeControl(t *testing.T) {
 	}
 
 	files = maps.Clone(b.files)
-	const unopened = "  if o == nil then\n    if report.malformed then return nil end\n"
+	const unopened = "  if o == nil then\n    if report.damaged then return nil end\n"
 	files["load.lua"] = luaDiscardPatch(t, files["load.lua"], unopened, "  if o == nil then\n")
 	out, stderr, err := try(t, files, agProbe(b.module, "Holder"), map[string][]byte{"wire": nil})
 	if err != nil {
 		t.Fatalf("unopened control: %v: %s", err, stderr)
 	}
 	got, err := agParseLine(out)
-	if err != nil || !got.counts.malformed || !got.loaded {
+	if err != nil || !got.counts.damaged || !got.loaded {
 		t.Fatalf("removing the open discard did not expose a root: %q (%v)", out, err)
 	}
 }
@@ -86,20 +86,20 @@ func TestLuaMessageDamageDiscardNegativeControl(t *testing.T) {
 	probe := fmt.Sprintf(`local T = require(%q)
 local M = require("message")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0 }
+local report = { damaged = false, refused = 0 }
 local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
 assert(T.AnnounceRead(vocab, inputs.announce, report))
 local values = M.loadMessages(T, "LoginRequest", vocab, inputs.wire, report, false)
-print(tostring(report.malformed) .. "|" .. tostring(values and #values or 0))
+print(tostring(report.damaged) .. "|" .. tostring(values and #values or 0))
 `, ModuleName(unit))
 	ann := readFile(t, filepath.Join(repo, conn.ann))
 	for _, tc := range []struct {
 		name, wire, from, to string
 		trailing             bool
 	}{
-		{"body", "backend_batch_damaged_second_message.bin", "      report.malformed = true\n      return {}", "      report.malformed = true\n      return values", false},
-		{"tail", "login_full_message.bin", "  if report.malformed then return {} end\n", "", true},
+		{"body", "backend_batch_damaged_second_message.bin", "      report.damaged = true\n      return {}", "      report.damaged = true\n      return values", false},
+		{"tail", "login_full_message.bin", "  if report.damaged then return {} end\n", "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wire := readFile(t, filepath.Join(repo, "testdata/wire/tables", tc.wire))

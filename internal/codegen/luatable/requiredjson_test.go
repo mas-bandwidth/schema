@@ -106,12 +106,12 @@ table OldHasPick
 	main := `local T = require("` + ModuleName(u) + `")
 local J = require("json")
 local function rep()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+    outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 local function read(label, root, text)
   local r = rep()
-  local v = J.FromJsonTolerant(T, root, text, r)
+  local v = J.FromJson(T, root, text, r)
   print(string.format("%s|%d|%s|%s", label, r.missingRequired or 0,
     r.reason or "-", v == nil and "nil" or "read"))
 end
@@ -160,7 +160,7 @@ end
 do
   local text = J.ToJson(T, "Cur", T.NewCur())
   local r = rep()
-  local v = J.FromJsonTolerant(T, "Cur", text, r)
+  local v = J.FromJson(T, "Cur", text, r)
   print(string.format("roundtrip|%d|%s|%s", r.missingRequired or 0,
     r.reason or "-", tostring(v ~= nil and v.b == 0 and J.ToJson(T, "Cur", v) == text)))
 end
@@ -168,19 +168,19 @@ end
 	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	want := `root_missing|1|missing_required: b|read
+	want := `root_missing|1|missing_required: b|nil
 root_present|0|-|read
-legacy_missing|1|missing_required: b|read
-multi_missing|1|missing_required: a, c|read
-multi_partial|1|missing_required: c|read
+legacy_missing|1|missing_required: b|nil
+multi_missing|1|missing_required: a, c|nil
+multi_partial|1|missing_required: c|nil
 guard_off|0|-|read
-guard_on_missing|1|missing_required: req|read
+guard_on_missing|1|missing_required: req|nil
 guard_on_present|0|-|read
-nested_missing|1|missing_required: x|read
+nested_missing|1|missing_required: x|nil
 nested_present|0|-|read
-union_missing|1|missing_required: x|read
+union_missing|1|missing_required: x|nil
 union_present|0|-|read
-exact_missing|1|missing_required: ver|read
+exact_missing|1|missing_required: ver|nil
 exact_present|0|-|read
 other_collision|0|-|read
 write_default|{

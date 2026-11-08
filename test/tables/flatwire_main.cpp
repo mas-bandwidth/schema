@@ -38,16 +38,16 @@ static int reload( const char * in, const char * out )
     int64_t need = graphdemo::SceneLoadMeasure( wire, size, &attribution );
     uint8_t * region = (uint8_t *) malloc( (size_t) need );
     graphdemo::TableReport report;
-    const graphdemo::Scene * root = graphdemo::SceneLoadTolerant( region, need, wire, size, &report );
+    const graphdemo::Scene * root = graphdemo::SceneLoad( region, need, wire, size, &report );
     if ( root == NULL )
     {
         printf( "FAILED: the tool's wire did not load\n" );
         return 1;
     }
-    if ( report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 )
+    if ( report.damaged || report.refused || report.refuse_reason != graphdemo::ok || report.unknown != 0 )
     {
-        printf( "FAILED: the tool's wire did not read clean — unknown %d, kind_mismatch %d, clamped %d, malformed %d\n",
-                report.unknown, report.kind_mismatch, report.clamped, (int) report.malformed );
+        printf( "FAILED: the tool's wire did not read whole — unknown %d, damaged %d, refuse reason %d\n",
+                report.unknown, (int) report.damaged, (int) report.refuse_reason );
         return 1;
     }
 

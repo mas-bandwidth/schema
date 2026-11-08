@@ -61,32 +61,30 @@ func reportsExpect(t *testing.T, path string) map[string]string {
 }
 
 // loadProbe is the Lua main for one row: it requires the table module and the
-// load runtime, reads the wire from inputs.lua, loads and prints the report
-// line u,k,w,c,d,m,verdict.
+// load runtime, reads the wire from inputs.lua, runs THE ONE STRICT READ and
+// prints its verdict, read or refused (reports.txt: the verdict is the whole
+// cross-language contract, docs/rulings.json refusal-verdict-only).
 func loadProbe(module, root string) string {
 	return `local T = require("` + module + `")
 local load = require("load")
 local inputs = require("inputs")
 local wire = inputs.wire
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.LoadTolerant(T, "` + root + `", wire, report)
+local report = {}
+local v = load.Load(T, "` + root + `", wire, report)
 local verdict
-if report.refused > 0 then verdict = "refused" else verdict = "read" end
-print(string.format("%d,%d,%d,%d,%d,%s,%s",
-  report.unknown, report.kindMismatch, report.widened, report.clamped,
-  report.duplicate, tostring(report.malformed), verdict))
+if v == nil then verdict = "refused" else verdict = "read" end
+print(string.format("%s", verdict))
 `
 }
 
 // fixedLoadProbe is the Lua main for one row at a FIXED root
-// (docs/SPEC-TABLES.md §3.4): the generated fixed form's tolerant read is
-// the only reader, and a refusal or a read is the whole report surface (a
-// fixed read moves none of the variable form's counters).
+// (docs/SPEC-TABLES.md §3.4): the generated fixed form's strict read is the
+// only reader, and a refusal or a read is the whole verdict.
 func fixedLoadProbe(module, root string) string {
 	return `local T = require("` + module + `")
 local inputs = require("inputs")
-local ok = pcall(T.ReadFixedTolerant, "` + root + `", inputs.wire)
-print(ok and "0,0,0,0,0,false,read" or "0,0,0,0,0,false,refused")
+local ok, v = pcall(T.ReadFixed, "` + root + `", inputs.wire)
+print((ok and v ~= nil) and "read" or "refused")
 `
 }
 
@@ -181,6 +179,7 @@ func compareReports(t *testing.T, patch func(string, []byte) []byte) reportCompa
 		unitFiles[k] = full
 	}
 	res := reportComparison{refused: map[string]string{}}
+	wireRefused := manifestWireRefusalRows(t, manifestPath)
 
 	for _, row := range manifestRows(t, manifestPath, "report") {
 		paths, ok := unitFiles[row.unit]
@@ -228,8 +227,14 @@ func compareReports(t *testing.T, patch func(string, []byte) []byte) reportCompa
 		}
 		out := loadRow(t, repo, paths, row, patch)
 		res.instances++
-		if strings.HasSuffix(out, ",refused") {
-			res.mismatches = append(res.mismatches, fmt.Sprintf("instance %s: refused", row.caseName))
+		// A wire-refused instance (testdata/conformance/tables/FORMAT.md)
+		// requires the refusal; every other instance reads.
+		want := "read"
+		if wireRefused[row.caseName] {
+			want = "refused"
+		}
+		if out != want {
+			res.mismatches = append(res.mismatches, fmt.Sprintf("instance %s: %s, want %s", row.caseName, out, want))
 			continue
 		}
 		res.instance++
@@ -237,9 +242,9 @@ func compareReports(t *testing.T, patch func(string, []byte) []byte) reportCompa
 	return res
 }
 
-// TestLuaTableLoadMatchesTheReports runs the variable form's tolerant load over
+// TestLuaTableLoadMatchesTheReports runs the variable form's strict load over
 // every report row of the tables conformance manifest whose unit the Lua
-// target generates, and compares the report surface line with reports.txt.
+// target generates, and compares its verdict with reports.txt.
 // Every instance row loads and is not refused; refused units are counted and
 // named (docs/SPEC-TABLES.md §4; test/conformance/README.md).
 func TestLuaTableLoadMatchesTheReports(t *testing.T) {
@@ -267,17 +272,14 @@ func TestLuaTableLoadMatchesTheReports(t *testing.T) {
 }
 
 // TestLuaTableLoadNegativeControl patches the emitted runtimes in memory —
-// one anchor each, matched exactly once — so the variable form does not
-// count an id this table cannot name and the fixed form reads a form-1 file
-// it must refuse, and requires the reports comparison to go red on both
-// paths (a fixed root's rows never touch the variable counter).
+// one anchor each, matched exactly once — so the variable form's form gate
+// admits every form byte and the fixed form reads a form-1 file it must
+// refuse, and requires the verdict comparison to go red on both paths (a
+// fixed root's rows never touch the variable form gate).
 func TestLuaTableLoadNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = `      if fd == nil then
-        report.unknown = report.unknown + 1
-        if not skip(r, kind) then`
-	const sabotaged = `      if fd == nil then
-        if not skip(r, kind) then`
+	const anchor = "  if bytes:byte(1) ~= 1 then\n    report.refused = 1\n"
+	const sabotaged = "  if false then\n    report.refused = 1\n"
 	const fixedAnchor = `local function read_impl(T, name, buf, strict)
   if #buf < 1 then error("malformed") end`
 	const fixedSabotaged = `local function read_impl(T, name, buf, strict)
@@ -302,7 +304,7 @@ func TestLuaTableLoadNegativeControl(t *testing.T) {
 	if len(res.mismatches) == 0 {
 		t.Fatalf("the sabotaged load still matched reports.txt (%d rows compared)", res.compared)
 	}
-	t.Logf("%d of %d report rows diverge with the unknown-id counter removed and the fixed refusal bypassed", len(res.mismatches), res.compared+len(res.mismatches))
+	t.Logf("%d of %d report rows diverge with the form gate open and the fixed refusal bypassed", len(res.mismatches), res.compared+len(res.mismatches))
 }
 
 // wireCountRefusalSchema is the hostile corpus's probe root
@@ -335,8 +337,8 @@ func wireCountRefusalReason(t *testing.T, wire []byte) string {
 	probe := `local T = require("` + ModuleName(u) + `")
 local load = require("load")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-  clamped = 0, widened = 0, duplicate = 0, reason = "" }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+  outOfRange = 0, widened = 0, repeatedKey = 0, reason = "" }
 load.Load(T, "Root", inputs.wire, report)
 print(report.reason)
 `

@@ -1,15 +1,13 @@
 package cpptable
 
 // TestFixedLoadPlainIsStrict pins docs/SPEC-TABLES.md §6.5 on the C++ leg's
-// fixed form: the PLAIN <T>FixedLoad is the STRICT read and the tolerant read
-// exists only under its explicit name, <T>FixedLoad, exactly as the
-// Go oracle's internal/codegen/gotable/fixedform.go emits the pair.
+// fixed form: the PLAIN <T>FixedLoad is the STRICT read and the only read
+// (docs/plans/strict-only.md): no tolerant twin exists.
 //
-// One file carries a value past a declared range, so the tolerant read lands
-// the out_of_range value and counts one `out_of_range`; the plain read of the SAME bytes
-// answers -1, resets every value it had written to its declared defaults and
-// hands back THIS read's report (a stale counter the caller left in it is
-// gone). A clean file reads the same through both names.
+// One file carries a value past a declared range: the read of it answers -1,
+// names out_of_range, resets every value it had written to its declared
+// defaults and hands back THIS read's report (a stale counter the caller left
+// in it is gone). A clean file reads whole, the same on every read.
 
 import (
 	"os"
@@ -48,15 +46,6 @@ fixed table Ranged
     const int64_t clamp_bytes = RangedFixedSave( want, 2, clamps, (int64_t) sizeof( clamps ) );
     if ( clamp_bytes != RangedFixedMeasure( 2 ) ) { printf( "strict: clamp save wrote %lld\n", (long long) clamp_bytes ); return 1; }
 
-    // THE TOLERANT NAME keeps the recovered records and counts the clamp.
-    {
-        Ranged got[2];
-        TableReport r;
-        const int64_t n = RangedFixedLoad( got, 2, clamps, clamp_bytes, plan, 4096, NULL, &r );
-        if ( n != 2 || r.refused != 1 || got[1].rng != 100 || got[0].lead != 7 || got[1].lead != 9 )
-            { printf( "strict: the tolerant read did not keep the out_of_range records: n=%lld out_of_range=%d rng=%d\n", (long long) n, r.refused, got[1].rng ); return 1; }
-    }
-
     // THE PLAIN NAME refuses the same bytes, resets what it wrote and reports THIS read.
     {
         Ranged got[2];
@@ -66,20 +55,20 @@ fixed table Ranged
         r.unknown = 99; // a previous read's counter the strict read must not keep
         const int64_t n = RangedFixedLoad( got, 2, clamps, clamp_bytes, plan, 4096, NULL, &r );
         if ( n != -1 ) { printf( "strict: the plain read accepted a out_of_range file: n=%lld\n", (long long) n ); return 1; }
-        if ( r.refused != 1 || r.unknown != 0 ) { printf( "strict: the report is not this read's own: out_of_range=%d unknown=%d\n", r.refused, r.unknown ); return 1; }
+        if ( !r.refused || r.refuse_reason != out_of_range || r.unknown != 0 ) { printf( "strict: the report is not this read's own: refused=%d reason=%d unknown=%d\n", (int) r.refused, (int) r.refuse_reason, r.unknown ); return 1; }
         for ( int k = 0; k < 2; ++k )
             if ( got[k].lead != fresh.lead || got[k].rng != fresh.rng )
                 { printf( "strict: record %d was not reset to its declared defaults on the refusal\n", k ); return 1; }
     }
 
-    // A CLEAN FILE reads the same through both names.
+    // A CLEAN FILE reads whole, and the same on a second read.
     {
         Ranged a[2]; Ranged b[2];
         TableReport ra; TableReport rb;
         const int64_t na = RangedFixedLoad( a, 2, clean, clean_bytes, plan, 4096, NULL, &ra );
         const int64_t nb = RangedFixedLoad( b, 2, clean, clean_bytes, plan, 4096, NULL, &rb );
-        if ( na != 2 || nb != 2 || a[0].rng != 50 || a[1].rng != 60 || b[1].rng != 60 || ra.refused != 0 || ra.damaged || ra.refused )
-            { printf( "strict: a clean file did not read the same through both names: %lld %lld\n", (long long) na, (long long) nb ); return 1; }
+        if ( na != 2 || nb != 2 || a[0].rng != 50 || a[1].rng != 60 || b[1].rng != 60 || ra.refused || ra.damaged || ra.refuse_reason != ok || rb.refuse_reason != ok )
+            { printf( "strict: a clean file did not read whole: %lld %lld\n", (long long) na, (long long) nb ); return 1; }
     }
 
     // A NULL REPORT is allowed on the strict name and still refuses.

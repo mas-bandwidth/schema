@@ -71,19 +71,13 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		t.Fatalf("cfloat_range_widen(hostile): %v\n%s", err, out)
 	}
 
+	// PAST THIS READER'S OWN RANGE: the strict read refuses the whole load
+	// out_of_range (docs/SPEC-TABLES.md §4, §6.5); nothing lands.
 	pastBody := `
-    if ( n != 1 ) { printf( "cfloat_range_widen(past): n == %lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].lead != 1u || back[0].trail != 2u )
-        { printf( "cfloat_range_widen(past): a bracket moved: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-    {
-        uint32_t bits = 0;
-        memcpy( &bits, &back[0].aim, sizeof( back[0].aim ) );
-        if ( bits != 0x40000000u ) { printf( "cfloat_range_widen(past): aim did not clamp to THIS READER'S OWN declared max 2.0 (0x40000000, not a manifest value): 0x%08X\n", (unsigned) bits ); return 1; }
-    }
-    if ( r.refused != 1 ) { printf( "cfloat_range_widen(past): out_of_range is not exactly 1: %d\n", r.refused ); return 1; }
-    if ( r.unknown != 0 || r.widened != 0 )
-        { printf( "cfloat_range_widen(past): a counter moved on a clean backward read: unknown=%d km=%d w=%d dup=%d\n", r.unknown, r.refused, r.widened, r.refused ); return 1; }
-    if ( r.damaged || r.refused ) { printf( "cfloat_range_widen(past): a clean read refused: malformed=%d refused=%d\n", (int) r.damaged, (int) r.refused ); return 1; }
+    if ( n != -1 ) { printf( "cfloat_range_widen(past): n == %lld, want -1 (refused)\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != out_of_range )
+        { printf( "cfloat_range_widen(past): refused=%d reason=%d, want an out_of_range refusal\n", (int) r.refused, (int) r.refuse_reason ); return 1; }
+    if ( r.damaged ) { printf( "cfloat_range_widen(past): an out-of-range value is a refusal, not damage\n" ); return 1; }
 `
 	out, err = cppRunVersionProbe(t, "cfloat_range_widen",
 		filepath.Join(corpus, "past_cfloat_range_widen.bin"), pastBody, "")

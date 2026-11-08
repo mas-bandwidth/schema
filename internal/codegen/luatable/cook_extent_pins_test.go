@@ -52,7 +52,7 @@ local T = require(%q)
 local load = require("load")
 local cook = require("cookwrite")
 local inputs = require("inputs")
-local v = assert(load.LoadTolerant(T, %q, inputs.wire, {}))
+local v = assert(load.Load(T, %q, inputs.wire, {}))
 local snapshot = {}
 for _, f in ipairs(T.Tables[%q].fields) do
   if f.shape == "map" then

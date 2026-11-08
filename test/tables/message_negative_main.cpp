@@ -62,10 +62,12 @@ int main( int argc, char ** argv )
         printf( "message slot control: the golden did not load\n" );
         return 1;
     }
-    if ( report.unknown != 0 || report.kind_mismatch != 0 || report.malformed )
+    // a moved slot can resolve to a field of another kind; the strict read
+    // names that as a refusal, so the reason is read beside the counters
+    if ( report.unknown != 0 || report.refuse_reason != backenddemo::ok || report.damaged )
     {
-        printf( "message slot control: the golden read %d unknown, %d kind_mismatch, malformed=%d\n",
-                report.unknown, report.kind_mismatch, (int) report.malformed );
+        printf( "message slot control: the golden read %d unknown, reason %d, damaged=%d\n",
+                report.unknown, (int) report.refuse_reason, (int) report.damaged );
         return 1;
     }
     const int64_t size = backenddemo::LoginRequestMeasureMessages( &value, 1, &report );

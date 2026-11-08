@@ -17,7 +17,7 @@ import (
 const base64CanonicalProbe = `local T = require("tables")
 local json = require("json")
 local text = require("text")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 local v = json.FromJson(T, "WeaponConfig", '{ "damage": 42, "speed": 120.5, "homing": true }', report)
 local good = text.SaveText(T, "WeaponConfig", v)
 local loaded = text.LoadText(T, "WeaponConfig", good)

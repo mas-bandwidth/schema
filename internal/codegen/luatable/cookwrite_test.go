@@ -56,34 +56,37 @@ func TestLuaCookWrite(t *testing.T) {
 			}
 			inst := m.New(m.Lookup(r.root))
 			var report tabletext.Report
+			// ONE READ (docs/plans/strict-only.md): an instance the engine
+			// refuses has no cook oracle, and its verdict is the contract, so
+			// the Lua read must refuse it too.
+			engineRefused := false
+			var little, big []byte
 			if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
-				if strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
-					t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
+				engineRefused = true
+			} else {
+				little, err = tablecook.Cook(m, inst, tablecook.Options{})
+				if err != nil {
+					// A value the tool refuses has no oracle.
+					t.Skipf("the tool writes no cook for %s: %v", r.caseName, err)
 				}
-				t.Fatalf("decode %s: %v", r.caseName, err)
-			}
-			little, err := tablecook.Cook(m, inst, tablecook.Options{})
-			if err != nil {
-				// A value the tool refuses (for example a shared blob) has no oracle.
-				t.Skipf("the tool writes no cook for %s: %v", r.caseName, err)
-			}
-			big, err := tablecook.Cook(m, inst, tablecook.Options{Big: true})
-			if err != nil {
-				t.Fatalf("the tool cooks %s little-endian but not big: %v", r.caseName, err)
+				big, err = tablecook.Cook(m, inst, tablecook.Options{Big: true})
+				if err != nil {
+					t.Fatalf("the tool cooks %s little-endian but not big: %v", r.caseName, err)
+				}
 			}
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)
 			luarun.WriteHexProbe(t, dir)
-			loadLine := `local v = load.LoadTolerant(T, "` + r.root + `", inputs.wire, report)`
+			loadLine := `local v = load.Load(T, "` + r.root + `", inputs.wire, report)`
 			if st := u.Tables[r.root]; st != nil && st.FixedDeclared {
-				loadLine = `local v = T.ReadFixedTolerant("` + r.root + `", inputs.wire)`
+				loadLine = `local v = T.ReadFixed("` + r.root + `", inputs.wire)`
 			}
 			probe := `local T = require("` + ModuleName(u) + `")
 local load = require("load")
 local cookwrite = require("cookwrite")
 local inputs = require("inputs")
 local hexline = require("hexline")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 ` + loadLine + `
 if v == nil then print("LOAD_REFUSED") else
   local n = cookwrite.CookMeasure(T, "` + r.root + `", v)
@@ -101,6 +104,12 @@ end
 			}
 			out := string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wire}))
 			all := strings.Split(strings.TrimRight(out, "\n"), "\n")
+			if engineRefused {
+				if len(all) != 1 || all[0] != "LOAD_REFUSED" {
+					t.Fatalf("%s: the engine refuses this instance and the Lua read did not: %q", r.caseName, out)
+				}
+				return
+			}
 			if len(all) == 1 && all[0] == "LOAD_REFUSED" {
 				t.Fatalf("%s: the Lua load refused an instance the target generated", r.caseName)
 			}
@@ -244,14 +253,14 @@ func TestLuaCookWriteNegativeControlsFunctional(t *testing.T) {
 			luarun.WriteHexProbe(t, dir)
 			loadLine := `local v = load.Load(T, "` + r.root + `", inputs.wire, report)`
 			if st := u.Tables[r.root]; st != nil && st.FixedDeclared {
-				loadLine = `local v = T.ReadFixedTolerant("` + r.root + `", inputs.wire)`
+				loadLine = `local v = T.ReadFixed("` + r.root + `", inputs.wire)`
 			}
 			probe := `local T = require("` + ModuleName(u) + `")
 local load = require("load")
 local cookwrite = require("cookwrite")
 local inputs = require("inputs")
 local hexline = require("hexline")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 ` + loadLine + `
 for order = 1, 2 do
   local c = cookwrite.Cook(T, "` + r.root + `", v, nil, order)

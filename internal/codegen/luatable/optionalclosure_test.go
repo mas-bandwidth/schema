@@ -145,16 +145,16 @@ local save = require("save")
 local json = require("json")
 local inputs = require("inputs")
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 local function hex(s)
   if s == nil then return "nil" end
   return (s:gsub(".", function(c) return string.format("%%02x", c:byte()) end))
 end
-local a = load.LoadTolerant(T, "Outer", inputs.absent, report())
+local a = load.Load(T, "Outer", inputs.absent, report())
 print("measure_absent=" .. tostring(load.LoadMeasure(T, "Outer", inputs.absent)))
 print("json_absent=" .. hex(json.ToJson(T, "Outer", a)))
-local p = load.LoadTolerant(T, "Outer", inputs.present, report())
+local p = load.Load(T, "Outer", inputs.present, report())
 print("measure_present=" .. tostring(load.LoadMeasure(T, "Outer", inputs.present)))
 print("json_present=" .. hex(json.ToJson(T, "Outer", p)))
 p.inner_present = false

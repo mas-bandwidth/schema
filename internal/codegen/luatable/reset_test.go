@@ -108,8 +108,8 @@ for _, name in ipairs(names) do
   check(name, T["New" .. name]())
 end
 for i, root in ipairs(roots) do
-  local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-  local v = load.LoadTolerant(T, root, inputs["w" .. i], report)
+  local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+  local v = load.Load(T, root, inputs["w" .. i], report)
   if v ~= nil then
     dirty(root, v, 0)
     check(root, v)

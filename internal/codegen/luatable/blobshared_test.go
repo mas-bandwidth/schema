@@ -35,12 +35,12 @@ func TestLuaBlobNamedTwiceIsBlobShared(t *testing.T) {
 local load = require("load")
 local save = require("save")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, blobShared = 0 }
-local v = load.LoadTolerant(T, "` + root + `", inputs.wire, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0, sharedBlob = 0 }
+local v = load.loadWalk(T, "` + root + `", inputs.wire, report)
 assert(v ~= nil, "the tolerant read refused a shared-blob wire")
 local saved, swhy = save.Save(T, "` + root + `", v)
 local measure, mwhy = save.Measure(T, "` + root + `", v)
-print(string.format("%d,%s,%s,%s,%s", report.blobShared or 0,
+print(string.format("%d,%s,%s,%s,%s", report.sharedBlob or 0,
   saved == nil and "nil" or "bytes", tostring(swhy),
   measure == nil and "nil" or "measure", tostring(mwhy)))
 `
@@ -95,8 +95,8 @@ print(string.format("%d,%s,%s,%s,%s", report.blobShared or 0,
 local load = require("load")
 local save = require("save")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, blobShared = 0 }
-local v = load.LoadTolerant(T, "` + equal.root + `", inputs.wire, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0, sharedBlob = 0 }
+local v = load.Load(T, "` + equal.root + `", inputs.wire, report)
 local saved = assert(save.Save(T, "` + equal.root + `", v), "the distinct equal-byte nodes refused")
 local measure = assert(save.Measure(T, "` + equal.root + `", v), "the distinct equal-byte nodes did not measure")
 print(string.format("%d:%s:%d", #saved, saved == inputs.wire and "same" or "diff", measure))

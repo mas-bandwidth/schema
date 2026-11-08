@@ -1,4 +1,4 @@
--- load.lua — the Lua table runtime's VARIABLE FORM (form 1) tolerant load
+-- load.lua — the Lua table runtime's VARIABLE FORM (form 1) load
 -- (docs/SPEC-TABLES.md §3, §3.1, §4; docs/PORT-LUA.md, THE CARD MAP). A port
 -- of the JavaScript leg's TableVariableLoad walk
 -- (internal/codegen/jstable/variableruntime.go) and of the Go reference
@@ -146,18 +146,18 @@ end
 -- the int32 storage cap refuses the builder load by name,
 -- count_over_extent_cap. It is not damage: malformed is not set and no counter
 -- moves. The walk runs on to its end, so refuse_count keeps the report's
--- fields as they stood at the first refusal and LoadTolerant puts them back
+-- fields as they stood at the first refusal and read_form1 puts them back
 -- before it answers nil; nothing the walk met after the refusal reaches the
 -- report.
 local REPORT_FIELDS = {
-  "malformed",
+  "damaged",
   "refused",
   "unknown",
-  "kindMismatch",
-  "clamped",
+  "kindChanged",
+  "outOfRange",
   "widened",
-  "duplicate",
-  "blobShared",
+  "repeatedKey",
+  "sharedBlob",
   "missingRequired",
   "wireDamaged",
   "reason",
@@ -322,7 +322,7 @@ end
 -- emptied here before they are filled), and so is the answer.
 local function open(bytes, blen, report, st)
   if blen < 1 then
-    report.malformed = true
+    report.damaged = true
     report.wireDamaged = true
     return nil
   end
@@ -331,13 +331,13 @@ local function open(bytes, blen, report, st)
     return nil
   end
   if blen < 9 then
-    report.malformed = true
+    report.damaged = true
     report.wireDamaged = true
     return nil
   end
   local count = string.unpack("<i8", bytes, blen - 7)
   if count < 0 or count > (blen - 9) // 8 or count > D.ID_TABLE_BOUND then
-    report.malformed = true
+    report.damaged = true
     report.wireDamaged = true
     return nil
   end
@@ -350,7 +350,7 @@ local function open(bytes, blen, report, st)
   for i = 0, count - 1 do
     local id = string.unpack("<i8", bytes, endpos + i * 8 + 1)
     if seen[id] then
-      report.malformed = true
+      report.damaged = true
       report.wireDamaged = true
       return nil
     end
@@ -364,7 +364,7 @@ local function open(bytes, blen, report, st)
     if w.bad then break end
     if ref == 0 then
       if w.at ~= w.lim then
-        report.malformed = true
+        report.damaged = true
         report.wireDamaged = true
         return nil
       end
@@ -421,7 +421,7 @@ local function node_scan(bytes, o, report, variable, st)
     end
   end
   if present and bad then
-    report.malformed = true
+    report.damaged = true
     report.wireDamaged = true
     return nil
   end
@@ -429,7 +429,7 @@ local function node_scan(bytes, o, report, variable, st)
   local rec = point(st.scan, bytes, at, lim)
   local count = r_leb(rec)
   if rec.bad then
-    report.malformed = true
+    report.damaged = true
     report.wireDamaged = true
     return nil
   end
@@ -452,13 +452,13 @@ local function node_scan(bytes, o, report, variable, st)
   while rec.at < rec.lim do
     local tref = r_leb(rec)
     if rec.bad or tref == 0 or above(tref, #o.table) then
-      report.malformed = true
+      report.damaged = true
       report.wireDamaged = true
       return nil
     end
     local n = r_leb(rec)
     if rec.bad or not fits(rec, n) then
-      report.malformed = true
+      report.damaged = true
       report.wireDamaged = true
       return nil
     end
@@ -472,7 +472,7 @@ local function node_scan(bytes, o, report, variable, st)
     rec.at = rec.at + n
   end
   if count ~= #raw then
-    report.malformed = true
+    report.damaged = true
     report.wireDamaged = true
     return nil
   end
@@ -564,7 +564,7 @@ local function widens(kind, declared)
   return false
 end
 
--- a bound the value is clamped to is the VALUE it becomes: a wide bound is the
+-- a bound the value is held to is the VALUE it becomes: a wide bound is the
 -- descriptor's own { lo, hi } table, which a value must never alias (a load that
 -- reads into the caller's value puts it back in place, and a descriptor is a
 -- constant, docs/PORTING.md M13), so it is copied
@@ -593,7 +593,7 @@ end
 -- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md §3.3):
 -- the test runs on the wire's bits before they become a Lua number and before the
 -- field is written. The read names the float <Owner>.<field> (the first name
--- wins) and the load, the tolerant one included, refuses as non_finite_float
+-- wins) and the load refuses as non_finite_float
 -- and lands nothing. ctx.owner and ctx.field are the body and the field the
 -- walk is in; an element is named by its array field.
 local F32_EXP = 0x7f800000
@@ -615,7 +615,7 @@ end
 local function scalar_at(r, d, kind, report, ctx)
   local w = width_of(kind)
   if w == 0 or r.at + w > r.lim then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   local x
@@ -623,7 +623,7 @@ local function scalar_at(r, d, kind, report, ctx)
     -- A BOOL BYTE PAST 1 IS MALFORMED, and non-zero is still true
     -- (docs/SPEC-TABLES.md §3; decode.go scalarAt).
     local b = r_u8(r)
-    if b > 1 then report.malformed = true end
+    if b > 1 then report.damaged = true end
     x = b ~= 0
   elseif kind == 10 then
     local b = string.unpack("<I4", r.b, r.at + 1)
@@ -664,11 +664,11 @@ local function scalar_at(r, d, kind, report, ctx)
     -- 64-BIT AND 128-BIT INTEGERS, FIXED-POINT).
     x = { lo = r_u64(r), hi = r_u64(r) }
   else
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   if r.bad then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   if d.shape == "wide" and type(x) ~= "table" then
@@ -683,10 +683,10 @@ local function scalar_at(r, d, kind, report, ctx)
   if d.lo ~= nil and d.hi ~= nil then
     if less_than(d, x, d.lo) then
       x = bound_value(d.lo)
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
     elseif less_than(d, d.hi, x) then
       x = bound_value(d.hi)
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
     end
   end
   -- THE bits(N) CLAMP is a bits(N) field's alone (decode.go scalarAt: the
@@ -697,7 +697,7 @@ local function scalar_at(r, d, kind, report, ctx)
     local bmax = (1 << d.bits) - 1
     if kind ~= 1 and less_than({ signed = false }, bmax, x) then
       x = bmax
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
     end
   end
   return x
@@ -710,12 +710,12 @@ end
 local function enum_read(atable, r, d, report)
   local ref = r_leb(r)
   if r.bad then
-    report.malformed = true
+    report.damaged = true
     return nil, false
   end
   if ref == 0 then return nil, true end
   if above(ref, #atable) then
-    report.malformed = true
+    report.damaged = true
     return nil, false
   end
   local id = atable[ref]
@@ -837,7 +837,7 @@ read_element = function(T, ctx, e, ek, sub, out, index, reuse)
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     local i = r_leb(sub)
     if sub.bad then
-      ctx.report.malformed = true
+      ctx.report.damaged = true
       return false, false
     end
     queue(ctx, out, index, i, e, false)
@@ -858,22 +858,22 @@ read_element = function(T, ctx, e, ek, sub, out, index, reuse)
       local d = T.Tables[e.target]
       local vf = d and d.fields[1]
       if vf == nil or vf.shape ~= "string" then
-        ctx.report.malformed = true
+        ctx.report.damaged = true
         return false, false
       end
       local n = r_leb(sub)
       if sub.bad or not fits(sub, n) then
-        ctx.report.malformed = true
+        ctx.report.damaged = true
         return false, false
       end
       local raw = r_bytes(sub, n)
       local inst = fresh(T, d)
       if not utf8_ok(raw) then
-        ctx.report.malformed = true
+        ctx.report.damaged = true
         return inst, true
       end
       if vf.bound ~= nil and vf.bound > 0 and #raw > vf.bound then
-        ctx.report.clamped = ctx.report.clamped + 1
+        ctx.report.outOfRange = ctx.report.outOfRange + 1
         raw = utf8_clamp(raw, vf.bound)
       end
       inst[vf.name] = raw
@@ -881,7 +881,7 @@ read_element = function(T, ctx, e, ek, sub, out, index, reuse)
     end
     local n = r_leb(sub)
     if sub.bad or not fits(sub, n) then
-      ctx.report.malformed = true
+      ctx.report.damaged = true
       return false, false
     end
     local d = T.Tables[e.target]
@@ -895,7 +895,7 @@ read_element = function(T, ctx, e, ek, sub, out, index, reuse)
     local clean = sub.at == sub.lim
     restore(sub, at0, n, lim, bad)
     if not clean then
-      ctx.report.malformed = true
+      ctx.report.damaged = true
       discard(ctx, np0)
       inst = renew(T, d, inst)
     end
@@ -903,7 +903,7 @@ read_element = function(T, ctx, e, ek, sub, out, index, reuse)
   elseif s == "union" then
     local u = T.Unions[e.target]
     if u == nil then
-      ctx.report.malformed = true
+      ctx.report.damaged = true
       return false, false
     end
     local x = read_union(T, ctx, u, sub)
@@ -912,33 +912,33 @@ read_element = function(T, ctx, e, ek, sub, out, index, reuse)
   elseif s == "string" then
     local n = r_leb(sub)
     if sub.bad or not fits(sub, n) then
-      ctx.report.malformed = true
+      ctx.report.damaged = true
       return false
     end
     local raw = r_bytes(sub, n)
     if not utf8_ok(raw) then
-      ctx.report.malformed = true
+      ctx.report.damaged = true
       return e.default or "", true
     end
     if e.bound ~= nil and e.bound > 0 and #raw > e.bound then
-      ctx.report.clamped = ctx.report.clamped + 1
+      ctx.report.outOfRange = ctx.report.outOfRange + 1
       return utf8_clamp(raw, e.bound), true
     end
     return raw, true
   elseif s == "wstring" then
     local n = r_leb(sub)
     if sub.bad or not fits(sub, n) then
-      ctx.report.malformed = true
+      ctx.report.damaged = true
       return false
     end
     local raw = r_bytes(sub, n)
     local ok, units = wstring_ok(raw)
     if not ok then
-      ctx.report.malformed = true
+      ctx.report.damaged = true
       return {}, true
     end
     if e.bound ~= nil and e.bound > 0 and #units > e.bound then
-      ctx.report.clamped = ctx.report.clamped + 1
+      ctx.report.outOfRange = ctx.report.outOfRange + 1
       local keep = {}
       for i = 1, e.bound do
         keep[i] = units[i]
@@ -962,8 +962,8 @@ end
 local function map_key(ctx, kf, b, at, lim, key)
   local scan = point(ctx.scan, b, at, lim)
   local junk = ctx.junk
-  junk.unknown, junk.kindMismatch, junk.widened, junk.clamped, junk.duplicate = 0, 0, 0, 0, 0
-  junk.malformed, junk.nonFiniteFloat = false, nil
+  junk.unknown, junk.kindChanged, junk.widened, junk.outOfRange, junk.repeatedKey = 0, 0, 0, 0, 0
+  junk.damaged, junk.nonFiniteFloat = false, nil
   local kindbad, widened = false, false
   while true do
     local ref = r_leb(scan)
@@ -1029,7 +1029,7 @@ end
 -- AN ARRAY BODY (§2.9, §3, decode.go arrayBody): a body shorter than its own
 -- header is inert; a damaged count is malformed and keeps the field; an
 -- element kind that is not this array's (and does not widen) is a kind
--- mismatch and keeps the field; a bounded array's excess is clamped.
+-- mismatch and keeps the field; a bounded array's excess is bounded.
 --
 -- A BODY'S HEADER IS READ AGAINST THE PARENT (decode.go subTo): `hdr` is
 -- positioned at the body and bounded by the reader that carries it, because a
@@ -1054,7 +1054,7 @@ read_array_body = function(T, ctx, fd, r, endpos, prior, reuse)
   local count = r_leb(r)
   if r.bad then
     r.lim, r.bad = lim, bad
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   -- a count whose spelling ends past the body's own end CROSSED L: the
@@ -1062,6 +1062,11 @@ read_array_body = function(T, ctx, fd, r, endpos, prior, reuse)
   local crossed = r.at > endpos
   r.lim = math.max(r.at, endpos)
   local out, selected = array_elements(T, ctx, fd, r, ek, count, prior, reuse, crossed)
+  -- BYTES LEFT INSIDE AN ARRAY'S, KEYED ARRAY'S OR MAP'S L AFTER ITS ELEMENTS
+  -- are damage (docs/SPEC-TABLES.md §6.5; internal/tablewire wirecheck.go):
+  -- every path that stops short of L is already a refusal, so the strict read
+  -- loses nothing by refusing the rest.
+  if r.at ~= r.lim then report.damaged = true end
   r.lim, r.bad = lim, bad
   return out, selected
 end
@@ -1074,7 +1079,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
     local expected = 6
     if ek ~= expected then
       if not widens(ek, expected) then
-        report.kindMismatch = report.kindMismatch + 1
+        report.kindChanged = report.kindChanged + 1
         return nil, false
       end
       report.widened = report.widened + 1
@@ -1082,7 +1087,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
     local keep = count
     if fd.bound ~= nil and above(count, fd.bound) then
       keep = fd.bound
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
     end
     -- `keep` bytes, or the bytes the body holds (a body that is short is
     -- malformed); a count at or past 2^63 is a negative integer and keeps none
@@ -1091,7 +1096,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
     local avail = sub.lim - sub.at
     if take > avail then
       take = avail
-      report.malformed = true
+      report.damaged = true
     end
     local out = string.sub(sub.b, sub.at + 1, sub.at + take)
     sub.at = sub.at + take
@@ -1104,7 +1109,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
     -- what it holds; then every entry's KEY is scanned before its body is
     -- read, ascending against the last entry that landed.
     if ek ~= 13 then
-      report.kindMismatch = report.kindMismatch + 1
+      report.kindChanged = report.kindChanged + 1
       return nil, true
     end
     -- PAST THE INT32 STORAGE CAP (§2.8, §2.9; internal/tablewire
@@ -1116,7 +1121,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
     -- damage, the walk resuming after L. A count AT the cap decodes normally.
     if above(count, 0x7fffffff) then
       if crossed then
-        report.malformed = true
+        report.damaged = true
       else
         refuse_count(ctx)
       end
@@ -1135,7 +1140,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
       i = i + 1
       local n = r_leb(sub)
       if sub.bad or not fits(sub, n) then
-        report.malformed = true
+        report.damaged = true
         break
       end
       local at = sub.at
@@ -1149,25 +1154,25 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
       if kindbad then
         -- A MAP WITH HALF ITS KEYS IS NOT A MAP: it resets to empty and one
         -- kind mismatch counts; events inside earlier entries stand
-        report.kindMismatch = report.kindMismatch + 1
+        report.kindChanged = report.kindChanged + 1
         out = {}
         break
       end
       if not keyok then
-        report.malformed = true
+        report.damaged = true
         break
       end
       if kf.shape == "string" and kf.bound ~= nil and #key > kf.bound then
         -- KEYS NEVER CLAMP: the entry is dropped whole and counted. An
         -- unbounded key carries no bound, so it is never dropped for its
         -- length (docs/SPEC-TABLES.md §2.13.1).
-        report.clamped = report.clamped + 1
+        report.outOfRange = report.outOfRange + 1
       else
         local order = -1
         if landed then order = key_order(kf, last, key) end
         if order > 0 then
           -- DESCENDING: the map keeps the ascending prefix it has
-          report.malformed = true
+          report.damaged = true
           break
         end
         local inst = fresh(T, entry)
@@ -1186,7 +1191,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
             local pp = ctx.pending[j]
             if pp.holder == out and pp.key == last then pp.holder = ctx.sink end
           end
-          report.duplicate = report.duplicate + 1
+          report.repeatedKey = report.repeatedKey + 1
           out[last] = nil
         else
           last = dkey
@@ -1219,7 +1224,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
   local expected = fd.elem_kind
   if ek ~= expected then
     if not widens(ek, expected) then
-      report.kindMismatch = report.kindMismatch + 1
+      report.kindChanged = report.kindChanged + 1
       return nil, false
     end
     -- a list past the int32 storage cap refuses below and moves no counter
@@ -1246,7 +1251,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
       end
     end
     -- AN ENUM-KEYED BODY places its triples BY KEY (docs/SPEC-TABLES.md §3.2;
-    -- decode.go keyed): its count is never clamped, since a slot this reader
+    -- decode.go keyed): its count is never bounded, since a slot this reader
     -- cannot name is skipped and counted unknown, and a slot lands once per
     -- triple whatever the count says.
     local i = 0
@@ -1254,12 +1259,12 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
       i = i + 1
       local keyref = r_leb(sub)
       if sub.bad or keyref == 0 or above(keyref, #ctx.table) then
-        report.malformed = true
+        report.damaged = true
         break
       end
       local n = r_leb(sub)
       if sub.bad or not fits(sub, n) then
-        report.malformed = true
+        report.damaged = true
         break
       end
       local slot = nil
@@ -1279,7 +1284,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         if es == "pointer" or es == "string_blob" or es == "bytes_blob" then
           local idx = r_leb(body)
           if body.bad or body.at ~= body.lim then
-            report.malformed = true
+            report.damaged = true
           else
             queue(ctx, out, slot, idx, e, false)
           end
@@ -1300,7 +1305,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
           local np0 = ctx.np
           read_body(T, ctx, d, body, inst, true)
           if body.at ~= body.lim then
-            report.malformed = true
+            report.damaged = true
             discard(ctx, np0)
             inst = renew(T, d, inst)
           end
@@ -1309,12 +1314,12 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
           local u = T.Unions[e.target]
           local x = nil
           if u == nil then
-            report.malformed = true
+            report.damaged = true
           else
             x = read_union(T, ctx, u, body)
           end
           if x == nil or body.at ~= body.lim then
-            report.malformed = true
+            report.damaged = true
           else
             out[slot] = x
           end
@@ -1322,10 +1327,10 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
           local raw = string.sub(body.b, body.at + 1, body.lim)
           body.at = body.lim
           if not utf8_ok(raw) then
-            report.malformed = true
+            report.damaged = true
           else
             if e.bound ~= nil and e.bound > 0 and #raw > e.bound then
-              report.clamped = report.clamped + 1
+              report.outOfRange = report.outOfRange + 1
               raw = utf8_clamp(raw, e.bound)
             end
             out[slot] = raw
@@ -1335,7 +1340,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
           body.at = body.lim
           local ok, units = wstring_ok(raw)
           if not ok then
-            report.malformed = true
+            report.damaged = true
           else
             out[slot] = units
           end
@@ -1375,7 +1380,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
     -- AT the cap decodes normally.
     if above(count, 0x7fffffff) then
       if crossed then
-        report.malformed = true
+        report.damaged = true
       else
         refuse_count(ctx)
       end
@@ -1383,13 +1388,13 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
     end
   elseif above(count, fd.bound) then
     keep = fd.bound
-    report.clamped = report.clamped + 1
+    report.outOfRange = report.outOfRange + 1
   end
   local total = fd.total
   local spent = 0
   for i = 1, keep do
     if sub.at >= sub.lim then
-      report.malformed = true
+      report.damaged = true
       break
     end
     -- AN ELEMENT OF A FIXED ARRAY OF UNIONS IS RESET THE MOMENT ITS ARM IS
@@ -1420,7 +1425,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         add = #((el and el[vf.name]) or "")
       end
       if spent + add > total then
-        report.clamped = report.clamped + 1
+        report.outOfRange = report.outOfRange + 1
         break
       end
       spent = spent + add
@@ -1465,7 +1470,7 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
   while true do
     local ref = r_leb(r)
     if r.bad then
-      report.malformed = true
+      report.damaged = true
       return false
     end
     if ref == 0 then
@@ -1500,11 +1505,11 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
       return (report.missingRequired or 0) == missingBefore
     end
     if above(ref, #ctx.table) then
-      report.malformed = true
+      report.damaged = true
       return false
     end
     if r.at >= r.lim then
-      report.malformed = true
+      report.damaged = true
       return false
     end
     local kind = r_u8(r)
@@ -1512,25 +1517,25 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
     -- the announcement's reserved ids ride in the announcement and nowhere
     -- else (§3.3): in any body they are malformed
     if id == BUILD_VERSION_ID or id == MESSAGE_VOCABULARY_ID then
-      report.malformed = true
+      report.damaged = true
       return false
     end
     if id == NODE_TABLE_ID then
       -- the node table rides in a VARIABLE root body and nowhere else (§3.1);
       -- a reader holding no numbering skips it by its kind and counts unknown
       if nested then
-        report.malformed = true
+        report.damaged = true
         return false
       end
       if desc.variable then
         if not skip(r, kind) then
-          report.malformed = true
+          report.damaged = true
           return false
         end
       else
         report.unknown = report.unknown + 1
         if not skip(r, kind) then
-          report.malformed = true
+          report.damaged = true
           return false
         end
       end
@@ -1540,7 +1545,7 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
       if fd == nil then
         report.unknown = report.unknown + 1
         if not skip(r, kind) then
-          report.malformed = true
+          report.damaged = true
           return false
         end
       elseif kind ~= fd.kind then
@@ -1553,9 +1558,9 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
           -- a map entry's KEY widens once per MAP (§2.8), counted by the map
           if fd.name ~= mapkey then report.widened = report.widened + 1 end
         else
-          report.kindMismatch = report.kindMismatch + 1
+          report.kindChanged = report.kindChanged + 1
           if not skip(r, kind) then
-            report.malformed = true
+            report.damaged = true
             return false
           end
         end
@@ -1606,7 +1611,7 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
       -- kind, so this is framing damage (wire_damaged in §6.5's order)
       local w = width_of(kind)
       if w == 0 or n ~= w then
-        report.malformed = true
+        report.damaged = true
         report.wireDamaged = true
         return nil, DAMAGED
       end
@@ -1618,17 +1623,17 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
     if n == nil then
       n = r_leb(r)
       if r.bad or not fits(r, n) then
-        report.malformed = true
+        report.damaged = true
         return nil, STOP
       end
     end
     local raw = r_bytes(r, n)
     if not utf8_ok(raw) then
-      report.malformed = true
+      report.damaged = true
       return fd.default or "", DAMAGED
     end
     if fd.bound ~= nil and fd.bound > 0 and #raw > fd.bound then
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
       raw = utf8_clamp(raw, fd.bound)
     end
     return raw, OK
@@ -1636,18 +1641,18 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
     if n == nil then
       n = r_leb(r)
       if r.bad or not fits(r, n) then
-        report.malformed = true
+        report.damaged = true
         return nil, STOP
       end
     end
     local raw = r_bytes(r, n)
     local ok, units = wstring_ok(raw)
     if not ok then
-      report.malformed = true
+      report.damaged = true
       return {}, DAMAGED
     end
     if fd.bound ~= nil and fd.bound > 0 and #units > fd.bound then
-      report.clamped = report.clamped + 1
+      report.outOfRange = report.outOfRange + 1
       local keep = {}
       for i = 1, fd.bound do
         keep[i] = units[i]
@@ -1660,18 +1665,18 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
     local x, ok = enum_read(ctx.table, r, fd, report)
     if not ok then return nil, STOP end
     if n ~= nil and r.at ~= r.lim then
-      report.malformed = true
+      report.damaged = true
       return nil, DAMAGED
     end
     return x, OK
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     local i = r_leb(r)
     if r.bad then
-      report.malformed = true
+      report.damaged = true
       return nil, STOP
     end
     if n ~= nil and r.at ~= r.lim then
-      report.malformed = true
+      report.damaged = true
       return nil, DAMAGED
     end
     queue(ctx, holder, key, i, fd)
@@ -1680,7 +1685,7 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
     if n == nil then
       n = r_leb(r)
       if r.bad or not fits(r, n) then
-        report.malformed = true
+        report.damaged = true
         return nil, STOP
       end
     end
@@ -1700,7 +1705,7 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
     local clean = r.at == r.lim
     restore(r, at0, n, lim, bad)
     if not clean then
-      report.malformed = true
+      report.damaged = true
       discard(ctx, np0)
       return renew(T, d, inst), DAMAGED
     end
@@ -1708,7 +1713,7 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
   elseif s == "union" then
     local u = T.Unions[fd.target]
     if u == nil then
-      report.malformed = true
+      report.damaged = true
       return nil, STOP
     end
     -- a union field is its arm header in place; an arm that is another union
@@ -1721,7 +1726,7 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
     if n == nil then
       n = r_leb(r)
       if r.bad or not fits(r, n) then
-        report.malformed = true
+        report.damaged = true
         return nil, STOP
       end
     end
@@ -1740,7 +1745,7 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
     if out == nil then return nil, KEEP end
     return out, OK
   end
-  report.malformed = true
+  report.damaged = true
   return nil, STOP
 end
 
@@ -1776,23 +1781,23 @@ read_arm = function(T, ctx, u, r)
   local report = ctx.report
   local armref = r_leb(r)
   if r.bad then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   if armref == 0 then return { tag = 0 } end
   if above(armref, #ctx.table) then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   local armid = ctx.table[armref]
   if r.at >= r.lim then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   local armkind = r_u8(r)
   local n = r_leb(r)
   if r.bad or not fits(r, n) then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   local arm = u.byid[armid]
@@ -1806,6 +1811,9 @@ read_arm = function(T, ctx, u, r)
   local at0 = r.at
   local lim, bad = narrow(r, n)
   local x = read_arm_payload(T, ctx, u, arm, armkind, r, n)
+  -- BYTES AFTER A NESTED UNION INSIDE ITS ARM'S L are damage
+  -- (docs/plans/strict-only.md decision 6).
+  if armkind == 15 and r.at ~= r.lim then report.damaged = true end
   restore(r, at0, n, lim, bad)
   return x
 end
@@ -1817,11 +1825,11 @@ read_arm_payload = function(T, ctx, u, arm, armkind, sub, n)
   ctx.owner, ctx.field = u.name, arm.name
   if f == nil then
     if armkind ~= 32 then
-      report.kindMismatch = report.kindMismatch + 1
+      report.kindChanged = report.kindChanged + 1
       return { tag = 0 }
     end
     if n ~= 0 then
-      report.malformed = true
+      report.damaged = true
       return { tag = 0 }
     end
     return { tag = arm.tag }
@@ -1833,14 +1841,14 @@ read_arm_payload = function(T, ctx, u, arm, armkind, sub, n)
       local x, st = read_payload(T, ctx, f, sub, n, out, arm.slot, armkind)
       if st ~= OK then return { tag = 0 } end
       if sub.at ~= sub.lim then
-        report.malformed = true
+        report.damaged = true
         return { tag = 0 }
       end
       report.widened = report.widened + 1
       out[arm.slot] = x
       return out
     end
-    report.kindMismatch = report.kindMismatch + 1
+    report.kindChanged = report.kindChanged + 1
     return { tag = 0 }
   end
   -- THE ARM'S PAYLOAD IS A FIELD LINE (docs/PORTING.md M18): the field's own
@@ -1879,10 +1887,10 @@ local function resolve(ctx, root, rootdesc)
         if d.shape == "pointer" and d.target == rootdesc.name then
           value = root
         else
-          report.kindMismatch = report.kindMismatch + 1
+          report.kindChanged = report.kindChanged + 1
         end
       elseif above(p.index - 1, #ctx.nodes) then
-        report.malformed = true
+        report.damaged = true
       else
         local node = ctx.nodes[p.index - 1]
         if node ~= nil and (node.kind == "unknown" or node.kind == "null") then
@@ -1895,29 +1903,29 @@ local function resolve(ctx, root, rootdesc)
               value = node.box
               if seen_blob == nil then seen_blob = {} end
               if seen_blob[p.index] then
-                report.blobShared = (report.blobShared or 0) + 1
+                report.sharedBlob = (report.sharedBlob or 0) + 1
               else
                 seen_blob[p.index] = true
               end
             else
-              report.kindMismatch = report.kindMismatch + 1
+              report.kindChanged = report.kindChanged + 1
             end
           elseif d.shape == "bytes_blob" then
             if node.kind == "b" then
               value = node.box
               if seen_blob == nil then seen_blob = {} end
               if seen_blob[p.index] then
-                report.blobShared = (report.blobShared or 0) + 1
+                report.sharedBlob = (report.sharedBlob or 0) + 1
               else
                 seen_blob[p.index] = true
               end
             else
-              report.kindMismatch = report.kindMismatch + 1
+              report.kindChanged = report.kindChanged + 1
             end
           elseif node.kind == "t" and node.codec.name == d.target then
             value = node.value
           else
-            report.kindMismatch = report.kindMismatch + 1
+            report.kindChanged = report.kindChanged + 1
           end
         elseif d.shape == "pointer" then
           value = false
@@ -1947,7 +1955,7 @@ end
 -- what it answered before. A state serves one load at a time.
 function L.NewState()
   local scan = new_reader("", 0, 0)
-  local junk = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false }
+  local junk = { unknown = 0, kindChanged = 0, widened = 0, outOfRange = 0, repeatedKey = 0, damaged = false }
   local sink = {}
   return {
     ids = {},
@@ -2041,10 +2049,9 @@ local function placed(nodes)
   return out
 end
 
--- LoadTolerant loads a form-1 wire for table `name` of module T into a fresh
+-- read_form1 loads a form-1 wire for table `name` of module T into a fresh
 -- value and fills report. Damage discards the whole load (§4): every root
--- class returns nil when malformed, including a wire that cannot open.
--- Evolution remains tolerant under this explicit name (§6.5).
+-- class returns nil when damaged, including a wire that cannot open.
 --
 -- `state` (L.NewState()) and `into` are the CALLER-OWNED STORAGE form
 -- (docs/PORTING.md M1): with `into`, the root is the caller's value, put back to
@@ -2053,11 +2060,7 @@ end
 -- `state`, the readers, the id table and the queue are the caller's and nothing
 -- of them is built. Neither changes a byte of what is read: both are nil in the
 -- plain form. A load that answers nil leaves `into` at defaults or partly read.
---
--- This is THE TOLERANT READ (docs/SPEC-TABLES.md §6.5), under its explicit
--- name: it keeps a valid value and its evolution report. The plain L.Load below is
--- the strict read.
-function L.LoadTolerant(T, name, bytes, report, state, into)
+local function read_form1(T, name, bytes, report, state, into)
   local desc = T.Tables[name]
   state = state or L.NewState()
   report.nonFiniteFloat = nil
@@ -2072,13 +2075,13 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   local blen = #bytes
   if desc ~= nil and desc.integrity ~= nil and blen >= 1 and bytes:byte(1) == 1 then
     if blen < 5 then
-      report.malformed = true
+      report.damaged = true
       report.reason = "integrity_mismatch"
       return nil
     end
     local n = blen - 4
     if string.unpack("<I4", bytes, n + 1) ~= L.crc32c(bytes, n) then
-      report.malformed = true
+      report.damaged = true
       report.reason = "integrity_mismatch"
       return nil
     end
@@ -2086,7 +2089,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   end
   local o = open(bytes, blen, report, state)
   if o == nil then
-    if report.malformed then return nil end
+    if report.damaged then return nil end
     -- An unsupported form keeps its existing class-specific refusal; it is
     -- not a decoded damaged value (§3, §4.2).
     if desc == nil then return nil end
@@ -2095,7 +2098,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
     return fresh(T, desc)
   end
   if desc == nil then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   local raw = node_scan(bytes, o, report, desc.variable, state)
@@ -2132,7 +2135,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
           e.kind, e.blob, e.box, e.codec, e.value, e.at, e.lim = "s", body, { value = body }, nil, nil, nil, nil
           ctx.nodes[#ctx.nodes + 1] = e
         else
-          report.malformed = true
+          report.damaged = true
           report.wireDamaged = true
           -- §3.1: the record keeps its index even when its content is refused,
           -- so one unnameable node never shifts the rest; every pointer naming
@@ -2195,7 +2198,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
     release(ctx)
     return nil
   end
-  -- A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+  -- A NON-FINITE FLOAT REFUSES THE READ and outranks
   -- any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing
   -- lands, and Reason names the float.
   if report.nonFiniteFloat ~= nil then
@@ -2213,22 +2216,22 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   -- record the load placed, a cycle among records the root never reaches
   -- included (D.cyclic).
   if placed_t(ctx.nodes) then
-    if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.malformed = true end
+    if not report.damaged and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.damaged = true end
   end
   release(ctx)
-  if report.malformed then return nil end
+  if report.damaged then return nil end
   return root
 end
 
 -- strict_refusal answers the refusal's §11/§6.5 name when the strict read
 -- refuses this wire, and nil when it accepts it. It reads the FORM BYTE FIRST
--- in refusal.lua's order (§2.14, §6.5), then the report the tolerant walk just
+-- in refusal.lua's order (§2.14, §6.5), then the report the walk just
 -- filled: count_over_extent_cap (§2.9), a refused form, integrity_mismatch,
 -- wire_damaged, missing_required, malformed, then the
--- counters blob_shared, clamped and kind_mismatch; a non-finite float
+-- counters blob_shared, out_of_range, kind_mismatch and repeatedKey; a non-finite float
 -- (§3.3) outranks every one the walk reaches. The set is the one refusal.lua's ReadStrict
--- owns; unknown, widened and duplicate ALONE are evolution, exact decoding and
--- data identity, not loss (§6.5), so they read clean. This entry reads the
+-- owns; unknown and widened ALONE are evolution and exact decoding, not loss
+-- (§6.5), so they read clean. This entry reads the
 -- variable form, so every form byte but 1 is the one reason unknown_form:
 -- TableReport.Err() folds previous_form, newer_form and message_form_as_file
 -- alike (§11).
@@ -2245,36 +2248,37 @@ local function strict_refusal(bytes, report, root)
   -- (§3.3): no read keeps one.
   if report.nonFiniteFloat ~= nil then return "non_finite_float" end
   if report.wireDamaged then return "wire_damaged" end
-  if (report.missingRequired or 0) > 0 then return "missing_required" end
-  if report.malformed then return report.reason or "malformed" end
-  if (report.blobShared or 0) > 0 then return "blob_shared" end
-  if report.clamped > 0 then return "clamped" end
-  if report.kindMismatch > 0 then return "kind_mismatch" end
+  if (report.missingRequired or 0) > 0 then return report.reason or "missing_required" end
+  if report.damaged then return report.reason or "malformed" end
+  if (report.sharedBlob or 0) > 0 then return "blob_shared" end
+  if report.outOfRange > 0 then return "out_of_range" end
+  if report.kindChanged > 0 then return "kind_mismatch" end
+  -- A REPEATED MAP KEY IS DAMAGE (docs/plans/strict-only.md decision 5).
+  if (report.repeatedKey or 0) > 0 then return "malformed" end
   if root == nil then return "wire_damaged" end
   return nil
 end
 
 -- Load is THE STRICT READ (docs/SPEC-TABLES.md §6.5: THE PLAIN NAME IS THE
--- STRICT READ): it runs the tolerant walk into the caller's report, overwriting
--- it with THIS read's report (every counter counted as the tolerant read counts
--- it), and answers the root only where the strict set accepts the wire.
--- Otherwise it answers nil, raising nothing, with report.reason naming the
--- refusal. A nil report refuses the same way (§6.5).
+-- STRICT READ): it runs the walk into the caller's report, overwriting
+-- it with THIS read's report, and answers the root only where the strict set
+-- accepts the wire. Otherwise it answers nil, raising nothing, with
+-- report.reason naming the refusal. A nil report refuses the same way (§6.5).
 function L.Load(T, name, bytes, report, state, into)
   local r = report
   if r == nil then r = {} end
-  r.malformed = false
+  r.damaged = false
   r.refused = 0
   r.unknown = 0
-  r.kindMismatch = 0
-  r.clamped = 0
+  r.kindChanged = 0
+  r.outOfRange = 0
   r.widened = 0
-  r.duplicate = 0
-  r.blobShared = 0
+  r.repeatedKey = 0
+  r.sharedBlob = 0
   r.missingRequired = 0
   r.wireDamaged = false
   r.reason = nil
-  local root = L.LoadTolerant(T, name, bytes, r, state, into)
+  local root = read_form1(T, name, bytes, r, state, into)
   local reason = strict_refusal(bytes, r, root)
   if reason ~= nil then
     r.reason = reason
@@ -2282,6 +2286,8 @@ function L.Load(T, name, bytes, report, state, into)
   end
   return root
 end
+
+L.loadWalk = read_form1
 
 -- THE EXTENT WALK (docs/SPEC-TABLES.md §6.5, §8.5; internal/tablewire/extent.go):
 -- LoadMeasure(T, name, bytes) ports tablewire.FileRegionMeasure(u, root, data):

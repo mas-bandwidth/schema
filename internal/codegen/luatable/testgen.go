@@ -99,13 +99,13 @@ local refusal = require("refusal")
 
 -- §4: a read of a sample the generator built is SILENT.
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+    outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 
 local function silent(r)
-  return not r.malformed and r.refused == 0 and r.unknown == 0 and
-    r.kindMismatch == 0 and r.clamped == 0 and r.widened == 0 and r.duplicate == 0
+  return not r.damaged and r.refused == 0 and r.unknown == 0 and
+    r.kindChanged == 0 and r.outOfRange == 0 and r.widened == 0 and r.repeatedKey == 0
 end
 
 local function check(cond, msg)
@@ -841,6 +841,6 @@ func ltgDamage(b *strings.Builder, st *ir.Struct, variable bool, samples []ltgSa
 	fmt.Fprintf(b, "\tlocal jsonText = json.ToJson(T, %q, v)\n", n)
 	b.WriteString("\tlocal jr = report()\n")
 	fmt.Fprintf(b, "\tlocal jgot = json.FromJson(T, %q, jsonText:sub(1, #jsonText - 2), jr)\n", n)
-	fmt.Fprintf(b, "\tcheck(jgot ~= nil and jr.malformed, %q)\n", n+": a JSON document cut off inside its value is not malformed")
+	fmt.Fprintf(b, "\tcheck(jgot == nil and jr.damaged, %q)\n", n+": a JSON document cut off inside its value is not damaged")
 	b.WriteString("end\n")
 }
