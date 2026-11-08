@@ -2244,6 +2244,446 @@ local function witness(root: string, b: buffer, k: string): string?
 	return nil
 end
 
+-- ---- THE WIRE-ALONE WALK (§6.5, "TWO KINDS OF CONDITION") ----------------
+-- A port of the Go reference engine's internal/tablewire/wirecheck.go. Every
+-- byte of a form-1 root body is walked BEFORE any value decodes, in fields
+-- and records this reader declares and in those it does not: skipped is not
+-- unread (§4), so damage inside an unknown field refuses the load. The walk
+-- takes no declaration. It checks the framing (lengths, counts, terminators,
+-- headers inside their own L, the id table's references, canonical LEB128, a
+-- kind no reader can skip, kind 32 with a nonzero L), a bool byte other than
+-- 0 or 1, ill-formed text, a repeated field id or keyed slot in one body,
+-- bytes left inside an arm, an array, a keyed array or a map after its
+-- payload, the node table's framing, a reserved id out of place, a count past
+-- the storage cap and a blob past its size cap; it collects every kind 17
+-- payload in wire order and judges the pointer graph: an index past the node
+-- table, a cycle, a record no pointer reaches, one blob record named from two
+-- slots. A non-finite float is noted, not refused here: the decode names the
+-- field where this reader declares it. tla/ReadOrder.tla and
+-- tla/Framing.tla model the split and the header-inside-its-own-L rules.
+-- Positions are absolute offsets into the one buffer; every frame is [s, e).
+
+local WIRE_MAX_DEPTH = 128 -- ir.TableBinaryMaxDepth
+local INT32_MAX = 2147483647
+local BLOB_SIZE_CAP = 4294967295
+
+-- the walk's state: the buffer, the id table, the kind 17 payloads of the
+-- body being walked, the first refusal's name, a non-finite float met, the
+-- framed depth, and the node table's span when the root body carries one
+local wc: any = nil
+
+local function wcFail(name: string): boolean
+	if wc.fail == nil then
+		wc.fail = name
+	end
+	return false
+end
+
+local wcPayload: any
+local wcContent: any
+local wcBody: any
+
+-- a fixed-width value's bytes: a bool is 0 or 1; a float is finite (§3.3)
+local function wcScalar(at: number, kind: number): boolean
+	if kind == 1 then
+		if buffer.readu8(wc.b, at) > 1 then
+			return wcFail("wire_damaged")
+		end
+	elseif kind == 10 then
+		if not V.finite32(buffer.readu32(wc.b, at)) then
+			wc.nonFinite = true
+		end
+	elseif kind == 11 then
+		if not V.finite64(buffer.readu32(wc.b, at), buffer.readu32(wc.b, at + 4)) then
+			wc.nonFinite = true
+		end
+	end
+	return true
+end
+
+-- THE HEADER LIES INSIDE ITS OWN L (§4): the element kind, the count and
+-- where the elements start, or nil
+local function wcHeader(s: number, e: number): (number?, number, number)
+	if e - s < 2 then
+		wcFail("wire_damaged")
+		return nil, 0, s
+	end
+	local count, at = V.leb(wc.b, s + 1, e)
+	if count == nil then
+		wcFail("wire_damaged")
+		return nil, 0, s
+	end
+	if count > INT32_MAX then
+		-- TWO REFUSALS IN ONE READ: the first in read order names it (§2.9),
+		-- so a NaN the walk met before the count answers for the load
+		wcFail(if wc.nonFinite then "non_finite_float" else "count_over_extent_cap")
+		return nil, 0, s
+	end
+	return buffer.readu8(wc.b, s), count, at
+end
+
+local function wcArray(s: number, e: number): boolean
+	local ek, count, at = wcHeader(s, e)
+	if ek == nil then
+		return false
+	end
+	for _ = 1, count do
+		local stop = wcPayload(at, e, ek :: number)
+		if stop == nil then
+			return false
+		end
+		at = stop
+	end
+	if at ~= e then
+		return wcFail("wire_damaged")
+	end
+	return true
+end
+
+local function wcKeyed(s: number, e: number): boolean
+	local ek, count, at = wcHeader(s, e)
+	if ek == nil then
+		return false
+	end
+	local seen: { [number]: boolean } = {}
+	for _ = 1, count do
+		local key, nxt = V.leb(wc.b, at, e)
+		if key == nil or key == 0 or key > #wc.ids or seen[key] then
+			return wcFail("wire_damaged")
+		end
+		seen[key] = true
+		local n, after = V.leb(wc.b, nxt, e)
+		if n == nil or n > e - after then
+			return wcFail("wire_damaged")
+		end
+		at = after + n
+		if not wcContent(after, at, ek :: number) then
+			return false
+		end
+	end
+	if at ~= e then
+		return wcFail("wire_damaged")
+	end
+	return true
+end
+
+-- a union payload in place: the arm reference, and for a set arm its kind
+-- byte, its L and the content L frames. A STRUCTURAL ARM IS A LEVEL (§4).
+local function wcUnion(at: number, e: number): number?
+	local ref, nxt = V.leb(wc.b, at, e)
+	if ref == nil then
+		wcFail("wire_damaged")
+		return nil
+	end
+	if ref == 0 then
+		return nxt
+	end
+	if ref > #wc.ids or nxt >= e then
+		wcFail("wire_damaged")
+		return nil
+	end
+	local kind = buffer.readu8(wc.b, nxt)
+	local n, after = V.leb(wc.b, nxt + 1, e)
+	if n == nil or n > e - after then
+		wcFail("wire_damaged")
+		return nil
+	end
+	local stop = after + n
+	local structural = kind == 13 or kind == 14 or kind == 16 or kind == 15
+	if structural then
+		if wc.depth >= WIRE_MAX_DEPTH then
+			wcFail("wire_damaged")
+			return nil
+		end
+		wc.depth += 1
+	end
+	local ok = wcContent(after, stop, kind)
+	if structural then
+		wc.depth -= 1
+	end
+	return if ok then stop else nil
+end
+
+-- one SELF-FRAMED payload of kind at `at`: the position after it, or nil
+wcPayload = function(at: number, e: number, kind: number): number?
+	local w = V.width(kind)
+	if w > 0 then
+		if w > e - at then
+			wcFail("wire_damaged")
+			return nil
+		end
+		if not wcScalar(at, kind) then
+			return nil
+		end
+		return at + w
+	end
+	if kind == 17 then
+		local index, nxt = V.leb(wc.b, at, e)
+		if index == nil then
+			wcFail("wire_damaged")
+			return nil
+		end
+		wc.edges[#wc.edges + 1] = index
+		return nxt
+	elseif kind == 30 then
+		local ref, nxt = V.leb(wc.b, at, e)
+		if ref == nil or ref > #wc.ids then
+			wcFail("wire_damaged")
+			return nil
+		end
+		return nxt
+	elseif kind == 15 then
+		return wcUnion(at, e)
+	elseif kind == 12 or kind == 33 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
+		local n, nxt = V.leb(wc.b, at, e)
+		if n == nil or n > e - nxt then
+			wcFail("wire_damaged")
+			return nil
+		end
+		if not wcContent(nxt, nxt + n, kind) then
+			return nil
+		end
+		return nxt + n
+	end
+	wcFail("wire_damaged") -- a kind no reader can skip
+	return nil
+end
+
+-- a payload already framed by a length, consumed exactly
+wcContent = function(s: number, e: number, kind: number): boolean
+	local w = V.width(kind)
+	if w > 0 then
+		if e - s ~= w then
+			return wcFail("wire_damaged")
+		end
+		return wcScalar(s, kind)
+	end
+	if kind == 12 then
+		if not V.utf8(wc.b, s, e - s) then
+			return wcFail("wire_damaged")
+		end
+		return true
+	elseif kind == 33 then
+		if (e - s) % 2 ~= 0 or not V.wide(wc.b, s, e - s) then
+			return wcFail("wire_damaged")
+		end
+		return true
+	elseif kind == 31 then
+		return true -- opaque: the one kind whose meaning a reader may not know (§3)
+	elseif kind == 32 then
+		if e ~= s then
+			return wcFail("wire_damaged")
+		end
+		return true
+	elseif kind == 13 or kind == 14 or kind == 16 then
+		-- THE BINARY NESTING BOUND (§4): a framed body is one level deeper
+		if wc.depth >= WIRE_MAX_DEPTH then
+			return wcFail("wire_damaged")
+		end
+		wc.depth += 1
+		local ok
+		if kind == 13 then
+			ok = wcBody(s, e, false)
+		elseif kind == 14 then
+			ok = wcArray(s, e)
+		else
+			ok = wcKeyed(s, e)
+		end
+		wc.depth -= 1
+		return ok
+	elseif kind == 17 or kind == 30 or kind == 15 then
+		local stop = wcPayload(s, e, kind)
+		if stop == nil then
+			return false
+		end
+		if stop ~= e then
+			return wcFail("wire_damaged")
+		end
+		return true
+	end
+	return wcFail("wire_damaged")
+end
+
+-- one table body that must end with its terminator as its LAST byte; the
+-- root body alone may carry the node table, whose kind 12 payload is its
+-- records, never text
+wcBody = function(s: number, e: number, root: boolean): boolean
+	local p = s
+	local seen: { [string]: boolean } = {}
+	while true do
+		local ref, q = V.leb(wc.b, p, e)
+		if ref == nil then
+			return wcFail("wire_damaged")
+		end
+		p = q
+		if ref == 0 then
+			if p ~= e then
+				return wcFail("wire_damaged")
+			end
+			return true
+		end
+		if ref > #wc.ids then
+			return wcFail("wire_damaged")
+		end
+		local id = wc.ids[ref]
+		if seen[id] then
+			return wcFail("wire_damaged")
+		end
+		seen[id] = true
+		if p >= e then
+			return wcFail("wire_damaged")
+		end
+		local kind = buffer.readu8(wc.b, p)
+		p += 1
+		if id == BuildVersionId or id == MessageVocabularyId then
+			return wcFail("wire_damaged") -- an announcement id in a file body
+		elseif id == NodeTableId then
+			if not root or kind ~= 12 then
+				return wcFail("wire_damaged")
+			end
+			local n, after = V.leb(wc.b, p, e)
+			if n == nil or n > e - after then
+				return wcFail("wire_damaged")
+			end
+			wc.table = { s = after, e = after + n }
+			p = after + n
+		else
+			local stop = wcPayload(p, e, kind)
+			if stop == nil then
+				return false
+			end
+			p = stop
+		end
+	end
+end
+
+-- the node table's records, each { tid, s, e }, or nil when it cannot be
+-- read whole (internal/tablewire nodetable.go scanNodeRecords)
+local function wcRecords(s: number, e: number): { any }?
+	local declared, at = V.leb(wc.b, s, e)
+	if declared == nil then
+		return nil
+	end
+	local out: { any } = {}
+	while at < e do
+		local ref, nxt = V.leb(wc.b, at, e)
+		if ref == nil or ref == 0 or ref > #wc.ids then
+			return nil
+		end
+		local n, after = V.leb(wc.b, nxt, e)
+		if n == nil or n > e - after then
+			return nil
+		end
+		out[#out + 1] = { tid = wc.ids[ref], s = after, e = after + n }
+		at = after + n
+	end
+	if declared ~= #out then
+		return nil
+	end
+	return out
+end
+
+-- THE GRAPH, DEFINED ONCE (§6.5): node 1 is the root, node k + 1 is record
+-- k (node index k + 1 on the wire). Every pointer names null, the root or a
+-- record; a walk from the root meeting a node whose descent is still open is
+-- a cycle; a record the walk never enters is unreachable; a blob record named
+-- from two slots is blob_shared. The walk holds its own stack.
+local function wcGraph(children: { { number } }, blobs: { boolean }): boolean
+	local n = #children
+	local names: { number } = table.create(n, 0)
+	for _, out in children do
+		for _, index in out do
+			if index ~= 0 then
+				if index > n then
+					return wcFail("wire_damaged")
+				end
+				names[index] += 1
+			end
+		end
+	end
+	for k, blob in blobs do
+		if blob and names[k + 1] > 1 then
+			return wcFail("blob_shared")
+		end
+	end
+	local mark: { number } = table.create(n, 0) -- 0 unvisited, 1 open, 2 closed
+	local stack: { any } = { { node = 1, i = 0 } }
+	mark[1] = 1
+	while #stack > 0 do
+		local top = stack[#stack]
+		local out = children[top.node]
+		if top.i >= #out then
+			mark[top.node] = 2
+			stack[#stack] = nil
+		else
+			top.i += 1
+			local index = out[top.i]
+			if index ~= 0 then
+				if mark[index] == 1 then
+					return wcFail("wire_damaged")
+				end
+				if mark[index] == 0 then
+					mark[index] = 1
+					stack[#stack + 1] = { node = index, i = 0 }
+				end
+			end
+		end
+	end
+	for k = 2, n do
+		if mark[k] == 0 then
+			return wcFail("wire_damaged")
+		end
+	end
+	return true
+end
+
+-- wireCheck(b, s, e, ids): every wire-alone condition over the root body
+-- [s, e). The first refusal's name or nil, and whether a non-finite float
+-- rides anywhere in the file.
+local function wireCheck(b: buffer, s: number, e: number, ids: { string }): (string?, boolean)
+	wc = { b = b, ids = ids, edges = {}, fail = nil, nonFinite = false, depth = 0, table = nil }
+	local function finish(): (string?, boolean)
+		local fail, nonFinite = wc.fail, wc.nonFinite
+		wc = nil
+		return fail, nonFinite
+	end
+	if not wcBody(s, e, true) then
+		return finish()
+	end
+	local children: { { number } } = { wc.edges }
+	local blobs: { boolean } = {}
+	if wc.table ~= nil then
+		local records = wcRecords(wc.table.s, wc.table.e)
+		if records == nil then
+			wcFail("wire_damaged")
+			return finish()
+		end
+		for _, rec in records do
+			wc.edges = {}
+			if rec.tid == BytesBlobId or rec.tid == StringBlobId then
+				-- A BLOB RECORD IS ITS BYTES (§2.5, §3.1)
+				if rec.e - rec.s > BLOB_SIZE_CAP then
+					wcFail("blob_over_size_cap")
+					return finish()
+				end
+				if rec.tid == StringBlobId and not V.utf8(b, rec.s, rec.e - rec.s) then
+					wcFail("wire_damaged")
+					return finish()
+				end
+				blobs[#blobs + 1] = true
+			else
+				if not wcBody(rec.s, rec.e, false) then
+					return finish()
+				end
+				blobs[#blobs + 1] = false
+			end
+			children[#children + 1] = wc.edges
+		end
+	end
+	wcGraph(children, blobs)
+	return finish()
+end
+
 -- THE VARIABLE FORM'S STRICT READ (§6.5): the one answer for form 1, over
 -- the strict walk. It resets the caller's report, applies the file's own
 -- framing (integrity, the id table and the root body's terminator), then the
@@ -2284,10 +2724,27 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.reason = "wire_damaged"
 		return nil
 	end
+	-- PHASE ONE (§6.5): every condition decidable from the wire alone, over
+	-- every byte, before any value decodes
+	local wireFail, wireNonFinite = wireCheck(b, 1, fr.e, fr.ids)
+	if wireFail ~= nil then
+		rep.damaged = wireFail == "wire_damaged"
+		if wireFail == "count_over_extent_cap" then
+			rep.refused = 1
+		end
+		rep.reason = wireFail
+		return nil
+	end
+	-- PHASE TWO: the declaration-dependent conditions, as the value decodes
 	local v = readOpened(root, b, rep)
 	_retain = nil
 	if rep.nonFinite > 0 then
 		rep.field = rep.nonFiniteField
+		return nil
+	end
+	-- a non-finite float in bytes this reader cannot name refuses after
+	if wireNonFinite then
+		rep.reason = "non_finite_float"
 		return nil
 	end
 	-- a count past the int32 extent cap (§2.9) is the load's own refusal,
