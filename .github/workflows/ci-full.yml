@@ -1161,12 +1161,12 @@ jobs:
           path: build/conformance/legs/${{ matrix.lang }}.json
           if-no-files-found: ignore
 
-  # THE PROOF TABLE, the 3.0.0 gate (docs/MATRIX.md, "Proof: the 3.0.0 gate";
-  # tools/matrix proof). Glenn, 2026-10-31: "We need to prove this before
+  # THE PROOF TABLE, the 3.0.0 gate (tools/matrix proof; snapshot at
+  # test/proof/proof.json, an internal check with no published page). Glenn, 2026-10-31: "We need to prove this before
   # v3.0.0 not just hope that it's correct and complete." It reads every
   # conformance leg's per-case results and computes the feature x language
   # table; it prints the red list and goes RED while any cell is red or
-  # docs/proof.json is not what the results compute, so main shows what parity
+  # test/proof/proof.json is not what the results compute, so main shows what parity
   # still owes on every merge. Its report (the commit, the red cells) is kept
   # as the `proof` artifact: release.yml downloads it for the commit it
   # releases, and `make release` refuses unless it is green at that commit.

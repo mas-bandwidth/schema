@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -242,7 +243,7 @@ func TestReleaseRefusesUnlessTheProofIsGreenAtThatCommit(t *testing.T) {
 		"another commit": {green, "def"},
 		"no commit":      {Report{Cells: 10}, "abc"},
 		"no cells":       {Report{Commit: "abc"}, "abc"},
-		"stale":          {Report{Commit: "abc", Cells: 10, Stale: "docs/proof.json is stale"}, "abc"},
+		"stale":          {Report{Commit: "abc", Cells: 10, Stale: "test/proof/proof.json is stale"}, "abc"},
 	} {
 		if err := VerifyRelease(c.r, c.commit); err == nil {
 			t.Errorf("%s: the release went through", name)
@@ -317,4 +318,70 @@ func TestLoadResultsOrdersLikeTheRegistry(t *testing.T) {
 	if got := strings.Join(r.Langs, ","); got != "cpp,c,go" {
 		t.Fatalf("columns %s, want cpp,c,go", got)
 	}
+}
+
+// TestTheCommittedProofIsWellFormed checks the committed snapshot directly:
+// it parses, carries the note the tool writes, names its languages and rows,
+// and holds exactly one cell per row and language, each with a known status
+// and the reason a red cell is red. Whether it is the proof the results
+// compute is `make proof`'s job (it needs the conformance run); this is the
+// part `go test` can hold without one.
+func TestTheCommittedProofIsWellFormed(t *testing.T) {
+	p, err := LoadProof(testRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Note != proofNote {
+		t.Errorf("%s note is %q, not the note the tool writes", proofPath, p.Note)
+	}
+	if len(p.Langs) == 0 || len(p.Rows) == 0 {
+		t.Fatalf("%s names %d languages and %d rows", proofPath, len(p.Langs), len(p.Rows))
+	}
+	if !slices.Contains(p.Langs, referenceLang) {
+		t.Errorf("%s has no %s column, the reference leg", proofPath, referenceLang)
+	}
+	if want := len(p.Langs) * len(p.Rows); len(p.Cells) != want {
+		t.Errorf("%s holds %d cells, not %d rows x %d languages = %d", proofPath, len(p.Cells), len(p.Rows), len(p.Langs), want)
+	}
+	seen := map[string]bool{}
+	for _, c := range p.Cells {
+		key := c.Row + "/" + c.Lang
+		if seen[key] {
+			t.Errorf("%s holds cell %s twice", proofPath, key)
+		}
+		seen[key] = true
+		if !slices.Contains(p.Rows, c.Row) || !slices.Contains(p.Langs, c.Lang) {
+			t.Errorf("%s cell %s is outside its rows and languages", proofPath, key)
+		}
+		switch c.Status {
+		case StatusProven, StatusNA:
+		case StatusRed:
+			if c.Why == "" {
+				t.Errorf("%s cell %s is red with no reason", proofPath, key)
+			}
+		default:
+			t.Errorf("%s cell %s has status %q", proofPath, key, c.Status)
+		}
+	}
+	if !slices.Equal(MarshalProof(p), mustRead(t, filepath.Join(testRoot(t), proofPath))) {
+		t.Errorf("%s is not in the form the tool writes; run `make proof-write`", proofPath)
+	}
+}
+
+func mustRead(t *testing.T, p string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func testRoot(t *testing.T) string {
+	t.Helper()
+	root, err := repoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
