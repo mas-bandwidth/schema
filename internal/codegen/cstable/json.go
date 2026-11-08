@@ -1760,15 +1760,14 @@ public static class TableJson
             // occurrence's slots standing
             ResetSlots(value, f);
             char shape = ElementShape(f);
-            // A KEYED OBJECT'S KEYS ARE KEYS: a key named twice is a
-            // repeated key like any other, and damage (strict-only decision 5).
+            // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a
+            // duplicate key like any other, last-wins and counted (§16.2).
             // The schema fixes the vocabulary size. Small schemas use the
             // stack; larger ones still count every duplicate exactly.
             int words = (f.ArrayBound + 63) / 64;
             Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
             seen.Clear();
             Span<byte> key = stackalloc byte[MaxKey];
-            System.Collections.Generic.HashSet<string> unplaced = null;
             for (; ; )
             {
                 byte c = Peek(text, ref input);
@@ -1795,13 +1794,6 @@ public static class TableJson
                 }
                 if (slot < 0)
                 {
-                    // a key this reader cannot place (None, or a name outside
-                    // the key vocabulary) is still a key: spelling it twice is
-                    // a repeated key, damage like a placed one (strict-only
-                    // decision 5). Compared on the decoded bytes, so an
-                    // escaped spelling of the same name is the same key.
-                    unplaced ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-                    if (!unplaced.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                     input.Report.Unknown++;
                     if (!SkipValue(text, ref input, depth + 1)) { return false; }
                 }
@@ -1874,7 +1866,7 @@ public static class TableJson
     }
 
     // ONE table object: keys are field keys, unknown ones are skipped and
-    // counted, a repeated key (known or unknown) is damage. The instance is already
+    // counted, a repeated key is last-wins and counted. The instance is already
     // at its declared defaults when this is entered, so a key the text never
     // mentions keeps the default an absent field takes on the wire (§4).
     static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth, bool opened = false)
@@ -1896,7 +1888,6 @@ public static class TableJson
         Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
         seen.Clear();
         Span<byte> key = stackalloc byte[MaxKey];
-        System.Collections.Generic.HashSet<string> unknown = null;
         for (; ; )
         {
             byte c = Peek(text, ref input);
@@ -1922,10 +1913,6 @@ public static class TableJson
             }
             if (index < 0)
             {
-                // an unknown key is still a key: spelling it twice is a
-                // repeated JSON key, damage (strict-only decision 5)
-                unknown ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-                if (!unknown.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                 input.Report.Unknown++;
                 if (!SkipValue(text, ref input, depth + 1)) { return false; }
             }
