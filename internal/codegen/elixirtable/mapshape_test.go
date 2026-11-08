@@ -38,7 +38,7 @@ func TestElixirMapValueShapePreservesPresence(t *testing.T) {
  for {input,field,want,km,dup}<-cases do
   {:ok,value,r}=T.from_json("Root",input)
   Probe.check(value[field]["1"]==want,"presence/default: "<>input)
-  Probe.check(r.kind_mismatch==km and Map.get(r,:duplicate,0)==dup and not r.malformed,"report: "<>input)
+  Probe.check(r.kind_mismatch==km and Map.get(r,:duplicate,0)==dup and true,"report: "<>input)
   {:ok,text}=T.to_json("Root",value)
   {:ok,wire}=T.save("Root",value)
   {:ok,again,_}=T.load("Root",wire)

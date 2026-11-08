@@ -130,9 +130,9 @@ func TestWireFuzzFindingsAreSpelledByTheEmitter(t *testing.T) {
 			},
 		},
 		{
-			name: "a bool payload above 1 is malformed (§3)",
-			text: tabledemo, want: "if (v > 1) report.malformed = true;", gone: "",
-			revert: func(s string) string { return strings.Replace(s, "if (v > 1) report.malformed = true;", "", 1) },
+			name: "a bool payload above 1 is damage (§3)",
+			text: tabledemo, want: "if (v > 1) report.refuse('wire_damaged');", gone: "",
+			revert: func(s string) string { return strings.Replace(s, "if (v > 1) report.refuse('wire_damaged');", "", 1) },
 		},
 		{
 			name: "a fixed array decodes in place and keeps the prefix on damage (§4)",

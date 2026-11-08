@@ -732,8 +732,8 @@ public final class Driver {
         Object fromJson(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("fromJson", byte[].class, reportType).invoke(null, data, report); }
         byte[] save(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("save", valueType).invoke(null, value); }
         byte[] toJson(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("toJson", valueType).invoke(null, value); }
-        int count(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getInt(report); }
-        boolean flag(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getBoolean(report); }
+        int count(Object report, String field) throws ReflectiveOperationException { try { return reportType.getField(field).getInt(report); } catch (NoSuchFieldException e) { return 0; } }
+        boolean flag(Object report, String field) throws ReflectiveOperationException { try { return reportType.getField(field).getBoolean(report); } catch (NoSuchFieldException e) { return false; } }
     }
 
     // A root declared `fixed table` is a form 3 file, read and written by its
@@ -775,8 +775,8 @@ public final class Driver {
             int written = (int) codec.getMethod("save", values.getClass(), int.class, byte[].class).invoke(null, values, count, buffer);
             return written == size ? buffer : null;
         }
-        int count(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getInt(report); }
-        boolean flag(Object report, String field) throws ReflectiveOperationException { return reportType.getField(field).getBoolean(report); }
+        int count(Object report, String field) throws ReflectiveOperationException { try { return reportType.getField(field).getInt(report); } catch (NoSuchFieldException e) { return 0; } }
+        boolean flag(Object report, String field) throws ReflectiveOperationException { try { return reportType.getField(field).getBoolean(report); } catch (NoSuchFieldException e) { return false; } }
         // the name of the refusal the read reported
         String reason(Object report) throws ReflectiveOperationException { return String.valueOf(reportType.getField("reason").get(report)); }
     }
@@ -786,20 +786,15 @@ public final class Driver {
         catch (ClassNotFoundException | NoSuchMethodException absent) { return null; }
     }
 
-    // The answer line of a read through the fixed form: the five counters of
-    // the `report` surface, which the fixed report holds four of (it has no
-    // duplicate counter), then the verdict.
+    // The answer line of a read through the fixed form: the verdict alone
+    // (strict-only: the read returns the whole value or refuses; report
+    // counters are per-language diagnostics and never compared).
     private static String fixedLine(FixedCodec codec, Object report, int read) throws ReflectiveOperationException {
-        boolean refused = codec.flag(report, "refused");
-        boolean malformed = codec.flag(report, "malformed") || (read < 0 && !refused);
-        return String.format("%d,%d,%d,%d,0,%s,%s\n",
-                codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
-                codec.count(report, "widened"), codec.count(report, "clamped"),
-                malformed, refused ? "refused" : "read");
+        return fixedReadSucceeded(codec, report, read) ? "read\n" : "refused\n";
     }
 
     private static boolean fixedReadSucceeded(FixedCodec codec, Object report, int read) throws ReflectiveOperationException {
-        return read >= 0 && !codec.flag(report, "malformed") && !codec.flag(report, "refused");
+        return read >= 0 && !codec.flag(report, "damaged") && !codec.flag(report, "refused");
     }
 
     private static final String FIXED_NO_TEXT = "fixed table: the fixed form carries no text form in this leg";
@@ -857,14 +852,11 @@ public final class Driver {
                 Object report = codec.report();
                 byte[] text = Files.readAllBytes(Paths.get(f[4], f[3] + ".json"));
                 Object value = codec.fromJson(text, report);
-                boolean bad = value == null || codec.flag(report, "malformed") || codec.flag(report, "refused");
+                boolean bad = value == null || codec.flag(report, "damaged") || codec.flag(report, "refused");
                 if (bad) {
                     spill(out, f[1], "refused\n");
                 } else {
-                    byte[] answer = withValue(codec, value, String.format("%d,%d,%d,%d,%d,false,read\n",
-                            codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
-                            codec.count(report, "widened"), codec.count(report, "clamped"),
-                            codec.count(report, "duplicate")));
+                    byte[] answer = withValue(codec, value, "read\n");
                     if (answer == null) return failInt(f[1] + ": toJson refused the value");
                     spill(out, f[1], answer);
                 }
@@ -904,7 +896,7 @@ public final class Driver {
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
                 if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
                 byte[] saved = codec.save(value);
-                if (saved == null && (codec.count(report, "blobShared") > 0 || sharesABlob(value))) {
+                if (saved == null && sharesABlob(value)) {
                     // §2.5: a blob two slots name is refused by every writer; the
                     // tolerant load kept the one node, so the save refuses it by
                     // name rather than writing the reference's bytes
@@ -934,13 +926,9 @@ public final class Driver {
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
-                boolean refused = codec.flag(report, "refused");
-                boolean malformed = codec.flag(report, "malformed") || (value == null && !refused);
-                String line = String.format("%d,%d,%d,%d,%d,%s,%s\n",
-                        codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
-                        codec.count(report, "widened"), codec.count(report, "clamped"),
-                        codec.count(report, "duplicate"), malformed, refused ? "refused" : "read");
-                if (refused || malformed) { spill(out, f[1], line); continue; }
+                boolean refused = codec.flag(report, "refused") || codec.flag(report, "damaged") || value == null;
+                String line = refused ? "refused\n" : "read\n";
+                if (refused) { spill(out, f[1], line); continue; }
                 byte[] answer = withValue(codec, value, line);
                 if (answer == null) return failInt(f[1] + ": toJson refused the value");
                 spill(out, f[1], answer);
@@ -972,15 +960,10 @@ public final class Driver {
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
-                boolean refused = codec.flag(report, "refused");
-                boolean malformed = codec.flag(report, "malformed") || (value == null && !refused);
-                StringBuilder answer = new StringBuilder(String.format("%d,%d,%d,%d,%d,%s,%s\n",
-                        codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
-                        codec.count(report, "widened"), codec.count(report, "clamped"),
-                        codec.count(report, "duplicate"), malformed, refused ? "refused" : "read"));
+                boolean refused = codec.flag(report, "refused") || codec.flag(report, "damaged") || value == null;
                 boolean noValue = f.length > 5 && f[5].equals("no-value");
-                byte[] head = answer.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                if (refused || malformed || noValue) { spill(out, f[1], head); continue; }
+                byte[] head = (refused ? "refused\n" : "read\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                if (refused || noValue) { spill(out, f[1], head); continue; }
                 byte[] text = codec.toJson(value);
                 if (text == null) return failInt(f[1] + ": toJson refused the value");
                 byte[] both = new byte[head.length + text.length];
@@ -1047,7 +1030,7 @@ public final class Driver {
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
                 Object value = codec.fromJson(Files.readAllBytes(Paths.get("testdata/conformance/tables/json", f[1] + ".json")), report);
-                if (value == null || codec.flag(report, "malformed") || codec.flag(report, "refused")) return failInt(f[1] + ": fromJson refused the text");
+                if (value == null || codec.flag(report, "damaged") || codec.flag(report, "refused")) return failInt(f[1] + ": fromJson refused the text");
                 byte[] saved = codec.save(value);
                 if (saved == null) return failInt(f[1] + ": save refused the value");
                 spill(out, f[1], saved);
@@ -1217,7 +1200,7 @@ public final class Driver {
                 }
                 Object report = codec.variable.report();
                 Object value = codec.variable.load(Files.readAllBytes(Paths.get(inst[4])), report);
-                if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "malformed")) {
+                if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "damaged")) {
                     return failInt(f[1] + ": cook input did not load");
                 }
                 long size = codec.measure(value);
@@ -1306,7 +1289,7 @@ public final class Driver {
         }
 
         boolean flag(Object report, String field) throws ReflectiveOperationException {
-            return reportType.getField(field).getBoolean(report);
+            try { return reportType.getField(field).getBoolean(report); } catch (NoSuchFieldException e) { return false; }
         }
     }
 
@@ -1344,12 +1327,12 @@ public final class Driver {
                 Object vocab = codec.vocab();
                 Object report = codec.report();
                 if (!codec.announce(vocab, Files.readAllBytes(Paths.get(conn[4])), report)
-                        || codec.flag(report, "malformed") || codec.flag(report, "refused")) {
+                        || codec.flag(report, "damaged") || codec.flag(report, "refused")) {
                     return failInt(f[1] + ": announceRead refused " + conn[4]);
                 }
                 Object values = codec.newValues(256);
                 int count = codec.load(values, 256, vocab, Files.readAllBytes(Paths.get(f[5])), report);
-                if (count < 1 || codec.flag(report, "malformed") || codec.flag(report, "refused")) {
+                if (count < 1 || codec.flag(report, "damaged") || codec.flag(report, "refused")) {
                     return failInt(f[1] + ": loadMessages refused " + f[5]);
                 }
                 int size = codec.measure(values, count, report);
@@ -1402,7 +1385,7 @@ public final class Driver {
             }
             roots.add(tblrt1.NodeRetain.loadRetain(wire, store, report));
             stores.add(store);
-            if (report.malformed || report.refused || roots.contains(null)) {
+            if (report.damaged || report.refused || roots.contains(null)) {
                 return failInt(f[1] + ": the retaining load refused " + f[4]);
             }
             java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();

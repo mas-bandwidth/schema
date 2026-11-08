@@ -84,15 +84,15 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 	if r.reason != "noLayout" {
 		t.Errorf("reason=%s, want noLayout", r.reason)
 	}
-	if r.malformed {
-		t.Errorf("malformed=%v, want FALSE — a refusal is never damage (the joint assertion of §5.3)", r.malformed)
+	if r.damaged {
+		t.Errorf("malformed=%v, want FALSE — a refusal is never damage (the joint assertion of §5.3)", r.damaged)
 	}
 	if r.layoutHash != "0x0" {
 		t.Errorf("layoutHash=%s, want untouched (0): only the two LAYOUT refusals carry the file's hash", r.layoutHash)
 	}
-	if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 || r.clamped != 0 {
-		t.Errorf("a counter moved on a refusal: unknown=%d kindMismatch=%d widened=%d clamped=%d, want all 0 — REFUSE IS TOTAL",
-			r.unknown, r.kindMismatch, r.widened, r.clamped)
+	if r.unknown != 0 || r.widened != 0 {
+		t.Errorf("a counter moved on a refusal: unknown=%d widened=%d, want all 0 — REFUSE IS TOTAL",
+			r.unknown, r.widened)
 	}
 
 	// THE DESTINATION, WHICH IS THE ROW. Every field of the poisoned value must

@@ -14,10 +14,9 @@ import (
 // bounds pass on a READ is THE READER's. old_ lands the writer's 0.5 whole;
 // hostile_ is forged to 1.5 (outside the OLD bound, inside the NEW) and lands
 // 1.5 WHOLE, which says the pass is the reader's and not the writer's; past_ is
-// forged to 5.0 (outside both) and clamps to the READER's own 2.0 with clamped
-// counted EXACTLY 1 — the assertion that proves there is a pass at all, since
+// forged to 5.0 (outside both) and, under strict-only, refuses the whole batch
+// as out_of_range — the assertion that proves there is a pass at all, since
 // deleting the emitter pass keeps hostile_ green and only past_ goes red.
-// clamped is exact, never >= 1, to catch a reader that counts twice.
 
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	corpus := versionCorpus(t)
@@ -34,12 +33,12 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 /// fixed form a compressed float rides as the float32 ITSELF (SPEC §3.4), so the
 /// OLD writer's [-1,1] bound is nowhere on the wire and the bounds pass on a
 /// READ is THE READER'S: one pass over the reader's own [-2,2]. old_ lands the
-/// writer's 0.5 whole, clamped == 0. hostile_ is the old bytes with aim forged
-/// to 1.5 — outside the OLD bound, inside the NEW — and lands 1.5 WHOLE, clamped
-/// == 0, which is what says the pass is the READER's and not the writer's. past_
-/// is forged to 5.0, outside BOTH, and clamps to the reader's own 2.0 with
-/// clamped == 1 EXACTLY, which is what says there is a pass at all: delete the
-/// emitter's pass and hostile_ stays green while only past_ goes red.
+/// writer's 0.5 whole. hostile_ is the old bytes with aim forged to 1.5 —
+/// outside the OLD bound, inside the NEW — and lands 1.5 WHOLE, which is what
+/// says the pass is the READER's and not the writer's. past_ is forged to 5.0,
+/// outside BOTH, and refuses as out_of_range (strict-only), which is what says
+/// there is a pass at all: delete the emitter's pass and hostile_ stays green
+/// while only past_ goes red.
 #[test]
 fn v_cfloat_range_widen_new_reads_old() {
     // old_cfloat_range_widen.bin: the OLD writer, aim = 0.5, on the old grid.
@@ -58,13 +57,12 @@ fn v_cfloat_range_widen_new_reads_old() {
             !report.refused && report.reason == TableFixedReason::None,
             "old_: a clean NEW-READS-OLD is not a refusal: {:?}", report
         );
-        assert!(!report.malformed, "old_: a clean backward read is not damage: {:?}", report);
+        assert!(!report.damaged, "old_: a clean backward read is not damage: {:?}", report);
         assert_eq!(values[0].lead, 1, "old_: the lead bracket moved: lead={}", values[0].lead);
         assert_eq!(values[0].trail, 2, "old_: the trail bracket moved: trail={}", values[0].trail);
         assert_eq!(values[0].aim.to_bits(), %[4]d, "old_: the reader lands the writer's own value BIT-EXACT, from the corpus manifest: aim={:#x}", values[0].aim.to_bits());
-        assert_eq!(report.clamped, 0, "old_: 0.5 sits on the reader's grid, so clamped == 0: {:?}", report);
         assert!(
-            report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+            report.unknown == 0 && report.widened == 0,
             "old_: counters moved on a clean backward read: {:?}", report
         );
     }
@@ -86,13 +84,12 @@ fn v_cfloat_range_widen_new_reads_old() {
             !report.refused && report.reason == TableFixedReason::None,
             "hostile_: a clean NEW-READS-OLD is not a refusal: {:?}", report
         );
-        assert!(!report.malformed, "hostile_: a clean backward read is not damage: {:?}", report);
+        assert!(!report.damaged, "hostile_: a clean backward read is not damage: {:?}", report);
         assert_eq!(values[0].lead, 1, "hostile_: the lead bracket moved: lead={}", values[0].lead);
         assert_eq!(values[0].trail, 2, "hostile_: the trail bracket moved: trail={}", values[0].trail);
         assert_eq!(values[0].aim.to_bits(), %[5]d, "hostile_: the manifest's own forged value, inside the reader's range, lands WHOLE: aim={:#x}", values[0].aim.to_bits());
-        assert_eq!(report.clamped, 0, "hostile_: 1.5 is inside the reader's [-2,2], so clamped == 0: {:?}", report);
         assert!(
-            report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+            report.unknown == 0 && report.widened == 0,
             "hostile_: counters moved on a clean backward read: {:?}", report
         );
     }
@@ -106,23 +103,14 @@ fn v_cfloat_range_widen_new_reads_old() {
         let mut remap = vec![0u16; 4096];
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, &past_data, &mut plan, &mut remap, &mut report);
-        let n = n.unwrap_or_else(|| panic!(
-            "past_: the newer reader REFUSED the forged file: {} {:?}", report.reason.name(), report
-        ));
-        assert_eq!(n, 1, "past_ carries one record, not {n}");
+        // STRICT-ONLY: a value past THE READER'S OWN range refuses the whole
+        // batch as out_of_range; it is never clamped to the reader's max.
+        assert!(n.is_none(), "past_: 5.0 past the reader's [-2,2] was read, not refused: {:?}", report);
         assert!(
-            !report.refused && report.reason == TableFixedReason::None,
-            "past_: a clean NEW-READS-OLD is not a refusal: {:?}", report
+            report.refused && report.reason == TableFixedReason::OutOfRange,
+            "past_: 5.0 past the reader's [-2,2] is an out_of_range refusal: {:?}", report
         );
-        assert!(!report.malformed, "past_: a clean backward read is not damage: {:?}", report);
-        assert_eq!(values[0].lead, 1, "past_: the lead bracket moved: lead={}", values[0].lead);
-        assert_eq!(values[0].trail, 2, "past_: the trail bracket moved: trail={}", values[0].trail);
-        assert_eq!(values[0].aim.to_bits(), 0x40000000, "past_: a forged 5.0 past the reader's own max clamps to THIS READER'S OWN declared max 2.0 -- not a manifest value: aim={:#x}", values[0].aim.to_bits());
-        assert_eq!(report.clamped, 1, "past_: 5.0 is past the reader's [-2,2], so it clamps to 2.0 and clamped == 1 EXACTLY: {:?}", report);
-        assert!(
-            report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
-            "past_: counters moved on a clean backward read: {:?}", report
-        );
+        assert!(!report.damaged, "past_: a refusal is not damage: {:?}", report);
     }
 }
 `, filepath.Join(corpus, "old_cfloat_range_widen.bin"),

@@ -17,8 +17,9 @@ import (
 // SEED=24845619678 (byte 44 mutated 0x2d -> 0xe8 in WeaponConfig.channel,
 // declared as bits(6) without an explicit range annotation). On the variable
 // wire, bits(N) has an implicit raw range of 0 .. (1<<N)-1 (SPEC-TABLES §3.3,
-// §4; internal/tablewire/decode.go): a wire value above (1<<N)-1 clamps to
-// (1<<N)-1 and increments report.clamped.
+// §4; internal/tablewire/decode.go): under the strict read
+// (docs/plans/strict-only.md) a wire value above (1<<N)-1 REFUSES the whole
+// load, on the plain and the retain read alike, at every site on its own.
 func TestBitsFieldAndArrayWidthClampJava(t *testing.T) {
 	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
@@ -126,25 +127,19 @@ public final class BitsClampDriver {
         tabledemo.TableVariable.Report rep2 = new tabledemo.TableVariable.Report();
         tabledemo.ArchiveConfigVariable.Value v2 = saved == null ? null : tabledemo.ArchiveConfigVariable.load(saved, rep2);
         System.out.println("archive loaded=" + (v != null)
-                + " channel=" + (v == null ? -1 : v.root.weapons.get(0).channel)
-                + " clamped=" + rep.clamped
-                + " malformed=" + rep.malformed
-                + " refused=" + rep.refused
-                + " saved=" + (saved == null ? -1 : saved.length)
-                + " reloaded=" + (v2 == null ? -1 : v2.root.weapons.get(0).channel)
-                + " reclamped=" + rep2.clamped);
+                + " damaged=" + rep.damaged
+                + " refused=" + rep.refused);
 
         tabledemo.TableRetain retain = new tabledemo.TableRetain(1 << 20, 1024);
         tabledemo.TableVariable.Report rrep = new tabledemo.TableVariable.Report();
         tabledemo.ArchiveConfigVariable.Value rv = tabledemo.ArchiveConfigRetain.loadRetain(mutant, retain, rrep);
-        byte[] rsaved = rv == null ? null : tabledemo.ArchiveConfigRetain.saveRetain(rv, retain, rrep);
         System.out.println("archive-retain loaded=" + (rv != null)
-                + " channel=" + (rv == null ? -1 : rv.root.weapons.get(0).channel)
-                + " clamped=" + rrep.clamped
-                + " saved=" + (rsaved == null ? -1 : rsaved.length));
+                + " damaged=" + rrep.damaged
+                + " refused=" + rrep.refused);
 
         // Minimized reproducer covering bits(6) scalar, bits(37) >32-bit scalar,
-        // [..4]bits(6) array, [..4]bits(37) array, and [..4]MiniLane table array:
+        // [..4]bits(6) array, [..4]bits(37) array, and [..4]MiniLane table array.
+        // Each site is forged ON ITS OWN, so every one must refuse by itself.
         bitsclampdemo.MiniBitsVariable.Value m = new bitsclampdemo.MiniBitsVariable.Value();
         m.small = 45;
         m.wide = 0x15_0000_0000L;
@@ -159,50 +154,49 @@ public final class BitsClampDriver {
         item1.ch = 63;
         m.items.add(item0);
         m.items.add(item1);
-        byte[] mwire = bitsclampdemo.MiniBitsVariable.save(m);
-        for (int i = 0; i < mwire.length; i++) {
-            if (mwire[i] == 45) {
-                mwire[i] = (byte) 0xe8;
-                break;
-            }
+        final byte[] clean = bitsclampdemo.MiniBitsVariable.save(m);
+        {
+            bitsclampdemo.TableVariable.Report crep = new bitsclampdemo.TableVariable.Report();
+            bitsclampdemo.MiniBitsVariable.Value cl = bitsclampdemo.MiniBitsVariable.load(clean, crep);
+            System.out.println("mini clean loaded=" + (cl != null)
+                    + " refused=" + crep.refused
+                    + " damaged=" + crep.damaged
+                    + " small=" + (cl == null ? -1 : cl.small)
+                    + " lanes=" + (cl == null ? null : cl.lanes)
+                    + " items=" + (cl == null ? "" : cl.items.get(0).ch + "," + cl.items.get(1).ch));
         }
-        for (int i = 0; i < mwire.length; i++) {
-            if (mwire[i] == 46) {
-                mwire[i] = (byte) 0xc8;
-                break;
+        final String[] sites = { "small", "lanes", "items", "wide", "wideLanes" };
+        for (int site = 0; site < sites.length; site++) {
+            final byte[] mwire = clean.clone();
+            boolean forged = false;
+            if (site < 3) {
+                final int needle = 45 + site;
+                final byte[] to = { (byte) 0xe8, (byte) 0xc8, (byte) 0xf0 };
+                for (int i = 0; i < mwire.length && !forged; i++) {
+                    if (mwire[i] == needle) { mwire[i] = to[site]; forged = true; }
+                }
+            } else {
+                final int needle = site == 3 ? 0x15 : 0x16;
+                final byte to = site == 3 ? (byte) 0xff : (byte) 0xfe;
+                for (int i = 0; i < mwire.length - 4 && !forged; i++) {
+                    if (mwire[i] == 0x00 && mwire[i + 1] == 0x00 && mwire[i + 2] == 0x00 && mwire[i + 3] == 0x00 && mwire[i + 4] == needle) {
+                        mwire[i + 4] = to;
+                        forged = true;
+                    }
+                }
             }
+            bitsclampdemo.TableVariable.Report mrep = new bitsclampdemo.TableVariable.Report();
+            bitsclampdemo.MiniBitsVariable.Value ml = bitsclampdemo.MiniBitsVariable.load(mwire, mrep);
+            bitsclampdemo.TableRetain mret = new bitsclampdemo.TableRetain(1 << 20, 1024);
+            bitsclampdemo.TableVariable.Report mrrep = new bitsclampdemo.TableVariable.Report();
+            bitsclampdemo.MiniBitsVariable.Value mrl = bitsclampdemo.MiniBitsRetain.loadRetain(mwire, mret, mrrep);
+            System.out.println("mini " + sites[site] + " forged=" + forged
+                    + " loaded=" + (ml != null)
+                    + " refused=" + mrep.refused
+                    + " damaged=" + mrep.damaged
+                    + " retainLoaded=" + (mrl != null)
+                    + " retainRefused=" + mrrep.refused);
         }
-        for (int i = 0; i < mwire.length; i++) {
-            if (mwire[i] == 47) {
-                mwire[i] = (byte) 0xf0;
-                break;
-            }
-        }
-        for (int i = 0; i < mwire.length - 4; i++) {
-            if (mwire[i] == 0x00 && mwire[i + 1] == 0x00 && mwire[i + 2] == 0x00 && mwire[i + 3] == 0x00 && mwire[i + 4] == 0x15) {
-                mwire[i + 4] = (byte) 0xff;
-                break;
-            }
-        }
-        for (int i = 0; i < mwire.length - 4; i++) {
-            if (mwire[i] == 0x00 && mwire[i + 1] == 0x00 && mwire[i + 2] == 0x00 && mwire[i + 3] == 0x00 && mwire[i + 4] == 0x16) {
-                mwire[i + 4] = (byte) 0xfe;
-                break;
-            }
-        }
-        bitsclampdemo.TableVariable.Report mrep = new bitsclampdemo.TableVariable.Report();
-        bitsclampdemo.MiniBitsVariable.Value ml = bitsclampdemo.MiniBitsVariable.load(mwire, mrep);
-        bitsclampdemo.TableRetain mret = new bitsclampdemo.TableRetain(1 << 20, 1024);
-        bitsclampdemo.TableVariable.Report mrrep = new bitsclampdemo.TableVariable.Report();
-        bitsclampdemo.MiniBitsVariable.Value mrl = bitsclampdemo.MiniBitsRetain.loadRetain(mwire, mret, mrrep);
-        System.out.println("mini small=" + ml.small
-                + " wide=" + Long.toHexString(ml.wide)
-                + " lanes=" + ml.lanes
-                + " wideLanes=" + Long.toHexString(ml.wideLanes.get(0)) + "," + Long.toHexString(ml.wideLanes.get(1))
-                + " items=" + ml.items.get(0).ch + "," + ml.items.get(1).ch
-                + " clamped=" + mrep.clamped
-                + " retainClamped=" + mrrep.clamped
-                + " retainLanes=" + mrl.lanes);
     }
 }
 `
@@ -229,11 +223,16 @@ public final class BitsClampDriver {
 	}
 	got := strings.TrimSpace(string(out))
 	want := strings.Join([]string{
-		"archive loaded=true channel=63 clamped=1 malformed=false refused=false saved=598 reloaded=63 reclamped=0",
-		"archive-retain loaded=true channel=63 clamped=1 saved=598",
-		"mini small=63 wide=1fffffffff lanes=[12, 63, 63] wideLanes=7,1fffffffff items=63,63 clamped=5 retainClamped=5 retainLanes=[12, 63, 63]",
+		"archive loaded=false damaged=false refused=true",
+		"archive-retain loaded=false damaged=false refused=true",
+		"mini clean loaded=true refused=false damaged=false small=45 lanes=[12, 46, 63] items=47,63",
+		"mini small forged=true loaded=false refused=true damaged=false retainLoaded=false retainRefused=true",
+		"mini lanes forged=true loaded=false refused=true damaged=false retainLoaded=false retainRefused=true",
+		"mini items forged=true loaded=false refused=true damaged=false retainLoaded=false retainRefused=true",
+		"mini wide forged=true loaded=false refused=true damaged=false retainLoaded=false retainRefused=true",
+		"mini wideLanes forged=true loaded=false refused=true damaged=false retainLoaded=false retainRefused=true",
 	}, "\n")
 	if got != want {
-		t.Fatalf("bits(N) width clamp mismatch:\n%s\nwant:\n%s", got, want)
+		t.Fatalf("bits(N) width refusal mismatch:\n%s\nwant:\n%s", got, want)
 	}
 }

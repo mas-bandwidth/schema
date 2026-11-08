@@ -188,9 +188,9 @@ fn e6_read(mine_bytes: &[u8], report: &mut TableFixedReport) -> FxRootRow {
     let mut clamped = 0i32;
     let mut damaged = 0i32;
     fx_root_fixed_clamp_body(&mut value, &mut clamped, &mut damaged);
-    report.clamped += clamped as u32;
+    report.oor += clamped as u32;
     if damaged != 0 {
-        report.malformed = true;
+        report.damaged = true;
     }
     value
 }
@@ -265,12 +265,12 @@ fn e6_a_rename_reads_through_the_declared_identity_and_moves_no_counter() {
         report.unknown
     );
     assert!(
-        report.widened == 0 && report.kind_mismatch == 0 && report.clamped == 0,
+        report.widened == 0 && report.mismatch == 0 && report.oor == 0,
         "a rename through `was` is not a version, and no counter moves for it: widened={} kind_mismatch={} clamped={}",
-        report.widened, report.kind_mismatch, report.clamped
+        report.widened, report.mismatch, report.oor
     );
     assert!(
-        !report.malformed && !report.refused && report.reason == TableFixedReason::None,
+        !report.damaged && !report.refused && report.reason == TableFixedReason::None,
         "a rename under `was` reads clean: {:?}",
         report
     );

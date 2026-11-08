@@ -17,7 +17,7 @@ import (
 // TestLuauDefaultReadIsStrict holds docs/SPEC-TABLES.md §6.5's rule that THE
 // PLAIN NAME IS THE STRICT READ on the Luau leg: L.load refuses what
 // R.ReadStrict refuses and hands back no recovered value, naming the same
-// reason, while the tolerant walk lives under its own L.loadTolerant name and
+// reason, while the tolerant walk lives under its own L.loadWalk name and
 // keeps an evolved value, but discards a damaged load (§4). The wires and the
 // counters are schema-go's own engine (internal/tablewire and
 // internal/tabletext) over the same unit, never typed by hand.
@@ -117,7 +117,7 @@ for _, name in { "clean", "clamped", "kind_mismatch", "truncated" } do
 	local strictRep = fresh()
 	local strict = load.load("Var", b, strictRep)
 	local tolerantRep = fresh()
-	local tolerant = load.loadTolerant("Var", b, tolerantRep)
+	local tolerant = load.loadWalk("Var", b, tolerantRep)
 	local readRep = fresh()
 	local read = R.ReadStrict(nil, "Var", b, readRep)
 	print(name .. "|" .. n(strict) .. "|" .. tostring(strictRep.reason) .. "|" .. counters(strictRep) ..
@@ -155,13 +155,13 @@ end
 			}
 		} else {
 			if tolerantValue == "nil" {
-				t.Fatalf("%s: L.loadTolerant handed back no recovered value", name)
+				t.Fatalf("%s: L.loadWalk handed back no recovered value", name)
 			}
 			if tolerantCounters != oracle.counters {
-				t.Errorf("%s: L.loadTolerant counters are %s, the Go reference says %s", name, tolerantCounters, oracle.counters)
+				t.Errorf("%s: L.loadWalk counters are %s, the Go reference says %s", name, tolerantCounters, oracle.counters)
 			}
 			if tolerantValue != fmt.Sprint(oracle.n) {
-				t.Errorf("%s: L.loadTolerant recovered n=%s, the Go reference says %d", name, tolerantValue, oracle.n)
+				t.Errorf("%s: L.loadWalk recovered n=%s, the Go reference says %d", name, tolerantValue, oracle.n)
 			}
 		}
 
@@ -179,7 +179,7 @@ end
 				t.Fatalf("clean: the plain L.load refused a clean wire: value=%s reason=%s", strictValue, strictReason)
 			}
 			if strictValue != tolerantValue {
-				t.Fatalf("clean: L.load gave %s and L.loadTolerant gave %s", strictValue, tolerantValue)
+				t.Fatalf("clean: L.load gave %s and L.loadWalk gave %s", strictValue, tolerantValue)
 			}
 			if strictCounters != oracle.counters {
 				t.Errorf("clean: the plain L.load counters are %s, the Go reference says %s", strictCounters, oracle.counters)

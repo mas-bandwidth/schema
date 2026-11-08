@@ -15,10 +15,8 @@ func init() {
 	define(Squirrel,
 		Name{Name: "noteStringOrigin", What: "decoded string identity bookkeeping", Scoped: true},
 		Name{Name: "stringIdentity", What: "decoded string identity bookkeeping", Scoped: true},
-		Name{Name: "ReadStrict", What: "the strict read over the tolerant load, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
+		Name{Name: "ReadStrict", What: "the strict read over the load walk, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
 		Name{Name: "ReadStrictNames", What: "the strict read's refusal vocabulary, by name (§11, §6.5)", Scoped: true},
-		Name{Name: "loadTolerant", What: "the tolerant load, keeping the recovered value and its counters (docs/SPEC-TABLES.md §6.5)", Scoped: true},
-		Name{Name: "FromJsonTolerant", What: "the tolerant text read, keeping the recovered value and its counters (docs/SPEC-TABLES.md §6.5)", Scoped: true},
 		// The hand-editable text form (docs/SPEC-TABLES.md §16.9): the runtime
 		// schema_table_document's exports, reached as _rt_document.<Name>. The
 		// unit module's per-table <Name>LoadTextForm, <Name>SaveTextForm and
@@ -81,11 +79,11 @@ var squirrelModuleKeys = map[string][]string{
 	"the runtime files (schema_table_*.nut), each its own module table": {
 		"noteStringOrigin", "stringIdentity",
 		"AnnounceRead", "Begin", "Block", "BuildVersion", "Bytes", "Cook", "CookMeasure", "Create",
-		"DefaultLimits", "Destroy", "EditTextForm", "FixedWidened", "FromJson", "FromJsonTolerant", "LoadMessages",
+		"DefaultLimits", "Destroy", "EditTextForm", "FixedWidened", "FromJson", "fromJsonWalk", "LoadMessages",
 		"LoadRetain", "LoadText", "LoadTextForm", "MeasureMessages", "MeasureRetain", "Names", "ReadStrict",
 		"ReadStrictNames", "Rows", "SaveMessages", "SaveRetain", "SaveText", "SaveTextForm",
 		"Set", "ToJson", "ToJsonMeasure", "blobOf", "blobOfHex", "cyclic", "get", "getF32", "getF64", "geti32", "getu", "keyed",
-		"link", "load", "loadTolerant", "mapWriteOrder", "measure", "noteStringOrigin", "numberForCook", "put", "putF32", "putF64", "puti32", "report", "save",
+		"link", "load", "loadWalk", "mapWriteOrder", "measure", "noteStringOrigin", "numberForCook", "put", "putF32", "putF64", "puti32", "report", "save",
 		"stringIdentity", "textIllFormed", "u32le", "u64le", "wideUnits",
 	},
 }

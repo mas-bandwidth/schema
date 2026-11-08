@@ -87,9 +87,9 @@ check = fn label, pass? ->
 end
 
 clean? = fn report ->
-  report.malformed == false and report.layout_hash == 0 and
-    report.unknown == 0 and report.kind_mismatch == 0 and report.clamped == 0 and
-    report.widened == 0 and report.duplicate == 0
+  report.layout_hash == 0 and
+    report.unknown == 0 and report.widened == 0 and
+    report.retained == 0 and report.retain_lost == 0
 end
 
 # ---- THE FRAME THE LAW FIXES, and the constants it is held to ----

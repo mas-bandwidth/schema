@@ -15,7 +15,7 @@ static partial class Program
         DirtyResetTarget(target);
         V1.TableReport report = new V1.TableReport();
         var verdict = V1.Schema.CfgLoadVerdict(target, oneByteWire, report);
-        Check(verdict == V1.Schema.TableWire.Verdict.Ok && !report.Malformed && target.A == 42,
+        Check(verdict == V1.Schema.TableWire.Verdict.Ok && !report.Damaged && target.A == 42,
             "leb fastpath: 1-byte reference and scalar value");
 
         // 2. Multi-byte LEB field reference (reference 128 = 0x80, 0x01):
@@ -27,7 +27,7 @@ static partial class Program
         DirtyResetTarget(target);
         report = new V1.TableReport();
         verdict = V1.Schema.CfgLoadVerdict(target, multiByteRefWire, report);
-        Check(verdict == V1.Schema.TableWire.Verdict.Ok && !report.Malformed && target.A == 100,
+        Check(verdict == V1.Schema.TableWire.Verdict.Ok && !report.Damaged && target.A == 100,
             "leb multi-byte fallback: reference 128");
 
         // 3. Multi-byte LEB array length and element counts:
@@ -57,25 +57,25 @@ static partial class Program
         // [0x80, 0x00] is a 2-byte encoding of zero (redundant continuation bit).
         report = new V1.TableReport();
         Check(!V1.Schema.CfgLoad(target, Fixture(new byte[] { 0x80, 0x00 }), report) &&
-            report.Malformed, "leb rejection: redundant 2-byte zero [0x80, 0x00]");
+            report.Damaged, "leb rejection: redundant 2-byte zero [0x80, 0x00]");
 
         // [0x80, 0x80, 0x00] is a 3-byte encoding of zero.
         report = new V1.TableReport();
         Check(!V1.Schema.CfgLoad(target, Fixture(new byte[] { 0x80, 0x80, 0x00 }), report) &&
-            report.Malformed, "leb rejection: redundant 3-byte zero [0x80, 0x80, 0x00]");
+            report.Damaged, "leb rejection: redundant 3-byte zero [0x80, 0x80, 0x00]");
 
         // 5. Truncated LEB rejection:
         // [0x80] at EOF has continuation set with no following byte.
         report = new V1.TableReport();
         Check(!V1.Schema.CfgLoad(target, Fixture(new byte[] { 0x80 }), report) &&
-            report.Malformed, "leb rejection: truncated LEB [0x80] at EOF");
+            report.Damaged, "leb rejection: truncated LEB [0x80] at EOF");
 
         // 6. 10th-byte overflow rejection:
         // 10 bytes with b > 1 on the 10th byte (overflows uint64):
         byte[] overflowLeb = new byte[] { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02 };
         report = new V1.TableReport();
         Check(!V1.Schema.CfgLoad(target, Fixture(overflowLeb), report) &&
-            report.Malformed, "leb rejection: 10th byte overflow");
+            report.Damaged, "leb rejection: 10th byte overflow");
 
         // 7. Allocation check across 1-byte fastpath and multi-byte paths:
         for (int i = 0; i < 1000; i++)

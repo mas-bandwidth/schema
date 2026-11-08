@@ -125,11 +125,9 @@ public final class %s {
                 %s.TableFixed.plan(1 << 14), new short[1 << 14], %s.%sFixed.image(), report);
         out.append("REPORT n=").append(n)
            .append(" refused=").append(report.refused)
-           .append(" malformed=").append(report.malformed)
+           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
-           .append(" kindMismatch=").append(report.kindMismatch)
            .append(" widened=").append(report.widened)
-           .append(" clamped=").append(report.clamped)
            .append('\n');
         dump("BACK", back[0]);
         System.out.print(out);
@@ -222,11 +220,8 @@ func t08RoundTrip(t *testing.T, name, schema, setters string, moved []string) {
 	classes := t08Build(t, t.TempDir(), name, schema, setters)
 	d := t08Run(t, classes, "Probe_"+name)
 	if !strings.Contains(d.report, "n=1") || !strings.Contains(d.report, "refused=false") ||
-		!strings.Contains(d.report, "malformed=false") {
+		!strings.Contains(d.report, "damaged=false") {
 		t.Fatalf("%s: the read must accept the writer's own file: %s", name, d.report)
-	}
-	if !strings.Contains(d.report, "clamped=0") {
-		t.Errorf("%s: a value inside the declared bounds moved clamped: %s", name, d.report)
 	}
 	// EVERY field the writer stored comes back as it was, selected or not: an
 	// unselected union arm is a field too, and it must round-trip its default.

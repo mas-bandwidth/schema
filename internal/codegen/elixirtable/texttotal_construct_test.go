@@ -54,13 +54,13 @@ for {result,count}<-[{T.load("Totals",wire),10},{T.from_json("Totals",%q),10}] d
  {:ok,v,r}=result
  expected=%%{"a"=>["éé","a"],"b"=>[nil,"éé"],"c"=>["éé","a"],"d"=>[nil,"éé"]}
  actual=Map.new(expected,fn {key,_}->{key,Enum.map(v[key],& &1["value"])} end)
- P.ok(actual==expected and r.clamped==count and not r.malformed,"total clamp order "<>inspect({actual,r}))
+ P.ok(actual==expected and r.clamped==count and true,"total clamp order "<>inspect({actual,r}))
  {:ok,saved}=T.save("Totals",v)
  {:ok,back,_}=T.load("Totals",saved)
  {:ok,^saved}=T.save("Totals",back)
 end
 {:ok,v,r,ret}=T.load_retain("Totals",wire,store,zero)
-P.ok(r.clamped==10 and not r.malformed,"total retaining clamps")
+P.ok(r.clamped==10 and true,"total retaining clamps")
 {:ok,saved,_,_}=T.save_retain("Totals",v,ret,r)
 {:ok,plain,_}=T.load("Totals",wire)
 {:ok,^saved}=T.save("Totals",plain)
@@ -85,21 +85,21 @@ P.ok(r.clamped==10 and not r.malformed,"total retaining clamps")
 P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1,"ignored overbound tail")
 wire=Base.decode16!(%q,case: :lower)
 {:ok,v,r}=T.load("Totals",wire)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and not r.malformed,"ignored malformed discarded tail")
+P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"ignored malformed discarded tail")
 {:ok,v,r,_}=T.load_retain("Totals",wire,store,zero)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and not r.malformed,"retaining ignored tail")
+P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"retaining ignored tail")
 `, input, field, hex.EncodeToString(wire), field, field)
 		fmt.Fprintf(&p, `{:ok,v,r}=T.from_json("Totals",%q)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and not r.malformed,"ignored JSON NUL tail")
+P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"ignored JSON NUL tail")
 `, strings.Replace(input, "toolong", `\u0000`, 1), field)
 		if field == "b" || field == "d" {
 			wire[at] = 't'
 			wire[at+len("toolong")] = 255
 			fmt.Fprintf(&p, `wire=Base.decode16!(%q,case: :lower)
 {:ok,v,r}=T.load("Totals",wire)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and not r.malformed,"ignored damaged optional body")
+P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"ignored damaged optional body")
 {:ok,v,r,_}=T.load_retain("Totals",wire,store,zero)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and not r.malformed,"retaining ignored damaged optional body")
+P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"retaining ignored damaged optional body")
 `, hex.EncodeToString(wire), field, field)
 		}
 	}

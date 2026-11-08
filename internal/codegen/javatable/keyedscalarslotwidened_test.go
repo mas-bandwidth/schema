@@ -17,30 +17,34 @@ import (
 )
 
 // A keyed array whose element kind is narrower than the reader's declaration
-// counts ONE widened for the field and decodes each scalar or enum slot at the
-// wire kind's width while advancing past the slot by its length L; only a
-// table slot whose body stops short of L is malformed (docs/SPEC-TABLES.md
-// §3.2, §4).
+// once decoded each scalar or enum slot at the wire kind's width while
+// advancing past the slot by its length L. Reading on past an L that is not
+// its kind's width is retired (docs/plans/strict-only.md, docs/SPEC-TABLES.md
+// §3.2, §4): both mutants' slots carry such an L, so the oracle refuses the
+// whole load and the Java leg owes the same refusal and no value. A case the
+// oracle reads is held to one widened and the oracle's text.
 func TestJavaFixKeyedScalarSlotWidened(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	cases := []struct {
-		name  string
-		dir   string
-		table string
-		wire  string
+		name    string
+		dir     string
+		table   string
+		wire    string
+		refused bool // the strict verdict the oracle owes
 	}{
 		{
-			name:  "JK1a_mapdemo_Slots",
-			dir:   filepath.Join("tables", "maps"),
-			table: "Slots",
-			wire:  "01010e340d02180204feffffff03100e0202040402000000050465000000001802040600000003100e0402040401000000050464000000000604050000000061b072303048657fec105b36194ac93dea0ce83094fde47c8be145c2cb04da4f8794b696a762b5a0e9ea716f0f0182bf0600000000000000",
+			name:    "JK1a_mapdemo_Slots",
+			dir:     filepath.Join("tables", "maps"),
+			table:   "Slots",
+			wire:    "01010e340d02180204feffffff03100e0202040402000000050465000000001802040600000003100e0402040401000000050464000000000604050000000061b072303048657fec105b36194ac93dea0ce83094fde47c8be145c2cb04da4f8794b696a762b5a0e9ea716f0f0182bf0600000000000000",
+			refused: true,
 		},
 		{
-			name:  "JK1b_tabledemo_KeyedConfig",
-			dir:   filepath.Join("tables", "examples"),
-			table: "KeyedConfig",
-			wire:  "010110220d02020d030408000000040c0372656400050f030402000000040c05677265656e000610480d02073b080a00007a43090a000060400a102b0d020b0b0c0a000020420d0d0100000e1a0c0a0000a0400f0a000010410d0d0a100a0000403f1101010000001207090a0000404100130d1214100e020202040a00000005041e00000000006dfaa8a548b0aeba7c1bacfe19def19f74b65dd6e299eccecf0ca0c7b1daa0bc1c3f95d58fd700cfffd89456c2c30ace1fbc0d42e1244d33cfa98b28b5d4697fb10a7bcea257371f8c6083c20b26f8847c762e3bbede5458c07fb38abe08637faa44cdc048b6db407652ffa8ae16dc04483d345369be2cdc6a64012266a35ab7bcb002469a71bfa6db230ed0a321236cb20f40270b6b980160160e9a73ad0ff11400000000000000",
+			name:    "JK1b_tabledemo_KeyedConfig",
+			dir:     filepath.Join("tables", "examples"),
+			table:   "KeyedConfig",
+			wire:    "010110220d02020d030408000000040c0372656400050f030402000000040c05677265656e000610480d02073b080a00007a43090a000060400a102b0d020b0b0c0a000020420d0d0100000e1a0c0a0000a0400f0a000010410d0d0a100a0000403f1101010000001207090a0000404100130d1214100e020202040a00000005041e00000000006dfaa8a548b0aeba7c1bacfe19def19f74b65dd6e299eccecf0ca0c7b1daa0bc1c3f95d58fd700cfffd89456c2c30ace1fbc0d42e1244d33cfa98b28b5d4697fb10a7bcea257371f8c6083c20b26f8847c762e3bbede5458c07fb38abe08637faa44cdc048b6db407652ffa8ae16dc04483d345369be2cdc6a64012266a35ab7bcb002469a71bfa6db230ed0a321236cb20f40270b6b980160160e9a73ad0ff11400000000000000",
+			refused: true,
 		},
 	}
 	javac, java := javaTools(t)
@@ -48,6 +52,10 @@ func TestJavaFixKeyedScalarSlotWidened(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			u := unitFromDir(t, filepath.Join(repo, tc.dir))
+			// the mutants are form-1 files: a root declared `fixed table` is read
+			// through its variable form, as the conformance harness does
+			// (framingVariableUnit), so the rule reached is the keyed slot's
+			u.Tables[tc.table].FixedDeclared = false
 			files, err := Generate(u)
 			if err != nil {
 				t.Fatal(err)
@@ -95,7 +103,7 @@ public final class Driver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         %s.TableVariable.Report report = new %s.TableVariable.Report();
         %s.%s.Value v = %s.%s.load(wire, report);
-        System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
+        System.out.println("R " + report.unknown + "," + report.widened + "," + report.damaged + "," + report.refused);
         if (v == null) System.out.println("J null"); else { System.out.print("J "); System.out.write(%s.%s.toJson(v)); }
     }
 }
@@ -133,27 +141,33 @@ public final class Driver {
 			want := new(tabletext.Report)
 			value := model.New(u.Tables[tc.table])
 			ok, err := tablewire.Decode(model, value, mutant, want)
-			if !ok || err != nil {
+			if err != nil && !tablewire.ReadRefusal(err) {
 				t.Fatalf("oracle decode: ok=%v err=%v report=%+v", ok, err, want)
 			}
-			if want.Widened != 1 || want.Refused {
-				t.Fatalf("test setup: oracle report %+v, want widened=1 and malformed=false", want)
+			if oracleRefused := !ok || want.Refused; oracleRefused != tc.refused {
+				t.Fatalf("test setup: oracle refused=%v, the case pins %v: %v %+v", oracleRefused, tc.refused, err, want)
+			}
+			gotFields := strings.Split(javaReport, ",")
+			if len(gotFields) != 4 {
+				t.Fatalf("java report shape: %q", javaReport)
+			}
+			if tc.refused {
+				if (gotFields[2] != "true" && gotFields[3] != "true") || strings.TrimSpace(javaJSON) != "null" {
+					t.Errorf("Java %s did not refuse what the strict read refuses: %q json=%q", tc.table, javaReport, javaJSON)
+				}
+				return
+			}
+			if want.Widened != 1 {
+				t.Fatalf("test setup: oracle report %+v, want widened=1", want)
 			}
 			wantJSON, err := model.Write(value)
 			if err != nil {
 				t.Fatalf("oracle write: %v", err)
 			}
-			gotFields := strings.Split(javaReport, ",")
-			if len(gotFields) != 7 {
-				t.Fatalf("java report shape: %q", javaReport)
-			}
 			wantFields := []string{
 				fmt.Sprintf("%d", want.Unknown),
-				fmt.Sprintf("%d", want.Unknown),
 				fmt.Sprintf("%d", want.Widened),
-				fmt.Sprintf("%d", want.Unknown),
-				fmt.Sprintf("%d", want.Unknown),
-				fmt.Sprintf("%t", want.Refused),
+				"false",
 				fmt.Sprintf("%t", want.Refused),
 			}
 			for i := range wantFields {

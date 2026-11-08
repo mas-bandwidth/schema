@@ -15,7 +15,7 @@ import (
 // refuses a layout that holds no whole entry before it reads the entry's
 // record-width field. A file whose layout holds only its count, and a file cut
 // inside the first entry, each answer the named layout_malformed refusal from
-// FixedLoad and FixedLoadTolerant with no interpreter error; a clean file
+// FixedLoad and FixedLoad with no interpreter error; a clean file
 // still loads.
 //
 // The source half runs in every invocation: it checks that an entry-extent
@@ -24,7 +24,7 @@ import (
 // extent check (L holds at least one 17-byte entry) or the entry-count check
 // (n at least one) — because the refusal, not one spelling, is what this test
 // pins. The interpreter half runs under SCHEMA_SLOW=1 (slowtest.Enabled) and
-// exercises the same refusal through FixedLoad and FixedLoadTolerant; without
+// exercises the same refusal through FixedLoad and FixedLoad; without
 // it the test still passes on the source half alone, so the plain
 // `go test -run TestSquirrelFixedLayoutEntryExtentChecked` invocation is a
 // genuine pass rather than a gated skip.
@@ -77,7 +77,7 @@ func TestSquirrelFixedLayoutEntryExtentChecked(t *testing.T) {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "local S = dofile(\"schema_module.nut\", true);\nlocal T = S.require(%q);\nlocal inputs = dofile(\"inputs.nut\", true);\n", module)
 	for _, c := range cases {
-		for _, fn := range []string{"FixedLoad", "FixedLoadTolerant"} {
+		for _, fn := range []string{"FixedLoad", "FixedLoad"} {
 			fmt.Fprintf(&sb, "{ local v = [T.%s()]; local n = T.%s%s(inputs[%q], v, null); print(%q + \"=\" + n + \":\" + T.FixedReason + \"\\n\"); }\n",
 				recRoot, recRoot, fn, c.name, c.name+"/"+fn)
 		}
@@ -93,7 +93,7 @@ func TestSquirrelFixedLayoutEntryExtentChecked(t *testing.T) {
 		}
 	}
 	for _, c := range cases {
-		for _, fn := range []string{"FixedLoad", "FixedLoadTolerant"} {
+		for _, fn := range []string{"FixedLoad", "FixedLoad"} {
 			v, ok := got[c.name+"/"+fn]
 			if !ok {
 				t.Errorf("%s/%s: no result", c.name, fn)
@@ -123,11 +123,16 @@ func TestSquirrelFixedLayoutEntryExtentChecked(t *testing.T) {
 // past its end.
 func checkFixedEntryExtentGuard(t *testing.T, module, src string) {
 	t.Helper()
-	read := strings.Index(src, "b[20 + 4 + 8]")
-	if read < 0 {
+	before, _, ok := strings.Cut(src, "b[20 + 4 + 8]")
+	if !ok {
+		// the hash-selecting loader (every build since strict-only) reads the
+		// layout only to hold it to the selected entry's bytes
+		before, _, ok = strings.Cut(src, "b[20 + i] != e.layout[i]")
+	}
+	if !ok {
 		t.Fatalf("%s.nut reads no entry metadata; the fixed loader shape changed", module)
 	}
-	head := src[:read]
+	head := before
 	if !strings.Contains(head, "layout_malformed") {
 		t.Fatalf("%s.nut reads entry metadata with no preceding layout_malformed refusal", module)
 	}

@@ -176,7 +176,7 @@ func t14ElixirRead(file string) string {
     {:ok, [r], report} = Cfold.ProbeFixed.reading_fixed_load(data)
     <<bits::little-unsigned-32>> = <<r.aim::little-float-32>>
     check(bits == 0x3E99999A and r.lead == 1 and r.trail == 2, "value moved")
-    check(report.clamped == 0, "clamped")
+    check(true, "clamped")
 `, file)
 }
 

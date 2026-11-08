@@ -9,13 +9,11 @@
 --
 -- It is a WRAPPER over schema_save.luau and schema_refusal.luau and edits nothing in them:
 -- SaveText is the base64 of Save's bytes, and LoadText is ReadStrict (§6.5)
--- over the decoded wire, so a tolerant load's recovered value never comes
+-- over the decoded wire, so a walk load's recovered value never comes
 -- back with a nil verdict.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
-local S = require("./schema_tables")
 local Save = require("./schema_save")
-local Load = require("./schema_load")
 local Refusal = require("./schema_refusal")
 
 local T = {}
@@ -144,45 +142,6 @@ function T.SaveText(d: any, v: any): (string?, any?)
 	return encode(bytes), nil
 end
 
--- STRICT OVER THE WIRE `<Name>Save` WRITES (§16.8, §6.5). A fixed table's
--- binary Save is still the variable form's form-1 writer (docs/SPEC-TABLES.md,
--- THE FIRST BYTE: the form-1 machinery a fixed table carries until form 3
--- lands), exactly as Go's <Name>LoadText reads it through <Name>Load, so this
--- path names form 1 and not the fixed form's previous_form. Every refusing
--- counter is TableReport.Err's, in its order, and damage the framing walk
--- refuses itself is wire_damaged.
-local REFUSING = { "malformed", "clamped", "kindMismatch" }
-local NAMES: { [string]: string } = {
-	malformed = "malformed",
-	clamped = "clamped",
-	kindMismatch = "kind_mismatch",
-}
-
-local function strict_variable(root: string, wire: buffer, rep: any): any
-	reset(rep)
-	if buffer.len(wire) < 1 then
-		rep.malformed = true
-		rep.reason = "wire_damaged"
-		return nil
-	end
-	local form = buffer.readu8(wire, 0)
-	if form == 2 then rep.reason = "message_form_as_file"; return nil end
-	if form ~= 1 then rep.reason = "newer_form"; return nil end
-	local v = Load.load(root, wire, rep)
-	if v == nil then
-		if rep.reason == nil then rep.reason = "wire_damaged" end
-		return nil
-	end
-	for _, k in REFUSING do
-		local moved = k == "malformed" and rep.malformed == true or (k ~= "malformed" and rep[k] > 0)
-		if moved then
-			rep.reason = NAMES[k]
-			return nil
-		end
-	end
-	return v
-end
-
 -- LoadText reads one text into the root of the table module `module` and
 -- returns the value, as ReadStrict does (§6.5, §16.8). A body that does not
 -- decode is `base64_damaged`; a body that decodes but is not the canonical
@@ -196,10 +155,6 @@ function T.LoadText(module: any, root: string, text: string, report: any?): any
 		reset(rep)
 		rep.reason = damage or "base64_damaged"
 		return nil
-	end
-	local d = S.lookup(root)
-	if d.fixed then
-		return strict_variable(root, wire, rep)
 	end
 	return Refusal.ReadStrict(module, root, wire, rep)
 end

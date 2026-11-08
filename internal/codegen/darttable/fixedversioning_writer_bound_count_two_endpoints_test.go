@@ -44,26 +44,12 @@ func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 
 	body := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == 1, 'the forged file carries one record: n=$n ${why(report)}');
-  check(report.refused == 0 && !report.malformed,
-      'a forged count is not a refusal and not malformed: ${why(report)}');
-  check(values[0].lead == 0xAAAAAAAA && values[0].trail == 0xBBBBBBBB,
-      'a forged count moved a neighbour: ${values[0].lead} ${values[0].trail}');
-  check(values[0].valsCount == 4,
-      'the count is not the WRITER bound (4), never the distractor 6, '
-      'never the reader 8, never the forge 7: ${values[0].valsCount}');
-  for (var i = 0; i < 4; i++) {
-    check(values[0].vals[i] == 1000 + i,
-        'slot $i is not the writer value: ${values[0].vals[i]}');
-  }
-  for (var i = 4; i < 8; i++) {
-    check(values[0].vals[i] == 0,
-        'slot $i past the writer bound is not the reader default: ${values[0].vals[i]}');
-  }
-  check(report.clamped == 1,
-      'a forged count past the writer bound is clamped exactly once: ${why(report)}');
-  check(report.unknown == 0 && report.kindMismatch == 0 && report.widened == 0 &&
-      report.duplicate == 0,
+  check(n == -1, 'a count past the writer bound refuses whole: n=$n ${why(report)}');
+  check(report.refused == t.TableFixedRefusal.countOverBound,
+      'a forged count past the writer bound refuses count_over_bound: ${why(report)}');
+  check(fresh(values[0]),
+      'a refused count lands nothing, not even a neighbour: ${values[0].valsCount}');
+  check(report.unknown == 0 && report.widened == 0,
       'a forged count moved a counter it should not: ${why(report)}');`
 
 	out, err := runVersionProbe(t, dartBin, "VNEW_array_bounded_grow",

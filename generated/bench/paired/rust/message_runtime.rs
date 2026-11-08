@@ -251,7 +251,7 @@ fn announce_read_once(
     report: &mut TableReport,
 ) -> bool {
     if data.is_empty() {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // "the FORM BYTE is a whole byte and is read FIRST" (§3.3): a form this
@@ -264,13 +264,13 @@ fn announce_read_once(
         });
     }
     if data.len() < 9 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // the trailer: a run of u64 ids and a u64 count at the very end (§3.3)
     let trailer_count = read_u64(data, data.len() - 8);
     if trailer_count > ((data.len() - 9) / 8) as u64 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     let end = data.len() - 8 - (trailer_count as usize) * 8;
@@ -278,7 +278,7 @@ fn announce_read_once(
     for i in 0..trailer_count {
         for j in 0..i {
             if read_u64(data, end + (i as usize) * 8) == read_u64(data, end + (j as usize) * 8) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
         }
@@ -296,7 +296,7 @@ fn announce_read_once(
     while at < body.len() {
         let (reference, ok) = read_leb(body, &mut at);
         if !ok {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         if reference == 0 {
@@ -306,13 +306,13 @@ fn announce_read_once(
             // of the file have met" (§3). The terminator ends the body, so the
             // cursor must be at the body's end.
             if at != body.len() {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             break;
         }
         if reference > trailer_count || at >= body.len() {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         let id = read_u64(data, end + ((reference - 1) as usize) * 8);
@@ -320,7 +320,7 @@ fn announce_read_once(
         at += 1;
         if id == TABLE_BUILD_VERSION_FIELD_ID {
             if kind != 9 || at + 8 > body.len() {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             // "THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not"
@@ -331,25 +331,25 @@ fn announce_read_once(
             versions += 1;
         } else if id == TABLE_MESSAGE_VOCABULARY_FIELD_ID {
             if kind != 14 {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             let (framed, ok) = read_leb(body, &mut at);
             if !ok || at + (framed as usize) > body.len() {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             let begin = at;
             let end_at = at + framed as usize;
             at = end_at;
             if begin >= end_at || body[begin] != 6 {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             let mut vat = begin + 1;
             let (length, ok) = read_leb(body, &mut vat);
             if !ok || vat + (length as usize) != end_at {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             // "A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
@@ -366,17 +366,17 @@ fn announce_read_once(
             vocabulary_bytes = &body[vat..vat + length as usize];
             vocabularies += 1;
         } else {
-            // "Every other field of its body is ordinary and tolerant, so an
+            // "Every other field of its body is ordinary and strict, so an
             // unknown one is skipped and counted" (§3.3).
             report.unknown += 1;
             if !skip_field(body, &mut at, kind) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
         }
     }
     if !terminated || versions != 1 || vocabularies != 1 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3).
@@ -398,24 +398,24 @@ fn announce_read_once(
         let began = at;
         let (entry, ok) = read_entry(vocabulary_bytes, &mut at);
         if !ok {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         // THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE
         // VOCABULARY (§3.3), and the node-table id takes exactly one slot.
         if entry.id == TABLE_BUILD_VERSION_FIELD_ID || entry.id == TABLE_MESSAGE_VOCABULARY_FIELD_ID {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         if entry.id == TABLE_NODE_TABLE_ID {
             if node_seen {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             node_seen = true;
         }
         // "A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE" (§3.3): byte equality
-        // is declared-fact equality, and a duplicate is malformed.
+        // is declared-fact equality, and a repeated is malformed.
         {
             let (filled, rest) = vocabulary.entries.split_at_mut(count);
             for other in filled.iter() {
@@ -424,7 +424,7 @@ fn announce_read_once(
                     && vocabulary_bytes[other.shape.min as usize..other.shape.max as usize]
                         == vocabulary_bytes[began..at]
                 {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             }
@@ -441,7 +441,7 @@ fn announce_read_once(
     for slot in 0..count {
         let (entry, ok) = read_entry(vocabulary_bytes, &mut at);
         if !ok {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         vocabulary.entries[slot] = entry;
@@ -694,7 +694,7 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
     (s, true)
 }
 
-/// A tolerant skip of an UNKNOWN field by its kind (§3.3): the ordinary
+/// A strict skip of an UNKNOWN field by its kind (§3.3): the ordinary
 /// form-1 framed-field skip rules, the C++ reference's (cpptable) and the Go
 /// leg's, one function over the closed kind set. This reader knows only the
 /// announcement's own two fields, so a field of any other id is stepped over
@@ -982,7 +982,7 @@ pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMess
     if s.packing == 2 && kind == 10 {
         // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
         // SPEC.md §4.3), checked on the whole wire value before any narrowing
-        // and never reconstructed and clamped: the width spells such an index
+        // and never reconstructed and held: the width spells such an index
         // whenever count is not one less than a power of two (eight bits
         // spelling 255 over a count of 200). internal/tablewire's
         // bitDecoder.float32 is the oracle.
@@ -1026,7 +1026,7 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     }
 }
 
-/// A tolerant skip of one value by the ENDPOINT's shape (§3.3): what a reader does
+/// A strict skip of one value by the ENDPOINT's shape (§3.3): what a reader does
 /// with a field it cannot name, or one whose kind is not the declaration's.
 pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
     if depth > 128 {
@@ -1128,7 +1128,7 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
 /// a body from an endpoint that never announced is refused by name, then M - 1.
 pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut TableReport) -> Option<usize> {
     if data.is_empty() {
-        report.malformed = true;
+        report.damaged = true;
         return None;
     }
     if data[0] != TABLE_WIRE_MESSAGE_FORM {
@@ -1140,7 +1140,7 @@ pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut T
         return None;
     }
     if data.len() < 2 {
-        report.malformed = true;
+        report.damaged = true;
         return None;
     }
     Some(data[1] as usize + 1)
@@ -1150,7 +1150,7 @@ pub fn table_message_batch_open(v: &TableVocabulary, data: &[u8], report: &mut T
 /// MALFORMED".
 pub fn table_message_batch_close(r: &mut TableBitReader, report: &mut TableReport) -> bool {
     if !r.align() || r.offset != (r.buffer.len() as u64) * 8 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     true

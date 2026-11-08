@@ -395,7 +395,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp cook_collect(_desc, _value, _acc), do: throw(:invalid)
 
   # a cook packs the graph as it finds it (docs/SPEC-TABLES.md §2.5): a blob
-  # the tolerant read found named from a second slot is the one node the
+  # the strict read found named from a second slot is the one node the
   # earlier slot holding those bytes already numbered
   defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, {:blob_shared, v}, acc) do
     case Enum.find(Enum.reverse(acc), fn n -> n.kind == :blob and n.id == id and n.value == v end) do

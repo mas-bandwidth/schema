@@ -18,8 +18,8 @@ import (
 
 // A map whose first KEY widens and whose entry scan then runs off into framing
 // damage is damaged input, and DAMAGE DISCARDS THE WHOLE LOAD
-// (docs/SPEC-TABLES.md §4): the Java leg owes the refusal, malformed, and the
-// widened count the scan made before the damage is not compared.
+// (docs/SPEC-TABLES.md §4): the Java leg owes the refusal (no value, the report refused or damaged),
+// and the widened count the scan made before the damage is not compared.
 func TestJavaFixMapWidenThenDamageRefused(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
@@ -75,7 +75,7 @@ public final class Driver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         %s.TableVariable.Report report = new %s.TableVariable.Report();
         %s.SlotsVariable.Value v = %s.SlotsVariable.load(wire, report);
-        System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
+        System.out.println("R " + (report.damaged || report.refused) + "," + report.unknown + "," + report.widened);
         if (v == null) System.out.println("V null"); else { System.out.print("V "); System.out.write(%s.SlotsVariable.toJson(v)); System.out.println(); }
     }
 }
@@ -109,7 +109,7 @@ public final class Driver {
 	if _, err := tablewire.Decode(model, model.New(u.Tables["Slots"]), mutant, want); !tablewire.ReadRefusal(err) {
 		t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, want)
 	}
-	if gotFields := strings.Split(javaReport, ","); len(gotFields) != 7 || gotFields[5] != "true" {
+	if gotFields := strings.Split(javaReport, ","); len(gotFields) != 3 || gotFields[0] != "true" || !strings.Contains(string(out), "V null") {
 		t.Errorf("Java Slots did not refuse a damaged load: %q", javaReport)
 	}
 }

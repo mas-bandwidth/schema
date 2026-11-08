@@ -119,3 +119,12 @@ tables-moo-block-forgery-fuzz-negative-control: tables-moo-block-forgery-fuzz
 	SCHEMA_SLOW=1 go test ./internal/codegen/mootable -run '^TestMooBlockForgeryFuzzNegativeControl$$' -count=1 -v -timeout 600s
 
 test-moo: tables-moo-block-forgery-fuzz
+
+# I5: every block image at every lead 0..64, including the second aligned base.
+.PHONY: tables-moo-block-lead tables-moo-block-lead-negative-control
+tables-moo-block-lead: toolchain-moo
+	SCHEMA_SLOW=1 go test ./internal/codegen/mootable -run '^TestMooBlockLead$$' -count=1 -v
+tables-moo-block-lead-negative-control: tables-moo-block-lead
+	SCHEMA_SLOW=1 go test ./internal/codegen/mootable -run '^TestMooBlockLeadNegativeControl$$' -count=1 -v
+
+test-moo: tables-moo-block-lead tables-moo-block-lead-negative-control

@@ -98,8 +98,8 @@ func (g *wireGen) emitWideClamp(f *ir.Field, value, p, ind string) {
 	if !ok {
 		return
 	}
-	g.pf("%sif (%s < %s) { %s = %s; %s.report.clamped++; }\n", ind, value, bigLiteral(lo), value, bigLiteral(lo), p)
-	g.pf("%sif (%s > %s) { %s = %s; %s.report.clamped++; }\n", ind, value, bigLiteral(hi), value, bigLiteral(hi), p)
+	g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, value, bigLiteral(lo), p)
+	g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, value, bigLiteral(hi), p)
 }
 
 // emitSaveWide writes a wide field (§3): elided at its default, otherwise the
@@ -125,7 +125,7 @@ func (g *wireGen) emitLoadWide(f *ir.Field, ind string) {
 	g.pf("%s\t\tBigInt? value;\n", ind)
 	g.pf("%s\t\tswitch (kind) {\n", ind)
 	g.pf("%s\t\t\tcase %d:\n", ind, decl)
-	g.pf("%s\t\t\t\tif (!r.has(%d)) { r.report.malformed = true; return; }\n", ind, ir.TableKindWidth(decl))
+	g.pf("%s\t\t\t\tif (!r.has(%d)) { r.report.refuse('wire_damaged'); return; }\n", ind, ir.TableKindWidth(decl))
 	g.pf("%s\t\t\t\tvalue = _getWide(r, %d, %v);\n", ind, ir.TableKindWidth(decl), signed)
 	g.pf("%s\t\t\t\tbreak;\n", ind)
 	for k := 1; k < 34; k++ {
@@ -134,7 +134,7 @@ func (g *wireGen) emitLoadWide(f *ir.Field, ind string) {
 		}
 		w := ir.TableKindWidth(k)
 		g.pf("%s\t\t\tcase %d:\n", ind, k)
-		g.pf("%s\t\t\t\tif (!r.has(%d)) { r.report.malformed = true; return; }\n", ind, w)
+		g.pf("%s\t\t\t\tif (!r.has(%d)) { r.report.refuse('wire_damaged'); return; }\n", ind, w)
 		g.pf("%s\t\t\t\tvalue = _getWide(r, %d, %v);\n", ind, w, signed)
 		if !g.isMapKey(f) {
 			g.pf("%s\t\t\t\tr.report.widened++;\n", ind)
@@ -142,11 +142,10 @@ func (g *wireGen) emitLoadWide(f *ir.Field, ind string) {
 		g.pf("%s\t\t\t\tbreak;\n", ind)
 	}
 	g.pf("%s\t\t\tdefault:\n", ind)
-	g.pf("%s\t\t\t\tr.report.kindMismatch++;\n", ind)
-	g.pf("%s\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n", ind)
-	g.pf("%s\t\t\t\tbreak;\n", ind)
+	g.pf("%s\t\t\t\tr.report.refuse('kind_mismatch');\n", ind)
+	g.pf("%s\t\t\t\treturn;\n", ind)
 	g.pf("%s\t\t}\n", ind)
-	g.pf("%s\t\tif (value != null) {\n", ind)
+	g.pf("%s\t\t{\n", ind)
 	g.pf("%s\t\t\tvar x = value;\n", ind)
 	g.emitWideClamp(f, "x", "r", ind+"\t\t\t")
 	g.pf("%s\t\t\tv.%s = x;\n", ind, name)
@@ -233,19 +232,14 @@ func (g *wireGen) emitWStringPayload(expr, p, ind string) {
 // (§3, kind 33): an odd L or ill-formed UTF-16 is damage inside the arm, and a
 // value past the bound clamps at a code-point boundary.
 func (g *wireGen) emitWStringGetPayload(f *ir.Field, dest, p, ind string) {
-	bad := fmt.Sprintf("{ %s.report.malformed = true; return false; }", p)
+	bad := fmt.Sprintf("{ %s.report.refuse('wire_damaged'); return false; }", p)
 	g.pf("%sfinal len = %s.limit - %s.pos;\n", ind, p, p)
 	g.pf("%sif (len.isOdd) %s\n", ind, bad)
 	g.pf("%sfinal units = <int>[];\n", ind)
 	g.pf("%sfor (var i = 0; i < len; i += 2) { units.add(%s.data[%s.pos + i] | (%s.data[%s.pos + i + 1] << 8)); }\n", ind, p, p, p, p)
 	g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
 	g.pf("%sif (!_wideValid(units)) %s\n", ind, bad)
-	g.pf("%svar keep = units.length;\n", ind)
-	g.pf("%sif (keep > %d) {\n", ind, f.Type.Size)
-	g.pf("%s\tkeep = %d;\n", ind, f.Type.Size)
-	g.pf("%s\tif (keep > 0 && units[keep - 1] >= 0xD800 && units[keep - 1] <= 0xDBFF) keep--;\n", ind)
-	g.pf("%s\t%s.report.clamped++;\n", ind, p)
-	g.pf("%s}\n", ind)
-	g.pf("%s%s = String.fromCharCodes(units.sublist(0, keep));\n", ind, dest)
+	g.pf("%sif (units.length > %d) { %s.report.refuse('length_over_bound'); return false; }\n", ind, f.Type.Size, p)
+	g.pf("%s%s = String.fromCharCodes(units);\n", ind, dest)
 	g.pf("%sreturn true;\n", ind)
 }

@@ -8,10 +8,13 @@
 #   | widen, widenf | widened | once per entry per record; a folded element run
 #   |                |         | is ONE and an unfolded one is min(their_n, my_n),
 #   |                |         | and a widened run is never folded (§5.9 #33) |
-#   | count, text | clamped | once per entry per record, when the length or count
-#   |             |         | was out of range |
-#   | the bounds pass | clamped | a FORGED ordinal remapped to None, on the
-#   |                 |         | COMPILED plan exactly as on the identity one |
+#   | count, text | (refused) | a length or count past the WRITER's bound
+#   |             |         | refuses the whole load as count_over_bound, on
+#   |             |         | either plan; the strict report carries no clamp
+#   |             |         | counter |
+#   | the bounds pass | (mixed) | a FORGED ordinal past the writer's set lands
+#   |                 |         | None and counts unknown on the COMPILED plan,
+#   |                 |         | and refuses out_of_range on the identity one |
 #   | copy, const, present, ordinal | none | the op lands its value and moves
 #   |                               | nothing; the remap is the BOUNDS PASS's |
 #
@@ -319,12 +322,16 @@ end
 save = fn mod, fun, values -> apply(mod, String.to_atom(fun <> "_fixed_save"), [values]) end
 load = fn mod, fun, data -> apply(mod, String.to_atom(fun <> "_fixed_load"), [data]) end
 
-# every counter but the one a clause names, at zero, and malformed clear
+# every counter but the one a clause names, at zero (the strict report:
+# unknown, widened, retained, retain_lost, layout_hash)
 quiet = fn report, except ->
   report
-  |> Map.drop([:malformed, :layout_hash | except])
-  |> Enum.all?(fn {_k, v} -> v == 0 end) and report.malformed == false
+  |> Map.drop([:layout_hash | except])
+  |> Enum.all?(fn {_k, v} -> v == 0 end)
 end
+
+# a strict refusal: no value, the reason by name, and no counter moved
+refused_clean? = fn report -> quiet.(report, []) end
 
 # EVERY needle this file forges is one field's lawful writer bytes; a needle
 # that does not occur exactly the expected number of times is a broken locator
@@ -476,9 +483,10 @@ case load.(ew.new_mod, "lineage", file) do
 end
 
 # ============================================================================
-# clamped: once per ENTRY per RECORD, the COUNT lane — [..4] into [..8], the
-# count word of EACH of TWO records forged from the writer's 4 to 7, between
-# the two bounds (§5.8 row 4's bound).
+# the COUNT lane refuses: [..4] into [..8], the count word of EACH of TWO
+# records forged from the writer's 4 to 7, between the two bounds (§5.8
+# row 4's bound). Past the writer's bound the strict load refuses the whole
+# load as count_over_bound and lands no record.
 # ============================================================================
 
 ab = mods["array_bounded_grow"]
@@ -498,24 +506,14 @@ case forge.(file, <<0xAA, 0xAA, 0xAA, 0xAA, 0x04, 0x00, 0x00, 0x00>>, 2, fn acc,
      end) do
   {:ok, forged} ->
     case load.(ab.new_mod, "array_bounded_grow", forged) do
-      {:ok, values, report} ->
-        check.("array_bounded_grow: the NEW reader returned both records", length(values) == 2)
-
+      {:error, :count_over_bound, report} ->
         check.(
-          "array_bounded_grow: the count clamps to the WRITER's 4, never the reader's 8 nor the forged 7",
-          Enum.all?(values, &(length(&1.vals) == 4 and &1.vals == [1000, 1001, 1002, 1003]))
-        )
-
-        check.("clamped is once per ENTRY per RECORD (== 2 for two records, not 1)", report.clamped == 2)
-        check.("array_bounded_grow: only clamped moved", quiet.(report, [:clamped]))
-
-        check.(
-          "array_bounded_grow: the brackets did not move",
-          Enum.all?(values, &(&1.lead == 0xAAAAAAAA and &1.trail == 0xBBBBBBBB))
+          "array_bounded_grow: a count past the WRITER's 4 (never the reader's 8 nor the forged 7) refuses the whole load as count_over_bound",
+          refused_clean?.(report)
         )
 
       other ->
-        check.("array_bounded_grow: the NEW reader returned both records — got #{inspect(other)}", false)
+        check.("array_bounded_grow: the forged count refuses count_over_bound — got #{inspect(other)}", false)
     end
 
   {:error, why} ->
@@ -523,7 +521,7 @@ case forge.(file, <<0xAA, 0xAA, 0xAA, 0xAA, 0x04, 0x00, 0x00, 0x00>>, 2, fn acc,
 end
 
 # ============================================================================
-# clamped: the TEXT lane — string(8) into string(16), the length word forged
+# the TEXT lane refuses: string(8) into string(16), the length word forged
 # from the writer's FULL 8 to 12, past the writer's bound and inside the
 # reader's (the lane only the writer's bound catches).
 # ============================================================================
@@ -537,22 +535,14 @@ case forge.(file, <<0xAA, 0xAA, 0xAA, 0xAA, 0x08, 0x00, 0x00, 0x00>>, 1, fn acc,
      end) do
   {:ok, forged} ->
     case load.(sg.new_mod, "string_grow", forged) do
-      {:ok, [v], report} ->
+      {:error, :count_over_bound, report} ->
         check.(
-          "string_grow: the text length clamps to the WRITER's 8 and the bytes land",
-          v.text == "abcdefgh"
-        )
-
-        check.("text clamps once per entry per record (== 1, not >= 1)", report.clamped == 1)
-        check.("string_grow: only clamped moved", quiet.(report, [:clamped]))
-
-        check.(
-          "string_grow: the brackets did not move",
-          v.lead == 0xAAAAAAAA and v.trail == 0xBBBBBBBB
+          "string_grow: a text length past the WRITER's 8 refuses the whole load as count_over_bound",
+          refused_clean?.(report)
         )
 
       other ->
-        check.("string_grow: the NEW reader returned the record — got #{inspect(other)}", false)
+        check.("string_grow: the forged length refuses count_over_bound — got #{inspect(other)}", false)
     end
 
   {:error, why} ->
@@ -560,8 +550,9 @@ case forge.(file, <<0xAA, 0xAA, 0xAA, 0xAA, 0x08, 0x00, 0x00, 0x00>>, 1, fn acc,
 end
 
 # ============================================================================
-# the bounds pass counts a forged ordinal remapped to None on BOTH plans —
-# tier forged from Gold (3), the WRITER's top variant, to 4.
+# the bounds pass on a forged ordinal past the writer's set — tier forged
+# from Gold (3), the WRITER's top variant, to 4: None plus unknown on the
+# compiled plan, an out_of_range refusal on the identity one.
 # ============================================================================
 
 ea = mods["enum_append"]
@@ -580,11 +571,9 @@ case forge.(file, <<0x03, 0x09, 0x00, 0x00, 0x00>>, 1, fn acc, at ->
         check.("forged ordinal, compiled plan: the scalar behind it landed", v.seq == 9)
 
         check.(
-          "forged ordinal, compiled plan: clamped == 1 (the bounds pass, not the op too)",
-          report.clamped == 1
+          "forged ordinal, compiled plan: unknown counted once (the bounds pass, not the op too)",
+          report.unknown == 1 and quiet.(report, [:unknown])
         )
-
-        check.("forged ordinal, compiled plan: only clamped moved", quiet.(report, [:clamped]))
 
       other ->
         check.("forged ordinal, compiled plan: the record read — got #{inspect(other)}", false)
@@ -593,14 +582,14 @@ case forge.(file, <<0x03, 0x09, 0x00, 0x00, 0x00>>, 1, fn acc, at ->
     # THE IDENTITY PLAN: the OLD build reads its own forged file on its own
     # hash, so the plan is the baked identity one.
     case load.(ea.old_mod, "lineage", forged) do
-      {:ok, [v], report} ->
-        check.("forged ordinal, identity plan: one past the WRITER's top lands None", v.tier == :none)
-        check.("forged ordinal, identity plan: the scalar behind it landed", v.seq == 9)
-        check.("forged ordinal, identity plan: clamped == 1 on the SAME forged bytes", report.clamped == 1)
-        check.("forged ordinal, identity plan: only clamped moved", quiet.(report, [:clamped]))
+      {:error, :out_of_range, report} ->
+        check.(
+          "forged ordinal, identity plan: one past the WRITER's top refuses out_of_range on the SAME forged bytes",
+          refused_clean?.(report)
+        )
 
       other ->
-        check.("forged ordinal, identity plan: the record read — got #{inspect(other)}", false)
+        check.("forged ordinal, identity plan: the forged ordinal refuses out_of_range — got #{inspect(other)}", false)
     end
 
   {:error, why} ->

@@ -26,14 +26,14 @@ func main() {
 		var v b.Blob
 		var r b.TableReport
 		if !b.BlobFromJSON(&v, text, &r) {
-			fmt.Println("1 0 0 - -")
+			fmt.Println("1 - -")
 			continue
 		}
 		out := make([]byte, b.BlobToJSONMeasure(&v))
 		if b.BlobToJSON(&v, out) != int64(len(out)) {
 			panic("writer size")
 		}
-		fmt.Printf("0 0 0 %s %s\n", packed(v.Payload[:v.PayloadLength]), packed(out))
+		fmt.Printf("0 %s %s\n", packed(v.Payload[:v.PayloadLength]), packed(out))
 	}
 	if err := s.Err(); err != nil {
 		panic(err)

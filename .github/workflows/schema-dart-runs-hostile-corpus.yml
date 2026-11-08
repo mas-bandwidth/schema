@@ -12,7 +12,7 @@ name: schema-dart-runs-hostile-corpus
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
   pull_request:
     branches: [ main, dev, fixed-table-form, 'sprint/**' ]
   schedule:

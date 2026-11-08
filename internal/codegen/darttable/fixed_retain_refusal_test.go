@@ -37,14 +37,14 @@ void main(){
  }
  final value=w.Fixed()..value=37;
  final report=w.TableWireReport();
- check(w.fixedWireLoad(w.fixedWireSave(value),report).value==37&&!report.malformed&&!report.refused,'fixed plain wire remains supported');
+ check(w.fixedWireLoad(w.fixedWireSave(value),report).value==37&&!report.refused,'fixed plain wire remains supported');
 `
 			if mixed {
 				source += ` final value2=w.Variable()..value=41;
  final store=w.TableRetain(4096,List.filled(64,0));
  final report2=w.TableWireReport();
  final loaded=w.variableWireLoadRetain(w.variableWireSave(value2),store,report2);
- check(loaded.value==41&&!report2.refused&&!report2.malformed,'scalar-only ordinary table remains variable');
+ check(loaded.value==41&&!report2.refused,'scalar-only ordinary table remains variable');
  final saved=w.variableWireSaveRetain(loaded,store,w.TableWireReport());
  check(saved.length==w.variableWireMeasureRetain(loaded,store)&&w.variableWireLoad(saved,w.TableWireReport()).value==41,'variable retained save and measure');
 `

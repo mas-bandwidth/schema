@@ -47,9 +47,9 @@ func (g *wireGen) emitRequiredCheck(st *ir.Struct, wire bool, ind string) {
 		g.pf("%sif (%s) missing.add(%s);\n", ind, cond, strconv.Quote(f.Name))
 	}
 	if wire {
-		g.pf("%sif (missing.isNotEmpty && r.report.missingFields.isEmpty) { r.report.missingRequired++; r.report.missingFields = missing.join(', '); r.report.refused = true; throw const _TableMissingRequired(); }\n", ind)
+		g.pf("%sif (missing.isNotEmpty && r.report.missingFields.isEmpty) { r.report.missingFields = missing.join(', '); r.report.refused = true; throw const _TableMissingRequired(); }\n", ind)
 	} else {
-		g.pf("%sif (missing.isNotEmpty) { %s.missingRequired++; %s.missingFields = missing.join(', '); throw FormatException('missing_required: '+%s.missingFields); }\n", ind, report, report, report)
+		g.pf("%sif (missing.isNotEmpty) { %s.missingFields = missing.join(', '); throw FormatException('missing_required: '+%s.missingFields); }\n", ind, report, report)
 	}
 }
 

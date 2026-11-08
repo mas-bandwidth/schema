@@ -583,8 +583,8 @@ local function answer(u: Unit, root: string, wire: buffer, retain: boolean?): bu
 	-- plain name (the STRICT read, §6.5) is the caller's and not this pipe's.
 	local v = nil
 	-- THE RETENTION ARM (--retain; docs/SPEC-TABLES.md §6.6) reads and writes
-	-- the same mutant through the retaining pair, LoadRetainTolerant then
--- SaveRetain (the tolerant read, as the plain arm's loadTolerant),
+	-- the same mutant through the retaining pair, loadRetainWalk then
+-- SaveRetain (the tolerant read, as the plain arm's loadWalk),
 	-- with the harness's two stores (test/conformance/harness/wirefuzz.go,
 	-- retainFuzzCapacity and retainFuzzIdCapacity), and one report across the
 	-- pair: retain_lost at the end is what the load could not keep plus what
@@ -596,9 +596,9 @@ local function answer(u: Unit, root: string, wire: buffer, retain: boolean?): bu
 	end
 	if not measureRefused then
 		if retain then
-			v, kept = (u.retain :: any).LoadRetainTolerant(root, wire, report, RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
+			v, kept = (u.retain :: any).loadRetainWalk(root, wire, report, RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
 		else
-			v = load.loadTolerant(root, wire, report)
+			v = load.loadWalk(root, wire, report)
 		end
 	end
 	-- A FIXED root always loads (test/conformance/README.md, "The wire-fuzz

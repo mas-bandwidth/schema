@@ -9,29 +9,40 @@ import (
 func TestRead(t *testing.T) {
 	dir := t.TempDir()
 	manifest := "file=old_range_widen.bin row=range_widen side=old root=RangeWiden records=1 values=r0.lead=1,r0.v=100,r0.trail=2\n" +
-		"file=hostile_range_widen.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.v@104=150 expect=r0.lead=1,r0.v=100,r0.trail=2,clamped=1 values=r0.lead=1,r0.v=100,r0.trail=2\n"
+		"file=hostile_range_widen.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.v@104=150 values=r0.lead=1,r0.v=100,r0.trail=2\n" +
+		"file=landed.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.v@104=150 expect=r0.lead=1,r0.v=100,r0.trail=2 values=r0.lead=1,r0.v=100,r0.trail=2\n"
 	if err := os.WriteFile(filepath.Join(dir, "manifest.txt"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// the one read: the reference refused the forged bytes, so the line
+	// carries no expect= and the answer is the refusal
 	e, err := Read(dir, RangeWidenHostile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, err := e.Int("r0.v"); err != nil || v != 100 {
-		t.Fatalf("r0.v = %d (%v), want 100", v, err)
-	}
-	if e.Clamped != 1 {
-		t.Fatalf("clamped = %d, want 1", e.Clamped)
+	if !e.Refused || len(e.Paths) != 0 {
+		t.Fatalf("a forged line with no expect= answered %+v, want Refused and no landed values", e)
 	}
 	if e.ForgedPath != "r0.v" || e.ForgedAt != 104 {
 		t.Fatalf("forged = %s@%d, want r0.v@104", e.ForgedPath, e.ForgedAt)
+	}
+	// a line that carries expect= is the values the reference landed
+	e, err = Read(dir, "landed.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Refused {
+		t.Fatal("a line with expect= read as a refusal")
+	}
+	if v, err := e.Int("r0.v"); err != nil || v != 100 {
+		t.Fatalf("r0.v = %d (%v), want 100", v, err)
 	}
 	leaves, err := e.Leaves()
 	if err != nil || len(leaves) != 3 || leaves[1].Field != "v" || leaves[1].Index != -1 || leaves[1].Value != 100 {
 		t.Fatalf("leaves = %+v (%v), want lead, v = 100, trail", leaves, err)
 	}
 	if _, err := Read(dir, "old_range_widen.bin"); err == nil {
-		t.Fatal("a line with no expect= read as a vector")
+		t.Fatal("a line with no forged= read as a vector")
 	}
 	if _, err := Read(dir, "absent.bin"); err == nil {
 		t.Fatal("a file the manifest does not name read as a vector")

@@ -90,28 +90,28 @@ public final class Main {
     }
 
     public static void main(String[] args) {
-        // 1. Variable wire + JSON clamping on one-sided bounds (including uint64 | min = 100)
-        TableVariable.Report jrep = new TableVariable.Report();
-        ClampRowVariable.Value jv = ClampRowVariable.fromJson(
-            "{\"loOnly\":5,\"hiOnly\":99,\"u64Lo\":42,\"u8Hi\":250}".getBytes(StandardCharsets.UTF_8),
-            jrep);
-        check(jv != null && !jrep.malformed, "fromJson malformed");
-        check(jv.loOnly == 10, "loOnly clamp: " + jv.loOnly);
-        check(jv.hiOnly == 50, "hiOnly clamp: " + jv.hiOnly);
-        check(jv.u64Lo == 100L, "u64Lo clamp: " + jv.u64Lo);
-        check(jv.u8Hi == 200, "u8Hi clamp: " + jv.u8Hi);
-        check(jrep.clamped == 4, "expected 4 JSON clamps, got " + jrep.clamped);
+        // 1. JSON out of range on each one-sided bound (including uint64 | min = 100)
+        //    REFUSES the whole load: no value, refused, not damaged (§4)
+        String[] outOfRange = {
+            "{\"loOnly\":5}", "{\"hiOnly\":99}", "{\"u64Lo\":42}", "{\"u8Hi\":250}",
+        };
+        for (String text : outOfRange) {
+            TableVariable.Report jrep = new TableVariable.Report();
+            ClampRowVariable.Value jv = ClampRowVariable.fromJson(text.getBytes(StandardCharsets.UTF_8), jrep);
+            check(jv == null && jrep.refused && !jrep.damaged,
+                "out of range not refused: " + text + " value=" + (jv != null) + " refused=" + jrep.refused + " damaged=" + jrep.damaged);
+        }
 
-        // Verify uint64 near 2^64-1 is NOT clamped when only min = 100 is declared
+        // Verify uint64 near 2^64-1 is NOT refused when only min = 100 is declared
         TableVariable.Report jrep2 = new TableVariable.Report();
         ClampRowVariable.Value jv2 = ClampRowVariable.fromJson(
             "{\"loOnly\":1000,\"hiOnly\":-1000,\"u64Lo\":18446744073709551615,\"u8Hi\":0}".getBytes(StandardCharsets.UTF_8),
             jrep2);
-        check(jv2 != null && !jrep2.malformed, "fromJson2 malformed");
-        check(jv2.loOnly == 1000 && jv2.hiOnly == -1000 && jv2.u64Lo == -1L && jv2.u8Hi == 0, "unclamped ends");
-        check(jrep2.clamped == 0, "expected 0 clamps on open ends, got " + jrep2.clamped);
+        check(jv2 != null && !jrep2.damaged && !jrep2.refused, "open ends refused: " + jrep2.reason);
+        check(jv2.loOnly == 1000 && jv2.hiOnly == -1000 && jv2.u64Lo == -1L && jv2.u8Hi == 0, "open ends exact");
 
-        // 2. Fixed form load clamping on one-sided bounds (including uint64 | min = 100)
+        // 2. Fixed form scatter out of range on one-sided bounds (including uint64 | min = 100)
+        //    refuses: the report carries the refusal, never a clamp count
         ClampRowFixed.Value fv = new ClampRowFixed.Value();
         fv.loOnly = 3;
         fv.hiOnly = 77;
@@ -122,13 +122,21 @@ public final class Main {
         TableFixed.Report frep = new TableFixed.Report();
         ClampRowFixed.Value floaded = new ClampRowFixed.Value();
         ClampRowFixed.scatter(fbuf, 0, floaded, frep);
-        check(floaded.loOnly == 10, "Fixed loOnly: " + floaded.loOnly);
-        check(floaded.hiOnly == 50, "Fixed hiOnly: " + floaded.hiOnly);
-        check(floaded.u64Lo == 100L, "Fixed u64Lo: " + floaded.u64Lo);
-        check((floaded.u8Hi & 0xff) == 200, "Fixed u8Hi: " + (floaded.u8Hi & 0xff));
-        check(frep.clamped == 4, "Fixed clamped: " + frep.clamped);
+        check(frep.refused && !frep.damaged, "Fixed out of range not refused: refused=" + frep.refused + " damaged=" + frep.damaged);
+        // each bound alone refuses
+        for (int i = 0; i < 4; i++) {
+            ClampRowFixed.Value one = new ClampRowFixed.Value();
+            if (i == 0) one.loOnly = 3;
+            if (i == 1) one.hiOnly = 77;
+            if (i == 2) one.u64Lo = 50L;
+            if (i == 3) one.u8Hi = (byte) 240;
+            ClampRowFixed.writeBody(fbuf, 0, one);
+            TableFixed.Report r1 = new TableFixed.Report();
+            ClampRowFixed.scatter(fbuf, 0, new ClampRowFixed.Value(), r1);
+            check(r1.refused && !r1.damaged, "Fixed bound " + i + " not refused");
+        }
 
-        // High uint64 (0xffffffffffffffffL) on Fixed form must not clamp when only min = 100 is declared
+        // High uint64 (0xffffffffffffffffL) on Fixed form must not refuse when only min = 100 is declared
         fv.loOnly = 10;
         fv.hiOnly = 50;
         fv.u64Lo = -1L;
@@ -136,7 +144,7 @@ public final class Main {
         ClampRowFixed.writeBody(fbuf, 0, fv);
         TableFixed.Report frep2 = new TableFixed.Report();
         ClampRowFixed.scatter(fbuf, 0, floaded, frep2);
-        check(floaded.u64Lo == -1L && frep2.clamped == 0, "Fixed high u64 clamped: " + frep2.clamped);
+        check(floaded.u64Lo == -1L && !frep2.refused && !frep2.damaged, "Fixed high u64 refused: " + frep2.reason);
     }
 }
 `
@@ -301,31 +309,31 @@ public final class Main {
         // 2. Array root read
         TableVariable.Report r1 = new TableVariable.Report();
         GoalListVariable.Value g = GoalListVariable.fromJson("[10, 20]".getBytes(StandardCharsets.UTF_8), r1);
-        check(g != null && !r1.malformed, "fromJson array failed");
+        check(g != null && !r1.damaged && !r1.refused, "fromJson array failed");
         check(g.goals.size() == 2 && g.goals.get(0) == 10 && g.goals.get(1) == 20, "goals mismatch");
 
         // 3. Object at array root refused by name
         TableVariable.Report r2 = new TableVariable.Report();
         GoalListVariable.Value bad = GoalListVariable.fromJson("{\"goals\":[10]}".getBytes(StandardCharsets.UTF_8), r2);
-        check(bad == null && r2.malformed, "expected malformed on object at array root");
+        check(bad == null && r2.damaged, "expected damaged on object at array root");
         check("json_root_not_array: GoalList".equals(r2.reason), "unexpected reason: " + r2.reason);
 
         // 4. Nested by-value field and array of array-root tables
         TableVariable.Report r3 = new TableVariable.Report();
         HolderVariable.Value h = HolderVariable.fromJson(
             "{\"g\":[7,8],\"gs\":[[1,2],[3]]}".getBytes(StandardCharsets.UTF_8), r3);
-        check(h != null && !r3.malformed && r3.kindMismatch == 0, "nested fromJson failed");
+        check(h != null && !r3.damaged && !r3.refused && r3.unknown == 0, "nested fromJson failed");
         check(h.g.goals.size() == 2 && h.g.goals.get(0) == 7 && h.g.goals.get(1) == 8, "h.g mismatch");
         check(h.gs.size() == 2 && h.gs.get(0).goals.size() == 2 && h.gs.get(1).goals.get(0) == 3, "h.gs mismatch");
         String hjson = new String(HolderVariable.toJson(h), StandardCharsets.UTF_8);
         String wantH = "{\n  \"g\": [\n    7,\n    8\n  ],\n  \"gs\": [\n    [\n      1,\n      2\n    ],\n    [\n      3\n    ]\n  ]\n}\n";
         check(wantH.equals(hjson), "unexpected Holder json:\n" + hjson);
 
-        // 5. Object where nested array-root is: ordinary kindMismatch
+        // 5. Object where a nested array-root is: the whole load refuses, no value (§4)
         TableVariable.Report r4 = new TableVariable.Report();
         HolderVariable.Value h2 = HolderVariable.fromJson(
             "{\"g\":{\"goals\":[1]},\"gs\":[{\"goals\":[2]}]}".getBytes(StandardCharsets.UTF_8), r4);
-        check(h2 != null && !r4.malformed && r4.kindMismatch == 2, "expected 2 kindMismatch, got " + r4.kindMismatch);
+        check(h2 == null && (r4.refused || r4.damaged), "nested array-root object not refused: refused=" + r4.refused + " damaged=" + r4.damaged);
     }
 }
 `

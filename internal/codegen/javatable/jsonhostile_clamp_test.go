@@ -14,14 +14,15 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestJsonHostileReportClampCounterJava pins the Java text reader's `clamped`
-// counter to the Go oracle (internal/tabletext's Report) on every json-hostile
-// row of testdata/conformance/tables/MANIFEST.txt whose oracle report counts a
-// clamp (docs/SPEC-TABLES.md §16.2, §16.3, §17.5). The Java report's clamped
-// count and the verdict (read vs refused) must equal the oracle's, one subtest
-// per row.
+// TestJsonHostileReportClampCounterJava pins the Java text reader's VERDICT to
+// the Go oracle (internal/tabletext) on every json-hostile row of
+// testdata/conformance/tables/MANIFEST.txt (docs/SPEC-TABLES.md §16.2, §16.3,
+// §17.5). The clamp is retired (docs/plans/strict-only.md): a value past its
+// range or bound refuses the whole read, so the rows that once counted a clamp
+// are held here with every other hostile text. Java reads with a value exactly
+// where the oracle reads, and refuses (no value, the report refused or
+// damaged) exactly where it refuses, one subtest per row.
 func TestJsonHostileReportClampCounterJava(t *testing.T) {
-	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 
@@ -51,8 +52,8 @@ func TestJsonHostileReportClampCounterJava(t *testing.T) {
 	var rows []row
 	loadedUnits := map[string]*ir.Unit{}
 
-	// The oracle is the authority on which rows count a clamp: read every
-	// row's text through tabletext and keep the ones whose report does.
+	// The oracle is the authority on every row's verdict: read every row's
+	// text through tabletext.
 	for line := range strings.SplitSeq(string(manifest), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 6 || fields[0] != "json-hostile" {
@@ -79,14 +80,11 @@ func TestJsonHostileReportClampCounterJava(t *testing.T) {
 		model := tabletext.NewModel(u)
 		inst := model.New(table)
 		rep := new(tabletext.Report)
-		okRead := model.Read(inst, text, rep)
-		if rep.Unknown == 0 {
-			continue
-		}
+		okRead := model.Read(inst, text, rep) && !rep.Refused
 		rows = append(rows, row{fields[1], key, root, text, *rep, okRead})
 	}
 	if len(rows) == 0 {
-		t.Fatal("manifest has no json-hostile row the oracle counts a clamp on")
+		t.Fatal("manifest has no json-hostile row")
 	}
 
 	// Generate each named unit once, in its own package directory so the
@@ -146,13 +144,9 @@ public final class Driver {
         Object report = reportT.getConstructor().newInstance();
         Object v = codec.getMethod("fromJson", byte[].class, reportT).invoke(null, text, report);
         System.out.println("R "
+            + (reportT.getField("damaged").getBoolean(report) || reportT.getField("refused").getBoolean(report)) + ","
             + reportT.getField("unknown").getInt(report) + ","
-            + reportT.getField("kindMismatch").getInt(report) + ","
-            + reportT.getField("widened").getInt(report) + ","
-            + reportT.getField("clamped").getInt(report) + ","
-            + reportT.getField("duplicate").getInt(report) + ","
-            + reportT.getField("malformed").getBoolean(report) + ","
-            + reportT.getField("refused").getBoolean(report));
+            + reportT.getField("widened").getInt(report));
         if (v == null) System.out.println("V null"); else System.out.println("V ok");
     }
 }
@@ -190,25 +184,20 @@ public final class Driver {
 					javaValue = after
 				}
 			}
-			if len(javaFields) != 7 {
+			if len(javaFields) != 3 {
 				t.Fatalf("java report shape for %s: %q\n%s", r.name, strings.Join(javaFields, ","), out)
 			}
-			gotClamped := javaFields[3]
-			wantClamped := fmt.Sprintf("%d", r.want.Unknown)
-			if gotClamped != wantClamped {
-				t.Errorf("row %s: java clamped=%s oracle clamped=%s (java %q, oracle %+v)", r.name, gotClamped, wantClamped, strings.Join(javaFields, ","), r.want)
+			// The verdict is the cross-language contract (§4, §6.5): the
+			// oracle reads (Read true, not Refused) or refuses the whole text.
+			// Java answers the same: a read hands back a value with the report
+			// neither refused nor damaged; a refusal hands back nothing.
+			gotRejected := javaFields[0]
+			wantRejected := fmt.Sprintf("%t", !r.ok)
+			if gotRejected != wantRejected {
+				t.Errorf("row %s: java rejected=%s, oracle read=%t (java %q, oracle %+v)", r.name, gotRejected, r.ok, strings.Join(javaFields, ","), r.want)
 			}
-			// The oracle's verdict is Read's bool: on the text form a refusal
-			// is a malformed read (§16.2), not a form-byte Refused. The Java
-			// reader reports the same damage as malformed, so the two verdicts
-			// are `malformed == !ok`, and a read must also hand back a value.
-			gotMalformed := javaFields[5]
-			wantMalformed := fmt.Sprintf("%t", !r.ok)
-			if gotMalformed != wantMalformed {
-				t.Errorf("row %s: java malformed=%s, oracle read ok=%t (java %q, oracle %+v)", r.name, gotMalformed, r.ok, strings.Join(javaFields, ","), r.want)
-			}
-			if r.ok && javaValue != "ok" {
-				t.Errorf("row %s: oracle read a value but java returned %q (java %q, oracle %+v)", r.name, javaValue, strings.Join(javaFields, ","), r.want)
+			if wantValue := map[bool]string{true: "ok", false: "null"}[r.ok]; javaValue != wantValue {
+				t.Errorf("row %s: oracle read=%t but java handed back %q (java %q, oracle %+v)", r.name, r.ok, javaValue, strings.Join(javaFields, ","), r.want)
 			}
 		})
 	}

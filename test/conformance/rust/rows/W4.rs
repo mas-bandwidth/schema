@@ -173,7 +173,7 @@ fn w4_garbage_slack_is_unspecified_on_read_and_moves_no_counter() {
     let (n, back, report) = w4_load(&clean);
     assert_eq!(n, 1, "the clean record reads");
     assert!(
-        report.clamped == 0 && !report.malformed && !report.refused,
+        report.oor == 0 && !report.damaged && !report.refused,
         "the clean twin moves no counter: {report:?}"
     );
     assert_eq!(back[0].weapons[1].penetration, 7, "the clean twin's live value lands");
@@ -202,11 +202,11 @@ fn w4_garbage_slack_is_unspecified_on_read_and_moves_no_counter() {
     let (n, back, report) = w4_load(&forged);
     assert_eq!(n, 1, "the record with garbage slack still reads: UNSPECIFIED ON READ, AND NOT A REFUSAL");
     assert!(
-        !report.malformed && !report.refused && report.reason == TableFixedReason::None,
+        !report.damaged && !report.refused && report.reason == TableFixedReason::None,
         "non-zero slack is not malformed and not a refusal: {report:?}"
     );
     assert_eq!(
-        report.clamped, 0,
+        report.oor, 0,
         "NON-ZERO SLACK MOVES NO COUNTER — the bounds pass walked the slack: {report:?}"
     );
     assert_eq!(
@@ -214,7 +214,7 @@ fn w4_garbage_slack_is_unspecified_on_read_and_moves_no_counter() {
         "the garbage slack censuses nothing unknown: {report:?}"
     );
     assert_eq!(
-        report.kind_mismatch, 0,
+        report.mismatch, 0,
         "the garbage slack moves no kind counter: {report:?}"
     );
     assert_eq!(
@@ -294,11 +294,11 @@ fn w4_control_the_same_bytes_made_live_are_clamped_and_counted() {
     let (n, back, report) = w4_load(&live);
     assert_eq!(n, 1, "a clamping read still returns: a clamp is never a refusal");
     assert!(
-        !report.malformed && !report.refused,
+        !report.damaged && !report.refused,
         "an out-of-range LIVE element is clamped, not refused: {report:?}"
     );
     assert_eq!(
-        report.clamped, 1,
+        report.oor, 1,
         "the stained slot made LIVE is walked and counted — exactly the one: {report:?}"
     );
     assert_eq!(

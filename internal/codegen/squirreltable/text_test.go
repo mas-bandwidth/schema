@@ -22,24 +22,24 @@ local run = function(unit, mod, root, key, wantb64, d1, d2, d3) {
   local T = schema.require(mod);
   local L = schema.require("schema_table_load");
   local TX = schema.require("schema_table_text");
-  local r1 = { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false };
-  local v = L.loadTolerant(T, root, inputs[key], r1);
+  local r1 = { unknown=0, mismatch=0, widened=0, oor=0, repeated=0, bodyDamaged=false, refused=false };
+  local v = L.loadWalk(T, root, inputs[key], r1);
   if (v == null || r1.refused) { print(key + " loadrefused\n"); return; }
   local saveText = TX.SaveText(T, root, v);
   if (saveText == null) { print(key + " savenull\n"); return; }
-  local r2 = { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false };
+  local r2 = { unknown=0, mismatch=0, widened=0, oor=0, repeated=0, bodyDamaged=false, refused=false };
   local v2 = TX.LoadText(T, root, wantb64, r2);
   if (v2 == null || r2.refused) { print(key + " loadtextrefused\n"); return; }
   local saveText2 = TX.SaveText(T, root, v2);
   if (saveText2 == null) { print(key + " savenull2\n"); return; }
   print(key + " " + saveText + " " + saveText2 + "\n");
-  local r3 = { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false };
+  local r3 = { unknown=0, mismatch=0, widened=0, oor=0, repeated=0, bodyDamaged=false, refused=false };
   TX.LoadText(T, root, d1, r3);
   print(key + " d1 " + (r3.refused ? "true" : "false") + "\n");
-  r3 = { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false };
+  r3 = { unknown=0, mismatch=0, widened=0, oor=0, repeated=0, bodyDamaged=false, refused=false };
   TX.LoadText(T, root, d2, r3);
   print(key + " d2 " + (r3.refused ? "true" : "false") + "\n");
-  r3 = { unknown=0, kindMismatch=0, widened=0, clamped=0, duplicate=0, malformed=false, refused=false };
+  r3 = { unknown=0, mismatch=0, widened=0, oor=0, repeated=0, bodyDamaged=false, refused=false };
   TX.LoadText(T, root, d3, r3);
   print(key + " d3 " + (r3.refused ? "true" : "false") + "\n");
 };
