@@ -55,6 +55,6 @@ cat "$out/log"
 grep -Eq '^ *framing +FAIL' "$out/log"
 grep -Eq '^ *wire +pass' "$out/log"
 for r in $rows; do
-    grep -q "js / framing: $r: damaged input owes the refusal" "$out/log" || { echo "negative control: $mode did not turn $r red" >&2; exit 1; }
+    grep -q "js / framing: $r: read outcome differs: got read, want refused" "$out/log" || { echo "negative control: $mode did not turn $r red" >&2; exit 1; }
 done
 echo "JavaScript framing negative control: $mode detected by js / framing ($rows)"
