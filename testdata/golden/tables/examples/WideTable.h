@@ -9981,7 +9981,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 12 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -9991,7 +9991,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     const uint8_t * text = r.buffer + ( r.offset >> 3 );
                     if ( !TableUtf8Valid( text, n ) ) { report->damaged = true; return false; }
                     const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 70000 );
-                    if ( (uint64_t) kept < n ) { report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) kept < n ) { report->refused = true; report->refuse_reason = out_of_range; }
                     memcpy( value.label, text, (size_t) kept );
                     value.label[kept] = 0;
                     r.offset += (int64_t) n * 8;
@@ -10006,7 +10006,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 6 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -10014,7 +10014,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->damaged = true; return false; }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 70000 ) { kept = 70000; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 70000 ) { kept = 70000; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
@@ -10045,7 +10045,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             }
                             if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
                             int32_t kept = 0;
-                            if ( n > (uint64_t) 70000 ) { kept = 70000; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
+                            if ( n > (uint64_t) 70000 ) { kept = 70000; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
                             const int64_t surplus_bits = entry.elem_value_bits;
                             uint64_t walk = n;
                             if ( surplus_bits >= 0 && walk > (uint64_t) 70000 ) { walk = (uint64_t) 70000; } // the surplus is arithmetic
@@ -10059,7 +10059,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                                     if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->damaged = true; return false; }
                                     int64_t decoded_wide_2 = (int64_t) raw_2;
                                     if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                                    if ( (uint64_t) decoded_wide_2 > 65535ull ) { decoded_wide_2 = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                                    if ( (uint64_t) decoded_wide_2 > 65535ull ) { decoded_wide_2 = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
                                     uint16_t decoded_v_2 = (uint16_t) decoded_wide_2;
                                     scratch = decoded_v_2;
                                 }
@@ -10071,7 +10071,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -10086,7 +10086,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     }
                     if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 70000 ) { kept = 70000; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 70000 ) { kept = 70000; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
                     if ( surplus_bits >= 0 && walk > (uint64_t) 70000 ) { walk = (uint64_t) 70000; } // the surplus is arithmetic
@@ -10100,7 +10100,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide_2 = (int64_t) raw_2;
                             if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                            if ( (uint64_t) decoded_wide_2 > 65535ull ) { decoded_wide_2 = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide_2 > 65535ull ) { decoded_wide_2 = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint16_t decoded_v_2 = (uint16_t) decoded_wide_2;
                             scratch = decoded_v_2;
                         }

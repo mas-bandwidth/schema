@@ -10777,7 +10777,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 2 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -10792,8 +10792,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -128ll ) { decoded_wide = -128ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 127ll ) { decoded_wide = 127ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -128ll ) { decoded_wide = -128ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 127ll ) { decoded_wide = 127ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int8_t decoded_v = (int8_t) decoded_wide;
                     value.i8_span = decoded_v;
                 }
@@ -10806,7 +10806,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 2 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -10821,8 +10821,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -128ll ) { decoded_wide = -128ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 126ll ) { decoded_wide = 126ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -128ll ) { decoded_wide = -128ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 126ll ) { decoded_wide = 126ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int8_t decoded_v = (int8_t) decoded_wide;
                     value.i8_low = decoded_v;
                 }
@@ -10835,7 +10835,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 2 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -10850,8 +10850,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -127ll ) { decoded_wide = -127ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 127ll ) { decoded_wide = 127ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -127ll ) { decoded_wide = -127ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 127ll ) { decoded_wide = 127ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int8_t decoded_v = (int8_t) decoded_wide;
                     value.i8_high = decoded_v;
                 }
@@ -10864,7 +10864,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 2 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -10879,8 +10879,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -127ll ) { decoded_wide = -127ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 126ll ) { decoded_wide = 126ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -127ll ) { decoded_wide = -127ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 126ll ) { decoded_wide = 126ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int8_t decoded_v = (int8_t) decoded_wide;
                     value.i8_inside = decoded_v;
                 }
@@ -10906,15 +10906,15 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int16_t decoded_v = (int16_t) decoded_wide;
                             value.i16_span = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -10929,8 +10929,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int16_t decoded_v = (int16_t) decoded_wide;
                     value.i16_span = decoded_v;
                 }
@@ -10956,15 +10956,15 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int16_t decoded_v = (int16_t) decoded_wide;
                             value.i16_low = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -10979,8 +10979,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -32768ll ) { decoded_wide = -32768ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int16_t decoded_v = (int16_t) decoded_wide;
                     value.i16_low = decoded_v;
                 }
@@ -11006,15 +11006,15 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int16_t decoded_v = (int16_t) decoded_wide;
                             value.i16_high = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11029,8 +11029,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 32767ll ) { decoded_wide = 32767ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int16_t decoded_v = (int16_t) decoded_wide;
                     value.i16_high = decoded_v;
                 }
@@ -11056,15 +11056,15 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int16_t decoded_v = (int16_t) decoded_wide;
                             value.i16_inside = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11079,8 +11079,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -32767ll ) { decoded_wide = -32767ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 32766ll ) { decoded_wide = 32766ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int16_t decoded_v = (int16_t) decoded_wide;
                     value.i16_inside = decoded_v;
                 }
@@ -11106,15 +11106,15 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.i32_span = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11129,8 +11129,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.i32_span = decoded_v;
                 }
@@ -11156,15 +11156,15 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.i32_low = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11179,8 +11179,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.i32_low = decoded_v;
                 }
@@ -11206,15 +11206,15 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.i32_high = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11229,8 +11229,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.i32_high = decoded_v;
                 }
@@ -11256,15 +11256,15 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.i32_inside = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11279,8 +11279,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -2147483647ll ) { decoded_wide = -2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 2147483646ll ) { decoded_wide = 2147483646ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.i32_inside = decoded_v;
                 }
@@ -11312,7 +11312,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11352,14 +11352,14 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int64_t decoded_v = (int64_t) decoded_wide;
                             value.i64_low = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11374,7 +11374,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int64_t decoded_v = (int64_t) decoded_wide;
                     value.i64_low = decoded_v;
                 }
@@ -11400,14 +11400,14 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int64_t decoded_v = (int64_t) decoded_wide;
                             value.i64_high = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11422,7 +11422,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int64_t decoded_v = (int64_t) decoded_wide;
                     value.i64_high = decoded_v;
                 }
@@ -11448,15 +11448,15 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int64_t decoded_v = (int64_t) decoded_wide;
                             value.i64_inside = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11471,8 +11471,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( decoded_wide < -9223372036854775807ll ) { decoded_wide = -9223372036854775807ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide > 9223372036854775806ll ) { decoded_wide = 9223372036854775806ll; report->refused = true; report->refuse_reason = out_of_range; }
                     int64_t decoded_v = (int64_t) decoded_wide;
                     value.i64_inside = decoded_v;
                 }
@@ -11498,7 +11498,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             }
                             if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
                             int32_t kept = 0;
-                            if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
+                            if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
                             const int64_t surplus_bits = entry.elem_value_bits;
                             uint64_t walk = n;
                             if ( surplus_bits >= 0 && walk > (uint64_t) 4 ) { walk = (uint64_t) 4; } // the surplus is arithmetic
@@ -11517,8 +11517,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                         const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
                                         if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
                                     }
-                                    if ( decoded_wide_2 < -32768ll ) { decoded_wide_2 = -32768ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                                    if ( decoded_wide_2 > 32767ll ) { decoded_wide_2 = 32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                                    if ( decoded_wide_2 < -32768ll ) { decoded_wide_2 = -32768ll; report->refused = true; report->refuse_reason = out_of_range; }
+                                    if ( decoded_wide_2 > 32767ll ) { decoded_wide_2 = 32767ll; report->refused = true; report->refuse_reason = out_of_range; }
                                     int16_t decoded_v_2 = (int16_t) decoded_wide_2;
                                     scratch = decoded_v_2;
                                 }
@@ -11530,7 +11530,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -11545,7 +11545,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
                     if ( surplus_bits >= 0 && walk > (uint64_t) 4 ) { walk = (uint64_t) 4; } // the surplus is arithmetic
@@ -11564,8 +11564,8 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
                                 if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
                             }
-                            if ( decoded_wide_2 < -32768ll ) { decoded_wide_2 = -32768ll; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( decoded_wide_2 > 32767ll ) { decoded_wide_2 = 32767ll; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( decoded_wide_2 < -32768ll ) { decoded_wide_2 = -32768ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide_2 > 32767ll ) { decoded_wide_2 = 32767ll; report->refused = true; report->refuse_reason = out_of_range; }
                             int16_t decoded_v_2 = (int16_t) decoded_wide_2;
                             scratch = decoded_v_2;
                         }
@@ -12843,7 +12843,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -12853,7 +12853,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.u8_span = decoded_v;
                 }
@@ -12866,7 +12866,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -12876,7 +12876,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 254ull ) { decoded_wide = (int64_t) 254ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 254ull ) { decoded_wide = (int64_t) 254ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.u8_low = decoded_v;
                 }
@@ -12889,7 +12889,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -12899,8 +12899,8 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.u8_high = decoded_v;
                 }
@@ -12913,7 +12913,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -12923,8 +12923,8 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( (uint64_t) decoded_wide > 254ull ) { decoded_wide = (int64_t) 254ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 254ull ) { decoded_wide = (int64_t) 254ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.u8_inside = decoded_v;
                 }
@@ -12945,14 +12945,14 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.u16_span = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -12962,7 +12962,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.u16_span = decoded_v;
                 }
@@ -12983,14 +12983,14 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65534ull ) { decoded_wide = (int64_t) 65534ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 65534ull ) { decoded_wide = (int64_t) 65534ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.u16_low = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13000,7 +13000,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65534ull ) { decoded_wide = (int64_t) 65534ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 65534ull ) { decoded_wide = (int64_t) 65534ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.u16_low = decoded_v;
                 }
@@ -13021,15 +13021,15 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.u16_high = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13039,8 +13039,8 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.u16_high = decoded_v;
                 }
@@ -13061,15 +13061,15 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( (uint64_t) decoded_wide > 65534ull ) { decoded_wide = (int64_t) 65534ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 65534ull ) { decoded_wide = (int64_t) 65534ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.u16_inside = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13079,8 +13079,8 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( (uint64_t) decoded_wide > 65534ull ) { decoded_wide = (int64_t) 65534ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 65534ull ) { decoded_wide = (int64_t) 65534ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.u16_inside = decoded_v;
                 }
@@ -13101,14 +13101,14 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.u32_span = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13118,7 +13118,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.u32_span = decoded_v;
                 }
@@ -13139,14 +13139,14 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967294ull ) { decoded_wide = (int64_t) 4294967294ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 4294967294ull ) { decoded_wide = (int64_t) 4294967294ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.u32_low = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13156,7 +13156,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967294ull ) { decoded_wide = (int64_t) 4294967294ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 4294967294ull ) { decoded_wide = (int64_t) 4294967294ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.u32_low = decoded_v;
                 }
@@ -13177,15 +13177,15 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.u32_high = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13195,8 +13195,8 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.u32_high = decoded_v;
                 }
@@ -13217,15 +13217,15 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( (uint64_t) decoded_wide > 4294967294ull ) { decoded_wide = (int64_t) 4294967294ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 4294967294ull ) { decoded_wide = (int64_t) 4294967294ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.u32_inside = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13235,8 +13235,8 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( (uint64_t) decoded_wide > 4294967294ull ) { decoded_wide = (int64_t) 4294967294ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 4294967294ull ) { decoded_wide = (int64_t) 4294967294ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.u32_inside = decoded_v;
                 }
@@ -13263,7 +13263,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13293,14 +13293,14 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 18446744073709551614ull ) { decoded_wide = (int64_t) 18446744073709551614ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 18446744073709551614ull ) { decoded_wide = (int64_t) 18446744073709551614ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.u64_low = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13310,7 +13310,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 18446744073709551614ull ) { decoded_wide = (int64_t) 18446744073709551614ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 18446744073709551614ull ) { decoded_wide = (int64_t) 18446744073709551614ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
                     value.u64_low = decoded_v;
                 }
@@ -13331,14 +13331,14 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.u64_high = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13348,7 +13348,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
                     value.u64_high = decoded_v;
                 }
@@ -13369,15 +13369,15 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( (uint64_t) decoded_wide > 18446744073709551614ull ) { decoded_wide = (int64_t) 18446744073709551614ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 18446744073709551614ull ) { decoded_wide = (int64_t) 18446744073709551614ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.u64_inside = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13387,8 +13387,8 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( (uint64_t) decoded_wide > 18446744073709551614ull ) { decoded_wide = (int64_t) 18446744073709551614ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide < 1ull ) { decoded_wide = (int64_t) 1ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 18446744073709551614ull ) { decoded_wide = (int64_t) 18446744073709551614ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
                     value.u64_inside = decoded_v;
                 }
@@ -13414,7 +13414,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             }
                             if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
                             int32_t kept = 0;
-                            if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
+                            if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
                             const int64_t surplus_bits = entry.elem_value_bits;
                             uint64_t walk = n;
                             if ( surplus_bits >= 0 && walk > (uint64_t) 4 ) { walk = (uint64_t) 4; } // the surplus is arithmetic
@@ -13439,7 +13439,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -13454,7 +13454,7 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     }
                     if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range;; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
                     if ( surplus_bits >= 0 && walk > (uint64_t) 4 ) { walk = (uint64_t) 4; } // the surplus is arithmetic
@@ -14090,7 +14090,7 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -14100,7 +14100,7 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.b8 = decoded_v;
                 }
@@ -14121,14 +14121,14 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.b16 = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -14138,7 +14138,7 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.b16 = decoded_v;
                 }
@@ -14159,14 +14159,14 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.b32 = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -14176,7 +14176,7 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range;; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.b32 = decoded_v;
                 }
@@ -14203,7 +14203,7 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -14233,15 +14233,15 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                            if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(12) width clamp
+                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range; } // bits(12) width clamp
                             uint16_t decoded_v = (uint16_t) decoded_wide;
                             value.b12 = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -14251,8 +14251,8 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range;; }
-                    if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(12) width clamp
+                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 4095ull ) { decoded_wide = (int64_t) 4095ull; report->refused = true; report->refuse_reason = out_of_range; } // bits(12) width clamp
                     uint16_t decoded_v = (uint16_t) decoded_wide;
                     value.b12 = decoded_v;
                 }
@@ -14273,14 +14273,14 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 281474976710655ull ) { decoded_wide = (int64_t) 281474976710655ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(48) width clamp
+                            if ( (uint64_t) decoded_wide > 281474976710655ull ) { decoded_wide = (int64_t) 281474976710655ull; report->refused = true; report->refuse_reason = out_of_range; } // bits(48) width clamp
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.b48 = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;;
+                    report->refused = true; report->refuse_reason = kind_mismatch;
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
                     break;
                 }
@@ -14290,7 +14290,7 @@ inline bool RangedWidthsLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 281474976710655ull ) { decoded_wide = (int64_t) 281474976710655ull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(48) width clamp
+                    if ( (uint64_t) decoded_wide > 281474976710655ull ) { decoded_wide = (int64_t) 281474976710655ull; report->refused = true; report->refuse_reason = out_of_range; } // bits(48) width clamp
                     uint64_t decoded_v = (uint64_t) decoded_wide;
                     value.b48 = decoded_v;
                 }
