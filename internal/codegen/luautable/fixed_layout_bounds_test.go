@@ -109,15 +109,13 @@ func TestFixedBoundsOracle(t *testing.T) {
 		c.edit(b)
 		var rep TableReport
 		n := RootFixedLoad(got, b, plan, &rep)
-		fmt.Printf("FORGED|%s|%s|%t|%d|%x\n", c.name, rep.Reason, rep.Malformed, n, b)
+		fmt.Printf("FORGED|%s|%d|%x\n", c.name, n, b)
 	}
 }
 `
 
 type fixedBoundsCase struct {
-	reason    string
-	malformed bool
-	file      []byte
+	file []byte
 }
 
 // fixedBoundsOracle generates and runs the Go unit above, returning the valid
@@ -192,17 +190,17 @@ func fixedBoundsOracle(t *testing.T, schemaSrc string) ([]byte, string, map[stri
 			continue
 		}
 		fields := strings.Split(rest, "|")
-		if len(fields) != 5 {
-			t.Fatalf("the Go oracle's FORGED line %q is not name|reason|malformed|n|hex", line)
+		if len(fields) != 3 {
+			t.Fatalf("the Go oracle's FORGED line %q is not name|n|hex", line)
 		}
-		if fields[3] != "-1" {
-			t.Fatalf("%s: the Go fixed reader returned %s, want -1", fields[0], fields[3])
+		if fields[1] != "-1" {
+			t.Fatalf("%s: the Go fixed reader returned %s, want -1 (refused)", fields[0], fields[1])
 		}
-		file, err := hex.DecodeString(fields[4])
+		file, err := hex.DecodeString(fields[2])
 		if err != nil {
 			t.Fatalf("the Go oracle's %s line carries no hex file: %v", fields[0], err)
 		}
-		cases[fields[0]] = fixedBoundsCase{reason: fields[1], malformed: fields[2] == "true", file: file}
+		cases[fields[0]] = fixedBoundsCase{file: file}
 	}
 	if len(cases) != 3 || valid == nil {
 		t.Fatalf("the Go oracle answered %d forged cases and valid=%t, want 3 and true\n%s", len(cases), valid != nil, out)
@@ -212,10 +210,12 @@ func fixedBoundsOracle(t *testing.T, schemaSrc string) ([]byte, string, map[stri
 
 // TestLuauFixedLayoutBounds holds schema_fixed.luau's layout plan to the record and the
 // layout it was handed: a child count past the last entry, a struct's children
-// summing past its size, and a leaf past the record are all layout_malformed
+// summing past its size, and a leaf past the record are all refused by name
 // before any record byte is read, as schema-go's own fixed reader refuses the
 // same bytes (docs/FIXED-FORM-ALGORITHM.md §1.1 rules 3, 5 and §3, §5.3;
-// docs/SPEC-TABLES.md §3.4, THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER).
+// docs/SPEC-TABLES.md §3.4, THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER). The
+// verdict is compared; which name each side gives is per-language diagnostic
+// detail (docs/rulings.json refusal-verdict-only).
 func TestLuauFixedLayoutBounds(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
@@ -238,11 +238,11 @@ func TestLuauFixedLayoutBounds(t *testing.T) {
 	}
 	main.WriteString("}\n")
 	main.WriteString(`local function outcome(ok: boolean, err: any): string
-	if ok then return "read|false" end
-	if type(err) == "table" and err.name ~= nil then
-		return err.name .. "|" .. tostring(err.malformed == true)
+	if ok then return "read" end
+	if type(err) == "table" and type(err.name) == "string" and err.name ~= "" then
+		return "refused"
 	end
-	return "error|false"
+	return "error " .. tostring(err)
 end
 for _, c in cases do
 	local name, layout = c[1], c[2]
@@ -268,10 +268,7 @@ print(string.format("valid|%d|%d|%d|%d", values[1].X, values[1].Inner.A, values[
 		t.Fatal(err)
 	}
 	out := string(luaurun.Run(t, g.dir, "main.luau", inputs))
-	got := map[string]struct {
-		reason    string
-		malformed bool
-	}{}
+	got := map[string]string{}
 	var gotValues string
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		fields := strings.Split(line, "|")
@@ -279,25 +276,20 @@ print(string.format("valid|%d|%d|%d|%d", values[1].X, values[1].Inner.A, values[
 			gotValues = strings.Join(fields[1:], "|")
 			continue
 		}
-		if len(fields) != 4 {
-			t.Fatalf("the Luau probe printed %q, want mode|name|reason|malformed", line)
+		if len(fields) != 3 {
+			t.Fatalf("the Luau probe printed %q, want mode|name|verdict", line)
 		}
-		got[fields[0]+"|"+fields[1]] = struct {
-			reason    string
-			malformed bool
-		}{fields[2], fields[3] == "true"}
+		got[fields[0]+"|"+fields[1]] = fields[2]
 	}
 	for _, mode := range []string{"identity", "foreign"} {
 		for _, name := range names {
-			want := oracle[name]
 			g, ok := got[mode+"|"+name]
 			if !ok {
 				t.Errorf("%s %s: the Luau probe answered no line", mode, name)
 				continue
 			}
-			if g.reason != want.reason || g.malformed != want.malformed {
-				t.Errorf("%s %s: schema_fixed.luau answered %s (malformed %t), Go answered %s (malformed %t)",
-					mode, name, g.reason, g.malformed, want.reason, want.malformed)
+			if g != "refused" {
+				t.Errorf("%s %s: schema_fixed.luau answered %s, Go refused it", mode, name, g)
 			}
 		}
 	}
