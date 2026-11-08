@@ -985,6 +985,16 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 				t.Fatalf("%s: the Go oracle refused the unkeyed announcement: %v", rel, err)
 			}
 			rb := newKeyedRebind(t, unkeyedUnit, keyedUnit)
+			// The variable codec writes form 1 for every root, a fixed-declared
+			// one included; the Go encoder writes form 3 for a fixed-declared
+			// root. The variable wire is held to the Go encoding of the same
+			// declarations without the fixed keyword (as the C++ discard gate
+			// does), the value carried across by its text.
+			formOne := unitFromDir(t, dir)
+			for _, st := range formOne.Tables {
+				st.FixedDeclared = false
+			}
+			fm := tabletext.NewModel(formOne)
 			var vjson strings.Builder
 			wantVariable := map[string]string{}
 			oracled := 0
@@ -1033,7 +1043,16 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 				if err != nil {
 					t.Fatalf("%s %s: the Go oracle does not write the keyed value's text: %v", rel, rest, err)
 				}
-				vwire, err := tablewire.Encode(km, inst)
+				fst := fm.Lookup(root)
+				if fst == nil {
+					t.Fatalf("%s: the form 1 oracle has no root %s", rel, root)
+				}
+				finst := fm.New(fst)
+				var frep tabletext.Report
+				if !fm.Read(finst, text, &frep) {
+					t.Fatalf("%s %s: the form 1 oracle refuses the keyed value's text: %+v", rel, rest, frep)
+				}
+				vwire, err := tablewire.Encode(fm, finst)
 				if err != nil {
 					t.Fatalf("%s %s: the Go oracle does not encode the keyed variable wire: %v", rel, rest, err)
 				}

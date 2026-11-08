@@ -148,6 +148,7 @@ func runJavaVariableFixturesForUnit(t *testing.T, u *ir.Unit, fixtures []javaVar
 	}
 	pkg := javaPackageOf(u)
 	dir := t.TempDir()
+	fixtures = formOneFixtures(t, u, fixtures, dir)
 	classes := filepath.Join(dir, "classes")
 	if err := os.MkdirAll(classes, 0o755); err != nil {
 		t.Fatal(err)
@@ -187,6 +188,57 @@ func runJavaVariableFixturesForUnit(t *testing.T, u *ir.Unit, fixtures []javaVar
 			t.Errorf("%s: %v\n%s", row.name, err, out)
 		}
 	}
+}
+
+// formOneFixtures holds a fixed-declared root's variable codec to form 1. The
+// Java variable codec reads and writes form 1 for every root; the committed
+// corpus wire and the Go encoder are form 3 for a root declared fixed (§3.4).
+// So each fixture's wire is replaced by the Go encoding of its own text under
+// the same declarations without the fixed keyword, as the C++ discard gate
+// does. It runs after the Java is generated: it clears FixedDeclared on u.
+func formOneFixtures(t *testing.T, u *ir.Unit, fixtures []javaVariableFixture, dir string) []javaVariableFixture {
+	t.Helper()
+	fixed := false
+	for _, st := range u.Tables {
+		if st.FixedDeclared {
+			fixed = true
+			st.FixedDeclared = false
+		}
+	}
+	if !fixed {
+		return fixtures
+	}
+	model := tabletext.NewModel(u)
+	out := make([]javaVariableFixture, len(fixtures))
+	for i, row := range fixtures {
+		st := u.Tables[row.root]
+		if st == nil {
+			t.Fatalf("%s: the unit has no root %s", row.name, row.root)
+		}
+		text, err := os.ReadFile(row.json)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inst := model.New(st)
+		rep := new(tabletext.Report)
+		if !model.Read(inst, text, rep) {
+			t.Fatalf("%s: the Go oracle refuses the fixture text: %+v", row.name, rep)
+		}
+		wire, err := tablewire.Encode(model, inst)
+		if err != nil {
+			t.Fatalf("%s: the Go oracle does not encode form 1: %v", row.name, err)
+		}
+		if len(wire) == 0 || wire[0] != 1 {
+			t.Fatalf("%s: the form 1 encoding starts with form byte %x", row.name, wire[:min(len(wire), 1)])
+		}
+		path := filepath.Join(dir, row.name+".form1.bin")
+		if err := os.WriteFile(path, wire, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		row.wire = path
+		out[i] = row
+	}
+	return out
 }
 
 func testPureFixedClosureRoundTrip(t *testing.T, repo string) {
@@ -285,6 +337,12 @@ fixed table Vessel
 	}
 	if files["VesselVariable.java"] == nil || files["BadgeVariable.java"] == nil {
 		t.Fatalf("Defaults.schema: VesselVariable.java or BadgeVariable.java was not emitted")
+	}
+	// The Java variable save is form 1; the Go encoder writes form 3 for a
+	// root declared fixed, so the default wire is the Go form 1 encoding of
+	// the same declarations without the fixed keyword (formOneFixtures).
+	for _, st := range u.Tables {
+		st.FixedDeclared = false
 	}
 	model := tabletext.NewModel(u)
 	defaultVessel := model.New(u.Tables["Vessel"])
