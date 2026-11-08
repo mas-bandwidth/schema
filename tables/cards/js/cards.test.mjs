@@ -41,7 +41,7 @@ test("TestCardRoundTripsThePopulatedFixture", () => {
   const { record, report, error } = cards.Load(wire);
   assert.strictEqual(error, null);
   assert.ok(record !== null);
-  assert.strictEqual(report.malformed, false);
+  assert.strictEqual(report.damaged, false);
 
   // ToJSON reproduces the JSON file exactly, every field and the body byte for
   // byte.
@@ -161,7 +161,7 @@ test("TestUpgradeMatchesGo", () => {
     const wantWire = read(`tables/cards/conformance/expected/${name}.wire`);
     assert.ok(bytesEqual(out, wantWire), `upgrade ${name} wire mismatch`);
     const wantReport = read(`tables/cards/conformance/expected/${name}.report`);
-    const gotReport = `Retained=${report.retained}\nRetainLost=${report.retainLost}\nWidened=${report.widened}\nUnknown=${report.unknown}\nKindMismatch=${report.kindMismatch}\nClamped=${report.clamped}\nDuplicate=${report.duplicate}\nMalformed=${report.malformed}\n`;
+    const gotReport = `Retained=${report.retained}\nRetainLost=${report.retainLost}\nWidened=${report.widened}\nUnknown=${report.unknown}\nKindMismatch=${report.mismatch}\nClamped=${report.oor}\nDuplicate=${report.repeated}\nMalformed=${report.damaged}\n`;
     assert.strictEqual(gotReport, new TextDecoder().decode(wantReport), `upgrade ${name} report mismatch`);
 
     const again = cards.Upgrade(out);

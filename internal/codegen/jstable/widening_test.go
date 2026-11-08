@@ -81,13 +81,13 @@ const newer = await import(pathToFileURL(process.argv[3]).href);
 const lists = await import(pathToFileURL(process.argv[4]).href);
 const problems = [];
 const check = (what, ok, detail) => { if (!ok) { problems.push(what + ": " + JSON.stringify(detail, (k, v) => typeof v === "bigint" ? v.toString() + "n" : v)); } };
-const quiet = (r) => r.unknown === 0 && r.kindMismatch === 0 && r.clamped === 0 && r.duplicate === 0;
+const quiet = (r) => r.unknown === 0 && r.mismatch === 0 && r.oor === 0 && r.repeated === 0;
 
 // 1. the older, narrower writer through the newer reader
 {
   const text = new older.TableVariableReport();
   const v = older.RecFromJson('{"small": -32768, "mid": -2147483648, "count": 255, "ratio": 1.5, "scores": [-7, 32767]}', text);
-  check("older text", v !== null && text.reason === "" && !text.malformed, text);
+  check("older text", v !== null && text.reason === "" && !text.damaged, text);
   const wire = older.RecSave(v);
   check("older save", wire !== null, v);
   const report = new newer.TableVariableReport();
@@ -100,7 +100,7 @@ const quiet = (r) => r.unknown === 0 && r.kindMismatch === 0 && r.clamped === 0 
     check("ratio", got.ratio === 1.5, got.ratio);
     check("scores", got.scores.length === 2 && Number(got.scores[0]) === -7 && Number(got.scores[1]) === 32767, got.scores);
   }
-  check("older report", report.reason === "" && report.widened === 5 && report.refused === 0 && !report.malformed && quiet(report), report);
+  check("older report", report.reason === "" && report.widened === 5 && report.refused === 0 && !report.damaged && quiet(report), report);
 }
 
 // 2. the committed narrow list wire and its pristine twin
@@ -111,14 +111,14 @@ const quiet = (r) => r.unknown === 0 && r.kindMismatch === 0 && r.clamped === 0 
   if (value !== null) {
     check("narrow scores", value.scores.length === 3 && value.scores[0] === 10 && value.scores[1] === 0 && value.scores[2] === 0, value.scores);
   }
-  check("narrow report", report.reason === "" && report.widened === 1 && report.refused === 0 && !report.malformed && quiet(report), report);
+  check("narrow report", report.reason === "" && report.widened === 1 && report.refused === 0 && !report.damaged && quiet(report), report);
   const baseline = new lists.TableVariableReport();
   const clean = lists.SaveLoad(new Uint8Array(readFileSync(process.argv[6])), baseline);
   check("pristine read", clean !== null, baseline);
   if (clean !== null) {
     check("pristine scores", clean.scores.length === 3 && clean.scores[0] === 10 && clean.scores[1] === 20 && clean.scores[2] === 30, clean.scores);
   }
-  check("pristine report", baseline.reason === "" && baseline.widened === 0 && !baseline.malformed && quiet(baseline), baseline);
+  check("pristine report", baseline.reason === "" && baseline.widened === 0 && !baseline.damaged && quiet(baseline), baseline);
 }
 
 // 3. the refusals, by name, and damage, by flag
@@ -131,12 +131,12 @@ const quiet = (r) => r.unknown === 0 && r.kindMismatch === 0 && r.clamped === 0 
     bytes[0] = form;
     const report = new newer.TableVariableReport();
     const got = newer.RecLoad(bytes, report);
-    check("form " + form, got === null && report.reason === want && report.refused === 1 && !report.malformed &&
+    check("form " + form, got === null && report.reason === want && report.refused === 1 && !report.damaged &&
       report.widened === 0 && quiet(report), report);
   }
   const damaged = new newer.TableVariableReport();
   const got = newer.RecLoad(new Uint8Array([1, 0, 0]), damaged);
-  check("damage", got === null && damaged.malformed && damaged.reason === "" && damaged.refused === 0, damaged);
+  check("damage", got === null && damaged.damaged && damaged.reason === "" && damaged.refused === 0, damaged);
 }
 
 if (problems.length > 0) { console.error(problems.join("\n")); process.exit(1); }

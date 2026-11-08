@@ -294,7 +294,7 @@ import { pathToFileURL } from "node:url";
 
 const spec = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const same = (a, b) => a !== null && a.length === b.length && a.every((x, i) => x === b[i]);
-const clean = (r) => r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && r.duplicate === 0 && !r.malformed;
+const clean = (r) => r.unknown === 0 && r.mismatch === 0 && r.widened === 0 && r.oor === 0 && r.repeated === 0 && !r.damaged;
 const firstDiff = (a, b) => { if (a === null) { return "null"; } for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i] !== b[i]) { return "at " + i + " got " + a[i] + " want " + b[i] + " (len " + a.length + " vs " + b.length + ")"; } } return "equal"; };
 
 for (const c of spec.cases) {

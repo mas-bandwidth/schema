@@ -194,8 +194,8 @@ for (const c of cases) {
   const value = m.ProbeLoad(new Uint8Array(Buffer.from(c.wire,"hex")),rep);
   const jr = new m.TableVariableReport();
   const jvalue = m.ProbeFromJson(c.input,jr);
-  if (value === null || rep.malformed || rep.clamped !== c.clamped || hex(m.ProbeSave(value)) !== c.saved
-      || jvalue === null || jr.malformed || jr.clamped !== c.jsonClamped || hex(m.ProbeSave(jvalue)) !== c.jsonSaved) {
+  if (value === null || rep.damaged || rep.oor !== c.clamped || hex(m.ProbeSave(value)) !== c.saved
+      || jvalue === null || jr.damaged || jr.oor !== c.jsonClamped || hex(m.ProbeSave(jvalue)) !== c.jsonSaved) {
     throw new Error(c.name + " mismatch " + JSON.stringify({rep,jr,wire:hex(m.ProbeSave(value)),json:hex(m.ProbeSave(jvalue))}));
   }
   console.log(c.name + " OK");
@@ -221,7 +221,7 @@ if (TSave([value],1,raw) !== raw.length) { fail("raw fixed write failed"); }
 const back = [new T()]; InitT(back[0]);
 const plan = TNewPlan(4096,4096); const report = new TableFixedReport();
 const count = TLoad(back,1,raw,raw.length,plan,report);
-if (count !== 1 || report.refused !== 0 || report.malformed || report.clamped !== 4
+if (count !== 1 || report.refused !== 0 || report.damaged || report.oor !== 4
     || back[0].a !== 0n || back[0].b !== 9 || back[0].c !== -3 || back[0].d !== 18446744073709551610n) {
   fail("fixed one-sided clamps: " + show(back) + " " + reason(report));
 }

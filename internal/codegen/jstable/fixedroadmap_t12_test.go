@@ -125,7 +125,7 @@ function roundtrip(label, setup, check) {
   const back = [new T()]; InitT(back[0]);
   const report = new TableFixedReport();
   const n = TLoad(back, 1, buf, buf.length, TNewPlan(4096, 4096), report);
-  if (!(n === 1 && !report.malformed)) { fail(label + ": load " + reason(report)); }
+  if (!(n === 1 && !report.damaged)) { fail(label + ": load " + reason(report)); }
   check(back[0]);
 }
 
@@ -178,7 +178,7 @@ if (TSave([none], 1, noneBuf) !== noneBuf.length) { fail("union-field-arms: save
 const noneBack = [new T()]; InitT(noneBack[0]);
 const noneReport = new TableFixedReport();
 const noneN = TLoad(noneBack, 1, noneBuf, noneBuf.length, TNewPlan(4096, 4096), noneReport);
-if (!(noneN === 1 && !noneReport.malformed)) { fail("union-field-arms: load none " + reason(noneReport)); }
+if (!(noneN === 1 && !noneReport.damaged)) { fail("union-field-arms: load none " + reason(noneReport)); }
 if (!(noneBack[0].body.type === BodyType.None)) { fail("union-field-arms: None did not round trip"); }
 if (BodyType.Text === BodyType.Data || BodyType.Text === BodyType.List || BodyType.Data === BodyType.List) {
   fail("union-field-arms: two direct arms collide in the tag enum");

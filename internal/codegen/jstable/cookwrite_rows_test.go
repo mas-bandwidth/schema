@@ -57,7 +57,7 @@ func readCookWriteManifest(t *testing.T, repo string) (map[string][]string, []co
 			instances[fields[1]] = instInfo{
 				unitKey:  fields[2],
 				root:     fields[3],
-				wireFile: filepath.Join(repo, fields[4]),
+				wireFile: filepath.Join(repo, strings.Replace(fields[4], "testdata/conformance/tables/wire/", "testdata/wire/tables/", 1)),
 			}
 		case "cook-write":
 			if len(fields) != 4 {
