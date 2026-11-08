@@ -33,25 +33,18 @@ func reportsExpect(t *testing.T) map[string]string {
 }
 
 // loadProbe is the moo main for one case: it loads every table module (which
-// registers the descriptors), reads the wire from inputs.moo, loads it at the
-// root through load.moo's tolerant walk and prints the report surface line
-// u,k,w,c,d,m,verdict (test/conformance/README.md).
+// registers the descriptors), reads the wire from inputs.moo, and reads it at
+// the root through the one read (table_refusal.moo's ReadStrict, which takes
+// a fixed root's form 3 and a variable root's form 1), printing the VERDICT:
+// read or refused (docs/SPEC-TABLES.md §4, §6.5). A read that refuses
+// returns no value.
 func loadProbe(g *generatedUnit, rootName string) string {
-	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal R = require(\"./table_refusal\")\nlocal F = require(\"./table_fixed\")\nlocal St = require(\"./schema_tables\")\n" + g.requireAll() +
-		fmt.Sprintf(`local report = load.newReport()
-local d = St.lookup(%[1]q)
-if d.fixed then
-	local vals = F.load(d, F.lookup(%[1]q) :: any, inputs.wire, report)
-	local ok = vals ~= nil and #vals == 1 and (report.outOfRange or 0) == 0 and (report.kindChanged or 0) == 0
-	print(if ok then "0,0,0,0,0,false,read" else "0,0,0,0,0,false,refused")
-	return
-end
-local v = load.load(%[1]q, inputs.wire, report)
-local verdict = if v ~= nil then "read" else "refused"
-print(string.format("%%d,0,%%d,0,0,%%s,%%s",
-	report.unknown, report.widened,
-	tostring(report.damaged), verdict))
-`, rootName)
+	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal R = require(\"./table_refusal\")\n" + g.requireAll() +
+		fmt.Sprintf(`local T = require("./%[2]s")
+local report = load.newReport()
+local v = R.ReadStrict(T, %[1]q, inputs.wire, report)
+print(if v ~= nil and report.reason == nil then "read" else "refused")
+`, rootName, tableModuleOf(g, rootName))
 }
 
 func runWire(t *testing.T, g *generatedUnit, rootName string, wire []byte) string {
@@ -68,11 +61,12 @@ func rowWire(t *testing.T, row reportRow) []byte {
 	return data
 }
 
-// TestMooTableLoadMatchesTheReports loads every report row of the tables
-// conformance manifest through the emitted load.moo and prints
-// u,k,w,c,d,m,verdict as the conformance report surface does, comparing with
-// reports.txt (the Go engine's own answers). Every instance row's wire loads
-// and is not refused (docs/SPEC-TABLES.md §3, §3.1, §4).
+// TestMooTableLoadMatchesTheReports reads every report row of the tables
+// conformance manifest through the emitted one read and compares its verdict
+// with reports.txt (the Go engine's own verdicts). Every instance row's wire
+// reads, except a wire-refused row, which refuses (docs/SPEC-TABLES.md §3,
+// §3.1, §4). The verdict is the whole contract: no counter or reason is
+// compared (docs/rulings.json refusal-verdict-only).
 func TestMooTableLoadMatchesTheReports(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted load.moo)")
 	t.Parallel()
@@ -96,8 +90,12 @@ func TestMooTableLoadMatchesTheReports(t *testing.T) {
 		}
 		out := runWire(t, g, row.root, rowWire(t, row))
 		if row.kind == "instance" {
-			if strings.HasSuffix(out, ",refused") {
-				t.Errorf("instance %s: the load refused a wire its own unit wrote: %s", row.caseName, out)
+			want := "read"
+			if row.blobShared {
+				want = "refused"
+			}
+			if out != want {
+				t.Errorf("instance %s: the one read answers %s, want %s", row.caseName, out, want)
 			}
 			instances++
 			continue
@@ -108,7 +106,7 @@ func TestMooTableLoadMatchesTheReports(t *testing.T) {
 			continue
 		}
 		if out != want {
-			t.Errorf("report %s (%s/%s):\nmoo:  %s\nwant: %s", row.caseName, row.unit, row.root, out, want)
+			t.Errorf("report %s (%s/%s): moo %s, want %s", row.caseName, row.unit, row.root, out, want)
 			continue
 		}
 		compared++
@@ -119,32 +117,32 @@ func TestMooTableLoadMatchesTheReports(t *testing.T) {
 	t.Logf("%d report rows compared, %d instance rows loaded, %d rows of refused units", compared, instances, refusedRows)
 }
 
-// TestMooTableLoadNegativeControl patches the emitted load.moo — one anchor,
-// matched exactly once — so a duplicate map key is not counted, and requires
-// the report comparison to go red on a wire with one (docs/SPEC-TABLES.md §4).
+// TestMooTableLoadNegativeControl: a repeated map key is damage
+// (docs/plans/strict-only.md decision 5), so the one read refuses a wire with
+// one. The control patches the emitted load.moo (one anchor, matched exactly
+// once) so the repeat is not seen, and requires the same wire to read.
 func TestMooTableLoadNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted load.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Dup.schema": "package dup\ntable Box\n{\n    m map[uint8]uint8\n}\n"})
-	const want = "0,0,0,0,1,false,read"
 	wire := duplicateMapWire()
-	if got := runWire(t, g, "Box", wire); got != want {
-		t.Fatalf("the control, an unpatched duplicate: got %s, want %s", got, want)
+	if got := runWire(t, g, "Box", wire); got != "refused" {
+		t.Fatalf("the control, an unpatched repeated key: got %s, want refused", got)
 	}
 	path := filepath.Join(g.dir, "table_load.moo")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "report.duplicate += 1"
+	const anchor = "report.repeatedKey += 1"
 	if strings.Count(string(src), anchor) != 1 {
-		t.Fatalf("the duplicate anchor is not in the emitted runtime exactly once")
+		t.Fatalf("the repeated-key anchor is not in the emitted runtime exactly once")
 	}
-	if err := os.WriteFile(path, []byte(strings.Replace(string(src), anchor, "report.duplicate += 0", 1)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Replace(string(src), anchor, "report.repeatedKey += 0", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := runWire(t, g, "Box", wire); got == want {
-		t.Fatalf("the patched runtime still reports the duplicate: %s", got)
+	if got := runWire(t, g, "Box", wire); got != "read" {
+		t.Fatalf("the patched runtime still refuses the repeated key: %s", got)
 	}
 }
 
