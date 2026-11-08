@@ -1,0 +1,4 @@
+./read.go
+./serialize.go
+./squirrel.go
+./write.go

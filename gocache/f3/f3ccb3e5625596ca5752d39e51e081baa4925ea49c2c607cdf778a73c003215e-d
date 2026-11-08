@@ -1,0 +1,6 @@
+./fixedform.go
+./luatable.go
+./messageform.go
+./testgen.go
+./typedsave.go
+./view.go

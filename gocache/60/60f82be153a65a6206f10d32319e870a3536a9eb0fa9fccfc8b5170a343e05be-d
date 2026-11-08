@@ -1,0 +1,7 @@
+./cpp.go
+./functions.go
+./nullscan.go
+./objectmacros.go
+./readinline.go
+./utf8.go
+./writeinline.go

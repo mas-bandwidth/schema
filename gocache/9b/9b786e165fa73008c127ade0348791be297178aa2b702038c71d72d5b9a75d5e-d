@@ -1,0 +1,9 @@
+./check.go
+./check_fixed.go
+./fixedclampknown_claim.go
+./fixeddefaultbody_claim.go
+./retired.go
+./tablekeyed.go
+./tablelist.go
+./tablemap.go
+./tabletextlist.go

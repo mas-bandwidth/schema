@@ -1,0 +1,7 @@
+./batch.go
+./csharp.go
+./flat.go
+./functions.go
+./utf8.go
+./values.go
+./wstring.go

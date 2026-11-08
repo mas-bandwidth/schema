@@ -1,0 +1,13 @@
+./block.go
+./blockbuild.go
+./cook.go
+./cookwrite.go
+./fixedform.go
+./fixedlineage.go
+./json.go
+./messageform.go
+./retainform.go
+./squirreltable.go
+./testgen.go
+./textform.go
+./view.go

@@ -1,0 +1,8 @@
+./check.go
+./maps.go
+./read.go
+./required.go
+./texttotal.go
+./value.go
+./wide.go
+./write.go

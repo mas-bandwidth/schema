@@ -1,0 +1,6 @@
+./diff.go
+./file.go
+./layout.go
+./lineage.go
+./lockfile.go
+./monotone.go
