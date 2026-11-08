@@ -126,28 +126,46 @@ func init() {
 }
 
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): each sabotage takes
-// the discard out of one C# load entry point, so a body damaged inside a nested
-// body hands back what the walk decoded.
+// the whole-load refusal out of one C# load entry point: the wire-alone walk's
+// damage verdict (WireCheck) that refuses before the decode, and the discard
+// after it, so a body damaged inside a nested body hands back what the walk
+// decoded.
 func init() {
 	// the managed (form-1) load
 	sabotages["table-cs-discard"] = []edit{{
-		old: `if (report.Malformed) { type.Reset(value); return Finish(report, Verdict.Damaged); }`,
-		new: `if (report.Malformed && bytes.Length < 0) { type.Reset(value); return Finish(report, Verdict.Damaged); } // SABOTAGED: the discard is gone`,
+		old: `if (whole == WireDamaged) { Damage(report); return Finish(report, Verdict.Damaged); }`,
+		new: `if (whole == WireDamaged && bytes.Length < 0) { Damage(report); return Finish(report, Verdict.Damaged); } // SABOTAGED: the walk's refusal is gone`,
+	}, {
+		old: `if (report.Damaged) { type.Reset(value); return Finish(report, Verdict.Damaged); }`,
+		new: `if (report.Damaged && bytes.Length < 0) { type.Reset(value); return Finish(report, Verdict.Damaged); } // SABOTAGED: the discard is gone`,
 	}}
-	// the native region load, and the retaining load derived from it
+	// the native region load, and the retaining load derived from it: the
+	// measure's walk refusal (measure.go) and the region discard (region.go)
+	sabotages["table-cs-region-measure-discard"] = []edit{{
+		old: `if (whole == WireDamaged) { return -1; }`,
+		new: `if (whole == WireDamaged && bytes.Length < 0) { return -1; } // SABOTAGED: the measure's walk refusal is gone`,
+	}}
 	sabotages["table-cs-region-discard"] = []edit{{
-		old: `if (report.Malformed) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }`,
-		new: `if (report.Malformed && bytes.Length < 0 /* SABOTAGED: the region discard is gone */) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }`,
+		old: `if (report.Damaged) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }`,
+		new: `if (report.Damaged && bytes.Length < 0 /* SABOTAGED: the region discard is gone */) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }`,
 	}}
 	// the builder load
 	sabotages["table-cs-builder-discard"] = []edit{{
-		old: "        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);\n        if (report.Malformed)\n",
-		new: "        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);\n        if (report.Malformed && bytes.Length < 0) // SABOTAGED: the builder discard is gone\n",
+		old: `if (whole == WireDamaged) { Damage(report); Finish(report, Verdict.Damaged); return false; }`,
+		new: `if (whole == WireDamaged && bytes.Length < 0) { Damage(report); Finish(report, Verdict.Damaged); return false; } // SABOTAGED: the walk's refusal is gone`,
+	}, {
+		old: "        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);\n        if (report.Damaged)\n",
+		new: "        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);\n        if (report.Damaged && bytes.Length < 0) // SABOTAGED: the builder discard is gone\n",
 	}}
-	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the managed
-	// three-mark walk blinded to an open vertex, and the native Kahn check
-	// blinded to unprocessed vertices (so it resolves cyclic pointer slots and
-	// answers false).
+	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the wire-alone
+	// walk blinded to an open vertex, plus, per entry point, the decode-side
+	// check behind it: the managed three-mark walk blinded to an open vertex,
+	// and the native Kahn check blinded to unprocessed vertices (so it resolves
+	// cyclic pointer slots and answers false).
+	sabotages["table-cs-wire-cycle"] = []edit{{
+		old: `if (mark[target] == 1) { Damage(); return; }`,
+		new: `if (mark[target] != 0) { continue; } // SABOTAGED: no cycle check in the wire walk`,
+	}}
 	sabotages["table-cs-cycle"] = []edit{{
 		old: `if (mark == 1) { return true; } // a pointer to an OPEN node: a cycle`,
 		new: `if (mark == 1 && n < 0) { return true; } // SABOTAGED: no cycle check`,
