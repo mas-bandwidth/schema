@@ -66,7 +66,7 @@ local inputs = require("inputs")
 local hexline = require("hexline")
 
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 
 local function fill(v)
@@ -81,13 +81,13 @@ hexline(save.Save(T, "L", fill(T.NewL())))
 hexline(save.Save(T, "T", fill(T.NewT())))
 
 local r = report()
-local got = load.LoadTolerant(T, "T", inputs.wireL, r)
+local got = load.Load(T, "T", inputs.wireL, r)
 print(string.format("load %d %s %s %s %s %s %d %s [%s] %s %s %s %d %s %d",
   #got.names, got.names[1].value, got.names[2].value,
   tostring(got.first[1].value_present), got.first[1].value, tostring(got.first[2].value_present),
   #got.repos, got.repos[1].value, got.repos[2].value,
   tostring(got.bases[1].value_present), tostring(got.bases[2].value_present), got.bases[2].value,
-  r.clamped, tostring(r.malformed), r.kindMismatch))
+  r.outOfRange, tostring(r.damaged), r.kindChanged))
 
 local function refused(field, elems)
   local x = T.NewT()
@@ -103,15 +103,15 @@ print(string.format("refuse %s %s %s %s",
 
 local function over(name, wire)
   local rr = report()
-  local g = load.LoadTolerant(T, "T", inputs[wire], rr)
+  local g = load.loadWalk(T, "T", inputs[wire], rr)
   if name == "names" then
-    print(string.format("over names %d %d %s%s%s", rr.clamped, #g.names, g.names[1].value, g.names[2].value, g.names[3].value))
+    print(string.format("over names %d %d %s%s%s", rr.outOfRange, #g.names, g.names[1].value, g.names[2].value, g.names[3].value))
   elseif name == "first" then
-    print(string.format("over first %d %d %s%s %s %s", rr.clamped, #g.first, tostring(g.first[1].value_present), g.first[1].value, tostring(g.first[2].value_present), g.first[3].value))
+    print(string.format("over first %d %d %s%s %s %s", rr.outOfRange, #g.first, tostring(g.first[1].value_present), g.first[1].value, tostring(g.first[2].value_present), g.first[3].value))
   elseif name == "repos" then
-    print(string.format("over repos %d %d %s%s", rr.clamped, #g.repos, g.repos[1].value, g.repos[2].value))
+    print(string.format("over repos %d %d %s%s", rr.outOfRange, #g.repos, g.repos[1].value, g.repos[2].value))
   else
-    print(string.format("over bases %d %d %s %s%s %s", rr.clamped, #g.bases, tostring(g.bases[1].value_present), tostring(g.bases[2].value_present), g.bases[2].value, g.bases[3].value))
+    print(string.format("over bases %d %d %s %s%s %s", rr.outOfRange, #g.bases, tostring(g.bases[1].value_present), tostring(g.bases[2].value_present), g.bases[2].value, g.bases[3].value))
   end
 end
 

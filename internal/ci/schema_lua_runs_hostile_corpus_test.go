@@ -208,8 +208,8 @@ for line in io.lines(unitsPath) do
 end
 
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0, reason = "" }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+    outOfRange = 0, widened = 0, repeatedKey = 0, reason = "" }
 end
 
 local function caseResult(c)
@@ -226,33 +226,36 @@ local function caseResult(c)
   local value
 
   if c[2] == "text" then
-    -- The corpus carries the TOLERANT answer (§16.1): the strict plain
-    -- FromJson refuses clamped and malformed rows the engine's corpus accepts,
-    -- so the runner asks the twin the tolerant read is named after.
-    value = J.FromJsonTolerant(T, c[4], payload, r)
-    if r.malformed or value == nil then return "refuse", "damaged", nil end
+    -- STRICT-ONLY (docs/plans/strict-only.md): the plain FromJson is the one
+    -- text read, and the corpus is pinned to its answer.
+    value = J.FromJson(T, c[4], payload, r)
+    if r.damaged or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "wire" then
-    value = L.Load(T, c[4], payload, r)
-    -- A COUNT PAST THE INT32 STORAGE CAP is the port's count_over_extent_cap
-    -- (§2.9), which the corpus names count_refusal.
-    if r.reason == "count_over_extent_cap" then return "refuse", "count_refusal", nil end
-    if value == nil and (r.reason == "clamped" or r.reason == "kind_mismatch") then
-      -- THE CORPUS CARRIES THE TOLERANT ANSWER (docs/HOSTILE-CORPUS.md): a
-      -- strict refusal that names only a counter is a read the tolerant load
-      -- keeps, so its value is the one digested.
-      r = report()
-      value = L.LoadTolerant(T, c[4], payload, r)
+    -- A FIXED-ROOT FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): the input is
+    -- dispatched by its form byte to the fixed form's batch read, which must
+    -- hold exactly one record, as the C++ runner does (test/cpp-hostile).
+    -- Every named fixed-form refusal is the manifest's generic damaged.
+    if #payload > 0 and payload:byte(1) == 3 and T.Fixed ~= nil and T.Fixed[c[4]] ~= nil then
+      local ok, records = pcall(T.FixedLoad, c[4], payload)
+      if not ok or records == nil or #records ~= 1 then return "refuse", "damaged", nil end
+      value = records[1]
+    else
+      value = L.Load(T, c[4], payload, r)
+      -- A COUNT PAST THE INT32 STORAGE CAP is the port's count_over_extent_cap
+      -- (§2.9), which the corpus names count_refusal.
+      if r.reason == "count_over_extent_cap" then return "refuse", "count_refusal", nil end
+      if r.refused > 0 then
+        local form = #payload > 0 and payload:byte(1) or 0
+        return "refuse", form == 2 and "message_form_as_file" or "newer_form", nil
+      end
+      -- A NaN OR AN INFINITY is refused by every read, by name (docs/SPEC-TABLES.md
+      -- §3.3): the strict load's reason is the corpus's non_finite_float.
+      if r.reason == "non_finite_float" then return "refuse", r.reason, nil end
+      -- Every other strict refusal (wire_damaged, malformed, out_of_range for
+      -- a text list past its count or total, integrity_mismatch) is the
+      -- manifest's generic damaged.
+      if value == nil then return "refuse", "damaged", nil end
     end
-    if r.refused > 0 then
-      local form = #payload > 0 and payload:byte(1) or 0
-      return "refuse", form == 2 and "message_form_as_file" or "newer_form", nil
-    end
-    -- The strict read's other reasons (wire_damaged, malformed,
-    -- integrity_mismatch) stay the manifest's generic damaged.
-    -- A NaN OR AN INFINITY is refused by every read, by name (docs/SPEC-TABLES.md
-    -- §3.3): the strict load's reason is the corpus's non_finite_float.
-    if r.reason == "non_finite_float" then return "refuse", r.reason, nil end
-    if r.malformed or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "announce" then
     local vocab = {}
     if not M.announceRead(T, vocab, payload, r) then
@@ -286,11 +289,11 @@ local function caseResult(c)
         return "refuse", announced.reason ~= "" and announced.reason or "damaged", nil
       end
     end
-    local values = M.loadMessages(T, c[4], vocab, payload, r)
+    local values = M.loadMessages(T, c[4], vocab, payload, r, true)
     if r.nonFiniteFloat ~= nil then return "refuse", "non_finite_float", nil end
     if r.reason ~= "" then return "refuse", r.reason, nil end
     if r.refused > 0 then return "refuse", "damaged", nil end
-    if r.malformed or values == nil or values[1] == nil then return "refuse", "damaged", nil end
+    if r.damaged or values == nil or values[1] == nil then return "refuse", "damaged", nil end
     value = values[1]
   else
     return "refuse", "unknown_carrier", nil

@@ -169,8 +169,8 @@ local function announced()
   return vocab
 end
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+    outOfRange = 0, widened = 0, repeatedKey = 0, retained = 0, retainLost = 0 }
 end
 local vocab = announced()
 
@@ -180,7 +180,7 @@ for _, c in ipairs(finite) do
   local want = bits(v)
   local wire = assert(save.Save(T, "Root", v), "variable save")
   print("V|" .. c.name .. "|var|" .. hex(wire))
-  local back = assert(load.LoadTolerant(T, "Root", wire, report()), "variable load")
+  local back = assert(load.Load(T, "Root", wire, report()), "variable load")
   print("V|" .. c.name .. "|varback|" .. bits(back))
   local msg = assert(T.SaveMessages("Root", vocab, { v }), "message save")
   print("V|" .. c.name .. "|msg|" .. hex(msg))
@@ -316,7 +316,7 @@ for _, c in ipairs(nonfinite) do
 
     local w = patch_bytes(wire, is32, from, to)
     local r = report()
-    local got = load.LoadTolerant(T, "Root", w, r)
+    local got = load.loadWalk(T, "Root", w, r)
     check("var-" .. width .. tail .. "tolerant", got == nil and r.nonFiniteFloat == s.owner and r.reason == named, r.reason)
     r = report()
     got = load.Load(T, "Root", w, r)
@@ -326,7 +326,7 @@ for _, c in ipairs(nonfinite) do
 
     local m = patch_bits(msg, is32 and 32 or 64, from, to)
     r = report()
-    local values = T.LoadMessagesTolerant("Root", vocab, m, r)
+    local values = T.LoadMessages("Root", vocab, m, r)
     check("msg-" .. width .. tail .. "tolerant", values ~= nil and #values == 0 and r.nonFiniteFloat == s.owner and r.reason == named, r.reason)
     r = report()
     values = T.LoadMessages("Root", vocab, m, r)
@@ -335,7 +335,7 @@ for _, c in ipairs(nonfinite) do
     local fx = patch_bytes(fixed, is32, from, to)
     ok, err = pcall(T.ReadFixed, "Root", fx)
     check("fixed-" .. width .. tail .. "strict", not ok and err == "non_finite_float", err)
-    ok, err = pcall(T.ReadFixedTolerant, "Root", fx)
+    ok, err = pcall(T.ReadFixed, "Root", fx)
     check("fixed-" .. width .. tail .. "tolerant", not ok and err == "non_finite_float", err)
 
     local ck = patch_bytes(cooked, is32, from, to)
@@ -369,7 +369,7 @@ for _, k in ipairs({ { 10, "f32" }, { 11, "f64" } }) do
       and r.nonFiniteFloat == string.format("Holder.0x%016x", ` + fmt.Sprintf("0x%x", uint64(fsRetainedID)) + `)
       and #store.list == 0, r.reason)
     r = report()
-    got = load.LoadTolerant(T, "Holder", w, r)
+    got = load.Load(T, "Holder", w, r)
     check("plain-" .. k[2] .. tail .. "skips", got ~= nil and r.unknown == 1 and r.nonFiniteFloat == nil, r.reason)
   end
 end

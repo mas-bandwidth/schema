@@ -65,8 +65,8 @@ func TestLuaTableSaveNeverRaisesOnLoadedDamage(t *testing.T) {
 				"local load = require(\"load\")\n" +
 				"local save = require(\"save\")\n" +
 				"local inputs = require(\"inputs\")\n" +
-				"local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }\n" +
-				"local v = load.LoadTolerant(T, \"" + row.root + "\", inputs.wire, report)\n" +
+				"local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }\n" +
+				"local v = load.loadWalk(T, \"" + row.root + "\", inputs.wire, report)\n" +
 				"local ok, saved, refusal = pcall(save.Save, T, \"" + row.root + "\", v)\n" +
 				"if not ok then print(\"RAISED:\" .. tostring(saved))\n" +
 				"elseif type(saved) == \"string\" then print(\"OK:\" .. #saved)\n" +

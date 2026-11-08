@@ -72,25 +72,25 @@ end
 -- over the bound: refused for size, nothing of the vocabulary copied
 lengths = {}
 local over = {}
-local ro = { malformed = false, refused = 0 }
+local ro = { damaged = false, refused = 0 }
 assert(not T.AnnounceRead(over, inputs.announce, ro, vocabLen - 1), "over the bound was accepted")
 assert(ro.reason == "vocabulary_too_large", "reason: " .. tostring(ro.reason))
-assert(not ro.malformed, "size refusal reported damage")
+assert(not ro.damaged, "size refusal reported damage")
 assert(copies(vocabLen) == 0, "the vocabulary was copied before the bound was checked")
 assert(copies(fieldLen) == 0, "the vocabulary field was copied before the bound was checked")
 
 -- a damaged frame over the bound still reports the framing refusal
 lengths = {}
 local bad = {}
-local rd = { malformed = false, refused = 0 }
+local rd = { damaged = false, refused = 0 }
 assert(not T.AnnounceRead(bad, inputs.damaged, rd, vocabLen - 1), "a damaged frame was accepted")
-assert(rd.malformed == true, "a damaged frame did not report damage")
+assert(rd.damaged == true, "a damaged frame did not report damage")
 assert(rd.reason == nil, "a damaged frame reported: " .. tostring(rd.reason))
 
 -- at exactly the bound: accepted, and the vocabulary is copied once
 lengths = {}
 local at = {}
-local ra = { malformed = false, refused = 0 }
+local ra = { damaged = false, refused = 0 }
 assert(T.AnnounceRead(at, inputs.announce, ra, vocabLen), "the vocabulary at the bound was refused")
 assert(at.announced == true, "the vocabulary at the bound set no vocabulary")
 assert(copies(vocabLen) == 1, "copies of the vocabulary at the bound: " .. copies(vocabLen))

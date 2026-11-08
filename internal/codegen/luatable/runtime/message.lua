@@ -831,7 +831,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
     return false
   end
   if #data == 0 then
-    report.malformed = true
+    report.damaged = true
     vocab.refused = true
     return false
   end
@@ -844,7 +844,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
   if maxBytes == nil or maxBytes == 0 then maxBytes = 64 * 1024 end
   if maxEntries == nil or maxEntries == 0 then maxEntries = 4096 end
   local function damage()
-    report.malformed = true
+    report.damaged = true
     vocab.refused = true
     return false
   end
@@ -929,8 +929,8 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
 end
 
 -- THE STRICT SET (docs/SPEC-TABLES.md §6.5): a value a body states past its
--- declared bound is `clamped`; the tolerant read keeps BASE's answer, the
--- plain name counts it and refuses. The walk is the descriptor's own.
+-- declared bound is `out_of_range`; the plain name counts it and refuses.
+-- The walk is the descriptor's own.
 local function strict_count(T, d, v)
   if v == nil then return 0 end
   local s = d.shape
@@ -978,29 +978,28 @@ local function message_root(T, root)
   end
 end
 
--- loadMessages is the read behind both names (docs/SPEC-TABLES.md §6.5):
--- `strict` is the plain name's read. Damage discards every body, under both
--- names (§4). Evolution alone retains the existing strict/tolerant choice.
+-- loadMessages is the strict batch read (docs/SPEC-TABLES.md §6.5).
+-- Damage discards every body (§4).
 function M.loadMessages(T, root, vocab, data, report, strict)
   message_root(T, root)
   report = report or {}
   -- THE PLAIN NAME'S REPORT IS THIS READ'S ALONE (docs/SPEC-TABLES.md §6.5):
   -- every counter is cleared before the walk, so a reused report cannot refuse
-  -- a clean batch for a previous read's clamped or malformed count.
+  -- a clean batch for a previous read's outOfRange or damaged count.
   if strict then
     report.unknown = 0
-    report.kindMismatch = 0
-    report.clamped = 0
+    report.kindChanged = 0
+    report.outOfRange = 0
     report.widened = 0
-    report.duplicate = 0
-    report.blobShared = 0
+    report.repeatedKey = 0
+    report.sharedBlob = 0
   end
-  report.malformed = false
+  report.damaged = false
   report.refused = 0
   report.reason = ""
   report.nonFiniteFloat = nil
   if #data == 0 then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   if string.byte(data, 1) ~= 2 then
@@ -1014,7 +1013,7 @@ function M.loadMessages(T, root, vocab, data, report, strict)
     return nil
   end
   if #data < 2 then
-    report.malformed = true
+    report.damaged = true
     return nil
   end
   local count = string.byte(data, 2) + 1
@@ -1023,30 +1022,30 @@ function M.loadMessages(T, root, vocab, data, report, strict)
   for i = 1, count do
     local v, nonfinite = load_one(R, T, root, vocab)
     if nonfinite ~= nil then
-      -- A NON-FINITE FLOAT REFUSES THE BATCH, the tolerant read too
+      -- A NON-FINITE FLOAT REFUSES THE BATCH
       -- (docs/SPEC-TABLES.md §3.3): no record lands, and Reason names it.
       report.nonFiniteFloat = nonfinite
       report.reason = "non_finite_float: " .. nonfinite
       return {}
     end
     if v == nil then
-      report.malformed = true
+      report.damaged = true
       return {}
     end
     values[i] = v
   end
-  if not R:align() or R.off ~= R.nbits then report.malformed = true end
-  if report.malformed then return {} end
+  if not R:align() or R.off ~= R.nbits then report.damaged = true end
+  if report.damaged then return {} end
   if strict then
-    local clamped = 0
+    local out_of_range = 0
     for i = 1, #values do
-      clamped = clamped + strict_count(T, { shape = "table", target = root }, values[i])
+      out_of_range = out_of_range + strict_count(T, { shape = "table", target = root }, values[i])
     end
-    if clamped > 0 then report.clamped = (report.clamped or 0) + clamped end
-    local refused = report.malformed
-      or (report.clamped or 0) > 0
-      or (report.kindMismatch or 0) > 0
-      or (report.blobShared or 0) > 0
+    if out_of_range > 0 then report.outOfRange = (report.outOfRange or 0) + out_of_range end
+    local refused = report.damaged
+      or (report.outOfRange or 0) > 0
+      or (report.kindChanged or 0) > 0
+      or (report.sharedBlob or 0) > 0
     if refused then values = {} end
   end
   return values

@@ -60,7 +60,7 @@ func allocProbe(module string, rows []allocRow) string {
 local inputs = require("inputs")
 local N = 100
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 local rows = {
 `)

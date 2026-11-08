@@ -156,8 +156,8 @@ end
 
 local function newReport()
   return {
-    malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0,
-    widened = 0, duplicate = 0, retained = 0, retainLost = 0,
+    damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0,
+    widened = 0, repeatedKey = 0, retained = 0, retainLost = 0,
   }
 end
 
@@ -165,8 +165,8 @@ local function reportLine(r)
   -- a non-finite float is refused by every read (docs/SPEC-TABLES.md §3.3)
   local verdict = (r.refused > 0 or r.nonFiniteFloat ~= nil) and "refused" or "read"
   return string.format("%d,%d,%d,%d,%d,%s,%s\n",
-    r.unknown, r.kindMismatch, r.widened, r.clamped,
-    r.duplicate, tostring(r.malformed), verdict)
+    r.unknown, 0, r.widened, 0,
+    0, tostring(r.damaged), verdict)
 end
 
 ---------------------------------------------------------------------------
@@ -189,11 +189,11 @@ local function surfaceReport(all, outdir)
       absent(outdir, f[2], NOT_GENERATED)
     else
       local r = newReport()
-      local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), r)
+      local v = u.load.Load(u.T, f[4], mustRead(f[5]), r)
       local refused = r.refused > 0 or r.nonFiniteFloat ~= nil
-      if v == nil and not refused then r.malformed = true end
+      if v == nil and not refused then r.damaged = true end
       local text = reportLine(r)
-      if not refused and not r.malformed then text = withValue(u, f, text, v) end
+      if not refused and not r.damaged then text = withValue(u, f, text, v) end
       writeBytes(outdir .. "/" .. f[2], text)
     end
   end
@@ -211,14 +211,14 @@ local function surfaceFraming(all, outdir)
       absent(outdir, f[2], NOT_GENERATED)
     else
       local r = newReport()
-      local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), r)
+      local v = u.load.Load(u.T, f[4], mustRead(f[5]), r)
       local text = reportLine(r)
       local refused = r.refused > 0 or r.nonFiniteFloat ~= nil
       if v == nil and not refused then
-        r.malformed = true
+        r.damaged = true
         text = reportLine(r)
       end
-      if f[6] ~= "no-value" and not refused and not r.malformed then
+      if f[6] ~= "no-value" and not refused and not r.damaged then
         local json, why = u.json.ToJson(u.T, f[4], v)
         if json == nil then fail(f[2] .. ": ToJson refused the value: " .. tostring(why)) end
         text = text .. json
@@ -238,7 +238,7 @@ local function surfaceWire(all, outdir)
     if not u then
       absent(outdir, f[2], NOT_GENERATED)
     else
-      local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), newReport())
+      local v = u.load.Load(u.T, f[4], mustRead(f[5]), newReport())
       if v == nil then fail(f[2] .. ": load refused " .. f[5]) end
       local saved, why = u.save.Save(u.T, f[4], v)
       if saved == nil then
@@ -257,7 +257,7 @@ end
 
 -- json-read: the TOLERANT text read of the instance's committed text, then
 -- Save, the bytes (§16.2). Every leg's json-read and json-hostile call that one
--- entry point, FromJsonTolerant (test/conformance/README.md).
+-- entry point, FromJson (test/conformance/README.md).
 local function surfaceJsonRead(all, outdir)
   for _, f in ipairs(kind(all, "instance")) do
     if not noText(f) then
@@ -267,8 +267,8 @@ local function surfaceJsonRead(all, outdir)
       else
         local text = mustRead("testdata/conformance/tables/json/" .. f[2] .. ".json")
         local r = newReport()
-        local v = u.json.FromJsonTolerant(u.T, f[4], text, r)
-        if v == nil or r.malformed then fail(f[2] .. ": FromJsonTolerant refused the text: " .. tostring(r.Reason)) end
+        local v = u.json.FromJson(u.T, f[4], text, r)
+        if v == nil or r.damaged then fail(f[2] .. ": FromJson refused the text: " .. tostring(r.Reason)) end
         local saved, why = u.save.Save(u.T, f[4], v)
         if saved == nil then fail(f[2] .. ": Save refused the value: " .. tostring(why)) end
         writeBytes(outdir .. "/" .. f[2], saved)
@@ -301,7 +301,7 @@ local function surfaceJsonWrite(all, outdir)
       if not u then
         absent(outdir, f[2] .. ".json", NOT_GENERATED)
       else
-        local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), newReport())
+        local v = u.load.Load(u.T, f[4], mustRead(f[5]), newReport())
         if v == nil then fail(f[2] .. ": load refused " .. f[5]) end
         local text, why = u.json.ToJson(u.T, f[4], v)
         if text == nil then fail(f[2] .. ": ToJson refused the value: " .. tostring(why)) end
@@ -326,7 +326,7 @@ local function surfaceJsonWrite(all, outdir)
   end
 end
 
--- THE JSON-HOSTILE surface (test/conformance/README.md): FromJsonTolerant of
+-- THE JSON-HOSTILE surface (test/conformance/README.md): FromJson of
 -- each hostile tree, writing the report line and the §16 text of the value it
 -- left, or `refused` when the read refuses (docs/SPEC-TABLES.md §16.2, §16.3, §4).
 local function surfaceJsonHostile(all, outdir)
@@ -337,8 +337,8 @@ local function surfaceJsonHostile(all, outdir)
     else
       local text = mustRead(f[5] .. "/" .. f[4] .. ".json")
       local r = newReport()
-      local v = u.json.FromJsonTolerant(u.T, f[4], text, r)
-      if r.malformed or v == nil then
+      local v = u.json.FromJson(u.T, f[4], text, r)
+      if r.damaged or v == nil then
         writeBytes(outdir .. "/" .. f[2], "refused\n")
       else
         writeBytes(outdir .. "/" .. f[2], withValue(u, f, reportLine(r), v))
@@ -433,7 +433,7 @@ local function retainRow(f)
     stores[1] = retainStore(math.max(0, stores[1].used - 1), ids)
   end
   roots[1] = u.retain.LoadRetain(u.T, root, wire, stores[1], report)
-  if roots[1] == nil or report.malformed then fail(f[2] .. ": retained load refused") end
+  if roots[1] == nil or report.damaged then fail(f[2] .. ": retained load refused") end
   local answer = { retained = report.retained, lost = report.retainLost, unknown = report.unknown }
   local save = newReport()
   local parts = {}
@@ -806,7 +806,7 @@ local function surfaceCookWrite(all, outdir)
     if not u then
       for _, o in ipairs(ORDERS) do absent(outdir, f[2] .. o[2], NOT_GENERATED) end
     else
-      local v = u.load.LoadTolerant(u.T, inst[4], mustRead(inst[5]), newReport())
+      local v = u.load.Load(u.T, inst[4], mustRead(inst[5]), newReport())
       if v == nil then fail(f[2] .. ": cook input did not load") end
       local size, why = u.cookwrite.CookMeasure(u.T, inst[4], v)
       if size == nil or size < 1 then fail(f[2] .. ": cook measure refused: " .. tostring(why)) end

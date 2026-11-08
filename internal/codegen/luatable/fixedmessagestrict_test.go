@@ -1,13 +1,11 @@
 package luatable
 
 // TestLuaFixedAndMessageReadsAreStrict pins docs/SPEC-TABLES.md §6.5's rule
-// for the fixed and message forms on the Lua leg: the plain ReadFixed and
-// LoadMessages are STRICT and the tolerant twins keep BASE's answers. The
-// oracle is the generated Go read (internal/codegen/gotable, whose
-// TestGoDefaultReadIsStrict pins the same rows): a clamped record refuses the
-// plain name, a damaged one refuses both, and a refused LoadMessages writes no
-// record. The message goldens of the conformance manifest read clean under the
-// plain name.
+// for the fixed and message forms on the Lua leg: ReadFixed and LoadMessages
+// are the one read (docs/plans/strict-only.md). The oracle is the generated Go
+// read (internal/codegen/gotable): an out-of-range record and a truncated one
+// refuse, a clean one reads; only the verdict is compared. The message goldens
+// of the conformance manifest read clean.
 
 import (
 	"fmt"
@@ -83,15 +81,12 @@ const fixedMessageStrictGoProbe = `package probe
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 )
 
 func strictVerdict(err error) string {
-	if err == nil { return "clean" }
-	s := err.Error()
-	if i := strings.IndexByte(s, ':'); i >= 0 { return s[:i] }
-	return s
+	if err == nil { return "read" }
+	return "refused"
 }
 
 func TestFixedMessageStrictOracle(t *testing.T) {
@@ -103,14 +98,14 @@ func TestFixedMessageStrictOracle(t *testing.T) {
 		var got Fix
 		FixReset(&got)
 		var r TableReport
-		if n := FixFixedLoad([]Fix{got}, data, plan, &r); n < 0 { return strictVerdict(r.Err()) }
-		return "clean"
+		if n := FixFixedLoad([]Fix{got}, data, plan, &r); n < 0 { return "refused" }
+		return strictVerdict(r.Err())
 	}
 	fmt.Printf("ORACLE\tfixed_clean\t%s\n", fixed(file))
 	clamped := append([]byte(nil), file...)
 	body := clamped[len(clamped)-FixFixedRecordBytes+8:]
 	body[0], body[1], body[2], body[3] = 100, 0, 0, 0
-	fmt.Printf("ORACLE\tfixed_clamped\t%s\n", fixed(clamped))
+	fmt.Printf("ORACLE\tfixed_outOfRange\t%s\n", fixed(clamped))
 	fmt.Printf("ORACLE\tfixed_truncated\t%s\n", fixed(file[:len(file)-1]))
 
 	var vocab TableVocabulary
@@ -127,14 +122,11 @@ func TestFixedMessageStrictOracle(t *testing.T) {
 	message := func(data []byte) string {
 		got := []Fix{{N: 9, M: 9}}
 		var r TableReport
-		if _, ok := FixLoadMessages(got, &vocab, data, &r); !ok {
-			if r.Err() != nil { return strictVerdict(r.Err()) }
-			return "refused"
-		}
-		return "clean"
+		if _, ok := FixLoadMessages(got, &vocab, data, &r); !ok { return "refused" }
+		return strictVerdict(r.Err())
 	}
 	fmt.Printf("ORACLE\tmessage_clean\t%s\n", message(msg))
-	fmt.Printf("ORACLE\tmessage_clamped\t%s\n", message(forged))
+	fmt.Printf("ORACLE\tmessage_outOfRange\t%s\n", message(forged))
 	fmt.Printf("ORACLE\tmessage_truncated\t%s\n", message(msg[:1]))
 }
 `
@@ -154,27 +146,18 @@ func fixedMessageStrictLua(t *testing.T, src string) map[string]string {
 	run := t.TempDir()
 	luarun.WriteFiles(t, run, files)
 	probe := `local T = require(` + fmt.Sprintf("%q", ModuleName(u)) + `)
-local function verdict(err)
-  local n = tostring(err)
-  local i = n:find(":", 1, true)
-  if i then n = n:sub(1, i - 1) end
-  return n
-end
 local function strict(reader, root, data)
-  local ok, err = pcall(reader, root, data)
-  if ok then return "clean" end
-  return verdict(err)
+  local ok, v = pcall(reader, root, data)
+  if ok and v ~= nil then return "read" end
+  return "refused"
 end
 local out = {}
 local v = T.NewFix(); v.n = 3; v.m = 4
 local file = T.WriteFixed("Fix", v)
 out.fixed_clean = strict(T.ReadFixed, "Fix", file)
-local clamped = file:sub(1, #file - 8) .. string.char(100, 0, 0, 0) .. file:sub(#file - 3)
-out.fixed_clamped = strict(T.ReadFixed, "Fix", clamped)
+local outOfRange = file:sub(1, #file - 8) .. string.char(100, 0, 0, 0) .. file:sub(#file - 3)
+out.fixed_outOfRange = strict(T.ReadFixed, "Fix", outOfRange)
 out.fixed_truncated = strict(T.ReadFixed, "Fix", file:sub(1, #file - 1))
--- the tolerant twin keeps BASE's answer: the unchecked value rides
-local tv = T.ReadFixedTolerant("Fix", clamped)
-out.tolerant_fixed_clamped = tostring(tv.n)
 
 local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
@@ -183,26 +166,15 @@ assert(T.AnnounceRead(vocab, T.Announcement, report))
 local zero = T.NewFix(); zero.n = 0; zero.m = 4
 local msg = assert(T.SaveMessages("Fix", vocab, { zero }))
 local forged = msg:sub(1, 2) .. string.char((msg:byte(3) & ~0x78) | 0x78) .. msg:sub(4)
-local function message(reader, data)
+local function message(data)
   local r = {}
-  local values = reader("Fix", vocab, data, r)
-  if values == nil then return "malformed" end
-  if (r.clamped or 0) > 0 then return "clamped" end
-  if r.malformed then return "malformed" end
-  if (r.kindMismatch or 0) > 0 then return "kind_mismatch" end
-  if (r.blobShared or 0) > 0 then return "blob_shared" end
-  return "clean"
+  local ok, values = pcall(T.LoadMessages, "Fix", vocab, data, r)
+  if not ok or values == nil or values[1] == nil or r.damaged then return "refused" end
+  return "read"
 end
-out.message_clean = message(T.LoadMessages, msg)
-out.message_clamped = message(T.LoadMessages, forged)
-out.message_truncated = message(T.LoadMessages, msg:sub(1, 1))
--- the tolerant twin keeps BASE's answer, and a refused strict read wrote nothing
-local tr = {}
-local kept = T.LoadMessagesTolerant("Fix", vocab, forged, tr)
-out.tolerant_message_clamped = tostring(#kept) .. ":" .. tostring(kept[1] and kept[1].n)
-local sr = {}
-local refused = T.LoadMessages("Fix", vocab, forged, sr)
-out.strict_message_refused_count = tostring(#refused)
+out.message_clean = message(msg)
+out.message_outOfRange = message(forged)
+out.message_truncated = message(msg:sub(1, 1))
 for k, val in pairs(out) do print("LUA\t" .. k .. "\t" .. tostring(val)) end
 `
 	if err := os.WriteFile(filepath.Join(run, "main.lua"), []byte(probe), 0o644); err != nil {
@@ -226,33 +198,23 @@ func TestLuaFixedAndMessageReadsAreStrict(t *testing.T) {
 	slowtest.Gate(t, "go and the pinned lua")
 	oracle := fixedMessageStrictGoOracle(t, fixedMessageStrictSchema)
 	lua := fixedMessageStrictLua(t, fixedMessageStrictSchema)
+	// One read (docs/plans/strict-only.md): the verdict is the contract, so
+	// each row compares read/refused only, never a reason name.
 	for _, name := range []string{
-		"fixed_clean", "fixed_clamped",
-		"message_clean", "message_clamped", "message_truncated",
+		"fixed_clean", "fixed_outOfRange", "fixed_truncated",
+		"message_clean", "message_outOfRange", "message_truncated",
 	} {
 		if lua[name] != oracle[name] {
-			t.Errorf("%s: Lua says %q, the generated Go strict read says %q", name, lua[name], oracle[name])
+			t.Errorf("%s: Lua says %q, the generated Go read says %q", name, lua[name], oracle[name])
 		}
 	}
-	// A damaged fixed file is refused by both names; the Lua leg's fixed
-	// runtime names the truncated file `malformed` where Go names it
-	// `truncated` (the same refusal, §3.4's own wording on each leg).
-	if lua["fixed_truncated"] == "clean" || oracle["fixed_truncated"] == "clean" {
-		t.Errorf("fixed_truncated: Lua says %q, the generated Go strict read says %q; both must refuse",
-			lua["fixed_truncated"], oracle["fixed_truncated"])
-	}
-	// THE TOLERANT TWINS KEEP BASE'S ANSWERS (docs/SPEC-TABLES.md §6.5): the
-	// fixed read never clamped and the message read never clamped either, so
-	// the forged rows keep the value they stated. A strict refusal writes no
-	// record.
-	if lua["tolerant_fixed_clamped"] != "100" {
-		t.Errorf("ReadFixedTolerant answered n=%s for the clamped record, want BASE's 100", lua["tolerant_fixed_clamped"])
-	}
-	if lua["tolerant_message_clamped"] != "1:-1" {
-		t.Errorf("LoadMessagesTolerant answered %q for the clamped batch, want BASE's 1:-1", lua["tolerant_message_clamped"])
-	}
-	if lua["strict_message_refused_count"] != "0" {
-		t.Errorf("a refused LoadMessages left %s record(s) written, want 0", lua["strict_message_refused_count"])
+	for name, want := range map[string]string{
+		"fixed_clean": "read", "fixed_outOfRange": "refused", "fixed_truncated": "refused",
+		"message_clean": "read", "message_outOfRange": "refused", "message_truncated": "refused",
+	} {
+		if lua[name] != want {
+			t.Errorf("%s: Lua says %q, want %q", name, lua[name], want)
+		}
 	}
 
 	// THE MESSAGE GOLDENS READ CLEAN UNDER THE PLAIN NAME (§3.3, §6.5).
@@ -288,7 +250,7 @@ for i = 1, T.MessageEntries do vocab[i] = {} end
 assert(T.AnnounceRead(vocab, inputs.announce, report))
 local values = T.LoadMessages("`+msg.root+`", vocab, inputs.batch, report)
 assert(values ~= nil and #values > 0, "the plain ReadMessages refused a golden")
-assert(not report.malformed, "the plain ReadMessages reported damage on a golden")
+assert(not report.damaged, "the plain ReadMessages reported damage on a golden")
 print("golden-ok")
 `)
 		announce := readFile(t, filepath.Join(repo, conn.ann))

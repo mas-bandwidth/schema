@@ -67,8 +67,8 @@ end
 local function reportText(report)
   return string.format(
     "Retained=%d\nRetainLost=%d\nWidened=%d\nUnknown=%d\nKindMismatch=%d\nClamped=%d\nDuplicate=%d\nMalformed=%s\n",
-    report.retained, report.retainLost, report.widened, report.unknown, report.kindMismatch, report.clamped,
-    report.duplicate, tostring(report.malformed))
+    report.retained, report.retainLost, report.widened, report.unknown, report.kindChanged, report.outOfRange,
+    report.repeatedKey, tostring(report.damaged))
 end
 
 local function refuse(outdir, name, class) writeFile(outdir .. "/" .. name .. ".refused", class .. "\n") end

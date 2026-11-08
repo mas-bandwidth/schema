@@ -28,10 +28,10 @@ local function hex(s)
   if s == nil then return "nil" end
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local r1 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local r1 = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 local built = J.FromJson(T, "` + root + `", inputs.text, r1)
 print(hex(T.FixedSave("` + root + `", { built })))
-local loaded = T.ReadFixedTolerant("` + root + `", inputs.wire)
+local loaded = T.ReadFixed("` + root + `", inputs.wire)
 print(hex(T.FixedSave("` + root + `", { loaded })))
 print(hex(J.ToJson(T, "` + root + `", loaded)))
 `
