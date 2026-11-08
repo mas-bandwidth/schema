@@ -152,22 +152,17 @@ print((r1.malformed and "1" or "0") .. (r2.malformed and "1" or "0"))
 `, rootName, rootName, rootName, rootName)
 }
 
-// jsonHostileProbe reads one hostile text and prints the manifest's verdict
-// line (`u,k,w,c,d,m,verdict`, or `refused`), docs/SPEC-TABLES.md §16.2, §4.
+// jsonHostileProbe reads one hostile text through the strict FromJson (the
+// one read) and prints the manifest's verdict, read or refused
+// (docs/SPEC-TABLES.md §16.2, §6.5; strict-only: the verdict is the whole
+// cross-language contract).
 func jsonHostileProbe(g *generatedUnit, rootName string) string {
 	return jsonModules(g) + jsonFlags(g) + fmt.Sprintf(`local json = require("./schema_json")
 json.SetFlags(SCHEMA_JSON_FLAGS)
 local inputs = require("./inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = json.FromJsonTolerant(%q, inputs.text, report)
-if v == nil then report.malformed = true end
-if report.malformed then
-	print("refused")
-else
-	print(string.format("%%d,%%d,%%d,%%d,%%d,%%s,read",
-		report.unknown, report.kindMismatch, report.widened, report.clamped,
-		report.duplicate, tostring(report.malformed)))
-end
+local report: any = {}
+local v = json.FromJson(%q, inputs.text, report)
+print(if v ~= nil then "read" else "refused")
 `, rootName)
 }
 
@@ -310,7 +305,7 @@ func TestLuauJsonNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "root_full.bin"))
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "wire", "root_full.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +346,7 @@ local function report()
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 end
 local r = report()
-local v = json.FromJsonTolerant("Box", inputs.text, r)
+local v = json.fromJsonWalk("Box", inputs.text, r)
 if v == nil then print("refused"); return end
 print(string.format("km=%d u=%d", r.kindMismatch, r.unknown))
 print(buffer.tostring(json.ToJson("Box", v)))

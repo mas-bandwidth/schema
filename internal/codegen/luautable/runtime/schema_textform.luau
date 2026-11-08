@@ -1178,8 +1178,8 @@ function T.LoadTextForm(root: string, text: string, limits: any?): (any, any, an
 	local js = table.concat(r.out)
 	local report = { malformed = false, clamped = 0, kindMismatch = 0, unknown = 0, duplicate = 0 }
 	-- the resolver checked the record strictly by name (§16.9.4); the JSON
-	-- read here only places it, so it is the tolerant read (§6.5)
-	local value = J.FromJsonTolerant(root, buffer.fromstring(js), report)
+	-- read here only places it, so it is the walk read (§6.5)
+	local value = J.fromJsonWalk(root, buffer.fromstring(js), report)
 	if value == nil then
 		local name = KIND_MISMATCH
 		if report.clamped > 0 then name = BOUND

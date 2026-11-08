@@ -4,11 +4,11 @@
 # Law: docs/FIXED-FORM-ALGORITHM.md §5.7, the uint_widen versioning row. When
 # widening uint16 → uint32, the value 0xFFFF (65535, the max uint16, just
 # below the 2^16 = 65536 ceiling) must ZERO-extend to 65535, not sign-extend
-# to 0xFFFFFFFF (4294967295). The widened counter fires once; the clamped
-# counter does not fire because the value is within the writer's declared
-# bounds (uint16 implicit range: 0–65535). The bounds pass clamps to the
+# to 0xFFFFFFFF (4294967295). The widened counter fires once; no other
+# counter fires because the value is within the writer's declared
+# bounds (uint16 implicit range: 0–65535). The bounds pass holds the
 # WRITER's bounds, not the reader's — and since 0xFFFF is at the writer's
-# own ceiling, no clamp fires.
+# own ceiling, the strict read does not refuse it as out of range.
 #
 # Byte vector derivation (the law, not a dump):
 #   VOLD schema: fixed table UintWiden { lead uint32=1, v uint16=0, trail uint32=2 }
@@ -54,8 +54,12 @@ defmodule R29 do
     check("v zero-extended to 65535 (not sign-extended to 0xFFFFFFFF)", v == 65535)
     check("trail bracket preserved", trail == 0xBBBBBBBB)
     check("widened counter fired exactly once", report.widened == 1)
-    check("clamped counter did not fire (value within writer's bounds)", report.clamped == 0)
-    check("no damage", report.malformed == false)
+
+    check(
+      "no other counter fired (value within writer's bounds)",
+      report.unknown == 0 and report.retained == 0 and report.retain_lost == 0 and
+        report.layout_hash == 0
+    )
 
     # NEGATIVE CONTROL: the same body read through a SIGNED widen would
     # sign-extend 0xFFFF to 0xFFFFFFFF. If this assertion fails, the widen

@@ -202,12 +202,11 @@ local V = require("./schema_save")
 local R = require("./schema_refusal")
 local M = require("./schema_message")
 local S = require("./schema_tables")
+local F = require("./schema_fixed")
 -- The text carrier has already passed the strict text read; the wire round
--- trip below only puts its value where the canonical writer takes it. Use the
--- tolerant wire walk when the base has one (the strict plain load judges the
--- wire, not the text), so a digest finding names the writer rather than the
--- vehicle.
-local LoadDigest = L.loadTolerant or L.load
+-- trip below only puts its value where the canonical writer takes it, through
+-- the one (strict) wire read.
+local LoadDigest = L.load
 local T = setmetatable({}, { __index = function(_, k) error("no module declares " .. tostring(k)) end })
 `)
 	for _, m := range mods {
@@ -233,20 +232,24 @@ local T = setmetatable({}, { __index = function(_, k) error("no module declares 
 	b.WriteString(`local function newreport(): any
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 end
+-- THE NAMED REFUSALS (docs/HOSTILE-CORPUS.md, "Reasons"): the corpus names a
+-- refusal only where the engine has one constant every leg spells alike;
+-- every other strict refusal is damaged, as the C++ runner collapses it
+-- (test/cpp-hostile/hostile.hpp hc_refused). Why a read refused is otherwise
+-- per-language detail (docs/SPEC-TABLES.md §6.5).
+local NAMED = {
+	newer_form = true, message_form_as_file = true, no_vocabulary = true,
+	second_announcement = true, vocabulary_too_large = true, batch_too_large = true,
+	non_finite_float = true,
+}
 local function nn(x: any): string
-	-- the engine's damaged is a read that reports a malformed or wire-damaged
-	-- event without naming a refusal (docs/HOSTILE-CORPUS.md, "Reasons").
-	if x == nil or x == "" then return "damaged" end
-	if x == "wire_damaged" or x == "malformed" then return "damaged" end
-	-- §16.3's text refusals are malformed reads whose Reason names the
-	-- field; the engine has no refusal constant for them, so they are damaged
-	local name = string.match(tostring(x), "^([%w_]+):")
-	if name == "string_not_utf8" or name == "string_lone_surrogate" or name == "text_holds_zero" then return "damaged" end
+	if x == nil then return "damaged" end
 	-- the corpus names a count past the int32 storage cap count_refusal
 	if x == "count_over_extent_cap" then return "count_refusal" end
-	-- the tolerant read names the float's field after the refusal (§3.3)
-	if name == "non_finite_float" then return name end
-	return tostring(x)
+	-- a read names the float's field after the refusal (§3.3)
+	local name = string.match(tostring(x), "^([%w_]+)") or ""
+	if NAMED[name] then return name end
+	return "damaged"
 end
 local function hexstr(buf: buffer): string
 	local parts = table.create(buffer.len(buf))
@@ -274,7 +277,7 @@ for _, c in CASES do
 	local v = nil
 	if c.carrier == "text" then
 		local rep = newreport()
-		v = J.FromJsonTolerant(c.root, b, rep)
+		v = J.FromJson(c.root, b, rep)
 		if v == nil then
 			verdict, reason = "refuse", nn(rep.reason)
 		else
@@ -291,6 +294,18 @@ for _, c in CASES do
 		local form = buffer.len(b) > 0 and buffer.readu8(b, 0) or -1
 		if form == 2 then
 			verdict, reason = "refuse", "message_form_as_file"
+		elseif form == 3 then
+			-- A FIXED ROOT's file is form 3 (docs/SPEC-TABLES.md §3.4), read
+			-- through the fixed form by its form byte, as the C++ runner does
+			-- (test/cpp-hostile/hostile.hpp HC_FIXED): a file holds one record.
+			local recs = F.read(S.lookup(c.root), nil :: any, b, rep)
+			if recs == nil then
+				verdict, reason = "refuse", if rep.malformed then "damaged" else nn(rep.reason)
+			elseif #recs ~= 1 then
+				verdict, reason = "refuse", "damaged"
+			else
+				v = recs[1]
+			end
 		elseif form ~= 1 then
 			verdict, reason = "refuse", form < 0 and "damaged" or "newer_form"
 		else

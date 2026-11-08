@@ -96,14 +96,11 @@ func TestWireFeedChainRegionBytesDart(t *testing.T) {
 			if got.measure != wantMeasure {
 				t.Errorf("Dart feedWireMeasure = %d, tablewire.FileRegionMeasure = %d on %s", got.measure, wantMeasure, c.name)
 			}
-			if got.unknown != report.Unknown || got.kindMismatch != 0 ||
-				got.widened != report.Widened || got.clamped != 0 {
-				t.Errorf("Dart counters = %d,%d,%d,%d; the Go oracle = %d,%d,%d,%d on %s",
-					got.unknown, got.kindMismatch, got.widened, got.clamped,
-					report.Unknown, 0, report.Widened, 0, c.name)
-			}
-			if got.malformed != report.Refused {
-				t.Errorf("Dart malformed = %v, the Go oracle = %v on %s", got.malformed, report.Refused, c.name)
+			if got.unknown != report.Unknown ||
+				got.widened != report.Widened {
+				t.Errorf("Dart counters = %d,%d; the Go oracle = %d,%d on %s",
+					got.unknown, got.widened,
+					report.Unknown, report.Widened, c.name)
 			}
 			if got.refused != report.Refused {
 				t.Errorf("Dart refused = %v, the Go oracle = %v on %s", got.refused, report.Refused, c.name)
@@ -116,14 +113,11 @@ func TestWireFeedChainRegionBytesDart(t *testing.T) {
 }
 
 type feedChainAnswer struct {
-	measure      int64
-	unknown      int
-	kindMismatch int
-	widened      int
-	clamped      int
-	malformed    bool
-	refused      bool
-	saved        string
+	measure int64
+	unknown int
+	widened int
+	refused bool
+	saved   string
 }
 
 // feedChainProbe runs the generated StreamdemoWire measure, a tolerant load
@@ -146,10 +140,7 @@ void main(List<String> args) {
   final saved = feedWireSave(v);
   stdout.writeln('measure=$measure');
   stdout.writeln('unknown=${report.unknown}');
-  stdout.writeln('kind=${report.kindMismatch}');
   stdout.writeln('widened=${report.widened}');
-  stdout.writeln('clamped=${report.clamped}');
-  stdout.writeln('malformed=${report.malformed ? 1 : 0}');
   stdout.writeln('refused=${report.refused ? 1 : 0}');
   stdout.writeln('saved=${saved.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 }
@@ -174,14 +165,8 @@ void main(List<String> args) {
 			got.measure = parseInt64(t, v)
 		case "unknown":
 			got.unknown = int(parseInt64(t, v))
-		case "kind":
-			got.kindMismatch = int(parseInt64(t, v))
 		case "widened":
 			got.widened = int(parseInt64(t, v))
-		case "clamped":
-			got.clamped = int(parseInt64(t, v))
-		case "malformed":
-			got.malformed = v == "1"
 		case "refused":
 			got.refused = v == "1"
 		case "saved":
@@ -254,7 +239,7 @@ func TestCardWireFuzzMutantRefusedDart(t *testing.T) {
 	if got.measure != wantMeasure {
 		t.Errorf("Dart cardWireMeasure = %d, tablewire.FileRegionMeasure = %d", got.measure, wantMeasure)
 	}
-	if !got.malformed {
+	if !got.refused {
 		t.Errorf("the Dart load did not refuse a damaged card")
 	}
 }
@@ -278,10 +263,7 @@ void main(List<String> args) {
   final saved = cardWireSave(v);
   stdout.writeln('measure=$measure');
   stdout.writeln('unknown=${report.unknown}');
-  stdout.writeln('kind=${report.kindMismatch}');
   stdout.writeln('widened=${report.widened}');
-  stdout.writeln('clamped=${report.clamped}');
-  stdout.writeln('malformed=${report.malformed ? 1 : 0}');
   stdout.writeln('refused=${report.refused ? 1 : 0}');
   stdout.writeln('saved=${saved.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}');
 }
@@ -306,14 +288,8 @@ void main(List<String> args) {
 			got.measure = parseInt64(t, v)
 		case "unknown":
 			got.unknown = int(parseInt64(t, v))
-		case "kind":
-			got.kindMismatch = int(parseInt64(t, v))
 		case "widened":
 			got.widened = int(parseInt64(t, v))
-		case "clamped":
-			got.clamped = int(parseInt64(t, v))
-		case "malformed":
-			got.malformed = v == "1"
 		case "refused":
 			got.refused = v == "1"
 		case "saved":

@@ -47,11 +47,11 @@ func refsArmBody(root string, mutant []byte) string {
   final values = <h.%s>[value];
   final rep = h.TableReport();
   final count = r.%sLoadMessages(values, msg, vocab, rep);
-  print('REPORT ${count} ${rep.unknown} ${rep.kindMismatch} ${rep.widened} ${rep.clamped} ${rep.duplicate} ${rep.malformed} ${rep.refused}');
+  print('REPORT ${count} ${rep.unknown} ${rep.widened} ${rep.refused}');
 `, dartBytes(mutant), root, root, root, lower)
 }
 
-var refsArmLine = regexp.MustCompile(`(?m)^REPORT (-?\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (true|false) (true|false)$`)
+var refsArmLine = regexp.MustCompile(`(?m)^REPORT (-?\d+) (\d+) (\d+) (true|false)$`)
 
 // TestMessageRefsAndUnknownArmDart loads each mutant through the generated
 // Dart batch message load and through the Go reference message decode
@@ -59,7 +59,6 @@ var refsArmLine = regexp.MustCompile(`(?m)^REPORT (-?\d+) (\d+) (\d+) (\d+) (\d+
 // counter agree. A Go refusal (an error) is -1 with refused set, as the
 // conformance leg reports it.
 func TestMessageRefsAndUnknownArmDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	u := batchUnit(t, "tables/backend")
 	m := tabletext.NewModel(u)
@@ -80,7 +79,11 @@ func TestMessageRefsAndUnknownArmDart(t *testing.T) {
 			if err != nil {
 				n, g.Refused = -1, true
 			}
-			want := fmt.Sprintf("%d %d %d %d %d %d %t %t", n, g.Unknown, 0, g.Widened, 0, 0, g.Refused, g.Refused)
+			wantN := n
+			if g.Refused && wantN < 0 {
+				wantN = 0 // STRICT VERDICT: a refused batch load delivers no body
+			}
+			want := fmt.Sprintf("%d %d %d %t", wantN, g.Unknown, g.Widened, g.Refused)
 			out, err := runBatchProbe(t, u, tc.root, refsArmBody(tc.root, tc.mutant))
 			if err != nil {
 				t.Fatalf("the emitted Dart batch load did not run green: %v\n%s", err, out)
@@ -91,7 +94,7 @@ func TestMessageRefsAndUnknownArmDart(t *testing.T) {
 			}
 			got := strings.Join(line[1:], " ")
 			if got != want {
-				t.Fatalf("%s: Dart (count unknown kind widened clamped duplicate malformed refused) = %s, Go reference = %s", tc.root, got, want)
+				t.Fatalf("%s: Dart (count unknown widened refused) = %s, Go reference = %s", tc.root, got, want)
 			}
 		})
 	}

@@ -56,10 +56,9 @@ case load.(data) do
     check.("default string lands empty", read.name == <<>>)
     check.("default bytes lands empty", read.icon == <<>>)
     check.("default flags lands zero", read.loadout.perks == 0)
-    check.("default round-trip: malformed clear", not report.malformed)
     check.("default round-trip: no counters moved",
-      report.unknown == 0 and report.kind_mismatch == 0 and
-      report.clamped == 0 and report.widened == 0 and report.duplicate == 0)
+      report.unknown == 0 and report.widened == 0 and
+      report.retained == 0 and report.retain_lost == 0 and report.layout_hash == 0)
 
   other ->
     check.("default round-trip: expected {:ok, [_], _}, got #{inspect(other)}", false)
@@ -79,7 +78,8 @@ case load.(data2) do
     check.("non-default string survives", read2.name == "hello")
     check.("non-default bytes survives", read2.icon == <<0x01, 0x02, 0x03, 0x04>>)
     check.("non-default flags survives", read2.loadout.perks == 5)
-    check.("non-default round-trip: malformed clear", not report2.malformed)
+    check.("non-default round-trip: no counters moved",
+      report2.unknown == 0 and report2.widened == 0 and report2.layout_hash == 0)
 
   other ->
     check.("non-default round-trip: expected {:ok, [_], _}, got #{inspect(other)}", false)
@@ -99,7 +99,8 @@ case load.(data3) do
     check.("max-length string survives", read3.name == :binary.copy("x", 32))
     check.("max-length bytes survives", read3.icon == :binary.copy(<<0xFF>>, 16))
     check.("all flag bits survives", read3.loadout.perks == 7)
-    check.("max round-trip: malformed clear", not report3.malformed)
+    check.("max round-trip: no counters moved",
+      report3.unknown == 0 and report3.widened == 0 and report3.layout_hash == 0)
 
   other ->
     check.("max round-trip: expected {:ok, [_], _}, got #{inspect(other)}", false)

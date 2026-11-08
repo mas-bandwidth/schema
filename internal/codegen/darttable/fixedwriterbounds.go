@@ -146,7 +146,7 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, lower string, entries []Fi
 					put = append(put, "Endian.little")
 				}
 				g.call("    ", "", "view."+set, put, ";")
-				g.pf("    report.clamped++;\n")
+				g.pf("    report.refused = TableFixedRefusal.outOfRange;\n")
 				g.pf("  }")
 				lead = " else if"
 			}

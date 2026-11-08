@@ -47,7 +47,8 @@ const (
 	// +39: the region and builder loads hold a record of a type the reader
 	// cannot name and the decoded graph in the same walk; no tableWireVerify
 	// prepass is left (strict-engine.w8)
-	goOneTableLineBudget = 9989
+	// -1: a message body tests a repeated field id with slices.Contains (modernize-clean generated Go)
+	goOneTableLineBudget = 9988
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -76,7 +77,8 @@ const (
 	// +121: the region and builder loads hold a record of a type the reader
 	// cannot name and the decoded graph in the same walk; no tableWireVerify
 	// prepass is left (strict-engine.w8)
-	goExamplesLineBudget = 59528
+	// -50: a message body tests a repeated field id or keyed slot with slices.Contains and ranges over its count (modernize-clean generated Go)
+	goExamplesLineBudget = 59478
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

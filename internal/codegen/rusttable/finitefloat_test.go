@@ -565,7 +565,7 @@ fn fixed() {
             let (n, report) = fixed_load(&file, &mut values);
             let verdict = if n.is_some() {
                 Err(format!("the read landed {n:?}"))
-            } else if !report.refused || report.reason != TableFixedReason::NonFiniteFloat || report.malformed || report.non_finite_float != field {
+            } else if !report.refused || report.reason != TableFixedReason::NonFiniteFloat || report.damaged || report.non_finite_float != field {
                 Err(format!("want the refusal non_finite_float naming {field}: {report:?}"))
             } else if values[0].a != 0.0 {
                 Err(format!("record one kept a = {} from a refused batch", values[0].a))

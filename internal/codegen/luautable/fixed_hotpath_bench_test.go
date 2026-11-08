@@ -72,7 +72,7 @@ func TestLuauFixedHotPathBenchEvidence(t *testing.T) {
 	after8, afterMod := luauFixedUnit(t, u8)
 	before := make(map[string][]float64, 3)
 	after := make(map[string][]float64, 3)
-	for i := 0; i < pairs; i++ {
+	for i := range pairs {
 		if i%2 == 0 {
 			fixedHotPathAppend(t, before, before8, beforeMod, tc8, row8.check, cpp8, iters, "before8")
 			fixedHotPathAppend(t, after, after8, afterMod, tc8, row8.check, cpp8, iters, "after8")
@@ -96,7 +96,7 @@ func TestLuauFixedHotPathBenchEvidence(t *testing.T) {
 		row := luauFixedRowFor(t, id)
 		g, mod := luauFixedUnit(t, u)
 		samples := make(map[string][]float64, 3)
-		for i := 0; i < pairs; i++ {
+		for i := range pairs {
 			m := fixedHotPathMeasure(t, g, mod, tc, row.check, cpp, iters, id)
 			for _, mode := range []string{"read", "write", "round_trip"} {
 				elapsed := m[mode]

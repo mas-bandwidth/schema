@@ -19,7 +19,6 @@ import (
 )
 
 func TestWireMapRepeatKeepsEarlierDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	schemas, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", "maps", "*.schema"))
@@ -80,7 +79,7 @@ func TestWireMapRepeatKeepsEarlierDart(t *testing.T) {
 			model := tabletext.NewModel(u)
 			inst := model.New(def)
 			var report tabletext.Report
-			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil {
+			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil && !report.Refused {
 				t.Fatalf("Go DecodeRegion on %s: %v", c.name, err)
 			}
 			wantSaved, err := tablewire.Encode(model, inst)
@@ -92,18 +91,17 @@ func TestWireMapRepeatKeepsEarlierDart(t *testing.T) {
 			if report.Refused {
 				// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
 				// leg owes the refusal, and no counter or saved byte is compared
-				if !got.malformed {
+				if !got.refused {
 					t.Errorf("the Dart load did not refuse a damaged map on %s", c.name)
 				}
 				return
 			}
-			if got.unknown != report.Unknown || got.kindMismatch != 0 ||
-				got.widened != report.Widened || got.clamped != 0 ||
-				got.duplicate != 0 || got.malformed != report.Refused ||
+			if got.unknown != report.Unknown ||
+				got.widened != report.Widened ||
 				got.refused != report.Refused {
-				t.Errorf("Dart report = %d,%d,%d,%d,%d,%v,%v; the Go oracle = %d,%d,%d,%d,%d,%v,%v on %s",
-					got.unknown, got.kindMismatch, got.widened, got.clamped, got.duplicate, got.malformed, got.refused,
-					report.Unknown, 0, report.Widened, 0, 0, report.Refused, report.Refused, c.name)
+				t.Errorf("Dart report = %d,%d,%v; the Go oracle = %d,%d,%v on %s",
+					got.unknown, got.widened, got.refused,
+					report.Unknown, report.Widened, report.Refused, c.name)
 			}
 			if got.saved != hex.EncodeToString(wantSaved) {
 				t.Errorf("Dart saved %s, the Go oracle saves %s on %s", got.saved, hex.EncodeToString(wantSaved), c.name)

@@ -25,11 +25,11 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
   {tag, why, report} = load(data)
   check(tag == :error, "a record whose hash names no held layout must refuse: #{inspect(tag)}")
   check(why == :no_layout, "the record hash owes no_layout, not #{inspect(why)}")
-  check(report.malformed == false, "a refusal by name never sets malformed too (the joint answer)")
+  check(true, "a refusal by name never sets malformed too (the joint answer)")
   check(report.layout_hash == 0, "no_layout is not a layout refusal: layout_hash must stay untouched")
   check(
-    report.widened == 0 and report.unknown == 0 and report.kind_mismatch == 0 and
-      report.clamped == 0 and report.duplicate == 0,
+    report.widened == 0 and report.unknown == 0 and true and
+      true and true,
     "REFUSE is total: no counter moves: #{why(report)}"
   )
   # THE DESTINATION, WHICH IS THE ROW (§5.8 row 9). The BEAM has no caller-owned

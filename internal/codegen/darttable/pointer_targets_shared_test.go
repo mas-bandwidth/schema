@@ -15,7 +15,6 @@ import (
 )
 
 func TestDartPointerTargetsSharedCorpus(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	schema, raw := sharedDartFixture(t, "pointer-targets")
 	var rows []struct {
@@ -61,7 +60,18 @@ func TestDartPointerTargetsSharedCorpus(t *testing.T) {
 			} else {
 				ok, err = tablewire.Decode(m, value, wire, &r)
 			}
-			if !ok || err != nil || r.Refused || row.KindMismatch != 0 || r.Unknown != row.Unknown {
+			load := fmt.Sprintf("w.%sWireLoad(data,r)", fn)
+			if retaining {
+				load = fmt.Sprintf("w.%sWireLoadRetain(data,store,r)", fn)
+			}
+			if r.Refused {
+				// STRICT VERDICT: a pointer naming a record of the wrong type
+				// is damage; the whole load refuses (checked in Dart).
+				fmt.Fprintf(&probe, "{final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();%s;check(r.refused,%q);}\n",
+					hex.EncodeToString(wire), load, row.Name+" refused")
+				continue
+			}
+			if !ok || err != nil || row.KindMismatch != 0 || r.Unknown != row.Unknown {
 				t.Fatalf("%s retaining=%v explicit oracle %+v %v", row.Name, retaining, r, err)
 			}
 			canonical, err := m.Write(value)
@@ -87,17 +97,13 @@ func TestDartPointerTargetsSharedCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			load := fmt.Sprintf("w.%sWireLoad(data,r)", fn)
-			if retaining {
-				load = fmt.Sprintf("w.%sWireLoadRetain(data,store,r)", fn)
-			}
 			fmt.Fprintf(&probe, `{final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));
 for(var repeat=0;repeat<2;repeat++){
  final r=w.TableWireReport();final v=%s;
- check(!r.malformed&&!r.refused&&r.kindMismatch==%d&&r.unknown==%d&&r.blobShared==0&&r.retained==%d&&r.retainLost==%d,%q);
+ check(!r.refused&&r.unknown==%d&&r.retained==%d&&r.retainLost==%d,%q);
  check(w.%sToJson(v)==%q,%q);
  check(hex(w.%sWireSave(v))==%q,%q);
-`, hex.EncodeToString(wire), load, row.KindMismatch, row.Unknown, r.Retained, r.RetainLost, row.Name+" report", fn, string(canonical)+"\n", row.Name+" value", fn, hex.EncodeToString(saved), row.Name+" writer")
+`, hex.EncodeToString(wire), load, row.Unknown, r.Retained, r.RetainLost, row.Name+" report", fn, string(canonical)+"\n", row.Name+" value", fn, hex.EncodeToString(saved), row.Name+" writer")
 			if retaining {
 				fmt.Fprintf(&probe, ` final sr=w.TableWireReport();final saved=w.%sWireSaveRetain(v,store,sr);
  check(sr.retainLost==%d&&hex(saved)==%q,%q);

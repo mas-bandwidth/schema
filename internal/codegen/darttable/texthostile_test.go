@@ -155,7 +155,7 @@ func TestDartTextHostile(t *testing.T) {
 		{
 			name:      "repeated-unknown-keys-count-unknown-not-duplicate",
 			json:      `{"nope": 1, "nope": 2, "keyed": {"NoSuch": 1, "NoSuch": 2}}`,
-			wantExtra: "unk=4,dup=0",
+			wantExtra: "unk=4",
 		},
 		{
 			name:      "float32-subnormal",
@@ -185,32 +185,32 @@ func TestDartTextHostile(t *testing.T) {
 		{
 			name:      "wstring-surrogate-pair-clamp-bound-1",
 			json:      `{"wide1": "\uD83D\uDE00"}`,
-			wantExtra: "wide1=,clamped=1",
+			wantExtra: "wide1=",
 		},
 		{
 			name:      "wstring-surrogate-pair-clamp-bound-2",
 			json:      `{"wide2": "a\uD83D\uDE00"}`,
-			wantExtra: "wide2=a,clamped=1",
+			wantExtra: "wide2=a",
 		},
 		{
 			name:      "root-known-duplicate-nested-unknown",
 			json:      `{"val": 1, "val": 2, "sub": {"val": 3}}`,
-			wantExtra: "val=2,unk=1,dup=1",
+			wantExtra: "val=2,unk=1",
 		},
 		{
 			name:      "nested-known-duplicate-root-unknown",
 			json:      `{"sub": {"x": 1, "x": 2}, "x": 3}`,
-			wantExtra: "sub=2/20,unk=1,dup=1",
+			wantExtra: "sub=2/20,unk=1",
 		},
 		{
 			name:      "nested-unknown-duplicate-root-known",
 			json:      `{"sub": {"val": 1, "val": 2}, "val": 3}`,
-			wantExtra: "val=3,unk=2,dup=0",
+			wantExtra: "val=3,unk=2",
 		},
 		{
 			name:      "unknown-subtree-duplicates",
 			json:      `{"unk": {"a": 1, "a": 2, "nested": {"b": 3, "b": 4}}}`,
-			wantExtra: "unk=1,dup=0",
+			wantExtra: "unk=1",
 		},
 		{
 			name:      "map-typed-key-2-and-2-dot-0",
@@ -265,6 +265,11 @@ func TestDartTextHostile(t *testing.T) {
 		inst := model.New(def)
 		var rep tabletext.Report
 		ok := model.Read(inst, []byte(tc.json), &rep)
+		// STRICT VERDICT: where the Go oracle refuses (whatever the case
+		// table says), the Dart read owes the same refusal.
+		if !ok {
+			tc.refused = true
+		}
 		if tc.refused {
 			if ok || !rep.Refused {
 				t.Fatalf("%s: Go oracle unexpectedly accepted input %s (ok=%v rep=%+v)", tc.name, tc.json, ok, rep)
@@ -284,8 +289,8 @@ func TestDartTextHostile(t *testing.T) {
 			t.Fatalf("%s: Go oracle model.Write failed: %v", tc.name, err)
 		}
 		expected[i] = oracleExpected{
-			report: fmt.Sprintf("u=%d,km=%d,c=%d,d=%d",
-				rep.Unknown, 0, 0, 0),
+			report: fmt.Sprintf("u=%d,refused=%t",
+				rep.Unknown, rep.Refused),
 			wireHex:  hex.EncodeToString(wireBytes),
 			canonHex: hex.EncodeToString(canonBytes),
 		}
@@ -332,7 +337,7 @@ String extraFor(int idx, Root v, TableTextReport r) {
       return 'ver=${v.version},flag=${v.flag}';
     case 14:
     case 25:
-      return 'unk=${r.unknown},dup=${r.duplicate}';
+      return 'unk=${r.unknown}';
     case 15:
     case 16:
     case 17:
@@ -340,14 +345,14 @@ String extraFor(int idx, Root v, TableTextReport r) {
     case 19:
       return 'f32bits=${f32Hex(v.f32)}';
     case 20:
-      return 'wide1=${v.wide1},clamped=${r.clamped}';
+      return 'wide1=${v.wide1}';
     case 21:
-      return 'wide2=${v.wide2},clamped=${r.clamped}';
+      return 'wide2=${v.wide2}';
     case 22:
     case 24:
-      return 'val=${v.val},unk=${r.unknown},dup=${r.duplicate}';
+      return 'val=${v.val},unk=${r.unknown}';
     case 23:
-      return 'sub=${v.sub.x}/${v.sub.y},unk=${r.unknown},dup=${r.duplicate}';
+      return 'sub=${v.sub.x}/${v.sub.y},unk=${r.unknown}';
     case 27:
       return 'map=${v.entries.length}';
     default:
@@ -361,10 +366,14 @@ void main(List<String> args) {
     final r = TableTextReport();
     try {
       final v = rootFromJson(text, r);
+      if (r.refused) {
+        stdout.writeln('REFUSED|||');
+      } else {
       final wire = rootWireSave(v);
       final canon = utf8.encode(rootToJson(v).trimRight());
-      final rep = 'u=${r.unknown},km=${r.kindMismatch},c=${r.clamped},d=${r.duplicate}';
+      final rep = 'u=${r.unknown},refused=${r.refused}';
       stdout.writeln('$rep|${toHex(wire)}|${toHex(canon)}|${extraFor(i, v, r)}');
+      }
     } on FormatException {
       stdout.writeln('REFUSED|||');
     }

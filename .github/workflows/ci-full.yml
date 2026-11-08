@@ -1191,7 +1191,7 @@ jobs:
           set -euo pipefail
           gh run download "$GITHUB_RUN_ID" --pattern 'conformance-results-*' --dir build/conformance/artifacts
           mkdir -p build/conformance/legs
-          find build/conformance/artifacts -name '*.json' -exec cp {} build/conformance/legs/ ;
+          find build/conformance/artifacts -name '*.json' -exec cp -t build/conformance/legs/ {} +
           ls build/conformance/legs
       - name: the proof table
         run: go run ./tools/matrix proof -results build/conformance/legs -report build/proof/proof.json -commit "$GITHUB_SHA"

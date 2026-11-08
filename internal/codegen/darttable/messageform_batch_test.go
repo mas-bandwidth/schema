@@ -201,8 +201,8 @@ func roundTripBody(root string, announce, message []byte) string {
   final values = <h.%s>[value];
   final loadRep = h.TableReport();
   final count = r.%sLoadMessages(values, msg, vocab, loadRep);
-  check(count == 1 && !loadRep.refused && !loadRep.malformed,
-      'LoadMessages count=$count refused=${loadRep.refused} malformed=${loadRep.malformed}');
+  check(count == 1 && !loadRep.refused,
+      'LoadMessages count=$count refused=${loadRep.refused} reason=${loadRep.reason}');
   final measureRep = h.TableReport();
   final measure = r.%sMeasureMessages(values, measureRep);
   check(measure == msg.length, 'MeasureMessages=$measure want=${msg.length}');
@@ -305,7 +305,7 @@ const batchRefusalsBody = `
   final fresh = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
   final freshRep = h.TableReport();
   final freshCount = r.rootLoadMessages(<h.Root>[h.Root()], buf, fresh, freshRep);
-  check(freshCount == -1 && freshRep.refused && freshRep.reason == 'no_vocabulary' && !freshRep.malformed,
+  check(freshCount == -1 && freshRep.refused && freshRep.reason == 'no_vocabulary',
       'no_vocabulary: count=$freshCount refused=${freshRep.refused} reason=${freshRep.reason}');
   // "'M' ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... 'MeasureMessages'
   // and 'SaveMessages' both refuse and return '-1'."
@@ -330,7 +330,7 @@ const batchRefusalsBody = `
   final oneStorage = <h.Root>[h.Root()];
   final readRep = h.TableReport();
   final readCount = r.rootLoadMessages(oneStorage, twoBuf, vocab, readRep);
-  check(readCount == 2 && readRep.refused && readRep.reason == 'batch_too_large' && !readRep.malformed,
+  check(readCount == 2 && readRep.refused && readRep.reason == 'batch_too_large',
       'read over capacity: count=$readCount refused=${readRep.refused} reason=${readRep.reason}');
 `
 
@@ -348,8 +348,8 @@ const batchDamageBody = `
   final wire = Uint8List.fromList([2, 2, 0xF0, 0x00]);
   final damageRep = h.TableReport();
   final damageCount = r.rootLoadMessages(<h.Root>[h.Root(), h.Root(), h.Root()], wire, vocab, damageRep);
-  check(damageCount == 0 && damageRep.malformed && !damageRep.refused,
-      'damage in body 2: count=$damageCount malformed=${damageRep.malformed}');
+  check(damageCount == 0 && damageRep.refused && damageRep.reason == 'wire_damaged',
+      'damage in body 2: count=$damageCount reason=${damageRep.reason}');
   // "BYTES AFTER THE PAD ARE MALFORMED ... a buffer with bytes left over
   // describes no batch this reader can name."
   final v = h.Root();
@@ -361,21 +361,21 @@ const batchDamageBody = `
   padded.setRange(0, m, buf);
   final padRep = h.TableReport();
   final padCount = r.rootLoadMessages(<h.Root>[h.Root()], padded, vocab, padRep);
-  check(padCount == 0 && padRep.malformed && !padRep.refused,
-      'bytes after the pad: count=$padCount malformed=${padRep.malformed}');
+  check(padCount == 0 && padRep.refused && padRep.reason == 'wire_damaged',
+      'bytes after the pad: count=$padCount reason=${padRep.reason}');
   // "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does
   // not know is a REFUSAL by name and never damage."
   for (final form in [1, 6]) {
     final formRep = h.TableReport();
     final formCount = r.rootLoadMessages(<h.Root>[h.Root()], Uint8List.fromList([form]), vocab, formRep);
-    check(formCount == -1 && formRep.refused && formRep.reason == 'newer_form' && !formRep.malformed,
+    check(formCount == -1 && formRep.refused && formRep.reason == 'newer_form',
         'form $form: count=$formCount reason=${formRep.reason}');
   }
   // "a reader handed a form-'2' wire where a file was expected refuses by name."
   final fileRep = h.TableReport();
   final fileOk = h.announceRead(h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0))),
       Uint8List.fromList([2, 0, 0, 0]), fileRep);
-  check(!fileOk && fileRep.refused && fileRep.reason == 'message_form_as_file' && !fileRep.malformed,
+  check(!fileOk && fileRep.refused && fileRep.reason == 'message_form_as_file',
       'a form-2 batch as a file: reason=${fileRep.reason}');
 `
 
@@ -615,7 +615,7 @@ const nestedDefaultElidesBody = `
   final back = <h.Root>[h.Root()];
   final rep = h.TableReport();
   final count = r.rootLoadMessages(back, buffer, vocab, rep);
-  check(count == 1 && !rep.refused && !rep.malformed, 'load count=$count reason=${rep.reason}');
+  check(count == 1 && !rep.refused, 'load count=$count reason=${rep.reason}');
   check(back[0].child.x == 7, 'the nested value did not round trip: ${back[0].child.x}');
 `
 
@@ -713,8 +713,8 @@ const dartSkipDepthBody = `
     h.initRoot(value);
     final rep = h.TableReport();
     final count = r.rootLoadMessages(<h.Root>[value], buf, vocab, rep);
-    check(count == 1 && !rep.malformed && !rep.refused && rep.unknown == 1 && value.a == 0,
-        '$row: count=$count malformed=${rep.malformed} unknown=${rep.unknown} a=${value.a}');
+    check(count == 1 && !rep.refused && rep.unknown == 1 && value.a == 0,
+        '$row: count=$count reason=${rep.reason} unknown=${rep.unknown} a=${value.a}');
   }
 
   void expectBad(String row, h.TableVocabulary vocab, Uint8List buf) {
@@ -722,7 +722,7 @@ const dartSkipDepthBody = `
     h.initRoot(value);
     final rep = h.TableReport();
     final count = r.rootLoadMessages(<h.Root>[value], buf, vocab, rep);
-    check(count == 0 && rep.malformed, '$row: count=$count malformed=${rep.malformed}');
+    check(count == 0 && rep.refused, '$row: count=$count reason=${rep.reason}');
   }
 
   expectOk('skip_depth_body_below_128', body, pack(127, 8, 0, 0, 128));

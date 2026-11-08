@@ -665,7 +665,7 @@ int fixedTableFixedLoad(
 ) {
   report.reset();
   if (byteLength < 1 || byteLength > bytes.length) {
-    report.malformed = true;
+    report.refused = TableFixedRefusal.damaged;
     return -1;
   }
   final view = fixedTableFixedLoadView.of(bytes);
@@ -684,13 +684,13 @@ int fixedTableFixedLoad(
     return -1;
   }
   if (byteLength < TableFixedLimits.layoutAt) {
-    report.malformed = true;
+    report.refused = TableFixedRefusal.damaged;
     return -1;
   }
   // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
   for (var i = 1; i < TableFixedLimits.hashAt; i++) {
     if (bytes[i] != 0) {
-      report.malformed = true;
+      report.refused = TableFixedRefusal.damaged;
       return -1;
     }
   }
@@ -699,7 +699,7 @@ int fixedTableFixedLoad(
     Endian.little,
   );
   if (layoutBytes + TableFixedLimits.layoutAt > byteLength) {
-    report.refused = TableFixedRefusal.layoutMalformed;
+    report.refused = TableFixedRefusal.layoutDamaged;
     return -1;
   }
   final hash = view.getUint64(TableFixedLimits.hashAt, Endian.little);
@@ -722,12 +722,12 @@ int fixedTableFixedLoad(
   // malformation under a KNOWN hash is one name, layout_malformed.
   final known = fixedTableFixedKnown[pick];
   if (layoutBytes != known.layoutBytes) {
-    report.refused = TableFixedRefusal.layoutMalformed;
+    report.refused = TableFixedRefusal.layoutDamaged;
     return -1;
   }
   for (var i = 0; i < layoutBytes; i++) {
     if (bytes[TableFixedLimits.layoutAt + i] != known.layout[i]) {
-      report.refused = TableFixedRefusal.layoutMalformed;
+      report.refused = TableFixedRefusal.layoutDamaged;
       return -1;
     }
   }
@@ -747,7 +747,6 @@ int fixedTableFixedLoad(
   // ONCE after the record loop and only on a read that returns (§5.9 #6):
   // once per endpoint, never per record, and REFUSE moves no counter at all.
   var censusUnknown = 0;
-  var censusKind = 0;
   if (hash != fixedTableFixedHash) {
     final lane = fixedTableFixedLineagePlans[pick];
     if (lane.why != TableFixedRefusal.none) {
@@ -767,7 +766,6 @@ int fixedTableFixedLoad(
     fillCount = lane.fillCount;
     remap = lane.remap;
     censusUnknown = lane.unknown;
-    censusKind = lane.kindMismatch;
   }
   // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
   // against this build's; digest is not on the wire, so the header hash is
@@ -776,7 +774,7 @@ int fixedTableFixedLoad(
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
   // the two ends of the file have met.
   if (recordBytes <= 8 || rest % recordBytes != 0) {
-    report.malformed = true;
+    report.refused = TableFixedRefusal.damaged;
     return -1;
   }
   final n = rest ~/ recordBytes;
@@ -822,6 +820,12 @@ int fixedTableFixedLoad(
       return -1;
     }
     fixedTableFixedDecode(values[k], plan.image, plan.imageView, 0, report);
+    if (report.refused != TableFixedRefusal.none) {
+      for (var j = 0; j <= k; j++) {
+        initFixedTable(values[j]);
+      }
+      return -1;
+    }
     // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the decode tested each
     // float's raw bits before it landed, and a NaN or an infinity refuses
     // the whole batch by name, the tolerant read included. Nothing of it is
@@ -840,7 +844,6 @@ int fixedTableFixedLoad(
   }
   // THE CENSUS LANDS ONCE, HERE, on a read that returns (§5.4, §5.9 #6).
   report.unknown += censusUnknown;
-  report.kindMismatch += censusKind;
   return n;
 }
 
