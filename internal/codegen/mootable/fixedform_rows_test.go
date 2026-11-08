@@ -270,3 +270,29 @@ func TestMooFixedHostileBoolNegativeControl(t *testing.T) {
 		t.Fatalf("without the 0-or-1 checks the hostile file still refuses: %s", got.head)
 	}
 }
+
+// TestMooFixedCfgPresentByteMutant is the wire fuzzer's tblv1.Cfg mutant
+// (testdata/fixed_cfg_present_mutant.bin): the conformance instance v1_cfg
+// with two bytes of its record forged, one of them a present byte of 0x8D.
+// The engine refuses it wire_damaged (internal/tablewire/fixed.go, a present
+// byte other than 0 or 1), so the strict moo read refuses it whole; the
+// untouched instance it was cut from lands.
+func TestMooFixedCfgPresentByteMutant(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
+	t.Parallel()
+	mutant, err := os.ReadFile(filepath.Join("testdata", "fixed_cfg_present_mutant.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clean, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "wire", "v1_cfg.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := fixedUnit(t, readTestSchema(t, "V1"), nil)
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", mutant); !strings.HasPrefix(got.head, "refused wire_damaged Cfg.") {
+		t.Errorf("the forged present byte: %s", got.head)
+	}
+	if got := runFixedLoad(t, g, "V1Table", "Cfg", clean); !strings.HasPrefix(got.head, "ok 1 ") {
+		t.Errorf("the control, v1_cfg as written: %s", got.head)
+	}
+}
