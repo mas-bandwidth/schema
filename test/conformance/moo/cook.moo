@@ -304,6 +304,45 @@ return function(ctx: any): { [string]: Surface }
 			end, reasons)
 		end,
 	}
+	-- THE COOK INPUT (§7.6): a recipe is `cook-write <instance> <json> <source>
+	-- <alias>`. The input is the canonical JSON text, or with `-` the
+	-- instance's wire through the one read (a graph past the text's depth
+	-- limit). A source and alias name two blob fields: the alias slot is handed
+	-- the source slot's very buffer, the in-memory graph Cook preserves and
+	-- Save and the text cannot spell (§2.5).
+	local function cookInput(i: { string }, f: { string }): any
+		if f[3] == nil or f[3] == "-" then
+			local value = ctx.read(i[3], i[4], ctx.inputs(i[5]))
+			if value == nil then
+				fail(f[2] .. ": cook input did not load")
+			end
+			return value
+		end
+		local J: any = ctx.module(i[3], "json")
+		local d: any = (ctx.module(i[3], "schema_tables") :: any).lookup(i[4])
+		if J == nil then
+			fail(f[2] .. ": cook input is text and the unit has no text module")
+		end
+		local rec = d.new()
+		if not J.fromJson(d, rec, ctx.inputs(f[3]), {}) then
+			fail(f[2] .. ": cook input text did not read")
+		end
+		if f[4] ~= nil and f[4] ~= "-" then
+			local from: any, to: any = nil, nil
+			for _, fd in d.fields do
+				if fd.name == f[4] then
+					from = fd
+				elseif fd.name == f[5] then
+					to = fd
+				end
+			end
+			if from == nil or to == nil or rec[from.slot] == nil then
+				fail(f[2] .. ": the alias recipe names no two blob fields")
+			end
+			rec[to.slot] = rec[from.slot]
+		end
+		return rec
+	end
 	surfaces["cook-write"] = {
 		carried = function(_: any, key: string): boolean
 			return ctx.module(key, "table_cookwrite") ~= nil and ctx.module(key, "table_load") ~= nil
@@ -330,11 +369,7 @@ return function(ctx: any): { [string]: Surface }
 					continue
 				end
 				ctx.tables(i[3])
-				local report = L.newReport()
-				local value = L.load(i[4], ctx.inputs(i[5]), report)
-				if value == nil or report.refused > 0 or report.damaged then
-					fail(f[2] .. ": cook input did not load")
-				end
+				local value = cookInput(i, f)
 				for _, big in { false, true } do
 					local name = if big then f[2] .. "-be" else f[2]
 					local out, why = W.cook(i[4], value, big)
