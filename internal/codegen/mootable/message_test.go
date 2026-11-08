@@ -78,7 +78,7 @@ func readRoot(t *testing.T, rel string) []byte {
 // SaveMessages it as a batch of one. Each answer is one hex line or a named
 // refusal.
 func messageProbe(g *generatedUnit, mod, rootName string) string {
-	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal save = require(\"./table_save\")\nlocal MS = require(\"./table_message\")\nlocal St = require(\"./schema_tables\")\n" +
+	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal save = require(\"./table_save\")\nlocal MS = require(\"./table_message\")\nlocal St = require(\"./schema_tables\")\nlocal F = require(\"./table_fixed\")\nlocal R = require(\"./table_refusal\")\n" +
 		g.requireAll() + fmt.Sprintf("local T = require(\"./%s\")\n", mod) + fmt.Sprintf(`local function hex(b: buffer): string
 	local parts = table.create(buffer.len(b))
 	for i = 0, buffer.len(b) - 1 do
@@ -98,16 +98,16 @@ local size = MS.MeasureMessages(%q, values, report)
 local out = MS.SaveMessages(%q, values, report)
 if out == nil then print("SAVE " .. tostring(report.reason) .. " " .. tostring(report.field)) return end
 print("msg " .. tostring(size) .. " " .. hex(out))
-local file, why = save.save(St.lookup(%q), values[1])
+local file, why = F.save(St.lookup(%q), T[%q .. "Fixed"], { values[1] })
 if file == nil then print("FILESAVE " .. tostring(why and why.name)) return end
 print("file " .. hex(file))
 local rep2 = load.newReport()
-local v = load.ReadStrict(%q, inputs.file, rep2)
+local v = R.ReadStrict(T, %q, inputs.file, rep2)
 if v == nil then print("READ " .. tostring(rep2.reason)) return end
 local again = MS.SaveMessages(%q, { v }, report)
 if again == nil then print("SAVE1 " .. tostring(report.reason) .. " " .. tostring(report.field)) return end
 print("one " .. hex(again))
-`, rootName, rootName, rootName, rootName, rootName, rootName)
+`, rootName, rootName, rootName, rootName, rootName, rootName, rootName)
 }
 
 // tableModuleOf names the <Base>Table module that declares root.
@@ -248,7 +248,7 @@ func TestMooMessageFormNegativeControl(t *testing.T) {
 // engine's message batch, announced through the unit's own announcement,
 // loaded and saved in the variable form.
 func messageDiffProbe(g *generatedUnit, mod, rootName string) string {
-	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal save = require(\"./table_save\")\nlocal MS = require(\"./table_message\")\nlocal St = require(\"./schema_tables\")\n" +
+	return "--!strict\nlocal inputs = require(\"./inputs\")\nlocal load = require(\"./table_load\")\nlocal save = require(\"./table_save\")\nlocal MS = require(\"./table_message\")\nlocal St = require(\"./schema_tables\")\nlocal F = require(\"./table_fixed\")\nlocal R = require(\"./table_refusal\")\n" +
 		g.requireAll() + fmt.Sprintf("local T = require(\"./%s\")\n", mod) + fmt.Sprintf(`local function hex(b: buffer): string
 	local parts = table.create(buffer.len(b))
 	for i = 0, buffer.len(b) - 1 do
@@ -257,7 +257,7 @@ func messageDiffProbe(g *generatedUnit, mod, rootName string) string {
 	return table.concat(parts)
 end
 local report: any = {}
-local v = load.ReadStrict(%q, inputs.file, load.newReport())
+local v = R.ReadStrict(T, %q, inputs.file, load.newReport())
 if v == nil then print("READ") return end
 local out = MS.SaveMessages(%q, { v }, report)
 if out == nil then print("SAVE " .. tostring(report.reason) .. " " .. tostring(report.field)) return end
@@ -267,10 +267,10 @@ if not MS.AnnounceRead(vocabulary, T.TableMessageAnnouncement, report) then prin
 local n, values = MS.LoadMessages(vocabulary, %q, inputs.message, 256, report)
 print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, 0, report.widened, 0, 0, tostring(report.damaged)))
 if n ~= 1 then return end
-local file = save.save(St.lookup(%q), values[1])
+local file = F.save(St.lookup(%q), T[%q .. "Fixed"], { values[1] })
 if file == nil then print("FILESAVE") return end
 print("file " .. hex(file))
-`, rootName, rootName, rootName, rootName)
+`, rootName, rootName, rootName, rootName, rootName)
 }
 
 // messageFixedCases restate, in the fixed class, what the message form
@@ -462,7 +462,7 @@ local function one(a: number, b: number)
 	v.B = b
 	local report: any = {}
 	local out = MS.SaveMessages("Q", { v }, report)
-	if out == nil then print("REFUSED " .. tostring(report.reason) .. " " .. tostring(report.field)) else print(hex(out)) end
+	if out == nil then print("REFUSED") else print(hex(out)) end
 end
 `)
 	var want []string
@@ -472,14 +472,17 @@ end
 		inst.Fields[1].Cell.F = float64(x)
 		msg, err := tablewire.EncodeMessages(m, []*tabletext.Instance{inst})
 		if err != nil {
-			t.Fatalf("the Go engine refuses %v: %v", x, err)
+			// a finite value off a compressed float's range is REFUSED on
+			// write (docs/plans/strict-only.md decision 8), never clamped
+			want = append(want, "REFUSED")
+		} else {
+			want = append(want, hex.EncodeToString(msg))
 		}
-		want = append(want, hex.EncodeToString(msg))
 		fmt.Fprintf(&main, "one(0x%08x, 0x%08x)\n", math.Float32bits(x), math.Float32bits(x))
 	}
 	for _, bits := range []uint32{0x7FC00000, 0x7F800001, 0x7F800000, 0xFF800000} {
 		fmt.Fprintf(&main, "one(0x%08x, 0)\n", bits)
-		want = append(want, "REFUSED non_finite_float Q.a")
+		want = append(want, "REFUSED")
 	}
 	got := strings.Split(g.run(t, main.String(), nil), "\n")
 	if len(got) != len(want) {
@@ -529,72 +532,107 @@ func TestMooMessageQuantizerNegativeControl(t *testing.T) {
 // evolveCase is one value written by build A and read by build B, which
 // declares the same table differently (docs/SPEC-TABLES.md §3.3, §4: the
 // reader decodes at the SENDER's announced shape and lands the value in its
-// own declaration).
+// own declaration). accept is the strict read's verdict (§4, §6.5): lawful
+// evolution (a widening, an unknown field, arm, variant or keyed slot) reads;
+// a kind mismatch, a value outside the reader's range and a count or a
+// length past its bound refuse the whole batch.
 type evolveCase struct {
 	name, writer, reader, root, json string
+	accept                           bool
 }
 
 var evolveCases = []evolveCase{
-	{"widened_unknown_mismatch",
-		"package probe\nfixed table T\n{\n    a int16\n    gone uint8\n    b int32\n    c float32\n    d uint16 | min = 0, max = 1000\n}\n",
-		"package probe\nfixed table T\n{\n    a int32\n    b string(8)\n    c float64\n    d uint16 | min = 0, max = 100\n}\n",
-		"T", `{"a":-300,"gone":7,"b":5,"c":1.5,"d":500}`},
-	{"quantized_into_plain_and_clamped",
+	{"widened_and_unknown",
+		"package probe\nfixed table T\n{\n    a int16\n    gone uint8\n    c float32\n    d uint16 | min = 0, max = 1000\n}\n",
+		"package probe\nfixed table T\n{\n    a int32\n    c float64\n    d uint16 | min = 0, max = 1000\n}\n",
+		"T", `{"a":-300,"gone":7,"c":1.5,"d":500}`, true},
+	{"kind_mismatch",
+		"package probe\nfixed table T\n{\n    a int16\n    b int32\n}\n",
+		"package probe\nfixed table T\n{\n    a int32\n    b string(8)\n}\n",
+		"T", `{"a":-300,"b":5}`, false},
+	{"out_of_range",
+		"package probe\nfixed table T\n{\n    d uint16 | min = 0, max = 1000\n}\n",
+		"package probe\nfixed table T\n{\n    d uint16 | min = 0, max = 100\n}\n",
+		"T", `{"d":500}`, false},
+	{"quantized_into_plain",
 		"package probe\nfixed table T\n{\n    q float32 | min = -10, max = 10, resolution = 0.5\n    r float32 | min = 0, max = 1, resolution = 0.01\n}\n",
 		"package probe\nfixed table T\n{\n    q float32 | min = -1, max = 1, resolution = 0.5\n    r float32\n}\n",
-		"T", `{"q":7.5,"r":0.25}`},
-	{"arrays_unions_enums",
-		"package probe\nenum E { a, b, c }\nunion U\n{\n    n uint32\n    s string(8)\n    extra uint8\n}\nfixed table T\n{\n    xs [..8]int16\n    u U\n    v U\n    e E\n    keyed [E]uint8\n}\n",
-		"package probe\nenum E { a, b }\nunion U\n{\n    n uint64\n    s string(4)\n}\nfixed table T\n{\n    xs [..4]int32\n    u U\n    v U\n    e E\n    keyed [E]uint8\n}\n",
-		"T", `{"xs":[1,-2,3,4,5,6],"u":{"extra":9},"v":{"s":"abcdefgh"},"e":"c","keyed":{"a":1,"c":3}}`},
+		"T", `{"q":0.5,"r":0.25}`, true},
+	{"quantized_out_of_range",
+		"package probe\nfixed table T\n{\n    q float32 | min = -10, max = 10, resolution = 0.5\n}\n",
+		"package probe\nfixed table T\n{\n    q float32 | min = -1, max = 1, resolution = 0.5\n}\n",
+		"T", `{"q":7.5}`, false},
+	{"unions_enums_unknown",
+		"package probe\nenum E { a, b, c }\nunion U\n{\n    n uint32\n    s string(8)\n    extra uint8\n}\nfixed table T\n{\n    xs [..8]int16\n    u U\n    v U\n    w U\n    e E\n    keyed [E]uint8\n}\n",
+		"package probe\nenum E { a, b }\nunion U\n{\n    n uint64\n    s string(4)\n}\nfixed table T\n{\n    xs [..4]int32\n    u U\n    v U\n    w U\n    e E\n    keyed [E]uint8\n}\n",
+		"T", `{"xs":[1,-2,3],"u":{"extra":9},"v":{"s":"abcd"},"w":{"n":7},"e":"c","keyed":{"a":1,"c":3}}`, true},
+	{"count_over_bound",
+		"package probe\nfixed table T\n{\n    xs [..8]int16\n}\n",
+		"package probe\nfixed table T\n{\n    xs [..4]int32\n}\n",
+		"T", `{"xs":[1,-2,3,4,5,6]}`, false},
+	{"length_over_bound",
+		"package probe\nunion U\n{\n    n uint32\n    s string(8)\n}\nfixed table T\n{\n    v U\n}\n",
+		"package probe\nunion U\n{\n    n uint32\n    s string(4)\n}\nfixed table T\n{\n    v U\n}\n",
+		"T", `{"v":{"s":"abcdefgh"}}`, false},
 	{"nested",
 		"package probe\nfixed table In\n{\n    k int8\n    w uint8\n}\nfixed table T\n{\n    inner In\n    pair [2]In\n}\n",
 		"package probe\nfixed table In\n{\n    k int16\n}\nfixed table T\n{\n    inner In\n    pair [2]In\n}\n",
-		"T", `{"inner":{"k":-5,"w":2},"pair":[{"k":1},{"w":4}]}`},
+		"T", `{"inner":{"k":-5,"w":2},"pair":[{"k":1},{"w":4}]}`, true},
+}
+
+// evolveInputs is build A's message and announcement for one case, and the
+// Go engine's verdict reading it into build B: "refuse", or "accept" and B's
+// file form of the value.
+func evolveInputs(t *testing.T, c evolveCase) (ub *ir.Unit, ann, msg []byte, want string) {
+	t.Helper()
+	ua := unitFromSource(t, c.writer)
+	ub = unitFromSource(t, c.reader)
+	ma := tabletext.NewModel(ua)
+	ia := ma.New(ua.Tables[c.root])
+	var ra tabletext.Report
+	if !ma.Read(ia, []byte(c.json), &ra) || ra.Refused {
+		t.Fatalf("the Go engine does not read the writer's JSON: %+v", ra)
+	}
+	msg, err := tablewire.EncodeMessages(ma, []*tabletext.Instance{ia})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ann = ir.TableAnnouncement(ua)
+	var vocab tablewire.Vocabulary
+	var rv tabletext.Report
+	if err := vocab.AnnounceRead(ann, &rv); err != nil {
+		t.Fatal(err)
+	}
+	mb := tabletext.NewModel(ub)
+	ib := mb.New(ub.Tables[c.root])
+	var rb tabletext.Report
+	if _, _, err := tablewire.DecodeMessages(mb, []*tabletext.Instance{ib}, msg, &vocab, &rb); err != nil {
+		return ub, ann, msg, "refuse"
+	}
+	fileB, err := tablewire.Encode(mb, ib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ub, ann, msg, fmt.Sprintf("accept %x", fileB)
 }
 
 // TestMooMessageFormEvolvesAsTheGoEngine is the reader's evolution gate on
 // form 2: build A writes a value (the Go engine's EncodeMessages) and build B
 // reads it against A's announcement. moo running build B and the Go engine
-// reading into build B's model agree on the counters (unknown, kind_mismatch,
-// widened, clamped, duplicate, malformed) and on the value, compared in B's
-// file form.
+// reading into build B's model reach the same VERDICT, and on an accept the
+// same value, compared in B's file form. Counters and reasons are
+// per-language diagnostics and are not compared (docs/rulings.json
+// refusal-verdict-only). The Go engine's verdict is itself held to the case's.
 func TestMooMessageFormEvolvesAsTheGoEngine(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	for _, c := range evolveCases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			ua := unitFromSource(t, c.writer)
-			ub := unitFromSource(t, c.reader)
-			ma := tabletext.NewModel(ua)
-			ia := ma.New(ua.Tables[c.root])
-			var ra tabletext.Report
-			if !ma.Read(ia, []byte(c.json), &ra) || ra.Refused {
-				t.Fatalf("the Go engine does not read the writer's JSON: %+v", ra)
+			ub, ann, msg, want := evolveInputs(t, c)
+			if strings.HasPrefix(want, "accept") != c.accept {
+				t.Fatalf("the Go engine's verdict is %s, the case says accept=%v", want, c.accept)
 			}
-			msg, err := tablewire.EncodeMessages(ma, []*tabletext.Instance{ia})
-			if err != nil {
-				t.Fatal(err)
-			}
-			ann := ir.TableAnnouncement(ua)
-			var vocab tablewire.Vocabulary
-			var rv tabletext.Report
-			if err := vocab.AnnounceRead(ann, &rv); err != nil {
-				t.Fatal(err)
-			}
-			mb := tabletext.NewModel(ub)
-			ib := mb.New(ub.Tables[c.root])
-			var rb tabletext.Report
-			n, _, err := tablewire.DecodeMessages(mb, []*tabletext.Instance{ib}, msg, &vocab, &rb)
-			if err != nil {
-				t.Fatal(err)
-			}
-			fileB, err := tablewire.Encode(mb, ib)
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := fmt.Sprintf("load %d %d,%d,%d,%d,%d,%v\nfile %x", n, rb.Unknown, 0, rb.Widened, 0, 0, rb.Refused, fileB)
 			files, err := generate(ub)
 			if err != nil {
 				t.Fatal(err)
@@ -602,7 +640,6 @@ func TestMooMessageFormEvolvesAsTheGoEngine(t *testing.T) {
 			if got := runEvolve(t, ub, files, c.root, ann, msg); got != want {
 				t.Fatalf("build B reading build A's message:\nmoo: %s\ngo:  %s", got, want)
 			}
-			t.Logf("%s", strings.SplitN(want, "\n", 2)[0])
 		})
 	}
 }
@@ -610,54 +647,69 @@ func TestMooMessageFormEvolvesAsTheGoEngine(t *testing.T) {
 func runEvolve(t *testing.T, ub *ir.Unit, files map[string][]byte, rootName string, ann, msg []byte) string {
 	t.Helper()
 	g := writeUnit(t, ub, files)
-	c := struct{ root string }{rootName}
-	main := "--!strict\nlocal inputs = require(\"./inputs\")\nlocal save = require(\"./table_save\")\nlocal MS = require(\"./table_message\")\nlocal St = require(\"./schema_tables\")\n" + g.requireAll() +
+	main := "--!strict\nlocal inputs = require(\"./inputs\")\nlocal F = require(\"./table_fixed\")\nlocal MS = require(\"./table_message\")\nlocal St = require(\"./schema_tables\")\n" + g.requireAll() +
 		fmt.Sprintf(`local vocabulary = MS.NewVocabulary()
 local report: any = {}
 if not MS.AnnounceRead(vocabulary, inputs.ann, report) then print("ANNOUNCE " .. tostring(report.reason)) return end
 local n, values = MS.LoadMessages(vocabulary, %q, inputs.message, 256, report)
-print(string.format("load %%d %%d,%%d,%%d,%%d,%%d,%%s", n, report.unknown, 0, report.widened, 0, 0, tostring(report.damaged)))
-local out = save.save(St.lookup(%q), values[1])
-if out == nil then print("FILESAVE") return end
+if n < 1 or report.damaged or report.refused or report.reason ~= nil then
+	if #values ~= 0 then print("A REFUSAL RETURNED VALUES") return end
+	print("refuse")
+	return
+end
+local T = require("./%s")
+local out = F.save(St.lookup(%q), T[%q .. "Fixed"], { values[1] })
+if out == nil then print("accept FILESAVE") return end
 local p = {}
 for i = 0, buffer.len(out) - 1 do p[#p + 1] = string.format("%%02x", buffer.readu8(out, i)) end
-print("file " .. table.concat(p))
-`, c.root, c.root)
+print("accept " .. table.concat(p))
+`, rootName, tableModuleOf(g, rootName), rootName, rootName)
 	return g.run(t, main, map[string][]byte{"ann": ann, "message": msg})
 }
 
-// TestMooMessageFormEvolvesNegativeControl patches the reader's body walk so
-// a field announced at a foreign kind is not counted kind_mismatch, and
-// requires the first evolution case to go red on exactly that counter.
+// TestMooMessageFormEvolvesNegativeControl patches each strict refusal of the
+// message read out of the emitted runtime in turn (back to the retired rule:
+// skip the mismatched field, clamp the value, keep the over-long payload or
+// count) and requires the case it guards to stop refusing.
 func TestMooMessageFormEvolvesNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
-	c := evolveCases[0]
-	ua := unitFromSource(t, c.writer)
-	ub := unitFromSource(t, c.reader)
-	ma := tabletext.NewModel(ua)
-	ia := ma.New(ua.Tables[c.root])
-	var ra tabletext.Report
-	if !ma.Read(ia, []byte(c.json), &ra) {
-		t.Fatal("the writer's JSON does not read")
+	byName := map[string]evolveCase{}
+	for _, c := range evolveCases {
+		byName[c.name] = c
 	}
-	msg, err := tablewire.EncodeMessages(ma, []*tabletext.Instance{ia})
-	if err != nil {
-		t.Fatal(err)
-	}
-	files, err := generate(ub)
-	if err != nil {
-		t.Fatal(err)
-	}
-	const anchor = "\t\t\tt.report.kindChanged += 1\n\t\t\tif not skipEntry(t, entry.kind, entry.shape) then\n\t\t\t\treturn dmal(t)\n"
-	src := string(files["table_message.moo"])
-	if strings.Count(src, anchor) != 1 {
-		t.Fatal("the body's kind-mismatch anchor is not in table_message.moo exactly once")
-	}
-	files["table_message.moo"] = []byte(strings.Replace(src, anchor, strings.Replace(anchor, "+= 1", "+= 0", 1), 1))
-	got := runEvolve(t, ub, files, c.root, ir.TableAnnouncement(ua), msg)
-	if !strings.HasPrefix(got, "load 1 1,0,2,1,0,false") {
-		t.Fatalf("the patched reader did not drop exactly the kind mismatch: %s", got)
+	for _, p := range []struct{ name, anchor, with string }{
+		{"kind_mismatch", "\t\t\t-- THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT and refuses\n\t\t\treturn refuseRead(t, \"kind_mismatch\")\n",
+			"\t\t\tif not skipEntry(t, entry.kind, entry.shape) then\n\t\t\t\treturn dmal(t)\n\t\t\tend\n\t\t\tcontinue\n"},
+		{"out_of_range", "\t\tif Cmp.cmp(value, lo) < 0 or Cmp.cmp(value, hi) > 0 then\n\t\t\treturn nil, refuseRead(t, \"out_of_range\")\n",
+			"\t\tif Cmp.cmp(value, hi) > 0 then\n\t\t\tvalue = hi\n"},
+		{"quantized_out_of_range", "\t\tif V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 or V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then\n\t\t\treturn nil, refuseRead(t, \"out_of_range\")\n",
+			"\t\tif V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then\n\t\t\treturn fd.fhi32, true\n"},
+		{"count_over_bound", "\tif n > fd.bound then\n\t\treturn refuseRead(t, \"count_over_bound\")\n",
+			"\tif false then\n\t\treturn refuseRead(t, \"count_over_bound\")\n"},
+		{"length_over_bound", "\tif fd.bound ~= nil and n > fd.bound then\n\t\treturn refuseRead(t, \"length_over_bound\")\n\tend\n\tlocal keep = n\n\tif isBytes then",
+			"\tlocal keep = n\n\tif fd.bound ~= nil and keep > fd.bound then\n\t\tkeep = fd.bound\n\tend\n\tif isBytes then"},
+	} {
+		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
+			c := byName[p.name]
+			ub, ann, msg, want := evolveInputs(t, c)
+			if want != "refuse" {
+				t.Fatalf("the guarded case is not refused by the Go engine: %s", want)
+			}
+			files, err := generate(ub)
+			if err != nil {
+				t.Fatal(err)
+			}
+			src := string(files["table_message.moo"])
+			if strings.Count(src, p.anchor) != 1 {
+				t.Fatalf("the %s anchor is not in table_message.moo exactly once", p.name)
+			}
+			files["table_message.moo"] = []byte(strings.Replace(src, p.anchor, p.with, 1))
+			if got := runEvolve(t, ub, files, c.root, ann, msg); got == "refuse" {
+				t.Fatalf("the reader with the %s refusal patched out still refuses", p.name)
+			}
+		})
 	}
 }
 
