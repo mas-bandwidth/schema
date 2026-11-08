@@ -18,7 +18,7 @@ import (
 // agCts is the report's six counters, a comparable tuple.
 type agCts struct {
 	unknown, kindChanged, widened, outOfRange, repeatedKey int
-	damaged                                            bool
+	damaged                                                bool
 }
 
 // agAnswer is the Lua leg's answer for one wire.
@@ -148,8 +148,8 @@ func agEngine(m *tabletext.Model, def *ir.Struct, data []byte) agOracle {
 		return o
 	default:
 		o.counts = agCts{
-			unknown:   rep.Unknown,
-			widened:   rep.Widened,
+			unknown: rep.Unknown,
+			widened: rep.Widened,
 			damaged: rep.Refused || !ok,
 		}
 	}

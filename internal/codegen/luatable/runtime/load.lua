@@ -1062,6 +1062,11 @@ read_array_body = function(T, ctx, fd, r, endpos, prior, reuse)
   local crossed = r.at > endpos
   r.lim = math.max(r.at, endpos)
   local out, selected = array_elements(T, ctx, fd, r, ek, count, prior, reuse, crossed)
+  -- BYTES LEFT INSIDE AN ARRAY'S, KEYED ARRAY'S OR MAP'S L AFTER ITS ELEMENTS
+  -- are damage (docs/SPEC-TABLES.md §6.5; internal/tablewire wirecheck.go):
+  -- every path that stops short of L is already a refusal, so the strict read
+  -- loses nothing by refusing the rest.
+  if r.at ~= r.lim then report.damaged = true end
   r.lim, r.bad = lim, bad
   return out, selected
 end
@@ -1806,6 +1811,9 @@ read_arm = function(T, ctx, u, r)
   local at0 = r.at
   local lim, bad = narrow(r, n)
   local x = read_arm_payload(T, ctx, u, arm, armkind, r, n)
+  -- BYTES AFTER A NESTED UNION INSIDE ITS ARM'S L are damage
+  -- (docs/plans/strict-only.md decision 6).
+  if armkind == 15 and r.at ~= r.lim then report.damaged = true end
   restore(r, at0, n, lim, bad)
   return x
 end

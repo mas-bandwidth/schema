@@ -89,7 +89,10 @@ func manifestWireRefusalRows(t *testing.T, path string) map[string]bool {
 		f := strings.Fields(line)
 		if len(f) >= 5 && f[0] == "instance" {
 			for _, x := range f[5:] {
-				if strings.HasPrefix(x, "go-refusal=") {
+				// wire-refused (testdata/conformance/tables/FORMAT.md) requires
+				// semantic refusal from every port; go-refusal= is its legacy
+				// spelling.
+				if x == "wire-refused" || strings.HasPrefix(x, "go-refusal=") {
 					refused[f[1]] = true
 				}
 			}

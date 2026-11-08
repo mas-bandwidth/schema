@@ -185,19 +185,17 @@ func TestLuaOrphanCycleAndReplacedMapEntryVectors(t *testing.T) {
 	}
 
 	// 4. For map_duplicate_pointer_past_table, turning the replaced first entry's
-	// pointer index (0x7e = 126) to an in-range node index loads and preserves
-	// the reference counts on the replaced entry's slot (distinct blob 2,
-	// shared blob 3, or kind-mismatched root 1), whereas the map_duplicate plant
-	// drops the replaced slot's resolution counts.
+	// pointer index (0x7e = 126) to an in-range node index still leaves one key
+	// twice in the map, which is damage (docs/plans/strict-only.md decision 5):
+	// whatever the replaced slot names (a distinct blob 2, a shared blob 3, or
+	// the root 1), the Go engine and every Lua read path refuse it.
 	for _, tc := range []struct {
-		name       string
-		target     byte
-		strictOK   bool
-		plantLoses bool
+		name   string
+		target byte
 	}{
-		{"distinct_blob", 2, true, false},
-		{"shared_blob", 3, false, true},
-		{"root_kind_mismatch", 1, false, true},
+		{"distinct_blob", 2},
+		{"shared_blob", 3},
+		{"root_kind_mismatch", 1},
 	} {
 		w := bytes.Clone(wires["map_duplicate_pointer_past_table"])
 		const pastTableSlot = "\x03\x11\x7e\x00"
@@ -205,17 +203,11 @@ func TestLuaOrphanCycleAndReplacedMapEntryVectors(t *testing.T) {
 			t.Fatal("map_duplicate_pointer_past_table must carry the out-of-range pointer slot once")
 		}
 		w = bytes.Replace(w, []byte(pastTableSlot), []byte{0x03, 0x11, tc.target, 0x00}, 1)
-		const goCounts = "malformed=false u=0 w=0"
-		gotLua := runOrphanCycleProbe(t, units["map_duplicate_pointer_past_table"], "Chunks", w, nil)
-		wantLua := fmt.Sprintf("accepted=true plain=%t strict=%t retain=%t %s", tc.strictOK, tc.strictOK, tc.strictOK, goCounts)
-		if gotLua != wantLua {
-			t.Fatalf("map_duplicate twin %s: Lua got %q, want %q", tc.name, gotLua, wantLua)
+		if goOK, goCounts := goEngineVerdictAndCounts(t, units["map_duplicate_pointer_past_table"], "Chunks", w); goOK {
+			t.Fatalf("map_duplicate twin %s: the Go engine accepted a repeated key: %s", tc.name, goCounts)
 		}
-		if tc.plantLoses {
-			planted := runOrphanCycleProbe(t, units["map_duplicate_pointer_past_table"], "Chunks", w, &orphanCycleSpecs[1])
-			if planted == wantLua {
-				t.Fatalf("map_duplicate twin %s: the plant still matched the reference counts %q", tc.name, planted)
-			}
+		if gotLua := runOrphanCycleProbe(t, units["map_duplicate_pointer_past_table"], "Chunks", w, nil); !strings.Contains(gotLua, " plain=false strict=false retain=false ") {
+			t.Fatalf("map_duplicate twin %s: Lua got %q, want every read refused as the Go engine refuses", tc.name, gotLua)
 		}
 	}
 

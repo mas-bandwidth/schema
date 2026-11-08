@@ -153,6 +153,8 @@ function R.ReadStrict(T, name, bytes, integrity)
   if report.wireDamaged then refuse("wire_damaged", name) end
   if report.missingRequired > 0 then refuse("missing_required", first.missingRequired or name) end
   if report.damaged then refuse("malformed", first.damaged or name) end
+  -- A REPEATED KEY IS DAMAGE (docs/plans/strict-only.md decision 5).
+  if report.repeatedKey > 0 then refuse("malformed", first.repeatedKey or name) end
   for _, c in ipairs(counters) do
     if report[c.key] > 0 then refuse(c.name, first[c.key] or name) end
   end

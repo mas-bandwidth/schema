@@ -79,7 +79,7 @@ func luaFuzzMutate(base []byte, seed uint64) []byte {
 // luaFuzzCounts is the report's six counters, a comparable tuple.
 type luaFuzzCounts struct {
 	unknown, kindChanged, widened, outOfRange, repeatedKey int
-	damaged                                            bool
+	damaged                                                bool
 }
 
 // luaFuzzAnswer is the Lua leg's answer for one mutant.
@@ -300,8 +300,8 @@ func luaFuzzEngine(m *tabletext.Model, def *ir.Struct, data []byte) luaFuzzOracl
 		return o
 	default:
 		o.counts = luaFuzzCounts{
-			unknown:   rep.Unknown,
-			widened:   rep.Widened,
+			unknown: rep.Unknown,
+			widened: rep.Widened,
 			damaged: rep.Refused || !ok,
 		}
 	}

@@ -66,7 +66,7 @@ func fieldByName(t *testing.T, inst *tabletext.Instance, name string) *tabletext
 // loadFixRootConfigCounts is the report's six counters.
 type loadFixRootConfigCounts struct {
 	unknown, kindChanged, widened, outOfRange, repeatedKey int
-	damaged                                            bool
+	damaged                                                bool
 }
 
 // loadFixRootConfigProbe loads one wire with the generated fixed form and
@@ -135,8 +135,8 @@ func loadFixRootConfigEngine(m *tabletext.Model, def *ir.Struct, data []byte) (l
 		return loadFixRootConfigCounts{}, nil, fmt.Errorf("the engine could not read the root: %w", derr)
 	}
 	c := loadFixRootConfigCounts{
-		unknown:   rep.Unknown,
-		widened:   rep.Widened,
+		unknown: rep.Unknown,
+		widened: rep.Widened,
 		damaged: rep.Refused || !ok,
 	}
 	enc, err := tablewire.Encode(m, inst)

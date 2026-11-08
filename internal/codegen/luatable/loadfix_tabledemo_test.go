@@ -25,7 +25,7 @@ import (
 
 type loadFixTabledemoCounts struct {
 	unknown, kindChanged, widened, outOfRange, repeatedKey int
-	damaged                                            bool
+	damaged                                                bool
 }
 
 type loadFixTabledemoAnswer struct {
@@ -166,8 +166,8 @@ func loadFixTabledemoEngine(t *testing.T, m *tabletext.Model, def *ir.Struct, da
 	}
 	o.loaded = true
 	o.counts = loadFixTabledemoCounts{
-		unknown:   rep.Unknown,
-		widened:   rep.Widened,
+		unknown: rep.Unknown,
+		widened: rep.Widened,
 		damaged: rep.Refused || !ok,
 	}
 	enc, eerr := tablewire.Encode(m, inst)

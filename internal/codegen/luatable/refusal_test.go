@@ -1,10 +1,10 @@
 package luatable
 
-// TestLuaStrictReadRefusesByName drives the strict read (runtime/refusal.lua)
-// one wire per refusal name from the tolerant load's report: each counter's
-// nonzero case refuses by name, one forged form byte per form refusal is
-// named, and integrity_mismatch refuses where the unit declares integrity
-// (docs/SPEC-TABLES.md §11, §6.5, §2.14).
+// TestLuaStrictReadRefusesByName drives the strict read (runtime/refusal.lua):
+// every report row's verdict is reports.txt's, a repeated map key refuses as
+// damage (docs/plans/strict-only.md decision 5), one forged form byte per form
+// refusal is named, and integrity_mismatch refuses where the unit declares
+// integrity (docs/SPEC-TABLES.md §11, §6.5, §2.14).
 
 import (
 	"encoding/binary"
@@ -19,96 +19,82 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// rowRefusal is the name a report row's counters carry, in the strict read's
-// precedence (docs/SPEC-TABLES.md §4, §6.5). A clean row answers "".
-func rowRefusal(line string) string {
-	f := strings.Split(line, ",")
-	if len(f) < 6 {
-		return ""
-	}
-	mismatch, _ := strconv.Atoi(f[1])
-	clamped, _ := strconv.Atoi(f[3])
-	malformed := f[5] == "true"
-	switch {
-	case malformed:
-		return "malformed"
-	case clamped > 0:
-		return "out_of_range"
-	case mismatch > 0:
-		return "kind_mismatch"
-	}
-	return ""
-}
-
-// onePerRefusal picks the first manifest report row for each refusal the
-// strict read owns, from reports.txt's counters.
-func onePerRefusal(t *testing.T, manifestPath, reportsPath string) map[string]manifestRow {
-	t.Helper()
-	expect := reportsExpect(t, reportsPath)
-	rows := map[string]manifestRow{}
-	for _, row := range manifestRows(t, manifestPath, "report") {
-		line, ok := expect[row.caseName]
-		if !ok {
-			continue
-		}
-		name := rowRefusal(line)
-		if name == "" {
-			continue
-		}
-		if _, have := rows[name]; !have {
-			rows[name] = row
-		}
-	}
-	return rows
-}
-
 func TestLuaStrictReadRefusesByName(t *testing.T) {
 	t.Parallel()
 	repo := "../../.."
 	manifestPath := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	reportsPath := filepath.Join(repo, "testdata", "conformance", "tables", "reports.txt")
 	units := manifestUnits(t, manifestPath)
-	rows := onePerRefusal(t, manifestPath, reportsPath)
+	expect := reportsExpect(t, reportsPath)
 
-	for _, name := range []string{"malformed", "out_of_range", "kind_mismatch"} {
-		row, ok := rows[name]
-		if !ok {
-			t.Fatalf("no manifest report row refuses %s", name)
-		}
-		t.Run(name, func(t *testing.T) {
-			paths := units[row.unit]
-			if len(paths) == 0 {
-				t.Fatalf("row %s names unknown unit %s", row.caseName, row.unit)
+	// THE VERDICT IS THE CONTRACT (reports.txt; docs/rulings.json
+	// refusal-verdict-only): every report row reports.txt calls refused, the
+	// strict read refuses, and every row it calls read, the strict read
+	// accepts. The name each refusal carries is this leg's own diagnostic.
+	t.Run("verdicts", func(t *testing.T) {
+		byUnit := map[string][]manifestRow{}
+		for _, row := range manifestRows(t, manifestPath, "report") {
+			if _, ok := expect[row.caseName]; ok {
+				byUnit[row.unit] = append(byUnit[row.unit], row)
 			}
+		}
+		refused, read := 0, 0
+		for unit, all := range byUnit {
 			var full []string
-			for _, p := range paths {
+			for _, p := range units[unit] {
 				full = append(full, filepath.Join(repo, p))
 			}
 			u := luarun.LoadUnit(t, full...)
+			// A DECLARED FIXED ROOT's rows are the fixed form's
+			// (TestLuaTableLoadMatchesTheReports reads them through ReadFixed);
+			// ReadStrict here is the variable root's strict read.
+			var rows []manifestRow
+			for _, row := range all {
+				if st := u.Tables[row.root]; st == nil || !st.FixedDeclared {
+					rows = append(rows, row)
+				}
+			}
+			if len(rows) == 0 {
+				continue
+			}
 			files, err := Generate(u)
 			if err != nil {
-				t.Fatalf("unit %s: %v", row.unit, err)
+				t.Fatalf("unit %s: %v", unit, err)
 			}
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)
-			wire, err := os.ReadFile(filepath.Join(repo, row.wire))
-			if err != nil {
-				t.Fatalf("case %s: %v", row.caseName, err)
+			var probe strings.Builder
+			probe.WriteString("local T = require(\"" + ModuleName(u) + "\")\nlocal R = require(\"refusal\")\nlocal inputs = require(\"inputs\")\n")
+			inputs := map[string][]byte{}
+			for i, row := range rows {
+				wire, err := os.ReadFile(filepath.Join(repo, row.wire))
+				if err != nil {
+					t.Fatalf("case %s: %v", row.caseName, err)
+				}
+				key := "w" + strconv.Itoa(i)
+				inputs[key] = wire
+				probe.WriteString("do\n  local ok, v = pcall(R.ReadStrict, T, \"" + row.root + "\", inputs." + key + ")\n")
+				probe.WriteString("  print(\"" + row.caseName + " \" .. ((ok and v ~= nil) and \"read\" or \"refused\"))\nend\n")
 			}
-			probe := `local T = require("` + ModuleName(u) + `")
-local R = require("refusal")
-local inputs = require("inputs")
-local ok, err = pcall(function() return R.ReadStrict(T, "` + row.root + `", inputs.wire) end)
-assert(not ok, "the strict read accepted a ` + name + ` wire")
-assert(tostring(err):find("` + name + `", 1, true), "want ` + name + `, got " .. tostring(err))
-print("strict-` + name + `-ok")
-`
-			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe.String()), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wire})
-		})
-	}
+			for line := range strings.SplitSeq(strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", inputs))), "\n") {
+				name, got, _ := strings.Cut(line, " ")
+				if want := expect[name]; got != want {
+					t.Errorf("%s (%s): ReadStrict %s, reports.txt %s", name, unit, got, want)
+				}
+				if got == "refused" {
+					refused++
+				} else {
+					read++
+				}
+			}
+		}
+		if refused == 0 || read == 0 {
+			t.Fatalf("the verdict rows are one-sided: %d refused, %d read", refused, read)
+		}
+	})
 
 	t.Run("duplicate", func(t *testing.T) {
 		schemaDir := t.TempDir()
@@ -156,8 +142,8 @@ local wire = "\1" .. fld(1, e.kind, leb(#mapbody) .. mapbody)
   .. string.pack("<i8", v.id) .. string.pack("<i8", a.id)
   .. string.pack("<i8", 4)
 local ok, err = pcall(function() return R.ReadStrict(T, "Root", wire) end)
-assert(ok, "the strict read refused duplicate alone: " .. tostring(err))
-print("strict-duplicate-clean-ok")
+assert(not ok and tostring(err):find("malformed", 1, true), "a repeated map key must refuse as damage, got " .. tostring(err))
+print("strict-duplicate-refused-ok")
 `
 		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
 			t.Fatal(err)
