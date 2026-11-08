@@ -131,7 +131,7 @@ defmodule Benchtable.BenchTableFixed do
   end
 
   # union TableEvent's projection: the tag, then the arm it names and no other. A TAG
-  # BEYOND THE DECLARED ARMS lands None and counts one `clamped`.
+  # BEYOND THE DECLARED ARMS lands None and counts one `unknown`.
   def table_event_fixed_decode(<<tag::little-unsigned-8, arm::binary>>, c, m \\ false) do
     case tag do
       1 ->
@@ -205,7 +205,7 @@ defmodule Benchtable.BenchTableFixed do
   end
 
   # TableEntity's projection: ONE binary pattern match over its 51 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def table_entity_fixed_decode(bin, c, m \\ false)
 
   def table_entity_fixed_decode(
@@ -311,7 +311,7 @@ defmodule Benchtable.BenchTableFixed do
   end
 
   # TableStat's projection: ONE binary pattern match over its 8 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def table_stat_fixed_decode(bin, c, m \\ false)
 
   def table_stat_fixed_decode(
@@ -397,7 +397,7 @@ defmodule Benchtable.BenchTableFixed do
   end
 
   # TableHitEvent's projection: ONE binary pattern match over its 13 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def table_hit_event_fixed_decode(bin, c, m \\ false)
 
   def table_hit_event_fixed_decode(
@@ -524,7 +524,7 @@ defmodule Benchtable.BenchTableFixed do
   end
 
   # TableChatEvent's projection: ONE binary pattern match over its 8 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def table_chat_event_fixed_decode(bin, c, m \\ false)
 
   def table_chat_event_fixed_decode(
@@ -609,7 +609,7 @@ defmodule Benchtable.BenchTableFixed do
   end
 
   # TablePickupEvent's projection: ONE binary pattern match over its 8 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def table_pickup_event_fixed_decode(bin, c, m \\ false)
 
   def table_pickup_event_fixed_decode(
@@ -761,7 +761,7 @@ defmodule Benchtable.BenchTableFixed do
   end
 
   # TableMixed's projection: ONE binary pattern match over its 1224 bytes of record
-  # image, the struct it makes, the `clamped` it moved and the content flag.
+  # image, the struct it makes, the refusal it moved and the content flag.
   def table_mixed_fixed_decode(bin, c, m \\ false)
 
   def table_mixed_fixed_decode(
@@ -1003,7 +1003,7 @@ defmodule Benchtable.BenchTableFixed do
       {:error, :malformed} ->
         # STEP 1: a file shorter than a header is the RESIDUE and not a bucket
         # a named rule falls into — `malformed`, and no reason (§5.3).
-        {:error, :malformed, %{report | malformed: true}}
+        {:error, :malformed, report}
 
       {:error, why} ->
         {:error, why, report}
@@ -1092,7 +1092,7 @@ defmodule Benchtable.BenchTableFixed do
           Enum.map_reduce(bodies, report, fn body, report ->
             {image, report} = R.run(plan, R.detach(body, copy), @table_entity_prefill, report)
             {value, c, m} = table_entity_fixed_decode(image, 0, false)
-            {value, R.damaged(R.clamped(report, c), m)}
+            {value, R.damage_check(R.range_check(report, c), m)}
           end)
 
         # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that
@@ -1100,7 +1100,7 @@ defmodule Benchtable.BenchTableFixed do
         # refusal that came after would have moved a counter.
         {:ok, values, R.census(report, census_u, census_k)}
       else
-        {:error, :malformed} -> {:error, :malformed, %{report | malformed: true}}
+        {:error, :malformed} -> {:error, :malformed, report}
         {:error, why} -> {:error, why, report}
       end
     catch
@@ -1250,7 +1250,7 @@ defmodule Benchtable.BenchTableFixed do
       {:error, :malformed} ->
         # STEP 1: a file shorter than a header is the RESIDUE and not a bucket
         # a named rule falls into — `malformed`, and no reason (§5.3).
-        {:error, :malformed, %{report | malformed: true}}
+        {:error, :malformed, report}
 
       {:error, why} ->
         {:error, why, report}
@@ -1339,7 +1339,7 @@ defmodule Benchtable.BenchTableFixed do
           Enum.map_reduce(bodies, report, fn body, report ->
             {image, report} = R.run(plan, R.detach(body, copy), @table_stat_prefill, report)
             {value, c, m} = table_stat_fixed_decode(image, 0, false)
-            {value, R.damaged(R.clamped(report, c), m)}
+            {value, R.damage_check(R.range_check(report, c), m)}
           end)
 
         # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that
@@ -1347,7 +1347,7 @@ defmodule Benchtable.BenchTableFixed do
         # refusal that came after would have moved a counter.
         {:ok, values, R.census(report, census_u, census_k)}
       else
-        {:error, :malformed} -> {:error, :malformed, %{report | malformed: true}}
+        {:error, :malformed} -> {:error, :malformed, report}
         {:error, why} -> {:error, why, report}
       end
     catch
@@ -1569,7 +1569,7 @@ defmodule Benchtable.BenchTableFixed do
       {:error, :malformed} ->
         # STEP 1: a file shorter than a header is the RESIDUE and not a bucket
         # a named rule falls into — `malformed`, and no reason (§5.3).
-        {:error, :malformed, %{report | malformed: true}}
+        {:error, :malformed, report}
 
       {:error, why} ->
         {:error, why, report}
@@ -1658,7 +1658,7 @@ defmodule Benchtable.BenchTableFixed do
           Enum.map_reduce(bodies, report, fn body, report ->
             {image, report} = R.run(plan, R.detach(body, copy), @table_mixed_prefill, report)
             {value, c, m} = table_mixed_fixed_decode(image, 0, false)
-            {value, R.damaged(R.clamped(report, c), m)}
+            {value, R.damage_check(R.range_check(report, c), m)}
           end)
 
         # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that
@@ -1666,7 +1666,7 @@ defmodule Benchtable.BenchTableFixed do
         # refusal that came after would have moved a counter.
         {:ok, values, R.census(report, census_u, census_k)}
       else
-        {:error, :malformed} -> {:error, :malformed, %{report | malformed: true}}
+        {:error, :malformed} -> {:error, :malformed, report}
         {:error, why} -> {:error, why, report}
       end
     catch

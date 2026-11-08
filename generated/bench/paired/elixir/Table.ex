@@ -8,8 +8,8 @@ defmodule Bench.Table do
   @moduledoc """
   The VARIABLE FORM's wire (docs/SPEC-TABLES.md §3), form byte 1: the
   id-table file a table round-trips byte for byte as the Go, C, C++ and C#
-  backends do. `save/2` writes one value; `load/2` reads one tolerantly and
-  reports the unknown, mismatched and clamped events (§4). Identity is the
+  backends do. `save/2` writes one value; `load/2` reads one strictly and
+  reports the unknown and widened events (§4). Identity is the
   name hash and `was` (§5).
   """
 
@@ -1407,7 +1407,7 @@ defmodule Bench.Table do
     # DISTINCT node: a table node two fields share is numbered once, so the
     # saved wire matches the reference backends byte for byte (§3.1), and a
     # blob is a node of its own SLOT (§2.5), so two slots holding equal bytes
-    # are two records. A blob the tolerant read found named from two slots
+    # are two records. A blob the strict read found named from two slots
     # refuses the save by name, blob_shared (§2.5).
     try do
       nodes = collect_root(desc, value)
@@ -1446,7 +1446,7 @@ defmodule Bench.Table do
   # the body that holds it (the root, or the table node by its content) and its
   # position among that body's blob slots in declaration order. The node walk
   # and the body writer meet a body's blob slots in the same order, so the two
-  # name the same site. A {:blob_shared, bytes} slot is the tolerant read's
+  # name the same site. A {:blob_shared, bytes} slot is the strict read's
   # mark of a blob a second slot named, and every writer refuses it (§2.5).
   defp blob_site_begin(holder), do: Process.put(:elixir_blob_site, {holder, 0})
 
@@ -2137,19 +2137,15 @@ defmodule Bench.Table do
             blob_namings(fn -> decode_directory(desc, fields, nodes, ids, terminated) end)
           end)
 
-        report =
-          report
-          |> Map.put(:blob_shared, shared)
-          |> Map.put(:malformed, report.malformed or not terminated)
+        if not terminated, do: throw(:wire_damaged)
+
+        report = Map.put(report, :blob_shared, shared)
 
         # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
         # that met damage anywhere returns no value, only its report
         cond do
           Map.get(report, :missing_required, 0) > 0 ->
             {:error, :missing_required, report}
-
-          Map.get(report, :malformed) ->
-            {:error, :malformed, reasoned(report, :malformed)}
 
           true ->
             {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
@@ -2163,7 +2159,7 @@ defmodule Bench.Table do
       {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
 
     # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
-    # tolerant one too, and outranks any damage the walk would have met after
+    # strict one too, and outranks any damage the walk would have met after
     # it: nothing lands, and the reason names the first such field.
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
@@ -2178,14 +2174,14 @@ defmodule Bench.Table do
   # its measure names a wire it cannot read (tableRegionMeasureReason in
   # internal/codegen/gotable/regions.go: unknown_form for a refused form,
   # wire_damaged for damage). A clean read says an empty reason however
-  # tolerant it was: a widened, clamped, unknown or mismatched field is an
+  # strict it was: a widened or unknown field is an
   # EVENT the counters carry and never a refusal (§4). A form byte this reader
   # does not carry says unknown_form, which is a refusal and not damage (§3).
   # Framing damage says wire_damaged with the malformed flag beside it, and so
   # does a read that finished over damage below the root (malformed set, the
   # value kept), because the flag and the reason never disagree.
   defp reasoned(report, :ok),
-    do: Map.put(report, :reason, if(report.malformed, do: "wire_damaged", else: ""))
+    do: Map.put(report, :reason, "")
 
   defp reasoned(report, :newer_form), do: Map.put(report, :reason, "unknown_form")
 
@@ -2196,7 +2192,7 @@ defmodule Bench.Table do
     do: Map.put(report, :reason, "non_finite_float: " <> name)
 
   defp reasoned(report, _damage),
-    do: Map.put(%{report | malformed: true}, :reason, "wire_damaged")
+    do: Map.put(report, :reason, "wire_damaged")
 
   # open reads the form byte and the id trailer (docs/SPEC-TABLES.md §3).
   defp open(<<>>), do: {:error, :malformed}
@@ -2275,7 +2271,7 @@ defmodule Bench.Table do
   # numbering and does not count it unknown. It is false for a fixed root, which
   # cannot name the id, so the id joins the field list and counts once as
   # unknown (§4). It is :nested for every other body (a by-value table, an
-  # element, an entry, a node record), where the id is malformed: a second
+  # element, an entry, a node record), where the id is malformed — a second
   # numbering cannot exist.
   defp entries(bin, ids, allowed, transport) do
     case entries(bin, ids, allowed, transport, [], nil) do
@@ -2611,13 +2607,14 @@ defmodule Bench.Table do
   end
 
   defp directory_report(nodes, report, retaining) do
+    if :malformed in nodes, do: throw(:wire_damaged)
+
     unknown = Enum.count(nodes, &(&1 == :unknown))
 
     %{
       report
       | unknown: report.unknown + unknown,
-        retain_lost: report.retain_lost + if(retaining, do: unknown, else: 0),
-        malformed: report.malformed or :malformed in nodes
+        retain_lost: report.retain_lost + if(retaining, do: unknown, else: 0)
     }
   end
 
@@ -2640,7 +2637,7 @@ defmodule Bench.Table do
               end)
             end)
 
-          own_report = %{own_report | malformed: own_report.malformed or not node_ok}
+          if not node_ok, do: throw(:wire_damaged)
           {Map.put(records, idx, value), merge_report(report, own_report)}
 
         _, state ->
@@ -2650,12 +2647,12 @@ defmodule Bench.Table do
     {_status, root, own_report} =
       carry_count_report(report, fn -> decode(desc, fields, nodes, ids, terminated) end)
 
-    report =
-      merge_report(report, %{own_report | malformed: own_report.malformed or not terminated})
+    if not terminated, do: throw(:wire_damaged)
+
+    report = merge_report(report, own_report)
 
     records = records |> Map.put(1, root) |> final_blob_slots(desc)
-    value = if report.malformed, do: %{}, else: assemble_directory(records)
-    {value, report}
+    {assemble_directory(records), report}
   end
 
   # Kahn's pass starts at leaves. Each final stored pointer contributes one
@@ -2729,7 +2726,7 @@ defmodule Bench.Table do
 
   defp resolve_stored(value, _assembled), do: value
 
-  # decode folds the field triples into a value, tolerantly (docs/SPEC-TABLES.md §4).
+  # decode folds the field triples into a value, strictly (docs/SPEC-TABLES.md §4).
   # A reference that resolves ABOVE the entry count is framing damage on the
   # body carrying it (§3) and STOPS the walk: the fields decoded before it
   # stand, one malformed counts, and no field after it is read. §4's ordinary
@@ -2757,12 +2754,12 @@ defmodule Bench.Table do
                 report =
                   if kind == f.kind or widens?(kind, f),
                     do: report,
-                    else: %{report | kind_mismatch: report.kind_mismatch + 1}
+                    else: throw(:wire_damaged)
 
                 {:halt, {:halt, value, report}}
 
               kind == f.kind and not compatible_payload?(f, payload) ->
-                {:cont, {:cont, value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
+                {:cont, {:cont, value, throw(:wire_damaged)}}
 
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
@@ -2783,7 +2780,7 @@ defmodule Bench.Table do
                 {:cont, {:cont, put_wire_field(value, f, v), report}}
 
               true ->
-                {:cont, {:cont, value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
+                {:cont, {:cont, value, throw(:wire_damaged)}}
             end
         end
       end)
@@ -2836,29 +2833,29 @@ defmodule Bench.Table do
 
         cond do
           not utf8_valid?(raw) ->
-            {:cont, "", %{report | malformed: true}}
+            {:cont, "", throw(:wire_damaged)}
 
           not Map.get(f, :unbounded, false) and len > f.size ->
-            {:cont, utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
+            {:cont, utf8_prefix(raw, f.size), throw(:wire_damaged)}
 
           true ->
             {:cont, raw, report}
         end
 
       _ ->
-        {:cont, "", %{report | malformed: true}}
+        {:cont, "", throw(:wire_damaged)}
     end
   end
 
   defp read_payload(%{t: :int} = f, payload, _nodes, _ids, report) do
     v = int_of(payload, f.width, f.signed)
-    {clamped, report} = clamp_int(v, f, report)
+    {value, report} = clamp_int(v, f, report)
 
-    {:cont, clamped, report}
+    {:cont, value, report}
   end
 
   defp read_payload(%{t: :bool}, <<b, _::binary>>, _nodes, _ids, report) do
-    report = if b > 1, do: %{report | malformed: true}, else: report
+    report = if b > 1, do: throw(:wire_damaged), else: report
     {:cont, b != 0, report}
   end
 
@@ -2872,7 +2869,7 @@ defmodule Bench.Table do
           :error ->
             # a reference ABOVE the entry count is framing damage (§3), not
             # §4's unknown variant: the walk stops, one malformed counts
-            {:halt, nil, %{report | malformed: true}}
+            {:halt, nil, throw(:wire_damaged)}
 
           variant_id ->
             case Map.fetch(f.by_id, variant_id) do
@@ -2891,7 +2888,7 @@ defmodule Bench.Table do
       {1, _} ->
         # node index 1 is the ROOT, a table, never a blob (§3.1): a *bytes or
         # *string naming it is a kind mismatch, and the pointer reads null
-        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {:cont, nil, throw(:wire_damaged)}
 
       {idx, _} ->
         case node_value(nodes, idx, ids, f) do
@@ -2900,12 +2897,12 @@ defmodule Bench.Table do
 
           {:value, _} ->
             # a table node named by a *bytes/*string pointer is a kind mismatch
-            {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+            {:cont, nil, throw(:wire_damaged)}
 
           :out_of_range ->
             # an index above node_count + 1 is framing damage; the pointer reads
             # null and the walk reads on (§3.1)
-            {:cont, nil, %{report | malformed: true}}
+            {:cont, nil, throw(:wire_damaged)}
 
           :null ->
             # a malformed or unknown record was counted once at the node table
@@ -2924,7 +2921,7 @@ defmodule Bench.Table do
         # All records' final stored slots are checked for resulting cycles;
         # a different table type is a kind mismatch.
         case root_reference(f) do
-          nil -> {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+          nil -> {:cont, nil, throw(:wire_damaged)}
           value -> {:cont, value, report}
         end
 
@@ -2935,10 +2932,10 @@ defmodule Bench.Table do
 
           {:value, _} ->
             # a blob node named by a *table pointer is a kind mismatch
-            {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+            {:cont, nil, throw(:wire_damaged)}
 
           :out_of_range ->
-            {:cont, nil, %{report | malformed: true}}
+            {:cont, nil, throw(:wire_damaged)}
 
           :null ->
             {:cont, nil, report}
@@ -2963,7 +2960,7 @@ defmodule Bench.Table do
         {status, value, merge_report(report, nested)}
 
       :error ->
-        {:cont, %{}, %{report | malformed: true}}
+        {:cont, %{}, throw(:wire_damaged)}
     end
   end
 
@@ -2978,25 +2975,26 @@ defmodule Bench.Table do
       {_len, <<actual, count_rest::binary>>} ->
         case leb(count_rest) do
           {n, bytes} when actual == 6 ->
+            if n > f.size, do: throw(:wire_damaged)
+
             keep = min(n, f.size)
-            clamped = if n > f.size, do: 1, else: 0
-            report = %{report | clamped: report.clamped + clamped}
+            report = report
 
             if byte_size(bytes) >= keep do
               {:cont, binary_part(bytes, 0, keep), report}
             else
-              {:cont, bytes, %{report | malformed: true}}
+              {:cont, bytes, throw(:wire_damaged)}
             end
 
           {_n, _bytes} ->
-            {:cont, <<>>, %{report | kind_mismatch: report.kind_mismatch + 1}}
+            {:cont, <<>>, throw(:wire_damaged)}
 
           :error ->
-            {:cont, <<>>, %{report | malformed: true}}
+            {:cont, <<>>, throw(:wire_damaged)}
         end
 
       :error ->
-        {:cont, <<>>, %{report | malformed: true}}
+        {:cont, <<>>, throw(:wire_damaged)}
     end
   end
 
@@ -3022,7 +3020,7 @@ defmodule Bench.Table do
         if descending?(keys) do
           # DESCENDING keys are not a map any conforming writer produced: damage,
           # and the whole load is discarded (§2.8, §4)
-          {:cont, %{}, %{report | malformed: true}}
+          {:cont, %{}, throw(:wire_damaged)}
         else
           map_values(entries, kf, vf, report)
         end
@@ -3057,11 +3055,11 @@ defmodule Bench.Table do
             end
 
           :error ->
-            {:cont, %{}, %{report | malformed: true}}
+            {:cont, %{}, throw(:wire_damaged)}
         end
 
       :error ->
-        {:cont, %{}, %{report | malformed: true}}
+        {:cont, %{}, throw(:wire_damaged)}
     end
   end
 
@@ -3076,33 +3074,21 @@ defmodule Bench.Table do
           s when is_binary(s) ->
             cond do
               not utf8_valid?(s) ->
-                {:cont, "", %{report | malformed: true}}
+                {:cont, "", throw(:wire_damaged)}
 
               div(len, 2) > f.size ->
-                cut = binary_part(raw, 0, f.size * 2)
-                size = byte_size(cut)
-
-                cut =
-                  if size > 0 do
-                    <<last::little-unsigned-16>> = binary_part(cut, size - 2, 2)
-                    if last in 0xD800..0xDBFF, do: binary_part(cut, 0, size - 2), else: cut
-                  else
-                    cut
-                  end
-
-                {:cont, :unicode.characters_to_binary(cut, {:utf16, :little}, :utf8),
-                 %{report | clamped: report.clamped + 1}}
+                throw(:wire_damaged)
 
               true ->
                 {:cont, s, report}
             end
 
           _ ->
-            {:cont, "", %{report | malformed: true}}
+            {:cont, "", throw(:wire_damaged)}
         end
 
       _ ->
-        {:cont, "", %{report | malformed: true}}
+        {:cont, "", throw(:wire_damaged)}
     end
   end
 
@@ -3132,15 +3118,15 @@ defmodule Bench.Table do
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
             else
-              {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+              {:cont, [], throw(:wire_damaged)}
             end
 
           :error ->
-            {:cont, [], %{report | malformed: true}}
+            {:cont, [], throw(:wire_damaged)}
         end
 
       :error ->
-        {:cont, [], %{report | malformed: true}}
+        {:cont, [], throw(:wire_damaged)}
     end
   end
 
@@ -3162,16 +3148,16 @@ defmodule Bench.Table do
 
       cond do
         bad ->
-          {:mismatch, desc, %{report | kind_mismatch: report.kind_mismatch + 1}}
+          {:mismatch, desc, throw(:wire_damaged)}
 
         not complete ->
-          {:malformed, desc, %{report | malformed: true}}
+          {:malformed, desc, throw(:wire_damaged)}
 
         kf.t == :string and not Map.get(kf, :unbounded, false) and byte_size(key) > kf.size ->
-          {:drop, desc, %{report | clamped: report.clamped + 1}}
+          {:drop, desc, throw(:wire_damaged)}
 
         acc != [] and key < Map.get(hd(acc), "key", kf.default) ->
-          {:malformed, desc, %{report | malformed: true}}
+          {:malformed, desc, throw(:wire_damaged)}
 
         true ->
           duplicate = acc != [] and key == Map.get(hd(acc), "key", kf.default)
@@ -3186,7 +3172,7 @@ defmodule Bench.Table do
   # event survives a later key mismatch that clears the map's stored value.
   defp map_duplicate_report(desc, report) do
     if Map.get(desc, :map_duplicate, false),
-      do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+      do: throw(:wire_damaged),
       else: report
   end
 
@@ -3274,7 +3260,7 @@ defmodule Bench.Table do
       {aref, <<k, rest::binary>>} ->
         case resolve(ids, aref) do
           :error ->
-            {:halt, nil, %{report | malformed: true}}
+            {:halt, nil, throw(:wire_damaged)}
 
           arm_id ->
             un = Map.fetch!(@unions, union)
@@ -3286,7 +3272,7 @@ defmodule Bench.Table do
                     {:cont, nil, %{report | unknown: report.unknown + 1}}
 
                   _ ->
-                    {:halt, nil, %{report | malformed: true}}
+                    {:halt, nil, throw(:wire_damaged)}
                 end
 
               {:ok, name} ->
@@ -3304,7 +3290,7 @@ defmodule Bench.Table do
                         # whose L is not its reference's own length are that
                         # arm's own framing damage: the union reads None and the
                         # parent reads on past L (§3)
-                        {:cont, nil, %{report | malformed: true}}
+                        {:cont, nil, throw(:wire_damaged)}
 
                       true ->
                         read_arm_payload(a, name, inner, framed, nodes, ids, report)
@@ -3314,13 +3300,13 @@ defmodule Bench.Table do
                     retyped_arm(a, name, k, binary_part(content, 0, l), report)
 
                   _ ->
-                    {:cont, nil, %{report | malformed: true}}
+                    {:cont, nil, throw(:wire_damaged)}
                 end
             end
         end
 
       _ ->
-        {:cont, nil, %{report | malformed: true}}
+        {:cont, nil, throw(:wire_damaged)}
     end
   end
 
@@ -3355,8 +3341,8 @@ defmodule Bench.Table do
   # arm's own kind WIDENS decodes at the wire kind's width and counts one
   # widened, an L that is not that width is the arm's own framing damage, and
   # any other kind is a kind mismatch — the union None, the parent reading on.
-  defp retyped_arm(_a, _name, _k, _inner, report),
-    do: {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp retyped_arm(_a, _name, _k, _inner, _report),
+    do: {:cont, nil, throw(:wire_damaged)}
 
   defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
 
@@ -3390,7 +3376,7 @@ defmodule Bench.Table do
           )
       end
     else
-      _ -> {:cont, acc, %{report | malformed: true}}
+      _ -> {:cont, acc, throw(:wire_damaged)}
     end
   end
 
@@ -3421,7 +3407,7 @@ defmodule Bench.Table do
         {:ok, %{f | elem_kind: kind}, %{report | widened: report.widened + 1}}
 
       true ->
-        {:mismatch, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {:mismatch, throw(:wire_damaged)}
     end
   end
 
@@ -3447,10 +3433,10 @@ defmodule Bench.Table do
   end
 
   # a count past a bounded array's declared bound reads the first bound
-  # elements and counts one clamped, before any element is read, so the
+  # elements and counts one refusal, before any element is read, so the
   # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
-  defp clamp_count(n, %{max_count: max}, report) when n > max,
-    do: {max, %{report | clamped: report.clamped + 1}}
+  defp clamp_count(n, %{max_count: max}, _report) when n > max,
+    do: {max, throw(:wire_damaged)}
 
   defp clamp_count(n, _f, report), do: {n, report}
 
@@ -3472,9 +3458,9 @@ defmodule Bench.Table do
 
   defp read_widened(f, kind, payload, report) do
     v = int_of(payload, kind_width(kind), f.signed)
-    {clamped, report} = clamp_int(v, f, report)
+    {value, report} = clamp_int(v, f, report)
     widened = if Map.get(f, :map_key, false), do: report.widened, else: report.widened + 1
-    {clamped, %{report | widened: widened}}
+    {value, %{report | widened: widened}}
   end
 
   defp kind_width(2), do: 1
@@ -3520,10 +3506,10 @@ defmodule Bench.Table do
         {value, report} =
           cond do
             not utf8_valid?(raw) ->
-              {"", %{report | malformed: true}}
+              {"", throw(:wire_damaged)}
 
             not Map.get(f, :text_unbounded, false) and len > f.text_size ->
-              {utf8_prefix(raw, f.text_size), %{report | clamped: report.clamped + 1}}
+              {utf8_prefix(raw, f.text_size), throw(:wire_damaged)}
 
             true ->
               {raw, report}
@@ -3540,7 +3526,7 @@ defmodule Bench.Table do
         end
 
       _ ->
-        {Enum.reverse(acc), %{report | malformed: true}}
+        {Enum.reverse(acc), throw(:wire_damaged)}
     end
   end
 
@@ -3592,7 +3578,7 @@ defmodule Bench.Table do
         end
 
       _ ->
-        {Enum.reverse(acc), %{report | malformed: true}}
+        {Enum.reverse(acc), throw(:wire_damaged)}
     end
   end
 
@@ -3606,7 +3592,7 @@ defmodule Bench.Table do
         value = root_reference(f)
 
         report =
-          if value == nil, do: %{report | kind_mismatch: report.kind_mismatch + 1}, else: report
+          if value == nil, do: throw(:wire_damaged), else: report
 
         read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
 
@@ -3617,15 +3603,15 @@ defmodule Bench.Table do
         {value, report} =
           case node_value(nodes, idx, ids, f) do
             {:value, v} when is_map(v) -> {v, report}
-            {:value, _} -> {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
-            :out_of_range -> {nil, %{report | malformed: true}}
+            {:value, _} -> {nil, throw(:wire_damaged)}
+            :out_of_range -> {nil, throw(:wire_damaged)}
             :null -> {nil, report}
           end
 
         read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
 
       :error ->
-        {Enum.reverse(acc), %{report | malformed: true}}
+        {Enum.reverse(acc), throw(:wire_damaged)}
     end
   end
 
@@ -3645,7 +3631,7 @@ defmodule Bench.Table do
         read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
 
       _ ->
-        {Enum.reverse(acc), %{report | malformed: true}}
+        {Enum.reverse(acc), throw(:wire_damaged)}
     end
   end
 
@@ -3659,7 +3645,7 @@ defmodule Bench.Table do
           :error ->
             # A reference outside the id table is framing damage (§3, §4),
             # not None or an id this enum does not declare.
-            {Enum.reverse(acc), %{report | malformed: true}}
+            {Enum.reverse(acc), throw(:wire_damaged)}
 
           variant_id ->
             {value, report} =
@@ -3672,18 +3658,18 @@ defmodule Bench.Table do
         end
 
       :error ->
-        {Enum.reverse(acc), %{report | malformed: true}}
+        {Enum.reverse(acc), throw(:wire_damaged)}
     end
   end
 
   defp read_list_elements(%{elem_kind: 1} = f, rest, n, nodes, ids, acc, report) do
     case rest do
       <<b, after_sub::binary>> ->
-        report = if b > 1, do: %{report | malformed: true}, else: report
+        report = if b > 1, do: throw(:wire_damaged), else: report
         read_list_elements(f, after_sub, n - 1, nodes, ids, [b != 0 | acc], report)
 
       _ ->
-        {Enum.reverse(acc), %{report | malformed: true}}
+        {Enum.reverse(acc), throw(:wire_damaged)}
     end
   end
 
@@ -3696,7 +3682,7 @@ defmodule Bench.Table do
       {v, report} = clamp_list_int(float_of(raw, w, f.non_finite), f, report)
       read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
     else
-      {Enum.reverse(acc), %{report | malformed: true}}
+      {Enum.reverse(acc), throw(:wire_damaged)}
     end
   end
 
@@ -3710,7 +3696,7 @@ defmodule Bench.Table do
       {v, report} = clamp_list_int(int_of(raw, w, signed), f, report)
       read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
     else
-      {Enum.reverse(acc), %{report | malformed: true}}
+      {Enum.reverse(acc), throw(:wire_damaged)}
     end
   end
 
@@ -3726,7 +3712,7 @@ defmodule Bench.Table do
         end
 
       :error ->
-        {Enum.reverse(acc), %{report | malformed: true}}
+        {Enum.reverse(acc), throw(:wire_damaged)}
     end
   end
 
@@ -3753,15 +3739,15 @@ defmodule Bench.Table do
         {status, value, report} = decode(desc, fields, nodes, ids, true)
 
         if status == :halt or ends_early?(sub, ids),
-          do: {:cont, %{}, %{report | malformed: true}},
+          do: {:cont, %{}, throw(:wire_damaged)},
           else: {:cont, value, report}
 
       {:stop, fields, [], _remaining} ->
         # the element's body is damaged mid-walk or runs off its own end: the
         # events its prefix already earned count, the element reads its
         # declared defaults, and one malformed counts (§3, §4)
-        {_status, _value, report} = decode(desc, fields, nodes, ids, false)
-        {:cont, %{}, %{report | malformed: true}}
+        {_status, _value, _report} = decode(desc, fields, nodes, ids, false)
+        {:cont, %{}, throw(:wire_damaged)}
 
       _ ->
         {:cont, %{}, malformed_report()}
@@ -3890,28 +3876,14 @@ defmodule Bench.Table do
 
   defp inert_required_field(f, value), do: inert_field(f, value)
 
-  defp malformed_report,
-    do: %{
-      unknown: 0,
-      kind_mismatch: 0,
-      widened: 0,
-      clamped: 0,
-      malformed: true,
-      retained: 0,
-      retain_lost: 0,
-      reason: "",
-      missing_required: 0
-    }
+  defp malformed_report, do: throw(:wire_damaged)
 
   # ---- the shared primitives ----
 
   defp empty_report,
     do: %{
       unknown: 0,
-      kind_mismatch: 0,
       widened: 0,
-      clamped: 0,
-      malformed: false,
       retained: 0,
       retain_lost: 0,
       reason: "",
@@ -4065,7 +4037,7 @@ defmodule Bench.Table do
   # EVERY READ REFUSES A NaN OR AN INFINITY ON ITS RAW BITS (§3.3), before the
   # bits become a float and before the field is assigned: an all-ones exponent
   # throws the field's name, and the load that catches it refuses whole as
-  # non_finite_float, the tolerant read included, with nothing landed. The test
+  # non_finite_float, the strict read included, with nothing landed. The test
   # reads the top sixteen bits, where the exponent sits at either width, so it
   # builds no bignum on the way.
   defp float_of(<<_::16, hi::little-16>>, 4, name) when (hi &&& 0x7F80) == 0x7F80,
@@ -4089,11 +4061,11 @@ defmodule Bench.Table do
   defp int_of(<<v::little-unsigned-128>>, 16, false), do: v
   defp int_of(_payload, _w, _signed), do: 0
 
-  defp clamp_int(v, %{min: lo, max: _hi}, report) when v < lo,
-    do: {lo, %{report | clamped: report.clamped + 1}}
+  defp clamp_int(v, %{min: lo, max: _hi}, _report) when v < lo,
+    do: {lo, throw(:wire_damaged)}
 
-  defp clamp_int(v, %{min: _lo, max: hi}, report) when v > hi,
-    do: {hi, %{report | clamped: report.clamped + 1}}
+  defp clamp_int(v, %{min: _lo, max: hi}, _report) when v > hi,
+    do: {hi, throw(:wire_damaged)}
 
   defp clamp_int(v, _f, report), do: {v, report}
 
@@ -4117,19 +4089,19 @@ defmodule Bench.Table do
     end
   end
 
-  defp json_read_timestamp(name, raw, report) when is_binary(raw) do
+  defp json_read_timestamp(_name, raw, report) when is_binary(raw) do
     case timestamp_parse(raw) do
       {:ok, nanos} ->
         {nanos, report}
 
       :error ->
-        {:skip, %{report | malformed: true, reason: "timestamp_not_rfc3339: " <> name}}
+        {:skip, throw(:wire_damaged)}
     end
   end
 
-  defp json_read_timestamp(_name, raw, report) do
+  defp json_read_timestamp(_name, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp timestamp_parse(raw) do
@@ -4196,7 +4168,7 @@ defmodule Bench.Table do
     size = if text == nil, do: 0, else: byte_size(text)
 
     if size > left do
-      {:drop, %{report | clamped: report.clamped + 1}}
+      {:drop, throw(:wire_damaged)}
     else
       {:keep, Map.put(f, :text_left, left - size), report}
     end
@@ -4290,8 +4262,8 @@ defmodule Bench.Table do
             Map.get(report, :missing_required, 0) > 0 ->
               {:error, :missing_required, report}
 
-            Process.get(:elixir_json_bad) or report.malformed ->
-              {:error, :malformed, %{report | malformed: true}}
+            Process.get(:elixir_json_bad) ->
+              {:error, :malformed, report}
 
             true ->
               {:ok, Map.merge(defaults(desc), value), report}
@@ -4303,6 +4275,7 @@ defmodule Bench.Table do
       end
     catch
       {:missing_required, report} -> {:error, :missing_required, report}
+      :wire_damaged -> {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
         do: Process.delete(:elixir_json_table),
@@ -4335,7 +4308,7 @@ defmodule Bench.Table do
     do: tally_node(name, v, acc)
 
   # a blob is its slot's own (§2.5), so equal bytes in two slots are two
-  # strings; only the tolerant read's {:blob_shared, bytes} mark is a sharing
+  # strings; only the strict read's {:blob_shared, bytes} mark is a sharing
   defp tally_field(%{t: :blob, type_id: id}, {:blob_shared, _bytes}, acc),
     do: Map.put(acc, {:blob, id, :shared}, 2)
 
@@ -4828,7 +4801,7 @@ defmodule Bench.Table do
 
   # json_fields places every key it can name and counts the rest (§16.2): an
   # unknown key is skipped and counted in report.unknown, a key of the wrong
-  # JSON type is skipped and counted as kind_mismatch, and the field keeps its
+  # JSON type is skipped and counted as a mismatch, and the field keeps its
   # default. A value outside a bound clamps and counts, never truncates (§16.2).
   defp json_fields(desc, pairs) when is_list(pairs) do
     outer = Process.put(:elixir_json_table, desc.name)
@@ -4836,13 +4809,13 @@ defmodule Bench.Table do
     {value, seen, report} =
       Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
                                                                  {value, seen, report} ->
-        if report.malformed or Map.get(report, :missing_required, 0) > 0 or
+        if Map.get(report, :missing_required, 0) > 0 or
              Process.get(:elixir_json_bad, false) do
           {value, seen, report}
         else
           if String.starts_with?(k, "&") do
             Process.put(:elixir_json_bad, true)
-            {value, seen, %{report | malformed: true}}
+            {value, seen, throw(:wire_damaged)}
           else
             case Enum.find(desc.fields, fn f -> f.json == k end) do
               nil ->
@@ -4852,7 +4825,7 @@ defmodule Bench.Table do
               f ->
                 report =
                   if MapSet.member?(seen, f.name) do
-                    Map.update(report, :duplicate, 1, &(&1 + 1))
+                    throw(:wire_damaged)
                   else
                     report
                   end
@@ -4918,14 +4891,14 @@ defmodule Bench.Table do
        when not is_map_key(f, :frac) do
     case fixed_raw(raw, 0) do
       {:ok, value} -> clamp_json_int(value, f, report)
-      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      :error -> {:skip, throw(:wire_damaged)}
     end
   end
 
   defp json_read_field(%{t: :float, width: 4} = f, {:decimal, _} = raw, report) do
     case json_decimal_f32(raw) do
       {:ok, value} -> json_read_field(f, value, report)
-      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      :error -> {:skip, throw(:wire_damaged)}
     end
   end
 
@@ -4938,15 +4911,15 @@ defmodule Bench.Table do
     report = json_text_zero(f, raw, report)
 
     if not Map.get(f, :unbounded, false) and byte_size(raw) > f.size do
-      {utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
+      {utf8_prefix(raw, f.size), throw(:wire_damaged)}
     else
       {raw, report}
     end
   end
 
-  defp json_read_field(%{t: :string}, raw, report) do
+  defp json_read_field(%{t: :string}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :enum} = f, raw, report) when is_binary(raw) do
@@ -4969,9 +4942,9 @@ defmodule Bench.Table do
   defp json_read_field(%{t: :union} = f, {:obj, _} = raw, report),
     do: json_read_arm(f.elem, raw, report)
 
-  defp json_read_field(%{t: :union}, raw, report) do
+  defp json_read_field(%{t: :union}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   # wstring(N) (docs/SPEC-TABLES.md §3, §16.2): the text is UTF-8; past N
@@ -4981,28 +4954,15 @@ defmodule Bench.Table do
     units = utf16(raw)
 
     if div(byte_size(units), 2) > f.size do
-      # A clamp keeps a code-point prefix, never half of a surrogate pair.
-      cut = binary_part(units, 0, f.size * 2)
-      size = byte_size(cut)
-
-      cut =
-        if size > 0 do
-          <<last::little-unsigned-16>> = binary_part(cut, size - 2, 2)
-          if last in 0xD800..0xDBFF, do: binary_part(cut, 0, size - 2), else: cut
-        else
-          cut
-        end
-
-      {:unicode.characters_to_binary(cut, {:utf16, :little}, :utf8),
-       %{report | clamped: report.clamped + 1}}
+      throw(:wire_damaged)
     else
       {raw, report}
     end
   end
 
-  defp json_read_field(%{t: :wstring}, raw, report) do
+  defp json_read_field(%{t: :wstring}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2, §16.2) is an object
@@ -5010,18 +4970,16 @@ defmodule Bench.Table do
   defp json_read_field(%{t: :keyed} = f, {:obj, pairs}, report) do
     {values, _seen, report} =
       Enum.reduce(pairs, {%{}, MapSet.new(), report}, fn {name, input}, {acc, seen, report} ->
-        if report.malformed or Process.get(:elixir_json_bad, false) do
+        if Process.get(:elixir_json_bad, false) do
           {acc, seen, report}
         else
+          # A KEYED OBJECT'S KEYS ARE KEYS: any key named twice refuses the
+          # whole read, a known variant, an unknown one or "None" alike
+          # (internal/tabletext/read.go readKeyed, docs/SPEC-TABLES.md §16.2).
+          if MapSet.member?(seen, name), do: throw(:wire_damaged)
+          seen = MapSet.put(seen, name)
+
           if Map.has_key?(f.key_ids, name) do
-            # A rejected occurrence is still a seen slot, but cannot replace it.
-            report =
-              if MapSet.member?(seen, name),
-                do: Map.update(report, :duplicate, 1, &(&1 + 1)),
-                else: report
-
-            seen = MapSet.put(seen, name)
-
             case json_read_field(f.item, input, report) do
               {:skip, report} -> {acc, seen, report}
               {v, report} -> {Map.put(acc, name, v), seen, report}
@@ -5036,9 +4994,9 @@ defmodule Bench.Table do
     {values, report}
   end
 
-  defp json_read_field(%{t: :keyed}, raw, report) do
+  defp json_read_field(%{t: :keyed}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   # a flags mask (docs/SPEC-TABLES.md §3, §16.2) is the list of its set names;
@@ -5052,9 +5010,9 @@ defmodule Bench.Table do
     end)
   end
 
-  defp json_read_field(%{t: :int, flags: _}, raw, report) do
+  defp json_read_field(%{t: :int, flags: _}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   # a fixed-point field (docs/SPEC-TABLES.md §3, §4.12) stores the exact
@@ -5067,13 +5025,13 @@ defmodule Bench.Table do
 
       :error ->
         json_skip_value(raw)
-        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {:skip, throw(:wire_damaged)}
     end
   end
 
-  defp json_read_field(%{t: :enum}, raw, report) do
+  defp json_read_field(%{t: :enum}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{timestamp: name}, raw, report),
@@ -5087,26 +5045,26 @@ defmodule Bench.Table do
     if Float.floor(raw) == raw do
       clamp_json_int(trunc(raw), f, report)
     else
-      {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      {:skip, throw(:wire_damaged)}
     end
   end
 
-  defp json_read_field(%{t: :int}, raw, report) do
+  defp json_read_field(%{t: :int}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}
 
-  defp json_read_field(%{t: :bool}, raw, report) do
+  defp json_read_field(%{t: :bool}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :blob, blob: :bytes}, raw, report) when is_binary(raw) do
     case json_decode_base64(raw) do
       {:ok, bytes} -> {bytes, report}
-      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      :error -> {:skip, throw(:wire_damaged)}
     end
   end
 
@@ -5115,9 +5073,9 @@ defmodule Bench.Table do
 
   defp json_read_field(%{t: :blob}, nil, report), do: {nil, report}
 
-  defp json_read_field(%{t: :blob}, raw, report) do
+  defp json_read_field(%{t: :blob}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :bytes} = f, raw, report) when is_binary(raw) do
@@ -5125,17 +5083,17 @@ defmodule Bench.Table do
       {:ok, bytes} when byte_size(bytes) <= f.size ->
         {bytes, report}
 
-      {:ok, bytes} ->
-        {binary_part(bytes, 0, f.size), %{report | clamped: report.clamped + 1}}
+      {:ok, _bytes} ->
+        throw(:wire_damaged)
 
       :error ->
-        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {:skip, throw(:wire_damaged)}
     end
   end
 
-  defp json_read_field(%{t: :bytes}, raw, report) do
+  defp json_read_field(%{t: :bytes}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :table} = f, raw, report) do
@@ -5148,7 +5106,7 @@ defmodule Bench.Table do
 
       _ ->
         json_skip_value(raw)
-        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {:skip, throw(:wire_damaged)}
     end
   end
 
@@ -5161,19 +5119,19 @@ defmodule Bench.Table do
     Enum.reduce_while(pairs, {%{}, report}, fn {key, input}, {acc, report} ->
       report = json_text_zero(f, key, report)
 
-      if report.malformed do
+      if Process.get(:elixir_json_bad, false) do
         {:halt, {acc, report}}
       else
         case json_map_key(key_field, key) do
           {:ok, identity} ->
             {value, report} = json_map_value(value_field, input, report)
 
-            if report.malformed or Process.get(:elixir_json_bad, false) do
+            if Process.get(:elixir_json_bad, false) do
               {:halt, {acc, report}}
             else
               report =
                 if Map.has_key?(acc, identity),
-                  do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+                  do: throw(:wire_damaged),
                   else: report
 
               {:cont, {Map.put(acc, identity, value), report}}
@@ -5185,15 +5143,15 @@ defmodule Bench.Table do
 
           :malformed ->
             Process.put(:elixir_json_bad, true)
-            {:halt, {acc, %{report | malformed: true}}}
+            {:halt, {acc, throw(:wire_damaged)}}
         end
       end
     end)
   end
 
-  defp json_read_field(%{t: :map}, raw, report) do
+  defp json_read_field(%{t: :map}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :pointer} = _f, nil, report), do: {nil, report}
@@ -5202,23 +5160,23 @@ defmodule Bench.Table do
     json_read_node(f.elem, pairs, report)
   end
 
-  defp json_read_field(%{t: :pointer}, raw, report) do
+  defp json_read_field(%{t: :pointer}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :float} = f, raw, report) when is_number(raw) do
     case json_float_in_width(raw, f.width) do
       :error ->
-        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {:skip, throw(:wire_damaged)}
 
       {:ok, v} ->
         case f do
           %{min: lo, max: _hi} when v < lo ->
-            {lo * 1.0, %{report | clamped: report.clamped + 1}}
+            throw(:wire_damaged)
 
           %{min: _lo, max: hi} when v > hi ->
-            {hi * 1.0, %{report | clamped: report.clamped + 1}}
+            throw(:wire_damaged)
 
           _ ->
             {v, report}
@@ -5226,25 +5184,20 @@ defmodule Bench.Table do
     end
   end
 
-  defp json_read_field(%{t: :float}, raw, report) do
+  defp json_read_field(%{t: :float}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_field(%{t: :list, text_list: true} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
-    # every element past [..N] counts clamped, the total's drop included
-    # (docs/SPEC-TABLES.md §2.13, §16.2)
-    past = if bound > 0, do: max(length(raw) - bound, 0), else: 0
+    # every element past [..N] refuses the whole read (docs/SPEC-TABLES.md §2.13, §16.2)
 
     {elements, _count, _f, report} =
       Enum.reduce_while(raw, {[], 0, f, report}, fn raw, {acc, count, f, report} ->
         cond do
-          report.malformed ->
-            {:halt, {acc, count, f, report}}
-
           bound > 0 and count >= bound ->
-            {:halt, {acc, count, f, %{report | clamped: report.clamped + past}}}
+            {:halt, {acc, count, f, throw(:wire_damaged)}}
 
           true ->
             {value, report} = json_read_list_elem(f, raw, report)
@@ -5253,8 +5206,8 @@ defmodule Bench.Table do
               {:keep, f, report} ->
                 {:cont, {[value | acc], count + 1, f, report}}
 
-              {:drop, report} ->
-                {:halt, {acc, count, f, %{report | clamped: report.clamped + past}}}
+              {:drop, _report} ->
+                {:halt, {acc, count, f, throw(:wire_damaged)}}
             end
         end
       end)
@@ -5267,12 +5220,12 @@ defmodule Bench.Table do
 
     {elems, _placed, report} =
       Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
-        if report.malformed or Process.get(:elixir_json_bad, false) do
+        if Process.get(:elixir_json_bad, false) do
           {acc, placed, report}
         else
           if bound > 0 and placed >= bound do
             json_skip_value(e)
-            {acc, placed, %{report | clamped: report.clamped + 1}}
+            {acc, placed, throw(:wire_damaged)}
           else
             case json_read_list_elem(f, e, report) do
               {:skip, report} ->
@@ -5289,9 +5242,9 @@ defmodule Bench.Table do
     {Enum.reverse(elems), report}
   end
 
-  defp json_read_field(%{t: :list}, raw, report) do
+  defp json_read_field(%{t: :list}, raw, _report) do
     json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, throw(:wire_damaged)}
   end
 
   # A map entry is present even when its non-null value has the wrong shape.
@@ -5317,10 +5270,10 @@ defmodule Bench.Table do
         {:ok, key}
 
       field.t == :string ->
-        if byte_size(key) > min(field.size, 255), do: {:skip, :clamped}, else: {:ok, key}
+        if byte_size(key) > min(field.size, 255), do: throw(:wire_damaged), else: {:ok, key}
 
       byte_size(key) > 255 ->
-        {:skip, :kind_mismatch}
+        throw(:wire_damaged)
 
       true ->
         case json_number(key) do
@@ -5331,10 +5284,10 @@ defmodule Bench.Table do
 
                 if value >= lo and value <= hi,
                   do: {:ok, Integer.to_string(value)},
-                  else: {:skip, :kind_mismatch}
+                  else: throw(:wire_damaged)
 
               :error ->
-                {:skip, :kind_mismatch}
+                throw(:wire_damaged)
             end
 
           _ ->
@@ -5373,7 +5326,7 @@ defmodule Bench.Table do
       Process.put(:elixir_json_bad, true)
       reason = "text_holds_zero: " <> Process.get(:elixir_json_table, "") <> "." <> f.name
 
-      %{report | malformed: true}
+      throw(:wire_damaged)
       |> Map.update(:reason, reason, fn
         "" -> reason
         held -> held
@@ -5408,8 +5361,8 @@ defmodule Bench.Table do
 
   defp clamp_between(v, {lo, hi}, report) do
     cond do
-      v < lo -> {lo, %{report | clamped: report.clamped + 1}}
-      v > hi -> {hi, %{report | clamped: report.clamped + 1}}
+      v < lo -> {lo, throw(:wire_damaged)}
+      v > hi -> {hi, throw(:wire_damaged)}
       true -> {v, report}
     end
   end
@@ -5454,14 +5407,14 @@ defmodule Bench.Table do
 
     {v, report} =
       cond do
-        v < lo -> {lo, %{report | clamped: report.clamped + 1}}
-        v > hi -> {hi, %{report | clamped: report.clamped + 1}}
+        v < lo -> {lo, throw(:wire_damaged)}
+        v > hi -> {hi, throw(:wire_damaged)}
         true -> {v, report}
       end
 
     case f do
-      %{elem_min: rlo} when v < rlo -> {rlo, %{report | clamped: report.clamped + 1}}
-      %{elem_max: rhi} when v > rhi -> {rhi, %{report | clamped: report.clamped + 1}}
+      %{elem_min: rlo} when v < rlo -> {rlo, throw(:wire_damaged)}
+      %{elem_max: rhi} when v > rhi -> {rhi, throw(:wire_damaged)}
       _ -> {v, report}
     end
   end
@@ -5500,16 +5453,16 @@ defmodule Bench.Table do
     report = json_text_zero(f, raw, report)
 
     if not Map.get(f, :text_unbounded, false) and byte_size(raw) > f.text_size do
-      {%{"value" => utf8_prefix(raw, f.text_size)}, %{report | clamped: report.clamped + 1}}
+      {%{"value" => utf8_prefix(raw, f.text_size)}, throw(:wire_damaged)}
     else
       {%{"value" => raw}, report}
     end
   end
 
-  defp json_read_list_elem(%{text_list: true} = f, raw, report) do
+  defp json_read_list_elem(%{text_list: true} = f, raw, _report) do
     json_skip_value(raw)
     value = if f.text_optional, do: nil, else: ""
-    {%{"value" => value}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {%{"value" => value}, throw(:wire_damaged)}
   end
 
   defp json_read_list_elem(%{elem_kind: kind}, {:decimal, "-0"}, report)
@@ -5520,14 +5473,14 @@ defmodule Bench.Table do
        when kind in [18, 19] do
     case fixed_raw(e, 0) do
       {:ok, value} -> json_clamp_elem(value, f, report)
-      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      :error -> {:skip, throw(:wire_damaged)}
     end
   end
 
   defp json_read_list_elem(%{elem_kind: 10}, {:decimal, _} = e, report) do
     case json_decimal_f32(e) do
       {:ok, value} -> {value, report}
-      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      :error -> {:skip, throw(:wire_damaged)}
     end
   end
 
@@ -5547,7 +5500,7 @@ defmodule Bench.Table do
     report = json_text_zero(f, e, report)
 
     if byte_size(e) > f.size do
-      {utf8_prefix(e, f.size), %{report | clamped: report.clamped + 1}}
+      {utf8_prefix(e, f.size), throw(:wire_damaged)}
     else
       {e, report}
     end
@@ -5579,14 +5532,14 @@ defmodule Bench.Table do
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19] and is_float(e) do
     if Float.floor(e) == e,
       do: json_clamp_elem(trunc(e), f, report),
-      else: {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      else: {:skip, throw(:wire_damaged)}
   end
 
   defp json_read_list_elem(%{elem_kind: kind, elem_frac: frac} = f, e, report)
        when kind in 20..29 do
     case fixed_raw(e, frac) do
       {:ok, raw} -> json_clamp_elem(raw, f, report)
-      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      :error -> {:skip, throw(:wire_damaged)}
     end
   end
 
@@ -5594,14 +5547,14 @@ defmodule Bench.Table do
        when kind in [10, 11] and is_number(e) do
     case json_float_in_width(e, kind_width(kind)) do
       {:ok, v} -> clamp_list_int(v, f, report)
-      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      :error -> {:skip, throw(:wire_damaged)}
     end
   end
 
   defp json_read_list_elem(%{elem_kind: 15} = f, e, report), do: json_read_arm(f.elem, e, report)
 
-  defp json_read_list_elem(_f, _e, report),
-    do: {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  defp json_read_list_elem(_f, _e, _report),
+    do: {:skip, throw(:wire_damaged)}
 
   # json_read_arm reads one union object (docs/SPEC-TABLES.md §2.6, §16.2): {}
   # is None; one key names the arm and its value reads by the arm's field
@@ -5620,27 +5573,25 @@ defmodule Bench.Table do
 
       {:ok, a} ->
         if input == nil do
-          {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+          {nil, throw(:wire_damaged)}
         else
-          before = report.kind_mismatch
           {v, report} = json_read_field(a, input, report)
 
-          if v == :skip or
-               (report.kind_mismatch > before and a.t not in [:table, :list, :union, :keyed]),
-             do: {nil, report},
-             else: {{name, v}, report}
+          if v == :skip,
+            do: {nil, report},
+            else: {{name, v}, report}
         end
     end
   end
 
-  defp json_read_arm(_union, {:obj, _pairs}, report) do
+  defp json_read_arm(_union, {:obj, _pairs}, _report) do
     Process.put(:elixir_json_bad, true)
-    {nil, %{report | malformed: true}}
+    {nil, throw(:wire_damaged)}
   end
 
-  defp json_read_arm(_union, raw, report) do
+  defp json_read_arm(_union, raw, _report) do
     json_skip_value(raw)
-    {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {nil, throw(:wire_damaged)}
   end
 
   # json_read_node reads one pointer object (§16.7). "&node" alone, after the
@@ -5651,7 +5602,7 @@ defmodule Bench.Table do
   defp json_read_node(table, [{"&node", label}], report) when is_integer(label) and label > 0 do
     if Map.has_key?(Process.get(:elixir_json_open, %{}), label) do
       Process.put(:elixir_json_bad, true)
-      {nil, %{report | malformed: true}}
+      {nil, throw(:wire_damaged)}
     else
       case Process.get(:elixir_json_defs, %{}) do
         %{^label => :dropped} ->
@@ -5661,11 +5612,11 @@ defmodule Bench.Table do
           {value, report}
 
         %{^label => _} ->
-          {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+          {nil, throw(:wire_damaged)}
 
         _ ->
           Process.put(:elixir_json_bad, true)
-          {nil, %{report | malformed: true}}
+          {nil, throw(:wire_damaged)}
       end
     end
   end
@@ -5677,7 +5628,7 @@ defmodule Bench.Table do
 
     if Map.has_key?(defs, label) or Map.has_key?(open, label) do
       Process.put(:elixir_json_bad, true)
-      {nil, %{report | malformed: true}}
+      {nil, throw(:wire_damaged)}
     else
       Process.put(:elixir_json_open, Map.put(open, label, true))
 
@@ -5709,22 +5660,14 @@ defmodule Bench.Table do
   defp merge_reason(_a, b), do: Map.get(b, :reason, "")
 
   defp merge_report(a, b) do
-    base = %{
+    %{
       unknown: a.unknown + b.unknown,
-      kind_mismatch: a.kind_mismatch + b.kind_mismatch,
       widened: a.widened + b.widened,
-      clamped: a.clamped + b.clamped,
-      malformed: a.malformed or b.malformed,
       retained: a.retained + b.retained,
       retain_lost: a.retain_lost + b.retain_lost,
       reason: merge_reason(a, b),
       missing_required: Map.get(a, :missing_required, 0) + Map.get(b, :missing_required, 0)
     }
-
-    case Map.get(a, :duplicate, 0) + Map.get(b, :duplicate, 0) do
-      0 -> base
-      d -> Map.put(base, :duplicate, d)
-    end
   end
 
   # ---- a JSON parser over the standard library (docs/SPEC-TABLES.md §16.3):
@@ -5907,12 +5850,16 @@ defmodule Bench.Table do
                 point = 0x10000 + (code - 0xD800) * 1024 + low - 0xDC00
                 json_string(tail, [<<point::utf8>> | acc])
               else
-                _ -> json_string(r, [<<0xFFFD::utf8>> | acc])
+                # A LONE SURROGATE SPELLS NO CODE POINT: the read refuses the
+                # text, never replaces it (strict-only, docs/SPEC-TABLES.md §16.3)
+                _ -> :error
               end
 
+            _ when code in 0xD800..0xDFFF ->
+              :error
+
             _ ->
-              point = if code in 0xD800..0xDFFF, do: 0xFFFD, else: code
-              json_string(r, [<<point::utf8>> | acc])
+              json_string(r, [<<code::utf8>> | acc])
           end
         else
           _ -> :error
@@ -6611,7 +6558,7 @@ defmodule Bench.Table do
   defp cook_collect(_desc, _value, _acc), do: throw(:invalid)
 
   # a cook packs the graph as it finds it (docs/SPEC-TABLES.md §2.5): a blob
-  # the tolerant read found named from a second slot is the one node the
+  # the strict read found named from a second slot is the one node the
   # earlier slot holding those bytes already numbered
   defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, {:blob_shared, v}, acc) do
     case Enum.find(Enum.reverse(acc), fn n -> n.kind == :blob and n.id == id and n.value == v end) do

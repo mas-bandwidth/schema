@@ -1,6 +1,7 @@
 // A UNION WHOSE ARMS DECLARE NOTHING BOUNDED is still a bound on the TAG
-// (docs/SPEC-TABLES.md §3.4). The clamp pass remaps a tag past the arm count
-// to None and counts; it must not emit a switch with only `default`, which
+// (docs/SPEC-TABLES.md §3.4). The bounds pass counts a tag past the arm count
+// as out_of_range, so the read refuses (strict-only); it must not emit a
+// switch with only `default`, which
 // MSVC /W4 /WX refuses (C4065). The nearest neighbour, with one ranged arm,
 // still carries the switch and still compiles.
 package compiler
@@ -98,8 +99,13 @@ func TestCppTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 func TestCTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 	without, _ := deadCHeader(t, clampTagOnlySrc)
 	body := extractFn(without, "cfg_fixed_clamp_body_")
-	if !strings.Contains(body, "EFFECT_TYPE_NONE") {
-		t.Error("a union tag past the arm count must still remap to None")
+	// strict-only: a tag past the arm count is out_of_range and the read
+	// refuses; nothing is remapped to None
+	if !strings.Contains(body, "if ( (uint32_t) value->effect.type > 2u ) { (*out_of_range)++; }") {
+		t.Error("a union tag past the arm count must count out_of_range, so the read refuses")
+	}
+	if strings.Contains(body, "EFFECT_TYPE_NONE") {
+		t.Error("strict-only: a union tag past the arm count refuses; it must not be remapped to None")
 	}
 	if strings.Contains(body, "switch") {
 		t.Error("a union whose arms declare nothing bounded must not emit a switch with nothing to switch on")
