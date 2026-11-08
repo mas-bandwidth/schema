@@ -42,12 +42,12 @@ func TestMooDamageDiscardNegativeControls(t *testing.T) {
 		probe := damageProbe(g, "LoginRequest", 256)
 		before := g.run(t, probe, inputs)
 		_, rest, _ := strings.Cut(before, " ")
-		if mooAnswer(rest) != "malformed" {
+		if mooAnswer(rest) != "refuse" {
 			t.Fatalf("control needs a refused batch: %s", before)
 		}
 		removeMooDiscard(t, g, "table_message.moo", "\tif rep.damaged then\n\t\treturn 0, {}\n\tend\n")
 		after := g.run(t, probe, inputs)
-		if !strings.Contains(after, "DAMAGE RETURNED VALUES") {
+		if !strings.Contains(after, "A REFUSAL RETURNED VALUES") {
 			t.Fatalf("removing the runtime discard did not expose the partial batch: %s", after)
 		}
 	})
