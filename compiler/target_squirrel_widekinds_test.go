@@ -32,18 +32,15 @@ local hexOf = function(b) {
   for (local i = 0; i < b.len(); i++) s += HEXB[b[i] & 0xff];
   return s;
 };
-local fresh = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false };
-};
 local run = function(unit, mod, root, key) {
   local schema = dofile(unit + "/schema_module.nut", true);
   local T = schema.require(mod);
   local L = schema.require("schema_table_load");
   local S = schema.require("schema_table_save");
   local J = schema.require("schema_table_json");
-  local v = L.loadTolerant(T, root, inputs[key], fresh());
-  if (v == null) { print("FAIL " + key + " load\n"); return; }
+  local r = {};
+  local v = L.load(T, root, inputs[key], r);
+  if (v == null || r.reason != null) { print("FAIL " + key + " load " + r.reason + "\n"); return; }
   local saved = S.save(T, root, v);
   if (saved == null) { print("FAIL " + key + " save\n"); return; }
   local text = J.ToJson(T, root, v);
@@ -226,4 +223,31 @@ func TestSquirrelCarriesWideTableKinds(t *testing.T) {
 		compared++
 	}
 	t.Logf("compared %d instance rows across scalars and tblscalars2", compared)
+}
+
+// TestSquirrelWideKindsStrictRead holds the strict read on a 128-bit field
+// (docs/SPEC-TABLES.md §6.5, §15): a value past the declared range is
+// refused by the Go engine and the emitted strict read, an in-range value is
+// accepted, and the negative control (the strict read bladed into the walk
+// load) accepts the out-of-range wire.
+func TestSquirrelWideKindsStrictRead(t *testing.T) {
+	t.Parallel()
+	const src = "package probe\n\ntable W\n{\n    e int128 | min = -100, max = 100\n}\n"
+	const wide = "package probe\n\ntable W\n{\n    e int128 | min = -1000000000000000000000000, max = 1000000000000000000000000\n}\n"
+	u := unitFromSource(t, src)
+	files, err := New().Generate(u, "squirrel", Options{})
+	if err != nil {
+		t.Fatalf("squirrel refused the 128-bit probe: %v", err)
+	}
+	in := squirrelOracleWire(t, wide, "W", `{"e": 99}`)
+	if got := squirrelGoVerdict(u, "W", in); got != "accepted" {
+		t.Fatalf("the Go engine %s the in-range wire", got)
+	}
+	dir := t.TempDir()
+	squirrelWriteFiles(t, dir, files, squirrelStrictVerdictProbe(squirreltable.ModuleName(u), "W"))
+	if got := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": in}))); got != "accepted" {
+		t.Errorf("the Squirrel strict read %s the in-range 128-bit wire", got)
+	}
+	out := squirrelOracleWire(t, wide, "W", `{"e": 1000000000000000000000}`)
+	squirrelRefusalControl(t, u, files, "W", out, squirrelWalkBladed(t, files))
 }
