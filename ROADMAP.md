@@ -46,7 +46,7 @@ Constants, enums, flags and types. Types are bitpacked structs exchanged between
 
 ## Fixed Tables
 
-Fixed tables provide versioning such that a new reader can always read an old writer. They are good for messages between the game server and a backend, or the backend and the website where the reader and writer have different versions of the protocol.
+Fixed tables are like types but with minimal versioning so that a new reader can always read an old writer. They are good for messages between the game server and a backend, or the backend and the website where the reader and writer have different versions of the protocol.
 
 <!-- nova-work:fixed-tables:start -->
 
