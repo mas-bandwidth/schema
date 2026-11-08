@@ -105,20 +105,19 @@ func TestFixedOracle(t *testing.T) {
 			dst := make([]Row, 1)
 			n = RowFixedLoad(dst, c.data, plan, &r)
 		}
-		fmt.Printf("ORACLE %s|%s|%t|%d|%x\n", c.name, r.Reason, r.Malformed, n, c.data)
+		fmt.Printf("ORACLE %s|%d|%x\n", c.name, n, c.data)
 	}
 }
 `
 
 type fixedOracleCase struct {
-	reason    string
-	malformed bool
-	file      []byte
+	file []byte
 }
 
 // fixedGoOracle generates the same unit for Go and runs its own fixed load over
-// the forged files, returning the reason and report.Malformed each file earns.
-// The generated Go compiles in t.TempDir(); no expected name is written here.
+// the forged files, holding each to Go's verdict, REFUSED (-1), and returning
+// the bytes. The generated Go compiles in t.TempDir(). The reason is per-language
+// diagnostic detail and is not compared (docs/rulings.json refusal-verdict-only).
 func fixedGoOracle(t *testing.T, schemaSrc string) map[string]fixedOracleCase {
 	t.Helper()
 	dir := t.TempDir()
@@ -175,17 +174,17 @@ func fixedGoOracle(t *testing.T, schemaSrc string) map[string]fixedOracleCase {
 			continue
 		}
 		fields := strings.Split(rest, "|")
-		if len(fields) != 5 {
-			t.Fatalf("oracle line %q is not name|reason|malformed|n|hex", line)
+		if len(fields) != 3 {
+			t.Fatalf("oracle line %q is not name|n|hex", line)
 		}
-		file, err := hex.DecodeString(fields[4])
+		file, err := hex.DecodeString(fields[2])
 		if err != nil {
 			t.Fatalf("oracle line %q carries no hex file: %v", line, err)
 		}
-		if fields[3] != "-1" {
-			t.Fatalf("%s: the Go fixed load returned %s, want -1", fields[0], fields[3])
+		if fields[1] != "-1" {
+			t.Fatalf("%s: the Go fixed load returned %s, want -1 (refused)", fields[0], fields[1])
 		}
-		cases[fields[0]] = fixedOracleCase{reason: fields[1], malformed: fields[2] == "true", file: file}
+		cases[fields[0]] = fixedOracleCase{file: file}
 	}
 	if len(cases) != 12 {
 		t.Fatalf("the generated Go oracle answered %d cases, want 12\n%s", len(cases), out)
@@ -193,12 +192,15 @@ func fixedGoOracle(t *testing.T, schemaSrc string) map[string]fixedOracleCase {
 	return cases
 }
 
-// TestLuauFixedLoadNamesEveryRefusal holds schema_fixed.luau to Go's TableFixedReason
-// names for every case of gotable's TestFixedLoadNamesEveryRefusal that has a
-// Luau surface (docs/SPEC-TABLES.md §3.4; docs/FIXED-FORM-ALGORITHM.md §5.3):
-// the files are built and the verdicts computed by the same unit's generated Go
-// fixed load, then schema_fixed.luau loads those exact bytes. plan_too_large (no plan
-// argument) and batch_too_large (F.load takes no capacity) have no Luau surface.
+// TestLuauFixedLoadNamesEveryRefusal holds schema_fixed.luau to Go's VERDICT for
+// every case of gotable's TestFixedLoadNamesEveryRefusal that has a Luau surface
+// (docs/SPEC-TABLES.md §3.4, §6.5; docs/FIXED-FORM-ALGORITHM.md §5.3): the files
+// are built and refused by the same unit's generated Go fixed load, then
+// schema_fixed.luau loads those exact bytes and must refuse each one with a named
+// refusal and hand back nothing. Which name it gives is per-language diagnostic
+// detail and is not compared (docs/rulings.json refusal-verdict-only).
+// plan_too_large (no plan argument) and batch_too_large (F.load takes no
+// capacity) have no Luau surface.
 func TestLuauFixedLoadNamesEveryRefusal(t *testing.T) {
 	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
@@ -240,11 +242,11 @@ func TestLuauFixedLoadNamesEveryRefusal(t *testing.T) {
 		return F.load(T[root .. "Descriptor"], fixedOf(root), inputs[name])
 	end)
 	if ok then
-		print(name .. "|ok|false")
-	elseif type(err) == "table" and err.name ~= nil then
-		print(name .. "|" .. err.name .. "|" .. tostring(err.malformed == true))
+		print(name .. "|ok")
+	elseif type(err) == "table" and type(err.name) == "string" and err.name ~= "" then
+		print(name .. "|refused")
 	else
-		print(name .. "|error|false")
+		print(name .. "|error " .. tostring(err))
 	end
 end
 `)
@@ -252,30 +254,22 @@ end
 		t.Fatal(err)
 	}
 	out := string(luaurun.Run(t, g.dir, "main.luau", inputs))
-	got := map[string]struct {
-		reason    string
-		malformed bool
-	}{}
+	got := map[string]string{}
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		fields := strings.Split(line, "|")
-		if len(fields) != 3 {
-			t.Fatalf("the Luau probe printed %q, want name|reason|malformed", line)
+		name, verdict, ok := strings.Cut(line, "|")
+		if !ok {
+			t.Fatalf("the Luau probe printed %q, want name|verdict", line)
 		}
-		got[fields[0]] = struct {
-			reason    string
-			malformed bool
-		}{fields[1], fields[2] == "true"}
+		got[name] = verdict
 	}
 	for _, name := range names {
-		want := oracle[name]
 		g, ok := got[name]
 		if !ok {
 			t.Errorf("%s: the Luau probe answered no line", name)
 			continue
 		}
-		if g.reason != want.reason || g.malformed != want.malformed {
-			t.Errorf("%s: schema_fixed.luau answered %s (malformed %t), Go answered %s (malformed %t)",
-				name, g.reason, g.malformed, want.reason, want.malformed)
+		if g != "refused" {
+			t.Errorf("%s: schema_fixed.luau answered %s, Go refused it", name, g)
 		}
 	}
 }
