@@ -82,8 +82,9 @@ type reportRow struct {
 	unit     string
 	root     string
 	wire     string
-	// blobShared marks an instance whose wire names one blob from two slots
-	// (go-refusal=blob_shared): every writer refuses it (§2.5).
+	// blobShared marks an instance whose wire every reader refuses
+	// (wire-refused; the blob_shared rows name one blob from two slots, which
+	// every writer refuses, §2.5).
 	blobShared bool
 }
 
@@ -103,7 +104,7 @@ func manifestRows(t *testing.T) []reportRow {
 		}
 		if (fields[0] == "report" || fields[0] == "instance") && len(fields) >= 5 {
 			rows = append(rows, reportRow{kind: fields[0], caseName: fields[1], unit: fields[2], root: fields[3], wire: fields[4],
-				blobShared: slices.Contains(fields[5:], "go-refusal=blob_shared")})
+				blobShared: slices.Contains(fields[5:], "wire-refused") || slices.Contains(fields[5:], "go-refusal=blob_shared")})
 		}
 	}
 	if err := sc.Err(); err != nil {

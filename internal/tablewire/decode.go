@@ -818,7 +818,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) bool {
 			fv.Elems = fv.Elems[:0]
 		}
 		var spent int64
-		for i := 0; i < keep; i++ {
+		for i := range keep {
 			if f.Array == ir.ArrayList {
 				fv.Elems = append(fv.Elems, r.m.ElementZero(f))
 			}

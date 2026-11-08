@@ -83,7 +83,7 @@ print("whole unit passed")
 			} else {
 				var kept []string
 				removed := 0
-				for _, line := range strings.Split(patched, "\n") {
+				for line := range strings.SplitSeq(patched, "\n") {
 					if strings.HasPrefix(line, "schema_rt.view_constant(") {
 						removed++
 					} else {

@@ -321,7 +321,7 @@ func announceProbe(u *announceUnit) string {
 	fmt.Fprintf(&b, "const EXPECTED_IDS: [u64; %d] = [%s];\n", len(u.entries), strings.Join(ids, ", "))
 	fmt.Fprintf(&b, "const EXPECTED_KINDS: [u8; %d] = [%s];\n\n", len(u.entries), strings.Join(kinds, ", "))
 
-	// THE TWO STRICT CHECKS (§3.3), each answered malformed: a body with the
+	// THE TWO STRICT CHECKS (§3.3), each answered damaged: a body with the
 	// build version field gone, and one with the vocabulary field gone.
 	missingVersion := append([]byte{u.announcement[0]}, u.announcement[11:]...)
 	missingVocab := append(append([]byte{}, u.announcement[:11]...), 0x00)
@@ -361,13 +361,13 @@ func announceProbe(u *announceUnit) string {
 	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &ANNOUNCE, &mut report);\n")
-	b.WriteString("        say(\"read\", ok && !report.refused && !report.malformed && vocab.count == EXPECTED_COUNT && vocab.build_version == EXPECTED_BUILD && vocab.announced && (0..vocab.count).all(|i| vocab.entries[i].id == EXPECTED_IDS[i] && vocab.entries[i].kind == EXPECTED_KINDS[i]), \"the announcement did not fill the vocabulary the page names\");\n    }\n")
+	b.WriteString("        say(\"read\", ok && !report.refused && !report.damaged && vocab.count == EXPECTED_COUNT && vocab.build_version == EXPECTED_BUILD && vocab.announced && (0..vocab.count).all(|i| vocab.entries[i].id == EXPECTED_IDS[i] && vocab.entries[i].kind == EXPECTED_KINDS[i]), \"the announcement did not fill the vocabulary the page names\");\n    }\n")
 	// 2.3: a second announcement is refused by name.
 	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let _ = announce_read(&mut vocab, &ANNOUNCE, &mut report);\n")
 	b.WriteString("        let mut report2 = TableReport::default();\n        let ok = announce_read(&mut vocab, &ANNOUNCE, &mut report2);\n")
-	b.WriteString("        say(\"second_announcement\", !ok && report2.refused && report2.reason == TableReason::SecondAnnouncement && !report2.malformed, \"a second announcement is not refused by name\");\n    }\n")
+	b.WriteString("        say(\"second_announcement\", !ok && report2.refused && report2.reason == TableReason::SecondAnnouncement && !report2.damaged, \"a second announcement is not refused by name\");\n    }\n")
 	// 2.3: refusal is terminal — a refused FIRST announcement carries none for
 	// the connection's life.
 	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
@@ -389,22 +389,22 @@ func announceProbe(u *announceUnit) string {
 	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &MISSING_VERSION, &mut report);\n")
-	b.WriteString("        say(\"malformed_missing_version\", !ok && report.malformed && !report.refused, \"a body without the build version is not malformed\");\n    }\n")
+	b.WriteString("        say(\"malformed_missing_version\", !ok && report.damaged && !report.refused, \"a body without the build version is not malformed\");\n    }\n")
 	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &MISSING_VOCAB, &mut report);\n")
-	b.WriteString("        say(\"malformed_missing_vocabulary\", !ok && report.malformed && !report.refused, \"a body without the vocabulary is not malformed\");\n    }\n")
+	b.WriteString("        say(\"malformed_missing_vocabulary\", !ok && report.damaged && !report.refused, \"a body without the vocabulary is not malformed\");\n    }\n")
 	// 2.3: a non-canonical ten-byte LEB is malformed, never a refusal.
 	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &NONCANONICAL, &mut report);\n")
-	b.WriteString("        say(\"malformed_noncanonical\", !ok && report.malformed && !report.refused, \"a non-canonical ten-byte LEB is not malformed\");\n    }\n")
+	b.WriteString("        say(\"malformed_noncanonical\", !ok && report.damaged && !report.refused, \"a non-canonical ten-byte LEB is not malformed\");\n    }\n")
 	// 2.3: a byte between the terminator and the id table is malformed, never a
 	// refusal.
 	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &TRAILING, &mut report);\n")
-	b.WriteString("        say(\"malformed_trailing_byte\", !ok && report.malformed && !report.refused, \"a byte between the terminator and the id table is not malformed\");\n    }\n")
+	b.WriteString("        say(\"malformed_trailing_byte\", !ok && report.damaged && !report.refused, \"a byte between the terminator and the id table is not malformed\");\n    }\n")
 	// 2.3: an unknown field is skipped and counted, the two strict checks kept:
 	// the read still fills the vocabulary the page names, the build version kept.
 	for _, c := range []struct{ id, cnst, why string }{
@@ -415,7 +415,7 @@ func announceProbe(u *announceUnit) string {
 		fmt.Fprintf(&b, "    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
 		fmt.Fprintf(&b, "        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
 		fmt.Fprintf(&b, "        let ok = announce_read(&mut vocab, &%s, &mut report);\n", c.cnst)
-		fmt.Fprintf(&b, "        say(\"%s\", ok && !report.refused && !report.malformed && vocab.count == EXPECTED_COUNT && vocab.build_version == EXPECTED_BUILD && report.unknown == 1, \"%s\");\n    }\n", c.id, c.why)
+		fmt.Fprintf(&b, "        say(\"%s\", ok && !report.refused && !report.damaged && vocab.count == EXPECTED_COUNT && vocab.build_version == EXPECTED_BUILD && report.unknown == 1, \"%s\");\n    }\n", c.id, c.why)
 	}
 	b.WriteString("}\n")
 	return b.String()

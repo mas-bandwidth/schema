@@ -38,7 +38,7 @@ func TestGeneratedFixedOneVerdictEveryByte(t *testing.T) {
 		}
 		rows := map[string]*row{}
 		for at := 16; at < len(image); at++ {
-			for b := 0; b < 256; b++ {
+			for b := range 256 {
 				if byte(b) == image[at] {
 					continue
 				}

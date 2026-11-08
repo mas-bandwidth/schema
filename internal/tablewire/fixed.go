@@ -266,14 +266,14 @@ func encodeFixedArm(m *tabletext.Model, b []byte, arm ir.UnionVariant, cell *tab
 }
 
 func putFixedUint(b []byte, width int64, v uint64) {
-	for i := int64(0); i < width; i++ {
+	for i := range width {
 		b[i] = byte(v >> (8 * i))
 	}
 }
 
 func getFixedUint(b []byte, width int64) uint64 {
 	var v uint64
-	for i := int64(0); i < width; i++ {
+	for i := range width {
 		v |= uint64(b[i]) << (8 * i)
 	}
 	return v

@@ -116,7 +116,7 @@ func TestFixedClassOnTableWireRust(t *testing.T) {
 	// THE PROBE UNIT: fixed table roots whose string, bytes and flags defaults
 	// the storage carries and the writer elides against (§3, §4.2).
 	probe := unitFrom(t, fixedClassProbeSrc)
-	pm := tabletext.NewModel(probe)
+	pm := fcVariableModel(probe)
 	pu := &fcUnit{module: "fixedclassprobe", unit: probe}
 	for _, pc := range fixedClassProbeTexts {
 		inst := pm.New(pm.Lookup(pc.root))
@@ -140,11 +140,42 @@ func TestFixedClassOnTableWireRust(t *testing.T) {
 	// `fixed table`, every committed wire decodes, re-encodes to the same bytes
 	// and writes the committed text, and every report row's expected answer is
 	// the oracle's own decode, so a difference below is this leg's.
+	form1ByName := map[string][]byte{}
+	for _, u := range units {
+		m := fcVariableModel(u.unit)
+		for i := range u.cases {
+			c := &u.cases[i]
+			if len(c.wire) > 0 && c.wire[0] != byte(ir.TableWireForm) {
+				inst := m.New(m.Lookup(c.root))
+				var rep tabletext.Report
+				if !m.Read(inst, c.text, &rep) {
+					t.Fatalf("%s: failed to read json for form-1 wire: %+v", c.name, rep)
+				}
+				w, err := tablewire.Encode(m, inst)
+				if err != nil {
+					t.Fatalf("%s: failed to encode form-1 wire: %v", c.name, err)
+				}
+				c.wire = w
+			}
+			form1ByName[c.name] = c.wire
+		}
+	}
+	for _, u := range units {
+		for i := range u.reports {
+			r := &u.reports[i]
+			if len(r.wire) > 0 && r.wire[0] != byte(ir.TableWireForm) {
+				prefix, _, _ := strings.Cut(r.name, "_as_")
+				if w, ok := form1ByName[prefix]; ok {
+					r.wire = w
+				}
+			}
+		}
+	}
 	for _, u := range units {
 		if len(ir.TableFixedRoots(u.unit)) == 0 {
 			t.Fatalf("%s: the closure holds no fixed table, so this test proves nothing", u.module)
 		}
-		m := tabletext.NewModel(u.unit)
+		m := fcVariableModel(u.unit)
 		for _, c := range u.cases {
 			inst := m.New(m.Lookup(c.root))
 			var rep tabletext.Report
@@ -285,6 +316,26 @@ func TestFixedClassOnTableWireRust(t *testing.T) {
 	t.Logf("probe output (%d expected lines):\n%s", len(want), out)
 }
 
+func fcVariableModel(u *ir.Unit) *tabletext.Model {
+	cp := *u
+	cp.Tables = make(map[string]*ir.Struct, len(u.Tables))
+	for k, v := range u.Tables {
+		st := *v
+		st.FixedDeclared = false
+		cp.Tables[k] = &st
+	}
+	cp.Files = make([]*ir.File, len(u.Files))
+	for i, f := range u.Files {
+		fcp := *f
+		fcp.Tables = make([]*ir.Struct, len(f.Tables))
+		for j, st := range f.Tables {
+			fcp.Tables[j] = cp.Tables[st.Name]
+		}
+		cp.Files[i] = &fcp
+	}
+	return tabletext.NewModel(&cp)
+}
+
 // fcTableModule is the codec module that declares a table: its file's base,
 // lowered, with _table.
 func fcTableModule(u *ir.Unit, name string) string {
@@ -329,7 +380,7 @@ macro_rules! report_case {
         let wire = std::fs::read($wire).unwrap();
         let mut r = Default::default();
         let ok = table::$load(&wire, &mut r).is_some();
-        let verdict = if ok && !r.malformed && !r.refused { "read" } else { "refused" };
+        let verdict = if ok && r.err().is_none() { "read" } else { "refused" };
         println!("REPORT {} {}", $case, verdict);
     }};
 }
@@ -425,10 +476,10 @@ fixed table Ranged
 		}
 	}
 	for _, want := range []string{
-		"if x > 255u64 { x = 255u64; report.clamped += 1; }",
-		"if x < 1u64 { x = 1u64; report.clamped += 1; }",
-		"if x > 9i64 { x = 9i64; report.clamped += 1; }",
-		"if x < -128i64 { x = -128i64; report.clamped += 1; } else if x > 127i64 { x = 127i64; report.clamped += 1; }",
+		"if x > 255u64 { x = 255u64; report.damaged = true; }",
+		"if x < 1u64 { x = 1u64; report.damaged = true; }",
+		"if x > 9i64 { x = 9i64; report.damaged = true; }",
+		"if x < -128i64 { x = -128i64; report.damaged = true; } else if x > 127i64 { x = 127i64; report.damaged = true; }",
 	} {
 		if !strings.Contains(codec, want) {
 			t.Errorf("the form-1 read lost a clamp that can fire: %q", want)

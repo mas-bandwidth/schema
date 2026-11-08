@@ -70,10 +70,10 @@ pub fn name(&self) -> &'static str {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct TableFixedReport {
     pub unknown: u32,
-    pub kind_mismatch: u32,
+    pub mismatch: u32,
     pub widened: u32,
-    pub clamped: u32,
-    pub malformed: bool,
+    pub oor: u32,
+    pub damaged: bool,
     pub refused: bool,
     pub reason: TableFixedReason,
     pub layout_hash: u64,
@@ -82,10 +82,10 @@ pub struct TableFixedReport {
 impl TableFixedReport {
     pub fn refuse<T>(&mut self, reason: TableFixedReason) -> Option<T> {
         self.unknown = 0;
-        self.kind_mismatch = 0;
+        self.mismatch = 0;
         self.widened = 0;
-        self.clamped = 0;
-        self.malformed = false;
+        self.oor = 0;
+        self.damaged = false;
         self.refused = true;
         self.reason = reason;
         self.layout_hash = 0;
@@ -222,10 +222,10 @@ fn test_hash_in_no_lineage_entry() {
     );
     // AND NOTHING ELSE: no counters moved, malformed false
     assert_eq!(report.unknown, 0, "no unknown counter moved");
-    assert_eq!(report.kind_mismatch, 0, "no kind_mismatch counter moved");
+    assert_eq!(report.mismatch, 0, "no kind_mismatch counter moved");
     assert_eq!(report.widened, 0, "no widened counter moved");
-    assert_eq!(report.clamped, 0, "no clamped counter moved");
-    assert!(!report.malformed, "malformed must be false on a refusal by name");
+    assert_eq!(report.oor, 0, "no clamped counter moved");
+    assert!(!report.damaged, "malformed must be false on a refusal by name");
 }
 
 // ---- main ----
