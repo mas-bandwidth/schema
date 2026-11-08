@@ -82,7 +82,7 @@ defmodule TestRowBoolValuesValidData do
             else: ["false: homing should be false, got #{inspect(loaded.homing)}" | fails]
 
         fails =
-          if not report.malformed and report.clamped == 0 and report.unknown == 0,
+          if report.unknown == 0 and report.widened == 0 and report.layout_hash == 0,
             do: fails,
             else: ["false: counters not clean: #{inspect(report)}" | fails]
 
@@ -114,7 +114,7 @@ defmodule TestRowBoolValuesValidData do
             else: ["true: homing should be true, got #{inspect(loaded.homing)}" | fails]
 
         fails =
-          if not report.malformed and report.clamped == 0 and report.unknown == 0,
+          if report.unknown == 0 and report.widened == 0 and report.layout_hash == 0,
             do: fails,
             else: ["true: counters not clean: #{inspect(report)}" | fails]
 
@@ -153,7 +153,7 @@ defmodule TestRowBoolValuesValidData do
             else: ["hostile 0x7F: homing should normalise to true, got #{inspect(loaded.homing)}" | fails]
 
         fails =
-          if not report.malformed and report.clamped == 0 and report.unknown == 0,
+          if report.unknown == 0 and report.widened == 0 and report.layout_hash == 0,
             do: fails,
             else: ["hostile 0x7F: counters not clean (normalisation is not a clamp): #{inspect(report)}" | fails]
 

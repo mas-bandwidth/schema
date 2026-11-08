@@ -100,11 +100,11 @@ local T = schema.require("ProbewideTables");
 local L = schema.require("schema_table_load");
 local units = function(a) { local s = ""; foreach (u in a) s += format("%04x", u); return s == "" ? "-" : s; };
 local run = function(key, arm) {
-  local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false, refused = false };
-  local v = L.loadTolerant(T, "Root", inputs[key], report);
+  local report = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
+  local v = L.loadWalk(T, "Root", inputs[key], report);
   local got = v == null ? "null" : (arm ? (v.Body.Type == 1 ? units(v.Body.Wide) : "none") : units(v.F34));
-  print(key + "|" + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," +
-    report.duplicate + "," + (report.malformed ? "true" : "false") + "," + (report.refused ? "refused" : "read") + "|" + got + "\n");
+  print(key + "|" + report.unknown + "," + report.mismatch + "," + report.widened + "," + report.oor + "," +
+    report.repeated + "," + (report.bodyDamaged ? "true" : "false") + "," + (report.refused ? "refused" : "read") + "|" + got + "\n");
 };
 `
 

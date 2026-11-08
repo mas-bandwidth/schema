@@ -199,15 +199,13 @@ fixed table T
 func t05R19(t *testing.T) {
 	runtime := t05Runtime(t)
 	for _, want := range []string{
-		"malformed: false",
 		"unknown: 0",
-		"kind_mismatch: 0",
-		"clamped: 0",
 		"widened: 0",
-		"duplicate: 0",
-		"def clamped(report, 0), do: report",
+		"retained: 0",
+		"retain_lost: 0",
+		"def range_check(report, 0), do: report",
 		"def census(report, 0, 0), do: report",
-		"def damaged(report, false), do: report",
+		"def damage_check(report, false), do: report",
 		"LAWFUL lineage they are both zero,",
 	} {
 		t05Has(t, runtime, want, "R19 a clean read moves nothing")
@@ -221,10 +219,9 @@ func t05R19(t *testing.T) {
 // whose every field is named twice over still moves nothing.
 func t05E9(t *testing.T) {
 	runtime := t05Runtime(t)
-	t05Has(t, runtime, "duplicate: 0", "E9 the duplicate lane starts at zero")
-	t05No(t, runtime, "bump(report, :duplicate)", "E9 duplicate never raised")
-	if n := strings.Count(runtime, "duplicate"); n != 1 {
-		t.Errorf("E9: `duplicate` occurs %d times in the runtime, want the report lane only", n)
+	t05No(t, runtime, "duplicate", "E9 duplicate never raised")
+	if n := strings.Count(runtime, "duplicate"); n != 0 {
+		t.Errorf("E9: `duplicate` occurs %d times in the runtime, want none", n)
 	}
 	out, err := Generate(unitFrom(t, `package probe
 
@@ -249,12 +246,12 @@ func t05R16(t *testing.T) {
 	runtime := t05Runtime(t)
 	for _, want := range []string{
 		// unknown: ONCE PER ENDPOINT, after the record loop (§5.9 #6).
-		"def census(report, unknown, kind_mismatch) do",
+		"def census(report, unknown, _mismatch) do",
 		"unknown: report.unknown + unknown",
 		// widened: once per entry per record.
 		"bump(report, :widened)",
 		// clamped: once per entry per record, count and text.
-		"def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))",
+		"def range_check(_report, _n), do: throw({:refuse, :out_of_range})",
 		"def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1",
 		"def fclamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1",
 		// the bounds pass counts a forged ordinal remapped to None.
