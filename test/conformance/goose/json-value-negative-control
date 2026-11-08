@@ -48,8 +48,8 @@ total)
 	unit=featurewitnesses
 	;;
 count)
-	from='            if seen > bound { c.jr.rep.clamped += 1; }'
-	to='            if seen < 0 { c.jr.rep.clamped += 1; }'
+	from='            if seen > bound { c.jr.rep.oor += 1; }'
+	to='            if seen < 0 { c.jr.rep.oor += 1; }'
 	want="json-hostile "
 	green="wire json-read json-write"
 	unit=featurewitnesses

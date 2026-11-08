@@ -61,12 +61,12 @@ fn msg_reason_name(code: i64) -> const u8[:] {
 // unknown fields of the announcement's own body in `unknown`.
 struct MsgReport {
     reason: i64,
-    malformed: bool,
+    damaged: bool,
     unknown: i64,
-    kind_mismatch: i64,
+    mismatch: i64,
     widened: i64,
-    clamped: i64,
-    duplicate: i64,
+    oor: i64,
+    repeated: i64,
     count: i64,
 }
 
@@ -371,7 +371,7 @@ fn msg_file_skip(data: const u8[:], off: i64&, end: i64, kind: u8) -> bool {
 // ordinary tolerance for anything else.
 fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bool {
     if data.len < 1 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     if data[0] != 1 {
@@ -379,28 +379,28 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
         return false;
     }
     if data.len < 9 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // THE ID TABLE, from the end (§3): the count, then 8 x count entries
     let ids_n = le_at(data, data.len - 8, 8);
     if ids_n > (data.len / 8) as! u64 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     let span = (ids_n as! i64) * 8 + 8;
     if span + 1 > data.len {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // THE BOUNDED-WORK CONTRACT (§3), as for a file (wire_load.goose)
     if ids_n > IdTableBound as! u64 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     let first = data.len - span;
     if !ids_distinct(data, first, ids_n as! i64) {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // the body's extent: a body that ENDED EARLY is malformed (§3)
@@ -411,7 +411,7 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
         off = next;
         if ref == 0 {
             if off != first {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             break;
@@ -432,13 +432,13 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
     loop {
         let ref, next, ok = leb_at(data, off, first);
         if !ok {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         off = next;
         if ref == 0 { break; }
         if ref > ids_n || off + 1 > first {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         let id = le_at(data, first + ((ref - 1) as! i64) * 8, 8);
@@ -482,7 +482,7 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
         } else {
             report.unknown += 1;
             if !msg_file_skip(data, off, first, kind) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
         }
@@ -491,7 +491,7 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
     if !good { version = 0; }
     v.build_version = version;
     if !good || seen_version != 1 || seen_words != 1 {
-        report.malformed = true;
+        report.damaged = true;
         return false;
     }
     // the entries, checked whole before one is kept
@@ -504,19 +504,19 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
         let began = at;
         var e = MsgEntry { .. };
         if !msg_entry(words, at, e, v, false) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         // the announcement's own two ids never take a slot, and the node
         // table's takes exactly one
         if e.id == BuildVersionWireId || e.id == VocabularyWireId {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         if e.id == NodeWireId {
             nodes += 1;
             if nodes > 1 {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
         }
@@ -534,7 +534,7 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
                     }
                 }
                 if same {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             }
@@ -555,7 +555,7 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
     for i in count {
         var e = MsgEntry { .. };
         if !msg_entry(words, at, e, v, true) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         v.entries[i] = e;
@@ -598,9 +598,9 @@ struct MsgReader {
     ok: bool = true,
     reason: i64 = 0,
     unknown: i64 = 0,
-    kind_mismatch: i64 = 0,
+    mismatch: i64 = 0,
     widened: i64 = 0,
-    clamped: i64 = 0,
+    oor: i64 = 0,
     depth: i64 = 0,
 }
 
@@ -742,7 +742,7 @@ fn msg_accept(r: MsgReader&, e: i64, kind: u8, elem: u8) -> i64 {
         r.widened += 1;
         return 1;
     }
-    r.kind_mismatch += 1;
+    r.mismatch += 1;
     if !msg_skip(r, e) {
         r.ok = false;
         return -1;
