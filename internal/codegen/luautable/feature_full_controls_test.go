@@ -196,7 +196,7 @@ func textTotalPastValue(t *testing.T, g *generatedUnit) string {
 json.SetFlags(SCHEMA_JSON_FLAGS)
 local inputs = require("./inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = json.FromJsonTolerant("Root", inputs.text, report)
+local v = json.fromJsonWalk("Root", inputs.text, report)
 local w = { reason = "" }
 local out = v and json.ToJson("Root", v, w)
 if out == nil then print("REFUSED " .. tostring(w.reason)) else print(buffer.tostring(out)) end

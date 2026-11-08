@@ -156,7 +156,7 @@ local Var = St.lookup("Var")
 -- THE VARIABLE READ: tolerant and strict, each refusing by name
 for _, w in { "varA", "varB", "varXs", "varYs" } do
 	local r = report()
-	local v = load.loadTolerant("Var", inputs[w], r)
+	local v = load.loadWalk("Var", inputs[w], r)
 	row("var/read/" .. w, if v == nil then tostring(r.reason) else "loaded")
 	local r2: any = {}
 	local s = R.ReadStrict(nil, "Var", inputs[w], r2)
@@ -164,7 +164,7 @@ for _, w in { "varA", "varB", "varXs", "varYs" } do
 end
 do
 	local r = report()
-	local v = load.loadTolerant("Var", inputs.varTwin, r)
+	local v = load.loadWalk("Var", inputs.varTwin, r)
 	row("var/read/twin", if v == nil then tostring(r.reason) else "loaded")
 end
 
@@ -190,7 +190,7 @@ row("var/write/twin", hex((save.save(Var, twin()))))
 -- retaining read refuses it
 do
 	local r = report()
-	row("retain/plain", if load.loadTolerant("Var", inputs.retain, r) == nil then tostring(r.reason) else "loaded")
+	row("retain/plain", if load.loadWalk("Var", inputs.retain, r) == nil then tostring(r.reason) else "loaded")
 	local r2: any = report()
 	local v = Ret.LoadRetain("Var", inputs.retain, r2)
 	row("retain/read", if v == nil then tostring(r2.reason) .. " " .. tostring(r2.field) else "loaded")
