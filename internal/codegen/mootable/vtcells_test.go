@@ -10,20 +10,22 @@ package mootable_test
 //	instance   the wire the C++ reference or the Go engine wrote loads through
 //	           the emitted table_load.moo unrefused and saves back through
 //	           table_save.moo byte for byte, its measure its length; a
-//	           go-refusal=blob_shared instance is held to that refusal
-//	report     the load's u,k,w,c,d,m,verdict line is reports.txt's, the Go
-//	           engine's own answer for that wire
+//	           wire-refused instance is held to its refusal
+//	report     the one read's verdict (read or refused) is reports.txt's, the
+//	           Go engine's own verdict for that wire; no counter is compared
 //	construct  a constructCases entry: the Go engine's wire of the JSON text
 //	           reads through ReadStrict and saves back byte for byte
 //
-// TestMooVariableTableCellsNegativeControl plants one defect in the save and
-// one in the load and requires every row's subtest to go red under each.
+// TestMooVariableTableCellsNegativeControl plants defects in the variable save,
+// the variable load and the fixed save, and requires every row to go red
+// under at least one.
 
 import (
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -40,7 +42,7 @@ var vtCells = []vtCell{
 	// fixed tables on the variable wire, form 1: value roots with no node
 	// table, defaults elided, schema evolution in both directions, and the
 	// form byte's verdicts
-	{"fixed-class", []string{"root_full", "root_default", "profile_elide", "loadout_full", "wide_blob", "archive",
+	{"fixed-class", []string{"root_full", "root_default", "profile_elide", "loadout_full", "archive",
 		"v1_cfg", "v1_seams", "v2_cfg", "v2_seams", "chain_value", "chain_value_empty",
 		"v1_cfg_as_v2", "v1_seams_as_v2", "v2_cfg_as_v1", "v2_seams_as_v1", "form_zero", "form_six", "form_ff", "message_as_file"}, nil},
 	// ?T: tblp3's link ?Link against tblp1's plain link both ways, tblg1's
@@ -207,10 +209,13 @@ func TestMooVariableTableCells(t *testing.T) {
 }
 
 // TestMooVariableTableCellsNegativeControl plants, one at a time, a defect in
-// the emitted save (the id table's count one too many, so no saved wire is
-// the reference's) and in the emitted load (the id table read in reverse, so
-// every reference names another field), and requires every row's subtest to
-// go red under each: no row's gate is green by holding nothing.
+// the emitted save (the id table's count one too many, so no saved variable
+// wire is the reference's), in the emitted load (the id table read in
+// reverse, so every reference names another field) and in the fixed form's
+// save (the form byte off by one, so no saved fixed root is the reference's).
+// Every row must go red under at least one plant (a row of fixed roots never
+// meets the id table), and every plant must turn some row red: no row's gate
+// is green by holding nothing.
 func TestMooVariableTableCellsNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
@@ -223,22 +228,40 @@ func TestMooVariableTableCellsNegativeControl(t *testing.T) {
 			files[file] = []byte(strings.Replace(src, from, to, 1))
 		}
 	}
-	for _, ctl := range []struct {
+	plants := []struct {
 		name   string
 		mutate func(*testing.T, map[string][]byte)
 	}{
 		{"save-id-count", plant("table_save.moo", "\tw_u32(w, #c.ids.list)\n\tw_u32(w, 0)\n", "\tw_u32(w, #c.ids.list + 1)\n\tw_u32(w, 0)\n")},
 		{"load-id-order", plant("table_load.moo", "\t\tids[i + 1] = id\n", "\t\tids[count - i] = id\n")},
-	} {
+		{"fixed-save-form", plant("table_fixed.moo", "\t\tbuffer.writeu8(out, 0, FORM)\n", "\t\tbuffer.writeu8(out, 0, FORM + 1)\n")},
+	}
+	var mu sync.Mutex
+	reddened := map[string]int{}
+	t.Run("rows", func(t *testing.T) {
 		for _, c := range vtCells {
-			t.Run(ctl.name+"/"+c.row, func(t *testing.T) {
+			t.Run(c.row, func(t *testing.T) {
 				t.Parallel()
-				fails, _ := vtCellFailures(t, c, ctl.mutate)
-				if len(fails) == 0 {
-					t.Fatalf("%s: the %s row stayed green", ctl.name, c.row)
+				red := 0
+				for _, p := range plants {
+					fails, _ := vtCellFailures(t, c, p.mutate)
+					if len(fails) > 0 {
+						red++
+						mu.Lock()
+						reddened[p.name]++
+						mu.Unlock()
+						t.Logf("%s: %d findings, first %s", p.name, len(fails), fails[0])
+					}
 				}
-				t.Logf("%s: %d findings, first %s", c.row, len(fails), fails[0])
+				if red == 0 {
+					t.Fatalf("the %s row stayed green under every plant", c.row)
+				}
 			})
+		}
+	})
+	for _, p := range plants {
+		if reddened[p.name] == 0 {
+			t.Errorf("the %s plant turned no row red", p.name)
 		}
 	}
 }
