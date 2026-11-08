@@ -318,6 +318,7 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
 	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists widelistdemo:tables/widelist \
 	messagedemo:tables/messages streamdemo:tables/stream \
 	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema blockdemo:tables/block blockhome:tables/blockhome \

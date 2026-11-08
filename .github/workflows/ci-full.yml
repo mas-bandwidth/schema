@@ -736,6 +736,9 @@ jobs:
     name: legs under their build tags
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -856,7 +859,9 @@ jobs:
     # runner. The setup steps below run only on a hosted fallback.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 15
+    # on a hetzner runner sharing its host with a second job the re-pin
+    # runs 12-15 minutes, so the bound is 25
+    timeout-minutes: 25
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

@@ -388,6 +388,10 @@ var SourceDirs = []string{
 	"testdata/conformance/tables/json-hostile/",
 }
 
+// ValueGoldenSuffix names a json-hostile row's value golden beside its tree
+// (test/conformance/harness HostileValue).
+const ValueGoldenSuffix = ".value.json"
+
 // ExcludedSourceDirs are tracked fuzz seeds that are NOT table-wire inputs:
 // they exercise the compiler (format idempotence, generated code compiling, the
 // two-file pipeline), so their verdict is a compiler build result, not a
@@ -399,7 +403,9 @@ var ExcludedSourceDirs = []string{
 
 // Uncovered returns every leaf file under the given source trees that no case's
 // provenance cites. Each dir is walked recursively, so vector files nested in
-// case subdirectories are required to be cited too.
+// case subdirectories are required to be cited too. A value golden
+// (<tree>.value.json, the oracle's decoded value for a json-hostile row) is the
+// row's expected output, not an input, and is not a source.
 func Uncovered(root string, dirs []string, cases []Case) []string {
 	caught := map[string]bool{}
 	for _, c := range cases {
@@ -426,6 +432,9 @@ func Uncovered(root string, dirs []string, cases []Case) []string {
 				return err
 			}
 			src := filepath.ToSlash(rel)
+			if strings.HasSuffix(src, ValueGoldenSuffix) {
+				return nil
+			}
 			if !caught[src] {
 				uncovered = append(uncovered, src)
 			}

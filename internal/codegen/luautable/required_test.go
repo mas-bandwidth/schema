@@ -26,7 +26,7 @@ import (
 // The two required-field shapes named by the card: `| required` inside an if
 // guard (TestGoRequiredInOffBranch) and a required range-excluding-zero field
 // with a nested required field (TestGoRequiredExactFieldHasNoDefault),
-// together with older shapes whose writer elides the required field so the
+// together with older shapes that never declared the required field, so the
 // same bytes can be read at the root and two levels down.
 const requiredSchema = `package probe
 table Current
@@ -84,9 +84,10 @@ type requiredCase struct {
 }
 
 // requiredWires writes each case's wire with schema-go's own engine
-// (internal/tabletext and internal/tablewire), never by hand: a required
-// field at its default is elided by that writer, which is exactly the older
-// record the read must refuse.
+// (internal/tabletext and internal/tablewire), never by hand. That writer
+// writes a required field even at its default (§2.3), so each missing case is
+// written from the older shape that never declared the field, which is
+// exactly the older record the read must refuse.
 func requiredWires(t *testing.T, u *ir.Unit) []requiredCase {
 	t.Helper()
 	m := tabletext.NewModel(u)
@@ -108,12 +109,12 @@ func requiredWires(t *testing.T, u *ir.Unit) []requiredCase {
 	}
 	return []requiredCase{
 		{"off", "Current", build("Current", func(i *tabletext.Instance) { field(i, "active").Cell.B = false })},
-		{"on-missing", "Current", build("Current", func(i *tabletext.Instance) { field(i, "active").Cell.B = true })},
+		{"on-missing", "Current", build("Legacy", func(i *tabletext.Instance) { field(i, "active").Cell.B = true })},
 		{"on-present", "Current", build("Current", func(i *tabletext.Instance) {
 			field(i, "active").Cell.B = true
 			field(i, "req").Cell.I = 7
 		})},
-		{"exact-missing", "Exact", build("Exact", func(*tabletext.Instance) {})},
+		{"exact-missing", "Exact", build("OldExact", func(*tabletext.Instance) {})},
 		{"exact-present", "Exact", build("Exact", func(i *tabletext.Instance) { field(i, "ver").Cell.U = 7 })},
 		{"nested-missing", "Outer", build("OuterOld", func(i *tabletext.Instance) { field(i, "inner").Cell.Tab.Fields[0].Cell.I = 5 })},
 		{"nested-present", "Outer", build("Outer", func(i *tabletext.Instance) { field(i, "inner").Cell.Tab.Fields[0].Cell.U = 5 })},

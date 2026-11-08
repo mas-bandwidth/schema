@@ -115,7 +115,7 @@ func run(t testing.TB, dir, main string, inputs map[string][]byte, args, argv []
 	if len(argv) > 0 {
 		line = append(append(line, "--"), argv...)
 	}
-	cmd := exec.Command(goose, line...)
+	cmd := Command(t, goose, line...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

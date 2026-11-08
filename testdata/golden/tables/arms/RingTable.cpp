@@ -1212,7 +1212,11 @@ inline const char * schema_table_json_unbounded_text_at_( const void * slot, int
 {
     int64_t delta = 0;
     memcpy( &delta, slot, 8 );
-    if ( delta == 0 ) { len = 0; return ""; }
+    if ( delta == 0 )
+    {
+        len = 0;
+        return "";
+    }
     const uint8_t * raw = (const uint8_t *) ( (uintptr_t) slot + (uintptr_t) delta );
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
@@ -1388,7 +1392,11 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     if ( f->text_list != 0 )
     {
         const int32_t count = TableJsonCount( base, f );
-        if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
+        if ( count == 0 )
+        {
+            out.raw( "[]", 2 );
+            return true;
+        }
         out.put( '[' );
         for ( int32_t i = 0; i < count; i++ )
         {
@@ -3414,7 +3422,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( f->text_list != 0 )
     {
-        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        if ( TableJsonPeek( in ) != '[' )
+        {
+            in.bad = true;
+            return false;
+        }
         in.pos++;
         for ( int32_t i = 0; i < f->array_bound; i++ )
         {
@@ -3424,14 +3436,25 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         int32_t placed = 0;
         int64_t spent = 0;
         bool total_clamped = false;
+        int32_t seen = 0; // the elements spelled once the total is reached
         for ( ;; )
         {
             char c = TableJsonPeek( in );
-            if ( c == ']' ) { in.pos++; break; }
-            if ( c == 0 ) { in.bad = true; return false; }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
+            if ( c == 0 )
+            {
+                in.bad = true;
+                return false;
+            }
             if ( total_clamped || placed >= f->array_bound )
             {
-                if ( !total_clamped ) { in.report->clamped++; }
+                // an element past [..N] counts, the total having dropped it
+                // or not, as the wire counts its count clamp (§2.13)
+                if ( !total_clamped || ++seen > f->array_bound ) { in.report->clamped++; }
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else
@@ -3444,6 +3467,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                     in.report->clamped++;
                     f->table->reset( element );
                     total_clamped = true;
+                    seen = placed + 1;
                 }
                 else
                 {
@@ -3452,8 +3476,16 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 }
             }
             c = TableJsonPeek( in );
-            if ( c == ',' ) { in.pos++; continue; }
-            if ( c == ']' ) { in.pos++; break; }
+            if ( c == ',' )
+            {
+                in.pos++;
+                continue;
+            }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
             in.bad = true;
             return false;
         }
@@ -4717,8 +4749,16 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
         {
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             c = TableJsonPeek( in );
-            if ( c == ',' ) { in.pos++; continue; }
-            if ( c == ']' ) { in.pos++; break; }
+            if ( c == ',' )
+            {
+                in.pos++;
+                continue;
+            }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
             in.bad = true;
             return false;
         }
@@ -6276,7 +6316,11 @@ bool NodeFromJsonTolerant( Node & value, const char * text, int64_t bytes, Table
     const bool ok = TableJsonRead( &value, NodeTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         NodeTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -6330,7 +6374,11 @@ bool RingFromJsonTolerant( RingBuilder & builder, const char * text, int64_t byt
     const bool ok = TableJsonReadGraph( builder.main, root, RingTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RingTableType()->reset( root );
         return false;
     } // damage discards the whole load (§4)
@@ -6390,7 +6438,11 @@ bool RackFromJsonTolerant( RackBuilder & builder, const char * text, int64_t byt
     const bool ok = TableJsonReadGraph( builder.main, root, RackTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RackTableType()->reset( root );
         return false;
     } // damage discards the whole load (§4)
@@ -6450,7 +6502,11 @@ bool TrayFromJsonTolerant( TrayBuilder & builder, const char * text, int64_t byt
     const bool ok = TableJsonReadGraph( builder.main, root, TrayTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         TrayTableType()->reset( root );
         return false;
     } // damage discards the whole load (§4)

@@ -1002,6 +1002,16 @@ macro_rules! with_root {
                 use widelistdemo::{wide_from_json_bytes as $from_json, wide_load as $load, wide_save_checked as $save, wide_to_json_checked as $to_json};
                 Some($body)
             }
+            ("featurewitnesses", "Root") => {
+                #[allow(unused_imports)]
+                use featurewitnesses::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("featurewitnesses", "ArrayRoot") => {
+                #[allow(unused_imports)]
+                use featurewitnesses::{array_root_from_json_bytes as $from_json, array_root_load as $load, array_root_save_checked as $save, array_root_to_json_checked as $to_json};
+                Some($body)
+            }
             ("messagedemo", "ToolMessage") => {
                 #[allow(unused_imports)]
                 use messagedemo::{tool_message_from_json_bytes as $from_json, tool_message_load as $load, tool_message_save_checked as $save, tool_message_to_json_checked as $to_json};
@@ -1410,6 +1420,7 @@ macro_rules! with_cook_root {
             ("listdemo", "Army") => { use listdemo::{army_load as $load, army_cook_write as $cook}; Some($body) }
             ("listdemo", "Unbounded") => { use listdemo::{unbounded_load as $load, unbounded_cook_write as $cook}; Some($body) }
             ("widelist", "Wide") => { use widelistdemo::{wide_load as $load, wide_cook_write as $cook}; Some($body) }
+            ("featurewitnesses", "Root") => { use featurewitnesses::{root_load as $load, root_cook_write as $cook}; Some($body) }
             _ => None,
         }
     }};
