@@ -131,7 +131,7 @@ jobs:
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
@@ -376,7 +376,7 @@ jobs:
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
@@ -547,7 +547,7 @@ jobs:
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
@@ -820,7 +820,7 @@ jobs:
         if: matrix.dotnet != ''
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: (matrix.dotnet != '') && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
