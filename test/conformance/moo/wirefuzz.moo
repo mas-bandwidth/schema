@@ -544,10 +544,11 @@ local function answer(e: Entry, wire: buffer): buffer
 				v = u.L.load(root, wire, report)
 			end
 		end
-		-- A FIXED root always loads: a refused or damaged wire answers the
-		-- root at its defaults
-		if v == nil and not desc.variable then
-			v = desc.new()
+		-- THE ONE READ (§6.5): a read that names a refusal or damage answers
+		-- no value, whatever it handed back beside the name, and is never
+		-- saved
+		if report.damaged or report.reason ~= nil then
+			v = nil
 		end
 		if v ~= nil then
 			if e.retain then
@@ -557,7 +558,7 @@ local function answer(e: Entry, wire: buffer): buffer
 			end
 		end
 	end
-	local refused = report.refused == true or count(report.refused) > 0 or count(report.nonFinite) > 0
+	local refused = report.reason ~= nil or report.refused == true or count(report.refused) > 0 or count(report.nonFinite) > 0
 	local n = 47 + (if saved ~= nil then buffer.len(saved) else 0)
 	local b = buffer.create(n)
 	buffer.writeu8(b, 0, if v ~= nil then 1 else 0)

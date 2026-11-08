@@ -73,7 +73,9 @@ end
 function M.NewCard(): any return fromStorage(T.NewCard()) end
 function M.Load(wire: string, report: any): any
   if type(wire) ~= "string" then return nil end
-  return fromStorage(L.loadTolerant("Card", buffer.fromstring(wire), report))
+  local value = L.load("Card", buffer.fromstring(wire), report)
+  if value == nil then return nil end
+  return fromStorage(value)
 end
 function M.FromJSON(text: string, report: any): any
   local value = T.NewCard()

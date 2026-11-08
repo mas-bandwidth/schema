@@ -438,7 +438,11 @@ local function key_value(keyfd: any, vals: any): any
 	if keyfd == nil then
 		return nil
 	end
-	return vals[keyfd.slot]
+	local k = vals[keyfd.slot]
+	if k == nil and keyfd.s == "text" then
+		return "" -- unbounded text holds its default "" as nil (§2.13.1)
+	end
+	return k
 end
 
 -- the ascending order of two keys: -1/0/1 (§2.8)
@@ -961,6 +965,12 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 			end
 		end
 		got = i
+	end
+	-- THE ARRAY'S L FRAMES ITS ELEMENTS EXACTLY (§2.9, §3): a byte left inside
+	-- it after the counted elements is damage, as the engine reads it
+	-- (internal/tablewire/decode.go, arrayBody)
+	if sub.at ~= sub.e then
+		report.bodyDamaged = true
 	end
 	if fd.array == "counted" and holder ~= nil then
 		holder[slot .. "Count"] = got
