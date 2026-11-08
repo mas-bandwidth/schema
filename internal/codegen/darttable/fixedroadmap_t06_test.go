@@ -83,8 +83,8 @@ func t06C7(t *testing.T) {
 	if i := strings.Index(v, "value.vals"); i >= 0 {
 		v = v[:i]
 	}
-	if got := strings.Count(v, "report.clamped++"); got != 2 {
-		t.Errorf("C7 a range with two live ends counts exactly two clamps, got %d", got)
+	if got := strings.Count(v, "report.refused = TableFixedRefusal.outOfRange;"); got != 2 {
+		t.Errorf("C7 a range with two live ends refuses at exactly two ends, got %d", got)
 	}
 }
 
@@ -149,8 +149,8 @@ func t06C9(t *testing.T) {
 	body := t02Block(t, src, "void lineageFixedDecode(", "\n}\n")
 	t02Has(t, body, "default:", "C9 a tag past the last arm takes the switch default")
 	t02Has(t, body, "value.pick.type = PickType.none;", "C9 a tag past the arms lands None (0)")
-	if !strings.Contains(body, "report.clamped++;") {
-		t.Errorf("C9 a forged tag counts its clamp")
+	if !strings.Contains(body, "report.unknown++;") {
+		t.Errorf("C9 a forged tag counts unknown")
 	}
 	// THE COMPILED PLAN AGREES: the None const reads the writer's raw tag and a
 	// tag past its arm set lands None and counts.
@@ -246,10 +246,9 @@ func t06R17(t *testing.T) {
 func t06C1(t *testing.T) {
 	src := t06Generated(t, "VNEW_array_bounded_grow")
 	block := t02Block(t, src, "case TableFixedOp.count:", "\n        break;")
-	t02Has(t, block, "if (counted < 0) {", "C1 a negative count takes the low clamp")
-	t02Has(t, block, "counted = 0;", "C1 a negative count clamps to zero")
-	if got := strings.Count(block, "report.clamped++"); got != 2 {
-		t.Errorf("C1 the count op counts each end once, want 2, got %d", got)
+	t02Has(t, block, "if (counted < 0 || counted > size) {", "C1 a count out of its bound refuses")
+	if got := strings.Count(block, "return TableFixedRefusal.countOverBound;"); got != 1 {
+		t.Errorf("C1 the count op refuses once, want 1, got %d", got)
 	}
 }
 
@@ -259,6 +258,6 @@ func t06C1(t *testing.T) {
 func t06C2(t *testing.T) {
 	src := t06Generated(t, "VNEW_array_bounded_grow")
 	block := t02Block(t, src, "case TableFixedOp.count:", "\n        break;")
-	t02Has(t, block, "} else if (counted > size) {", "C2 a count past the bound takes the high clamp")
-	t02Has(t, block, "counted = size;", "C2 the clamp lands the WRITER's bound the plan carries")
+	t02Has(t, block, "if (counted < 0 || counted > size) {", "C2 a count past the bound refuses")
+	t02Has(t, block, "return TableFixedRefusal.countOverBound;", "C2 the refusal is the writer's bound the plan carries")
 }

@@ -2,6 +2,8 @@ package darttable
 
 import (
 	"fmt"
+	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -30,7 +32,6 @@ import (
 // below-min signed vector to construct; the below-min branch is the same clamp
 // the above-max vectors reach, read on the other side.
 func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
-	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	t.Run("MatchResult", func(t *testing.T) {
@@ -41,7 +42,7 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 		if !st.IsTable || !st.FixedDeclared {
 			t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
 		}
-		checkMessageReadClamp(t, row.root, u, matchReadClampMutant)
+		checkMessageReadClamp(t, row.root, u, matchReadClampMutant, "out_of_range")
 	})
 
 	// The constructed second vector: a store block whose quantity field's offset
@@ -59,7 +60,7 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 			t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
 		}
 		m := tabletext.NewModel(u)
-		checkMessageReadClamp(t, row.root, u, storePurchaseClampMutant(t, m))
+		checkMessageReadClamp(t, row.root, u, storePurchaseClampMutant(t, m), "out_of_range")
 	})
 
 	// The counted-array vector: a count above the reader's own bound keeps the
@@ -69,7 +70,7 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 	t.Run("CountedArray", func(t *testing.T) {
 		t.Parallel()
 		u, mutant := countedArrayClampMutant(t)
-		checkMessageReadClamp(t, "ClampBox", u, mutant)
+		checkMessageReadClamp(t, "ClampBox", u, mutant, "count_over_bound")
 	})
 }
 
@@ -96,7 +97,10 @@ fixed table ClampBox
 func countedArrayClampMutant(t *testing.T) (*ir.Unit, []byte) {
 	t.Helper()
 	u := unitFrom(t, countedArrayClampSchema)
-	m := tabletext.NewModel(u)
+	// STRICT WRITER: the encoder refuses a count past the declared bound,
+	// so the mutant is encoded by a bound-3 twin at the same count width;
+	// the bound-2 reader must refuse it whole (count_over_bound).
+	m := tabletext.NewModel(unitFrom(t, strings.Replace(countedArrayClampSchema, "[..2]", "[..3]", 1)))
 	inst := m.New(m.Lookup("ClampBox"))
 	var items *tabletext.Field
 	for i := range inst.Fields {
@@ -154,6 +158,28 @@ func findMessageRow(t *testing.T, name string) *batchRow {
 func storePurchaseClampMutant(t *testing.T, m *tabletext.Model) []byte {
 	t.Helper()
 	root := "StorePurchase"
+	// STRICT WRITER: the encoder refuses quantity 120 past its max 99, so
+	// the mutant is encoded by a twin whose quantity max is 127 — the same
+	// 7-bit span width — and the ranged reader must refuse it whole.
+	twinUnit := *m.Unit
+	tables := make(map[string]*ir.Struct, len(m.Unit.Tables))
+	for name, st := range m.Unit.Tables {
+		tables[name] = st
+	}
+	st := *tables[root]
+	tables[root] = &st
+	fields := make([]*ir.Field, len(st.Fields))
+	copy(fields, st.Fields)
+	st.Fields = fields
+	for i, f := range fields {
+		if f.Name == "quantity" {
+			nf := *f
+			nf.IntMax = big.NewInt(127)
+			fields[i] = &nf
+		}
+	}
+	twinUnit.Tables = tables
+	m = tabletext.NewModel(&twinUnit)
 	inst := m.New(m.Lookup(root))
 	if f, ok := inst.FieldByKey("player_id"); ok {
 		f.Cell.I = 9007199254740993
@@ -182,7 +208,7 @@ func storePurchaseClampMutant(t *testing.T, m *tabletext.Model) []byte {
 // checkMessageReadClamp answers one mutant with the Go oracle and with the
 // generated Dart batch message load, and holds the six counters and body one's
 // saved bytes equal.
-func checkMessageReadClamp(t *testing.T, root string, u *ir.Unit, mutant []byte) {
+func checkMessageReadClamp(t *testing.T, root string, u *ir.Unit, mutant []byte, reason string) {
 	t.Helper()
 	m := tabletext.NewModel(u)
 	vocabulary := &tablewire.Vocabulary{}
@@ -192,18 +218,17 @@ func checkMessageReadClamp(t *testing.T, root string, u *ir.Unit, mutant []byte)
 		t.Fatalf("the Go oracle refused the announcement: %v", err)
 	}
 	value := m.New(m.Lookup(root))
-	_, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, mutant, vocabulary, &oracle)
+	// STRICT VERDICT: a value past its declared range refuses the whole
+	// batch read (out_of_range); the Go oracle refuses the same mutant.
+	_, ok, _ := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, mutant, vocabulary, &oracle)
+	if ok || !oracle.Refused {
+		t.Fatalf("the Go oracle must refuse the mutant: ok=%v report %+v", ok, oracle)
+	}
+	saved, err := tablewire.EncodeMessage(m, m.New(m.Lookup(root)))
 	if err != nil {
-		t.Fatalf("the Go oracle erred on the mutant: %v", err)
+		t.Fatalf("the oracle could not encode a default body: %v", err)
 	}
-	if !ok {
-		t.Fatalf("the Go oracle did not decode the mutant whole")
-	}
-	saved, err := tablewire.EncodeMessage(m, value)
-	if err != nil {
-		t.Fatalf("the oracle could not re-encode body one: %v", err)
-	}
-	out, err := runBatchProbe(t, u, root, messageReadClampBody(root, announce, oracle, saved, mutant))
+	out, err := runBatchProbe(t, u, root, messageReadClampBody(root, announce, oracle, saved, mutant, reason))
 	if err != nil {
 		t.Fatalf("the clamped message read did not run green: %v\n%s", err, out)
 	}
@@ -222,7 +247,7 @@ var matchReadClampMutant = mustHex(matchReadClampMutantHex)
 // load and asserts the report's six counters and body one's saved bytes match
 // the Go oracle's on the same bytes (docs/SPEC-TABLES.md §3.3, §4): each want
 // is the Go oracle's, never a literal.
-func messageReadClampBody(root string, announce []byte, rep tabletext.Report, saved, mutant []byte) string {
+func messageReadClampBody(root string, announce []byte, rep tabletext.Report, saved, mutant []byte, reason string) string {
 	lower := lowerFirst(root)
 	return fmt.Sprintf(`
   final ann = Uint8List.fromList(%s);
@@ -235,11 +260,8 @@ func messageReadClampBody(root string, announce []byte, rep tabletext.Report, sa
   final values = <h.%s>[value];
   final rep = h.TableReport();
   final count = r.%sLoadMessages(values, msg, vocab, rep);
-  check(count == 1 && !rep.refused && !rep.malformed,
-      'LoadMessages count=$count refused=${rep.refused} malformed=${rep.malformed}');
-  check(rep.unknown == %d && rep.kindMismatch == %d && rep.widened == %d &&
-      rep.clamped == %d && rep.duplicate == %d,
-      'six counters unknown=${rep.unknown} kindMismatch=${rep.kindMismatch} widened=${rep.widened} clamped=${rep.clamped} duplicate=${rep.duplicate}');
+  check(count == 0 && rep.refused && rep.reason == '%s',
+      'LoadMessages count=$count refused=${rep.refused} reason=${rep.reason}');
   final measureRep = h.TableReport();
   final measure = r.%sMeasureMessages(values, measureRep);
   final buf = Uint8List(measure);
@@ -253,7 +275,6 @@ func messageReadClampBody(root string, announce []byte, rep tabletext.Report, sa
   }
   check(same, 'saved bytes of body one differ from the oracle');
 `, dartBytes(announce), dartBytes(mutant),
-		root, root, root, lower,
-		rep.Unknown, 0, rep.Widened, 0, 0,
+		root, root, root, lower, reason,
 		lower, lower, len(saved), len(saved), dartBytes(saved))
 }

@@ -200,9 +200,8 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n >= 1, 'the newer reader refused the older writer file: n=$n ${why(report)}');
   check(report.refused == 0, 'a clean NEW-READS-OLD is not a refusal: ${why(report)}');
-  check(!report.malformed, 'a clean NEW-READS-OLD is not malformed');
   check(
-    report.unknown == 0 && report.kindMismatch == 0 && report.clamped == 0 && report.duplicate == 0,
+    report.unknown == 0,
     'counters moved on a clean backward read: ${why(report)}',
   );
   %s
@@ -233,7 +232,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 				body = `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n >= 1, 'a row that moved no layout byte must READ both ways: n=$n ${why(report)}');
-  check(report.refused == 0 && !report.malformed, 'an equal hash is not a version: ${why(report)}');`
+  check(report.refused == 0, 'an equal hash is not a version: ${why(report)}');`
 			} else {
 				body = `  final data = File(FILE).readAsBytesSync();
   final want = ByteData.sublistView(data).getUint64(8, Endian.little);
@@ -247,10 +246,8 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
     report.layoutHash == want,
     'layout_newer reports THE FILE hash: got ${report.layoutHash}, want $want',
   );
-  check(!report.malformed, 'a refusal by name never sets malformed too (the joint answer)');
   check(
-    report.widened == 0 && report.unknown == 0 && report.kindMismatch == 0 &&
-        report.clamped == 0 && report.duplicate == 0,
+    report.widened == 0 && report.unknown == 0,
     'REFUSE is total: no counter moves: ${why(report)}',
   );
   // THE DESTINATION IS STILL EVERY FIELD OF A FRESH VALUE, compared as VALUES
@@ -297,7 +294,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 		// Nothing retired: the OLDEST file is at the floor and it reads.
 		run(t, 0, `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n >= 1 && report.refused == 0 && !report.malformed,
+  check(n >= 1 && report.refused == 0,
       'a file AT the floor must read: n=$n ${why(report)}');`)
 	})
 	t.Run("floor_below", func(t *testing.T) {
@@ -311,7 +308,7 @@ func TestFixedVersioningFloor(t *testing.T) {
   check(n == -1 && name(report.refused) == 'layout_unsupported',
       'a file below the floor owes layout_unsupported: n=$n ${name(report.refused)}');
   check(report.layoutHash == want, 'layout_unsupported reports the file hash too');
-  check(!report.malformed && report.widened == 0 && report.unknown == 0 && report.clamped == 0,
+  check(report.widened == 0 && report.unknown == 0,
       'REFUSE is total: ${why(report)}');
   final mid = File(%q).readAsBytesSync();
   final m = LOAD(values, values.length, mid, mid.length, plan, report);
@@ -353,7 +350,7 @@ func TestFixedVersioningHash(t *testing.T) {
   check(n == -1 && name(report.refused) == 'layout_newer',
       'hash_unknown: n=$n ${name(report.refused)}');
   check(report.layoutHash == 0x0EADBEEFCAFEF00D, 'hash_unknown reports the file hash');
-  check(!report.malformed, 'hash_unknown is a refusal by name, not malformed');`)
+  check(report.refused != 0, 'hash_unknown is a refusal by name');`)
 	})
 
 	// hash_known_bytes_differ: a KNOWN hash whose layout bytes differ from the
@@ -365,9 +362,9 @@ func TestFixedVersioningHash(t *testing.T) {
 		probe(t, `  final data = File(FILE).readAsBytesSync();
   data[20 + 4] ^= 0xFF;
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == -1 && name(report.refused) == 'layout_malformed',
+  check(n == -1 && name(report.refused) == 'layout_damaged',
       'hash_known_bytes_differ: n=$n ${name(report.refused)}');
-  check(!report.malformed, 'a refusal by name never sets malformed too');`)
+  check(report.refused != 0, 'a refusal by name is the whole answer');`)
 	})
 
 	// hash_identity: the reader's own hash selects the identity plan.
@@ -375,7 +372,7 @@ func TestFixedVersioningHash(t *testing.T) {
 		t.Parallel()
 		probe(t, fmt.Sprintf(`  final data = File(%q).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n >= 1 && report.refused == 0 && !report.malformed,
+  check(n >= 1 && report.refused == 0,
       'hash_identity: n=$n ${why(report)}');
   check(values[0].w == 777, 'the identity plan lost a value: ${values[0].w}');`, fresh))
 	})
@@ -392,7 +389,7 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 	body := fmt.Sprintf(`  for (final path in <String>[%q, %q]) {
     final data = File(path).readAsBytesSync();
     final n = LOAD(values, values.length, data, data.length, plan, report);
-    check(n >= 1 && report.refused == 0 && !report.malformed,
+    check(n >= 1 && report.refused == 0,
         '$path: both pre-merge files read on the merged build: n=$n ${why(report)}');
   }`, filepath.Join(corpus, "a_lineage_merge.bin"), filepath.Join(corpus, "b_lineage_merge.bin"))
 	out, err := runVersionProbe(t, dartBin, "VNEW_lineage_merge",
@@ -740,9 +737,8 @@ void check(bool ok, String what) {
 String name(int refused) => t.TableFixedRefusal.name(refused);
 
 String why(t.TableFixedReport r) =>
-    'refused=${name(r.refused)} malformed=${r.malformed} '
-    'unknown=${r.unknown} kind=${r.kindMismatch} clamped=${r.clamped} '
-    'widened=${r.widened} duplicate=${r.duplicate} layoutHash=${r.layoutHash}';
+    'refused=${name(r.refused)} '
+    'unknown=${r.unknown} widened=${r.widened} layoutHash=${r.layoutHash}';
 
 // A FRESH VALUE's every field, compared as VALUES (§5.9 #17).
 bool fresh(t.%[2]s value) {
@@ -823,16 +819,16 @@ func TestFixedCompiledPlanTagPastArmSet(t *testing.T) {
   forged[at0 + recordBytes + 8] = 9;
   final n = LOAD(values, values.length, forged, forged.length, plan, report);
   check(n == 2, 'the two-record file did not read: n=$n ${why(report)}');
-  check(report.refused == 0 && !report.malformed,
-      'a forged TAG is not a refusal and not malformed: ${why(report)}');
+  check(report.refused == 0,
+      'a forged TAG is not a refusal: ${why(report)}');
   check(values[0].pick.type == 1 && values[0].pick.alpha.m == 7,
       'record 0 lost the arm the writer named: ${values[0].pick.type} '
       '${values[0].pick.alpha.m}');
   check(values[1].pick.type == 0,
       'a tag past the arm set reported an arm — the PREVIOUS record\'s: '
       '${values[1].pick.type}');
-  check(report.clamped == 1,
-      'a tag past the writer\'s arm set is counted exactly once: ${why(report)}');
+  check(report.unknown == 1,
+      'a tag past the writer\'s arm set counts unknown exactly once: ${why(report)}');
 `
 	out, err := runVersionProbe(t, dartBin, "VNEW_union_append", []string{"VOLD_union_append"}, 0,
 		filepath.Join(corpus, "old_union_append.bin"), body)

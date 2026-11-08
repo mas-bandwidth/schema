@@ -97,9 +97,8 @@ void check(bool ok, String what) {
 }
 
 String why(t.TableFixedReport r) =>
-    'refused=${t.TableFixedRefusal.name(r.refused)} malformed=${r.malformed} '
-    'unknown=${r.unknown} kind=${r.kindMismatch} clamped=${r.clamped} '
-    'widened=${r.widened} duplicate=${r.duplicate}';
+    'refused=${t.TableFixedRefusal.name(r.refused)} '
+    'unknown=${r.unknown} widened=${r.widened}';
 
 void main() {
 ` + body + `
@@ -158,7 +157,7 @@ fixed table Rec
   t.initRec(out[0]);
   t.initRec(out[1]);
   final n = t.recFixedLoad(out, 2, bytes, bytes.length, plan, report);
-  check(n == 2 && report.refused == 0 && !report.malformed,
+  check(n == 2 && report.refused == 0,
       'the reader refused its own writer: n=$n ${why(report)}');
   check(out[0].i8 == -128 && out[0].i16 == -32768 && out[0].i32 == -2147483648 &&
       out[0].i64 == -9223372036854775808,
@@ -206,7 +205,7 @@ fixed table Rec
   t.initRec(out[0]);
   t.initRec(out[1]);
   final n = t.recFixedLoad(out, 2, bytes, bytes.length, plan, report);
-  check(n == 2 && report.refused == 0 && !report.malformed,
+  check(n == 2 && report.refused == 0,
       'the reader refused its own writer: n=$n ${why(report)}');
   check(out[0].u8 == 0 && out[0].u16 == 0 && out[0].u32 == 0 && out[0].u64 == 0,
       'the uint8..uint64 minima did not land');
@@ -243,7 +242,7 @@ fixed table Rec
   final out = [t.Rec()];
   t.initRec(out[0]);
   final n = t.recFixedLoad(out, 1, bytes, bytes.length, plan, report);
-  check(n == 1 && report.refused == 0 && !report.malformed,
+  check(n == 1 && report.refused == 0,
       'the reader refused its own writer: n=$n ${why(report)}');
   check(out[0].caps == 5, 'the flags mask did not land: ${out[0].caps}');
   check(out[0].seq == 12345, 'the neighbour did not land: ${out[0].seq}');
@@ -286,7 +285,7 @@ fixed table Rec
   final out = [t.Rec()];
   t.initRec(out[0]);
   final n = t.recFixedLoad(out, 1, b1, b1.length, plan, report);
-  check(n == 1 && report.refused == 0 && !report.malformed,
+  check(n == 1 && report.refused == 0,
       'the reader refused its own writer: n=$n ${why(report)}');
   final b2 = Uint8List(t.recFixedMeasure(1));
   check(t.recFixedSave(out, 1, b2) == b2.length, 'the rewrite wrote the whole file');
@@ -461,7 +460,7 @@ fixed table Rec
     t.initRec(out[0]);
     final report = t.TableFixedReport();
     check(t.recFixedLoad(out, 1, bytes, bytes.length, plan, report) == 1 &&
-        report.refused == 0 && !report.malformed, 'scalar boundary read $scalar: ${why(report)}');
+        report.refused == 0, 'scalar boundary read $scalar: ${why(report)}');
     check(out[0].lead == 17 && out[0].tail == 19,
         'scalar arm moved its neighbors: ${out[0].lead},${out[0].tail}');
     check(out[0].pick.type == 1 && out[0].pick.scalar == scalar,
@@ -480,7 +479,7 @@ fixed table Rec
     t.initRec(out[0]);
     final report = t.TableFixedReport();
     check(t.recFixedLoad(out, 1, bytes, bytes.length, plan, report) == 1 &&
-        report.refused == 0 && !report.malformed, 'text boundary read $length: ${why(report)}');
+        report.refused == 0, 'text boundary read $length: ${why(report)}');
     check(out[0].lead == 17 && out[0].tail == 19,
         'text arm moved its neighbors: ${out[0].lead},${out[0].tail}');
     check(out[0].pick.type == 2 && out[0].pick.textLength == length,
@@ -501,7 +500,7 @@ fixed table Rec
   t.initRec(arrayOut[0]);
   final arrayReport = t.TableFixedReport();
   check(t.recFixedLoad(arrayOut, 1, arrayBytes, arrayBytes.length, plan, arrayReport) == 1 &&
-      arrayReport.refused == 0 && !arrayReport.malformed, 'array arm read: ${why(arrayReport)}');
+      arrayReport.refused == 0, 'array arm read: ${why(arrayReport)}');
   check(arrayOut[0].lead == 17 && arrayOut[0].tail == 19,
       'array arm moved its neighbors: ${arrayOut[0].lead},${arrayOut[0].tail}');
   check(arrayOut[0].pick.type == 3 && arrayOut[0].pick.values[0] == -17 &&
@@ -585,7 +584,7 @@ fixed table Rec {
       out[0].action.value = -1;
       final report = t.TableFixedReport();
       check(t.recFixedLoad(out, 1, bytes, bytes.length, plan, report) == 1 &&
-          report.refused == 0 && !report.malformed && report.clamped == 0,
+          report.refused == 0,
           'payload-free read $action/$signal: ${why(report)}');
       check(out[0].action.type == action && out[0].signal.type == signal,
           'payload-free tags did not land $action/$signal');
@@ -634,7 +633,7 @@ fixed table Rec
     t.initRec(out[0]);
     final report = t.TableFixedReport();
     final n = t.recFixedLoad(out, 1, bytes, bytes.length, plan, report);
-    check(n == 1 && report.refused == 0 && !report.malformed,
+    check(n == 1 && report.refused == 0,
         'union array boundary read $count: n=$n ${why(report)}');
     check(out[0].lead == 3 && out[0].historyCount == count && out[0].trail == 5,
         'union array boundary count or neighbors did not land: expected=$count got=${out[0].historyCount}');

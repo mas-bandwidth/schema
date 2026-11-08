@@ -144,7 +144,7 @@ func TestMessageFormAnnounceDart(t *testing.T) {
     check(v.entries[i].id == want[i][0] && v.entries[i].kind == want[i][1],
         'entry $i is ${v.entries[i].id}/${v.entries[i].kind} want ${want[i]}');
   }
-`, dartBytes(conn.bytes), "${r.reason} malformed=${r.malformed}",
+`, dartBytes(conn.bytes), "${r.reason} refused=${r.refused}",
 				len(vocabulary), len(vocabulary), dartInt(int64(conn.buildVersion)), dartInt(int64(conn.buildVersion)),
 				strings.Join(pairs, ","))
 			out, err := runAnnounceProbe(t, u, body)
@@ -208,34 +208,34 @@ func TestMessageFormAnnounceDart(t *testing.T) {
   final v4 = t.TableVocabulary(entries: storage());
   final r4 = t.TableReport();
   check(!t.announceRead(v4, Uint8List.fromList(%s), r4), 'a body with no build-version is not refused');
-  check(!r4.refused && r4.malformed, 'no build-version: malformed=${r4.malformed} refused=${r4.refused}');
+  check(r4.refused && r4.reason == 'wire_damaged', 'no build-version: reason=${r4.reason} refused=${r4.refused}');
   final v5 = t.TableVocabulary(entries: storage());
   final r5 = t.TableReport();
   check(!t.announceRead(v5, Uint8List.fromList(%s), r5), 'a body with no vocabulary is not refused');
-  check(!r5.refused && r5.malformed, 'no vocabulary: malformed=${r5.malformed} refused=${r5.refused}');
+  check(r5.refused && r5.reason == 'wire_damaged', 'no vocabulary: reason=${r5.reason} refused=${r5.refused}');
   // an unknown field is skipped and counted, never malformed: only the two
   // strict checks damage, so a later minor's added field is tolerated.
   final v6 = t.TableVocabulary(entries: storage());
   final r6 = t.TableReport();
   check(t.announceRead(v6, Uint8List.fromList(%s), r6),
       'an unknown field is not tolerated: %s');
-  check(v6.announced && !r6.refused && !r6.malformed,
-      'unknown field: malformed=${r6.malformed} refused=${r6.refused}');
+  check(v6.announced && !r6.refused,
+      'unknown field: reason=${r6.reason} refused=${r6.refused}');
   check(r6.unknown == 1, 'unknown=${r6.unknown} want=1');
   check(v6.count == %d, 'count=${v6.count} want=%d');
   // a reserved id in the vocabulary is malformed, not a refusal
   final v7 = t.TableVocabulary(entries: storage());
   final r7 = t.TableReport();
   check(!t.announceRead(v7, Uint8List.fromList(%s), r7), 'a reserved-id entry is not refused');
-  check(!r7.refused && r7.malformed, 'reserved entry: malformed=${r7.malformed} refused=${r7.refused}');
+  check(r7.refused && r7.reason == 'wire_damaged', 'reserved entry: reason=${r7.reason} refused=${r7.refused}');
   // a repeated entry is malformed
   final v8 = t.TableVocabulary(entries: storage());
   final r8 = t.TableReport();
   check(!t.announceRead(v8, Uint8List.fromList(%s), r8), 'a repeated entry is not refused');
-  check(!r8.refused && r8.malformed, 'repeated entry: malformed=${r8.malformed} refused=${r8.refused}');
-`, dartBytes(conn.bytes), "${r1.reason} malformed=${r1.malformed}",
+  check(r8.refused && r8.reason == 'wire_damaged', 'repeated entry: reason=${r8.reason} refused=${r8.refused}');
+`, dartBytes(conn.bytes), "${r1.reason} refused=${r1.refused}",
 			dartBytes(noVersion), dartBytes(noVocab),
-			dartBytes(withUnknown), "${r6.reason} malformed=${r6.malformed} unknown=${r6.unknown} count=${v6.count}",
+			dartBytes(withUnknown), "${r6.reason} refused=${r6.refused} unknown=${r6.unknown} count=${v6.count}",
 			vocabCount, vocabCount,
 			dartBytes(reservedVocab), dartBytes(dupAnnounce))
 		out, err := runAnnounceProbe(t, u, body)

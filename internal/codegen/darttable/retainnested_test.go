@@ -88,7 +88,7 @@ void main(List<String> args) {
   final store = TableRetain(1 << 20, List<int>.filled(1 << 17, 0));
   final report = TableWireReport();
   final v = nodeWireLoadRetain(File(args[0]).readAsBytesSync(), store, report);
-  if (report.malformed || report.refused || report.retained != 9 || report.retainLost != 2) {
+  if (report.refused || report.retained != 9 || report.retainLost != 2) {
     stderr.writeln('load: ${report.retained} retained, ${report.retainLost} lost');
     exit(1);
   }
