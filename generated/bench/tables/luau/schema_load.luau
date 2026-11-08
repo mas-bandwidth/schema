@@ -1837,13 +1837,16 @@ end
 -- blob_shared sits where Go's Err() checks BlobShared, between malformed and
 -- clamped (§2.5), so a wire that is both clamped and blob-shared refuses as
 -- blob_shared.
-local REFUSING = { "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch" }
+-- A REPEATED MAP KEY IS DAMAGE (docs/plans/strict-only.md decision 5): the
+-- strict read refuses it as malformed, never last-wins.
+local REFUSING = { "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch", "duplicate" }
 local NAMES: { [string]: string } = {
 	missingRequired = "missing_required",
 	malformed = "malformed",
 	blobShared = "blob_shared",
 	clamped = "clamped",
 	kindMismatch = "kind_mismatch",
+	duplicate = "malformed",
 }
 
 -- a report at rest, in schema_load.luau's shape (docs/SPEC-TABLES.md §4)
