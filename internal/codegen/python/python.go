@@ -7,7 +7,7 @@
 //	<package>/<Base>.py     one module per schema file
 //	<package>/_schema/      the runtime: the errors, and serialize.py vendored
 //
-// This is the skeleton (docs/PORT-PYTHON.md, THE LAYERS: P3). It carries no
+// This is the skeleton (docs/PORT-PYTHON.md, THE CARD MAP: P3). It carries no
 // declaration: a unit that declares anything is refused by name, naming the
 // layer that carries it, and a unit that declares nothing generates a package
 // that imports under both pinned interpreters and passes mypy in strict mode.
@@ -92,13 +92,13 @@ func refuseDeclarations(u *ir.Unit) error {
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
 			kind, plural, name := declKind(d)
-			return fmt.Errorf("python: %s.schema declares %s %s, and the Python target does not carry %s yet (docs/PORT-PYTHON.md, THE LAYERS: P4 the packet wire)", f.Base, kind, name, plural)
+			return fmt.Errorf("python: %s.schema declares %s %s, and the Python target does not carry %s yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)", f.Base, kind, name, plural)
 		}
 		for _, t := range f.Tables {
-			return fmt.Errorf("python: %s.schema declares table %s, and the Python target does not carry tables yet (docs/PORT-PYTHON.md, THE LAYERS: P5 fixed tables, P6 variable tables)", f.Base, t.Name)
+			return fmt.Errorf("python: %s.schema declares table %s, and the Python target does not carry tables yet (docs/PORT-PYTHON.md, THE CARD MAP: P5 fixed tables, P6 variable tables)", f.Base, t.Name)
 		}
 		for _, un := range f.TableUnions {
-			return fmt.Errorf("python: %s.schema declares union %s with a table arm, and the Python target does not carry tables yet (docs/PORT-PYTHON.md, THE LAYERS: P6 variable tables)", f.Base, un.Name)
+			return fmt.Errorf("python: %s.schema declares union %s with a table arm, and the Python target does not carry tables yet (docs/PORT-PYTHON.md, THE CARD MAP: P6 variable tables)", f.Base, un.Name)
 		}
 	}
 	return nil

@@ -374,7 +374,7 @@ or `—` with the platform's reason:
 
 A cell becomes ✅ when the layer that carries it lands with its proof.
 
-## THE LAYERS
+## THE CARD MAP
 
 | layer | what | roadmap task |
 |---|---|---|

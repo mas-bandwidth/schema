@@ -185,7 +185,7 @@ func TestPythonRefusesDeclarationsByName(t *testing.T) {
 		decl ir.Decl
 		want string
 	}{
-		{&ir.Const{Name: "MaxPlayers"}, "declares const MaxPlayers, and the Python target does not carry constants yet (docs/PORT-PYTHON.md, THE LAYERS: P4 the packet wire)"},
+		{&ir.Const{Name: "MaxPlayers"}, "declares const MaxPlayers, and the Python target does not carry constants yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)"},
 		{&ir.Enum{Name: "Weapon"}, "declares enum Weapon, and the Python target does not carry enums yet"},
 		{&ir.Flags{Name: "Caps"}, "declares flags Caps, and the Python target does not carry flags sets yet"},
 		{&ir.Struct{Name: "Player"}, "declares type Player, and the Python target does not carry types yet"},

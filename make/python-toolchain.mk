@@ -138,3 +138,8 @@ python-toolchain-negative-control: python-toolchain-check
 	@grep -q "make/python-toolchain.mk runs an interpreter from PATH" $(PYTHON_NC)/path.log || \
 		{ cat $(PYTHON_NC)/path.log; echo "NEGATIVE CONTROL FAILED: the planted PATH interpreter went red, but not by its file"; exit 1; }
 	@echo "negative control: a wrong PYTHON, a wrong MYPY and an interpreter from PATH each turn python-toolchain-check RED by name"
+
+# The leg registers its pins here; test-python and the rest of the leg are
+# make/python.mk's.
+TOOLCHAIN_LEGS        += python
+TOOLCHAIN_PINS_python := PYTHON PYTHON_FLOOR MYPY

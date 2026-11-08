@@ -27,8 +27,6 @@ build/conformance-python: ;
 generated/bench/tables/python/.stamp: ;
 
 TEST_LEGS             += test-python
-TOOLCHAIN_LEGS        += python
-TOOLCHAIN_PINS_python := PYTHON PYTHON_FLOOR MYPY
 CONFORMANCE_LEGS      += $(call unless_skipped,python,build/conformance-python)
 BENCH_TABLES_LEGS     += generated/bench/tables/python/.stamp
 GOLDENS_LEGS          += update-goldens-python

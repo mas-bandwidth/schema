@@ -19,7 +19,7 @@ type pythonTarget struct{}
 
 func (pythonTarget) Names() []string { return []string{"python"} }
 
-// Generate is the skeleton (docs/PORT-PYTHON.md, THE LAYERS: P3). The shared
+// Generate is the skeleton (docs/PORT-PYTHON.md, THE CARD MAP: P3). The shared
 // refusal chain every port calls refuses, by name, each construct the target
 // does not carry, as it does for every skeleton (docs/PORT-GOOSE.md, THE
 // CARRIES PATTERN); the constructs keyed in compiler/carries.go are refused by

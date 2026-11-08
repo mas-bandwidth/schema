@@ -1,7 +1,7 @@
 //go:build schema_leg_python
 
 // The Python skeleton through the compiler's driver (docs/PORT-PYTHON.md,
-// THE LAYERS: P3), in a build with the schema_leg_python tag:
+// THE CARD MAP: P3), in a build with the schema_leg_python tag:
 // `go test -tags schema_leg_python ./compiler -run Python` (make test-python).
 package compiler
 
