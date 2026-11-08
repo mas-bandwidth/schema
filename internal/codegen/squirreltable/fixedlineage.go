@@ -463,10 +463,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			if !fixedPlanElemCompat(f, elem) || elem.size <= 0 {
 				return
 			}
-			n := node.size / elem.size
-			if n > f.KeyEnumRef.Max {
-				n = f.KeyEnumRef.Max
-			}
+			n := min(node.size/elem.size, f.KeyEnumRef.Max)
 			iv := fmt.Sprintf("i%d", len(ind)/2)
 			m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", ind, iv, iv, n, iv)
 			emitFixedPlanDecodeValue(m, f, elem, at, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
@@ -480,10 +477,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			iv := fmt.Sprintf("i%d", len(ind)/2)
 			if f.Array == ir.ArrayCounted {
 				oldCap := (node.size - 4) / elem.size
-				capLim := f.ArrayBound
-				if oldCap < capLim {
-					capLim = oldCap
-				}
+				capLim := min(oldCap, f.ArrayBound)
 				m.Printf("%slocal c = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 				m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", ind, capLim)
 				m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", ind, expr, expr, expr, expr, elemZero(f))
@@ -491,10 +485,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 				emitFixedPlanDecodeValue(m, f, elem, at+4, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
 				m.Printf("%s}\n", ind)
 			} else {
-				n := node.size / elem.size
-				if n > f.ArrayBound {
-					n = f.ArrayBound
-				}
+				n := min(node.size/elem.size, f.ArrayBound)
 				m.Printf("%swhile (%s.len() < %d) %s.append(%s);\n", ind, expr, f.ArrayBound, expr, elemZero(f))
 				m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", ind, iv, iv, n, iv)
 				emitFixedPlanDecodeValue(m, f, elem, at, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
@@ -506,10 +497,7 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			if f.Type.Kind == ir.TWString {
 				oldCap = (node.size - 4) / 2
 			}
-			capLim := f.Type.Size
-			if oldCap < capLim {
-				capLim = oldCap
-			}
+			capLim := min(oldCap, f.Type.Size)
 			m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 			m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, capLim)
 			switch f.Type.Kind {
@@ -541,12 +529,9 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 				tagW = 2
 			}
 			m.Printf("%s%s.Type = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, tagW)
-			maxArms := nArms
-			if len(r.Variants) < maxArms {
-				maxArms = len(r.Variants)
-			}
+			maxArms := min(len(r.Variants), nArms)
 			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) %s.Type = 0;\n", ind, expr, expr, maxArms, expr)
-			for i := 0; i < maxArms; i++ {
+			for i := range maxArms {
 				v := r.Variants[i]
 				armNode := node.children[i]
 				if v.F == nil || armNode == nil || armNode.kind == ir.TableKindNoPayload {

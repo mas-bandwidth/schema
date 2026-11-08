@@ -182,7 +182,7 @@ func mainRedsEffectivePins(t *testing.T, root string, extra []string) map[string
 	}
 
 	pins := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(output)), "\n") {
 		name, value, ok := strings.Cut(line, "=")
 		if !ok {
 			t.Fatalf("make printed %q, want NAME=VALUE", line)

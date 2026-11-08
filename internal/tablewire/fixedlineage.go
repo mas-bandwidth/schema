@@ -18,6 +18,7 @@ package tablewire
 
 import (
 	"encoding/binary"
+	"slices"
 	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
@@ -291,12 +292,7 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 }
 
 func containsZero(b []byte) bool {
-	for _, c := range b {
-		if c == 0 {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(b, 0)
 }
 
 func (d *lineageDecoder) element(w *fixedNode, b []byte, f *ir.Field, cell *tabletext.Cell) string {

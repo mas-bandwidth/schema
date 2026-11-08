@@ -1501,7 +1501,6 @@ int main( int argc, char ** argv )
 func RunValueSuite(t *testing.T, runner LegRunner) {
 	SetMemoryCeiling(t)
 	for _, tc := range Cases() {
-		tc := tc
 		t.Run(tc.ID, func(t *testing.T) {
 			t.Parallel()
 			u := ParseCheckUnit(t, tc.Schema)
@@ -1541,7 +1540,6 @@ func RunValueSuite(t *testing.T, runner LegRunner) {
 func RunNegativeControlSuite(t *testing.T, runner LegRunner) {
 	SetMemoryCeiling(t)
 	for _, tc := range Cases() {
-		tc := tc
 		t.Run(tc.ID, func(t *testing.T) {
 			t.Parallel()
 			u := ParseCheckUnit(t, tc.Schema)

@@ -18,7 +18,7 @@ name: Squirrel runs the hostile corpus
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-squirrel-runs-hostile-corpus.mk'
       - '.github/workflows/schema-squirrel-runs-hostile-corpus.yml'

@@ -219,7 +219,7 @@ func t04R32(t *testing.T) {
 		t.Errorf("R32: the floor refusal is not a pure named refusal:\n%s", body)
 	}
 	runtime := string(fixedRuntimeBody)
-	for _, zero := range []string{"self.unknown = 0;", "self.kind_mismatch = 0;", "self.widened = 0;", "self.clamped = 0;", "self.malformed = false;"} {
+	for _, zero := range []string{"self.unknown = 0;", "self.kind_changed = 0;", "self.widened = 0;", "self.held = 0;", "self.damaged = false;"} {
 		t04Has(t, runtime, zero, "R32 REFUSE is TOTAL")
 	}
 }

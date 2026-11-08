@@ -121,11 +121,11 @@ fn main() {
         let mut head = [0u8; 47];
         head[0] = loaded as u8;
         head[1..5].copy_from_slice(&(report.unknown as u32).to_le_bytes());
-        head[5..9].copy_from_slice(&(report.kind_mismatch as u32).to_le_bytes());
+        head[5..9].copy_from_slice(&(report.mismatch as u32).to_le_bytes());
         head[9..13].copy_from_slice(&(report.widened as u32).to_le_bytes());
-        head[13..17].copy_from_slice(&(report.clamped as u32).to_le_bytes());
-        head[17..21].copy_from_slice(&(report.duplicate as u32).to_le_bytes());
-        head[21] = report.malformed as u8;
+        head[13..17].copy_from_slice(&(report.oor as u32).to_le_bytes());
+        head[17..21].copy_from_slice(&(report.repeated as u32).to_le_bytes());
+        head[21] = report.damaged as u8;
         head[22] = report.refused as u8;
         head[23..31].copy_from_slice(&(measure as i64).to_le_bytes());
         head[31..35].copy_from_slice(&(retained as u32).to_le_bytes());

@@ -29,7 +29,7 @@ fn test_label_length_clamped() {
     padded_row_fixed_scatter(&body, &mut row, &mut report);
 
     assert_eq!(row.label_length, 15, "text length must clamp to cap=15");
-    assert_eq!(report.clamped, 1, "COUNT clamped must fire once");
+    assert_eq!(report.oor, 1, "COUNT clamped must fire once");
 }
 
 fn test_label_length_in_range() {
@@ -43,7 +43,7 @@ fn test_label_length_in_range() {
     padded_row_fixed_scatter(&body, &mut row, &mut report);
 
     assert_eq!(row.label_length, 5, "in-range length must not change");
-    assert_eq!(report.clamped, 0, "no clamp for in-range length");
+    assert_eq!(report.oor, 0, "no clamp for in-range length");
 }
 
 fn test_label_length_negative() {
@@ -56,7 +56,7 @@ fn test_label_length_negative() {
     padded_row_fixed_scatter(&body, &mut row, &mut report);
 
     assert_eq!(row.label_length, 0, "negative length clamps to 0");
-    assert!(report.clamped >= 1, "negative length fires clamp");
+    assert!(report.oor >= 1, "negative length fires clamp");
 }
 
 fn test_label_length_zero() {
@@ -69,7 +69,7 @@ fn test_label_length_zero() {
     padded_row_fixed_scatter(&body, &mut row, &mut report);
 
     assert_eq!(row.label_length, 0, "length 0 must stay 0");
-    assert_eq!(report.clamped, 0, "length 0 fires no clamp");
+    assert_eq!(report.oor, 0, "length 0 fires no clamp");
 }
 
 fn main() {
