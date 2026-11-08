@@ -219,8 +219,8 @@ func TestLuaArmFramingNegativeControl(t *testing.T) {
 	}{
 		{"the scalar width check removed", "if w == 0 or n ~= w then", "if false then",
 			[]string{"plain arm one long"}},
-		{"the body terminator check removed", "    if not clean then\n      report.malformed = true\n      discard(ctx, np0)\n      return renew(T, d, inst), DAMAGED",
-			"    if false then\n      report.malformed = true\n      discard(ctx, np0)\n      return renew(T, d, inst), DAMAGED",
+		{"the body terminator check removed", "    if not clean then\n      report.damaged = true\n      discard(ctx, np0)\n      return renew(T, d, inst), DAMAGED",
+			"    if false then\n      report.damaged = true\n      discard(ctx, np0)\n      return renew(T, d, inst), DAMAGED",
 			[]string{"leaf arm with slack after its terminator"}},
 	}
 	for _, c := range cases {

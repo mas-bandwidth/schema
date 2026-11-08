@@ -49,7 +49,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 		g.pf("                // carries the SENDER's, so the field decodes and clamps (§4).\n")
 		g.pf("                if ( entry.kind != %d || entry.elem_kind != %d )\n                {\n", mine.Kind, mine.Shape.Elem)
 		g.emitMessageWidenBranch(f, mine, "entry", "                    ")
-		g.pf("                    report->refused = true; report->refuse_reason = kind_mismatch;;\n")
+		g.pf("                    report->refused = true; report->refuse_reason = kind_mismatch;\n")
 		g.pf("                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }\n")
 		g.pf("                    break;\n                }\n")
 		g.emitMessageReadField(f)
@@ -169,7 +169,7 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 		// wire's own sixty-four bit number and answers at or below the bound,
 		// so a length no reader could have bounded leaves it bounded
 		g.pf("%s    const int32_t kept%s = (int32_t) TableUtf8Clamp( text%s, n%s, %d );\n", ind, sfx, sfx, sfx, f.Type.Size)
-		g.pf("%s    if ( (uint64_t) kept%s < n%s ) { report->refused = true; report->refuse_reason = out_of_range;; }\n", ind, sfx, sfx)
+		g.pf("%s    if ( (uint64_t) kept%s < n%s ) { report->refused = true; report->refuse_reason = out_of_range; }\n", ind, sfx, sfx)
 		g.pf("%s    memcpy( %s, text%s, (size_t) kept%s );\n", ind, value, sfx, sfx)
 		g.pf("%s    %s[kept%s] = 0;\n", ind, value, sfx)
 		// the payload is stepped over WHOLE, clamp or not, because the batch's
@@ -183,7 +183,7 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 	// narrowed FIRST is negative, passes a signed test against the bound
 	// untouched, and lands a negative length in the caller's storage
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
-	g.pf("%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range;; } else { kept%s = (int32_t) n%s; }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size, sfx, sfx)
+	g.pf("%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range; } else { kept%s = (int32_t) n%s; }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size, sfx, sfx)
 	if f.Type.Kind == ir.TWString {
 		g.pf("%s    bool high%s = false; // a high surrogate awaiting its low half\n%s    bool ill%s = false;\n", ind, sfx, ind, sfx)
 	}
@@ -244,7 +244,7 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 	// signed test against the bound untouched, and lands a negative count in
 	// the caller's storage
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
-	g.pf("%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range;; } else { kept%s = (int32_t) n%s; }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
+	g.pf("%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range; } else { kept%s = (int32_t) n%s; }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
 	if f.IsTextList() && ir.TextListPlain(f) && !ir.TextListUnbounded(f) {
 		m := ir.TextListValue(f).Type.Size
 		width := ir.TableMessageBitsRequired(0, m)
@@ -257,7 +257,7 @@ func (g *tableGen) emitMessageReadArrayFrom(f *ir.Field, base, count, ind, from 
 		g.pf("%sconst uint8_t * text%s = r.buffer + ( r.offset >> 3 );\n", inner, sfx)
 		g.pf("%sif ( !TableUtf8Valid( text%s, len%s ) ) { report->damaged = true; return false; }\n", inner, sfx, sfx)
 		g.pf("%sconst int32_t keep%s = (int32_t) TableUtf8Clamp( text%s, len%s, %d );\n", inner, sfx, sfx, sfx, m)
-		g.pf("%sif ( (uint64_t) keep%s < len%s ) { report->refused = true; report->refuse_reason = out_of_range;; }\n", inner, sfx, sfx)
+		g.pf("%sif ( (uint64_t) keep%s < len%s ) { report->refused = true; report->refuse_reason = out_of_range; }\n", inner, sfx, sfx)
 		g.pf("%sif ( in_bounds%s ) { memcpy( %s[%s].value, text%s, (size_t) keep%s ); %s[%s].value[keep%s] = 0; %s[%s].value_length = keep%s; }\n", inner, sfx, base, idx, sfx, sfx, base, idx, sfx, base, idx, sfx)
 		g.pf("%sr.offset += (int64_t) len%s * 8;\n", inner, sfx)
 		g.pf("%s    }\n", ind)
@@ -371,7 +371,7 @@ func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
 			g.pf("%s                        report->widened++;\n", ind)
 			g.pf("%s                        break;\n%s                    }\n", ind, ind)
 		}
-		g.pf("%s                    %s.type = %sType::None; report->refused = true; report->refuse_reason = kind_mismatch;;\n", ind, dst, un.Name)
+		g.pf("%s                    %s.type = %sType::None; report->refused = true; report->refuse_reason = kind_mismatch;\n", ind, dst, un.Name)
 		g.pf("%s                    if ( !TableMessageSkip( r, vocabulary, index_bits, %s ) ) { report->damaged = true; return false; }\n", ind, arm)
 		g.pf("%s                    break;\n%s                }\n", ind, ind)
 		g.pf("%s                %s.type = %sType::%s;\n", ind, dst, un.Name, ir.GoExportName(v.Name))
@@ -520,8 +520,8 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%s        if ( !TableBitsFinite32( (uint32_t) raw%s ) ) { TableNonFiniteFloat( report ); return false; }\n", ind, sfx)
 		g.pf("%s        decoded_f%s = table_bits_to_float( (uint32_t) raw%s );\n%s    }\n", ind, sfx, sfx, ind)
 		if f.HasFloatRange {
-			g.pf("%s    if ( decoded_f%s < %s ) { decoded_f%s = %s; report->refused = true; report->refuse_reason = out_of_range;; }\n", ind, sfx, formatFloat(f.FMin, true), sfx, formatFloat(f.FMin, true))
-			g.pf("%s    else if ( decoded_f%s > %s ) { decoded_f%s = %s; report->refused = true; report->refuse_reason = out_of_range;; }\n", ind, sfx, formatFloat(f.FMax, true), sfx, formatFloat(f.FMax, true))
+			g.pf("%s    if ( decoded_f%s < %s ) { decoded_f%s = %s; report->refused = true; report->refuse_reason = out_of_range; }\n", ind, sfx, formatFloat(f.FMin, true), sfx, formatFloat(f.FMin, true))
+			g.pf("%s    else if ( decoded_f%s > %s ) { decoded_f%s = %s; report->refused = true; report->refuse_reason = out_of_range; }\n", ind, sfx, formatFloat(f.FMax, true), sfx, formatFloat(f.FMax, true))
 		}
 		g.pf("%s    %s = decoded_f%s;\n%s}\n", ind, lvalue, sfx, ind)
 		return
@@ -617,21 +617,21 @@ func (g *tableGen) emitMessageClampWide(f *ir.Field, signed bool, width int, dec
 	slo, shi := tableStorageRange(signed, 64)
 	if lo.Cmp(slo) > 0 {
 		if signed {
-			g.pf("%sif ( %s < %s ) { %s = %s; report->refused = true; report->refuse_reason = out_of_range;; }\n", ind, decoded, tableIntLit(lo, true, 8), decoded, tableIntLit(lo, true, 8))
+			g.pf("%sif ( %s < %s ) { %s = %s; report->refused = true; report->refuse_reason = out_of_range; }\n", ind, decoded, tableIntLit(lo, true, 8), decoded, tableIntLit(lo, true, 8))
 		} else {
-			g.pf("%sif ( (uint64_t) %s < %s ) { %s = (int64_t) %s; report->refused = true; report->refuse_reason = out_of_range;; }\n", ind, decoded, tableIntLit(lo, false, 8), decoded, tableIntLit(lo, false, 8))
+			g.pf("%sif ( (uint64_t) %s < %s ) { %s = (int64_t) %s; report->refused = true; report->refuse_reason = out_of_range; }\n", ind, decoded, tableIntLit(lo, false, 8), decoded, tableIntLit(lo, false, 8))
 		}
 	}
 	if hi.Cmp(shi) < 0 {
 		if signed {
-			g.pf("%sif ( %s > %s ) { %s = %s; report->refused = true; report->refuse_reason = out_of_range;; }\n", ind, decoded, tableIntLit(hi, true, 8), decoded, tableIntLit(hi, true, 8))
+			g.pf("%sif ( %s > %s ) { %s = %s; report->refused = true; report->refuse_reason = out_of_range; }\n", ind, decoded, tableIntLit(hi, true, 8), decoded, tableIntLit(hi, true, 8))
 		} else {
-			g.pf("%sif ( (uint64_t) %s > %s ) { %s = (int64_t) %s; report->refused = true; report->refuse_reason = out_of_range;; }\n", ind, decoded, tableIntLit(hi, false, 8), decoded, tableIntLit(hi, false, 8))
+			g.pf("%sif ( (uint64_t) %s > %s ) { %s = (int64_t) %s; report->refused = true; report->refuse_reason = out_of_range; }\n", ind, decoded, tableIntLit(hi, false, 8), decoded, tableIntLit(hi, false, 8))
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 		maxv := (uint64(1) << f.Type.Width) - 1
-		g.pf("%sif ( (uint64_t) %s > %dull ) { %s = (int64_t) %dull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(%d) width clamp\n", ind, decoded, maxv, decoded, maxv, f.Type.Width)
+		g.pf("%sif ( (uint64_t) %s > %dull ) { %s = (int64_t) %dull; report->refused = true; report->refuse_reason = out_of_range; } // bits(%d) width clamp\n", ind, decoded, maxv, decoded, maxv, f.Type.Width)
 	}
 }
 
@@ -642,7 +642,7 @@ func (g *tableGen) emitMessageClamp(f *ir.Field, signed bool, width int, decoded
 		low, high := tableClampEnds(f, width)
 		if low {
 			lo := tableIntLit(rlo, signed, width)
-			g.pf("%sif ( %s < %s ) { %s = %s; report->refused = true; report->refuse_reason = out_of_range;; }\n", ind, decoded, lo, decoded, lo)
+			g.pf("%sif ( %s < %s ) { %s = %s; report->refused = true; report->refuse_reason = out_of_range; }\n", ind, decoded, lo, decoded, lo)
 		}
 		if high {
 			hi := tableIntLit(rhi, signed, width)
@@ -650,12 +650,12 @@ func (g *tableGen) emitMessageClamp(f *ir.Field, signed bool, width int, decoded
 			if low {
 				lead = "else if"
 			}
-			g.pf("%s%s ( %s > %s ) { %s = %s; report->refused = true; report->refuse_reason = out_of_range;; }\n", ind, lead, decoded, hi, decoded, hi)
+			g.pf("%s%s ( %s > %s ) { %s = %s; report->refused = true; report->refuse_reason = out_of_range; }\n", ind, lead, decoded, hi, decoded, hi)
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 		maxv := (uint64(1) << f.Type.Width) - 1
-		g.pf("%sif ( %s > %dull ) { %s = %dull; report->refused = true; report->refuse_reason = out_of_range;; } // bits(%d) width clamp\n", ind, decoded, maxv, decoded, maxv, f.Type.Width)
+		g.pf("%sif ( %s > %dull ) { %s = %dull; report->refused = true; report->refuse_reason = out_of_range; } // bits(%d) width clamp\n", ind, decoded, maxv, decoded, maxv, f.Type.Width)
 	}
 }
 

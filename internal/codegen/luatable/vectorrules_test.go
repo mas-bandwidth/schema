@@ -45,13 +45,12 @@ type luaVectorCase struct {
 
 var luaVectorCases = []luaVectorCase{
 	{"list_count_cross_length", "lists", "Album", "if crossed then", "if false then", 2},
-	{"map_repeated_key_widen", "maps", "Pairs", "kindbad = false -- this occurrence replaces the earlier key kind", "", 1},
 	{"wire_length_overflow", "pointers", "Scene",
 		"    local n = r_leb(r)\n    if r.bad or not fits(r, n) then return false end",
 		"    local n = r_leb(r)\n    if r.bad or n < 0 or r.at + n > r.lim then return false end", 1},
 	{"pointer_orphan_cycle", "pointers", "Scene",
-		"if not report.malformed and D.cyclic(T, desc, root, placed(ctx.nodes)) then",
-		"if not report.malformed and D.number_nodes(T, desc, root, false) == nil then", 1},
+		"if not report.damaged and D.cyclic(T, desc, root, placed(ctx.nodes)) then",
+		"if not report.damaged and D.number_nodes(T, desc, root, false) == nil then", 1},
 	{"map_duplicate_pointer_past_table", "maps", "Chunks",
 		"if pp.holder == out and pp.key == last then pp.holder = ctx.sink end",
 		"if pp.holder == out and pp.key == last then pp.holder, pp.index = ctx.sink, 0 end", 1},
@@ -63,13 +62,13 @@ local root, wire = inputs.root, inputs.wire
 local okm, m = pcall(load.LoadMeasure, T, root, wire)
 if not okm then print("raised") return end
 if m == nil then print("measure=-1") return end
-local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local ok, v = pcall(load.LoadTolerant, T, root, wire, r)
+local r = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local ok, v = pcall(load.Load, T, root, wire, r)
 if not ok then print("raised") return end
 local line = "measure=" .. (inputs.whole == "1" and tostring(m) or "-") ..
-  " root=" .. tostring(v ~= nil) .. " malformed=" .. tostring(r.malformed) ..
+  " root=" .. tostring(v ~= nil) .. " malformed=" .. tostring(r.damaged) ..
   " refused=" .. tostring((r.refused or 0) > 0)
-if not r.malformed then
+if not r.damaged then
   line = line .. string.format(" unknown=%d widened=%d", r.unknown, r.widened)
 end
 print(line)

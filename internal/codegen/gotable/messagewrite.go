@@ -167,6 +167,12 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 			if ir.TableKindWidth(int(entry.Kind)) == 16 {
 				lo = expr + ".Lo"
 				hi = expr + ".Hi"
+			} else if entry.Kind >= 18 && ir.TableKindSigned(int(entry.Kind)) {
+				// A narrow signed fixed kind is ranged against a base
+				// sign-extended to 128 bits, so its high half is the sign,
+				// not zero: a negative fixed(16, 16) inside its declared
+				// range otherwise counts as over.
+				hi = "uint64(int64(" + expr + ")>>63)"
 			}
 		}
 		g.needsMath = true

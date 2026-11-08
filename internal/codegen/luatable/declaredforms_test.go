@@ -155,8 +155,8 @@ fixed table SoloFox | forms = "wire"
 local load = require("load")
 local save = require("save")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.LoadTolerant(T, "Pong", inputs.wire, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = load.Load(T, "Pong", inputs.wire, report)
 local saved = save.Save(T, "Pong", v)
 assert(saved ~= nil, "Save refused a wire-carrying table")
 io.write((saved:gsub(".", function(c) return string.format("%02x", c:byte()) end)), "\n")
@@ -182,12 +182,12 @@ io.write((saved:gsub(".", function(c) return string.format("%02x", c:byte()) end
 local load = require("load")
 local J = require("json")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.LoadTolerant(T, "Pong", inputs.wire, report)
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = load.Load(T, "Pong", inputs.wire, report)
 io.write(J.ToJson(T, "Pong", v))
-local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local r = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 local back = J.FromJson(T, "Pong", inputs.text, r)
-assert(back ~= nil and r.malformed == false, "FromJson refused a json-carrying table")
+assert(back ~= nil and r.damaged == false, "FromJson refused a json-carrying table")
 assert(J.ToJson(T, "Pong", back) == J.ToJson(T, "Pong", v), "FromJson -> ToJson did not round-trip")
 local ok, err = pcall(function() return J.ToJson(T, "Ping", T.NewPing()) end)
 assert(not ok and tostring(err):find("Ping", 1, true) and tostring(err):find("json", 1, true),

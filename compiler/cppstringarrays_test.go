@@ -27,7 +27,9 @@ import (
 // first [..4]?string(8). The unbounded `repos []string(8)`, the array root and
 // `| total` are other cards and stay refused. Wide and Long are read-side
 // probes: the same field id under a wider bound and a longer element, so a
-// valid wire can be read back by Lists and clamped (§2.13).
+// valid wire can be read back by Lists and refused (§2.13; the C++ read is
+// strict-only, docs/plans/strict-only.md, so a count or a length past its bound
+// refuses the whole load where the Go oracle's tolerant rows clamp).
 const cppStringArraysSchema = `package probe
 
 table Lists
@@ -51,8 +53,8 @@ table Long
 // against the Go oracle's rows (internal/codegen/gotable/stringarrays_test.go
 // TestGoTableStringArraysAndJSONArrayRoot): the write-side bounds at the
 // append, the pinned wire, the plain JSON shape, the wire and JSON round trips,
-// the JSON rows' kind mismatches and clamps, and the read-side count and
-// length clamps and the ill-formed element.
+// the JSON rows' kind mismatches and bounds, and the read-side count and
+// length bounds and the ill-formed element, each now a refusal.
 const cppStringArraysDriver = `#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -142,7 +144,7 @@ int main()
     TableReport report;
     const Lists * back = ListsLoad( region, (int64_t) sizeof( region ), buffer, wrote, &report );
     check( back != NULL, "load" );
-    check( !report.malformed && report.clamped == 0 && report.kind_mismatch == 0, "clean load report" );
+    check( !report.damaged && !report.refused && report.refuse_reason == ok, "clean load report" );
     const int64_t again = ListsSave( back, twin, (int64_t) sizeof( twin ) );
     check( again == wrote && memcmp( twin, buffer, (size_t) wrote ) == 0, "wire round trip" );
 
@@ -163,35 +165,56 @@ int main()
         ListsBuilder jb;
         TableReport jr;
         check( ListsFromJson( jb, json, jn, &jr ), "json read" );
-        check( !jr.malformed && jr.clamped == 0 && jr.kind_mismatch == 0 && jr.unknown == 0, "clean json report" );
+        check( !jr.damaged && !jr.refused && jr.refuse_reason == ok && jr.unknown == 0, "clean json report" );
         const int64_t jw = ListsSave( jb, twin, (int64_t) sizeof( twin ) );
         check( jw == wrote && memcmp( twin, buffer, (size_t) wrote ) == 0, "json round trip moves no wire byte" );
     }
 
     // THE JSON ROWS' REFUSALS (the Go oracle's): a number element and a null
     // in a string(M) list are kind mismatches, an element past M and the two
-    // past N clamp; the clamped element is rules[3] = "12345678"
+    // past N are out of range. The read is strict-only, so the whole row text
+    // refuses, out_of_range first as Go's TableReport.Err orders the clauses,
+    // and nothing of it lands; each condition alone refuses by its own name.
     {
         ListsBuilder kb;
         TableReport kr;
         const char * text = "{\"rules\":[\"a\",7,null,\"123456789\",\"b\",\"c\"],\"first\":[null,\"y\"]}";
-        check( ListsFromJsonTolerant( kb, text, (int64_t) strlen( text ), &kr ), "json rows read" );
-        if ( kr.kind_mismatch != 2 || kr.clamped != 3 || kr.malformed )
-        {
-            printf( "json rows kind_mismatch=%d clamped=%d malformed=%d\n", kr.kind_mismatch, kr.clamped, (int) kr.malformed );
-            check( 0, "json rows report: 2 kind mismatches, 3 clamped" );
-        }
+        check( !ListsFromJson( kb, text, (int64_t) strlen( text ), &kr ), "json rows refused" );
+        check( kr.refused && !kr.damaged && kr.refuse_reason == out_of_range, "json rows refuse out_of_range" );
         const Lists * k = kb.GetRoot();
-        check( k != NULL && k->rules_count == 4 && k->first_count == 2, "json rows counts" );
-        check( k != NULL && ListsRulesTextAt( *k, 3, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ) && rlen == 8
-            && memcmp( rbuf, "12345678", 8 ) == 0, "json clamped element is 12345678" );
-        check( k != NULL && !ListsFirstTextAt( *k, 0, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ), "json null is absent in a ? list" );
-        check( k != NULL && ListsFirstTextAt( *k, 1, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ) && rlen == 1 && rbuf[0] == 'y', "json first[1] = y" );
+        check( k != NULL && k->rules_count == 0 && k->first_count == 0, "json rows land nothing" );
+        struct Row { const char * text; TableRefuseReason want; const char * what; };
+        const Row rows[] = {
+            { "{\"rules\":[\"a\",7]}", kind_mismatch, "a number element is a kind mismatch" },
+            { "{\"rules\":[\"a\",null]}", kind_mismatch, "a null in a string(M) list is a kind mismatch" },
+            { "{\"rules\":[\"123456789\"]}", out_of_range, "an element past M is out of range" },
+            { "{\"rules\":[\"a\",\"b\",\"c\",\"d\",\"e\"]}", out_of_range, "an element past N is out of range" },
+        };
+        for ( const Row & row : rows )
+        {
+            ListsBuilder rb;
+            TableReport rr;
+            const bool read = ListsFromJson( rb, row.text, (int64_t) strlen( row.text ), &rr );
+            if ( read || !rr.refused || rr.refuse_reason != row.want )
+            {
+                printf( "%s: read=%d refused=%d reason=%d\n", row.text, (int) read, (int) rr.refused, (int) rr.refuse_reason );
+                check( 0, row.what );
+            }
+        }
+        // a null in the ? list is absent, not a mismatch, and reads whole
+        ListsBuilder nb;
+        TableReport nr;
+        const char * nulls = "{\"first\":[null,\"y\"]}";
+        check( ListsFromJson( nb, nulls, (int64_t) strlen( nulls ), &nr ) && nr.refuse_reason == ok, "a null in a ? list reads" );
+        const Lists * nv = nb.GetRoot();
+        check( nv != NULL && nv->first_count == 2, "json first count" );
+        check( nv != NULL && !ListsFirstTextAt( *nv, 0, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ), "json null is absent in a ? list" );
+        check( nv != NULL && ListsFirstTextAt( *nv, 1, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ) && rlen == 1 && rbuf[0] == 'y', "json first[1] = y" );
     }
 
-    // THE READ-SIDE COUNT CLAMP (the Go oracle's "count" row): five elements
-    // written under [..8] by the same field id read back against [..4] -> the
-    // first four, counted clamped once
+    // THE READ-SIDE COUNT BOUND (the Go oracle's "count" row): five elements
+    // written under [..8] by the same field id read back against [..4] refuse
+    // the whole load
     WideBuilder wb;
     Wide * wide = wb.GetRoot();
     WideReset( *wide );
@@ -200,11 +223,15 @@ int main()
     const int64_t wide_wire = WideSave( wb, buffer, (int64_t) sizeof( buffer ) );
     check( wide_wire > 0, "wide save" );
     report = TableReport();
-    const Lists * oc = ListsLoadTolerant( region, (int64_t) sizeof( region ), buffer, wide_wire, &report );
-    check( oc != NULL && report.clamped == 1 && !report.malformed && oc->rules_count == 4, "overcount clamped to 4" );
+    const Lists * oc = ListsLoad( region, (int64_t) sizeof( region ), buffer, wide_wire, &report );
+    if ( oc != NULL || report.damaged || report.refuse_reason != out_of_range )
+    {
+        printf( "overcount: root=%d damaged=%d reason=%d\n", (int) ( oc != NULL ), (int) report.damaged, (int) report.refuse_reason );
+        check( 0, "overcount refused" );
+    }
 
-    // THE READ-SIDE LENGTH CLAMP (the Go oracle's "length" row): a nine-byte
-    // element read back against string(8) -> "12345678", counted clamped once
+    // THE READ-SIDE LENGTH BOUND (the Go oracle's "length" row): a nine-byte
+    // element read back against string(8) refuses the whole load
     LongBuilder lb;
     Long * longv = lb.GetRoot();
     LongReset( *longv );
@@ -212,10 +239,12 @@ int main()
     const int64_t long_wire = LongSave( lb, buffer, (int64_t) sizeof( buffer ) );
     check( long_wire > 0, "long save" );
     report = TableReport();
-    const Lists * lc = ListsLoadTolerant( region, (int64_t) sizeof( region ), buffer, long_wire, &report );
-    check( lc != NULL && report.clamped == 1 && !report.malformed && lc->rules_count == 1, "length clamped" );
-    check( lc != NULL && ListsRulesTextAt( *lc, 0, rbuf, (int64_t) sizeof( rbuf ), &rlen, &rpresent ) && rpresent && rlen == 8
-        && memcmp( rbuf, "12345678", 8 ) == 0, "length clamp value" );
+    const Lists * lc = ListsLoad( region, (int64_t) sizeof( region ), buffer, long_wire, &report );
+    if ( lc != NULL || report.damaged || report.refuse_reason != out_of_range )
+    {
+        printf( "length: root=%d damaged=%d reason=%d\n", (int) ( lc != NULL ), (int) report.damaged, (int) report.refuse_reason );
+        check( 0, "length refused" );
+    }
 
     // THE WRITE-SIDE BOUNDS AT SAVE (§2.13, the Go oracle's write.go text
     // rule): the append refuses the fifth element, and storage written past
@@ -242,7 +271,7 @@ int main()
         check( ListsMeasure( builder ) > 0, "the repaired value measures" );
     }
 
-    // ILL-FORMED UTF-8 IN AN ELEMENT IS MALFORMED (the Go oracle's last rows):
+    // ILL-FORMED UTF-8 IN AN ELEMENT IS DAMAGE (the Go oracle's last rows):
     // the golden wire with rules[1] = 'b' (offset 9) replaced by 0xff
     {
         uint8_t bad[ 128 ];
@@ -252,8 +281,12 @@ int main()
         check( bn > 9 && bad[9] == 'b', "rules[1] at offset 9" );
         if ( bn > 9 ) { bad[9] = 0xff; }
         report = TableReport();
-        ListsLoad( region, (int64_t) sizeof( region ), bad, bn, &report );
-        check( report.malformed, "ill-formed UTF-8 element is malformed" );
+        const Lists * ill = ListsLoad( region, (int64_t) sizeof( region ), bad, bn, &report );
+        if ( ill != NULL || !report.damaged || report.refuse_reason != wire_damaged )
+        {
+            printf( "ill-formed: root=%d damaged=%d reason=%d\n", (int) ( ill != NULL ), (int) report.damaged, (int) report.refuse_reason );
+            check( 0, "ill-formed UTF-8 element is refused as damage" );
+        }
     }
 
     return failures == 0 ? 0 : 1;

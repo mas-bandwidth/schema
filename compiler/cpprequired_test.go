@@ -53,32 +53,23 @@ int main()
     const int64_t m = OldSave(&old, buffer, (int64_t) sizeof(buffer));
     CHECK(m > 0);
     need = TLoadMeasure(buffer, m);
-    region = (uint8_t *) malloc((size_t) need);
-    TableReport miss;
-    CHECK(TLoadTolerant(region, need, buffer, m, &miss) != NULL); // the root, with the count
-    CHECK(miss.missing_required == 1 && !miss.malformed);
-    CHECK(strcmp(miss.missing_required_fields, "b") == 0);
-    free(region);
+    // the read is strict-only (docs/plans/strict-only.md): it refuses, and
+    // the report still counts and names the missing field, without damage
     region = (uint8_t *) malloc((size_t) need);
     TableReport strict;
     CHECK(TLoad(region, need, buffer, m, &strict) == NULL);
-    CHECK(strict.missing_required == 1);
+    CHECK(strict.missing_required == 1 && !strict.damaged);
+    CHECK(strcmp(strict.missing_required_fields, "b") == 0);
     free(region);
-    // Builder tolerant and strict both refuse
-    TBuilder btol; TableReport bmiss;
-    CHECK(!TLoadBuilderTolerant(btol, buffer, m, &bmiss));
-    CHECK(bmiss.missing_required == 1 && !bmiss.malformed);
+    // the builder read refuses the same way
     TBuilder bstr; TableReport bstrict;
     CHECK(!TLoadBuilder(bstr, buffer, m, &bstrict));
-    CHECK(bstrict.missing_required == 1);
-    // JSON missing b refuses in both tolerant and strict modes without marking malformed
+    CHECK(bstrict.missing_required == 1 && !bstrict.damaged);
+    // JSON missing b refuses without marking damage
     const char * bad_json = "{\"a\":7,\"c\":4}";
-    TBuilder jtol; TableReport jmiss;
-    CHECK(!TFromJsonTolerant(jtol, bad_json, (int64_t) strlen(bad_json), &jmiss));
-    CHECK(jmiss.missing_required == 1 && !jmiss.malformed && strcmp(jmiss.missing_required_fields, "b") == 0);
     TBuilder jstr; TableReport jstrict;
     CHECK(!TFromJson(jstr, bad_json, (int64_t) strlen(bad_json), &jstrict));
-    CHECK(jstrict.missing_required == 1 && !jstrict.malformed && strcmp(jstrict.missing_required_fields, "b") == 0);
+    CHECK(jstrict.missing_required == 1 && !jstrict.damaged && strcmp(jstrict.missing_required_fields, "b") == 0);
     return failures == 0 ? 0 : 1;
 }
 `
@@ -163,11 +154,11 @@ int main()
         RootBuilder jb; TableReport jr;
         const char * bad_ptr = "{\"a\":3,\"kid\":{\"x\":1},\"pkid\":{\"y\":5}}";
         CHECK(!RootFromJson(jb, bad_ptr, (int64_t) strlen(bad_ptr), &jr));
-        CHECK(jr.missing_required == 1 && !jr.malformed && strcmp(jr.missing_required_fields, "x") == 0);
+        CHECK(jr.missing_required == 1 && !jr.damaged && strcmp(jr.missing_required_fields, "x") == 0);
         const char * bad_empty_ptr = "{\"a\":3,\"kid\":{\"x\":1},\"pkid\":{}}";
         jr = TableReport();
         CHECK(!RootFromJson(jb, bad_empty_ptr, (int64_t) strlen(bad_empty_ptr), &jr));
-        CHECK(jr.missing_required == 1 && !jr.malformed && strcmp(jr.missing_required_fields, "x") == 0);
+        CHECK(jr.missing_required == 1 && !jr.damaged && strcmp(jr.missing_required_fields, "x") == 0);
     }
     return failures == 0 ? 0 : 1;
 }
@@ -242,10 +233,10 @@ int main()
     // JSON without ver (both empty {} and {"hp":5}) is missing_required
     ExactBuilder eb; TableReport rep;
     CHECK(!ExactFromJson(eb, "{}", 2, &rep));
-    CHECK(rep.missing_required == 1 && !rep.malformed && strcmp(rep.missing_required_fields, "ver") == 0);
+    CHECK(rep.missing_required == 1 && !rep.damaged && strcmp(rep.missing_required_fields, "ver") == 0);
     rep = TableReport();
     CHECK(!ExactFromJson(eb, "{\"hp\":5}", 8, &rep));
-    CHECK(rep.missing_required == 1 && !rep.malformed && strcmp(rep.missing_required_fields, "ver") == 0);
+    CHECK(rep.missing_required == 1 && !rep.damaged && strcmp(rep.missing_required_fields, "ver") == 0);
     rep = TableReport();
     CHECK(ExactFromJson(eb, "{\"ver\":7}", 9, &rep));
     CHECK(rep.missing_required == 0 && eb.GetRoot()->ver == 7);
@@ -256,7 +247,7 @@ int main()
     // Nested: required field inside Inner is enforced at its object
     OuterBuilder outb; rep = TableReport();
     CHECK(!OuterFromJson(outb, "{\"inner\":{}}", 12, &rep));
-    CHECK(rep.missing_required == 1 && !rep.malformed && strcmp(rep.missing_required_fields, "id") == 0);
+    CHECK(rep.missing_required == 1 && !rep.damaged && strcmp(rep.missing_required_fields, "id") == 0);
     rep = TableReport();
     CHECK(OuterFromJson(outb, "{\"inner\":{\"id\":5}}", 18, &rep));
     CHECK(rep.missing_required == 0 && outb.GetRoot()->inner.id == 5);
@@ -453,7 +444,7 @@ int main()
 {
     WideReqBuilder b; TableReport r;
     CHECK(!WideReqFromJson(b, "{}", 2, &r));
-    CHECK(r.missing_required == 1 && !r.malformed && strcmp(r.missing_required_fields, "f519") == 0);
+    CHECK(r.missing_required == 1 && !r.damaged && strcmp(r.missing_required_fields, "f519") == 0);
     r = TableReport();
     const char * ok_json = "{\"f519\":42}";
     CHECK(WideReqFromJson(b, ok_json, (int64_t) strlen(ok_json), &r));

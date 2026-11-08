@@ -208,10 +208,10 @@ local ROOT = "TableMixed"
 
 local function bench_load(bytes)
   -- a report is the caller's zeroed counters, as L.Load zeroes its own
-  local report_ = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0,
-    duplicate = 0, blobShared = 0, missingRequired = 0, wireDamaged = false }
-  local value = load_mod.LoadTolerant(tables, ROOT, bytes, report_)
-  if value == nil or report_.malformed then return nil end
+  local report_ = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0,
+    repeatedKey = 0, sharedBlob = 0, missingRequired = 0, wireDamaged = false }
+  local value = load_mod.Load(tables, ROOT, bytes, report_)
+  if value == nil then return nil end
   return value
 end
 

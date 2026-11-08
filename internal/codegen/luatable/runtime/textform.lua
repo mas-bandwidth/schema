@@ -782,14 +782,14 @@ function TF.Load(T, name, text, limits)
   if root.k ~= "list" then fail("text_kind_mismatch", root.pos) end
   local js = resolve_record(T, desc, root, false, {})
   local report =
-    { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+    { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
   local v = J.FromJson(T, name, js, report)
-  if v == nil or report.malformed then fail("text_syntax", 1) end
-  if report.duplicate > 0 then fail("text_duplicate_key", 1) end
+  if report.repeatedKey > 0 then fail("text_duplicate_key", 1) end
   if report.unknown > 0 then fail("text_unknown_key", 1) end
-  if report.kindMismatch > 0 then fail("text_kind_mismatch", 1) end
-  if report.clamped > 0 then fail("text_bound", 1) end
+  if report.kindChanged > 0 then fail("text_kind_mismatch", 1) end
+  if report.outOfRange > 0 then fail("text_bound", 1) end
   if report.widened > 0 then fail("text_bound", 1) end
+  if v == nil or report.damaged then fail("text_syntax", 1) end
   return v
 end
 

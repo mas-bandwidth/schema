@@ -144,6 +144,10 @@ using namespace probe;
 #define JSON(v,b,n,r) RootFromJson(v,b,n,r)
 #define LEAF_LOAD(v,b,n,r) LeafLoad(v,b,n,r)
 #define REPORT_RESET(v) ((v) = TableReport())
+// the C++ read is strict-only (docs/SPEC-TABLES.md §4): a whole read is the
+// plain answer true with no damage, no refusal reason and no event counted
+#define CLEAN_LOAD(r) (!(r).damaged && (r).refuse_reason == ok && !(r).refused && !(r).unknown && !(r).widened)
+#define CLEAN_JSON(r) (!(r).damaged && (r).refuse_reason == ok)
 #else
 #define LOAD(v,b,n,r) (root_fixed_load(&(v),1,b,n,plan,4096,NULL,r)==1)
 #define SAVE(v,b,n) root_fixed_save(&(v),1,b,n)
@@ -152,6 +156,8 @@ using namespace probe;
 #define JSON(v,b,n,r) root_from_json_tolerant(&(v),b,n,r)
 #define LEAF_LOAD(v,b,n,r) leaf_load_tolerant(&(v),b,n,r)
 #define REPORT_RESET(v) memset(&(v),0,sizeof(v))
+#define CLEAN_LOAD(r) (!(r).malformed && !(r).refused && !(r).unknown && !(r).kind_mismatch && !(r).clamped && !(r).widened && !(r).duplicate)
+#define CLEAN_JSON(r) (!(r).malformed)
 #endif
 int main(void) {
  const uint8_t empty[] = {@EMPTY@}, full[] = {@FULL@}, minimal[] = {@MINIMAL@};
@@ -173,7 +179,7 @@ int main(void) {
   const int64_t size = populated ? sizeof(full) : sizeof(minimal);
   REPORT_RESET(report);
   CHECK(LOAD(value,wire,size,&report));
-  CHECK(!report.malformed && !report.refused && !report.unknown && !report.kind_mismatch && !report.clamped && !report.widened && !report.duplicate);
+  CHECK(CLEAN_LOAD(report));
   CHECK(value.payload.leaf.values_count == 1);
   CHECK(value.payload.rows_count == 1);
   CHECK(value.payload.rows[0].values_count == (populated ? 2 : 1));
@@ -184,7 +190,7 @@ int main(void) {
  RESET(value);
  CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0 && value.payload.rows[1].values_count==0 && value.payload.rows[1].marker==7);
  REPORT_RESET(report);
- CHECK(JSON(value,"{}",2,&report) && !report.malformed);
+ CHECK(JSON(value,"{}",2,&report) && CLEAN_JSON(report));
  CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0 && value.payload.rows[1].values_count==0);
 #ifdef __cplusplus
  // The same reset serves message loads and public file-open failure paths.
@@ -201,7 +207,7 @@ int main(void) {
  CHECK(value.payload.leaf.values_count==1 && value.payload.rows_count==1 && value.payload.rows[0].values_count==1 && value.payload.rows[1].values_count==0);
  CHECK(RootSaveMessages(&value,1,saved,sizeof(saved),&report)==message_bytes && !memcmp(saved,message,(size_t)message_bytes));
  value.payload=Payload();
- CHECK(!RootLoad(value,empty,0,&report) && report.malformed);
+ CHECK(!RootLoad(value,empty,0,&report) && report.damaged && report.refuse_reason == wire_damaged);
  CHECK(value.payload.leaf.values_count==0 && value.payload.rows_count==0);
 #endif
  return 0;

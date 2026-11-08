@@ -76,7 +76,7 @@ func manifestMessageData(t *testing.T, path string) (map[string][]string, map[st
 func messageProbe(module, root string) string {
 	return `local T = require("` + module + `")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0 }
+local report = { damaged = false, refused = 0 }
 local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
 local ok = T.AnnounceRead(vocab, inputs.announce, report)
@@ -164,14 +164,14 @@ func assertDamagedBatch(t *testing.T, repo string, units map[string][]string, co
 	writeFile(t, filepath.Join(dir, "main.lua"), `
 local T = require("`+ModuleName(unit)+`")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0 }
+local report = { damaged = false, refused = 0 }
 local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
 assert(T.AnnounceRead(vocab, inputs.announce, report))
 local values = T.LoadMessages("LoginRequest", vocab, inputs.batch, report)
 assert(values ~= nil, "a damaged batch should return an empty result")
 assert(#values == 0, "damage in body 2 delivered partial bodies")
-assert(report.malformed == true, "damage in body 2 did not report malformed")
+assert(report.damaged == true, "damage in body 2 did not report malformed")
 print("damage-ok")
 `)
 	luarun.Run(t, dir, "main.lua", map[string][]byte{"announce": announce, "batch": batch})
@@ -212,7 +212,7 @@ func TestLuaMessageFormNegativeControl(t *testing.T) {
 local T = require("`+ModuleName(unit)+`")
 local inputs = require("inputs")
 local ok2 = pcall(function()
-  local report = { malformed = false, refused = 0 }
+  local report = { damaged = false, refused = 0 }
   local vocab = {}
   for i = 1, T.MessageEntries do vocab[i] = {} end
   local ok = T.AnnounceRead(vocab, inputs.announce, report)
@@ -267,7 +267,7 @@ func TestLuaAnnouncementReadsTheEngineBytes(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "main.lua"), fmt.Sprintf(`
 local T = require(%q)
 local inputs = require("inputs")
-local function report() return { malformed = false, refused = 0 } end
+local function report() return { damaged = false, refused = 0 } end
 
 local vocab = {}
 local r = report()
@@ -360,7 +360,7 @@ local function refused(name, f)
   assert(tostring(err):find("Varplain", 1, true), name .. " was refused without naming the table: " .. tostring(err))
 end
 refused("LoadMessages", function() return T.LoadMessages("Varplain", vocab, "\2\0", {}) end)
-refused("LoadMessagesTolerant", function() return T.LoadMessagesTolerant("Varplain", vocab, "\2\0", {}) end)
+refused("LoadMessages", function() return T.LoadMessages("Varplain", vocab, "\2\0", {}) end)
 refused("MeasureMessages", function() return T.MeasureMessages("Varplain", vocab, { T.NewVarplain() }) end)
 refused("SaveMessages", function() return T.SaveMessages("Varplain", vocab, { T.NewVarplain() }) end)
 assert(T.MeasureMessages("Fixedroot", vocab, { T.NewFixedroot() }) > 0, "the fixed root's batch did not measure")

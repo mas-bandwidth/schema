@@ -42,6 +42,28 @@ using namespace tabledemo;
 
 static int failures = 0;
 
+// PackConfig IS A FIXED ROOT, and a fixed root's file is FORM 3
+// (docs/SPEC-TABLES.md §3.4): `schema pack` writes it, the engine's back
+// direction is byte-compared against it, and the plain variable Load refuses
+// it as unknown_form. Every wire this driver reads or writes is therefore one
+// record through the strict FixedLoad and FixedSave.
+static bool load_wire( PackConfig & value, const uint8_t * wire, int64_t bytes, TableReport & report )
+{
+    static TableFixedEntry plan[1024];
+    PackConfigReset( value );
+    return PackConfigFixedLoad( &value, 1, wire, bytes, plan, 1024, NULL, &report ) == 1;
+}
+
+static int64_t save_wire_measure()
+{
+    return PackConfigFixedMeasure( 1 );
+}
+
+static bool save_wire( const PackConfig & value, uint8_t * buffer, int64_t bytes )
+{
+    return PackConfigFixedSave( &value, 1, buffer, bytes ) == bytes;
+}
+
 // a xorshift-multiply generator (splitmix-style), so the same seed and the
 // same instance reproduce the same N floats bit for bit
 static uint64_t rng_state = 0;
@@ -226,11 +248,13 @@ static int write_instances( const char * corpus_path, long seed, int n, const ch
     }
     PackConfig base;
     TableReport report;
-    if ( !PackConfigLoadTolerant( base, corpus, corpus_size, &report ) ||
-         report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
-         report.duplicate != 0 || report.malformed )
+    // the plain read is strict: true already means no kind mismatch, no
+    // out-of-range value, no repeated id and no broken framing
+    if ( !load_wire( base, corpus, corpus_size, report ) ||
+         report.unknown != 0 || report.damaged || report.refuse_reason != ok )
     {
-        printf( "FAIL: corpus did not load clean\n" );
+        printf( "FAIL: corpus did not load clean (unknown %d, damaged %d, refused %d, refuse_reason %d, missing_required %d)\n",
+                report.unknown, (int) report.damaged, (int) report.refused, (int) report.refuse_reason, report.missing_required );
         free( corpus );
         return 1;
     }
@@ -259,10 +283,10 @@ static int write_instances( const char * corpus_path, long seed, int n, const ch
 
         char path[1024];
         snprintf( path, sizeof( path ), "%s/%d.wire", dir, i );
-        int64_t wsize = PackConfigMeasure( c );
+        int64_t wsize = save_wire_measure();
         if ( wsize <= 0 ) { printf( "FAIL: measure refused instance %d\n", i ); return 1; }
         uint8_t * wire = (uint8_t *) malloc( (size_t) wsize );
-        if ( PackConfigSave( c, wire, wsize ) != wsize ) { printf( "FAIL: save instance %d\n", i ); return 1; }
+        if ( !save_wire( c, wire, wsize ) ) { printf( "FAIL: save instance %d\n", i ); return 1; }
         if ( !write_file( path, wire, wsize ) ) { printf( "FAIL: cannot write %s\n", path ); return 1; }
         free( wire );
 
@@ -293,7 +317,7 @@ static int read_instances( int n, const char * dir )
 
         PackConfig backend;
         TableReport report;
-        if ( !PackConfigLoadTolerant( backend, wire, wire_size, &report ) )
+        if ( !load_wire( backend, wire, wire_size, report ) )
         {
             printf( "FAIL: the backend's own wire did not load, instance %d\n", i );
             failures++;
@@ -328,17 +352,17 @@ static int read_instances( int n, const char * dir )
             printf( "FAIL: FromJson refused the engine's text, instance %d\n", i );
             failures++;
         }
-        else if ( r2.unknown != 0 || r2.kind_mismatch != 0 || r2.clamped != 0 || r2.duplicate != 0 || r2.malformed )
+        else if ( r2.unknown != 0 || r2.damaged || r2.refuse_reason != ok )
         {
-            printf( "FAIL: FromJson report not clean, instance %d (unknown %d, kind_mismatch %d, clamped %d, duplicate %d, malformed %d)\n",
-                    i, r2.unknown, r2.kind_mismatch, r2.clamped, r2.duplicate, (int) r2.malformed );
+            printf( "FAIL: FromJson report not clean, instance %d (unknown %d, damaged %d, refuse_reason %d)\n",
+                    i, r2.unknown, (int) r2.damaged, (int) r2.refuse_reason );
             failures++;
         }
         else
         {
-            int64_t saved_size = PackConfigMeasure( loaded );
+            int64_t saved_size = save_wire_measure();
             uint8_t * saved = (uint8_t *) malloc( (size_t) saved_size );
-            if ( PackConfigSave( loaded, saved, saved_size ) != saved_size )
+            if ( !save_wire( loaded, saved, saved_size ) )
             {
                 printf( "FAIL: save after FromJson, instance %d\n", i );
                 failures++;

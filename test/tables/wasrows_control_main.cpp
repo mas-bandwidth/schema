@@ -21,12 +21,14 @@ int main()
     fclose( f );
     tblr2::Cfg cfg;
     tblr2::TableReport report;
-    if ( !tblr2::CfgLoadTolerant( cfg, wire, n, &report ) ) { printf( "load refused\n" ); return 2; }
+    // the plain strict read: a name this reader cannot find is EVOLUTION,
+    // skipped and counted `unknown`, never a refusal (docs/SPEC-TABLES.md §4)
+    if ( !tblr2::CfgLoad( cfg, wire, n, &report ) ) { printf( "load refused\n" ); return 2; }
     const char * grade = cfg.grade == tblr2::Grade::Argent ? "Argent" : cfg.grade == tblr2::Grade::None ? "None" : "other";
     const char * effect = cfg.effect.type == tblr2::EffectType::Shield ? "shield" : cfg.effect.type == tblr2::EffectType::None ? "None" : "other";
     const float charge = cfg.effect.type == tblr2::EffectType::Shield ? cfg.effect.shield.charge : 0.0f;
-    printf( "unknown=%d kind_mismatch=%d malformed=%d grade=%s effect=%s charge=%g mult=%g tally_argent=%d\n",
-            (int) report.unknown, (int) report.kind_mismatch, (int) report.malformed,
+    printf( "unknown=%d widened=%d damaged=%d grade=%s effect=%s charge=%g mult=%g tally_argent=%d\n",
+            (int) report.unknown, (int) report.widened, (int) report.damaged,
             grade, effect, charge, cfg.buff.mult, cfg.tally[tblr2::Grade::Argent] );
     return 0;
 }

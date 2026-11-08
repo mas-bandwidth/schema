@@ -129,7 +129,7 @@ func cppRuntimeNames() []Name {
 			"kTableRetainRecordHeader", "kTableRetainSlotBytes", "kTableRetainWalkDepthMax",
 		}},
 		{what: "the text field helpers: UTF-8 and UTF-16 validity, clamping and the float rung (docs/SPEC-TABLES.md §4)", names: []string{
-			"TableUtf16Clamp", "TableUtf16Unit", "TableUtf8Clamp",
+			"TableAppendText", "TableUtf16Clamp", "TableUtf16Unit", "TableUtf8Clamp",
 		}},
 		{what: "the text form's JSON layer: descriptor classification and raw storage access (§16)", names: []string{
 			"TableJsonCount", "TableJsonDecimalPoint", "TableJsonElementShape", "TableJsonFinite", "TableJsonGetRaw",

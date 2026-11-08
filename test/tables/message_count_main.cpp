@@ -4,15 +4,16 @@
 // wide. A reader that narrows it to int32 first turns a count at or above 2^31
 // negative, which passes a signed test against the reader's own bound
 // untouched and lands a NEGATIVE count in the caller's storage. Nothing about
-// the body is ill-formed, so no refusal fires and no counter moves: the only
-// instrument is a vector that carries such a count and a program that reads
-// the count back.
+// the body is ill-formed, so no damage fires: the only instrument is a vector
+// that carries such a count and a program that reads the verdict back.
 //
 // The vector is `few` announced over [2, 2^32 - 1] with a ranged uint32
 // element whose min equals its max, which rides no bits at all, under a count
 // of 2^31 + 1. Six bytes of wire. Green under the emitter this repository
-// ships, where the count clamps to the declared five, and red under one that
-// narrows before it clamps, which is the whole of the control in
+// ships, where the count is past the declared five and the strict read
+// refuses the whole batch as out_of_range (docs/SPEC-TABLES.md §4), and red
+// under one that narrows before it bounds, where the negative count slips
+// under the bound and loads, which is the whole of the control in
 // `make tables-message-form-count-negative-control`.
 
 #include <cstdio>
@@ -141,21 +142,22 @@ int main()
     basesdemo::Bases read;
     int64_t count = 1;
     basesdemo::TableReport report;
-    if ( !basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, w.bits / 8, &report ) )
+    if ( basesdemo::BasesLoadMessages( &read, &count, vocabulary, message, w.bits / 8, &report ) )
     {
-        printf( "wide count control: the vector did not load\n" );
+        printf( "wide count control: a count of 2^31 + 1 LOADED, landing few_count = %d\n", read.few_count );
         return 1;
     }
-    if ( report.malformed || report.clamped != 1 )
+    if ( report.damaged || report.refuse_reason != basesdemo::out_of_range )
     {
-        printf( "wide count control: the vector read malformed=%d clamped=%d\n", (int) report.malformed, report.clamped );
+        printf( "wide count control: the vector refused damaged=%d reason=%d, not out_of_range\n",
+                (int) report.damaged, (int) report.refuse_reason );
         return 1;
     }
-    if ( read.few_count != 5 )
+    if ( count != 0 || read.few_count != 0 )
     {
-        printf( "wide count control: a count of 2^31 + 1 landed as %d, not the declared five\n", read.few_count );
+        printf( "wide count control: the refused batch left count=%lld few_count=%d\n", (long long) count, read.few_count );
         return 1;
     }
-    printf( "wide count control: a count of 2^31 + 1 clamps to five and counts one clamped\n" );
+    printf( "wide count control: a count of 2^31 + 1 refuses the batch as out_of_range\n" );
     return 0;
 }

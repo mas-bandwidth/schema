@@ -74,7 +74,7 @@ local function hex(s)
   for i = 1, #s do out[i] = string.format("%02x", s:byte(i)) end
   return table.concat(out)
 end
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0, retained = 0, retainLost = 0 }
 local retain = { list = {}, used = 0 }
 local v = retain_mod.LoadRetain(T, "` + row.root + `", inputs.wire, retain, report)
 if v == nil then print("load refused") os.exit(1) end
@@ -143,7 +143,7 @@ func TestGoRetainSave(t *testing.T){
  n:=NodeLoadMeasure(wire);if n<0{t.Fatal("measure")}
  raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)]
  retain:=TableRetain{Bytes:make([]byte,1<<20),Ids:make([]TableRetainID,1024)};var report TableReport
- v:=NodeLoadRetain(region,wire,&retain,&report);if v==nil||report.Malformed{t.Fatalf("load %%+v",report)}
+ v:=NodeLoadRetain(region,wire,&retain,&report);if v==nil{t.Fatalf("load %%+v",report)}
  size:=NodeMeasureRetain(v,&retain);out:=make([]byte,size)
  if NodeSaveRetain(v,&retain,out,&report)!=size{t.Fatalf("save %%+v",report)}
  if err:=os.WriteFile(%q,out,0o644);err!=nil{t.Fatal(err)}

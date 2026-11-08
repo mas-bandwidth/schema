@@ -57,8 +57,8 @@ local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
 local function report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-           clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+           outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 local v = T.NewWhere()
 v.rules = { { value = "a" }, { value = "b" } }
@@ -69,9 +69,9 @@ local saved = save.Save(T, "Where", v)
 assert(saved ~= nil, "the save refused the short value")
 print("save:" .. hex(saved))
 local r = report()
-local back = load.LoadTolerant(T, "Where", inputs.wire, r)
+local back = load.Load(T, "Where", inputs.wire, r)
 assert(back ~= nil, "the load returned no root")
-assert(not r.malformed and r.clamped == 0, "the load reported damage")
+assert(not r.damaged and r.outOfRange == 0, "the load reported damage")
 assert(#back.rules == 2 and back.rules[1].value == "a" and back.rules[2].value == "b", "rules moved")
 assert(back.first[1].value == "x" and back.first[1].value_present == true
   and back.first[2].value_present == false and #back.first == 2, "first moved")
@@ -92,8 +92,8 @@ big.byname = { [keyA] = 7, [keyB] = 8 }
 local bw = save.Save(T, "Where", big)
 assert(bw ~= nil, "the save refused the long value")
 local br = report()
-local bv = load.LoadTolerant(T, "Where", bw, br)
-assert(bv ~= nil and not br.malformed and br.clamped == 0, "the long load reported damage")
+local bv = load.Load(T, "Where", bw, br)
+assert(bv ~= nil and not br.damaged and br.outOfRange == 0, "the long load reported damage")
 assert(#bv.rules[1].value == #long and bv.rules[2].value == "z", "long rules moved")
 assert(bv.first[1].value_present == false and #bv.first[2].value == #long + 1, "long first moved")
 assert(#bv.capped[1].value == #long + 1, "long capped moved")

@@ -137,8 +137,8 @@ stdout:flush()
 -- the tolerant load lands nothing and names the float in the report, and the
 -- reply says so with the refusal verdict, as every leg's does.
 local function answer(entry, wire)
-  local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-                   clamped = 0, widened = 0, duplicate = 0 }
+  local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+                   outOfRange = 0, widened = 0, repeatedKey = 0 }
   local loaded, measure, saved = false, -1, nil
   local T, L, S = entry.unit.T, entry.unit.load, entry.unit.save
   local measured = true
@@ -147,7 +147,7 @@ local function answer(entry, wire)
     measured = measure >= 0
   end
   if measured then
-    local v = L.LoadTolerant(T, entry.root, wire, report)
+    local v = L.Load(T, entry.root, wire, report)
     if v ~= nil then
       loaded = true
       saved = S.Save(T, entry.root, v)
@@ -177,12 +177,12 @@ while true do
     end
     loaded, report, measure, saved = a, b, c, d
   end
-  report = report or { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-                       clamped = 0, widened = 0, duplicate = 0 } -- an unknown entry
+  report = report or { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+                       outOfRange = 0, widened = 0, repeatedKey = 0 } -- an unknown entry
   stdout:write(string.pack("<Bi4i4i4i4i4BBi8i4i4i8",
     loaded and 1 or 0,
-    report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate,
-    report.malformed and 1 or 0, ((report.refused or 0) > 0 or report.nonFiniteFloat ~= nil) and 1 or 0,
+    report.unknown, 0, report.widened, 0, 0,
+    (not loaded or report.damaged) and 1 or 0, ((report.refused or 0) > 0 or report.nonFiniteFloat ~= nil) and 1 or 0,
     measure, 0, 0, saved and #saved or -1))
   if saved ~= nil and #saved > 0 then stdout:write(saved) end
   stdout:flush()

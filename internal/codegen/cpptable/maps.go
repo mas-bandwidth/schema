@@ -1322,7 +1322,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }\n", ind)
 	g.pf("%s    // A MAP HEADER WHOSE ELEMENT KIND IS NOT %d is the ordinary array\n", ind, tkTable)
 	g.pf("%s    // kind mismatch of §4, and nothing about a map is special-cased\n", ind)
-	g.pf("%s    if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }\n", ind, tkTable)
+	g.pf("%s    if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }\n", ind, tkTable)
 	g.emitRetainReplaced(f, ind+"    ")
 	g.pf("%s    TableMapFill<%s> fill = TableMapFillBegin( nodes, value.%s, count );\n", ind, n, f.Name)
 	g.pf("%[1]s    if ( fill.refused )\n%[1]s    {\n%[1]s        nodes.refused = true;\n%[1]s        return false;\n%[1]s    }\n", ind)
@@ -1352,12 +1352,12 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets\n", ind)
 	g.pf("%s            // to EMPTY, ONE kind_mismatch is counted for it, and the rest\n", ind)
 	g.pf("%s            // is skipped. Events counted inside earlier entries stand.\n", ind)
-	g.pf("%s            r.report->refused = true; r.report->refuse_reason = kind_mismatch;;\n", ind)
+	g.pf("%s            r.report->refused = true; r.report->refuse_reason = kind_mismatch;\n", ind)
 	g.pf("%s            TableMapFillReset( fill );\n", ind)
 	g.pf("%s            break;\n", ind)
 	g.pf("%s        }\n", ind)
 	g.pf("%s        if ( read.damaged ) { r.report->damaged = true; break; }\n", ind)
-	g.pf("%s        if ( read.over ) { r.report->refused = true; r.report->refuse_reason = out_of_range;; continue; } // skipped by its L, one count per entry\n", ind)
+	g.pf("%s        if ( read.over ) { r.report->refused = true; r.report->refuse_reason = out_of_range; continue; } // skipped by its L, one count per entry\n", ind)
 	if mapKeyIsString(f) {
 		g.pf("%s        const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;\n", ind)
 	} else {
@@ -1388,7 +1388,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 		g.emitLoadRefusal(n, ind+"            ")
 	})
 	g.pf("%s        }\n", ind)
-	g.pf("%s        if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed;; }\n", ind)
+	g.pf("%s        if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed; }\n", ind)
 	if mapKeyIsString(f) {
 		g.pf("%s        last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND\n", ind)
 	} else {

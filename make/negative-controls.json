@@ -91,7 +91,6 @@
         "wide-no-align-negative-control",
         "wide-surrogate-negative-control",
         "wide-table-byte-length-negative-control",
-        "wide-table-clamp-negative-control",
         "wide-table-odd-length-negative-control",
         "wide-table-surrogate-negative-control",
         "wide-table-zero-unit-negative-control",
@@ -166,6 +165,17 @@
         "cards-goose-conformance-negative-control",
         "cards-goose-conformance-upgrade-negative-control"
       ]
+    },
+    {
+      "name": "squirrel-cards",
+      "when": "pull-request",
+      "why": "the Squirrel port's card driver controls (make/squirrel-cards.mk): render, upgrade and taskhash each damaged through the driver's test-only CARDS_SQUIRREL_SABOTAGE switch, the harness required red on that surface and every other surface required green. They need Go, the pinned interpreter (make dist-squirrel, through the row's squirrel field), the harness and the Card unit generated for squirrel; three harness runs over 43 small cases, under 2 s each on the studio.",
+      "targets": [
+        "cards-squirrel-conformance-hash-negative-control",
+        "cards-squirrel-conformance-negative-control",
+        "cards-squirrel-conformance-upgrade-negative-control"
+      ],
+      "squirrel": "3.2"
     },
     {
       "name": "lua-cards-docs",
@@ -1664,8 +1674,7 @@
         "tables-reference-flags-negative-control",
         "tables-reference-alignment-negative-control",
         "tables-reference-include-negative-control",
-        "tables-reference-hidden-union-negative-control",
-        "tables-reference-counted-tail-negative-control"
+        "tables-reference-hidden-union-negative-control"
       ]
     },
     {

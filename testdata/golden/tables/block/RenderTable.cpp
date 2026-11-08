@@ -1588,11 +1588,11 @@ inline bool TableJsonRequireSeen( TableJsonIn & in, const void * base, const Tab
         if ( !missing ) { in.report->missing_required_fields[0] = 0; }
         if ( missing && strlen( in.report->missing_required_fields ) + 2 + strlen( f->name ) < sizeof( in.report->missing_required_fields ) )
         {
-            strcat( in.report->missing_required_fields, ", " );
+            TableAppendText( in.report->missing_required_fields, ", " );
         }
         if ( strlen( in.report->missing_required_fields ) + strlen( f->name ) < sizeof( in.report->missing_required_fields ) )
         {
-            strcat( in.report->missing_required_fields, f->name );
+            TableAppendText( in.report->missing_required_fields, f->name );
         }
         missing = true;
     }
@@ -1892,7 +1892,7 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
         }
     }
     if ( oor_out != NULL ) { *oor_out = oor_flag; }
-    else if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
+    else if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range; }
     if ( length != NULL ) { *length = placed; }
     return true;
 }
@@ -2105,7 +2105,7 @@ inline bool TableJsonScanWString( TableJsonIn & in, char16_t * out, int32_t capa
             oor_flag = true;
         }
     }
-    if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
+    if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range; }
     if ( length != NULL ) { *length = placed; }
     return true;
 }
@@ -2553,7 +2553,7 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
     }
     else if ( point < -40 )
     {
-        in.report->refused = true; in.report->refuse_reason = kind_mismatch;; // finer than any F can spell
+        in.report->refused = true; in.report->refuse_reason = kind_mismatch; // finer than any F can spell
         return true;
     }
     else
@@ -2586,7 +2586,7 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         {
             if ( fd[k] != 0 )
             {
-                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                 return true;
             }
         }
@@ -2622,7 +2622,7 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
             }
         }
     }
-    if ( saturated ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
+    if ( saturated ) { in.report->refused = true; in.report->refuse_reason = out_of_range; }
     if ( f->wide != NULL )
     {
         TableJsonWide lo = { f->wide->lo[0], f->wide->lo[1] };
@@ -2630,12 +2630,12 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         if ( TableJsonWideCompare( raw, lo, is_signed ) < 0 )
         {
             raw = lo;
-            in.report->refused = true; in.report->refuse_reason = out_of_range;;
+            in.report->refused = true; in.report->refuse_reason = out_of_range;
         }
         else if ( TableJsonWideCompare( raw, hi, is_signed ) > 0 )
         {
             raw = hi;
-            in.report->refused = true; in.report->refuse_reason = out_of_range;;
+            in.report->refused = true; in.report->refuse_reason = out_of_range;
         }
     }
     TableJsonWideStore( storage, f->elem_size, raw );
@@ -3043,7 +3043,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 }
                 else if ( got != TableJsonShape( arm ) )
                 {
-                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                     placed = false;
                 }
@@ -3067,7 +3067,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             {
                 if ( TableJsonValueShape( in ) != 'o' )
                 {
-                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                     placed = false;
                 }
@@ -3083,7 +3083,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 // selects it and there is nothing to place
                 if ( TableJsonValueShape( in ) != 'z' )
                 {
-                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                     placed = false;
                 }
@@ -3160,7 +3160,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             }
             if ( c != '"' )
             {
-                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else
@@ -3251,7 +3251,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         // clean writes back.
         if ( !TableJsonFinite( value ) )
         {
-            in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+            in.report->refused = true; in.report->refuse_reason = kind_mismatch;
             return true;
         }
         if ( f->has_range )
@@ -3259,12 +3259,12 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             if ( value < f->range_min )
             {
                 value = f->range_min;
-                in.report->refused = true; in.report->refuse_reason = out_of_range;;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;
             }
             else if ( value > f->range_max )
             {
                 value = f->range_max;
-                in.report->refused = true; in.report->refuse_reason = out_of_range;;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;
             }
         }
         if ( single )
@@ -3272,7 +3272,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             float narrow = (float) value;
             if ( !TableJsonFinite( (double) narrow ) )
             {
-                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                 return true;
             }
             memcpy( storage, &narrow, sizeof( narrow ) );
@@ -3292,10 +3292,10 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     const TableJsonInteger number = TableJsonInterpret( token, length, integral );
     if ( !number.finite || number.fractional )
     {
-        in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+        in.report->refused = true; in.report->refuse_reason = kind_mismatch;
         return true;
     }
-    if ( number.saturated ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; } // past what sixty-four bits hold
+    if ( number.saturated ) { in.report->refused = true; in.report->refuse_reason = out_of_range; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
     // AN INTEGER RANGE CLAMPS AGAINST ITS EXACT COLUMNS (docs/SPEC-TABLES.md
@@ -3332,13 +3332,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             {
                 bounded.magnitude = lo_magnitude;
                 bounded.negative = f->range_int_min < 0;
-                in.report->refused = true; in.report->refuse_reason = out_of_range;;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;
             }
             else if ( above )
             {
                 bounded.magnitude = hi_magnitude;
                 bounded.negative = f->range_int_max < 0;
-                in.report->refused = true; in.report->refuse_reason = out_of_range;;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;
             }
         }
         else
@@ -3349,19 +3349,19 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             {
                 bounded.magnitude = f->range_uint_min;
                 bounded.negative = false;
-                in.report->refused = true; in.report->refuse_reason = out_of_range;;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;
             }
             else if ( above )
             {
                 bounded.magnitude = f->range_uint_max;
                 bounded.negative = false;
-                in.report->refused = true; in.report->refuse_reason = out_of_range;;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;
             }
         }
     }
     bool moved = false;
     const int64_t value = TableJsonIntegerInDomain( bounded, is_signed, (int32_t) f->elem_size, moved );
-    if ( moved ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
+    if ( moved ) { in.report->refused = true; in.report->refuse_reason = out_of_range; }
     TableJsonSetRaw( storage, f->elem_size, (uint64_t) value );
     return true;
 }
@@ -3377,7 +3377,7 @@ inline bool schema_table_json_read_text_element_( TableJsonIn & in, uint8_t * el
     }
     if ( got != 's' )
     {
-        in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+        in.report->refused = true; in.report->refuse_reason = kind_mismatch;
         return TableJsonSkipValue( in, depth + 1 );
     }
     uint8_t * val_storage = element + value->offset;
@@ -3433,7 +3433,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             {
                 // an element past [..N] counts, the total having dropped it
                 // or not, as the wire counts its count clamp (§2.13)
-                if ( !total_oor_flag || ++seen > f->array_bound ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
+                if ( !total_oor_flag || ++seen > f->array_bound ) { in.report->refused = true; in.report->refuse_reason = out_of_range; }
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else
@@ -3443,7 +3443,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 if ( !schema_table_json_read_text_element_( in, element, f, depth, elem_bytes ) ) { return false; }
                 if ( f->text_total > 0 && spent + (int64_t) elem_bytes > f->text_total )
                 {
-                    in.report->refused = true; in.report->refuse_reason = out_of_range;;
+                    in.report->refused = true; in.report->refuse_reason = out_of_range;
                     f->table->reset( element );
                     total_oor_flag = true;
                     seen = placed + 1;
@@ -3503,13 +3503,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         {
             // a body that is not base64 is the wrong shape for the kind: the
             // field keeps its default and the event is counted
-            in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+            in.report->refused = true; in.report->refuse_reason = kind_mismatch;
             return true;
         }
         memset( storage, 0, (size_t) f->array_bound );
         bool oor_flag = false;
         const int64_t placed = TableJsonDecodeBase64( in, mark, storage, (int64_t) f->array_bound, &oor_flag );
-        if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }
+        if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range; }
         TableJsonSetCount( base, f, (int32_t) placed );
         return true;
     }
@@ -3572,7 +3572,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 {
                     if ( seen_key_len[i] == key_length && memcmp( seen_key_text + seen_key_off[i], key, (size_t) key_length ) == 0 ) { repeated = true; break; }
                 }
-                if ( repeated ) { in.report->refused = true; in.report->refuse_reason = malformed;; }
+                if ( repeated ) { in.report->refused = true; in.report->refuse_reason = malformed; }
                 else if ( seen_keys < 512 && seen_used + key_length <= (int32_t) sizeof( seen_key_text ) )
                 {
                     memcpy( seen_key_text + seen_used, key, (size_t) key_length );
@@ -3603,7 +3603,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( slot >= 0 && slot < 512 )
             {
                 uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
-                if ( ( seen[slot >> 6] & bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed;; }
+                if ( ( seen[slot >> 6] & bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed; }
                 seen[slot >> 6] |= bit;
             }
             if ( slot < 0 )
@@ -3613,7 +3613,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             else if ( TableJsonValueShape( in ) != shape )
             {
-                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else if ( !TableJsonReadScalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
@@ -3683,7 +3683,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             {
                 // more elements than the reader's bound: the bounded prefix
                 // is kept and the excess counts, the wire's rule (§4)
-                in.report->refused = true; in.report->refuse_reason = out_of_range;;
+                in.report->refused = true; in.report->refuse_reason = out_of_range;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else if ( f->kind == 17 )
@@ -3698,7 +3698,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 }
                 else if ( got != 'o' )
                 {
-                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 }
                 else if ( !TableJsonReadPointer( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return false; }
@@ -3706,7 +3706,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             else if ( TableJsonValueShape( in ) != shape )
             {
-                in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 placed++;
             }
@@ -3846,7 +3846,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             if ( index < 4096 )
             {
                 uint64_t bit = uint64_t( 1 ) << ( index & 63 );
-                if ( ( seen[index >> 6] & bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed;; }
+                if ( ( seen[index >> 6] & bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed; }
                 seen[index >> 6] |= bit;
             }
             // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
@@ -3867,7 +3867,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 }
                 else if ( got != TableJsonShape( f ) )
                 {
-                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 }
                 else if ( !TableJsonReadPointer( in, (uint8_t *) base + f->offset, f, depth ) )
@@ -3897,7 +3897,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 if ( got != TableJsonShape( f ) )
                 {
                     // the wrong JSON type for the kind: skipped, never coerced
-                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;;
+                    in.report->refused = true; in.report->refuse_reason = kind_mismatch;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 }
                 else if ( !TableJsonReadField( in, base, f, depth ) )
@@ -4796,7 +4796,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == pair.items[0].text )
                 {
-                    *why = "text_repeated_key";
+                    *why = "text_duplicate_key";
                     return false;
                 }
             }
@@ -4869,7 +4869,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == slot )
                 {
-                    *why = "text_repeated_key";
+                    *why = "text_duplicate_key";
                     return false;
                 }
             }
@@ -4925,7 +4925,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == tag )
                 {
-                    *why = "text_repeated_key";
+                    *why = "text_duplicate_key";
                     return false;
                 }
             }
@@ -5045,7 +5045,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             {
                 if ( seen[k] == n.items[i].text )
                 {
-                    *why = "text_repeated_key";
+                    *why = "text_duplicate_key";
                     return false;
                 }
             }
@@ -5327,7 +5327,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         {
             if ( seen[k] == found )
             {
-                *why = "text_repeated_key";
+                *why = "text_duplicate_key";
                 return false;
             }
         }
@@ -5536,13 +5536,13 @@ bool RenderCameraFromJson( RenderCamera & value, const char * text, int64_t byte
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderCameraTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderCameraTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5567,13 +5567,13 @@ bool RenderShipFromJson( RenderShip & value, const char * text, int64_t bytes, T
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderShipTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderShipTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5598,13 +5598,13 @@ bool RenderTurretFromJson( RenderTurret & value, const char * text, int64_t byte
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderTurretTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderTurretTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5629,13 +5629,13 @@ bool RenderMissileFromJson( RenderMissile & value, const char * text, int64_t by
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderMissileTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderMissileTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5660,13 +5660,13 @@ bool RenderDynamicPropFromJson( RenderDynamicProp & value, const char * text, in
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderDynamicPropTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderDynamicPropTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5691,13 +5691,13 @@ bool RenderStaticPropFromJson( RenderStaticProp & value, const char * text, int6
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderStaticPropTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderStaticPropTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5722,13 +5722,13 @@ bool RenderCosmeticPropFromJson( RenderCosmeticProp & value, const char * text, 
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderCosmeticPropTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderCosmeticPropTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5753,13 +5753,13 @@ bool RenderLaserFromJson( RenderLaser & value, const char * text, int64_t bytes,
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderLaserTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderLaserTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5784,13 +5784,13 @@ bool RenderExplosionFromJson( RenderExplosion & value, const char * text, int64_
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderExplosionTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderExplosionTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5815,13 +5815,13 @@ bool RenderFrameFromJson( RenderFrame & value, const char * text, int64_t bytes,
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderFrameTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderFrameTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5846,13 +5846,13 @@ bool RenderVector3FromJson( RenderVector3 & value, const char * text, int64_t by
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderVector3TableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderVector3TableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5877,13 +5877,13 @@ bool RenderQuaternionFromJson( RenderQuaternion & value, const char * text, int6
 {
     TableReport read;
     bool ok = TableJsonRead( &value, RenderQuaternionTableType(), text, bytes, &read );
-    if ( !ok || read.refused != 0 || read.refused != 0 || read.damaged || read.missing_required != 0 )
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
     {
-        if ( read.damaged || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
-        else if ( read.refused != 0 ) { read.refuse_reason = TableRefuseReason::out_of_range; }
-        else if ( read.refused != 0 )
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
         {
-            read.refuse_reason = TableRefuseReason::kind_mismatch;
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
         }
         RenderQuaternionTableType()->reset( &value );
         if ( report != NULL ) { *report = read; }
@@ -5909,9 +5909,9 @@ bool RenderCameraLoadTextForm( const char * text, int64_t bytes, RenderCamera & 
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderCameraTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderCameraFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderCameraFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -5941,9 +5941,9 @@ bool RenderCameraEditTextForm( const char * document, int64_t document_bytes, co
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderCameraFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderCameraFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -5954,9 +5954,9 @@ bool RenderShipLoadTextForm( const char * text, int64_t bytes, RenderShip & valu
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderShipTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderShipFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderShipFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -5986,9 +5986,9 @@ bool RenderShipEditTextForm( const char * document, int64_t document_bytes, cons
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderShipFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderShipFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -5999,9 +5999,9 @@ bool RenderTurretLoadTextForm( const char * text, int64_t bytes, RenderTurret & 
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderTurretTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderTurretFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderTurretFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6031,9 +6031,9 @@ bool RenderTurretEditTextForm( const char * document, int64_t document_bytes, co
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderTurretFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderTurretFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6044,9 +6044,9 @@ bool RenderMissileLoadTextForm( const char * text, int64_t bytes, RenderMissile 
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderMissileTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderMissileFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderMissileFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6076,9 +6076,9 @@ bool RenderMissileEditTextForm( const char * document, int64_t document_bytes, c
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderMissileFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderMissileFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6089,9 +6089,9 @@ bool RenderDynamicPropLoadTextForm( const char * text, int64_t bytes, RenderDyna
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderDynamicPropTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderDynamicPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderDynamicPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6121,9 +6121,9 @@ bool RenderDynamicPropEditTextForm( const char * document, int64_t document_byte
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderDynamicPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderDynamicPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6134,9 +6134,9 @@ bool RenderStaticPropLoadTextForm( const char * text, int64_t bytes, RenderStati
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderStaticPropTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderStaticPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderStaticPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6166,9 +6166,9 @@ bool RenderStaticPropEditTextForm( const char * document, int64_t document_bytes
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderStaticPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderStaticPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6179,9 +6179,9 @@ bool RenderCosmeticPropLoadTextForm( const char * text, int64_t bytes, RenderCos
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderCosmeticPropTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderCosmeticPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderCosmeticPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6211,9 +6211,9 @@ bool RenderCosmeticPropEditTextForm( const char * document, int64_t document_byt
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderCosmeticPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderCosmeticPropFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6224,9 +6224,9 @@ bool RenderLaserLoadTextForm( const char * text, int64_t bytes, RenderLaser & va
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderLaserTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderLaserFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderLaserFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6256,9 +6256,9 @@ bool RenderLaserEditTextForm( const char * document, int64_t document_bytes, con
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderLaserFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderLaserFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6269,9 +6269,9 @@ bool RenderExplosionLoadTextForm( const char * text, int64_t bytes, RenderExplos
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderExplosionTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderExplosionFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderExplosionFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6301,9 +6301,9 @@ bool RenderExplosionEditTextForm( const char * document, int64_t document_bytes,
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderExplosionFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderExplosionFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6314,9 +6314,9 @@ bool RenderFrameLoadTextForm( const char * text, int64_t bytes, RenderFrame & va
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderFrameTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderFrameFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderFrameFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6346,9 +6346,9 @@ bool RenderFrameEditTextForm( const char * document, int64_t document_bytes, con
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderFrameFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderFrameFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6359,9 +6359,9 @@ bool RenderVector3LoadTextForm( const char * text, int64_t bytes, RenderVector3 
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderVector3TableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderVector3FromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderVector3FromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6391,9 +6391,9 @@ bool RenderVector3EditTextForm( const char * document, int64_t document_bytes, c
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderVector3FromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderVector3FromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6404,9 +6404,9 @@ bool RenderQuaternionLoadTextForm( const char * text, int64_t bytes, RenderQuate
     std::string json;
     if ( !TableTextFormToJson( text, bytes, RenderQuaternionTableType(), json, refusal ) ) { return false; }
     TableReport report;
-    if ( !RenderQuaternionFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderQuaternionFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;
@@ -6436,9 +6436,9 @@ bool RenderQuaternionEditTextForm( const char * document, int64_t document_bytes
     if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
-    if ( !RenderQuaternionFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused != 0 || report.refused != 0 || report.refused != 0 )
+    if ( !RenderQuaternionFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
-        *refusal = report.refused != 0 ? "text_bound" : "text_kind_mismatch";
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;
     }
     return true;

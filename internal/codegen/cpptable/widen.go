@@ -341,7 +341,7 @@ func (g *tableGen) emitScalarClamps(f *ir.Field, width int, signed bool, ind str
 		low, high := tableClampEnds(f, width)
 		if low {
 			lo := tableIntLit(rlo, signed, width)
-			g.pf("%sif ( decoded_v < %s ) { decoded_v = %s; r.report->refused = true; r.report->refuse_reason = out_of_range;; }\n", ind, lo, lo)
+			g.pf("%sif ( decoded_v < %s ) { decoded_v = %s; r.report->refused = true; r.report->refuse_reason = out_of_range; }\n", ind, lo, lo)
 		}
 		if high {
 			hi := tableIntLit(rhi, signed, width)
@@ -349,12 +349,12 @@ func (g *tableGen) emitScalarClamps(f *ir.Field, width int, signed bool, ind str
 			if low {
 				lead = "else if"
 			}
-			g.pf("%s%s ( decoded_v > %s ) { decoded_v = %s; r.report->refused = true; r.report->refuse_reason = out_of_range;; }\n", ind, lead, hi, hi)
+			g.pf("%s%s ( decoded_v > %s ) { decoded_v = %s; r.report->refused = true; r.report->refuse_reason = out_of_range; }\n", ind, lead, hi, hi)
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 		maxv := (uint64(1) << f.Type.Width) - 1
-		g.pf("%sif ( decoded_v > %dull ) { decoded_v = %dull; r.report->refused = true; r.report->refuse_reason = out_of_range;; } // bits(%d) width clamp\n", ind, maxv, maxv, f.Type.Width)
+		g.pf("%sif ( decoded_v > %dull ) { decoded_v = %dull; r.report->refused = true; r.report->refuse_reason = out_of_range; } // bits(%d) width clamp\n", ind, maxv, maxv, f.Type.Width)
 	}
 }
 

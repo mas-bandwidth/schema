@@ -560,7 +560,7 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
-// tableRefuseReasonLaterValues are the thirty-two values Go appended to the one
+// tableRefuseReasonLaterValues are the values Go appended to the one
 // refusal vocabulary after data_cycle (docs/SPEC-TABLES.md §6.5, §11). They
 // are APPENDED and never renumbered, so every value before them keeps its
 // number and the two targets answer the same value for the same bytes. No
@@ -603,7 +603,10 @@ const tableRefuseReasonLaterValues = `
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
     length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
-    missing_required = 255   // a record that lacks a | required field: Go's TableRefuseMissingRequired, pinned at 255 there
+    // A RECORD THAT LACKS A | required FIELD (§2.3): Go's TableRefuseMissingRequired,
+    // at Go's own value, so the two targets answer the same number. The report's
+    // missing_required count and missing_required_fields name the fields.
+    missing_required = 255
 `
 
 // tableRefuseReason is the ONE refusal vocabulary (docs/SPEC-TABLES.md §6.5,
@@ -643,8 +646,8 @@ func tableMessageReasonMembers(refuseReason, pkg string) string {
 			line = line[:i]
 		}
 		name := strings.TrimSuffix(strings.TrimSpace(line), ",")
-		if eq := strings.IndexByte(name, '='); eq >= 0 {
-			name = strings.TrimSpace(name[:eq])
+		if i := strings.IndexByte(name, '='); i >= 0 {
+			name = strings.TrimSpace(name[:i]) // an explicit value, Go's own number
 		}
 		if name == "" {
 			continue
@@ -871,6 +874,14 @@ struct TableReport
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// TableAppendText is strcat for the report's missing_required_fields, with
+// the caller's own bound check before it: MSVC deprecates strcat (C4996),
+// and every C++ target compiles this header with warnings as errors.
+inline void TableAppendText( char * to, const char * text )
+{
+    memcpy( to + strlen( to ), text, strlen( text ) + 1 );
+}
 
 // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
 // packet wire's own): a NaN or an infinity, whatever its

@@ -1,12 +1,12 @@
 package luatable
 
-// TestLuaStrictReadRefusesWhatGoRefuses pins the Lua strict read to the
-// generated Go strict read, byte for byte over the conformance manifest's
+// TestLuaStrictReadRefusesWhatGoRefuses pins the Lua strict read's VERDICT to
+// the generated Go strict read's, over the conformance manifest's
 // report and refusal rows and over one forged wire per strict-only name
 // (docs/SPEC-TABLES.md §6.5, §11): unknown_form for a form byte, integrity_
 // mismatch, wire_damaged where the framing is damaged, malformed, blob_shared,
-// clamped, kind_mismatch and non_finite_float, while unknown, widened and duplicate
-// ALONE read clean. internal/codegen/gotable/refusal.go (TableReport.Err) is
+// out_of_range, kind_mismatch, non_finite_float and a repeated key, while
+// unknown and widened ALONE read clean. internal/codegen/gotable/refusal.go (TableReport.Err) is
 // the oracle.
 
 import (
@@ -118,8 +118,8 @@ func strictForgeFloat(t *testing.T, u *ir.Unit) []strictCase {
 	}
 }
 
-// strictForgeDuplicate builds a map with one key twice: duplicate alone is
-// data, not loss, so both strict reads answer clean.
+// strictForgeDuplicate builds a map with one key twice: a repeated map key is
+// damage (docs/plans/strict-only.md decision 5), so both strict reads refuse.
 func strictForgeDuplicate(t *testing.T, u *ir.Unit) []strictCase {
 	t.Helper()
 	st := u.Tables["Root"]
@@ -362,7 +362,10 @@ func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
 				t.Errorf("%s/%s root %s: Go says %q, the forged wire pins %q\n    wire %s",
 					g.name, c.label, c.root, goAns[c.label], c.want, hex.EncodeToString(c.wire))
 			}
-			if luaAns[c.label] != goAns[c.label] {
+			// THE VERDICT IS THE CONTRACT (docs/rulings.json
+			// refusal-verdict-only): the two reads must agree on clean or
+			// refused; the reason each names is its own diagnostic.
+			if (luaAns[c.label] == "clean") != (goAns[c.label] == "clean") {
 				t.Errorf("%s/%s root %s: Lua says %q, Go says %q\n    wire %s",
 					g.name, c.label, c.root, luaAns[c.label], goAns[c.label], hex.EncodeToString(c.wire))
 			}

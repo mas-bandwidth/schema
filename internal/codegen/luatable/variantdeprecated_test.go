@@ -55,12 +55,12 @@ local J = require("json")
 local hexline = require("hexline")
 local inputs = require("inputs")
 local function fresh_report()
-  return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-           clamped = 0, widened = 0, duplicate = 0 }
+  return { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
+           outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 local function clean(r, what)
-  assert(not r.malformed and r.unknown == 0 and r.kindMismatch == 0 and r.clamped == 0,
-    what .. " counted an event: unknown=" .. tostring(r.unknown) .. " malformed=" .. tostring(r.malformed))
+  assert(not r.damaged and r.unknown == 0 and r.kindChanged == 0 and r.outOfRange == 0,
+    what .. " counted an event: unknown=" .. tostring(r.unknown) .. " malformed=" .. tostring(r.damaged))
 end
 local function announced()
   local vocab = {}

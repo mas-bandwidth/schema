@@ -197,7 +197,7 @@ static void test_allocator_sees_everything()
     {
         graphdemo::SceneBuilder builder( pair );
         graphdemo::TableReport report;
-        CHECK( graphdemo::SceneLoadBuilderTolerant( builder, wire, wrote, &report ) );
+        CHECK( graphdemo::SceneLoadBuilder( builder, wire, wrote, &report ) );
     }
 
     printf( "counting allocator: %d allocations, %d frees, %lld bytes\n",
@@ -309,8 +309,8 @@ static void test_blob_read_path_allocates_nothing()
     int64_t need = blobdemo::CatalogLoadMeasure( wire, wrote );
     CHECK( need > 0 && need <= (int64_t) sizeof( region ) );
     blobdemo::TableReport report;
-    const blobdemo::Catalog * loaded = blobdemo::CatalogLoadTolerant( region, need, wire, wrote, &report );
-    CHECK( loaded != NULL && !report.malformed );
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region, need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.damaged && report.refuse_reason == blobdemo::ok );
     if ( loaded == NULL ) return;
     blobdemo::TableBytesView thumb = blobdemo::TableBytesAt( loaded->thumb );
     blobdemo::TableBytesView alias = blobdemo::TableBytesAt( loaded->alias );

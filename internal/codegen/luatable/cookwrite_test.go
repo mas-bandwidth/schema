@@ -74,16 +74,16 @@ func TestLuaCookWrite(t *testing.T) {
 			dir := t.TempDir()
 			luarun.WriteFiles(t, dir, files)
 			luarun.WriteHexProbe(t, dir)
-			loadLine := `local v = load.LoadTolerant(T, "` + r.root + `", inputs.wire, report)`
+			loadLine := `local v = load.Load(T, "` + r.root + `", inputs.wire, report)`
 			if st := u.Tables[r.root]; st != nil && st.FixedDeclared {
-				loadLine = `local v = T.ReadFixedTolerant("` + r.root + `", inputs.wire)`
+				loadLine = `local v = T.ReadFixed("` + r.root + `", inputs.wire)`
 			}
 			probe := `local T = require("` + ModuleName(u) + `")
 local load = require("load")
 local cookwrite = require("cookwrite")
 local inputs = require("inputs")
 local hexline = require("hexline")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 ` + loadLine + `
 if v == nil then print("LOAD_REFUSED") else
   local n = cookwrite.CookMeasure(T, "` + r.root + `", v)
@@ -244,14 +244,14 @@ func TestLuaCookWriteNegativeControlsFunctional(t *testing.T) {
 			luarun.WriteHexProbe(t, dir)
 			loadLine := `local v = load.Load(T, "` + r.root + `", inputs.wire, report)`
 			if st := u.Tables[r.root]; st != nil && st.FixedDeclared {
-				loadLine = `local v = T.ReadFixedTolerant("` + r.root + `", inputs.wire)`
+				loadLine = `local v = T.ReadFixed("` + r.root + `", inputs.wire)`
 			}
 			probe := `local T = require("` + ModuleName(u) + `")
 local load = require("load")
 local cookwrite = require("cookwrite")
 local inputs = require("inputs")
 local hexline = require("hexline")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 ` + loadLine + `
 for order = 1, 2 do
   local c = cookwrite.Cook(T, "` + r.root + `", v, nil, order)

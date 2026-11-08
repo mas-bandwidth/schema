@@ -111,10 +111,10 @@ func TestLuaWideKindsJson(t *testing.T) {
 			probe := `local T = require("` + ModuleName(u) + `")
 local J = require("json")
 local inputs = require("inputs")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = J.FromJsonTolerant(T, "Root", inputs.text, report)
-print(string.format("%d,%d,%d,%d,%d,%s", report.unknown, report.kindMismatch,
-  report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
+local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
+local v = J.FromJson(T, "Root", inputs.text, report)
+print(string.format("%d,%d,%d,%d,%d,%s", report.unknown, report.kindChanged,
+  report.widened, report.outOfRange, report.repeatedKey, tostring(report.damaged)))
 local signed = { i128 = true, u128 = false, f0 = true, f16 = true, f64 = true, uf16 = false }
 for _, name in ipairs({ ` + strings.Join(quoteAll(wideJSONFields), ", ") + ` }) do
   local x = v[name]

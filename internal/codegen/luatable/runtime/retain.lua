@@ -1389,20 +1389,20 @@ function S.LoadRetain(T, name, bytes, retain, report)
   end
   local rep = report
     or {
-      malformed = false,
+      damaged = false,
       refused = 0,
       unknown = 0,
-      kindMismatch = 0,
-      clamped = 0,
+      kindChanged = 0,
+      outOfRange = 0,
       widened = 0,
-      duplicate = 0,
+      repeatedKey = 0,
       retained = 0,
       retainLost = 0,
     }
   rep.retained = rep.retained or 0
   rep.retainLost = rep.retainLost or 0
   local v = load.Load(T, name, bytes, rep)
-  if rep.malformed then return nil end
+  if rep.damaged then return nil end
   -- a count past the int32 storage cap refuses the read (§2.9): nothing is
   -- captured, and the store is left empty
   if rep.reason == "count_over_extent_cap" then return nil end
@@ -1419,7 +1419,7 @@ function S.LoadRetain(T, name, bytes, retain, report)
     rep.retained, rep.retainLost = retainedBefore, lostBefore
     return nil
   end
-  if rep.malformed then return nil end
+  if rep.damaged then return nil end
   return v
 end
 
