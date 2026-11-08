@@ -398,7 +398,7 @@ local function scanRecords(c: Ctx, payload: any): { any }?
 	return out
 end
 
-type Unit = { S: any, V: any, C: any, L: any, W: any, R: any, M: any, align: number, announcement: buffer? }
+type Unit = { S: any, V: any, C: any, L: any, W: any, R: any, Ref: any, F: any, fixed: { [string]: any }, M: any, align: number, announcement: buffer? }
 
 -- regionMeasure answers the canonical region bytes for a whole form-1 wire,
 -- -1 for a framing that cannot be read (FileRegionMeasure's refusal and its
@@ -541,7 +541,9 @@ local function answer(e: Entry, wire: buffer): buffer
 				kept = u.R.newStore(RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
 				v = u.R.LoadRetain(root, wire, report, kept)
 			else
-				v = u.L.load(root, wire, report)
+				-- THE ONE READ (§6.5): table_refusal answers the root's own
+				-- form, form 3 at a fixed root through the fixed reader
+				v = u.Ref.ReadStrict(u.fixed[root], root, wire, report)
 			end
 		end
 		-- THE ONE READ (§6.5): a read that names a refusal or damage answers
@@ -553,6 +555,9 @@ local function answer(e: Entry, wire: buffer): buffer
 		if v ~= nil then
 			if e.retain then
 				saved = u.R.SaveRetain(root, v, kept, report)
+			elseif desc.fixed and u.fixed[root] ~= nil then
+				-- a fixed root's canonical file is form 3, one record
+				saved = u.F.save(desc, u.fixed[root][root .. "Fixed"], { v })
 			else
 				saved = u.W.save(desc, v)
 			end
@@ -604,9 +609,15 @@ local function unit(key: string): Unit?
 			local C = load(base .. "table_cookread")
 			local align = 8
 			local announcement: buffer? = nil
+			-- each fixed root's <Base>Table module, which carries its
+			-- <Root>Fixed data for the fixed reader and writer
+			local fixed: { [string]: any } = {}
 			for _, name in tableModules[key] or {} do
 				local mod = load(base .. name)
 				for k, d in mod do
+					if type(k) == "string" and #k > 5 and string.sub(k, -5) == "Fixed" and type(d) == "table" then
+						fixed[string.sub(k, 1, -6)] = mod
+					end
 					if type(k) == "string" and string.sub(k, -10) == "Descriptor" and type(d) == "table" and d.fields ~= nil then
 						-- the region's alignment is ir.TableRegionAlign: the greatest
 						-- node alignment, a record's own or its extent's
@@ -631,6 +642,9 @@ local function unit(key: string): Unit?
 				L = load(base .. "table_load"),
 				W = load(base .. "table_save"),
 				R = load(base .. "table_retain"),
+				Ref = load(base .. "table_refusal"),
+				F = load(base .. "table_fixed"),
+				fixed = fixed,
 				M = M,
 				align = align,
 				announcement = announcement,
