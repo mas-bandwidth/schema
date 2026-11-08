@@ -61,7 +61,7 @@ func TestWireFeedCountPastBodyRefusedDart(t *testing.T) {
 	if _, err := tablewire.DecodeRegion(m, m.New(root), data, &rep); !tablewire.ReadRefusal(err) || !rep.Refused {
 		t.Fatalf("the Go oracle does not read the pinned vector as damaged: %v %+v", err, rep)
 	}
-	if gotRep, _ := feedReportProbe(t, wire, data); !gotRep.malformed {
+	if gotRep, _ := feedReportProbe(t, wire, data); !gotRep.refused {
 		t.Errorf("Dart report = %s on stream_count_past_body: the damaged load is not refused", gotRep)
 	}
 }
@@ -69,17 +69,13 @@ func TestWireFeedCountPastBodyRefusedDart(t *testing.T) {
 // dartReport is the six counters every leg prints, in the manifest's order,
 // and the refusal.
 type dartReport struct {
-	unknown      int
-	kindMismatch int
-	widened      int
-	clamped      int
-	duplicate    int
-	malformed    bool
-	refused      bool
+	unknown int
+	widened int
+	refused bool
 }
 
 func (r dartReport) String() string {
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%t", r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused)
+	return fmt.Sprintf("%d,%d,%t", r.unknown, r.widened, r.refused)
 }
 
 // feedReportProbe generates the Dart reader, loads the bytes through it with a
@@ -106,8 +102,7 @@ void main(List<String> args) {
   final value = feedWireLoad(wire, report);
   final saved = feedWireSave(value);
   final hex = saved.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-  stdout.writeln('${report.unknown},${report.kindMismatch},${report.widened},'
-      '${report.clamped},0,${report.malformed},${report.refused} $hex');
+  stdout.writeln('${report.unknown},${report.widened},${report.refused} $hex');
 }
 `
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
@@ -124,7 +119,7 @@ void main(List<String> args) {
 		t.Fatalf("probe did not print a report and saved bytes: %q", out)
 	}
 	var rep dartReport
-	if _, err := fmt.Sscanf(fields[0], "%d,%d,%d,%d,%d,%t,%t", &rep.unknown, &rep.kindMismatch, &rep.widened, &rep.clamped, &rep.duplicate, &rep.malformed, &rep.refused); err != nil {
+	if _, err := fmt.Sscanf(fields[0], "%d,%d,%t", &rep.unknown, &rep.widened, &rep.refused); err != nil {
 		t.Fatalf("probe report %q: %v", fields[0], err)
 	}
 	saved, err := hex.DecodeString(fields[1])

@@ -91,13 +91,24 @@ func TestDartOneSidedRangeNative(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		fmt.Fprintf(&body, `{
+		if cols[3] == "1" {
+			// STRICT VERDICT: a value past its one-sided bound refuses the
+			// whole read (out_of_range); no clamped value lands.
+			fmt.Fprintf(&body, `{
+ final jr=w.TableTextReport();w.rangesFromJson(%q,jr);
+ check(jr.refused&&jr.reason=='out_of_range','JSON %d: ${jr.reason}');
+ final wr=w.TableWireReport();w.rangesWireLoad(File('%s.wire').readAsBytesSync(),wr);
+ check(wr.refused&&wr.reason=='out_of_range','wire %d: ${wr.reason}');
+}
+`, input, n, prefix, n)
+		} else {
+			fmt.Fprintf(&body, `{
  final want=File('%s.want').readAsBytesSync();
  final jr=w.TableTextReport();final j=w.rangesFromJson(%q,jr);
- check(jr.clamped==%s,'JSON %d: ${jr.clamped}');
+ check(!jr.refused,'JSON %d: ${jr.reason}');
  check(same(w.rangesWireSave(j),want),'JSON bytes %d');
  final wr=w.TableWireReport();final v=w.rangesWireLoad(File('%s.wire').readAsBytesSync(),wr);
- check(!wr.malformed&&!wr.refused&&wr.clamped==%s,'wire %d: ${wr.clamped}/${wr.malformed}/${wr.refused}');
+ check(!wr.refused,'wire %d: ${wr.reason}');
  check(same(w.rangesWireSave(v),want),'wire bytes %d');
  for(final big in [false,true]){
   final size=c.RangesCookWire.cookMeasure(v);check(size>0,'cook measure');
@@ -105,7 +116,8 @@ func TestDartOneSidedRangeNative(t *testing.T) {
   check(same(out,File('%s.${big?'be':'le'}').readAsBytesSync()),'cook bytes %d');
  }
 }
-`, prefix, input, cols[3], n, n, prefix, cols[3], n, n, prefix, n)
+`, prefix, input, n, n, prefix, n, n, prefix, n)
+		}
 		n++
 	}
 	if n != 12 {

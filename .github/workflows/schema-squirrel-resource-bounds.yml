@@ -22,7 +22,7 @@ name: Schema squirrel resource bounds
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form ]
+    branches: [ main, dev, fixed-table-form, 'sprint/*' ]
     paths:
       - 'make/schema-squirrel-resource-bounds.mk'
       - '.github/workflows/schema-squirrel-resource-bounds.yml'

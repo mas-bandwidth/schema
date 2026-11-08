@@ -1,6 +1,7 @@
 package luautable_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -49,7 +50,7 @@ local function hexstr(b)
 	return table.concat(parts)
 end
 local report = fresh()
-local v = load.loadTolerant("Lists", inputs.wire, report)
+local v = load.loadWalk("Lists", inputs.wire, report)
 if report.malformed then
  print("DAMAGE " .. tostring(v == nil))
  print(string.format("%d,%d,%d,%d,%d,%s", report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
@@ -63,7 +64,7 @@ if out == nil or measure == nil then print("SAVENIL"); return end
 print(hexstr(out))
 print(string.format("%d,%d,%d,%d,%d,%s", report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
 print(measure)
-local again = load.loadTolerant("Lists", out, fresh())
+local again = load.loadWalk("Lists", out, fresh())
 local out2 = save.save(d, again)
 if out2 == nil then print("RESAVENIL"); return end
 print(hexstr(out2))
@@ -119,15 +120,16 @@ func textListRawWire(t *testing.T, m *tabletext.Model, value string) []byte {
 	if idx < 0 {
 		t.Fatal("no rules field")
 	}
+	placeholder := strings.Repeat("a", len(value))
 	fv := &inst.Fields[idx]
 	fv.Count = 1
-	fv.Elems[0].Tab.Fields[0].Cell.Str = []byte(value)
-	fv.Elems[0].Tab.Fields[0].Count = len(value)
+	fv.Elems[0].Tab.Fields[0].Cell.Str = []byte(placeholder)
+	fv.Elems[0].Tab.Fields[0].Count = len(placeholder)
 	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
 		t.Fatalf("the raw value does not encode: %v", err)
 	}
-	return wire
+	return bytes.Replace(wire, []byte(placeholder), []byte(value), 1)
 }
 
 type textListRun struct {

@@ -123,7 +123,7 @@ String hex(Uint8List b,int length)=>b.take(length).map((v)=>v.toRadixString(16).
 void main(){
  final report=w.TableWireReport();
  final value=w.@LOAD@(File('@WIRE@').readAsBytesSync(),report);
- check(!report.malformed&&!report.refused,'the committed wire did not load');
+ check(!report.refused,'the committed wire did not load');
  final size=c.@COOK@.cookMeasure(value);
  check(size>0,'the measure refused the value');
  for(final order in [Endian.little,Endian.big]){

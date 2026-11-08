@@ -65,7 +65,7 @@ func TestDartDeclaredFormsNative(t *testing.T) {
 			fmt.Fprintf(&b, `final lib=currentMirrorSystem().libraries.values.singleWhere((l)=>l.uri.path.endsWith('/ProbeWire.dart'));
 check(lib.declarations.containsKey(const Symbol('rootFromJson'))==%t,'actual JSON surface');
 final v=w.Root()..value=7;final wire=w.rootWireSave(v);check(hex(wire)==%q,'neutral wire pin');
-final report=w.TableWireReport();check(w.rootWireLoad(wire,report).value==7&&!report.malformed,'wire read');
+final report=w.TableWireReport();check(w.rootWireLoad(wire,report).value==7&&!report.refused,'wire read');
 final fv=f.Root()..value=31;final fixed=Uint8List(f.rootFixedMeasure(1));check(f.rootFixedSave([fv],1,fixed)==fixed.length,'fixed save regardless of forms');
 final fd=f.Root();final fr=f.TableFixedReport();check(f.rootFixedLoad([fd],1,fixed,fixed.length,f.rootFixedNewPlan(),fr)==1&&fd.value==31,'fixed read');
 final vocab=f.TableVocabulary(entries:List.generate(4096,(i)=>f.TableMessageEntry(0,0)));check(f.announceRead(vocab,f.tableAnnouncement,f.TableReport()),'announcement');
@@ -165,7 +165,7 @@ void check(bool ok,String name){if(!ok)throw StateError(name);}
 void main(){
  final v=w.rootFromJson('{"child":{"value":41},"entries":{"2":{"value":43}}}');
  check(v.child.value==41&&w.rootFromJson(w.rootToJson(v)).child.value==41,'nested wire-only child JSON');
- final wire=w.rootWireSave(v);final r=w.TableWireReport();check(w.rootWireLoad(wire,r).child.value==41&&!r.malformed,'nested wire');
+ final wire=w.rootWireSave(v);final r=w.TableWireReport();check(w.rootWireLoad(wire,r).child.value==41&&!r.refused,'nested wire');
  for(final order in [Endian.little,Endian.big]){
   final bytes=Uint8List(c.RootCook.cookMeasure(v));check(c.RootCook.cook(v,bytes,order),'nested child cook');
   check((c.RootCook.open(bytes,0,bytes.length)!=null)==(order==Endian.host),'nested cook open / foreign order');

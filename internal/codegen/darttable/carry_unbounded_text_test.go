@@ -31,7 +31,6 @@ table Root {
 `
 
 func TestDartUnboundedTextNative(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	u := unitFrom(t, dartUnboundedTextSchema)
 	m := tabletext.NewModel(u)
@@ -68,7 +67,10 @@ void main(){
 		v := m.New(u.Tables["Root"])
 		var r tabletext.Report
 		if !m.Read(v, []byte(input), &r) {
-			t.Fatalf("neutral input %d: %+v", i, r)
+			// STRICT VERDICT: the Go oracle refuses this input whole; the
+			// Dart read must refuse it too (a throw with no report).
+			fmt.Fprintf(&b, "{var refused=false;try{w.rootFromJson(%q);}on FormatException{refused=true;}check(refused,'strict JSON refusal %d');}\n", input, i)
+			continue
 		}
 		wire, err := tablewire.Encode(m, v)
 		if err != nil {
@@ -83,15 +85,15 @@ void main(){
 			t.Fatalf("neutral measure %d %v %v", measured, whole, refused)
 		}
 		fmt.Fprintf(&b, `{final r=w.TableTextReport();final v=w.rootFromJson(%q,r);
-check(r.clamped==%d&&r.kindMismatch==%d&&r.duplicate==%d,'JSON reports %d');
+check(!r.refused,'JSON reports %d');
 check(w.rootToJson(v)==%q,'independent JSON %d');
 final wire=w.rootWireSave(v);check(hex(wire)==%q,'independent wire %d');
 final wr=w.TableWireReport();final back=w.rootWireLoad(wire,wr);
-check(!wr.malformed&&!wr.refused&&hex(w.rootWireSave(back))==hex(wire),'wire load %d');
+check(!wr.refused&&hex(w.rootWireSave(back))==hex(wire),'wire load %d');
 check(w.rootWireMeasure(wire)==%d,'exact extent measure %d');
 final store=w.TableRetain(65536,List.filled(65536,0));final rr=w.TableWireReport();final retained=w.rootWireLoadRetain(wire,store,rr);
-check(!rr.malformed&&!rr.refused&&hex(w.rootWireSaveRetain(retained,store,w.TableWireReport()))==hex(wire),'retained unbounded text %d');
-`, input, 0, 0, 0, i, string(txt)+"\n", i, hex.EncodeToString(wire), i, i, measured, i, i)
+check(!rr.refused&&hex(w.rootWireSaveRetain(retained,store,w.TableWireReport()))==hex(wire),'retained unbounded text %d');
+`, input, i, string(txt)+"\n", i, hex.EncodeToString(wire), i, i, measured, i, i)
 		for _, big := range []bool{false, true} {
 			cooked, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if err != nil {
@@ -137,7 +139,7 @@ for(final delta in [0x7fffffffffffffff,-0x7fffffffffffffff]){
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId("open"))
 		wire = binary.LittleEndian.AppendUint64(wire, 1)
 		fmt.Fprintf(&b, `{final r=w.TableWireReport();final data=bytes(%q);final v=w.rootWireLoad(data,r);
-check(r.malformed||r.refused,'malformed unbounded payload refused');
+check(r.refused,'malformed unbounded payload refused');
 check(v.open.isEmpty,'malformed whole load discarded');
 }
 `, hex.EncodeToString(wire))

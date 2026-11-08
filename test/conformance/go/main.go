@@ -68,6 +68,8 @@ func readManifest(path string) ([]line, error) {
 type report struct {
 	unknown, widened int32
 	refused          bool
+	// err is the typed refusal (TableReport.Err) where the unit's report has one
+	err error
 }
 
 type codec struct {
@@ -75,9 +77,12 @@ type codec struct {
 	root string
 	// reset returns the value to its declared defaults and hands back the
 	// opaque handle the rest of the row takes
-	loadMeasure   func([]byte) int64
-	fresh         func() any
-	load          func(value any, wire []byte, rep *report) bool
+	loadMeasure func([]byte) int64
+	fresh       func() any
+	load        func(value any, wire []byte, rep *report) bool
+	// variableLoad is a fixed root's VARIABLE-form read (fixed.go): the framing
+	// vectors alone take it; nil for a variable root, whose load is that read
+	variableLoad  func(value any, wire []byte, rep *report) bool
 	measure       func(value any) int64
 	measureReason func(value any) (int64, error)
 	save          func(value any, buffer []byte) int64
@@ -87,6 +92,9 @@ type codec struct {
 	toJson        func(value any, buffer []byte) int64
 	cookMeasure   func(any) int64
 	cook          func(any, []byte, bool) bool
+	// share points the alias blob slot at the source slot's blob (the
+	// cook-write recipe); region rows only
+	share func(value any, source, alias string) bool
 }
 
 // row binds one generated table's surface into the erased shape above. One
@@ -197,7 +205,17 @@ func surfaceWire(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		if !c.load(value, wire, &rep) {
-			return fmt.Errorf("%s: load refused %s", f[1], f[4])
+			// SPEC-TABLES §2.5: a blob belongs to one slot, and the one read
+			// refuses a file whose two slots name one blob. That refusal is
+			// this row's answer (the corpus marks it wire-refused); any other
+			// refusal of a corpus instance is a failure.
+			if errors.Is(rep.err, blobdemo.TableRefuseBlobShared) {
+				if err := spillAbsentReason(out, f[1], rep.err.Error()); err != nil {
+					return err
+				}
+				continue
+			}
+			return fmt.Errorf("%s: load refused %s (%v)", f[1], f[4], rep.err)
 		}
 		size := c.measure(value)
 		if size < 0 {
@@ -325,7 +343,11 @@ func surfaceFraming(lines []line, out string) error {
 		}
 		value := c.fresh()
 		var rep report
-		ok := c.load(value, wire, &rep)
+		read := c.load
+		if c.variableLoad != nil {
+			read = c.variableLoad
+		}
+		ok := read(value, wire, &rep)
 		verdict := "read"
 		if rep.refused || !ok {
 			verdict = "refused"

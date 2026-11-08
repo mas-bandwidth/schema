@@ -35,7 +35,7 @@ for _, row in { ROWS } do
 	local name, root = row[1], row[2]
 	local desc = S.lookup(root)
 	local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-	local v = load.loadTolerant(root, inputs[name], report)
+	local v = load.loadWalk(root, inputs[name], report)
 	local asRead = hex(save.save(desc, v))
 	for _, fd in desc.fields do
 		if fd.s == "map" and fd.slot ~= nil and type(v[fd.slot]) == "table" then

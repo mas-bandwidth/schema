@@ -113,9 +113,8 @@ void main(List<String> args) {
   final report = TableWireReport();
   final v = ` + fn + `WireLoad(data, report);
   stdout.writeln(
-      'unknown=${report.unknown} kind=${report.kindMismatch} '
-      'widened=${report.widened} clamped=${report.clamped} '
-      'malformed=${report.malformed} refused=${report.refused}');
+      'unknown=${report.unknown} widened=${report.widened} '
+      'refused=${report.refused}');
   final out = ` + fn + `WireSave(v);
   stdout.writeln('saved=${out.length}');
   File(args[1]).writeAsBytesSync(out);
@@ -137,9 +136,8 @@ void main(List<String> args) {
 	}
 	got := string(out)
 
-	want := "unknown=" + strconv.Itoa(goReport.Unknown) + " kind=" + strconv.Itoa(0) +
-		" widened=" + strconv.Itoa(goReport.Widened) + " clamped=" + strconv.Itoa(0) +
-		" malformed=" + strconv.FormatBool(goReport.Refused) +
+	want := "unknown=" + strconv.Itoa(goReport.Unknown) +
+		" widened=" + strconv.Itoa(goReport.Widened) +
 		" refused=" + strconv.FormatBool(goReport.Refused)
 	if !strings.Contains(got, want) {
 		t.Errorf("Dart report differs from the Go oracle:\nDart: %s\nwant: %s\n%s", strings.TrimSpace(got), want, got)

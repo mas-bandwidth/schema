@@ -12,6 +12,7 @@ package tabledemo
 
 import (
 	"math"
+	"slices"
 	"unsafe"
 )
 
@@ -130,11 +131,9 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		for _, id := range seen {
-			if id == entry.ID {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
+		if slices.Contains(seen, entry.ID) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		seen = append(seen, entry.ID)
 		switch entry.ID {
@@ -239,7 +238,7 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 						r.Report.Refuse(TableRefuseCountOverBound, "WideBlob.samples")
 						return false
 					}
-					for i := uint64(0); i < n; i++ {
+					for i := range n {
 						p := &base[i]
 						{
 							var raw [16]byte
