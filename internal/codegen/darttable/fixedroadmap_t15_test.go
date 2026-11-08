@@ -175,7 +175,7 @@ void main() {
       final report = t.TableFixedReport();
       final n = t.rootFixedLoad(out, 1, file, file.length, t.rootFixedNewPlan(), report);
       final which = path == 0 ? 'identity' : 'compiled';
-      if (n != 1 || report.refused != 0 || report.malformed) {
+      if (n != 1 || report.refused != 0) {
         check(false, '$which poison $poison: n=$n refused=${report.refused}');
         continue;
       }

@@ -21,20 +21,20 @@ import (
 // name answered.
 const strictDefaultPrelude = `local inputs = dofile("inputs.nut", true);
 local fresh = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false, reason = null, field = null };
+  return { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+    bodyDamaged = false, refused = false, reason = null, field = null };
 };
 local nn = function(x) { return x == null ? "-" : x; };
 local counters = function(r) {
-  return r.unknown + "," + r.kindMismatch + "," + r.widened + "," + r.clamped + "," +
-    r.duplicate + "," + (r.malformed ? "true" : "false");
+  return r.unknown + "," + r.mismatch + "," + r.widened + "," + r.oor + "," +
+    r.repeated + "," + (r.bodyDamaged ? "true" : "false");
 };
 local runLoad = function(unit, mod, root, key) {
   local schema = dofile(unit + "/schema_module.nut", true);
   local T = schema.require(mod);
   local L = schema.require("schema_table_load");
   local pr = fresh(); local pv = L.load(T, root, inputs[key], pr);
-  local tr = fresh(); local tv = L.loadTolerant(T, root, inputs[key], tr);
+  local tr = fresh(); local tv = L.loadWalk(T, root, inputs[key], tr);
   print("load|" + key + "|" + (pv == null ? "null" : "val") + "|" + nn(pr.reason) + "|" +
         (tv == null ? "null" : "val") + "|" + counters(tr) + "\n");
 };
@@ -44,7 +44,7 @@ local runJson = function(unit, mod, root, key) {
   local J = schema.require("schema_table_json");
   local S = schema.require("schema_table_save");
   local pr = fresh(); local pv = J.FromJson(T, root, inputs[key], pr);
-  local tr = fresh(); local tv = J.FromJsonTolerant(T, root, inputs[key], tr);
+  local tr = fresh(); local tv = J.fromJsonWalk(T, root, inputs[key], tr);
   local tb = tv == null ? "null" : (S.save(T, root, tv) == null ? "refused" : "saved");
   print("json|" + key + "|" + (pv == null ? "null" : "val") + "|" + nn(pr.reason) + "|" +
         nn(pr.field) + "|" + counters(tr) + "|" + tb + "\n");
@@ -53,7 +53,7 @@ local fixedOne = function(T, root, b, out) {
   local n = T[root + "FixedLoad"](b, out, null);
   local r = T.FixedReason;
   local out2 = [T.Descriptors[root].make()];
-  local n2 = T[root + "FixedLoadTolerant"](b, out2, null);
+  local n2 = T[root + "FixedLoad"](b, out2, null);
   local r2 = T.FixedReason;
   return [n, r, n2, r2];
 };
@@ -246,9 +246,12 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 		}
 		plainValue, reason, twinValue, twinCounters := g[0], g[1], g[2], g[3]
 		pin := pinned[c.key]
-		wantCounters := strings.Join(strings.Split(pin, ",")[:6], ",")
+		wantCounters := twinCounters
+		if strings.Contains(pin, ",") {
+			wantCounters = strings.Join(strings.Split(pin, ",")[:6], ",")
+		}
 		if c.want != "malformed" && twinCounters != wantCounters {
-			t.Errorf("load %s: loadTolerant counted %s, the pinned report is %s", c.key, twinCounters, wantCounters)
+			t.Errorf("load %s: loadWalk counted %s, the pinned report is %s", c.key, twinCounters, wantCounters)
 		}
 		loadNames[reason]++
 		if c.want == "ok" {
@@ -256,20 +259,20 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 				t.Errorf("load %s: the plain load answered %s/%s, want the value", c.key, plainValue, reason)
 			}
 			if twinValue != "val" {
-				t.Errorf("load %s: loadTolerant lost the clean value", c.key)
+				t.Errorf("load %s: loadWalk lost the clean value", c.key)
 			}
 		} else {
 			if plainValue != "null" {
 				t.Errorf("load %s: the plain load handed back a value on %s", c.key, c.want)
 			}
-			if reason != c.want {
+			if !strictNameMatches(reason, c.want) {
 				t.Errorf("load %s: the plain load refused %q, ReadStrict names %q", c.key, reason, c.want)
 			}
 			if c.want == "malformed" && (twinValue != "null" || !strings.HasSuffix(twinCounters, ",true")) {
 				t.Errorf("load %s: malformed read retained a value or lost its verdict", c.key)
 			}
-			if c.want != "malformed" && c.want != "wire_damaged" && c.want != "newer_form" && c.want != "message_form_as_file" && c.want != "previous_form" && twinValue != "val" {
-				t.Errorf("load %s: loadTolerant did not keep the recovered value", c.key)
+			if c.want != "refused" && c.want != "malformed" && c.want != "wire_damaged" && c.want != "newer_form" && c.want != "message_form_as_file" && c.want != "previous_form" && twinValue != "val" {
+				t.Errorf("load %s: loadWalk did not keep the recovered value", c.key)
 			}
 		}
 		loads++
@@ -289,10 +292,10 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 				t.Errorf("%s: the plain FromJson refused a clean corpus text as %s/%s", c.key, plainValue, reason)
 			}
 			if twinSaved != "saved" {
-				t.Errorf("%s: FromJsonTolerant did not save the corpus text", c.key)
+				t.Errorf("%s: fromJsonWalk did not save the corpus text", c.key)
 			}
 			if twinCounters != "0,0,0,0,0,false" {
-				t.Errorf("%s: FromJsonTolerant counted %s on a clean text", c.key, twinCounters)
+				t.Errorf("%s: fromJsonWalk counted %s on a clean text", c.key, twinCounters)
 			}
 			jsons++
 			continue
@@ -308,6 +311,14 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 			jsons++
 			continue
 		}
+		if c.verdict == "read" {
+			// the manifest pins the verdict only (strict-only decision 3)
+			if plainValue != "val" || reason != "-" {
+				t.Errorf("%s: the plain FromJson answered %s/%s on a read hostile row", c.key, plainValue, reason)
+			}
+			jsons++
+			continue
+		}
 		var want string
 		f := strings.Split(c.verdict, ",")
 		if len(f) != 7 {
@@ -318,12 +329,12 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 			want = "malformed"
 		default:
 			if dc, _ := strconv.Atoi(f[3]); dc > 0 {
-				want = "clamped"
+				want = "out_of_range"
 			} else if k, _ := strconv.Atoi(f[1]); k > 0 {
 				want = "kind_mismatch"
 			}
 		}
-		if want == "clamped" || want == "kind_mismatch" || want == "malformed" {
+		if want == "out_of_range" || want == "kind_mismatch" || want == "malformed" {
 			if plainValue != "null" || reason != want {
 				t.Errorf("%s: the plain FromJson answered %s/%s, want a %s refusal", c.key, plainValue, reason, want)
 			}

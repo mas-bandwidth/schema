@@ -1264,14 +1264,14 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 	case f.Array == ir.ArrayFixed:
 		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, rep, indent)
 	case f.Array == ir.ArrayCounted:
-		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, "countOverBound", indent)
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity and compiled share
 		// this scatter; write still stores MAX (Dart #834).
 		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, indent)
 		g.emitScatterSlack(f, val+"."+name, val+"."+name+"Count", indent)
 	case f.Type.Kind == ir.TString:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, "lengthOverBound", indent)
 		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): UTF-8
 		// validity over the stated length, never over N, and a violation
 		// refuses by name with nothing decoded past it.
@@ -1281,12 +1281,12 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	case f.Type.Kind == ir.TBytes:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, "countOverBound", indent)
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	case f.Type.Kind == ir.TWString:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, "lengthOverBound", indent)
 		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): paired
 		// UTF-16 with no zero unit over the stated length, never over 2N.
 		g.pf("%sif (!TableFixed.textOk(TableFixed.textWide, %s, %s + %d, %s.%sLength * 2)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
@@ -1306,12 +1306,12 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 // The plan's own count op has already done it for a compiled plan; this is
 // what holds the IDENTITY path to the same rule, because a record under this
 // reader's own hash can still carry a count this build does not admit.
-func (g *fixedGen) emitScatterCount(dst, buf, at string, off, bound int64, rep string, indent int) {
+func (g *fixedGen) emitScatterCount(dst, buf, at string, off, bound int64, rep, why string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	g.pf("%s{\n", ind)
 	g.pf("%s    int n = TableFixed.get32(%s, %s + %d);\n", ind, buf, at, off)
-	g.pf("%s    if (n < 0) { n = 0; %s.clamped++; } else if (n > %d) { n = %d; %s.clamped++; }\n",
-		ind, rep, bound, bound, rep)
+	g.pf("%s    if (n < 0) { n = 0; %s.refuse(TableFixed.Reason.%s); } else if (n > %d) { n = %d; %s.refuse(TableFixed.Reason.%s); }\n",
+		ind, rep, why, bound, bound, rep, why)
 	g.pf("%s    %s = n;\n", ind, dst)
 	g.pf("%s}\n", ind)
 }
@@ -1374,7 +1374,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			// POSITION, so a value past the last one names nothing here.
 			g.pf("%s{\n", ind)
 			g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, int64(r.StorageBits/8), false))
-			g.pf("%s    if (q > %dL) { q = 0L; %s.clamped++; }\n", ind, len(r.Variants), rep)
+			g.pf("%s    if (q > %dL) { q = 0L; %s.refuse(TableFixed.Reason.outOfRange); }\n", ind, len(r.Variants), rep)
 			g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(fixedIntType(r.StorageBits), "q"))
 			g.pf("%s}\n", ind)
 			return
@@ -1414,7 +1414,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		g.pf("%s    if ((fbits & %s) == %s) { %s.refuseNonFinite(%q); return; }\n", ind, mask, mask, rep, g.owner+"."+f.Name)
 		if lo, hi, ok := fixedFloatRange(owner); ok {
 			g.pf("%s    %s q = %s(fbits);\n", ind, typ, conv)
-			g.pf("%s    if (q < %s) { q = %s; %s.clamped++; } else if (q > %s) { q = %s; %s.clamped++; }\n",
+			g.pf("%s    if (q < %s) { q = %s; %s.refuse(TableFixed.Reason.outOfRange); } else if (q > %s) { q = %s; %s.refuse(TableFixed.Reason.outOfRange); }\n",
 				ind, lo, lo, rep, hi, hi, rep)
 			g.pf("%s    %s = q;\n", ind, expr)
 		} else {
@@ -1444,14 +1444,14 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	if lo, hi, ok := fixedRawRange(owner); ok && typ != "Int128" && typ != "UInt128" {
 		g.pf("%s{\n", ind)
 		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
-		g.pf("%s    if (q < %dL) { q = %dL; %s.clamped++; } else if (q > %dL) { q = %dL; %s.clamped++; }\n",
+		g.pf("%s    if (q < %dL) { q = %dL; %s.refuse(TableFixed.Reason.outOfRange); } else if (q > %dL) { q = %dL; %s.refuse(TableFixed.Reason.outOfRange); }\n",
 			ind, lo, lo, rep, hi, hi, rep)
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
 	} else if ulo, uhi, ok := fixedRawUnsigned64Range(owner); ok {
 		g.pf("%s{\n", ind)
 		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
-		g.pf("%s    if (Long.compareUnsigned(q, 0x%xL) < 0) { q = 0x%xL; %s.clamped++; } else if (Long.compareUnsigned(q, 0x%xL) > 0) { q = 0x%xL; %s.clamped++; }\n",
+		g.pf("%s    if (Long.compareUnsigned(q, 0x%xL) < 0) { q = 0x%xL; %s.refuse(TableFixed.Reason.outOfRange); } else if (Long.compareUnsigned(q, 0x%xL) > 0) { q = 0x%xL; %s.refuse(TableFixed.Reason.outOfRange); }\n",
 			ind, ulo, ulo, rep, uhi, uhi, rep)
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
@@ -1463,7 +1463,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	// two lands the width's own top and counts.
 	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
 		maxv := int64(uint64(1)<<uint(f.Type.Width) - 1)
-		g.pf("%sif (%s > %dL) { %s = %s; %s.clamped++; } // bits(%d) clamps to 2^N - 1\n",
+		g.pf("%sif (%s > %dL) { %s = %s; %s.refuse(TableFixed.Reason.outOfRange); } // bits(%d) clamps to 2^N - 1\n",
 			ind, expr, maxv, expr, fixedNarrow(typ, fmt.Sprintf("%dL", maxv)), rep, f.Type.Width)
 	}
 }
@@ -1609,7 +1609,7 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	g.pf("        // is a value this reader's own storage does not admit, and\n")
 	g.pf("        // landing it raw would hand a caller a `type` that names no arm\n")
 	g.pf("        // and that its own switch cannot answer.\n")
-	g.pf("        if (v.type > %d) { v.type = none; r.clamped++; }\n", len(un.Variants))
+	g.pf("        if (v.type > %d) { v.type = none; r.refuse(TableFixed.Reason.outOfRange); }\n", len(un.Variants))
 	g.pf("        switch (v.type) {\n")
 	for i, v := range un.Variants {
 		if v.F == nil {
@@ -1897,7 +1897,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	if st.Integrity != "" {
 		g.pf("        if (data != null && data.length >= 1 && data[0] == TableFixed.form) {\n")
 		g.pf("            if (!TableFixed.integrityHolds(data)) {\n")
-		g.pf("                report.malformed = true;\n")
+		g.pf("                report.damaged = true;\n")
 		g.pf("                return -1;\n")
 		g.pf("            }\n")
 		g.pf("            data = java.util.Arrays.copyOf(data, data.length - 4);\n")
@@ -1936,7 +1936,6 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        int made = Identity.plan.length;\n")
 	g.pf("        short[] table = remap;\n")
 	g.pf("        int censusUnknown = 0;\n")
-	g.pf("        int censusKind = 0;\n")
 	if entryBounds != nil {
 		g.pf("        // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM\n")
 		g.pf("        // §4.6, bill §12.5): held after the plan run and before the scatter,\n")
@@ -1955,7 +1954,6 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            made = lane.count;\n")
 	g.pf("            table = lane.remap;\n")
 	g.pf("            censusUnknown = lane.unknown;\n")
-	g.pf("            censusKind = lane.kindMismatch;\n")
 	if entryBounds != nil {
 		g.pf("            writerBounds = Lineage.bounds[pick];\n")
 	}
@@ -1966,7 +1964,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        // or less and a ragged tail are framing damage and have no name — and the\n")
 	g.pf("        // caller's capacity, which does.\n")
 	g.pf("        final long rest = data.length - head.recordsAt;\n")
-	g.pf("        if (recordSize <= 8 || rest %% recordSize != 0) { report.malformed = true; return -1; }\n")
+	g.pf("        if (recordSize <= 8 || rest %% recordSize != 0) { report.damaged = true; return -1; }\n")
 	g.pf("        final long count64 = rest / recordSize;\n")
 	g.pf("        if (count64 > count || count64 > values.length) { report.refuse(TableFixed.Reason.batchTooLarge); return -1; }\n")
 	g.pf("        final int n = (int) count64;\n")
@@ -1981,12 +1979,10 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        int at = head.recordsAt;\n")
 	g.pf("        // STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a\n")
 	g.pf("        // refusal has written not one destination byte.\n")
-	g.pf("        final int clampedBefore = report.clamped;\n")
 	g.pf("        final int widenedBefore = report.widened;\n")
 	g.pf("        for (int k = 0; k < n; k++) {\n")
 	g.pf("            if (TableFixed.get64(data, at) != fileHash) {\n")
 	g.pf("                for (int j = 0; j < k; j++) { scatter(defaults, 0, values[j], new TableFixed.Report()); }\n")
-	g.pf("                report.clamped = clampedBefore;\n")
 	g.pf("                report.widened = widenedBefore;\n")
 	g.pf("                report.refuse(TableFixed.Reason.noLayout);\n")
 	g.pf("                return -1;\n")
@@ -2003,12 +1999,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            scatter(image, 0, values[k], report);\n")
 	g.pf("            if (report.refused) {\n")
 	g.pf("                for (int j = 0; j <= k; j++) { scatter(defaults, 0, values[j], new TableFixed.Report()); }\n")
-	g.pf("                report.clamped = clampedBefore;\n")
 	g.pf("                report.widened = widenedBefore;\n")
 	g.pf("                return -1;\n")
 	g.pf("            }\n")
 	g.pf("            // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
-	g.pf("            if (report.malformed) {\n")
+	g.pf("            if (report.damaged) {\n")
 	g.pf("                for (int j = 0; j <= k; j++) { scatter(defaults, 0, values[j], new TableFixed.Report()); }\n")
 	g.pf("                return -1;\n")
 	g.pf("            }\n")
@@ -2018,7 +2013,6 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        // RETURNS (§5.9 #6): once per endpoint and never per record, which is also how\n")
 	g.pf("        // REFUSE stays total. On a lawful lineage it lands zero, always (§5.9 #30).\n")
 	g.pf("        report.unknown += censusUnknown;\n")
-	g.pf("        report.kindMismatch += censusKind;\n")
 	g.pf("        return n;\n")
 	g.pf("    }\n")
 }

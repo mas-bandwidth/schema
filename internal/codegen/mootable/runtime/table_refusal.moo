@@ -67,15 +67,8 @@ function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 			rep.reason = "wire_damaged"
 			return nil
 		end
-		-- the fixed load's counters refuse as the variable read's do (§6.5)
-		if (rep.outOfRange or 0) > 0 then
-			rep.reason = "out_of_range"
-			return nil
-		end
-		if (rep.kindChanged or 0) > 0 then
-			rep.reason = "kind_mismatch"
-			return nil
-		end
+		-- the fixed load is the one read: it refuses out_of_range, wire_damaged
+		-- and an unlawful entry itself, so a value it answers stands (§6.5)
 		return values[1]
 	end
 	return L.ReadStrict(root, b, rep)
@@ -84,7 +77,7 @@ end
 -- the names this file answers, beside table_load.moo's and table_fixed.moo's
 R.ReadStrictNames = table.freeze({
 	message_form_as_file = true, newer_form = true, previous_form = true, unknown_form = true,
-	wire_damaged = true, out_of_range = true, kind_mismatch = true,
+	wire_damaged = true,
 })
 
 return table.freeze(R)

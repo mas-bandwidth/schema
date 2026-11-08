@@ -15,7 +15,7 @@ func checkFixedRefuseIsTotal(loadBody, decodeBody string) (loopFault, decodeFaul
 	tailBody := loadBody[endLoopIdx:]
 	if strings.Contains(loopBody, "TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report)") ||
 		strings.Contains(loopBody, "FixedDecode(values[k], imageView, 0, report)") ||
-		!strings.Contains(tailBody, "report.clamped +=") ||
+		!strings.Contains(tailBody, "report.oor +=") ||
 		!strings.Contains(tailBody, "report.widened +=") ||
 		!strings.Contains(tailBody, "report.unknown += censusUnknown;") {
 		loopFault = "record loop writes clamped/widened directly to caller's report instead of committing after the loop beside censusUnknown"
@@ -43,14 +43,14 @@ func TestFixedJsTextRefusalIsTotal(t *testing.T) {
     at += recordBytes;
   }
   report.unknown += censusUnknown;
-  report.kindMismatch += censusKind;
+  report.mismatch += censusKind;
   return n;
 }`
 	const baseDecode = `export function FixedTableFixedDecode(value, view, at, report) {
   value.sequence = view.getUint32(at, true);
   {
     let n = view.getInt32(at + 1126, true);
-    if (n < 0) { n = 0; report.clamped++; } else if (n > 15) { n = 15; report.clamped++; }
+    if (n < 0) { n = 0; report.oor++; } else if (n > 15) { n = 15; report.oor++; }
     value.playerNameLength = n;
   }
   if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, value.playerNameLength)) { report.refused = TableFixedRefusal.TextIllFormed; return; }

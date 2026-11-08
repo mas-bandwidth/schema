@@ -92,7 +92,7 @@ local report = {
 	clamped = 0, widened = 0, duplicate = 0,
 }
 local desc = S.lookup(root)
-local v = load.loadTolerant(root, inputs.wire, report)
+local v = load.loadWalk(root, inputs.wire, report)
 if v == nil and desc ~= nil and not desc.variable then v = desc.new() end
 local saved = nil
 if v ~= nil then saved = save.save(desc, v) end
@@ -179,16 +179,16 @@ func loadFixHEngineFor(t *testing.T, units map[string][]string, unitKey, rootNam
 	var o loadFixHAnswer
 	if tablewire.Refused(derr) {
 		o.refused = true
-		return o, true
-	}
-	if derr != nil {
+	} else if derr != nil {
 		return o, false
 	}
 	o.loaded = true
-	o.counts = loadFixHCounts{
-		unknown:   rep.Unknown,
-		widened:   rep.Widened,
-		malformed: rep.Refused || !ok,
+	if !o.refused {
+		o.counts = loadFixHCounts{
+			unknown:   rep.Unknown,
+			widened:   rep.Widened,
+			malformed: rep.Refused || !ok,
+		}
 	}
 	enc, eerr := tablewire.Encode(m, inst)
 	if eerr != nil {

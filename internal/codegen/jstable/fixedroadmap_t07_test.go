@@ -154,7 +154,7 @@ func t07W4(t *testing.T) {
 	_, src := t02Table(t, t07Table)
 	dec := t02Norm(jsFn(src, "TFixedDecode"))
 	live := t02Block(t, dec, "for (let i = 0; i < value.itemsCount; i++) {", "}")
-	if !strings.Contains(live, "report.clamped++") {
+	if !strings.Contains(live, "report.oor++") {
 		t.Error("W4: the range clamp does not stand inside the live loop, so slack would be clamped")
 	}
 	if strings.Contains(dec, "malformed") {

@@ -156,22 +156,22 @@ public final class TableVocabulary {
 
     // The read report across announcement and message-batch operations (§3.3, §4).
     public static final class Report {
-        public boolean malformed;
+        public boolean damaged;
         public boolean refused;
         public String reason;
         public int unknown;
-        public int kindMismatch;
         public int widened;
-        public int clamped;
 
         public void zero() {
-            malformed = false;
+            damaged = false;
             refused = false;
             reason = null;
             unknown = 0;
-            kindMismatch = 0;
             widened = 0;
-            clamped = 0;
+        }
+
+        public void refuse(String why) {
+            if (!refused) { refused = true; reason = why; }
         }
     }
 
@@ -224,7 +224,7 @@ public final class TableVocabulary {
     // refusal (docs/SPEC-TABLES.md §3.3).
     private static boolean announceReadInner(TableVocabulary v, byte[] data, Report report) {
         if (data == null || data.length == 0) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         if ((data[0] & 0xff) != 1) {
@@ -233,12 +233,12 @@ public final class TableVocabulary {
             return false;
         }
         if (data.length < 9) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         long entryCount = readU64(data, data.length - 8);
         if (entryCount < 0 || entryCount > (data.length - 9) / 8) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         int idsStart = data.length - 8 - (int) entryCount * 8;
@@ -249,49 +249,49 @@ public final class TableVocabulary {
         while (true) {
             long ref = r.leb();
             if (r.err) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             if (ref == 0) {
                 break;
             }
             if (Long.compareUnsigned(ref, entryCount) > 0) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             long id = readU64(data, idsStart + (int) (ref - 1) * 8);
             int kind = r.u8();
             if (r.err) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             if (id == -2L) { // the reserved build-version id, 0xFFFFFFFFFFFFFFFE
                 if (kind != 9 || !r.has(8)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 v.buildVersion = r.u64();
                 versionCount++;
             } else if (id == -3L) { // the reserved vocabulary id, 0xFFFFFFFFFFFFFFFD
                 if (kind != 14) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 long len = r.leb();
                 if (r.err || len < 0 || len > r.buf.length - r.at) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 int bodyStart = r.at;
                 Reader sub = new Reader(r.buf, bodyStart);
                 int elem = sub.u8();
                 if (sub.err || elem != 6) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 long n = sub.leb();
                 if (sub.err || n < 0 || n != len - (sub.at - bodyStart)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
                 // A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
@@ -310,20 +310,20 @@ public final class TableVocabulary {
             } else {
                 report.unknown++;
                 if (!skip(r, kind)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             }
         }
         if (r.at != idsStart) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         // THE TWO STRICT CHECKS: the build version present exactly once, and the
         // vocabulary present exactly once. A failed check says the bytes are not
         // an announcement rather than that this endpoint declined to announce (§3.3).
         if (versionCount != 1 || vocabCount != 1) {
-            report.malformed = true;
+            report.damaged = true;
             return false;
         }
         // Resolve the vocabulary once: every entry an id, a kind and a shape.
@@ -345,7 +345,7 @@ public final class TableVocabulary {
             }
             Entry e = new Entry();
             if (!entryRead(src, e) || e.id == -3L || e.id == -2L || (e.id == -1L && nodeSeen)) {
-                report.malformed = true;
+                report.damaged = true;
                 return false;
             }
             if (e.id == -1L) {
@@ -356,7 +356,7 @@ public final class TableVocabulary {
                 if (v.entries[i].id == e.id
                         && v.entries[i].kind == e.kind
                         && sameShape(v.entries[i], e)) {
-                    report.malformed = true;
+                    report.damaged = true;
                     return false;
                 }
             }
@@ -500,7 +500,7 @@ public final class TableVocabulary {
         }
     }
 
-    // Skip an unknown field by its announced kind (§3.3): a tolerant reader
+    // Skip an unknown field by its announced kind (§3.3): a strict reader
     // steps over a field it cannot name exactly, by the width the kind states.
     static boolean skip(Reader r, int kind) {
         int w = kindWidth(kind);
@@ -586,7 +586,7 @@ public final class TableVocabulary {
                     return null;
                 }
                 values = Math.max(1.0f, Math.min(4294967040.0f, values));
-                // count = ceil(delta / res) clamped to [1, 4294967040] (§3.3), a
+                // count = ceil(delta / res) bounded to [1, 4294967040] (§3.3), a
                 // count the 32-bit unsigned width holds, then bits_required(0, count).
                 long count = (long) Math.ceil((double) values);
                 s.steps = count;
@@ -1089,8 +1089,8 @@ public final class TableMessage {
             v = raw;
         }
         if (hasRange) {
-            if (v < min) { v = min; r.report.clamped++; }
-            else if (v > max) { v = max; r.report.clamped++; }
+            if (v < min) { v = min; r.report.refuse("out_of_range"); }
+            else if (v > max) { v = max; r.report.refuse("out_of_range"); }
         }
         return v;
     }
@@ -1100,14 +1100,14 @@ public final class TableMessage {
         if (r.err) { return 0L; }
         long v = (s.packing == 1) ? (raw + s.baseLo) : raw;
         if (hasRange) {
-            if (Long.compareUnsigned(v, min) < 0) { v = min; r.report.clamped++; }
-            else if (Long.compareUnsigned(v, max) > 0) { v = max; r.report.clamped++; }
+            if (Long.compareUnsigned(v, min) < 0) { v = min; r.report.refuse("out_of_range"); }
+            else if (Long.compareUnsigned(v, max) > 0) { v = max; r.report.refuse("out_of_range"); }
         }
         if (bitsWidth > 0 && bitsWidth < 64) {
             long maxBits = (1L << bitsWidth) - 1L;
             if (Long.compareUnsigned(v, maxBits) > 0) {
                 v = maxBits;
-                r.report.clamped++;
+                r.report.refuse("out_of_range");
             }
             v &= maxBits;
         }
@@ -1185,8 +1185,8 @@ public final class TableMessage {
             v = Float.intBitsToFloat(raw);
         }
         if (hasRange) {
-            if (v < min) { v = min; r.report.clamped++; }
-            else if (v > max) { v = max; r.report.clamped++; }
+            if (v < min) { v = min; r.report.refuse("out_of_range"); }
+            else if (v > max) { v = max; r.report.refuse("out_of_range"); }
         }
         return v;
     }
@@ -1220,8 +1220,8 @@ public final class TableMessage {
         }
         double v = Double.longBitsToDouble(raw);
         if (hasRange) {
-            if (v < min) { v = min; r.report.clamped++; }
-            else if (v > max) { v = max; r.report.clamped++; }
+            if (v < min) { v = min; r.report.refuse("out_of_range"); }
+            else if (v > max) { v = max; r.report.refuse("out_of_range"); }
         }
         return v;
     }
@@ -1991,11 +1991,11 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 	g.pf("        reset(v);\n")
 	g.pf("        while (true) {\n")
 	g.pf("            TableVocabulary.Entry entry = r.ref();\n")
-	g.pf("            if (r.err) { r.report.malformed = true; return false; }\n")
+	g.pf("            if (r.err) { r.report.damaged = true; return false; }\n")
 	g.pf("            if (entry == null) { return true; }\n")
 	if len(st.Fields) == 0 {
 		g.pf("            r.report.unknown++;\n")
-		g.pf("            if (!TableMessage.skip(r, entry)) { r.report.malformed = true; return false; }\n")
+		g.pf("            if (!TableMessage.skip(r, entry)) { r.report.damaged = true; return false; }\n")
 	} else {
 		g.pf("            int idHi = (int) (entry.id >>> 32);\n")
 		g.pf("            int idLo = (int) entry.id;\n")
@@ -2012,7 +2012,7 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 		}
 		g.pf("            } else {\n")
 		g.pf("                r.report.unknown++;\n")
-		g.pf("                if (!TableMessage.skip(r, entry)) { r.report.malformed = true; return false; }\n")
+		g.pf("                if (!TableMessage.skip(r, entry)) { r.report.damaged = true; return false; }\n")
 		g.pf("            }\n")
 	}
 	g.pf("        }\n")
@@ -2030,8 +2030,8 @@ func (g *messageGen) emitLoadFieldCase(f *ir.Field, mine ir.TableVocabularyEntry
 	g.pf("%s    if (TableMessage.entryWidens(%s, %d, %d)) {\n", ind, entryVar, mine.Kind, mine.Shape.Elem)
 	g.pf("%s        widened = true;\n", ind)
 	g.pf("%s    } else {\n", ind)
-	g.pf("%s        r.report.kindMismatch++;\n", ind)
-	g.pf("%s        if (!TableMessage.skip(r, %s)) { r.report.malformed = true; return false; }\n", ind, entryVar)
+	g.pf("%s        r.report.refuse(\"kind_mismatch\");\n", ind)
+	g.pf("%s        if (!TableMessage.skip(r, %s)) { r.report.damaged = true; return false; }\n", ind, entryVar)
 	g.pf("%s        continue;\n", ind)
 	g.pf("%s    }\n", ind)
 	g.pf("%s}\n", ind)
@@ -2054,14 +2054,14 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		startVar := g.nextTemp("start")
 		keptVar := g.nextTemp("kept")
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
-		g.pf("%sif (r.err || !r.align()) { r.report.malformed = true; return false; }\n", ind)
+		g.pf("%sif (r.err || !r.align()) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%sint %s = r.atByte();\n", ind, startVar)
-		g.pf("%sif (!r.skipBits(%s * 8L)) { r.report.malformed = true; return false; }\n", ind, nVar)
-		g.pf("%sif (!TableMessage.utf8Valid(r.buf, %s, (int) %s)) { r.report.malformed = true; return false; }\n", ind, startVar, nVar)
+		g.pf("%sif (!r.skipBits(%s * 8L)) { r.report.damaged = true; return false; }\n", ind, nVar)
+		g.pf("%sif (!TableMessage.utf8Valid(r.buf, %s, (int) %s)) { r.report.damaged = true; return false; }\n", ind, startVar, nVar)
 		g.pf("%sint %s = (int) Math.min(%s, %dL);\n", ind, keptVar, nVar, f.Type.Size)
 		g.pf("%sif ((long) %s < %s) {\n", ind, keptVar, nVar)
 		g.pf("%s    %s = TableMessage.utf8Clamp(r.buf, %s, %s);\n", ind, keptVar, startVar, keptVar)
-		g.pf("%s    r.report.clamped++;\n", ind)
+		g.pf("%s    r.report.refuse(\"length_over_bound\");\n", ind)
 		g.pf("%s}\n", ind)
 		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, expr)
 		g.pf("%sSystem.arraycopy(r.buf, %s, %s, 0, %s);\n", ind, startVar, expr, keptVar)
@@ -2072,11 +2072,11 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		startVar := g.nextTemp("start")
 		keptVar := g.nextTemp("kept")
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
-		g.pf("%sif (r.err || !r.align()) { r.report.malformed = true; return false; }\n", ind)
+		g.pf("%sif (r.err || !r.align()) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%sint %s = r.atByte();\n", ind, startVar)
-		g.pf("%sif (!r.skipBits(%s * 8L)) { r.report.malformed = true; return false; }\n", ind, nVar)
+		g.pf("%sif (!r.skipBits(%s * 8L)) { r.report.damaged = true; return false; }\n", ind, nVar)
 		g.pf("%sint %s = (int) Math.min(%s, %dL);\n", ind, keptVar, nVar, f.Type.Size)
-		g.pf("%sif ((long) %s < %s) { r.report.clamped++; }\n", ind, keptVar, nVar)
+		g.pf("%sif ((long) %s < %s) { r.report.refuse(\"length_over_bound\"); }\n", ind, keptVar, nVar)
 		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, expr)
 		g.pf("%sSystem.arraycopy(r.buf, %s, %s, 0, %s);\n", ind, startVar, expr, keptVar)
 		g.pf("%s%sLength = %s;\n", ind, expr, keptVar)
@@ -2088,22 +2088,22 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		idxVar := g.nextTemp("i")
 		uVar := g.nextTemp("u")
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
-		g.pf("%sif (r.err || %s < 0L || %s > (r.totalBits - r.at) / 16L) { r.report.malformed = true; return false; }\n", ind, nVar, nVar)
+		g.pf("%sif (r.err || %s < 0L || %s > (r.totalBits - r.at) / 16L) { r.report.damaged = true; return false; }\n", ind, nVar, nVar)
 		g.pf("%sint %s = (int) Math.min(%s, %dL);\n", ind, keptVar, nVar, f.Type.Size)
-		g.pf("%sif ((long) %s < %s) { r.report.clamped++; }\n", ind, keptVar, nVar)
+		g.pf("%sif ((long) %s < %s) { r.report.refuse(\"length_over_bound\"); }\n", ind, keptVar, nVar)
 		g.pf("%sjava.util.Arrays.fill(%s, (char) 0);\n", ind, expr)
 		g.pf("%sboolean %s = false;\n", ind, highVar)
 		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, nVar, idxVar)
 		g.pf("%s    int %s = (int) r.get(16);\n", ind, uVar)
 		g.pf("%s    if (%s == 0 || (%s >= 0xdc00 && %s <= 0xdfff && !%s) || (%s && (%s < 0xdc00 || %s > 0xdfff))) {\n",
 			ind, uVar, uVar, uVar, highVar, highVar, uVar, uVar)
-		g.pf("%s        r.report.malformed = true;\n", ind)
+		g.pf("%s        r.report.damaged = true;\n", ind)
 		g.pf("%s        return false;\n", ind)
 		g.pf("%s    }\n", ind)
 		g.pf("%s    %s = (%s >= 0xd800 && %s <= 0xdbff);\n", ind, highVar, uVar, uVar)
 		g.pf("%s    if (%s < (long) %s) { %s[(int) %s] = (char) %s; }\n", ind, idxVar, keptVar, expr, idxVar, uVar)
 		g.pf("%s}\n", ind)
-		g.pf("%sif (%s) { r.report.malformed = true; return false; }\n", ind, highVar)
+		g.pf("%sif (%s) { r.report.damaged = true; return false; }\n", ind, highVar)
 		g.pf("%sif (%s > 0 && %s[%s - 1] >= 0xd800 && %s[%s - 1] <= 0xdbff) { %s--; %s[%s] = 0; }\n",
 			ind, keptVar, expr, keptVar, expr, keptVar, keptVar, expr, keptVar)
 		g.pf("%s%sLength = %s;\n", ind, expr, keptVar)
@@ -2116,10 +2116,10 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		scratchVar := g.nextTemp("scratch")
 		typ := fixedScalarType(f.Type)
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
-		g.pf("%sif (r.err) { r.report.malformed = true; return false; }\n", ind)
+		g.pf("%sif (r.err) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, nVar, idxVar)
 		g.pf("%s    TableVocabulary.Entry %s = r.nameRef();\n", ind, keyVar)
-		g.pf("%s    if (%s == null || r.err) { r.report.malformed = true; return false; }\n", ind, keyVar)
+		g.pf("%s    if (%s == null || r.err) { r.report.damaged = true; return false; }\n", ind, keyVar)
 		g.pf("%s    int %s = -1;\n", ind, slotVar)
 		g.pf("%s    int kHi = (int) (%s.id >>> 32);\n", ind, keyVar)
 		g.pf("%s    int kLo = (int) %s.id;\n", ind, keyVar)
@@ -2160,10 +2160,10 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		// later malformed read cannot wipe an earlier successful occurrence, as
 		// the oracle's array decode does.
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
-		g.pf("%sif (r.err) { r.report.malformed = true; return false; }\n", ind)
-		g.pf("%sif (%s.element.kind == 6 && !r.align()) { r.report.malformed = true; return false; }\n", ind, entryVar)
+		g.pf("%sif (r.err) { r.report.damaged = true; return false; }\n", ind)
+		g.pf("%sif (%s.element.kind == 6 && !r.align()) { r.report.damaged = true; return false; }\n", ind, entryVar)
 		g.pf("%slong %s = Math.min(%s, %dL);\n", ind, keepVar, nVar, f.ArrayBound)
-		g.pf("%sif (%s < %s) { r.report.clamped++; }\n", ind, keepVar, nVar)
+		g.pf("%sif (%s < %s) { r.report.refuse(\"count_over_bound\"); }\n", ind, keepVar, nVar)
 		g.pf("%slong %s = TableMessage.elementRunBits(14, %s.element);\n", ind, runVar, entryVar)
 		g.pf("%slong %s = (%s >= 0L && %s > %s) ? %s : %s;\n", ind, walkVar, runVar, nVar, keepVar, keepVar, nVar)
 		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, walkVar, idxVar)
@@ -2178,7 +2178,7 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		// rather than joined by && so the call stands alone in its condition
 		// and hoistLongCalls can lay it out (docs/JAVA-DIALECT.md)
 		g.pf("%sif (%s < %s) {\n", ind, walkVar, nVar)
-		g.pf("%s    if (!TableMessage.skipRun(r, %s - %s, %s)) { r.report.malformed = true; return false; }\n",
+		g.pf("%s    if (!TableMessage.skipRun(r, %s - %s, %s)) { r.report.damaged = true; return false; }\n",
 			ind, nVar, walkVar, runVar)
 		g.pf("%s}\n", ind)
 		if f.Array == ir.ArrayCounted {
@@ -2227,13 +2227,13 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 		veVar := g.nextTemp("ve")
 		g.pf("%s{\n", ind)
 		g.pf("%s    long %s = r.get(r.vocab.refBits);\n", ind, refVar)
-		g.pf("%s    if (r.err) { r.report.malformed = true; return false; }\n", ind)
+		g.pf("%s    if (r.err) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%s    if (%s == 0L) {\n", ind, refVar)
 		g.pf("%s        %s = %s;\n", ind, targetExpr, fixedNarrow(typ, "0"))
 		g.pf("%s    } else {\n", ind)
-		g.pf("%s        if (%s < 0L || %s > (long) r.vocab.count) { r.report.malformed = true; return false; }\n", ind, refVar, refVar)
+		g.pf("%s        if (%s < 0L || %s > (long) r.vocab.count) { r.report.damaged = true; return false; }\n", ind, refVar, refVar)
 		g.pf("%s        TableVocabulary.Entry %s = r.vocab.entries[(int) %s - 1];\n", ind, veVar, refVar)
-		g.pf("%s        if (TableMessage.reservedId(%s.id) || %s.kind != 0) { r.report.malformed = true; return false; }\n", ind, veVar, veVar)
+		g.pf("%s        if (TableMessage.reservedId(%s.id) || %s.kind != 0) { r.report.damaged = true; return false; }\n", ind, veVar, veVar)
 		g.pf("%s        int vHi = (int) (%s.id >>> 32);\n", ind, veVar)
 		g.pf("%s        int vLo = (int) %s.id;\n", ind, veVar)
 		for i := range en.Variants {
@@ -2263,7 +2263,7 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 		vVar := g.nextTemp("v")
 		g.pf("%s{\n", ind)
 		g.pf("%s    long %s = r.get(1);\n", ind, vVar)
-		g.pf("%s    if (r.err) { r.report.malformed = true; return false; }\n", ind)
+		g.pf("%s    if (r.err) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%s    %s = (%s != 0L);\n", ind, targetExpr, vVar)
 		g.pf("%s}\n", ind)
 
@@ -2275,7 +2275,7 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 		}
 		g.pf("%s{\n", ind)
 		g.pf("%s    float %s = TableMessage.readFloat32(r, %s, %s, %s, %t, %q);\n", ind, vVar, shapeExpr, lo, hi, hasRange, g.owner+"."+f.Name)
-		g.pf("%s    if (r.err) { r.report.malformed = true; return false; }\n", ind)
+		g.pf("%s    if (r.err) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%s    %s = %s;\n", ind, targetExpr, vVar)
 		g.pf("%s}\n", ind)
 
@@ -2287,7 +2287,7 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 		}
 		g.pf("%s{\n", ind)
 		g.pf("%s    double %s = TableMessage.readFloat64(r, %s, %s, %s, %t, %q);\n", ind, vVar, shapeExpr, lo, hi, hasRange, g.owner+"."+f.Name)
-		g.pf("%s    if (r.err) { r.report.malformed = true; return false; }\n", ind)
+		g.pf("%s    if (r.err) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%s    %s = %s;\n", ind, targetExpr, vVar)
 		g.pf("%s}\n", ind)
 
@@ -2300,7 +2300,7 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 			hiVar := g.nextTemp("hi")
 			g.pf("%s{\n", ind)
 			g.pf("%s    long[] %s = TableMessage.read128Raw(r, %s, %t);\n", ind, rawVar, shapeExpr, signed)
-			g.pf("%s    if (r.err) { r.report.malformed = true; return false; }\n", ind)
+			g.pf("%s    if (r.err) { r.report.damaged = true; return false; }\n", ind)
 			g.pf("%s    long %s = %s[0], %s = %s[1];\n", ind, loVar, rawVar, hiVar, rawVar)
 			if rlo, rhi, ok := ir.TableRawRange(f); ok && f.HasIntRange {
 				minLo, minHi := fixed128Halves(rlo)
@@ -2316,9 +2316,9 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 				aboveVar := g.nextTemp("above")
 				g.pf("%s    int %s = %s(%s, %s, %sL, %sL);\n", ind, belowVar, cmpFn, loVar, hiVar, fixedHexLong(minLo), fixedHexLong(minHi))
 				g.pf("%s    int %s = %s(%s, %s, %sL, %sL);\n", ind, aboveVar, cmpFn, loVar, hiVar, fixedHexLong(maxLo), fixedHexLong(maxHi))
-				g.pf("%s    if (%s < 0) { %s = %sL; %s = %sL; r.report.clamped++; }\n",
+				g.pf("%s    if (%s < 0) { %s = %sL; %s = %sL; r.report.refuse(\"out_of_range\"); }\n",
 					ind, belowVar, loVar, fixedHexLong(minLo), hiVar, fixedHexLong(minHi))
-				g.pf("%s    else if (%s > 0) { %s = %sL; %s = %sL; r.report.clamped++; }\n",
+				g.pf("%s    else if (%s > 0) { %s = %sL; %s = %sL; r.report.refuse(\"out_of_range\"); }\n",
 					ind, aboveVar, loVar, fixedHexLong(maxLo), hiVar, fixedHexLong(maxHi))
 			}
 			g.pf("%s    %s = new %s(%s, %s);\n", ind, targetExpr, typ, hiVar, loVar)
@@ -2347,7 +2347,7 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 			g.pf("%s    long %s = TableMessage.readUnsigned(r, %s, %sL, %sL, %t, %d);\n",
 				ind, vVar, shapeExpr, fixedHexLong(minLit), fixedHexLong(maxLit), hasRange, bitsWidth)
 		}
-		g.pf("%s    if (r.err) { r.report.malformed = true; return false; }\n", ind)
+		g.pf("%s    if (r.err) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%s    %s = %s;\n", ind, targetExpr, fixedNarrow(typ, vVar))
 		g.pf("%s}\n", ind)
 	}
@@ -2366,13 +2366,13 @@ func (g *messageGen) emitLoadUnion(un *ir.Union, expr string, indent int) {
 	g.emitResetUnion(un, expr, indent)
 	g.pf("%s{\n", ind)
 	g.pf("%s    long %s = r.get(r.vocab.refBits);\n", ind, refVar)
-	g.pf("%s    if (r.err) { r.report.malformed = true; return false; }\n", ind)
+	g.pf("%s    if (r.err) { r.report.damaged = true; return false; }\n", ind)
 	g.pf("%s    if (%s == 0L) {\n", ind, refVar)
 	g.pf("%s        %s.type = 0;\n", ind, expr)
 	g.pf("%s    } else {\n", ind)
-	g.pf("%s        if (%s < 0L || %s > (long) r.vocab.count) { r.report.malformed = true; return false; }\n", ind, refVar, refVar)
+	g.pf("%s        if (%s < 0L || %s > (long) r.vocab.count) { r.report.damaged = true; return false; }\n", ind, refVar, refVar)
 	g.pf("%s        TableVocabulary.Entry %s = r.vocab.entries[(int) %s - 1];\n", ind, armVar, refVar)
-	g.pf("%s        if (TableMessage.reservedId(%s.id) || %s.kind == 0) { r.report.malformed = true; return false; }\n", ind, armVar, armVar)
+	g.pf("%s        if (TableMessage.reservedId(%s.id) || %s.kind == 0) { r.report.damaged = true; return false; }\n", ind, armVar, armVar)
 	g.pf("%s        int %s = (int) (%s.id >>> 32);\n", ind, aHiVar, armVar)
 	g.pf("%s        int %s = (int) %s.id;\n", ind, aLoVar, armVar)
 	for i, v := range un.Variants {
@@ -2393,8 +2393,8 @@ func (g *messageGen) emitLoadUnion(un *ir.Union, expr string, indent int) {
 		g.pf("%s                    %s = true;\n", ind, widenedVar)
 		g.pf("%s                } else {\n", ind)
 		g.pf("%s                    %s.type = 0;\n", ind, expr)
-		g.pf("%s                    r.report.kindMismatch++;\n", ind)
-		g.pf("%s                    if (!TableMessage.skip(r, %s)) { r.report.malformed = true; return false; }\n", ind, armVar)
+		g.pf("%s                    r.report.refuse(\"kind_mismatch\");\n", ind)
+		g.pf("%s                    if (!TableMessage.skip(r, %s)) { r.report.damaged = true; return false; }\n", ind, armVar)
 		g.pf("%s                    %s = false;\n", ind, widenedVar)
 		g.pf("%s                }\n", ind)
 		g.pf("%s            }\n", ind)
@@ -2410,12 +2410,12 @@ func (g *messageGen) emitLoadUnion(un *ir.Union, expr string, indent int) {
 		g.pf("%s        } else {\n", ind)
 		g.pf("%s            %s.type = 0;\n", ind, expr)
 		g.pf("%s            r.report.unknown++;\n", ind)
-		g.pf("%s            if (!TableMessage.skip(r, %s)) { r.report.malformed = true; return false; }\n", ind, armVar)
+		g.pf("%s            if (!TableMessage.skip(r, %s)) { r.report.damaged = true; return false; }\n", ind, armVar)
 		g.pf("%s        }\n", ind)
 	} else {
 		g.pf("%s        %s.type = 0;\n", ind, expr)
 		g.pf("%s        r.report.unknown++;\n", ind)
-		g.pf("%s        if (!TableMessage.skip(r, %s)) { r.report.malformed = true; return false; }\n", ind, armVar)
+		g.pf("%s        if (!TableMessage.skip(r, %s)) { r.report.damaged = true; return false; }\n", ind, armVar)
 	}
 	g.pf("%s    }\n", ind)
 	g.pf("%s}\n", ind)
@@ -2501,7 +2501,7 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 
 	g.pf("    public static int loadMessages(%s[] values, int capacity, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
 	g.pf("        if (report == null) { report = new TableVocabulary.Report(); } else { report.zero(); }\n")
-	g.pf("        if (data == null || data.length == 0) { report.malformed = true; return 0; }\n")
+	g.pf("        if (data == null || data.length == 0) { report.damaged = true; return 0; }\n")
 	g.pf("        if ((data[0] & 0xff) != 2) {\n")
 	g.pf("            report.refused = true;\n")
 	g.pf("            report.reason = \"newer_form\";\n")
@@ -2509,7 +2509,7 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        }\n")
 	if st.Integrity != "" {
 		g.pf("        if (!TableMessage.integrityHolds(data)) {\n")
-		g.pf("            report.malformed = true;\n")
+		g.pf("            report.damaged = true;\n")
 		g.pf("            report.reason = \"integrity_mismatch\";\n")
 		g.pf("            return 0;\n")
 		g.pf("        }\n")
@@ -2520,7 +2520,7 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            report.reason = \"no_vocabulary\";\n")
 	g.pf("            return 0;\n")
 	g.pf("        }\n")
-	g.pf("        if (data.length < 2) { report.malformed = true; return 0; }\n")
+	g.pf("        if (data.length < 2) { report.damaged = true; return 0; }\n")
 	g.pf("        int count = (data[1] & 0xff) + 1;\n")
 	g.pf("        int cap = values == null ? 0 : Math.min(capacity, values.length);\n")
 	g.pf("        if (count > cap) {\n")
@@ -2542,14 +2542,14 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): a body that
 	// does not read, or a batch whose bits do not end where the last body
 	// does, delivers zero bodies, every body read so far reset.
-	g.pf("            if (!read || report.malformed) {\n")
-	g.pf("                report.malformed = true;\n")
+	g.pf("            if (!read || report.damaged) {\n")
+	g.pf("                report.damaged = true;\n")
 	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
 	g.pf("                return 0;\n")
 	g.pf("            }\n")
 	g.pf("        }\n")
 	g.pf("        if (!r.align() || r.at != r.totalBits) {\n")
-	g.pf("            report.malformed = true;\n")
+	g.pf("            report.damaged = true;\n")
 	g.pf("            for (int j = 0; j < count; j++) { reset(values[j]); }\n")
 	g.pf("            return 0;\n")
 	g.pf("        }\n")

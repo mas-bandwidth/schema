@@ -22,10 +22,10 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
 	body := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n == 1, 'the newer reader did not read the older writer one record: n=$n ${why(report)}');
-  check(report.refused == 0 && !report.malformed,
+  check(report.refused == 0,
       'a clean NEW-READS-OLD is not a refusal: ${why(report)}');
   check(
-    report.kindMismatch == 0 && report.widened == 0 && report.clamped == 0 && report.duplicate == 0,
+    report.widened == 0,
     'counters that must not move did: ${why(report)}',
   );
   check(report.unknown == 1,
@@ -46,7 +46,7 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
   final plan2 = t.censusFixedNewPlan();
   final report2 = t.TableFixedReport();
   final n2 = LOAD(values2, values2.length, data, data.length, plan2, report2);
-  check(n2 == 1 && report2.unknown == 1 && report2.refused == 0 && !report2.malformed,
+  check(n2 == 1 && report2.unknown == 1 && report2.refused == 0,
       'the second read owes the same census: n=$n2 ${why(report2)}');
 `
 	out, err := runVersionProbe(t, dartBin, "VNEW_unknown_census", []string{"VOLD_unknown_census"}, 0,

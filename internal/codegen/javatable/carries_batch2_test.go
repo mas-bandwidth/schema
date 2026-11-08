@@ -48,13 +48,13 @@ public final class Main {
         check(wire != null, "save null");
         TableVariable.Report rep = new TableVariable.Report();
         VarStampVariable.Value loaded = VarStampVariable.load(wire, rep);
-        check(loaded != null && !rep.malformed && !rep.refused && rep.kindMismatch == 0 && rep.widened == 0, "load report");
+        check(loaded != null && !rep.damaged && !rep.refused && rep.unknown == 0 && rep.widened == 0, "load report");
         check(loaded.at == -1L && loaded.later == 1_500_000_000L && loaded.tag == 42L, "loaded scalars");
 
         TableRetain ret = new TableRetain(1 << 16, 1 << 10);
         rep.reset();
         VarStampVariable.Value rLoaded = VarStampRetain.loadRetain(wire, ret, rep);
-        check(rLoaded != null && !rep.malformed && !rep.refused, "loadRetain");
+        check(rLoaded != null && !rep.damaged && !rep.refused, "loadRetain");
         byte[] rWire = VarStampRetain.saveRetain(rLoaded, ret, rep);
         check(Arrays.equals(wire, rWire), "saveRetain roundtrip");
 
@@ -82,7 +82,7 @@ public final class Main {
             check(jt.contains(boundaryTexts[i]), "json boundary " + i + ": " + jt);
             rep.reset();
             VarStampVariable.Value fromJ = VarStampVariable.fromJson(jb, rep);
-            check(fromJ != null && !rep.malformed && !rep.refused && rep.kindMismatch == 0 && fromJ.at == boundaries[i], "fromJson boundary " + i);
+            check(fromJ != null && !rep.damaged && !rep.refused && rep.unknown == 0 && fromJ.at == boundaries[i], "fromJson boundary " + i);
         }
 
         // Cook LE & BE
@@ -110,7 +110,7 @@ public final class Main {
         FixedStampFixed.Value[] fBack = {new FixedStampFixed.Value()};
         TableFixed.Report fRep = new TableFixed.Report();
         check(FixedStampFixed.load(fBack, 1, fWire, TableFixed.plan(1 << 14), new short[1 << 14], FixedStampFixed.image(), fRep) == 1, "FixedStampFixed.load");
-        check(!fRep.malformed && !fRep.refused && fBack[0].at == 1_000_000_000L && fBack[0].tag == -2_000_000_000L, "FixedStampFixed values");
+        check(!fRep.damaged && !fRep.refused && fBack[0].at == 1_000_000_000L && fBack[0].tag == -2_000_000_000L, "FixedStampFixed values");
 
         byte[] ann = new byte[TableVocabulary.announceMeasure()];
         check(TableVocabulary.announce(ann) == ann.length, "Announce.write");
@@ -123,7 +123,7 @@ public final class Main {
         FixedStampFixed.Value[] mBack = {new FixedStampFixed.Value()};
         TableVocabulary.Report mRep = new TableVocabulary.Report();
         check(FixedStampMessage.loadMessages(mBack, 1, vocab, Arrays.copyOf(msg, msgLen), mRep) == 1, "FixedStampMessage.loadMessages");
-        check(!mRep.malformed && !mRep.refused && mBack[0].at == 1_000_000_000L && mBack[0].tag == -2_000_000_000L, "FixedStampMessage values");
+        check(!mRep.damaged && !mRep.refused && mBack[0].at == 1_000_000_000L && mBack[0].tag == -2_000_000_000L, "FixedStampMessage values");
 
         // 3. Strict RFC 3339 negative cases
         String[] badStamps = new String[]{
@@ -142,21 +142,22 @@ public final class Main {
             rep.reset();
             String input = "{\"at\":\"" + bad + "\"}";
             VarStampVariable.Value badV = VarStampVariable.fromJson(input.getBytes(StandardCharsets.UTF_8), rep);
-            check(badV == null && rep.malformed && "timestamp_not_rfc3339: at".equals(rep.reason), "expected timestamp_not_rfc3339: at for " + bad + ", got reason=" + rep.reason);
+            check(badV == null && rep.damaged && "timestamp_not_rfc3339: at".equals(rep.reason), "expected timestamp_not_rfc3339: at for " + bad + ", got reason=" + rep.reason);
         }
 
-        // Wrong JSON shape is kindMismatch, not malformed
+        // Wrong JSON shape refuses the whole load: no value (§4, §16.2)
         rep.reset();
         VarStampVariable.Value shapeV = VarStampVariable.fromJson("{\"at\":123}".getBytes(StandardCharsets.UTF_8), rep);
-        check(shapeV != null && !rep.malformed && rep.kindMismatch == 1 && shapeV.at == 0L, "wrong shape timestamp");
+        check(shapeV == null && (rep.refused || rep.damaged), "wrong shape timestamp not refused: refused=" + rep.refused + " damaged=" + rep.damaged);
 
-        // Non-widening on wire: kind 5 (int64) into timestamp (kind 36) is kindMismatch
+        // Non-widening on wire: kind 5 (int64) into timestamp (kind 36) is a kind
+        // mismatch, which refuses the whole load: no value, refused, not damaged
         byte[] intWire = Arrays.copyOf(wire, wire.length);
         check(intWire[2] == 36, "wire kind is 36");
         intWire[2] = 5; // int64 kind
         rep.reset();
         VarStampVariable.Value wLoaded = VarStampVariable.load(intWire, rep);
-        check(wLoaded != null && rep.kindMismatch == 1 && rep.widened == 0 && wLoaded.at == 0L, "kind 5 does not widen to kind 36");
+        check(wLoaded == null && rep.refused && !rep.damaged, "kind 5 does not widen to kind 36: refused=" + rep.refused + " damaged=" + rep.damaged);
 
         System.out.println("TIMESTAMP OK");
     }
@@ -263,15 +264,22 @@ public final class Main {
         check(OptMapsCook.cookFrom(loaded, c1, TableCookWrite.LITTLE) && OptMapsCook.cookFrom(freshAbsent, c2, TableCookWrite.LITTLE), "stale ?map cookFrom");
         check(Arrays.equals(c1, c2), "stale ?map cooked bytes");
 
-        // stella-78465217791c (SPEC-TABLES.md §16.2): non-null wrong-shape JSON value in map[K]?V is PRESENT at default
+        // stella-78465217791c (SPEC-TABLES.md §4, §16.2): a null in map[K]?V is ABSENT and reads clean;
+        // a non-null wrong-shape value, or a repeated key, refuses the whole load: no value
+        rep.reset();
+        OptMapsVariable.Value nullOk = OptMapsVariable.fromJson(
+            "{\"optVals\":{\"b\":null,\"c\":9}}".getBytes(StandardCharsets.UTF_8), rep);
+        check(nullOk != null && !rep.damaged && !rep.refused && nullOk.optVals.size() == 2, "null entry read: refused=" + rep.refused + " damaged=" + rep.damaged);
+        check("b".equals(nullOk.optVals.get(0).key) && !nullOk.optVals.get(0).valuePresent, "b absent");
+        check("c".equals(nullOk.optVals.get(1).key) && nullOk.optVals.get(1).valuePresent && nullOk.optVals.get(1).value == 9, "c present");
         rep.reset();
         OptMapsVariable.Value wrongShape = OptMapsVariable.fromJson(
-            "{\"optVals\":{\"a\":\"bad\",\"b\":null,\"c\":9,\"c\":\"bad\"}}".getBytes(StandardCharsets.UTF_8), rep);
-        check(wrongShape != null && !rep.malformed && rep.kindMismatch == 2 && rep.duplicate == 1, "stella-78465217791c report: m=" + rep.malformed + " km=" + rep.kindMismatch + " dup=" + rep.duplicate + " unk=" + rep.unknown);
-        check(wrongShape.optVals.size() == 3, "stella-78465217791c size");
-        check("a".equals(wrongShape.optVals.get(0).key) && wrongShape.optVals.get(0).valuePresent && wrongShape.optVals.get(0).value == 0, "a present default");
-        check("b".equals(wrongShape.optVals.get(1).key) && !wrongShape.optVals.get(1).valuePresent, "b absent");
-        check("c".equals(wrongShape.optVals.get(2).key) && wrongShape.optVals.get(2).valuePresent && wrongShape.optVals.get(2).value == 0, "c duplicate replaced with present default");
+            "{\"optVals\":{\"a\":\"bad\",\"b\":null}}".getBytes(StandardCharsets.UTF_8), rep);
+        check(wrongShape == null && (rep.refused || rep.damaged), "wrong-shape ?V not refused: refused=" + rep.refused + " damaged=" + rep.damaged);
+        rep.reset();
+        OptMapsVariable.Value dupKey = OptMapsVariable.fromJson(
+            "{\"optVals\":{\"c\":9,\"c\":9}}".getBytes(StandardCharsets.UTF_8), rep);
+        check(dupKey == null && (rep.refused || rep.damaged), "repeated key not refused: refused=" + rep.refused + " damaged=" + rep.damaged);
 
         System.out.println("OPTIONAL_MAP OK");
     }

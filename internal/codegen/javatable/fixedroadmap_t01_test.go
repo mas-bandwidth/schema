@@ -72,13 +72,13 @@ func requireNamedRefusal(t *testing.T, what string, r probeRun, reason string) {
 	if !r.refused || r.reason != reason {
 		t.Errorf("%s: refused=%v reason=%s, want a refusal named %s", what, r.refused, r.reason, reason)
 	}
-	if r.malformed {
+	if r.damaged {
 		t.Errorf("%s: malformed is set beside a reason; the report is two answers and never both", what)
 	}
 	if r.n != -1 {
 		t.Errorf("%s: n=%d, want -1", what, r.n)
 	}
-	if r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0 || r.clamped != 0 {
+	if r.unknown != 0 || r.widened != 0 {
 		t.Errorf("%s: a counter moved: %+v; REFUSE is total", what, r)
 	}
 }
@@ -101,7 +101,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 	env := &t01Env{classes: classes, raw: raw, dir: filepath.Join(dir, "forged")}
 
 	// The unmutated file must read: every refusal below is a refusal OF A MUTATION.
-	if ok := runProbe(t, classes, "Probe_reads", env.forge(t, "intact.bin", func(b []byte) []byte { return b })); ok.n < 1 || ok.refused || ok.malformed {
+	if ok := runProbe(t, classes, "Probe_reads", env.forge(t, "intact.bin", func(b []byte) []byte { return b })); ok.n < 1 || ok.refused || ok.damaged {
 		t.Fatalf("the unmutated file does not read: %+v", ok)
 	}
 	if env.recordsAt()+8 > len(raw) || env.layoutLen() < 4+t01EntryBytes {
@@ -156,7 +156,7 @@ func t01F4(t *testing.T, e *t01Env) {
 	}
 	// The boundary: cut exactly after the layout, `20 + L` is the file's end.
 	path := e.forge(t, "exact.bin", func(b []byte) []byte { return b[:at] })
-	if r := runProbe(t, e.classes, "Probe_reads", path); r.reason == "layoutMalformed" || r.malformed {
+	if r := runProbe(t, e.classes, "Probe_reads", path); r.reason == "layoutMalformed" || r.damaged {
 		t.Errorf("a file ending exactly after its layout is `20 + L` inside the file, and must not answer layout_malformed or malformed: %+v", r)
 	}
 }
@@ -238,7 +238,7 @@ func t01R7(t *testing.T, e *t01Env) {
 	// The behaviour the lane buys: the reader's own file reads on the identity
 	// plan with the compile census untouched.
 	intact := runProbe(t, e.classes, "Probe_reads", e.forge(t, "own.bin", func(b []byte) []byte { return b }))
-	if intact.unknown != 0 || intact.kindMismatch != 0 || intact.refused || intact.n < 1 {
+	if intact.unknown != 0 || intact.refused || intact.n < 1 {
 		t.Errorf("the own-lane read: %+v", intact)
 	}
 }
@@ -344,10 +344,10 @@ func t01R13(t *testing.T, e *t01Env) {
 	// writes nothing either.
 	ragged := e.forge(t, "ragged.bin", func(b []byte) []byte { return append(b, 0) })
 	m := t01Deep(t, e.classes, ragged)
-	if !m.malformed || m.refused || m.n != -1 || m.reason != "none" {
+	if !m.damaged || m.refused || m.n != -1 || m.reason != "none" {
 		t.Errorf("a ragged tail: %+v, want malformed alone and -1", m)
 	}
-	if m.unknown != 0 || m.kindMismatch != 0 || m.widened != 0 || m.clamped != 0 {
+	if m.unknown != 0 || m.widened != 0 {
 		t.Errorf("a ragged tail moved a counter: %+v", m)
 	}
 	for _, field := range []string{"v.x", "v.y", "v.z", "v.w", "seq"} {

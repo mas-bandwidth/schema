@@ -573,10 +573,13 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
 		if count > mine then count = mine end
-		local out = table.create(count)
+		local out = table.create(mine)
+		for i = 1, mine do
+			out[i] = if def ~= nil then def[i] else nil
+		end
 		for i = 1, count do
-			local got = readPair(e, we, re, buf, at + head + (i - 1) * we.size, cx, nil)
-			out[i] = if got == MISSING then nil else got
+			local got = readPair(e, we, re, buf, at + head + (i - 1) * we.size, cx, out[i])
+			if got ~= MISSING then out[i] = got end
 		end
 		return out, count
 	end
@@ -856,7 +859,26 @@ local function put64(buf: buffer, at: number, v: integer) buffer.writeinteger(bu
 -- behind its own eight-byte hash (docs/FIXED-FORM-ALGORITHM.md §2, §3), then
 -- for a root that declares integrity = "crc32c" the four-byte trailer
 -- (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING).
+local modulesById: { [integer]: any } = {}
+
+local function fixedFor(d: any): Fixed?
+	if d == nil then return nil end
+	local mod = modulesById[d.id]
+	if mod == nil or mod[d.name .. "FixedLayout"] == nil then return nil end
+	return {
+		hash = mod[d.name .. "FixedHash"],
+		recordBytes = mod[d.name .. "FixedRecordBytes"],
+		layout = mod[d.name .. "FixedLayout"],
+		lineage = mod[d.name .. "FixedLineage"],
+		floor = mod[d.name .. "FixedFloor"],
+	}
+end
+
 function F.save(d: any, fixed: Fixed, values: { any }): buffer
+	if fixed == nil then
+		fixed = fixedFor(d) :: any
+		if fixed == nil then error(refuse("unknown_form"), 0) end
+	end
 	local layout = fixed.layout
 	local trailer = if declaresIntegrity(d) then TRAILER else 0
 	local bytes = HEADER + 4 + 4 + #layout * ENTRY
@@ -959,8 +981,8 @@ local function sameBytes(file: buffer, at: number, length: number, k: Known): bo
 	return true
 end
 
--- loadTolerant is LOAD(R, file) (docs/FIXED-FORM-ALGORITHM.md §5.3), the one
--- reader, under its TOLERANT name (docs/SPEC-TABLES.md §6.5): every record of
+-- loadWalk is LOAD(R, file) (docs/FIXED-FORM-ALGORITHM.md §5.3), the one
+-- reader, under its walk name (docs/SPEC-TABLES.md §6.5): every record of
 -- the file as a fresh value with the counters on the report, or nil with
 -- report.reason the refusal's name. The steps are §5.3's, in its order: the form byte before the
 -- file's length, the twenty-byte header and its seven reserved bytes, the
@@ -978,7 +1000,7 @@ end
 -- (§5.3, §5.9 #6). `batch_too_large` has no Luau surface: read takes no
 -- capacity, so no batch can outgrow it; `plan_too_large` is the lineage
 -- entry's own lane (a layout past PLAN_MAX entries).
-function F.loadTolerant(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
+function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 	local rep: any = report or {}
 	rep.reason = nil
 	rep.malformed = false
@@ -1000,6 +1022,10 @@ function F.loadTolerant(d: any, fixed: Fixed, file: buffer, report: any?): { any
 	if form == 1 then return no("previous_form") end
 	if form == 2 then return no("message_form_as_file") end
 	if form ~= 3 then return no("newer_form") end
+	if fixed == nil then
+		fixed = fixedFor(d) :: any
+		if fixed == nil then return no("unknown_form") end
+	end
 	if buffer.len(file) < HEADER + LAYOUT_HEADER then return no("truncated", true) end
 	for at = 1, HASH_AT - 1 do
 		if buffer.readu8(file, at) ~= 0 then return no("reserved_not_zero", true) end
@@ -1062,14 +1088,14 @@ function F.loadTolerant(d: any, fixed: Fixed, file: buffer, report: any?): { any
 end
 
 -- read is the PLAIN fixed-form read, and it is STRICT (docs/SPEC-TABLES.md
--- §6.5, Go's <T>FixedLoad over <T>FixedLoadTolerant): nil for every refusal
--- of loadTolerant and for a read whose report the strict read refuses —
+-- §6.5, Go's <T>FixedLoad over <T>FixedLoadWalk): nil for every refusal
+-- of loadWalk and for a read whose report the strict read refuses —
 -- clamped, then kind_mismatch, TableReport.Err()'s order — with report.reason
 -- that name and nothing handed back. unknown and widened alone never refuse.
 -- A fixed refusal keeps its own §3.4 name (Strict error identity).
 function F.read(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 	local rep: any = report or {}
-	local out = F.loadTolerant(d, fixed, file, rep)
+	local out = F.loadWalk(d, fixed, file, rep)
 	if out == nil then return nil end
 	if rep.clamped > 0 then rep.reason = "clamped"; return nil end
 	if rep.kindMismatch > 0 then rep.reason = "kind_mismatch"; return nil end
@@ -1103,7 +1129,10 @@ end
 -- fixed_layout is the FIXED FORM's layout constructor (docs/SPEC-TABLES.md
 -- §3.4): the walk's entries as frozen data a load path reads to build its plan.
 -- A layout is a constant, exactly as a descriptor is.
-function F.fixed_layout(entries: { any }): { any }
+function F.fixed_layout(entries: { any }, mod: any?): { any }
+	if mod ~= nil and #entries >= 1 then
+		modulesById[entries[1].id] = mod
+	end
 	table.freeze(entries :: any)
 	return entries
 end

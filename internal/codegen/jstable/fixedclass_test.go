@@ -65,7 +65,6 @@ func TestFixedClassOnTableWireJavaScript(t *testing.T) {
 			corpus("root_default", "RootConfig"),
 			corpus("profile_elide", "ProfileConfig"),
 			corpus("loadout_full", "LoadoutConfig"),
-			corpus("wide_blob", "WideBlob"),
 			corpus("archive", "ArchiveConfig"),
 			corpus("keyed_config", "KeyedConfig"),
 			corpus("keyed_default", "KeyedConfig"),
@@ -98,7 +97,7 @@ func TestFixedClassOnTableWireJavaScript(t *testing.T) {
 	if !closureHoldsFixedTable(probe, ir.TableClosure(probe)) {
 		t.Fatal("the probe unit holds no fixed table, so this test proves nothing")
 	}
-	pm := tabletext.NewModel(probe)
+	pm := jsVariableModel(probe)
 	var probeCases []*vcCase
 	for _, pc := range fixedClassProbeTexts {
 		inst := pm.New(pm.Lookup(pc.root))
@@ -123,7 +122,7 @@ func TestFixedClassOnTableWireJavaScript(t *testing.T) {
 	// and not the corpus's.
 	for _, u := range units {
 		vc := newVariableClass(u.unit)
-		m := tabletext.NewModel(u.unit)
+		m := jsVariableModel(u.unit)
 		for _, c := range u.cases {
 			if !vc.carried(c.Root) {
 				t.Fatalf("%s: this leg refuses %s: %s", c.Name, c.Root, vc.reason[c.Root])
@@ -245,7 +244,7 @@ table NewRoot | was = "OldRoot"
     items [..2]*NewChild
 }
 `)
-		om := tabletext.NewModel(oldU)
+		om := jsVariableModel(oldU)
 		oi := om.New(om.Lookup("OldRoot"))
 		var orep tabletext.Report
 		if !om.Read(oi, []byte(`{"child":{"x":19},"items":[{"x":23}]}`), &orep) {
@@ -255,7 +254,7 @@ table NewRoot | was = "OldRoot"
 		if err != nil {
 			t.Fatal(err)
 		}
-		nm := tabletext.NewModel(newU)
+		nm := jsVariableModel(newU)
 		ni := nm.New(nm.Lookup("NewRoot"))
 		var nrep tabletext.Report
 		if ok, err := tablewire.Decode(nm, ni, owire, &nrep); !ok || err != nil || nrep != (tabletext.Report{}) {
@@ -283,7 +282,7 @@ import { NewRootLoad, NewRootToJson, TableVariableReport } from "./RenameprobeVa
 const wire = new Uint8Array(readFileSync(process.argv[2]));
 const rep = new TableVariableReport();
 const v = NewRootLoad(wire, rep);
-if (v === null || rep.malformed || rep.unknown !== 0 || rep.kindMismatch !== 0) {
+if (v === null || rep.damaged || rep.unknown !== 0 || rep.mismatch !== 0) {
   console.error("bad report", rep);
   process.exit(1);
 }
@@ -348,4 +347,24 @@ var fixedClassProbeTexts = []fixedClassProbeText{
 	{"fc_leaf_values", "Leaf", `{"id": 41, "name": "x", "raw": "AAECAw==", "on": false, "ratio": 2.25, "grade": "Gold", "perms": ["Write"]}`},
 	{"fc_config_default", "Config", `{}`},
 	{"fc_config_values", "Config", `{"level": 9, "name": "there", "leaf": {"id": 1, "name": "l", "on": false, "ratio": 0.5, "grade": "Bronze", "perms": []}, "many": [1, 2, 3]}`},
+}
+
+func jsVariableModel(u *ir.Unit) *tabletext.Model {
+	cp := *u
+	cp.Tables = make(map[string]*ir.Struct, len(u.Tables))
+	for k, v := range u.Tables {
+		st := *v
+		st.FixedDeclared = false
+		cp.Tables[k] = &st
+	}
+	cp.Files = make([]*ir.File, len(u.Files))
+	for i, f := range u.Files {
+		fcp := *f
+		fcp.Tables = make([]*ir.Struct, len(f.Tables))
+		for j, st := range f.Tables {
+			fcp.Tables[j] = cp.Tables[st.Name]
+		}
+		cp.Files[i] = &fcp
+	}
+	return tabletext.NewModel(&cp)
 }

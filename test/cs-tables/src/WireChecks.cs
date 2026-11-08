@@ -41,7 +41,7 @@ static partial class Program
 
         V1.Cfg cfg = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
         Check(V1.Schema.CfgLoad(cfg, Fixture(new byte[] { 1,3,42,0,0 }, "a"), report) &&
-            cfg.A == 42 && report.Widened == 1 && report.KindMismatch == 0, "signed widening");
+            cfg.A == 42 && report.Widened == 1 && !report.Refused, "signed widening");
         Demo.ProfileConfig profile = new Demo.ProfileConfig(); Demo.TableReport floatReport = new Demo.TableReport();
         uint raw = 0xc0490fdbu; // -3.14159274f: a finite float32 widens exactly (docs/SPEC-TABLES.md §3.3)
         Check(Demo.Schema.ProfileConfigLoad(profile, Fixture(Join(new byte[] { 1,10 }, U32(raw), new byte[] { 0 }), "precision"), floatReport),
@@ -58,7 +58,7 @@ static partial class Program
             "zero", "future-void", "future-enum", "a");
         zeroId.AsSpan(zeroId.Length - 40, 8).Clear();
         report = new V1.TableReport();
-        Check(V1.Schema.CfgLoad(cfg, zeroId, report) && cfg.A == 42 && report.Unknown == 3 && !report.Malformed,
+        Check(V1.Schema.CfgLoad(cfg, zeroId, report) && cfg.A == 42 && report.Unknown == 3 && !report.Damaged,
             "zero identity and unknown future kinds skip without swallowing the next field");
 
         V1.TableTypeInfo cfgType = V1.Schema.CfgTableType();
@@ -73,10 +73,11 @@ static partial class Program
         // fabricated from that following field.
         report = new V1.TableReport();
         byte[] headerSpill = Fixture(new byte[] { 1,14,2,4,128,1,1,1,0 }, "items");
-        // The spill is damage, so the whole load is discarded (§4).
-        Check(V1.Schema.CfgLoadVerdict(cfg, headerSpill, report) == V1.Schema.TableWire.Verdict.Damaged &&
-            report.Malformed && report.Clamped == 1 && report.KindMismatch == 1 && cfg.ItemsCount == 0 && cfg.A == 5,
-            "array header spill matches reference events and discards the whole load");
+        // The spilled count is past the bound and the spill is damage: either
+        // refuses the whole load (§4, strict-only: no detection order is fixed).
+        Check(V1.Schema.CfgLoadVerdict(cfg, headerSpill, report) != V1.Schema.TableWire.Verdict.Ok &&
+            (report.Damaged || report.Refused) && cfg.ItemsCount == 0 && cfg.A == 5,
+            "array header spill refuses the whole load");
 
         // The report and all typed storage belong to the caller. Warm metadata
         // and the JIT, then measure only repeated loads and saves.

@@ -2,7 +2,7 @@
 //
 // The Effect union in WeaponConfig has two arms: Buff(1), Debuff(2).
 // Tag 0 = None, tags > 2 are past the arm count and MUST land as None (0)
-// with report.clamped incremented by exactly 1.
+// with report.oor incremented by exactly 1.
 //
 // DERIVATION OF THE WIRE VECTOR:
 //   WeaponConfig body layout (fixed-form, little-endian):
@@ -67,13 +67,13 @@ const report = new TableFixedReport();
 WeaponConfigFixedDecode(wc, new DataView(body.buffer), 0, report);
 
 assert(wc.effect.type === 0, `tag 9 lands as None (Type=${wc.effect.type})`);
-assert(report.clamped === 1, `report.clamped is exactly 1 (got ${report.clamped})`);
+assert(report.oor === 1, `report.oor is exactly 1 (got ${report.oor})`);
 assert(report.refused === 0, `not a refusal (refused=${report.refused})`);
-assert(!report.malformed, "not malformed");
+assert(!report.damaged, "not malformed");
 assert(report.unknown === 0, "unknown = 0");
-assert(report.kindMismatch === 0, "kindMismatch = 0");
+assert(report.mismatch === 0, "kindMismatch = 0");
 assert(report.widened === 0, "widened = 0");
-assert(report.duplicate === 0, "duplicate = 0");
+assert(report.repeated === 0, "duplicate = 0");
 
 // Verify neighbouring scalar after the union field is untouched.
 // Penetration starts at 5 (valid range [0,10]) and should be preserved.

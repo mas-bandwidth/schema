@@ -181,7 +181,7 @@ public final class Driver {
         if (wire == null) { return "the save refused a finite value"; }
         TableVariable.Report r = new TableVariable.Report();
         RootVariable.Value back = RootVariable.load(wire, r);
-        if (back == null || r.refused || r.malformed) { return "the load refused: " + r.reason; }
+        if (back == null || r.refused || r.damaged) { return "the load refused: " + r.reason; }
         long got = bits.apply(back);
         return got == want ? "" : String.format("landed 0x%x, want 0x%x", got, want);
     }
@@ -248,8 +248,8 @@ public final class Driver {
         FxFixed.Value[] back = { new FxFixed.Value() };
         TableFixed.Report r = new TableFixed.Report();
         int n = FxFixed.load(back, 1, file, TableFixed.plan(1 << 14), new short[1 << 14], FxFixed.image(), r);
-        if (n == -1 && r.refused && r.reason == TableFixed.Reason.nonFiniteFloat && field.equals(r.nonFiniteFloat) && r.clamped == 0) { return ""; }
-        return "n=" + n + " refused=" + r.refused + " reason=" + r.reason + " field=" + r.nonFiniteFloat + " clamped=" + r.clamped;
+        if (n == -1 && r.refused && r.reason == TableFixed.Reason.nonFiniteFloat && field.equals(r.nonFiniteFloat) && !r.damaged) { return ""; }
+        return "n=" + n + " refused=" + r.refused + " reason=" + r.reason + " field=" + r.nonFiniteFloat + " damaged=" + r.damaged;
     }
 
     static String refusesWrite(Set s, long bits) {

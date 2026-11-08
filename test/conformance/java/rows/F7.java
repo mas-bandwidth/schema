@@ -37,8 +37,8 @@ public class F7 {
                 failed++;
                 continue;
             }
-            if (!rep.malformed) {
-                System.out.println("FAIL k=" + k + ": report.malformed=false, want true");
+            if (!rep.damaged) {
+                System.out.println("FAIL k=" + k + ": report.damaged=false, want true");
                 failed++;
                 continue;
             }
@@ -57,11 +57,11 @@ public class F7 {
         TableFixed.Report rep = new TableFixed.Report();
         rep.reset();
         boolean ret = TableFixed.readHeader(full, head, rep);
-        if (rep.malformed) {
-            System.out.println("FAIL k=20: report.malformed=true from a 20-byte file (incorrect)");
+        if (rep.damaged) {
+            System.out.println("FAIL k=20: report.damaged=true from a 20-byte file (incorrect)");
             failed++;
         } else {
-            System.out.println("INFO k=20: malformed=" + rep.malformed + " refused=" + rep.refused + " (not under 20; may fail on layout)");
+            System.out.println("INFO k=20: malformed=" + rep.damaged + " refused=" + rep.refused + " (not under 20; may fail on layout)");
             passed++;
         }
 

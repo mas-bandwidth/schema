@@ -20,7 +20,7 @@ static partial class Program
         Array.Fill(source.Values,(byte)0);
         byte[] file=new byte[A.Schema.RowMeasure(source)]; A.Schema.RowSave(source,file);
         var target=new B.Row(); var report=new B.TableReport();
-        Check(B.Schema.RowLoad(target,file,report) && report.Widened==1 && !report.Malformed && target.ValuesCount==20 && target.Past==91,"scalar list widens once and reads the following field");
+        Check(B.Schema.RowLoad(target,file,report) && report.Widened==1 && !report.Damaged && target.ValuesCount==20 && target.Past==91,"scalar list widens once and reads the following field");
         long need=B.Schema.RowLoadMeasure(file);
         Check(need>=B.Schema.RowTableType().StorageSize+20*8,"widening measure reserves destination-width elements");
         byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
@@ -28,7 +28,7 @@ static partial class Program
         {
             new Span<byte>(region+need,64).Fill(0xa5); report=new B.TableReport();
             var root=B.Schema.RowLoad((IntPtr)region,need,file,report);
-            Check(root!=null && root->Values.Count==20 && root->Past==91 && report.Widened==1 && !report.Malformed,"native widened list lands in its exact measured extent");
+            Check(root!=null && root->Values.Count==20 && root->Past==91 && report.Widened==1 && !report.Damaged,"native widened list lands in its exact measured extent");
             var values=B.TableArena.At<ulong>(ref root->Values.Reference);
             for(int i=0;i<20;i++) { Check(values[i]==0,"widened native element has destination width"); }
             for(int i=0;i<64;i++) { Check(region[need+i]==0xa5,"widened list preserves region guard"); }

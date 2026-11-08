@@ -127,8 +127,8 @@ function makeAnnounce(entriesBytes) {
   const out = [new Msg()];
   const rrep = {};
   const n = MsgLoadMessages(out, v, batch, rrep);
-  if (n !== 1 || rrep.Malformed || globalThis.__skipIters !== 0) {
-    throw new Error("case 1: n=" + n + " malformed=" + rrep.Malformed + " iters=" + globalThis.__skipIters);
+  if (n !== 1 || rrep.Damaged || globalThis.__skipIters !== 0) {
+    throw new Error("case 1: n=" + n + " malformed=" + rrep.Damaged + " iters=" + globalThis.__skipIters);
   }
 }
 
@@ -155,8 +155,8 @@ function makeAnnounce(entriesBytes) {
   const out = [new Msg()];
   const rrep = {};
   const n = MsgLoadMessages(out, v, batch, rrep);
-  if (n !== 0 || !rrep.Malformed || globalThis.__skipIters !== 1) {
-    throw new Error("case 2: n=" + n + " malformed=" + rrep.Malformed + " iters=" + globalThis.__skipIters);
+  if (n !== 0 || !rrep.Damaged || globalThis.__skipIters !== 1) {
+    throw new Error("case 2: n=" + n + " malformed=" + rrep.Damaged + " iters=" + globalThis.__skipIters);
   }
 }
 console.log("ok");

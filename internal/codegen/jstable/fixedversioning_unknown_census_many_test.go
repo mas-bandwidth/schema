@@ -31,7 +31,7 @@ const plan = TNewPlan(4096, 4096);
 plan.image.fill(0x5A);
 const n = TLoad(back, back.length, data, data.length, plan, report);
 if (n !== 3) { fail("the manifest says this file carries 3 records, not " + n + " " + reason(r)); }
-if (r.refused !== 0 || r.malformed) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
+if (r.refused !== 0 || r.damaged) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
 const want = [10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 33];
 for (let rec = 0; rec < 3; rec++) {
   const got = back[rec];
@@ -47,7 +47,7 @@ for (let rec = 0; rec < 3; rec++) {
 if (r.unknown !== 1) {
   fail("unknown === 1 (once per endpoint, NEVER per record): Item.drop is one field of one endpoint, and three records owe one census, not " + r.unknown);
 }
-if (r.kindMismatch !== 0 || r.widened !== 0 || r.clamped !== 0 || r.duplicate !== 0) {
+if (r.mismatch !== 0 || r.widened !== 0 || r.oor !== 0 || r.repeated !== 0) {
   fail("a removed field is unknown, never a moved kind: " + reason(r));
 }
 `, file)

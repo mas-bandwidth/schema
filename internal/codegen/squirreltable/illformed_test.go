@@ -61,11 +61,11 @@ func TestJSONRefusesIllFormedAtBound(t *testing.T) {
 local schema = dofile("tabledemo/schema_module.nut", true);
 local T = schema.require(%q);
 local J = schema.require("schema_table_json");
-local r = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-  malformed = false, refused = false };
-J.FromJsonTolerant(T, "RootConfig", inputs["illformed"], r);
+local r = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
+  bodyDamaged = false, refused = false };
+J.fromJsonWalk(T, "RootConfig", inputs["illformed"], r);
 local why = ("reason" in r) ? ((r.reason == null) ? "-" : r.reason) : "-";
-print((r.malformed ? "refused" : "read") + "|" + why + "\n");
+print((r.bodyDamaged ? "refused" : "read") + "|" + why + "\n");
 `, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(main))
 	got := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"illformed": input})))

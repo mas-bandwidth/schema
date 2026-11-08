@@ -38,7 +38,7 @@ int? _timestampNanos(String s) {
 }
 
 int _timestampField(dynamic value,TableTextReport report,[int previous=0]){
-  if(value is! String){report.kindMismatch++;return previous;}
+  if(value is! String){report.refuse('kind_mismatch');return previous;}
   final nanos=_timestampNanos(value);
   if(nanos==null)throw const FormatException('timestamp_not_rfc3339');
   return nanos;

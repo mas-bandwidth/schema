@@ -139,8 +139,8 @@ public final class W7 {
         if (n != 1) {
             System.out.println("FAIL identity load returned " + n);
             fail++;
-        } else if (report.malformed || report.refused) {
-            System.out.println("FAIL identity load: malformed=" + report.malformed
+        } else if (report.damaged || report.refused) {
+            System.out.println("FAIL identity load: malformed=" + report.damaged
                     + " refused=" + report.refused);
             fail++;
         } else {
@@ -168,7 +168,7 @@ public final class W7 {
 
         TableFixed.run(plan, 5, remap, recordBody, 0, recordBody.length, image2, report2);
 
-        if (report2.malformed) {
+        if (report2.damaged) {
             System.out.println("FAIL compiled plan: malformed");
             fail++;
         } else if (report2.refused) {

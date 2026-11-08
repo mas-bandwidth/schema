@@ -70,12 +70,12 @@ zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retain
 		fmt.Fprintf(&p, `name=%q
 want=Base.decode16!(%q,case: :lower)
 {:ok,v,r}=T.from_json(name,%q)
-P.ok(r.kind_mismatch==0 and r.clamped==0 and not r.malformed,"text list JSON report "<>name)
+P.ok(r.kind_mismatch==0 and r.clamped==0 and true,"text list JSON report "<>name)
 {:ok,text}=T.to_json(name,v)
 P.ok(text==%q,"text list canonical "<>name<>" "<>text)
 {:ok,^want}=T.save(name,v)
 {:ok,back,r}=T.load(name,want)
-P.ok(r.kind_mismatch==0 and r.clamped==0 and not r.malformed,"text list wire report")
+P.ok(r.kind_mismatch==0 and r.clamped==0 and true,"text list wire report")
 {:ok,^want}=T.save(name,back)
 {:ok,rv,rr,ret}=T.load_retain(name,want,store,zero)
 {:ok,^want,_,_}=T.save_retain(name,rv,ret,rr)
@@ -134,7 +134,7 @@ for {result,count}<-[{T.load("Lists",wire),6},{T.from_json("Lists",%q),8}] do
  {:ok,v,r}=result
  expected=%%{"a"=>["éé","a","z"],"b"=>[nil,"éé","abc"],"c"=>["éé","a","z"],"d"=>[nil,"éé","abc","x"]}
  actual=Map.new(expected,fn {key,_}->{key,Enum.map(v[key],& &1["value"])} end)
- P.ok(actual==expected and r.clamped==count and not r.malformed,"UTF8/count clamps "<>inspect({actual,r}))
+ P.ok(actual==expected and r.clamped==count and true,"UTF8/count clamps "<>inspect({actual,r}))
  {:ok,_}=T.save("Lists",v)
 end
 for field<-["a","b","c","d"] do

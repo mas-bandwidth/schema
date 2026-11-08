@@ -583,7 +583,7 @@ func (g *blockGen) emitOpen() {
 	g.f("    // with this layout wrote, so there is nothing to validate and nothing to\n")
 	g.f("    // fix up. On any failure it answers null and points at nothing.\n")
 	g.f("    //\n")
-	g.f("    // There is ONE entry point and no tolerant twin: the block form is\n")
+	g.f("    // There is ONE entry point: the block form is\n")
 	g.f("    // same-build by construction — both sides generated from one declaration\n")
 	g.f("    // at one build — so a consumer older than its producer is not a case. A\n")
 	g.f("    // mismatch is a refusal; regenerate both sides. Data that must outlive the\n")

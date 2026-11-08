@@ -235,7 +235,7 @@ function checkCase(name, wire, expectOK) {
   const values = [v0, v1];
   const rep = {};
   const count = m.RootLoadMessages(values, vocab, wire, rep);
-  const ok = rep.Verdict === 0 && !rep.Malformed && !rep.Refused;
+  const ok = rep.Verdict === 0 && !rep.Damaged && !rep.Refused;
   if (expectOK) {
     if (ok && count === 2 && rep.Unknown === 1 && values[0].a === 42 && values[1].a === 99) {
       console.log("PASS " + name);
@@ -244,7 +244,7 @@ function checkCase(name, wire, expectOK) {
       failed = true;
     }
   } else {
-    if (!ok && count === 0 && rep.Malformed && !rep.Refused && (values[0].a === 0 || values[0].a === -7) && values[1].a === -7) {
+    if (!ok && count === 0 && rep.Damaged && !rep.Refused && (values[0].a === 0 || values[0].a === -7) && values[1].a === -7) {
       console.log("PASS " + name);
     } else {
       console.log("FAIL " + name + ": ok=" + ok + " count=" + count + " rep=" + JSON.stringify(rep) + " a0=" + values[0].a + " a1=" + values[1].a);

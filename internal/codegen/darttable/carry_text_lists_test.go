@@ -7,6 +7,7 @@ import (
 	"maps"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
@@ -59,13 +60,13 @@ void main(){
 			t.Fatal(err)
 		}
 		fmt.Fprintf(&b, `{final r=w.TableTextReport();final v=w.rootFromJson(%q,r);
-check(r.clamped==%d&&r.kindMismatch==%d,'JSON event counts%d');
+check(!r.refused,'JSON event counts%d');
 check(w.rootToJson(v)==%q,'flat JSON%d');final wire=w.rootWireSave(v);check(hex(wire)==%q,'independent wire%d');
-final wr=w.TableWireReport();final back=w.rootWireLoad(wire,wr);check(!wr.malformed&&!wr.refused&&hex(w.rootWireSave(back))==hex(wire),'wire roundtrip');
+final wr=w.TableWireReport();final back=w.rootWireLoad(wire,wr);check(!wr.refused&&hex(w.rootWireSave(back))==hex(wire),'wire roundtrip');
 final store=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport();final retained=w.rootWireLoadRetain(wire,store,rr);
-check(!rr.malformed&&hex(w.rootWireSaveRetain(retained,store,w.TableWireReport()))==hex(wire),'retained text list');
+check(!rr.refused&&hex(w.rootWireSaveRetain(retained,store,w.TableWireReport()))==hex(wire),'retained text list');
 check(w.rootWireMeasure(wire)>0,'text list region measure');
-`, input, 0, 0, i, string(text)+"\n", i, hex.EncodeToString(wire), i)
+`, input, i, string(text)+"\n", i, hex.EncodeToString(wire), i)
 		for _, big := range []bool{false, true} {
 			pin, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if err != nil {
@@ -85,9 +86,10 @@ check(w.rootWireMeasure(wire)>0,'text list region measure');
 		wire = append(wire, 0)
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId("names"))
 		wire = binary.LittleEndian.AppendUint64(wire, 1)
-		damaged := len(payload) < 4 || payload[3] == 0 || payload[3] == 0xff
-		fmt.Fprintf(&b, `{final r=w.TableWireReport();final v=w.rootWireLoad(bytes(%q),r);check(r.malformed==%t,'handframed text validity');
-if(!r.malformed){check(v.names.length==1&&v.names[0].value.length>0&&r.clamped==1&&r.clampedField=='Root.names','bounded UTF8 clamp named');}}
+		damaged := len(payload) < 4 || payload[3] == 0 || payload[3] == 0xff || (len(payload) > 3 && utf8.RuneCount(payload[3:]) > 8)
+		fmt.Fprintf(&b, `{final r=w.TableWireReport();final v=w.rootWireLoad(bytes(%q),r);check(r.refused==%t,'handframed text validity: ${r.reason}');
+if(r.refused){check(r.reason=='length_over_bound'||r.reason=='wire_damaged','handframed refusal named: ${r.reason}');}
+if(!r.refused){check(v.names.length==1&&v.names[0].value.length>0,'bounded UTF8 read');}}
 `, hex.EncodeToString(wire), damaged)
 	}
 	b.WriteString(`{
@@ -95,7 +97,7 @@ final authored=w.Root();
 authored.names=[w.RootNamesText()..value='a',w.RootNamesText()..value='é',w.RootNamesText()];
 authored.maybe=[w.RootMaybeText()..hasValue=true..value='x',w.RootMaybeText(),w.RootMaybeText()..hasValue=true];
 check(w.rootFromJson(w.rootToJson(authored)).maybe[1].hasValue==false&&w.rootFromJson(w.rootToJson(authored)).maybe[2].hasValue,'absent versus present empty');
-final r=w.TableTextReport();w.rootFromJson('{"names":["123456789"]}',r);check(r.clampedField=='Root.names','named JSON clamp');
+final r=w.TableTextReport();w.rootFromJson('{"names":["123456789"]}',r);check(r.refused&&r.reason=='length_over_bound','named JSON length refusal: ${r.reason}');
 for(final bad in ['123456789','a\u0000b',String.fromCharCode(0xd800)]){
  final v=w.Root()..names=[w.RootNamesText()..value=bad];
  var wireRefused=false;

@@ -108,12 +108,12 @@ const bytes=s=>new Uint8Array(Buffer.from(s,"hex")),hex=b=>b===null?"null":Buffe
 const expect=(ok,msg)=>{if(!ok)throw new Error(msg);};
 for(const c of spec.rows){
  const report=new m.TableVariableReport(),v=m[c.root+"FromJson"](c.input,report);
- expect(v!==null&&!report.malformed&&!report.kindMismatch,"JSON "+c.root+" "+JSON.stringify(report));
+ expect(v!==null&&!report.damaged&&!report.mismatch,"JSON "+c.root+" "+JSON.stringify(report));
  expect(m[c.root+"ToJson"](v)===c.text,"JSON pin "+c.root);
  expect(hex(m[c.root+"Save"](v))===c.wire,"wire pin "+c.root);
  expect(m[c.root+"Measure"](v)===c.wire.length/2,"measure "+c.root);
  const rr=new m.TableVariableReport(),back=m[c.root+"Load"](bytes(c.wire),rr);
- expect(back!==null&&!rr.malformed&&!rr.kindMismatch&&m[c.root+"ToJson"](back)===c.text,"wire read "+c.root);
+ expect(back!==null&&!rr.damaged&&!rr.mismatch&&m[c.root+"ToJson"](back)===c.text,"wire read "+c.root);
  expect(m[c.root+"LoadMeasure"](bytes(c.wire))===c.region,"region measure "+c.root);
  const size=m[c.root+"CookMeasure"](v),cook=new Uint8Array(Math.max(size,0));
  expect(size>0&&m[c.root+"CookFrom"](v,cook,1)&&hex(cook)===c.cook,"cook pin "+c.root+" got="+hex(cook)+" want="+c.cook);
@@ -128,9 +128,9 @@ for(const mode of ["json","wire"]){
  const r=new m.TableVariableReport(),t=new m.TableVariableReport();
  const plain=mode==="json"?m.ListsFromJson(spec.input,r):m.ListsLoad(bytes(spec.wide),r);
  const limited=mode==="json"?m.TotalsFromJson(spec.input,t):m.TotalsLoad(bytes(spec.wide),t);
- expect(plain!==null&&JSON.stringify(vals(plain))===JSON.stringify(expected)&&r.clamped===6,"element/count clamps "+mode+" "+JSON.stringify(r)+" "+JSON.stringify(plain));
- expect(limited!==null&&JSON.stringify(vals(limited))===JSON.stringify(totalExpected)&&t.clamped===(mode==="wire"?10:8),"total prefix "+mode+" "+JSON.stringify(t)+" "+JSON.stringify(limited));
- expect(t.clampedField==="Totals.a","first named clamp "+mode+" "+t.clampedField);
+ expect(plain!==null&&JSON.stringify(vals(plain))===JSON.stringify(expected)&&r.oor===6,"element/count clamps "+mode+" "+JSON.stringify(r)+" "+JSON.stringify(plain));
+ expect(limited!==null&&JSON.stringify(vals(limited))===JSON.stringify(totalExpected)&&t.oor===(mode==="wire"?10:8),"total prefix "+mode+" "+JSON.stringify(t)+" "+JSON.stringify(limited));
+ expect(t.oorField==="Totals.a","first named clamp "+mode+" "+t.oorField);
 }
 for(const root of ["Lists","Totals"]){
  for(const field of ["a","b","c","d"]){
@@ -148,13 +148,13 @@ for(const root of ["Lists","Totals"]){
 }
 for(const field of ["a","b","c","d"]){
  const r=new m.TableVariableReport();
- expect(m.ListsFromJson(JSON.stringify({[field]:["x\u0000y"]}),r)===null&&r.malformed,"JSON zero "+field);
+ expect(m.ListsFromJson(JSON.stringify({[field]:["x\u0000y"]}),r)===null&&r.damaged,"JSON zero "+field);
 }
 for (const field of ["a","b","c","d"]) {
  const source=new m.Lists(); source[field]=[{value:"xyz"}]; const wire=m.ListsSave(source);
  const at=Buffer.from(wire).indexOf(Buffer.from("xyz")); expect(at>=0,"mutation marker");
  for (const byte of [0,255]) { const bad=wire.slice();bad[at]=byte;const r=new m.TableVariableReport();
-  expect(m.ListsLoad(bad,r)===null&&r.malformed,"malformed wire text "+field+" "+byte);
+  expect(m.ListsLoad(bad,r)===null&&r.damaged,"malformed wire text "+field+" "+byte);
  }
 }
 const req=new m.Required();expect(m.RequiredSave(req)!==null,"required empty text list writer");

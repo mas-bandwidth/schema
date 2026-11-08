@@ -211,13 +211,13 @@ local check = function(name, wire, expectOK) {
   values[0].A = -7; values[1].A = -7;
   local rep = {};
   local count = T.RootLoadMessages(values, v, wire, rep);
-  local malformed = ("malformed" in rep) && rep.malformed;
+  local bodyDamaged = ("bodyDamaged" in rep) && rep.bodyDamaged;
   local refused = ("refused" in rep) && rep.refused;
   local unknown = ("unknown" in rep) ? rep.unknown : 0;
   local good;
-  if (expectOK) good = !malformed && !refused && count == 2 && unknown == 1 && values[0].A == 42 && values[1].A == 99;
-  else good = malformed && !refused && count == 0 && values[0].A == 0 && values[1].A == 0;
-  print((good ? "PASS " : "FAIL ") + name + " count=" + count + " malformed=" + malformed + " unknown=" + unknown + "\n");
+  if (expectOK) good = !bodyDamaged && !refused && count == 2 && unknown == 1 && values[0].A == 42 && values[1].A == 99;
+  else good = bodyDamaged && !refused && count == 0 && values[0].A == 0 && values[1].A == 0;
+  print((good ? "PASS " : "FAIL ") + name + " count=" + count + " bodyDamaged=" + bodyDamaged + " unknown=" + unknown + "\n");
 };
 `, squirreltable.ModuleName(u))
 	for _, c := range cases {

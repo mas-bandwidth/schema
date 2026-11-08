@@ -102,8 +102,8 @@ public final class OptionalArraysValidData {
     // a report nobody moved: valid data reads clean, every counter zero, no
     // refusal — the "acceptance" half of the cell's title.
     private static boolean clean(TableFixed.Report r) {
-        return r.clamped == 0 && r.widened == 0 && r.unknown == 0 && r.kindMismatch == 0
-                && !r.malformed && !r.refused;
+        return r.widened == 0 && r.unknown == 0
+                && !r.damaged && !r.refused;
     }
 
     // THE WIRE ID IS fnv1a64 OF THE WIRE NAME (docs/SPEC-TABLES.md §5), and
@@ -172,9 +172,9 @@ public final class OptionalArraysValidData {
             System.out.println("       expect = " + expectedHex);
         }
         if (!clean(r)) {
-            System.out.println("       report: clamped=" + r.clamped + " widened=" + r.widened
-                    + " unknown=" + r.unknown + " kindMismatch=" + r.kindMismatch
-                    + " malformed=" + r.malformed + " refused=" + r.refused + " " + r.reason);
+            System.out.println("       report: widened=" + r.widened
+                    + " unknown=" + r.unknown
+                    + " damaged=" + r.damaged + " refused=" + r.refused + " " + r.reason);
         }
     }
 

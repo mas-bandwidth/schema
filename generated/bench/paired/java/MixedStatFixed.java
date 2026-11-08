@@ -58,16 +58,16 @@ public final class MixedStatFixed {
         v.statId = TableFixed.get32(b, at + 0);
         if (v.statId > 255L) {
             v.statId = (int) (255L);
-            r.clamped++;
+            r.refuse(TableFixed.Reason.outOfRange);
         } // bits(8) clamps to 2^N - 1
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -512L) {
                 q = -512L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             } else if (q > 511L) {
                 q = 511L;
-                r.clamped++;
+                r.refuse(TableFixed.Reason.outOfRange);
             }
             v.delta = (int) (q);
         }

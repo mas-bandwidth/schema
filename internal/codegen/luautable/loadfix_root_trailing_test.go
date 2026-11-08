@@ -108,6 +108,7 @@ func loadFixAstage(t *testing.T, wire []byte) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	u.Tables["ProfileConfig"].FixedDeclared = false
 	files, err := luau.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +131,7 @@ local St = require("./schema_tables")
 require("./TablesTable")
 require("./NestedTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.loadTolerant("ProfileConfig", inputs.wire, report)
+local v = load.loadWalk("ProfileConfig", inputs.wire, report)
 local out = save.save(St.lookup("ProfileConfig"), v)
 local saved = "REFUSED"
 if out ~= nil then
@@ -209,7 +210,7 @@ func TestLuauLoadRootTrailingBytesAgreesWithTheEngine(t *testing.T) {
 
 	var base []byte
 	for _, row := range manifestRows(t) {
-		if row.kind == "instance" && row.unit == "tabledemo" && row.root == "ProfileConfig" && row.caseName == "profile_elide" {
+		if row.unit == "tabledemo" && row.root == "ProfileConfig" && row.caseName == "previous_form_profile_elide" {
 			b, err := os.ReadFile(filepath.Join(root, row.wire))
 			if err != nil {
 				t.Fatal(err)
@@ -236,6 +237,7 @@ func TestLuauLoadRootTrailingBytesAgreesWithTheEngine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	u.Tables["ProfileConfig"].FixedDeclared = false
 	m := tabletext.NewModel(u)
 	def := m.Lookup("ProfileConfig")
 	if def == nil {

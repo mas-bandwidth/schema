@@ -39,7 +39,7 @@ public final class FixedTableMessage {
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
-                r.report.malformed = true;
+                r.report.damaged = true;
                 return false;
             }
             if (entry == null) {
@@ -54,9 +54,9 @@ public final class FixedTableMessage {
                     if (TableMessage.entryWidens(entry, 13, 0)) {
                         widened = true;
                     } else {
-                        r.report.kindMismatch++;
+                        r.report.refuse("kind_mismatch");
                         if (!TableMessage.skip(r, entry)) {
-                            r.report.malformed = true;
+                            r.report.damaged = true;
                             return false;
                         }
                         continue;
@@ -71,7 +71,7 @@ public final class FixedTableMessage {
             } else {
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
-                    r.report.malformed = true;
+                    r.report.damaged = true;
                     return false;
                 }
             }
@@ -179,7 +179,7 @@ public final class FixedTableMessage {
             report.zero();
         }
         if (data == null || data.length == 0) {
-            report.malformed = true;
+            report.damaged = true;
             return 0;
         }
         if ((data[0] & 0xff) != 2) {
@@ -193,7 +193,7 @@ public final class FixedTableMessage {
             return 0;
         }
         if (data.length < 2) {
-            report.malformed = true;
+            report.damaged = true;
             return 0;
         }
         int count = (data[1] & 0xff) + 1;
@@ -215,8 +215,8 @@ public final class FixedTableMessage {
                 }
                 return 0;
             }
-            if (!read || report.malformed) {
-                report.malformed = true;
+            if (!read || report.damaged) {
+                report.damaged = true;
                 for (int j = 0; j <= i; j++) {
                     reset(values[j]);
                 }
@@ -224,7 +224,7 @@ public final class FixedTableMessage {
             }
         }
         if (!r.align() || r.at != r.totalBits) {
-            report.malformed = true;
+            report.damaged = true;
             for (int j = 0; j < count; j++) {
                 reset(values[j]);
             }

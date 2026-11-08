@@ -19,8 +19,8 @@ import (
 // and tblw2.Fleet (corpus seeds w1_fleet, w2_fleet) at kind mutant #140: the
 // root node-table field's kind byte is 0 instead of 12, so the numbering is
 // damaged (docs/SPEC-TABLES.md §3.1), and DAMAGE DISCARDS THE WHOLE LOAD (§4):
-// the generated Java reader owes the refusal, malformed, and no counter or
-// saved byte is compared.
+// the generated Java reader owes the refusal (no value, the report refused or
+// damaged), and no counter or saved byte is compared.
 func TestJavaFixTblwFleetNodeTableKindRefused(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
@@ -87,9 +87,9 @@ func TestJavaFixTblwFleetNodeTableKindRefused(t *testing.T) {
         byte[] data=hex(args[0]);
         %s.TableVariable.Report report=new %s.TableVariable.Report();
         %s.%sVariable.Value v=%s.%sVariable.load(data,report);
-        if(v==null){System.out.println("null "+report.unknown+","+report.kindMismatch+","+report.widened+","+report.clamped+","+report.duplicate+","+report.malformed+","+report.refused);return;}
+        if(v==null){System.out.println("null "+(report.damaged||report.refused));return;}
         byte[] saved=%s.%sVariable.save(v);
-        System.out.println(report.unknown+","+report.kindMismatch+","+report.widened+","+report.clamped+","+report.duplicate+","+report.malformed+","+report.refused+"|"+hexstr(saved));
+        System.out.println("value "+report.unknown+","+report.widened+"|"+hexstr(saved));
     }
 }`, pkg, pkg, pkg, tc.root, pkg, tc.root, pkg, tc.root)
 			if err := os.WriteFile(driver, []byte(dsrc), 0o644); err != nil {
@@ -119,8 +119,7 @@ func TestJavaFixTblwFleetNodeTableKindRefused(t *testing.T) {
 			if _, err := tablewire.DecodeRegion(model, oracle, wire, oreport); !tablewire.ReadRefusal(err) {
 				t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, oreport)
 			}
-			counts := strings.TrimPrefix(strings.SplitN(line, "|", 2)[0], "null ")
-			if parts := strings.Split(counts, ","); len(parts) != 7 || parts[5] != "true" {
+			if line != "null true" {
 				t.Errorf("Java did not refuse a damaged load: %q", line)
 			}
 		})

@@ -100,18 +100,13 @@ table Shapes {
 		{"Exact", `{}`, "ver", 0}, {"Exact", `{"ver":7}`, "", 0},
 	} {
 		fmt.Fprintf(&b, `{final r=w.TableTextReport();var reason='';try{w.%sFromJson(%q,r);}on FormatException catch(e){reason=e.message.toString();}
-check(reason==%q&&r.missingRequired==%d&&r.kindMismatch==%d,%q);}
+check(reason==%q,%q);}
 `, dartName(tc.root), tc.input, func() string {
 			if tc.missing != "" {
 				return "missing_required: " + tc.missing
 			}
 			return ""
-		}(), func() int {
-			if tc.missing != "" {
-				return 1
-			}
-			return 0
-		}(), tc.km, tc.root+" "+tc.input)
+		}(), tc.root+" "+tc.input)
 	}
 	m := tabletext.NewModel(u)
 	pins := requiredDartGoPins(t, u, []string{"RequiredValue", "RequiredDefault", "RequiredArray", "RequiredEmpty", "Keyed", "Shapes", "Many"})
@@ -125,10 +120,10 @@ check(reason==%q&&r.missingRequired==%d&&r.kindMismatch==%d,%q);}
 			t.Errorf("independent Go/neutral required %s differs: %x vs %s", root, wire, pins[root])
 		}
 		fmt.Fprintf(&b, `{final v=w.%s();final wire=w.%sWireSave(v);check(hex(wire)==%q,%q);
-final r=w.TableWireReport();final back=w.%sWireLoad(wire,r);check(!r.refused&&!r.malformed&&r.missingRequired==0,'required wire read '+%q);
+final r=w.TableWireReport();final back=w.%sWireLoad(wire,r);check(!r.refused,'required wire read '+%q);
 check(hex(w.%sWireSave(back))==hex(wire),'required roundtrip');
-final absent=bytes('01000000000000000000');final missing=w.TableWireReport();w.%sWireLoad(absent,missing);check(missing.refused&&!missing.malformed&&missing.missingRequired==1&&missing.reason.startsWith('missing_required:'),'missing wire required');
-w.%sWireLoad(wire,missing);check(!missing.refused&&missing.missingRequired==1&&missing.reason=='ok','reused required report');
+final absent=bytes('01000000000000000000');final missing=w.TableWireReport();w.%sWireLoad(absent,missing);check(missing.refused&&missing.reason.startsWith('missing_required:'),'missing wire required');
+w.%sWireLoad(wire,missing);check(!missing.refused&&missing.reason=='ok','reused required report');
 }
 `, root, dartName(root), hex.EncodeToString(wire), root+" zero wire", dartName(root), root, dartName(root), dartName(root), dartName(root))
 	}
@@ -147,8 +142,8 @@ w.%sWireLoad(wire,missing);check(!missing.refused&&missing.missingRequired==1&&m
 			wire = binary.LittleEndian.AppendUint64(wire, id)
 		}
 		wire = binary.LittleEndian.AppendUint64(wire, uint64(len(tc.ids)))
-		fmt.Fprintf(&b, `{final r=w.TableWireReport();w.%sWireLoad(bytes(%q),r);check(r.refused&&!r.malformed&&r.missingRequired==1&&r.reason=='missing_required: id',%q);
-final retain=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport();w.%sWireLoadRetain(bytes(%q),retain,rr);check(rr.refused&&!rr.malformed&&rr.missingRequired==1&&rr.reason==r.reason&&retain.used==0,'nested retained refusal');}
+		fmt.Fprintf(&b, `{final r=w.TableWireReport();w.%sWireLoad(bytes(%q),r);check(r.refused&&r.reason=='missing_required: id',%q);
+final retain=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport();w.%sWireLoadRetain(bytes(%q),retain,rr);check(rr.refused&&rr.reason==r.reason&&retain.used==0,'nested retained refusal');}
 `, dartName(tc.root), hex.EncodeToString(wire), tc.root+" nested required wire", dartName(tc.root), hex.EncodeToString(wire))
 	}
 	populated := `{"enabled":true,"integer":9,"floating":1.25,"text":"hi","data":"AQI=","wide":"é","huge":17,"enumeration":"A","mask":["B"],"choice":{"n":23},"fixedValues":[1,2],"counted":[3],"list":[4,5],"mapping":{"6":7},"child":{"ver":8},"pointer":{"ver":9},"blob":"hi","at":"2000-01-01T00:00:00Z"}`
@@ -161,7 +156,7 @@ final retain=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport(
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(&b, "{final v=w.shapesFromJson(%q);final wire=w.shapesWireSave(v);check(hex(wire)==%q,'populated required shapes');final r=w.TableWireReport();final back=w.shapesWireLoad(wire,r);check(!r.refused&&!r.malformed&&hex(w.shapesWireSave(back))==hex(wire),'populated required shape read');\n", populated, hex.EncodeToString(pw))
+	fmt.Fprintf(&b, "{final v=w.shapesFromJson(%q);final wire=w.shapesWireSave(v);check(hex(wire)==%q,'populated required shapes');final r=w.TableWireReport();final back=w.shapesWireLoad(wire,r);check(!r.refused&&hex(w.shapesWireSave(back))==hex(wire),'populated required shape read');\n", populated, hex.EncodeToString(pw))
 	for _, big := range []bool{false, true} {
 		cooked, err := tablecook.Cook(m, pv, tablecook.Options{Big: big})
 		if err != nil {
@@ -185,7 +180,7 @@ final retain=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport(
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(&b, "{final r=w.TableWireReport();w.requiredArrayWireLoad(bytes(%q),r);check(r.refused&&!r.malformed&&r.kindMismatch==1&&r.reason=='missing_required: values','incompatible array element kind');}\n", hex.EncodeToString(ow))
+	fmt.Fprintf(&b, "{final r=w.TableWireReport();w.requiredArrayWireLoad(bytes(%q),r);check(r.refused&&r.reason=='missing_required: values','incompatible array element kind');}\n", hex.EncodeToString(ow))
 	for _, root := range []string{"Exact", "ExactFloat", "ExactWide"} {
 		class := root + "CookWire"
 		if ir.VariableTables(u)[root] {
@@ -206,7 +201,7 @@ off.active=true;var failed=false;try{w.exactGuardedWireSave(off);}on StateError{
 `)
 	b.WriteString(`{
 for(final text in const ['null','42','[]','"x"']){var failed=false;try{w.requiredValueFromJson(text);}on FormatException{failed=true;}check(failed,'invalid root cannot bypass required checks');}
-final r=w.TableTextReport();w.manyFromJson('{"last":0,"last":7}',r);check(r.duplicate==1&&r.missingRequired==0,'last field beyond512 duplicate and presence');
+final r=w.TableTextReport();w.manyFromJson('{"last":0,"last":7}',r);check(r.refused,'last field beyond512 repeated key refuses');
 }
 `)
 	b.WriteString(`{
@@ -297,21 +292,19 @@ func TestDartRequiredSharedPins(t *testing.T) {
 			t.Fatal(err)
 		}
 		reason := "ok"
-		count := 0
 		if tc.missing != "" {
 			reason = "missing_required: " + tc.missing
-			count = 1
 		}
 		fmt.Fprintf(&b, `{final wire=bytes(%q);final r=w.TableWireReport();final v=w.rootWireLoad(wire,r);
-check(r.missingRequired==%d&&r.reason==%q&&!r.malformed,%q);
+check(r.reason==%q,%q);
 final retained=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport();final back=w.rootWireLoadRetain(wire,retained,rr);
-check(rr.reason==r.reason&&rr.missingRequired==r.missingRequired&&!rr.malformed,'retained Required');
+check(rr.reason==r.reason,'retained Required');
 if(r.refused){check(v.a==0&&v.b==0&&v.c==0&&back.a==0&&back.b==0&&back.c==0&&retained.used==0,'refused read discards values and retained data');}
 else{check(hex(w.rootWireSave(v))==hex(wire)&&hex(w.rootWireSaveRetain(back,retained,w.TableWireReport()))==hex(wire),'independent pin save');}
 final jr=w.TableTextReport();var textReason='ok';try{final parsed=w.rootFromJson(%q,jr);check(hex(w.rootWireSave(parsed))==hex(wire),'JSON pin');}on FormatException catch(e){textReason=e.message.toString();}
-check(textReason==%q&&jr.missingRequired==%d,'JSON required pin');
+check(textReason==%q,'JSON required pin');
 }
-`, hex.EncodeToString(wire), count, reason, tc.name, string(input), reason, count)
+`, hex.EncodeToString(wire), reason, tc.name, string(input), reason)
 	}
 	b.WriteString("}\n")
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(b.String()), 0600); err != nil {

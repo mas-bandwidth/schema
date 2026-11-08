@@ -81,61 +81,63 @@ func TestFixedRoadmapJavaT05Bounds(t *testing.T) {
 	}
 }
 
-// t05C1 is C1 "count clamp v<0": ALGORITHM §4.5's `count` op, "if v < 0 then
-// v := 0, COUNT clamped". The emitted scatter reads a count into a local and
-// clamps the negative end to 0 before it walks.
+// t05C1 is C1 "count clamp v<0": ALGORITHM §4.5's `count` op. Under the strict
+// read (docs/plans/strict-only.md) a negative count REFUSES the whole load as
+// countOverBound; the emitted scatter tests the count before it walks.
 func t05C1(t *testing.T) {
 	files := t05Files(t, "VNEW_array_bounded_grow.schema")
 	t05Has(t, files, "ArrayBoundedGrowFixed.java",
-		"if (n < 0) { n = 0; r.clamped++; }",
-		"C1 the negative end of the count clamp")
+		"if (n < 0) { n = 0; r.refuse(TableFixed.Reason.countOverBound); }",
+		"C1 a negative count refuses the load as countOverBound")
 }
 
-// t05C2 is C2 "count clamp v>Max": the same op's "else if v > size then v :=
-// size, COUNT clamped", against the bound THE DECLARATION CARRIES — the OLD
+// t05C2 is C2 "count clamp v>Max": the same op's high end, which now REFUSES
+// as countOverBound, against the bound THE DECLARATION CARRIES — the OLD
 // unit's `[..4]` and the NEW unit's `[..8]` — never a bound of the endpoint's.
 func t05C2(t *testing.T) {
 	old := t05Files(t, "VOLD_array_bounded_grow.schema")
 	t05Has(t, old, "ArrayBoundedGrowFixed.java",
-		"else if (n > 4) { n = 4; r.clamped++; }",
-		"C2 the high end at the OLD declaration's bound 4")
+		"else if (n > 4) { n = 4; r.refuse(TableFixed.Reason.countOverBound); }",
+		"C2 a count past the OLD declaration's bound 4 refuses")
 	newer := t05Files(t, "VNEW_array_bounded_grow.schema")
 	t05Has(t, newer, "ArrayBoundedGrowFixed.java",
-		"else if (n > 8) { n = 8; r.clamped++; }",
-		"C2 the high end at the NEW declaration's bound 8")
+		"else if (n > 8) { n = 8; r.refuse(TableFixed.Reason.countOverBound); }",
+		"C2 a count past the NEW declaration's bound 8 refuses")
 }
 
-// t05C7 is C7 "ranged scalar clamp": ALGORITHM §4.6, "a RANGED SCALAR clamps to
-// the min and max the plan carries, COUNT clamped". The emitted scatter clamps
-// both ends of a `int32 | min = 0, max = 200` field to its own declaration.
+// t05C7 is C7 "ranged scalar clamp": ALGORITHM §4.6's bounds pass. A RANGED
+// SCALAR outside the min and max the declaration carries REFUSES the whole load
+// as outOfRange: the emitted scatter tests both ends of a
+// `int32 | min = 0, max = 200` field against its own declaration.
 func t05C7(t *testing.T) {
 	files := t05Files(t, "VNEW_range_widen.schema")
 	t05Has(t, files, "RangeWidenFixed.java",
-		"if (q < 0L) { q = 0L; r.clamped++; } else if (q > 200L) { q = 200L; r.clamped++; }",
-		"C7 the ranged scalar clamps to its declared min and max")
+		"if (q < 0L) { q = 0L; r.refuse(TableFixed.Reason.outOfRange); } else if (q > 200L) { q = 200L; r.refuse(TableFixed.Reason.outOfRange); }",
+		"C7 a ranged scalar outside its declared min and max refuses as outOfRange")
 }
 
 // t05C9 is C9 "union tag past arms → None": ALGORITHM §4.6, "a UNION TAG past
-// the plan's arm count ... lands None and COUNT clamped". The emitted union
-// scatter reads the tag and lands `none` (the union's own 0) past the last arm.
+// the plan's arm count" now REFUSES the whole load as outOfRange. The emitted
+// union scatter reads the tag and refuses past the last arm (the `none` it
+// writes first is never handed to a caller: the load returns -1).
 func t05C9(t *testing.T) {
 	files := t05Files(t, "VNEW_union_append.schema")
 	t05Has(t, files, "PickFixed.java",
-		"if (v.type > 3) { v.type = none; r.clamped++; }",
-		"C9 a tag past the arm count lands None")
+		"if (v.type > 3) { v.type = none; r.refuse(TableFixed.Reason.outOfRange); }",
+		"C9 a tag past the arm count refuses as outOfRange")
 }
 
 // t05C10 is C10 "enum ordinal past top → None": the emitted enum scatter reads
-// the ordinal through a wide temporary and lands position 0, `None`, past the
-// last variant.
+// the ordinal through a wide temporary and, past the last variant, REFUSES the
+// whole load as outOfRange.
 func t05C10(t *testing.T) {
 	files := t05Files(t, "VNEW_enum_append.schema")
 	t05Has(t, files, "LineageFixed.java",
 		"long q = (b[at + 0] & 0xFF);",
 		"C10 the enum ordinal read into a temporary")
 	t05Has(t, files, "LineageFixed.java",
-		"if (q > 4L) { q = 0L; r.clamped++; }",
-		"C10 an ordinal past the top variant lands None")
+		"if (q > 4L) { q = 0L; r.refuse(TableFixed.Reason.outOfRange); }",
+		"C10 an ordinal past the top variant refuses as outOfRange")
 }
 
 // t05C12 is C12 "bool byte != 0": ALGORITHM §4.5, "a bool ... lands as `byte !=
@@ -210,7 +212,7 @@ func t05R17(t *testing.T) {
 	for _, probe := range []string{"Probe_refuses", "Probe_reads"} {
 		want := runProbe(t, classes, probe, clean)
 		got := runProbe(t, classes, probe, path)
-		if got.n != 1 || got.refused || got.malformed {
+		if got.n != 1 || got.refused || got.damaged {
 			t.Fatalf("R17 %s: the forged 0x02 bytes must read, never damage: %+v", probe, got)
 		}
 		// NORMALISES: 0x02 lands as the language's own true.
@@ -227,9 +229,9 @@ func t05R17(t *testing.T) {
 		}
 		// COUNTS NOTHING: a non-0/1 bool or present byte is no clamp and no
 		// damage, so every counter stands at zero.
-		if got.clamped != 0 || got.widened != 0 || got.unknown != 0 || got.kindMismatch != 0 {
-			t.Errorf("R17 %s: a 0x02 bool or present byte moved a counter: clamped=%d widened=%d unknown=%d kindMismatch=%d, want all 0",
-				probe, got.clamped, got.widened, got.unknown, got.kindMismatch)
+		if got.widened != 0 || got.unknown != 0 {
+			t.Errorf("R17 %s: a 0x02 bool or present byte moved a counter: widened=%d unknown=%d, want all 0",
+				probe, got.widened, got.unknown)
 		}
 	}
 }
@@ -317,14 +319,11 @@ func t05R30(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.malformed {
+	if r.n != 1 || r.refused || r.damaged {
 		t.Fatalf("R30: the round trip did not read: %+v", r)
 	}
 	if got := parseDumpedFloatBits(t, r.value["aim"]); got != 0x3E99999A {
 		t.Errorf("R30: aim landed %#x, want the writer's own bits 0x3E99999A — the float rides whole, never requantized", got)
-	}
-	if r.clamped != 0 {
-		t.Errorf("R30: clamped=%d, want 0 — an off-grid value inside the reader's range rides whole and counts nothing", r.clamped)
 	}
 }
 
@@ -423,13 +422,13 @@ func t05R31(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.malformed {
+	if r.n != 1 || r.refused || r.damaged {
 		t.Fatalf("R31: the round trip did not read: %+v", r)
 	}
 	if got := r.value["tier"]; got != "256" {
 		t.Errorf("R31: tier landed %s, want 256 — the 256th variant rides the full-width ordinal and lands exactly", got)
 	}
-	if r.clamped != 0 || r.widened != 0 {
-		t.Errorf("R31: a clean wide-ordinal round trip moved a counter: clamped=%d widened=%d", r.clamped, r.widened)
+	if r.widened != 0 {
+		t.Errorf("R31: a clean wide-ordinal round trip moved a counter: widened=%d", r.widened)
 	}
 }

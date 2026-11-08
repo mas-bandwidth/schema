@@ -35,15 +35,14 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	bodyOld := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n == 1, 'the old writer did not read one record: n=$n ${why(report)}');
-  check(report.refused == 0 && !report.malformed,
+  check(report.refused == 0,
       'a clean NEW-READS-OLD is not a refusal: ${why(report)}');
   check(values[0].lead == 1 && values[0].trail == 2,
       'the bracketing fields moved: lead=${values[0].lead} trail=${values[0].trail}');
   final aimBits = ByteData(4)..setFloat32(0, values[0].aim, Endian.little);
   check(aimBits.getUint32(0, Endian.little) == @OLDAIM@,
       'aim is not the old writer 0.5: ${values[0].aim}');
-  check(report.unknown == 0 && report.kindMismatch == 0 && report.widened == 0 &&
-      report.clamped == 0 && report.duplicate == 0,
+  check(report.unknown == 0 && report.widened == 0,
       'counters moved on a clean backward read: ${why(report)}');`
 
 	out, err := runVersionProbe(t, dartBin, reader, older, 0, oldFile, strings.ReplaceAll(bodyOld, "@OLDAIM@", oldAim))
@@ -54,17 +53,14 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	bodyHostile := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n == 1, 'the hostile file carried one record: n=$n ${why(report)}');
-  check(report.refused == 0 && !report.malformed,
-      'a forged aim is not a refusal and not malformed: ${why(report)}');
+  check(report.refused == 0,
+      'a forged aim inside the reader range is not a refusal: ${why(report)}');
   check(values[0].lead == 1 && values[0].trail == 2,
       'the bracketing fields moved: lead=${values[0].lead} trail=${values[0].trail}');
   final aimBits = ByteData(4)..setFloat32(0, values[0].aim, Endian.little);
   check(aimBits.getUint32(0, Endian.little) == @HOSTILEAIM@,
       'aim 1.5 inside the reader range must land whole, not clamp: ${values[0].aim}');
-  check(report.clamped == 0,
-      'a value inside the reader range is clamped exactly zero times: ${why(report)}');
-  check(report.unknown == 0 && report.kindMismatch == 0 && report.widened == 0 &&
-      report.duplicate == 0,
+  check(report.unknown == 0 && report.widened == 0,
       'counters moved on a hostile read: ${why(report)}');`
 
 	out, err = runVersionProbe(t, dartBin, reader, older, 0, hostileFile, strings.ReplaceAll(bodyHostile, "@HOSTILEAIM@", hostileAim))
@@ -74,18 +70,12 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 
 	bodyPast := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == 1, 'the past file carried one record: n=$n ${why(report)}');
-  check(report.refused == 0 && !report.malformed,
-      'a forged aim is not a refusal and not malformed: ${why(report)}');
-  check(values[0].lead == 1 && values[0].trail == 2,
-      'the bracketing fields moved: lead=${values[0].lead} trail=${values[0].trail}');
-  final aimBits = ByteData(4)..setFloat32(0, values[0].aim, Endian.little);
-  check(aimBits.getUint32(0, Endian.little) == 0x40000000,
-      'aim 5.0 past the reader max must clamp to the reader 2.0: ${values[0].aim}');
-  check(report.clamped == 1,
-      'a value past the reader bound is clamped exactly once: ${why(report)}');
-  check(report.unknown == 0 && report.kindMismatch == 0 && report.widened == 0 &&
-      report.duplicate == 0,
+  check(n == -1, 'the past file refuses whole: n=$n ${why(report)}');
+  check(report.refused == t.TableFixedRefusal.outOfRange,
+      'a value past the reader bound refuses out_of_range: ${why(report)}');
+  check(fresh(values[0]),
+      'a refused read lands nothing, not even the bracketing fields: ${values[0].aim}');
+  check(report.unknown == 0 && report.widened == 0,
       'counters moved on a past read: ${why(report)}');`
 
 	out, err = runVersionProbe(t, dartBin, reader, older, 0, pastFile, bodyPast)

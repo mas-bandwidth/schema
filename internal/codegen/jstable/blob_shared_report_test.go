@@ -89,14 +89,14 @@ let checks=0;
 function check(ok,why){if(!ok)failures.push(why);}
 for(const c of cases)for(const retaining of [false,true])for(const history of [0,7]){
  const r=new m.TableVariableReport(),store=new m.TableVariableRetain(new Uint8Array(65536),new Array(1024));
- check(r.blobShared===0,"new report counter "+c.Name);
- r.blobShared=history;r.unknown=11;r.widened=13;r.clamped=17;
+ check(r.sharedBlob===0,"new report counter "+c.Name);
+ r.sharedBlob=history;r.unknown=11;r.widened=13;r.oor=17;
  for(let repeat=1;repeat<=2;repeat++){
   const wire=bytes(c.Wire);
   const v=retaining?m.RootLoadRetain(wire,store,r):m.RootLoad(wire,r);
   const why=c.Name+" retain="+retaining+" history="+history+" repeat="+repeat;
-  check(v!==null&&!r.malformed&&!r.refused&&r.blobShared===history+c.Shared*repeat&&r.kindMismatch===c.KindMismatch*repeat,"census "+why+" "+JSON.stringify(r));
-  check(r.unknown===11&&r.widened===13&&r.clamped===17,"history preserved "+why);
+  check(v!==null&&!r.damaged&&!r.refused&&r.sharedBlob===history+c.Shared*repeat&&r.mismatch===c.KindMismatch*repeat,"census "+why+" "+JSON.stringify(r));
+  check(r.unknown===11&&r.widened===13&&r.oor===17,"history preserved "+why);
   if(v!==null){
    if(["shared_empty","shared_equal","repeated_field_naming"].includes(c.Name)){
     check(v.a instanceof String&&v.a===v.b&&v.c===v.d,"one shared object per blob "+why);
