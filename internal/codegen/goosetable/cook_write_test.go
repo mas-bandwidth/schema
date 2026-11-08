@@ -215,7 +215,7 @@ fn one(file: const u8[:], r: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
     let root = schema_rt::load_table(%s::TableUnit, r, data, vals, nodes, report);
-    if root < 0 || report.malformed || report.refused { write_stdout("bad load\n"); write_stdout("bad load\n"); return; }
+    if root < 0 || report.body_damaged || report.refused { write_stdout("bad load\n"); write_stdout("bad load\n"); return; }
     var big = false;
     while true {
         let need = measure(r, data, vals, nodes, root);
@@ -430,7 +430,7 @@ import .all;
 fn load(data: const u8[:], vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&) -> i64 {
     var report = schema_rt::LoadReport { .. };
     let root = schema_rt::load_table(probe::TableUnit, "Root", data, vals, nodes, report);
-    if root < 0 || report.malformed || report.refused { write_stdout("bad load\n"); exit(1); }
+    if root < 0 || report.body_damaged || report.refused { write_stdout("bad load\n"); exit(1); }
     return root;
 }
 
