@@ -188,7 +188,9 @@ local function scan_unit(inp: Input): (string?, boolean, boolean)
           inp.p = mark
         end
       end
-      if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
+      -- a lone or out-of-order surrogate escape is not text: the read
+      -- refuses it (docs/plans/strict-only.md decision 9), never U+FFFD
+      if code >= 0xd800 and code <= 0xdfff then inp.bad = true; return nil, false, false end
       unit = utf8_encode(code)
     else
       inp.bad = true
@@ -3147,8 +3149,11 @@ function J.fromJsonWalk(root: string, text: buffer, report: any): any
 end
 
 -- the strict text read's refusals, in Go's TableReport.Err() order
--- (docs/SPEC-TABLES.md §6.5): unknown, widened and duplicate alone never refuse
+-- (docs/SPEC-TABLES.md §6.5): unknown and widened alone never refuse; a
+-- repeated key, keyed slot or map key is damage (docs/plans/strict-only.md
+-- decision 5)
 local STRICT: { { string } } = {
+  { "duplicate", "malformed" },
   { "blobShared", "blob_shared" },
   { "clamped", "clamped" },
   { "kindMismatch", "kind_mismatch" },

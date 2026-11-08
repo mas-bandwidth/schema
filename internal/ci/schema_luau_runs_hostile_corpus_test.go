@@ -232,20 +232,24 @@ local T = setmetatable({}, { __index = function(_, k) error("no module declares 
 	b.WriteString(`local function newreport(): any
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 end
+-- THE NAMED REFUSALS (docs/HOSTILE-CORPUS.md, "Reasons"): the corpus names a
+-- refusal only where the engine has one constant every leg spells alike;
+-- every other strict refusal is damaged, as the C++ runner collapses it
+-- (test/cpp-hostile/hostile.hpp hc_refused). Why a read refused is otherwise
+-- per-language detail (docs/SPEC-TABLES.md §6.5).
+local NAMED = {
+	newer_form = true, message_form_as_file = true, no_vocabulary = true,
+	second_announcement = true, vocabulary_too_large = true, batch_too_large = true,
+	non_finite_float = true,
+}
 local function nn(x: any): string
-	-- the engine's damaged is a read that reports a malformed or wire-damaged
-	-- event without naming a refusal (docs/HOSTILE-CORPUS.md, "Reasons").
-	if x == nil or x == "" then return "damaged" end
-	if x == "wire_damaged" or x == "malformed" then return "damaged" end
-	-- §16.3's text refusals are malformed reads whose Reason names the
-	-- field; the engine has no refusal constant for them, so they are damaged
-	local name = string.match(tostring(x), "^([%w_]+):")
-	if name == "string_not_utf8" or name == "string_lone_surrogate" or name == "text_holds_zero" then return "damaged" end
+	if x == nil then return "damaged" end
 	-- the corpus names a count past the int32 storage cap count_refusal
 	if x == "count_over_extent_cap" then return "count_refusal" end
-	-- the tolerant read names the float's field after the refusal (§3.3)
-	if name == "non_finite_float" then return name end
-	return tostring(x)
+	-- a read names the float's field after the refusal (§3.3)
+	local name = string.match(tostring(x), "^([%w_]+)") or ""
+	if NAMED[name] then return name end
+	return "damaged"
 end
 local function hexstr(buf: buffer): string
 	local parts = table.create(buffer.len(buf))
