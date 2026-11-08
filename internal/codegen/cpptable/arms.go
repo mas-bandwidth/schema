@@ -294,7 +294,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s    uint32_t %s = %s;\n", ind, keep, length)
 		g.pf("%s    // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)\n", ind)
 		g.pf("%s    if ( !TableUtf8Valid( %s.buffer + %s.offset, %s.size ) ) { %s = %s; r.report->damaged = true; break; }\n", ind, rdr, rdr, rdr, tag, none)
-		g.pf("%s    if ( %s > %d ) { %s = (uint32_t) TableUtf8Clamp( %s.buffer + %s.offset, %s.size, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // at a code point boundary\n", ind, keep, f.Type.Size, keep, rdr, rdr, rdr, f.Type.Size)
+		g.pf("%s    if ( %s > %d ) { %s = (uint32_t) TableUtf8Clamp( %s.buffer + %s.offset, %s.size, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary\n", ind, keep, f.Type.Size, keep, rdr, rdr, rdr, f.Type.Size)
 		g.pf("%s    memcpy( %s, %s.buffer + %s.offset, %s );\n", ind, value, rdr, rdr, keep)
 		g.pf("%s    %s[%s] = 0;\n", ind, value, keep)
 		g.pf("%s    %s = (int32_t) %s;\n", ind, count, keep)
@@ -309,7 +309,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s    int64_t %s = %s;\n", ind, keep, units)
 		g.pf("%s    // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)\n", ind)
 		g.pf("%s    if ( !TableUtf16Valid( %s.buffer + %s.offset, %s ) ) { %s = %s; r.report->damaged = true; break; }\n", ind, rdr, rdr, units, tag, none)
-		g.pf("%s    if ( %s > %d ) { %s = TableUtf16Clamp( %s.buffer + %s.offset, %s, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // never splitting a pair\n", ind, keep, f.Type.Size, keep, rdr, rdr, units, f.Type.Size)
+		g.pf("%s    if ( %s > %d ) { %s = TableUtf16Clamp( %s.buffer + %s.offset, %s, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair\n", ind, keep, f.Type.Size, keep, rdr, rdr, units, f.Type.Size)
 		g.pf("%s    for ( int64_t i%s = 0; i%s < %s; i%s++ ) { %s[i%s] = (char16_t) TableUtf16Unit( %s.buffer + %s.offset, i%s ); }\n", ind, sfx, sfx, keep, sfx, value, sfx, rdr, rdr, sfx)
 		g.pf("%s    %s[%s] = 0;\n", ind, value, keep)
 		g.pf("%s    %s = (int32_t) %s;\n", ind, count, keep)
@@ -339,9 +339,9 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			// the mismatch branch: the arm is already selected, so the
 			// elements decode at the wire kind's width and the arm is done
 			g.pf("%s    if ( %s != %d )\n%s    {\n", ind, ek, elemKind, ind)
-			g.pf("%s        if ( !TableKindWidens( %s, %d ) ) { %s = %s; r.report->refused = true; r.report->refuse_reason = kind_mismatch;; break; }\n", ind, ek, elemKind, tag, none)
+			g.pf("%s        if ( !TableKindWidens( %s, %d ) ) { %s = %s; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break; }\n", ind, ek, elemKind, tag, none)
 			g.pf("%s        uint64_t widened_keep%s = %s;\n", ind, sfx, n)
-			g.pf("%s        if ( widened_keep%s > %d ) { widened_keep%s = %d; r.report->refused = true; r.report->refuse_reason = out_of_range;; }\n", ind, sfx, bound, sfx, bound)
+			g.pf("%s        if ( widened_keep%s > %d ) { widened_keep%s = %d; r.report->refused = true; r.report->refuse_reason = out_of_range; }\n", ind, sfx, bound, sfx, bound)
 			g.pf("%s        TableReader widened_sub%s( %s.buffer + %s.offset, %s.size - %s.offset, r.report, r.ids );\n", ind, sfx, rdr, rdr, rdr, rdr)
 			countLvalue := ""
 			if counted {
@@ -350,10 +350,10 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			g.emitWidenedElements(f, elemKind, ek, value+"[%s]", countLvalue, "widened_keep"+sfx, ind+"        ", "widened_sub"+sfx)
 			g.pf("%s        break;\n%s    }\n", ind, ind)
 		} else {
-			g.pf("%s    if ( %s != %d ) { %s = %s; r.report->refused = true; r.report->refuse_reason = kind_mismatch;; break; }\n", ind, ek, elemKind, tag, none)
+			g.pf("%s    if ( %s != %d ) { %s = %s; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break; }\n", ind, ek, elemKind, tag, none)
 		}
 		g.pf("%s    uint64_t %s = %s;\n", ind, keep, n)
-		g.pf("%s    if ( %s > %d ) { %s = %d; r.report->refused = true; r.report->refuse_reason = out_of_range;; }\n", ind, keep, bound, keep, bound)
+		g.pf("%s    if ( %s > %d ) { %s = %d; r.report->refused = true; r.report->refuse_reason = out_of_range; }\n", ind, keep, bound, keep, bound)
 		if f.Type.Kind == ir.TBytes {
 			g.pf("%s    if ( !%s.room( %s ) ) { %s = uint64_t( %s.size - %s.offset ); r.report->damaged = true; }\n", ind, rdr, keep, keep, rdr, rdr)
 			g.pf("%s    memcpy( %s, %s.buffer + %s.offset, (size_t) %s );\n", ind, value, rdr, rdr, keep)
@@ -410,7 +410,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			g.pf("%s                if ( %s != %d )\n%s                {\n", ind, innerKind, armWireKind(in), ind)
 			g.emitArmWiden(in, value, innerKind, inner, value+".type",
 				un.Name+"Type::"+ir.GoExportName(in.Name), un.Name+"Type::None", ind+"                    ")
-			g.pf("%s                    %s.type = %sType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch;; break;\n%s                }\n", ind, value, un.Name, ind)
+			g.pf("%s                    %s.type = %sType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;\n%s                }\n", ind, value, un.Name, ind)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, value, un.Name, ir.GoExportName(in.Name))
 			g.emitArmLoad(in, value, ind+"                ", inner, value+".type", un.Name+"Type::None", sfx+"a")
 			g.pf("%s                break;\n%s            }\n", ind, ind)

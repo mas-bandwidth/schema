@@ -808,11 +808,11 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 		// mismatch branch with a fill of its own: ONE count for the field,
 		// every element decoded at the wire kind's width
 		g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
-		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->refused = true; r.report->refuse_reason = kind_mismatch;;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
+		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->refused = true; r.report->refuse_reason = kind_mismatch;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
 		g.emitListFill(f, elemKind, ind, true)
 		g.pf("%s    }\n", ind)
 	} else {
-		g.pf("%s    else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }\n", ind, elemKind)
+		g.pf("%s    else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }\n", ind, elemKind)
 	}
 	g.pf("%s    else\n%s    {\n", ind, ind)
 	g.emitListFill(f, elemKind, ind, false)
@@ -874,7 +874,7 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 				g.pf("%s            if ( slot->value_length > 0 ) { spent += (int64_t) slot->value_length; }\n", ind)
 			}
 		}
-		g.pf("%s            if ( spent > %d ) { r.report->refused = true; r.report->refuse_reason = out_of_range;; TableListFillDrop( fill ); break; } // | total = %d (§2.13)\n", ind, f.TextTotal, f.TextTotal)
+		g.pf("%s            if ( spent > %d ) { r.report->refused = true; r.report->refuse_reason = out_of_range; TableListFillDrop( fill ); break; } // | total = %d (§2.13)\n", ind, f.TextTotal, f.TextTotal)
 	}
 	g.pf("%s        }\n", ind)
 	g.pf("%s        TableListFillEnd( fill );\n", ind)
