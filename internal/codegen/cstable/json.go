@@ -1761,7 +1761,7 @@ public static class TableJson
             ResetSlots(value, f);
             char shape = ElementShape(f);
             // A KEYED OBJECT'S KEYS ARE KEYS: a key named twice is a
-            // repeated key like any other, and damage (strict-only decision 5).
+            // repeated key like any other, and damage.
             // The schema fixes the vocabulary size. Small schemas use the
             // stack; larger ones still count every duplicate exactly.
             int words = (f.ArrayBound + 63) / 64;
@@ -1797,8 +1797,8 @@ public static class TableJson
                 {
                     // a key this reader cannot place (None, or a name outside
                     // the key vocabulary) is still a key: spelling it twice is
-                    // a repeated key, damage like a placed one (strict-only
-                    // decision 5). Compared on the decoded bytes, so an
+                    // a repeated key, damage like a placed one.
+                    // Compared on the decoded bytes, so an
                     // escaped spelling of the same name is the same key.
                     unplaced ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
                     if (!unplaced.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
@@ -1923,7 +1923,7 @@ public static class TableJson
             if (index < 0)
             {
                 // an unknown key is still a key: spelling it twice is a
-                // repeated JSON key, damage (strict-only decision 5)
+                // repeated JSON key, damage
                 unknown ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
                 if (!unknown.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                 input.Report.Unknown++;
