@@ -786,16 +786,11 @@ public final class Driver {
         catch (ClassNotFoundException | NoSuchMethodException absent) { return null; }
     }
 
-    // The answer line of a read through the fixed form: the five counters of
-    // the `report` surface, which the fixed report holds four of (it has no
-    // duplicate counter), then the verdict.
+    // The answer line of a read through the fixed form: the verdict alone
+    // (strict-only: the read returns the whole value or refuses; report
+    // counters are per-language diagnostics and never compared).
     private static String fixedLine(FixedCodec codec, Object report, int read) throws ReflectiveOperationException {
-        boolean refused = codec.flag(report, "refused");
-        boolean malformed = codec.flag(report, "damaged") || (read < 0 && !refused);
-        return String.format("%d,%d,%d,%d,0,%s,%s\n",
-                codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
-                codec.count(report, "widened"), codec.count(report, "clamped"),
-                malformed, refused ? "refused" : "read");
+        return fixedReadSucceeded(codec, report, read) ? "read\n" : "refused\n";
     }
 
     private static boolean fixedReadSucceeded(FixedCodec codec, Object report, int read) throws ReflectiveOperationException {
@@ -861,10 +856,7 @@ public final class Driver {
                 if (bad) {
                     spill(out, f[1], "refused\n");
                 } else {
-                    byte[] answer = withValue(codec, value, String.format("%d,%d,%d,%d,%d,false,read\n",
-                            codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
-                            codec.count(report, "widened"), codec.count(report, "clamped"),
-                            codec.count(report, "duplicate")));
+                    byte[] answer = withValue(codec, value, "read\n");
                     if (answer == null) return failInt(f[1] + ": toJson refused the value");
                     spill(out, f[1], answer);
                 }
@@ -904,7 +896,7 @@ public final class Driver {
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
                 if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
                 byte[] saved = codec.save(value);
-                if (saved == null && (codec.count(report, "blobShared") > 0 || sharesABlob(value))) {
+                if (saved == null && sharesABlob(value)) {
                     // §2.5: a blob two slots name is refused by every writer; the
                     // tolerant load kept the one node, so the save refuses it by
                     // name rather than writing the reference's bytes
@@ -934,13 +926,9 @@ public final class Driver {
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
-                boolean refused = codec.flag(report, "refused");
-                boolean malformed = codec.flag(report, "damaged") || (value == null && !refused);
-                String line = String.format("%d,%d,%d,%d,%d,%s,%s\n",
-                        codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
-                        codec.count(report, "widened"), codec.count(report, "clamped"),
-                        codec.count(report, "duplicate"), malformed, refused ? "refused" : "read");
-                if (refused || malformed) { spill(out, f[1], line); continue; }
+                boolean refused = codec.flag(report, "refused") || codec.flag(report, "damaged") || value == null;
+                String line = refused ? "refused\n" : "read\n";
+                if (refused) { spill(out, f[1], line); continue; }
                 byte[] answer = withValue(codec, value, line);
                 if (answer == null) return failInt(f[1] + ": toJson refused the value");
                 spill(out, f[1], answer);
@@ -972,15 +960,10 @@ public final class Driver {
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
-                boolean refused = codec.flag(report, "refused");
-                boolean malformed = codec.flag(report, "damaged") || (value == null && !refused);
-                StringBuilder answer = new StringBuilder(String.format("%d,%d,%d,%d,%d,%s,%s\n",
-                        codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
-                        codec.count(report, "widened"), codec.count(report, "clamped"),
-                        codec.count(report, "duplicate"), malformed, refused ? "refused" : "read"));
+                boolean refused = codec.flag(report, "refused") || codec.flag(report, "damaged") || value == null;
                 boolean noValue = f.length > 5 && f[5].equals("no-value");
-                byte[] head = answer.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                if (refused || malformed || noValue) { spill(out, f[1], head); continue; }
+                byte[] head = (refused ? "refused\n" : "read\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                if (refused || noValue) { spill(out, f[1], head); continue; }
                 byte[] text = codec.toJson(value);
                 if (text == null) return failInt(f[1] + ": toJson refused the value");
                 byte[] both = new byte[head.length + text.length];

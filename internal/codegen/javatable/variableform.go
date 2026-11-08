@@ -2639,9 +2639,9 @@ public final class TableJson {
         }
 
         // scanString reads one JSON string, decoding escapes into a String. A
-        // raw control character in the body, an invalid escape, or a lone
-        // surrogate half is damaged (§16.2); a surrogate half that never met
-        // its partner reads as the replacement character (§16.3).
+        // raw control character in the body, an invalid escape, or a lone or
+        // out-of-order surrogate escape is damaged and refuses the whole read
+        // (§16.2, §16.3; docs/plans/strict-only.md decision 9): no U+FFFD.
         public String scanString() {
             space();
             if (p >= t.length || t[p] != '"') {
@@ -2704,18 +2704,16 @@ public final class TableJson {
                                         && p + 2 <= t.length
                                         && t[p] == '\\'
                                         && t[p + 1] == 'u') {
-                                    int mark = p;
                                     p += 2;
                                     int lo = hex4();
                                     if (lo >= 0xdc00 && lo <= 0xdfff) {
                                         b.appendCodePoint(
                                                 0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00));
                                     } else {
-                                        p = mark;
-                                        b.append('\ufffd');
+                                        return loneSurrogate();
                                     }
                                 } else if (hi >= 0xd800 && hi <= 0xdfff) {
-                                    b.append('\ufffd');
+                                    return loneSurrogate();
                                 } else {
                                     b.append((char) hi);
                                 }
@@ -2744,6 +2742,16 @@ public final class TableJson {
                     b.appendCodePoint(cp);
                 }
             }
+        }
+
+        // loneSurrogate refuses a string whose u-escape is a surrogate half
+        // with no partner after it, as damage (strict-only decision 9).
+        String loneSurrogate() {
+            bad = true;
+            if (rep.reason == null) {
+                rep.reason = "string_lone_surrogate: <root>";
+            }
+            return null;
         }
 
         // utf8 reads one UTF-8 sequence whose lead byte is c (>= 0x80). -1 is a
