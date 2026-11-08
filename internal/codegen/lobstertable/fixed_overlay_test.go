@@ -179,7 +179,7 @@ func TestLobsterFixedOverlayNamesEveryRow(t *testing.T) {
 			for _, mm := range goTestFuncRx.FindAllStringSubmatch(string(src), -1) {
 				defined[mm[1]] = true
 			}
-			for _, token := range strings.Split(testsPart, ",") {
+			for token := range strings.SplitSeq(testsPart, ",") {
 				name := strings.TrimSpace(token)
 				base, sub, hasSub := strings.Cut(name, "/")
 				if !defined[base] {

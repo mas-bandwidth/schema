@@ -64,7 +64,7 @@ func luauEvoLineage(entries []fixedproof.LineageEntry) (string, int) {
 		if len(e.Layout) >= 4 {
 			n := int(binary.LittleEndian.Uint32(e.Layout[:4]))
 			if n >= 0 && n <= (len(e.Layout)-4)/ir.TableFixedEntryBytes {
-				for j := 0; j < n; j++ {
+				for j := range n {
 					p := 4 + j*ir.TableFixedEntryBytes
 					fmt.Fprintf(&b, "{id=0x%016xi,kind=%d,size=%d,children=%d},", binary.LittleEndian.Uint64(e.Layout[p:p+8]), e.Layout[p+8], binary.LittleEndian.Uint32(e.Layout[p+9:p+13]), binary.LittleEndian.Uint32(e.Layout[p+13:p+17]))
 				}
@@ -161,7 +161,7 @@ func (r luauEvoRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, lineag
 	count = -1
 	reason = "refused"
 	fields = map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		switch {
 		case strings.HasPrefix(line, "@count "):
 			count, _ = strconv.Atoi(strings.TrimPrefix(line, "@count "))
@@ -272,9 +272,9 @@ func (r luauEvoRunner) SaveCustom(t *testing.T, u *ir.Unit, root, scenario strin
 	if strings.Contains(out, "@refused") {
 		return nil, "writer refused the requested values: " + strings.TrimSpace(out)
 	}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		if strings.HasPrefix(line, "@save ") {
-			b, e := hex.DecodeString(strings.TrimPrefix(line, "@save "))
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		if after, ok0 := strings.CutPrefix(line, "@save "); ok0 {
+			b, e := hex.DecodeString(after)
 			if e != nil {
 				return nil, e.Error()
 			}
@@ -649,7 +649,7 @@ func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 			t.Fatalf("plan-execution: the body plant did not execute the compiled plan: n=%d reason=%q fields=%v counters=%v", n, reason, fields, counters)
 		}
 		want := map[string]string{}
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			prefix := fmt.Sprintf("r%d.", i)
 			for key, value := range map[string]string{"head": "42", "opt_present": "true", "opt": "-99", "arr_count": "1", "arr[0]": "2", "ch.type": "2", "ch.s": `"hi"`} {
 				want[prefix+key] = value
