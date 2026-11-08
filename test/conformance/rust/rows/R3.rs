@@ -115,7 +115,7 @@ fn r3_floor_law() {
         !report.refused && report.reason == TableFixedReason::None,
         "a clean read is not a refusal",
     );
-    check(!report.malformed, "a clean read is not damage");
+    check(!report.damaged, "a clean read is not damage");
     check(values[0].grade == 1, "the grade value lands");
     check(values[0].tail == 99, "the field after the union lands");
     check(
@@ -145,15 +145,15 @@ fn r3_floor_law() {
         "layout_newer carries THE FILE'S hash",
     );
     check(
-        !report2.malformed,
+        !report2.damaged,
         "a refusal by name is not damage (§5.3 joint answer)",
     );
     check(report2.refused, "a refusal by name sets the refused flag");
     check(
         report2.widened == 0
             && report2.unknown == 0
-            && report2.kind_mismatch == 0
-            && report2.clamped == 0,
+            && report2.mismatch == 0
+            && report2.oor == 0,
         "REFUSE is TOTAL: no counter moves",
     );
     let fresh = FeRootRow::default();
