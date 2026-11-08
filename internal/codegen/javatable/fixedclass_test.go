@@ -169,7 +169,7 @@ func runJavaVariableFixturesForUnit(t *testing.T, u *ir.Unit, fixtures []javaVar
 		name := "FixedClassDriver_" + row.root
 		path := filepath.Join(dir, name+".java")
 		source := strings.ReplaceAll(variableRoundTripDriver(pkg, row.root), "Driver", name)
-		source = strings.Replace(source, "if (report.malformed || report.refused)", "if (report.malformed || report.refused || report.unknown != 0 || report.kindMismatch != 0 || report.clamped != 0 || report.widened != 0 || report.duplicate != 0)", 1)
+		source = strings.Replace(source, "if (report.damaged || report.refused)", "if (report.damaged || report.refused || report.unknown != 0 || report.widened != 0)", 1)
 		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -406,8 +406,11 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 
 public final class RenameDriver {
-    static String rep(int u, int k, int w, int c, int d, boolean m, boolean r) {
-        return u + "," + k + "," + w + "," + c + "," + d + "," + m + "," + (r ? "refused" : "read");
+    // unknown, widened, damaged, and the verdict: a refusal is the flag AND
+    // no value, a read is a value and no flag; anything else is "torn".
+    static String rep(int u, int w, boolean m, boolean r, boolean value) {
+        final String verdict = (r && !value) ? "refused" : (!r && value) ? "read" : "torn";
+        return u + "," + w + "," + m + "," + verdict;
     }
     static void check(String name, String got, String want) {
         if (!want.equals(got)) {
@@ -421,8 +424,7 @@ public final class RenameDriver {
         {
             tblw2.TableVariable.Report r = new tblw2.TableVariable.Report();
             tblw2.FleetVariable.Value v = tblw2.FleetVariable.load(Files.readAllBytes(Paths.get(wireDir, "w1_fleet.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("w1_fleet_as_w2 refused");
-            check("w1_fleet_as_w2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("w1_fleet_as_w2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
             if (v.flagship == null || !"Aurora".equals(v.flagship.name) || v.escorts.size() != 2 || v.escorts.get(1) != v.flagship || v.flagship.hull != 250 || v.home.hull != 100) {
                 throw new AssertionError("w1_fleet_as_w2 value mismatch");
             }
@@ -431,15 +433,13 @@ public final class RenameDriver {
         {
             tblw1.TableVariable.Report r = new tblw1.TableVariable.Report();
             tblw1.FleetVariable.Value v = tblw1.FleetVariable.load(Files.readAllBytes(Paths.get(wireDir, "w2_fleet.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("w2_fleet_as_w1 refused");
-            check("w2_fleet_as_w1", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("w2_fleet_as_w1", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
         }
         // w1_fleet_default_as_w2
         {
             tblw2.TableVariable.Report r = new tblw2.TableVariable.Report();
             tblw2.FleetVariable.Value v = tblw2.FleetVariable.load(Files.readAllBytes(Paths.get(wireDir, "w1_fleet_default.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("w1_fleet_default_as_w2 refused");
-            check("w1_fleet_default_as_w2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("w1_fleet_default_as_w2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
             if (v.flagship != null || !"fleet".equals(v.title) || !"untitled".equals(v.home.name) || !Arrays.equals(v.home.tag, new byte[]{(byte) 'a', (byte) 'b'}) || v.home.caps != 5L || !"new".equals(v.home.badge.label) || v.home.hull != 100) {
                 throw new AssertionError("w1_fleet_default_as_w2 defaults did not land");
             }
@@ -448,8 +448,7 @@ public final class RenameDriver {
         {
             tblr2.TableVariable.Report r = new tblr2.TableVariable.Report();
             tblr2.CfgVariable.Value v = tblr2.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "r1_cfg.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("r1_cfg_as_r2 refused");
-            check("r1_cfg_as_r2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("r1_cfg_as_r2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
             if (v.grade != 2 || v.effect.tag != 2 || v.effect.shield.charge != 2.5f || v.buff.mult != 1.5f || v.tally.get(1) != 7) {
                 throw new AssertionError("r1_cfg_as_r2 value mismatch");
             }
@@ -458,8 +457,7 @@ public final class RenameDriver {
         {
             tblr2.TableVariable.Report r = new tblr2.TableVariable.Report();
             tblr2.CfgVariable.Value v = tblr2.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "r1_ping.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("r1_ping_as_r2 refused");
-            check("r1_ping_as_r2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("r1_ping_as_r2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
             if (v.effect.tag != 3) {
                 throw new AssertionError("r1_ping_as_r2 pong tag mismatch: " + v.effect.tag);
             }
@@ -468,34 +466,29 @@ public final class RenameDriver {
         {
             tblr1.TableVariable.Report r = new tblr1.TableVariable.Report();
             tblr1.CfgVariable.Value v = tblr1.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "r2_cfg.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("r2_cfg_as_r1 refused");
-            check("r2_cfg_as_r1", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "0,0,0,0,0,false,read");
+            check("r2_cfg_as_r1", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "0,0,false,read");
         }
         // v1_cfg_as_v2 and v1_seams_as_v2
         {
             tblv2.TableVariable.Report r = new tblv2.TableVariable.Report();
             tblv2.CfgVariable.Value v = tblv2.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "v1_cfg.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("v1_cfg_as_v2 refused");
-            check("v1_cfg_as_v2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "1,1,0,1,0,false,read");
+            check("v1_cfg_as_v2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "1,0,false,refused");
         }
         {
             tblv2.TableVariable.Report r = new tblv2.TableVariable.Report();
             tblv2.CfgVariable.Value v = tblv2.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "v1_seams.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("v1_seams_as_v2 refused");
-            check("v1_seams_as_v2", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "2,2,0,0,0,false,read");
+            check("v1_seams_as_v2", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "2,0,false,refused");
         }
         // v2_cfg_as_v1 and v2_seams_as_v1
         {
             tblv1.TableVariable.Report r = new tblv1.TableVariable.Report();
             tblv1.CfgVariable.Value v = tblv1.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "v2_cfg.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("v2_cfg_as_v1 refused");
-            check("v2_cfg_as_v1", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "5,1,0,1,0,false,read");
+            check("v2_cfg_as_v1", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "5,0,false,refused");
         }
         {
             tblv1.TableVariable.Report r = new tblv1.TableVariable.Report();
             tblv1.CfgVariable.Value v = tblv1.CfgVariable.load(Files.readAllBytes(Paths.get(wireDir, "v2_seams.bin")), r);
-            if (v == null || r.refused) throw new AssertionError("v2_seams_as_v1 refused");
-            check("v2_seams_as_v1", rep(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused), "2,2,0,0,0,false,read");
+            check("v2_seams_as_v1", rep(r.unknown, r.widened, r.damaged, r.refused, v != null), "2,0,false,refused");
         }
         System.out.println("ok");
     }

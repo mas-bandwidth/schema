@@ -441,11 +441,9 @@ public final class %s {
         out.append("REPORT n=").append(n)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" malformed=").append(report.malformed)
+           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
-           .append(" kindMismatch=").append(report.kindMismatch)
            .append(" widened=").append(report.widened)
-           .append(" clamped=").append(report.clamped)
            .append(" layoutHash=").append(layoutHash(report))
            .append(" nonFiniteFloat=").append(report.nonFiniteFloat)
            .append('\n');
@@ -595,15 +593,13 @@ public final class %s {
 
 // probeRun is one probe's answer: the report line's fields and the two dumps.
 type probeRun struct {
-	n            int
-	refused      bool
-	reason       string
-	malformed    bool
-	unknown      int
-	kindMismatch int
-	widened      int
-	clamped      int
-	layoutHash   string
+	n          int
+	refused    bool
+	reason     string
+	damaged    bool
+	unknown    int
+	widened    int
+	layoutHash string
 	// nonFiniteFloat is the report's named field for a nonFiniteFloat
 	// refusal (docs/SPEC-TABLES.md §3.3), "null" on every other path
 	nonFiniteFloat string
@@ -629,16 +625,12 @@ func parseProbe(t *testing.T, out string) probeRun {
 					r.refused = v == "true"
 				case "reason":
 					r.reason = v
-				case "malformed":
-					r.malformed = v == "true"
+				case "damaged":
+					r.damaged = v == "true"
 				case "unknown":
 					r.unknown, _ = strconv.Atoi(v)
-				case "kindMismatch":
-					r.kindMismatch, _ = strconv.Atoi(v)
 				case "widened":
 					r.widened, _ = strconv.Atoi(v)
-				case "clamped":
-					r.clamped, _ = strconv.Atoi(v)
 				case "layoutHash":
 					r.layoutHash = v
 				case "nonFiniteFloat":
@@ -823,13 +815,13 @@ func TestFixedVersioningRows(t *testing.T) {
 					}
 				}
 			} else {
-				if oracle.n < 1 || oracle.refused || oracle.malformed {
+				if oracle.n < 1 || oracle.refused || oracle.damaged {
 					t.Fatalf("the OLD build could not read its own file: %+v", oracle)
 				}
 				got := runProbe(t, classes, "Probe_reads", oldFile)
-				if got.refused || got.malformed || got.n != oracle.n {
+				if got.refused || got.damaged || got.n != oracle.n {
 					t.Errorf("NEW-READS-OLD: n=%d refused=%v reason=%s malformed=%v, want %d records and no refusal",
-						got.n, got.refused, got.reason, got.malformed, oracle.n)
+						got.n, got.refused, got.reason, got.damaged, oracle.n)
 				}
 				assertValuesLand(t, oracle, got, wasNames(versioningSchemaUnit(t, "VNEW_"+row.name+".schema")))
 				assertCounters(t, "NEW-READS-OLD", row, got)
@@ -840,7 +832,7 @@ func TestFixedVersioningRows(t *testing.T) {
 			// a fresh value (§5.3, §5.7).
 			if sameHashRows[row.name] {
 				reads := runProbe(t, classes, "Probe_refuses", newFile)
-				if reads.refused || reads.malformed || reads.n < 1 {
+				if reads.refused || reads.damaged || reads.n < 1 {
 					t.Errorf("%s moves no layout byte, so it must READ in both directions: %+v", row.name, reads)
 				}
 				return
@@ -849,7 +841,7 @@ func TestFixedVersioningRows(t *testing.T) {
 			if !ref.refused || ref.reason != "layoutNewer" {
 				t.Errorf("OLD-REFUSES-NEW: refused=%v reason=%s, want a refusal named layoutNewer", ref.refused, ref.reason)
 			}
-			if ref.malformed {
+			if ref.damaged {
 				t.Error("OLD-REFUSES-NEW: malformed is set beside a reason; the report is two answers and never both")
 			}
 			if ref.n != -1 {
@@ -858,7 +850,7 @@ func TestFixedVersioningRows(t *testing.T) {
 			if want := fileHash(t, newFile); ref.layoutHash != want {
 				t.Errorf("OLD-REFUSES-NEW: layoutHash=%s, want the file's own hash %s (§5.9 #15)", ref.layoutHash, want)
 			}
-			if ref.unknown != 0 || ref.kindMismatch != 0 || ref.widened != 0 || ref.clamped != 0 {
+			if ref.unknown != 0 || ref.widened != 0 {
 				t.Errorf("OLD-REFUSES-NEW moved a counter: %+v; REFUSE is total", ref)
 			}
 			assertFresh(t, ref)
@@ -1032,19 +1024,16 @@ func widenedError(row versioningRow, r probeRun) string {
 
 // assertCounters is §5.4 multiplied out by §5.9 #10: an APPEND row owes every
 // counter at zero, a WIDTH row owes `widened` nonzero and the rest at zero, and
-// no clean row asserts `clamped` at all. The census is structurally zero on a
-// lawful lineage (§5.9 #30). A widen row that declares an exact `widened` is
+// no clean row refuses (the strict read has no clamp to count). The census is
+// structurally zero on a lawful lineage (§5.9 #30). A widen row that declares an exact `widened` is
 // held to that figure, not merely nonzero (§5.9 #33).
 func assertCounters(t *testing.T, column string, row versioningRow, r probeRun) {
 	t.Helper()
 	if r.unknown != 0 {
 		t.Errorf("%s %s: unknown=%d, want 0: a lawful lineage names every field of every writer it selects (§5.9 #30)", column, row.name, r.unknown)
 	}
-	if r.kindMismatch != 0 {
-		t.Errorf("%s %s: kindMismatch=%d, want 0 (§5.9 #30)", column, row.name, r.kindMismatch)
-	}
-	if r.clamped != 0 {
-		t.Errorf("%s %s: clamped=%d, want 0: no clean row asserts a clamp (§5.4)", column, row.name, r.clamped)
+	if r.refused || r.damaged {
+		t.Errorf("%s %s: refused=%v reason=%s damaged=%v, want a whole read: a lawful lineage never refuses (§5.4)", column, row.name, r.refused, r.reason, r.damaged)
 	}
 	if msg := widenedError(row, r); msg != "" {
 		t.Errorf("%s %s: %s", column, row.name, msg)
@@ -1082,7 +1071,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 		classes := build(t, 0)
 		for _, f := range []string{oldFile, midFile, newFile} {
 			got := runProbe(t, classes, "Probe_reads", f)
-			if got.refused || got.malformed || got.n < 1 {
+			if got.refused || got.damaged || got.n < 1 {
 				t.Errorf("floor_at: %s must read: n=%d refused=%v reason=%s", filepath.Base(f), got.n, got.refused, got.reason)
 			}
 		}
@@ -1101,7 +1090,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 		if want := fileHash(t, oldFile); got.layoutHash != want {
 			t.Errorf("floor_below: layoutHash=%s, want the file's own hash %s (§5.9 #7)", got.layoutHash, want)
 		}
-		if got.malformed || got.unknown != 0 || got.kindMismatch != 0 || got.widened != 0 || got.clamped != 0 {
+		if got.damaged || got.unknown != 0 || got.widened != 0 {
 			t.Errorf("floor_below moved a counter or set malformed: %+v; REFUSE is total", got)
 		}
 		if mid := runProbe(t, classes, "Probe_reads", midFile); mid.n < 1 {
@@ -1143,7 +1132,7 @@ func TestFixedVersioningHash(t *testing.T) {
 	t.Run("hash_identity", func(t *testing.T) {
 		// hash_identity: the reader's own hash selects the identity plan.
 		got := runProbe(t, classes, "Probe_reads", own)
-		if got.refused || got.malformed || got.n < 1 {
+		if got.refused || got.damaged || got.n < 1 {
 			t.Errorf("hash_identity: the reader's own file does not read: n=%d refused=%v reason=%s", got.n, got.refused, got.reason)
 		}
 	})
@@ -1162,7 +1151,7 @@ func TestFixedVersioningHash(t *testing.T) {
 		if want := fileHash(t, path); unknown.layoutHash != want {
 			t.Errorf("hash_unknown: layoutHash=%s, want the file's own hash %s and nothing else", unknown.layoutHash, want)
 		}
-		if unknown.malformed {
+		if unknown.damaged {
 			t.Error("hash_unknown: malformed is set beside a reason")
 		}
 	})
@@ -1202,7 +1191,7 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 	})
 	for _, f := range files {
 		got := runProbe(t, classes, "Probe_reads", filepath.Join(corpus, f))
-		if got.refused || got.malformed || got.n < 1 {
+		if got.refused || got.damaged || got.n < 1 {
 			t.Errorf("lineage_merge: %s does not read on the merged build: n=%d refused=%v reason=%s",
 				f, got.n, got.refused, got.reason)
 		}
@@ -1310,9 +1299,9 @@ public final class ArmProbe {
         final tblfu1.TableFixed.Report r1 = new tblfu1.TableFixed.Report();
         final int n1 = tblfu1.FuRootFixed.load(v1, v1.length, data,
                 tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), r1);
-        if (n1 != 3 || r1.refused || r1.malformed || r1.clamped != 0 || r1.kindMismatch != 0
+        if (n1 != 3 || r1.refused || r1.damaged
                 || r1.unknown != 0 || r1.widened != 0) {
-            fail("FU1 identity report: n=" + n1 + " refused=" + r1.refused + " malformed=" + r1.malformed);
+            fail("FU1 identity report: n=" + n1 + " refused=" + r1.refused + " malformed=" + r1.damaged);
         }
         if (!v1[0].flag || !v1[0].notePresent || v1[0].note != 44
                 || v1[0].pick.type != tblfu1.PickFixed.labelled
@@ -1356,10 +1345,10 @@ public final class ArmProbe {
         final tblfu2.TableFixed.Report r2 = new tblfu2.TableFixed.Report();
         final int n2 = tblfu2.FuRootFixed.load(v2, v2.length, data,
                 tblfu2.TableFixed.plan(4096), new short[4096], tblfu2.FuRootFixed.image(), r2);
-        if (n2 != 3 || r2.refused || r2.malformed || r2.clamped != 0 || r2.kindMismatch != 0
+        if (n2 != 3 || r2.refused || r2.damaged
                 || r2.unknown != 0 || r2.widened != 6) {
             fail("FU2 compiled report: n=" + n2 + " refused=" + r2.refused + " reason=" + r2.reason
-                    + " malformed=" + r2.malformed + " widened=" + r2.widened);
+                    + " malformed=" + r2.damaged + " widened=" + r2.widened);
         }
         if (!v2[0].flag || !v2[0].notePresent || v2[0].note != 44
                 || v2[0].pick.type != tblfu2.PickFixed.labelled
@@ -1492,8 +1481,7 @@ public final class PlanCapProbe {
         if (n != -1 || !r.refused || r.reason != tblfu2.TableFixed.Reason.planTooLarge) {
             fail("expected planTooLarge refusal, got n=" + n + " refused=" + r.refused + " reason=" + r.reason);
         }
-        if (r.malformed || r.unknown != 0 || r.kindMismatch != 0 || r.widened != 0
-                || r.clamped != 0 || r.layoutHash != 0) {
+        if (r.damaged || r.unknown != 0 || r.widened != 0 || r.layoutHash != 0) {
             fail("planTooLarge moved a counter or set malformed/layoutHash");
         }
         if (vals[0].tail != 0x5A5A5A5A || vals[0].extra != 0x5A5A5A5A || vals[0].pick.labelled.lead != 0x5A5A5A5A) {
@@ -1504,7 +1492,7 @@ public final class PlanCapProbe {
         final tblfu2.TableFixed.Report okReport = new tblfu2.TableFixed.Report();
         final int okN = tblfu2.FuRootFixed.load(vals, vals.length, data,
                 tblfu2.TableFixed.plan(1024), new short[1024], tblfu2.FuRootFixed.image(), okReport);
-        if (okN != 3 || okReport.refused || okReport.malformed || okReport.widened != 6) {
+        if (okN != 3 || okReport.refused || okReport.damaged || okReport.widened != 6) {
             fail("expected clean read at sufficient capacity, got n=" + okN + " refused=" + okReport.refused);
         }
         System.out.println("ok");

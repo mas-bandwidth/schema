@@ -81,7 +81,7 @@ public final class Main {
         final int n = tblfx1.FxRootFixed.load(v, v.length, golden,
                 tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
         check(n == 2, "fx1.bin: two records");
-        check(!r.refused && !r.malformed && r.unknown == 0 && r.kindMismatch == 0 && r.widened == 0 && r.clamped == 0,
+        check(!r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
                 "fx1.bin: its own layout is the identity plan, and a clean read moves no counter");
         check(v[0].keep == 4242 && (v[0].narrow & 0xffff) == 40000 && v[0].renamed == 321 && v[0].gone == 654,
                 "fx1.bin: the scalars are the reference's");
@@ -99,7 +99,7 @@ public final class Main {
         final int n = tblfx2.FxRootFixed.load(v, v.length, golden,
                 tblfx2.TableFixed.plan(1024), new short[1024], tblfx2.FxRootFixed.image(), r);
         check(n == 1, "fx2.bin: one record");
-        check(!r.refused && !r.malformed && r.unknown == 0 && r.kindMismatch == 0,
+        check(!r.refused && !r.damaged && r.unknown == 0,
                 "fx2.bin: a clean read moves no counter");
         check(v[0].keep == 5150 && v[0].narrow == 70000 && v[0].renamedTo == 808 && v[0].added == 909,
                 "fx2.bin: the scalars are the reference's");
@@ -117,7 +117,7 @@ public final class Main {
         final int n = tblp1.ChainFixed.load(v, v.length, golden,
                 tblp1.TableFixed.plan(1024), new short[1024], tblp1.ChainFixed.image(), r);
         check(n == 1, "p1.bin: one record");
-        check(!r.refused && !r.malformed && r.clamped == 0, "p1.bin: a clean read moves no counter");
+        check(!r.refused && !r.damaged, "p1.bin: a clean read moves no counter");
         check(textOf(v[0].name, v[0].nameLength).equals("chain-one"), "p1.bin: the text lands at its used length");
         check(v[0].link.value == 77 && textOf(v[0].link.tag, v[0].link.tagLength).equals("tagged"),
                 "p1.bin: the nested record");
@@ -188,7 +188,7 @@ public final class Main {
         final int n = tabledemo.KeyedConfigFixed.load(v, v.length, golden,
                 tabledemo.TableFixed.plan(4096), new short[4096], tabledemo.KeyedConfigFixed.image(), r);
         check(n == 2, "keyed.bin: two records");
-        check(!r.refused && !r.malformed && r.clamped == 0, "keyed.bin: a clean read moves no counter");
+        check(!r.refused && !r.damaged, "keyed.bin: a clean read moves no counter");
         // record 1: k = 1
         check(v[1].teams[0].spawnCount == 14, "keyed: a keyed array's slot");
         check(textOf(v[1].teams[2].banner, v[1].teams[2].bannerLength).equals("green"), "keyed: text in a keyed slot");
@@ -214,7 +214,7 @@ public final class Main {
         final int n = tabledemo.PackConfigFixed.load(v, v.length, golden,
                 tabledemo.TableFixed.plan(4096), new short[4096], tabledemo.PackConfigFixed.image(), r);
         check(n == 2, "pack.bin: two records");
-        check(!r.refused && !r.malformed && r.clamped == 0, "pack.bin: a clean read moves no counter");
+        check(!r.refused && !r.damaged, "pack.bin: a clean read moves no counter");
         check(v[0].version == 7 && v[0].global.tickRate == 120, "pack: the scalars");
         // AN ENUM RIDES ITS ORDINAL, FROM 1: Hard is the third variant.
         check(v[0].global.difficulty == tabledemo.Pack.Difficulty.HARD, "pack: an enum rides its ORDINAL, from 1");
@@ -256,7 +256,7 @@ public final class Main {
         final short[] remap = new short[4096];
         final int made = tabledemo.TableFixed.compile(theirs, mine, tabledemo.PackConfigFixed.dest, plan, remap, r);
         check(made > 0, "self plan: a plan compiles from my own layout");
-        check(r.unknown == 0 && r.kindMismatch == 0, "self plan: a plan over MY OWN layout names nothing unknown");
+        check(r.unknown == 0, "self plan: a plan over MY OWN layout names nothing unknown");
         // A REAL PLAN, not one run: the text, the counts, the ordinals and the
         // keyed walk all break the coalescer's runs.
         check(made > 1, "self plan: text, count and the keyed walk break the runs");
@@ -297,9 +297,9 @@ public final class Main {
     // second arm, so the compiled path was never asked this question. This
     // fixture asks it, and the only admissible answer is the identity path's.
     //
-    // The enum beside it is the OTHER half, tonight's ruling: an ordinal past
-    // the last variant lands None (0) and counts one `clamped`, and a TAG past
-    // the last arm does the same.
+    // The enum beside it is the OTHER half, under the strict read: an ordinal
+    // past the last variant REFUSES the load as outOfRange, and a TAG past the
+    // last arm does the same.
 
     static byte[] utRecord(String label, byte grade, int m, int tail) {
         final tblut.UtRootFixed.Value[] v = { new tblut.UtRootFixed.Value() };
@@ -362,7 +362,7 @@ public final class Main {
         final tblut.TableFixed.Report r = new tblut.TableFixed.Report();
         check(tblut.UtRootFixed.load(id, 1, wire, tblut.TableFixed.plan(512), new short[512],
                 tblut.UtRootFixed.image(), r) == 1, "arm text: the identity path reads the record");
-        check(!r.refused && !r.malformed && r.clamped == 0 && r.unknown == 0 && r.kindMismatch == 0,
+        check(!r.refused && !r.damaged && r.unknown == 0,
                 "arm text: a clean read moves no counter");
         check(id[0].pick.type == tblut.UtPickFixed.b, "arm text: the SECOND arm is the selected one");
         check(textOf(id[0].pick.b.label, id[0].pick.b.labelLength).equals("hello"),
@@ -375,16 +375,16 @@ public final class Main {
                 "arm text: a COMPILED plan lands a text field under the SECOND arm");
         check(viaPlan.pick.b.grade == tblut.UT.UtGrade.GOLD && viaPlan.pick.b.m == 42 && viaPlan.tail == 11,
                 "arm text: and the rest of that arm with it");
-        check(rc.clamped == 0 && !rc.malformed && !rc.refused,
+        check(!rc.damaged && !rc.refused,
                 "arm text: the compiled read moves no counter either");
         check(utSame(viaPlan, id[0]),
                 "arm text: a COMPILED plan lands exactly what the identity plan lands");
 
-        // A TAG PAST THE LAST ARM: None on both paths, and BOTH paths count
-        // ONE clamped (schema#1254, §5.4, §5.8 row 12). The compiled plan
-        // pushes the tag's None UNGUARDED with the writer's arm count in its
-        // dstsize lane, so a tag past that set lands None and counts, exactly
-        // as the identity plan's decode bound does (javatable, #1278).
+        // A TAG PAST THE LAST ARM REFUSES on both paths as outOfRange (the
+        // strict read, docs/plans/strict-only.md; schema#1254, §5.8 row 12).
+        // The compiled plan pushes the tag's None UNGUARDED with the writer's
+        // arm count in its dstsize lane, so a tag past that set refuses
+        // exactly as the identity plan's decode bound does (javatable, #1278).
         {
             final byte[] bad = wire.clone();
             final int body = utBodyAt(bad);
@@ -394,19 +394,19 @@ public final class Main {
             final tblut.UtRootFixed.Value[] v = { new tblut.UtRootFixed.Value() };
             final tblut.TableFixed.Report r1 = new tblut.TableFixed.Report();
             check(tblut.UtRootFixed.load(v, 1, bad, tblut.TableFixed.plan(512), new short[512],
-                    tblut.UtRootFixed.image(), r1) == 1, "tag past the last arm: the record still reads");
-            check(v[0].pick.type == tblut.UtPickFixed.none, "tag past the last arm: the union lands None");
-            check(r1.clamped == 1, "tag past the last arm: the identity path counts ONE clamped");
-            check(!r1.malformed && !r1.refused, "tag past the last arm: damage in a VALUE is not framing damage");
+                    tblut.UtRootFixed.image(), r1) == -1, "tag past the last arm: the load refuses");
+            check(r1.refused && r1.reason == tblut.TableFixed.Reason.outOfRange,
+                    "tag past the last arm: the identity path refuses outOfRange");
+            check(!r1.damaged, "tag past the last arm: a bad VALUE is not framing damage");
 
             final tblut.TableFixed.Report r2 = new tblut.TableFixed.Report();
-            final tblut.UtRootFixed.Value bent = utCompiled(bad, r2);
-            check(bent.pick.type == tblut.UtPickFixed.none, "tag past the last arm: the compiled plan lands None too");
-            check(r2.clamped == 1, "tag past the last arm: the compiled plan counts ONE clamped too");
+            utCompiled(bad, r2);
+            check(r2.refused && r2.reason == tblut.TableFixed.Reason.outOfRange && !r2.damaged,
+                    "tag past the last arm: the compiled plan refuses outOfRange too");
         }
 
-        // AN ORDINAL PAST THE LAST VARIANT: None (0) on both paths, and BOTH
-        // count it — the identity scatter on its own read, and the plan's
+        // AN ORDINAL PAST THE LAST VARIANT REFUSES on both paths as
+        // outOfRange — the identity scatter on its own read, and the plan's
         // ordinal op on the compiled one.
         {
             final byte[] bad = wire.clone();
@@ -418,16 +418,14 @@ public final class Main {
             final tblut.UtRootFixed.Value[] v = { new tblut.UtRootFixed.Value() };
             final tblut.TableFixed.Report r1 = new tblut.TableFixed.Report();
             check(tblut.UtRootFixed.load(v, 1, bad, tblut.TableFixed.plan(512), new short[512],
-                    tblut.UtRootFixed.image(), r1) == 1, "ordinal past the last variant: the record still reads");
-            check(v[0].pick.b.grade == tblut.UT.UtGrade.NONE, "ordinal past the last variant: it lands None");
-            check(r1.clamped == 1, "ordinal past the last variant: the identity path counts ONE clamped");
+                    tblut.UtRootFixed.image(), r1) == -1, "ordinal past the last variant: the load refuses");
+            check(r1.refused && r1.reason == tblut.TableFixed.Reason.outOfRange && !r1.damaged,
+                    "ordinal past the last variant: the identity path refuses outOfRange");
 
             final tblut.TableFixed.Report r2 = new tblut.TableFixed.Report();
-            final tblut.UtRootFixed.Value bent = utCompiled(bad, r2);
-            check(bent.pick.b.grade == tblut.UT.UtGrade.NONE,
-                    "ordinal past the last variant: the compiled plan lands None too");
-            check(r2.clamped == 1, "ordinal past the last variant: and the plan's ordinal op counts it");
-            check(utSame(bent, v[0]), "ordinal past the last variant: the two paths land ONE record");
+            utCompiled(bad, r2);
+            check(r2.refused && r2.reason == tblut.TableFixed.Reason.outOfRange && !r2.damaged,
+                    "ordinal past the last variant: the plan's ordinal op refuses outOfRange too");
         }
     }
 
@@ -480,7 +478,7 @@ public final class Main {
         check(tblfu1.FuRootFixed.load(mine, 2, file, tblfu1.TableFixed.plan(1024),
                 new short[1024], tblfu1.FuRootFixed.image(), r) == 2,
                 "text under an arm: the identity read takes both records");
-        check(!r.refused && !r.malformed && r.clamped == 0 && r.unknown == 0 && r.kindMismatch == 0,
+        check(!r.refused && !r.damaged && r.unknown == 0,
                 "text under an arm: its own layout is the identity plan, and it moves no counter");
         check(mine[0].pick.type == tblfu1.PickFixed.labelled,
                 "text under an arm: identity, the SECOND arm");
@@ -505,7 +503,7 @@ public final class Main {
         check(tblfu2.FuRootFixed.load(theirs, 2, file, tblfu2.TableFixed.plan(1024),
                 new short[1024], tblfu2.FuRootFixed.image(), r2) == 2,
                 "text under an arm: the compiled read takes both records");
-        check(!r2.malformed && !r2.refused && r2.clamped == 0 && r2.kindMismatch == 0,
+        check(!r2.damaged && !r2.refused,
                 "text under an arm: and nothing was damaged, clamped or refused");
         check(theirs[0].pick.type == tblfu2.PickFixed.labelled,
                 "text under an arm: compiled, the SECOND arm");
@@ -549,7 +547,7 @@ public final class Main {
         check(v[0].extra.x == 0 && v[0].extra.y == 0, "MISSING: a whole nested type takes its defaults");
         check(v[0].nested.a == 111 && v[0].nested.b == 222, "older writer: the nesting");
         check(r.unknown == 1, "older writer: `gone` is the one field this reader cannot name");
-        check(r.kindMismatch == 0 && !r.malformed && !r.refused, "older writer: nothing else fired");
+        check(!r.damaged && !r.refused, "older writer: nothing else fired");
         check(v[1].keep == 1 && v[1].narrow == 2 && v[1].renamedTo == 3 && v[1].nested.b == 6,
                 "older writer: the second record too");
     }
@@ -569,9 +567,8 @@ public final class Main {
         check(v[0].gone == 9, "newer writer: a field the writer dropped takes its declared default");
         check(v[0].nested.a == 33 && v[0].nested.b == 44, "newer writer: the nesting lands past the unknown type");
         check(r.unknown == 2, "newer writer: two names this reader does not have");
-        check(r.kindMismatch == 1, "newer writer: uint32 into uint16 is a kind that MOVED, not a widening");
         check(v[0].narrow == 3, "newer writer: a narrowing leaves the declared default");
-        check(!r.malformed && !r.refused, "newer writer: no damage and no refusal");
+        check(!r.damaged && !r.refused, "newer writer: no damage and no refusal");
     }
 
     static void anOptional(String dir) {
@@ -586,9 +583,8 @@ public final class Main {
                 tblp3.TableFixed.plan(1024), new short[1024], tblp3.ChainFixed.image(), r);
         check(n == 1, "optional: P3 reads P1's record");
         check(textOf(v[0].name, v[0].nameLength).equals("chain-one"), "optional: the field before the edit lands");
-        check(r.kindMismatch == 1, "optional: `?T` against `T` is a kind that MOVED and is SEEN");
         check(!v[0].linkPresent, "optional: the edited field takes its declared default");
-        check(!r.malformed && !r.refused, "optional: no damage and no refusal");
+        check(!r.damaged && !r.refused, "optional: no damage and no refusal");
     }
 
     static void theSlide() {
@@ -625,7 +621,7 @@ public final class Main {
         check(back[0].tierPresent && back[0].tier == 77, "OPTIONAL: the present flag and the payload");
         check(back[0].c, "MISSING: V2's own `c` takes its declared default");
         check(back[0].a == 5.0f, "KIND MOVED: int32 -> float32 leaves the declared default");
-        check(!r.malformed && !r.refused, "V2 reads V1: no damage and no refusal");
+        check(!r.damaged && !r.refused, "V2 reads V1: no damage and no refusal");
     }
 
     // ------------------------------------------------------------------
@@ -640,7 +636,7 @@ public final class Main {
         final int n = tblfx1.FxRootFixed.load(v, 1, other,
                 tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
         check(n < 0 && r.refused && r.reason == want, what + " (got " + r.reason + ")");
-        check(!r.malformed, what + ": never damage");
+        check(!r.damaged, what + ": never damage");
     }
 
     static void negativeControls(String dir) {
@@ -679,7 +675,7 @@ public final class Main {
                     "REFUSED BY NAME: a layout this build never locked is layout_newer");
             check(r.layoutHash == tblfx1.TableFixed.get64(fx2, tblfx1.TableFixed.hashAt),
                     "layout_newer reports THE FILE'S hash, and nothing else");
-            check(!r.malformed, "a refusal by name never sets malformed too");
+            check(!r.damaged, "a refusal by name never sets malformed too");
         }
 
         // 2. A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER
@@ -716,7 +712,7 @@ public final class Main {
             // hash_known_bytes_differ row is where it is asserted.
             check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutNewer,
                     "REFUSED BY NAME: a header hash no lineage entry holds");
-            check(!r.malformed, "a lying header is a refusal and never damage");
+            check(!r.damaged, "a lying header is a refusal and never damage");
         }
 
         // 3. A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS A REFUSAL BY
@@ -740,7 +736,7 @@ public final class Main {
             final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
             final int n = tblfx1.FxRootFixed.load(v, 2, ragged,
                     tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
-            check(n < 0 && r.malformed, "a ragged tail: malformed, because the two ends of the file met");
+            check(n < 0 && r.damaged, "a ragged tail: malformed, because the two ends of the file met");
         }
 
         // 5. MORE RECORDS THAN THE CALLER'S OWN ARRAY: a refusal by name, and
@@ -784,15 +780,15 @@ public final class Main {
                 tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
         check(n < 0, what + ": no record was read (got n=" + n + ")");
         if (wantMalformed) {
-            check(r.malformed && !r.refused && r.reason == tblfx1.TableFixed.Reason.none,
+            check(r.damaged && !r.refused && r.reason == tblfx1.TableFixed.Reason.none,
                     what + ": the report is damage and names no reason (refused=" + r.refused
-                            + ", malformed=" + r.malformed + ", reason=" + r.reason + ")");
+                            + ", malformed=" + r.damaged + ", reason=" + r.reason + ")");
         } else {
-            check(r.refused && r.reason == want && !r.malformed,
+            check(r.refused && r.reason == want && !r.damaged,
                     what + ": the report is the name " + want + " and never damage (refused="
-                            + r.refused + ", malformed=" + r.malformed + ", reason=" + r.reason + ")");
+                            + r.refused + ", malformed=" + r.damaged + ", reason=" + r.reason + ")");
         }
-        check(r.unknown == 0 && r.kindMismatch == 0 && r.widened == 0 && r.clamped == 0
+        check(r.unknown == 0 && r.widened == 0
                         && r.layoutHash == 0,
                 what + ": no counter claims a read happened");
         check(v.keep == 0x5EED && v.nested.a == 0x1234 && v.nested.b == 0x4321,
@@ -858,7 +854,7 @@ public final class Main {
         check(n < 0 && r.refused && r.reason == want, what + " (got " + r.reason + ")");
         // NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read
         // a record would be the damage the refusal exists to prevent.
-        check(r.unknown == 0 && r.kindMismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed,
+        check(r.unknown == 0 && r.widened == 0 && !r.damaged,
                 "a layout refusal sets nothing and counts nothing: " + what);
     }
 

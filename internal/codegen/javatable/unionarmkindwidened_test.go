@@ -15,7 +15,7 @@ import (
 
 // A union arm whose wire kind is changed from 4 to 2: the arm is declared
 // int64 (kind 5) and arrives as kind 2 whose L is the declared width, not the
-// incoming kind's. Both engines report malformed; the oracle counts widened=0
+// incoming kind's. Both engines refuse the whole load; the oracle counts widened=0
 // (SPEC-TABLES §4: a widening arm's length must be the incoming kind's width)
 // and the Java reader must answer the same.
 func TestJavaFixUnionArmKindWidened(t *testing.T) {
@@ -93,7 +93,7 @@ func TestJavaFixUnionArmKindWidened(t *testing.T) {
 	}
 	report := string(out)
 	t.Logf("java report: %s", strings.TrimSpace(report))
-	for _, want := range []string{"malformed=true", "widened=0", "kindMismatch=0", "refused=false", "unknown=0"} {
+	for _, want := range []string{"value=null", "rejected=true", "widened=0", "unknown=0"} {
 		if !strings.Contains(report, want) {
 			t.Errorf("java report lacks %s: %s", want, report)
 		}
@@ -110,7 +110,7 @@ public final class Driver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         ` + pkg + `.TableVariable.Report report = new ` + pkg + `.TableVariable.Report();
         ` + pkg + `.RootVariable.Value v = ` + pkg + `.RootVariable.load(wire, report);
-        System.out.println("REPORT malformed=" + report.malformed + " refused=" + report.refused + " unknown=" + report.unknown + " kindMismatch=" + report.kindMismatch + " widened=" + report.widened + " clamped=" + report.clamped);
+        System.out.println("REPORT value=" + (v == null ? "null" : "present") + " rejected=" + (report.damaged || report.refused) + " damaged=" + report.damaged + " refused=" + report.refused + " unknown=" + report.unknown + " widened=" + report.widened);
     }
 }
 `

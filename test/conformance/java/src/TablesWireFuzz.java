@@ -54,11 +54,8 @@ public final class TablesWireFuzz {
     private static final class Reply {
         boolean loaded;
         int unknown;
-        int kindMismatch;
         int widened;
-        int clamped;
-        int duplicate;
-        boolean malformed;
+        boolean damaged;
         boolean refused;
         long measure = -1;
         int retained;
@@ -82,13 +79,10 @@ public final class TablesWireFuzz {
 
     private static void fill(Reply r, Object report, Class<?> type) throws ReflectiveOperationException {
         r.unknown = count(report, type, "unknown");
-        r.kindMismatch = count(report, type, "kindMismatch");
         r.widened = count(report, type, "widened");
-        r.clamped = count(report, type, "clamped");
-        r.duplicate = count(report, type, "duplicate");
         r.retained = count(report, type, "retained");
         r.retainLost = count(report, type, "retainLost");
-        r.malformed = type.getField("damaged").getBoolean(report);
+        r.damaged = type.getField("damaged").getBoolean(report);
         r.refused = type.getField("refused").getBoolean(report);
     }
 
@@ -326,11 +320,13 @@ public final class TablesWireFuzz {
             int at = 0;
             head[at++] = (byte) (r.loaded ? 1 : 0);
             at = putI32(head, at, r.unknown);
-            at = putI32(head, at, r.kindMismatch);
+            // the reply keeps the harness's slots; the strict read retired
+            // kind_mismatch, clamped and duplicate, so those slots are zero
+            at = putI32(head, at, 0);
             at = putI32(head, at, r.widened);
-            at = putI32(head, at, r.clamped);
-            at = putI32(head, at, r.duplicate);
-            head[at++] = (byte) (r.malformed ? 1 : 0);
+            at = putI32(head, at, 0);
+            at = putI32(head, at, 0);
+            head[at++] = (byte) (r.damaged ? 1 : 0);
             head[at++] = (byte) (r.refused ? 1 : 0);
             at = putI64(head, at, r.measure);
             at = putI32(head, at, r.retained);

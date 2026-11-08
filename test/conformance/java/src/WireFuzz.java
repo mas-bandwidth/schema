@@ -91,11 +91,13 @@ public final class WireFuzz {
 
             int n = 0;
             out[n++] = (byte) loaded;
+            // the reply keeps the harness's slots; the strict read retired
+            // kind_mismatch, clamped and duplicate, so those slots are zero
             n = putI32(out, n, report.unknown);
             n = putI32(out, n, 0);
             n = putI32(out, n, report.widened);
             n = putI32(out, n, 0);
-            n = putI32(out, n, 0); // duplicate: the wire form raises none
+            n = putI32(out, n, 0);
             out[n++] = (byte) (report.damaged ? 1 : 0);
             out[n++] = (byte) (report.refused ? 1 : 0);
             n = putI64(out, n, measure);

@@ -9,7 +9,7 @@ import (
 // TestJavaFixRepeatedArrayFieldDamageRefused pins the wire-fuzzer causes JD1
 // and JD2: a top-level array field that appears twice on the wire, its later
 // occurrence damaged. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4):
-// the Java leg owes the refusal, malformed, and nothing the earlier occurrence
+// the Java leg owes the refusal (no value), and nothing the earlier occurrence
 // decoded is compared.
 //
 // JD1 is backenddemo.MatchResult's `players` array as the random #14791
@@ -47,10 +47,10 @@ func TestJavaFixRepeatedArrayFieldDamageRefused(t *testing.T) {
 			u := unitFromDir(t, filepath.Join(repo, tc.unit))
 			oracle := goOracleLoadout(t, u, tc.root, wire)
 			if !oracle.report.Refused {
-				t.Fatalf("oracle did not report malformed; this mutant does not pin the cause")
+				t.Fatalf("oracle did not refuse; this mutant does not pin the cause")
 			}
-			if leg := javaLoadout(t, u, tc.root, wire); !leg.report.malformed {
-				t.Fatalf("Java %s did not refuse a damaged load: %+v", tc.root, leg.report)
+			if leg := javaLoadout(t, u, tc.root, wire); !leg.report.rejected() || leg.saved != nil {
+				t.Fatalf("Java %s did not refuse a damaged load: %+v saved=%x", tc.root, leg.report, leg.saved)
 			}
 		})
 	}
