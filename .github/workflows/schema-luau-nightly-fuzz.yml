@@ -25,15 +25,21 @@ jobs:
     # before it can reach one.
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
+    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The fleet runner's own pinned go satisfies go.mod; setup-go runs only
+      # on a hosted runner. On the fleet its post step saved the Actions Go
+      # cache and held the replay job (11 s of work) for five minutes, past
+      # the two-minute per-commit cap (run 42491594514, 2026-11-08).
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version-file: go.mod
+          cache: false
       - name: Luau 0.741 (pinned release)
         run: make dist-luau
       - name: replay every saved input
@@ -48,9 +54,15 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The fleet runner's own pinned go satisfies go.mod; setup-go runs only
+      # on a hosted runner. On the fleet its post step saved the Actions Go
+      # cache and held the replay job (11 s of work) for five minutes, past
+      # the two-minute per-commit cap (run 42491594514, 2026-11-08).
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version-file: go.mod
+          cache: false
       - name: Luau 0.741 (pinned release)
         run: make dist-luau
       - name: ten minutes per reader port
