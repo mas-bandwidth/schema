@@ -36,7 +36,7 @@ function untouched(label, back, plan) {
     if (plan.image[i] !== 0x5A) { fail(label + ": a refusal wrote plan.image[" + i + "]"); return; }
   } }
 }
-function counters(r) { return r.unknown + r.kindMismatch + r.clamped + r.widened + r.duplicate; }
+function counters(r) { return r.unknown + r.mismatch + r.oor + r.widened + r.repeated; }
 // total: REFUSE is total (§5.3: "no counter moves, nothing is decoded, and not
 // one destination byte is written"); malformed is the residue and never set
 // beside a name. hash is what layout_hash must hold, or null where the page
@@ -46,7 +46,7 @@ function total(label, n, r, name, hash, back, plan) {
   if (r.refused !== TableFixedRefusal[name]) {
     fail(label + ": the name is " + name + ", got " + TableFixedRefusalName(r.refused) + " " + reason(r));
   }
-  if (r.malformed) { fail(label + ": refused and malformed are never both set: " + reason(r)); }
+  if (r.damaged) { fail(label + ": refused and malformed are never both set: " + reason(r)); }
   if (counters(r) !== 0) { fail(label + ": REFUSE is total, no counter moves: " + reason(r)); }
   if (hash !== null && r.layoutHash !== hash) {
     fail(label + ": layout_hash is " + hash.toString(16) + ", got " + r.layoutHash.toString(16));
@@ -92,7 +92,7 @@ const back = eight(); const plan = TNewPlan(4096, 4096);
 {
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, data, data.length, plan, r);
-  if (n < 1 || r.malformed || r.refused !== 0) { fail("the corpus file must read cleanly first: n=" + n + " " + reason(r)); }
+  if (n < 1 || r.damaged || r.refused !== 0) { fail("the corpus file must read cleanly first: n=" + n + " " + reason(r)); }
 }
 // every cut from the layout's first byte to one short of its last
 for (let k = layoutAt; k < layoutAt + L; k++) {
@@ -107,7 +107,7 @@ for (let k = layoutAt; k < layoutAt + L; k++) {
   const cut = copy(data, layoutAt + L);
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, cut, cut.length, plan, r);
-  if (n !== 0 || r.refused !== 0 || r.malformed) { fail("20 + L == len is not past the file: n=" + n + " " + reason(r)); }
+  if (n !== 0 || r.refused !== 0 || r.damaged) { fail("20 + L == len is not past the file: n=" + n + " " + reason(r)); }
 }
 // the declared L one past the bytes that are there, and the largest u32 (no wrap)
 for (const declared of [data.length - layoutAt + 1, 0xFFFFFFFF]) {
@@ -142,13 +142,13 @@ const back = eight(); const plan = TNewPlan(4096, 4096);
 {
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, data, data.length, plan, r);
-  if (n !== 1 || r.malformed || r.refused !== 0) { fail("the corpus file is one clean record: n=" + n + " " + reason(r)); }
+  if (n !== 1 || r.damaged || r.refused !== 0) { fail("the corpus file is one clean record: n=" + n + " " + reason(r)); }
 }
 // n == capacity is the boundary that reads
 {
   const r = new TableFixedReport();
   const n = TLoad(back, 1, data, data.length, plan, r);
-  if (n !== 1 || r.refused !== 0 || r.malformed) { fail("n == capacity reads: n=" + n + " " + reason(r)); }
+  if (n !== 1 || r.refused !== 0 || r.damaged) { fail("n == capacity reads: n=" + n + " " + reason(r)); }
 }
 // n == capacity + 1 refuses by name
 {
@@ -167,7 +167,7 @@ const back = eight(); const plan = TNewPlan(4096, 4096);
   total("two records, capacity 1", n, r, "BatchTooLarge", 0n, back, plan);
   const ok = new TableFixedReport();
   const m = TLoad(back, 2, two, two.length, plan, ok);
-  if (m !== 2 || ok.refused !== 0 || ok.malformed) { fail("two records read into a capacity of two: n=" + m + " " + reason(ok)); }
+  if (m !== 2 || ok.refused !== 0 || ok.damaged) { fail("two records read into a capacity of two: n=" + m + " " + reason(ok)); }
   // step 10 runs before step 11: a second record whose hash is no layout's
   // still overflows by name, before a record is looked at
   two[data.length] ^= 0xFF;
@@ -207,7 +207,7 @@ for (let b = 0; b < 8; b++) {
   two[data.length + 3] ^= 0x01;
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, two, two.length, plan, r);
-  if (n !== -1 || r.refused !== TableFixedRefusal.NoLayout || r.malformed || counters(r) !== 0) {
+  if (n !== -1 || r.refused !== TableFixedRefusal.NoLayout || r.damaged || counters(r) !== 0) {
     fail("a later record's bad hash is no_layout too: n=" + n + " " + reason(r));
   }
 }
@@ -230,7 +230,7 @@ const back = eight();
 {
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, own, own.length, none, r);
-  if (n !== 1 || r.refused !== 0 || r.malformed) {
+  if (n !== 1 || r.refused !== 0 || r.damaged) {
     fail("the reader's own file takes the identity lane, which needs no plan entries: n=" + n + " " + reason(r));
   }
   if (back[0].w !== 777) { fail("the identity read lost a value: " + show(back[0])); }
@@ -299,7 +299,7 @@ for (const [which, data] of files.entries()) {
   // the clean file reads first, so a refusal below is the forge's and not the file's
   { const r = new TableFixedReport();
     const n = TLoad(back, back.length, data, data.length, plan, r);
-    if (n < 1 || r.refused !== 0 || r.malformed) { fail("file " + which + " must read cleanly first: n=" + n + " " + reason(r)); } }
+    if (n < 1 || r.refused !== 0 || r.damaged) { fail("file " + which + " must read cleanly first: n=" + n + " " + reason(r)); } }
   // a different length, either way, and none at all
   for (const declared of [L - 1, L + 1, 0]) {
     const f = copy(data);

@@ -9,7 +9,7 @@ import (
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6,
-// bill §12.5). A ranged integer read through a COMPILED lane is clamped first
+// bill §12.5). A ranged integer read through a COMPILED lane is oor first
 // to the range ITS WRITER declared, the lineage entry the file was written
 // under, and then to this reader's own range in the projection; each clamp
 // that fires counts once. The writer's ranges and their match onto this
@@ -131,11 +131,11 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, entries []FixedLineageEntr
 			g.pf("    const n = view.%s(%d%s);\n", get, b.at, endian)
 			kw := "if"
 			if b.low {
-				g.pf("    if (n < %s) { view.%s(%d, %s%s); report.clamped++; }\n", lo, set, b.at, lo, endian)
+				g.pf("    if (n < %s) { view.%s(%d, %s%s); report.oor++; }\n", lo, set, b.at, lo, endian)
 				kw = "else if"
 			}
 			if b.high {
-				g.pf("    %s (n > %s) { view.%s(%d, %s%s); report.clamped++; }\n", kw, hi, set, b.at, hi, endian)
+				g.pf("    %s (n > %s) { view.%s(%d, %s%s); report.oor++; }\n", kw, hi, set, b.at, hi, endian)
 			}
 			g.pf("  }\n")
 		}

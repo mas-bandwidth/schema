@@ -56,12 +56,12 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 	// moves.
 	landing := `
 if (n !== 1) { fail("the forged file carries one record: n=" + n + " " + reason(r)); }
-if (r.refused !== 0 || r.malformed) { fail("a forged tag is not a refusal and not malformed: " + reason(r)); }
+if (r.refused !== 0 || r.damaged) { fail("a forged tag is not a refusal and not malformed: " + reason(r)); }
 if (back[0].pick.type !== 0) { fail("a forged tag lands None: " + show(back[0])); }
 if (back[0].pick.type === 9) { fail("a forged tag never lands the forged 9: " + show(back[0])); }
 if (back[0].pick.type === 1) { fail("a forged tag never lands the writer's 1: " + show(back[0])); }
 if (back[0].seq !== 15) { fail("the neighbour after the union is untouched: " + show(back[0])); }
-if (r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0 || r.duplicate !== 0) {
+if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
   fail("no other counter moved: " + reason(r));
 }
 `
@@ -71,7 +71,7 @@ if (r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0 || r.duplicate !=
 	// fires once. `== 1` EXACTLY, never `>= 1`, for the same reason the forged
 	// ordinal row asserts it.
 	identityCount := `
-if (r.clamped !== 1) { fail("the forged tag is counted exactly once, never twice: " + reason(r)); }
+if (r.oor !== 1) { fail("the forged tag is counted exactly once, never twice: " + reason(r)); }
 `
 
 	forge := `

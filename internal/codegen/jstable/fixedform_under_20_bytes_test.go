@@ -35,7 +35,7 @@ const plan = TNewPlan(4096, 4096);
 
 const first = new TableFixedReport();
 const clean = TLoad(back, back.length, data, data.length, plan, first);
-if (clean < 1 || first.malformed || first.refused !== 0) {
+if (clean < 1 || first.damaged || first.refused !== 0) {
   fail("the corpus file must read cleanly first: n=" + clean + " " + reason(first));
 }
 
@@ -43,15 +43,15 @@ const SENT = 0x5A5A5A5A;
 for (let k = 0; k < 8; k++) { back[k].X = SENT; back[k].Y = SENT; back[k].Z = SENT; }
 
 const fresh = new TableFixedReport();
-fresh.malformed = true;
+fresh.damaged = true;
 
 for (let k = 0; k < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes; k++) {
   const short = data.subarray(0, k);
   const report = new TableFixedReport();
   const n = TLoad(back, back.length, short, short.length, plan, report);
   if (n !== -1) { fail("k=" + k + ": a file shorter than the header returns -1, got n=" + n); }
-  if (report.malformed !== true) {
-    fail("k=" + k + ": a file shorter than the header is malformed=true, got malformed=" + report.malformed);
+  if (report.damaged !== true) {
+    fail("k=" + k + ": a file shorter than the header is malformed=true, got malformed=" + report.damaged);
   }
   if (report.refused !== TableFixedRefusal.None) {
     fail("k=" + k + ": a short file is the residue, not a refusal: refused=" + TableFixedRefusalName(report.refused));

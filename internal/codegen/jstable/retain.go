@@ -262,7 +262,7 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
 // Capture one unknown field (id, kind) whose payload the plain read has already
 // skipped (bytes[start:end]). The framing was validated by that skip, so the
 // resolving walk here can only fail on inner damage or an excluded class, which
-// is one retainLost and never 'malformed' (§6.6).
+// is one retainLost and never 'damaged' (§6.6).
 function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, path, report) {
   const src = new TableVariableReader(bytes, start, end);
   const out = new TableVariableWriter();
@@ -425,7 +425,7 @@ function TableVariableRetainTail(w, ids, retain, path) {
 // each, counted once at the end.
 // TableVariableRetainDiscard drops the records at or under a path, exactly as
 // the reference's TableRetain.discard (§6.6): a body re-read replaces what an
-// earlier read retained there, so a duplicate map entry or a re-selected union
+// earlier read retained there, so a repeated map entry or a re-selected union
 // arm does not leave two records behind. The field flag narrows the pass to records
 // whose first step under the path is the field's own ordinal.
 function TableVariableRetainDiscard(retain, path, field, ordinal) {

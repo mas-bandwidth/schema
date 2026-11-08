@@ -96,7 +96,7 @@ function buildCellFile() {
   assert(result === -1, "plan_too_large (null plan): result = -1");
   assert(report.refused === TableFixedRefusal.PlanTooLarge,
     "plan_too_large (null plan): report.refused = PlanTooLarge, got " + TableFixedRefusalName(report.refused));
-  assert(!report.malformed, "plan_too_large (null plan): report.malformed = false");
+  assert(!report.damaged, "plan_too_large (null plan): report.damaged = false");
 }
 
 // Test: with a valid plan, it should NOT refuse with plan_too_large
