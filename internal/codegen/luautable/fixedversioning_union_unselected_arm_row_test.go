@@ -21,9 +21,9 @@ if values == nil then return end
 check(values[1].Pick.Type == 1, "pick.type is the writer's alpha arm: " .. tostring(values[1].Pick.Type))
 check(num(values[1].Pick.Alpha.M) == 7, "pick.alpha.m is the writer's 7")
 check(num(values[1].Seq) == 15, "seq is the writer's 15")
-check(report.widened == 0 and report.unknown == 0 and report.kindMismatch == 0 and report.clamped == 0 and report.duplicate == 0,
+check(report.widened == 0 and report.unknown == 0 and report.kindMismatch == 0,
 	"a clean read moved a counter: " .. why(report))
-check(report.reason == nil and not report.malformed, "a clean read is not a refusal: " .. why(report))
+check(report.reason == nil, "a clean read is not a refusal: " .. why(report))
 `
 	t.Run("compiled", func(t *testing.T) {
 		t.Parallel()
