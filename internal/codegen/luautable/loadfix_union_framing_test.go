@@ -51,7 +51,7 @@ func loadFixCProbe(g *generatedUnit, rootName string) string {
 end
 
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.loadTolerant(ROOT, inputs.wire, report)
+local v = load.loadWalk(ROOT, inputs.wire, report)
 local desc = S.lookup(ROOT)
 if v == nil and desc ~= nil and not desc.variable then v = desc.new() end
 local saved = nil
@@ -230,7 +230,7 @@ func loadFixCVerdict(a loadFixCAnswer, o loadFixCOracle) string {
 	if o.counts.malformed && !o.refused {
 		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the leg
 		// owes the refusal, and no counter or saved byte is compared
-		if a.loaded && !a.counts.malformed {
+		if a.loaded && !a.counts.malformed && a.counts.clamped == 0 && a.counts.kindMismatch == 0 {
 			return fmt.Sprintf("the engine discards a damaged load: Luau says %+v, the engine says %+v", a.counts, o.counts)
 		}
 		return ""

@@ -38,7 +38,7 @@ func TestLuauCookOrderWordNegativeControl(t *testing.T) {
 	if table == nil {
 		t.Fatal("tabledemo has no RootConfig")
 	}
-	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "root_full.bin"))
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "wire", "root_full.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}

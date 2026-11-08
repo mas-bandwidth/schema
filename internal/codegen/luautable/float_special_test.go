@@ -74,7 +74,7 @@ local function lo64(x: number): number
 	return buffer.readu32(s, 0)
 end
 local report: any = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local got = load.loadTolerant("Var", inputs.wire, report)
+local got = load.loadWalk("Var", inputs.wire, report)
 if got == nil then
 	print("tol=refused reason=" .. tostring(report.reason))
 else

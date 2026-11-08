@@ -105,7 +105,7 @@ local report = {
 	clamped = 0, widened = 0, duplicate = 0,
 }
 local desc = S.lookup("ToolMessage")
-local v = load.loadTolerant("ToolMessage", inputs.wire, report)
+local v = load.loadWalk("ToolMessage", inputs.wire, report)
 if v == nil and desc ~= nil and not desc.variable then v = desc.new() end
 local saved = nil
 if v ~= nil then saved = save.save(desc, v) end
@@ -210,16 +210,16 @@ func loadFixGEngineFor(m *tabletext.Model, def *ir.Struct, data []byte) (loadFix
 	var o loadFixGAnswer
 	if tablewire.Refused(derr) {
 		o.refused = true
-		return o, true
-	}
-	if derr != nil {
+	} else if derr != nil {
 		return o, false
 	}
 	o.loaded = true
-	o.counts = loadFixGCounts{
-		unknown:   rep.Unknown,
-		widened:   rep.Widened,
-		malformed: rep.Refused || !ok,
+	if !o.refused {
+		o.counts = loadFixGCounts{
+			unknown:   rep.Unknown,
+			widened:   rep.Widened,
+			malformed: rep.Refused || !ok,
+		}
 	}
 	enc, eerr := tablewire.Encode(m, inst)
 	if eerr != nil {
@@ -287,7 +287,7 @@ func TestLuauToolMessageResaveAgreesWithTheEngine(t *testing.T) {
 
 	var base []byte
 	for _, row := range manifestRows(t) {
-		if row.kind == "instance" && row.unit == "messagedemo" && row.root == "ToolMessage" && row.caseName == "message_trace" {
+		if row.unit == "messagedemo" && row.root == "ToolMessage" && row.caseName == "previous_form_message_trace" {
 			b, err := os.ReadFile(filepath.Join(root, row.wire))
 			if err != nil {
 				t.Fatal(err)

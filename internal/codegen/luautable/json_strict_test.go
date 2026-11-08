@@ -24,7 +24,7 @@ import (
 // J.FromJson refuses with one named reason and no value every read that
 // crosses a meaning boundary (malformed, missing_required, blob_shared,
 // clamped, kind_mismatch), while unknown, widened and duplicate alone are
-// counted and the read succeeds; J.FromJsonTolerant keeps the recovered value
+// counted and the read succeeds; J.fromJsonWalk keeps the recovered value
 // with the counters, and answers no value on a malformed text or a missing
 // required field. Every answer is compared with schema-go's generated
 // <T>FromJSON and <T>FromJSONTolerant over the same unit and the same text,
@@ -200,7 +200,7 @@ for _, c in cases do
 	local strict = "ok"
 	if v == nil then strict = r.reason or "nil reason" end
 	local tr = fresh()
-	local w = json.FromJsonTolerant(root, inputs[name], tr)
+	local w = json.fromJsonWalk(root, inputs[name], tr)
 	print("@" .. name .. "|" .. strict .. "|" .. tolerant(w ~= nil, tr))
 end
 `)

@@ -1,5 +1,5 @@
 --!strict
--- schema_load.luau — the Luau table runtime's VARIABLE FORM (form 1) tolerant load
+-- schema_load.luau — the Luau table runtime's VARIABLE FORM (form 1) walk load
 -- (docs/SPEC-TABLES.md §3, §3.1, §4; docs/PORT-LUAU.md, THE CARD MAP). A port
 -- of the JavaScript leg's TableVariableLoad walk
 -- (internal/codegen/jstable/variableruntime.go) and of the Go reference engine
@@ -16,6 +16,7 @@
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
+local F = require("./schema_fixed")
 
 local L = {}
 
@@ -1755,7 +1756,7 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 	if _numberingGood and not _countRefused and not report.malformed and cyclic() then
 		report.malformed = true
 	end
-	-- A NaN OR AN INFINITY REFUSES THE READ, TOLERANT AND STRICT ALIKE
+	-- A NaN OR AN INFINITY REFUSES THE READ, walk AND STRICT ALIKE
 	-- (docs/SPEC-TABLES.md §3.3): nothing of the value lands, and the report
 	-- names the field, non_finite_float: <Owner>.<field>.
 	if _nonFinite ~= nil then
@@ -1775,11 +1776,11 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 	return v
 end
 
--- loadTolerant returns a value only when the wire is whole. Tolerant
+-- loadWalk returns a value only when the wire is whole. walk
 -- evolution is not damage: malformed input is discarded on every read (§4).
 local integrityOpen: (buffer) -> buffer?
 
--- loadBody is the tolerant read of a file whose integrity trailer, if its
+-- loadBody is the walk read of a file whose integrity trailer, if its
 -- root declares one, is already off: the id table, the node table and the
 -- root body.
 local function loadBody(root: string, bytes: buffer, report: any): any
@@ -1791,8 +1792,34 @@ end
 -- A ROOT THAT DECLARES INTEGRITY (docs/SPEC-TABLES.md §2.14) opens its
 -- trailer first, as the strict read does; a trailer that does not match is the
 -- whole-file damage named integrity_mismatch.
-function L.loadTolerant(root: string, bytes: buffer, report: any): any
+function L.loadWalk(root: string, bytes: buffer, report: any): any
 	local d = S.lookup(root)
+	if d ~= nil and d.fixed then
+		if bytes == nil or buffer.len(bytes) < 1 then
+			report.refused = (report.refused or 0) + 1
+			report.reason = "truncated"
+			return nil
+		end
+		local fx: any = {}
+		local out = F.loadWalk(d, nil :: any, bytes, fx)
+		if out == nil then
+			report.reason = fx.reason
+			if fx.field ~= nil then report.field = fx.field end
+			report.refused = (report.refused or 0) + 1
+			return nil
+		end
+		if #out ~= 1 then
+			report.reason = if #out == 0 then "truncated" else "batch_too_large"
+			report.refused = (report.refused or 0) + 1
+			return nil
+		end
+		report.unknown = (report.unknown or 0) + (fx.unknown or 0)
+		report.kindMismatch = (report.kindMismatch or 0) + (fx.kindMismatch or 0)
+		report.clamped = (report.clamped or 0) + (fx.clamped or 0)
+		report.widened = (report.widened or 0) + (fx.widened or 0)
+		report.duplicate = (report.duplicate or 0) + (fx.duplicate or 0)
+		return out[1]
+	end
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local body = integrityOpen(bytes)
 		if body == nil then
@@ -2206,7 +2233,7 @@ end
 
 
 -- THE VARIABLE FORM'S STRICT READ (docs/SPEC-TABLES.md §6.5): the one answer
--- for form 1, over the tolerant walk above. It resets the caller's report,
+-- for form 1, over the walk walk above. It resets the caller's report,
 -- applies the file's own framing (integrity, the id table and the root body's
 -- terminator) and then the refusing counters in TableReport.Err()'s order, so a
 -- wire always answers one name. R.ReadStrict's fixed-form dispatch lives in
@@ -2221,10 +2248,35 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		return nil
 	end
 	local b = bytes :: buffer
+	local d = S.lookup(root)
+	if d ~= nil and d.fixed then
+		local form = buffer.readu8(b, 0)
+		if form == 2 then rep.reason = "message_form_as_file"; return nil end
+		if form == 1 then rep.reason = "previous_form"; return nil end
+		if form ~= 3 then rep.reason = "newer_form"; return nil end
+		local fx: any = {}
+		local out = F.read(d, nil :: any, b, fx)
+		rep.unknown = (fx.unknown or 0)
+		rep.kindMismatch = (fx.kindMismatch or 0)
+		rep.clamped = (fx.clamped or 0)
+		rep.widened = (fx.widened or 0)
+		rep.duplicate = (fx.duplicate or 0)
+		if out == nil then
+			rep.reason = fx.reason
+			if fx.field ~= nil then rep.field = fx.field end
+			if fx.malformed == true then rep.malformed = true end
+			return nil
+		end
+		if #out ~= 1 then
+			rep.malformed = true
+			rep.reason = "wire_damaged"
+			return nil
+		end
+		return out[1]
+	end
 	local form = buffer.readu8(b, 0)
 	if form == 2 then rep.reason = "message_form_as_file"; return nil end
 	if form ~= 1 then rep.reason = "newer_form"; return nil end
-	local d = S.lookup(root)
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local body = integrityOpen(b)
 		if body == nil then rep.malformed = true; rep.reason = "integrity_mismatch"; return nil end
