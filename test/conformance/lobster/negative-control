@@ -9,9 +9,13 @@
 # file is written, so an interrupt leaves no sabotaged tree.
 #
 #   report  load.lobster refuses an otherwise valid unknown field. The
-#           acceptance/value surfaces report, framing, retain and retain-save
-#           turn red; wire and JSON reads stay green. Local counters are not
-#           an oracle and changing them alone is deliberately harmless.
+#           acceptance/value surfaces framing, retain and retain-save turn
+#           red; wire and JSON reads stay green. Local counters are not an
+#           oracle and changing them alone is deliberately harmless. Since
+#           the single-read corpus migration (harness/migrate_fixed.go) no
+#           `report` row reaches the variable walk's unknown-field skip
+#           (measured: under this sabotage `report` stays 127/127), so
+#           `report` is not on this control's list.
 #   walk    json.lobster's field-key match never matches the first declared
 #           field: json-read, json-hostile and cook-write (whose input recipes
 #           use JSON) turn red. Json-write and wire stay green, locating the
@@ -87,7 +91,7 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *lobster / [a-z-]+' "$out/log" | sed 's/^ *lobster \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing report retain retain-save " ; green="wire json-read cook-write" ;;
+report) want="framing retain retain-save " ; green="wire json-read cook-write" ;;
 framing) want="framing " ; green="wire report retain" ;;
 cycle)  want="framing " ; green="wire report retain" ;;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
