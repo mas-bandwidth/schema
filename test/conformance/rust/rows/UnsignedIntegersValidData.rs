@@ -84,7 +84,7 @@ fn unsigned_integers_valid_data_write_read_acceptance() {
 
     // clean read: no counters moved
     assert!(
-        report.clamped == 0 && !report.malformed && !report.refused,
+        report.oor == 0 && !report.damaged && !report.refused,
         "clean read: no counters moved, no refusal"
     );
 
