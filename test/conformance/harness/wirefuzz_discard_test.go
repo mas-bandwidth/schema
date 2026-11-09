@@ -13,19 +13,24 @@ import (
 )
 
 // The legacy pipe has several refusal flags, but the contract has one verdict.
-// Every diagnostic and undefined payload is ignored after refusal. An accepted
-// result must agree in every canonical byte, independent of all counters.
+// Under strict-only a refused load's report IS the refusal, so the leg must name
+// it (malformed for damage, refused for a named form); every other diagnostic
+// and undefined payload is ignored after refusal. An accepted result must agree
+// in every canonical byte, independent of all counters. The name stays for the
+// discard control (Makefile: tables-wire-fuzz-discard-negative-control), which
+// removes the `!ans.accepted` guard and must red this test.
 func TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues(t *testing.T) {
 	refused := oracleAnswer{report: Counts{Refused: true}}
 	accepted := oracleAnswer{accepted: true, encoded: []byte{1, 0, 7}}
 	diagnostics := Counts{Unknown: 8, KindMismatch: 3, Widened: 2, Clamped: 5, Duplicate: 1}
+	refusedDiagnostics := Counts{Unknown: 8, KindMismatch: 3, Widened: 2, Clamped: 5, Duplicate: 1, Refused: true}
 	for _, root := range []*wireRoot{{}, {variable: true}, {builder: true}, {retain: true}, {message: true}} {
 		for _, reply := range []legReply{
-			{loaded: false},
+			{loaded: false, report: Counts{Refused: true}},
 			{loaded: true, report: Counts{Refused: true}},
 			{loaded: true, report: Counts{Malformed: true}},
 			{loaded: true, report: Counts{Refused: true, Malformed: true}},
-			{loaded: false, report: diagnostics, measure: 999999, saved: []byte{8}, retained: 17, retainLost: 2},
+			{loaded: false, report: refusedDiagnostics, measure: 999999, saved: []byte{8}, retained: 17, retainLost: 2},
 		} {
 			if v := wireVerdict(root, reply, refused, 2); v != "" {
 				t.Fatal(v)

@@ -148,14 +148,14 @@ func t07C14(t *testing.T) {
 // t07W4: W4 [weak] "read slack unspecified" (§3.1: "Slack is UNSPECIFIED on
 // read and not a refusal: a reader validates the USED UNITS only, and non-zero
 // slack is not malformed, not a refusal, and moves no counter."). The emitted
-// decode never looks past the used units: the range clamp is inside the live
+// decode never looks past the used units: the range refusal is inside the live
 // loop and no content check sets malformed.
 func t07W4(t *testing.T) {
 	_, src := t02Table(t, t07Table)
 	dec := t02Norm(jsFn(src, "TFixedDecode"))
 	live := t02Block(t, dec, "for (let i = 0; i < value.itemsCount; i++) {", "}")
-	if !strings.Contains(live, "report.oor++") {
-		t.Error("W4: the range clamp does not stand inside the live loop, so slack would be clamped")
+	if !strings.Contains(live, "report.refused = TableFixedRefusal.OutOfRange") {
+		t.Error("W4: the range refusal does not stand inside the live loop, so slack would be clamped")
 	}
 	if strings.Contains(dec, "malformed") {
 		t.Error("W4: the decode refuses on body content; non-zero slack is not malformed")

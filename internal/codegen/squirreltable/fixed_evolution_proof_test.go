@@ -417,7 +417,8 @@ func TestSquirrelFixedEvolutionNumericWidening(t *testing.T) {
 // strict-only, docs/FIXED-FORM-ALGORITHM.md §5.4): widened is the one counter,
 // and the report is the load's own — every load resets FixedWidened,
 // FixedReason and FixedField, so a widening file loaded twice reads w4 both
-// times and a clean load after a refusal names no reason. An append the
+// times, a refusal reads w0 (the counters are zero on a refusal, §5.4), and a
+// clean load after a refusal names no reason. An append the
 // reader knows is not an event (w0), a range that fills its storage width
 // cannot fire (256 records of every int8 and uint8 land, w0), and no clamp,
 // duplicate or kind-mismatch counter is carried. The negative controls drop
@@ -441,7 +442,7 @@ func TestSquirrelFixedEvolutionReports(t *testing.T) {
   print(nm + " " + got + " " + T.FixedReason + " " + T.FixedField + " " + T.FixedWidened + "\n");
 }
 `
-	want := "a_widen 2 null null 4\nb_widen 2 null null 4\nc_bad -1 newer_form null 0\nd_widen 2 null null 4\ne_nonfinite -1 non_finite_float N.f 1\nf_widen 2 null null 4"
+	want := "a_widen 2 null null 4\nb_widen 2 null null 4\nc_bad -1 newer_form null 0\nd_widen 2 null null 4\ne_nonfinite -1 non_finite_float N.f 0\nf_widen 2 null null 4"
 	g := sqEvoGenerate(t, newer, lineage)
 	if got := g.run(t, sqEvoDumper(g)+seq, inputs); got != want {
 		t.Errorf("R16: the report across six loads:\n%s\nwant\n%s", got, want)
