@@ -95,11 +95,18 @@ func fixedLoadUnit(t *testing.T, root, rel string) *ir.Unit {
 
 func writeGenerated(t *testing.T, dir string, u *ir.Unit) {
 	t.Helper()
+	writeGeneratedLineage(t, dir, u, nil)
+}
+
+// writeGeneratedLineage is writeGenerated for a build that ships with a
+// locked lineage (nil: the no-lock build, which reads its own layout only).
+func writeGeneratedLineage(t *testing.T, dir string, u *ir.Unit, lineage map[string][]squirreltable.FixedLineageEntry) {
+	t.Helper()
 	files, err := squirrel.Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tables, err := squirreltable.Generate(u)
+	tables, err := squirreltable.GenerateLineage(u, lineage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,29 +163,39 @@ func TestSquirrelFixedFormAgreesWithTheByteOracle(t *testing.T) {
 		p.WriteString("}\n")
 	}
 
-	// The versioning invariant: one appended field, both directions.
+	// The versioning invariant: one appended field. A fixed table reads
+	// BACKWARD through the lineage its build locked and never forward
+	// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3 step 5): the NEW build ships
+	// with the lineage that holds the OLD layout and reads an old file, the
+	// appended field landing its declared default even into a reused row;
+	// the OLD build holds no newer layout, so a new file is refused.
 	oldU := fixedSynthetic(t, "package vroot\nfixed table VR { a int32 = 5 }\n")
 	newU := fixedSynthetic(t, "package vroot\nfixed table VR { a int32 = 5\n b int32 = 11 }\n")
+	oldEntry, ok := squirreltable.FixedLineageOf(oldU, "VR")
+	if !ok {
+		t.Fatal("the older unit builds no fixed lineage entry")
+	}
 	for _, side := range []struct {
-		dir, module string
-		u           *ir.Unit
-	}{{"vold", "VrootTables", oldU}, {"vnew", "VrootTables", newU}} {
+		dir     string
+		u       *ir.Unit
+		lineage map[string][]squirreltable.FixedLineageEntry
+	}{{"vold", oldU, nil}, {"vnew", newU, map[string][]squirreltable.FixedLineageEntry{"VR": {oldEntry}}}} {
 		sub := filepath.Join(dir, side.dir)
 		if err := os.MkdirAll(sub, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		writeGenerated(t, sub, side.u)
+		writeGeneratedLineage(t, sub, side.u, side.lineage)
 	}
 	p.WriteString(`{ local O = dofile("vold/schema_module.nut", true).require("VrootTables");
   local N = dofile("vnew/schema_module.nut", true).require("VrootTables");
   local o = O.VR(); o.A = 42; local ob = blob(256); local om = O.VRFixedSave(ob, [o]);
   local ob2 = blob(om); for (local i = 0; i < om; i++) ob2[i] = ob[i];
-  local n = N.VR(); local got = N.VRFixedLoad(ob2, [n], null);
-  if (got != 1 || n.A != 42 || n.B != 11) print("VERSION-OLD-NEW:" + got + ":" + N.FixedReason + ":len=" + ob.len() + ":L=" + ((ob[16]|ob[17]<<8|ob[18]<<16|ob[19]<<24)) + "\n");
+  local n = N.VR(); n.B = 99; local got = N.VRFixedLoad(ob2, [n], null);
+  if (got != 1 || n.A != 42 || n.B != 11) print("VERSION-OLD-NEW:" + got + ":" + N.FixedReason + ":A=" + n.A + ":B=" + n.B + "\n");
   local nv = N.VR(); nv.A = 43; nv.B = 44; local nb = blob(256); local nm = N.VRFixedSave(nb, [nv]);
   local nb2 = blob(nm); for (local i = 0; i < nm; i++) nb2[i] = nb[i];
-  local ov = O.VR(); local got2 = O.VRFixedLoad(nb2, [ov], null);
-  if (got2 != 1 || ov.A != 43) print("VERSION-NEW-OLD:" + got2 + ":" + O.FixedReason + ":len=" + nb.len() + ":L=" + ((nb[16]|nb[17]<<8|nb[18]<<16|nb[19]<<24)) + "\n");
+  local ov = O.VR(); ov.A = 7; local got2 = O.VRFixedLoad(nb2, [ov], null);
+  if (got2 != -1 || ov.A != 7) print("VERSION-NEW-OLD:" + got2 + ":" + O.FixedReason + ":A=" + ov.A + "\n");
 }
 `)
 	// Named refusals, each reached by one forged layout.
@@ -194,10 +211,10 @@ func TestSquirrelFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	inputs["toobig"] = tooBig
 	p.WriteString(`{ local S = dofile("fx1/schema_module.nut", true); local T = S.require("Tblfx1Tables");
   local v = [T.FxRoot()];
-  T.FxRootFixedLoad(inputs["prev"], v, null); print("R1:" + T.FixedReason + "\n");
-  T.FxRootFixedLoad(inputs["mal"], v, null); print("R2:" + T.FixedReason + "\n");
-  T.FxRootFixedLoad(inputs["toobig"], v, null); print("R3:" + T.FixedReason + "\n");
-  T.FxRootFixedLoad(inputs["fx1"], v, 0); print("R4:" + T.FixedReason + "\n");
+  print("R1:" + T.FxRootFixedLoad(inputs["prev"], v, null) + "\n");
+  print("R2:" + T.FxRootFixedLoad(inputs["mal"], v, null) + "\n");
+  print("R3:" + T.FxRootFixedLoad(inputs["toobig"], v, null) + "\n");
+  print("R4:" + T.FxRootFixedLoad(inputs["fx1"], v, 0) + "\n");
 }
 `)
 	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(p.String()), 0o644); err != nil {
@@ -258,13 +275,13 @@ func TestSquirrelFixedFormAgreesWithTheByteOracle(t *testing.T) {
 		}
 		fixed++
 	}
-	wantRefusals := map[string]string{
-		"R1": "previous_form", "R2": "layout_malformed",
-		"R3": "layout_record_too_large", "R4": "plan_too_large",
-	}
-	for k, want := range wantRefusals {
-		if refusals[k] != want {
-			t.Errorf("%s: refusal %q, want %q", k, refusals[k], want)
+	// Each forged file is REFUSED. The cross-language answer is the verdict,
+	// never the reason name (docs/FIXED-FORM-ALGORITHM.md, THE CROSS-LANGUAGE
+	// ANSWER IS THE VERDICT): a forged form byte, a layout length past the
+	// file, a forged record size inside the layout bytes, and a plan cap of 0.
+	for _, k := range []string{"R1", "R2", "R3", "R4"} {
+		if refusals[k] != "-1" {
+			t.Errorf("%s: the forged file read %q, want refused (-1)", k, refusals[k])
 		}
 	}
 	if fixed != len(fixedVectors) {
