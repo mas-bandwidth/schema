@@ -59,9 +59,7 @@ local function check_wstring(t)
     local u = t[i] or 0
     if u == 0 then error("text_ill_formed", 0) end
     if u >= 0xD800 and u <= 0xDBFF then
-      if i + 1 > n or (t[i + 1] or 0) < 0xDC00 or (t[i + 1] or 0) > 0xDFFF then
-        error("text_ill_formed", 0)
-      end
+      if i + 1 > n or (t[i + 1] or 0) < 0xDC00 or (t[i + 1] or 0) > 0xDFFF then error("text_ill_formed", 0) end
       i = i + 2
     elseif u >= 0xDC00 and u <= 0xDFFF then
       error("text_ill_formed", 0)
@@ -300,8 +298,14 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     end
     -- a bits(N) field past its mask refuses (§4.6); a declared range on the
     -- same field already held it
-    if d.lo == nil and d.bits ~= nil and d.bits > 0 and d.bits < w * 8
-      and type(v) == "number" and v > (1 << d.bits) - 1 then
+    if
+      d.lo == nil
+      and d.bits ~= nil
+      and d.bits > 0
+      and d.bits < w * 8
+      and type(v) == "number"
+      and v > (1 << d.bits) - 1
+    then
       refuse_out_of_range()
     end
     return v, pos + w
@@ -382,9 +386,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     if tag ~= 0 then
       local arm = ud.arms[tag]
       local fd = T.Unions[d.target].arms[tag].field
-      if fd ~= nil then
-        v[arm.slot] = decode_value(T, fd, buf, pos + ud.tag, arm.size, arm.elem)
-      end
+      if fd ~= nil then v[arm.slot] = decode_value(T, fd, buf, pos + ud.tag, arm.size, arm.elem) end
     end
     return v, pos + size
   elseif s == "array" then
@@ -394,7 +396,11 @@ decode_value = function(T, d, buf, pos, size, elemSize)
         local n = d.bound or #d.keyed
         for i = 1, n do
           local ev = decode_value(T, d.elem, buf, pos + (i - 1) * elemSize, elemSize)
-          if ev == nil then t[i] = false else t[i] = ev end
+          if ev == nil then
+            t[i] = false
+          else
+            t[i] = ev
+          end
         end
         return t, pos + size
       end
@@ -402,7 +408,11 @@ decode_value = function(T, d, buf, pos, size, elemSize)
       if n < 0 or n > d.bound then error("count_over_bound") end
       for i = 1, n do
         local ev = decode_value(T, d.elem, buf, pos + 4 + (i - 1) * elemSize, elemSize)
-        if ev == nil then t[i] = false else t[i] = ev end
+        if ev == nil then
+          t[i] = false
+        else
+          t[i] = ev
+        end
       end
       return t, pos + size
     end
@@ -456,17 +466,23 @@ local function layout_tree(layout)
   if #layout < 4 then return nil end
   local count = string.unpack("<I4", layout, 1)
   if count == 0 or #layout ~= 4 + 17 * count then return nil end
-  if count > maxPlanEntries then
-    return { refusal = "plan_too_large", kind = 13, size = 0, children = {} }
-  end
+  if count > maxPlanEntries then return { refusal = "plan_too_large", kind = 13, size = 0, children = {} } end
   local i = 0
   local function parse()
     i = i + 1
     if i > count then return nil end
     local at = 4 + (i - 1) * 17
     local kind = layout:byte(at + 9)
-    if not ((kind >= 1 and kind <= 16) or (kind >= 18 and kind <= 30)
-      or kind == 32 or kind == 33 or kind == 35 or kind == 36) then
+    if
+      not (
+        (kind >= 1 and kind <= 16)
+        or (kind >= 18 and kind <= 30)
+        or kind == 32
+        or kind == 33
+        or kind == 35
+        or kind == 36
+      )
+    then
       return nil
     end
     local size = string.unpack("<I4", layout, at + 10)
@@ -603,9 +619,7 @@ local function decode_old_table(T, name, node, buf, pos, rep)
   local byId = {}
   local cursor = pos
   for _, child in ipairs(node.children) do
-    if child.id ~= nil and byId[child.id] == nil then
-      byId[child.id] = { node = child, pos = cursor }
-    end
+    if child.id ~= nil and byId[child.id] == nil then byId[child.id] = { node = child, pos = cursor } end
     cursor = cursor + child.size
   end
   for i, f in ipairs(desc.fields) do
@@ -786,9 +800,7 @@ local function read_impl(T, name, buf, strict)
   end
   local desc = T.Tables[name]
   if desc ~= nil and desc.integrity ~= nil then
-    if #buf < 5 or string.unpack("<I4", buf, #buf - 3) ~= L.crc32c(buf, #buf - 4) then
-      error("integrity_mismatch")
-    end
+    if #buf < 5 or string.unpack("<I4", buf, #buf - 3) ~= L.crc32c(buf, #buf - 4) then error("integrity_mismatch") end
     buf = buf:sub(1, #buf - 4)
   end
   if #buf < 20 then error("malformed") end
@@ -874,9 +886,7 @@ function F.write(T, name, value)
   local body = encode_table(T, name, value)
   if #body ~= f.size then error("layout_malformed") end
   local out = f.header .. f.hashPrefix .. body
-  if f.integrity then
-    out = out .. string.pack("<I4", L.crc32c(out, #out))
-  end
+  if f.integrity then out = out .. string.pack("<I4", L.crc32c(out, #out)) end
   return out
 end
 
@@ -909,9 +919,7 @@ function F.save(T, name, values)
   end
   local out = table.concat(parts)
   local desc = T.Tables[name]
-  if desc ~= nil and desc.integrity ~= nil then
-    out = out .. string.pack("<I4", L.crc32c(out, #out))
-  end
+  if desc ~= nil and desc.integrity ~= nil then out = out .. string.pack("<I4", L.crc32c(out, #out)) end
   return out
 end
 
@@ -1025,8 +1033,11 @@ function F.prepare(T)
     fixed.integrity = desc ~= nil and desc.integrity ~= nil
     -- THE WRITER'S HEADER AND HASH PREFIX ARE THE DESCRIPTOR'S CONSTANTS
     -- (docs/PORTING.md M13), built once here rather than on every save.
-    fixed.header = string.char(formByte) .. zeros(7) .. pack_uint(fixed.hash, 8)
-      .. pack_uint(#fixed.layout, 4) .. fixed.layout
+    fixed.header = string.char(formByte)
+      .. zeros(7)
+      .. pack_uint(fixed.hash, 8)
+      .. pack_uint(#fixed.layout, 4)
+      .. fixed.layout
     fixed.hashPrefix = pack_uint(fixed.hash, 8)
     for _, entry in ipairs(fixed.known or {}) do
       entry.tree = layout_tree(entry.layout) or false
