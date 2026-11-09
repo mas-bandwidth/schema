@@ -291,11 +291,13 @@ func TestMooJsonHostileVerdicts(t *testing.T) {
 		res := textRun(t, u, cases, inputs, nil)
 		for i, h := range byUnit[key] {
 			got := res[i][0]
-			// the verdict's columns: u,k,w,c,d,m,read — or refused alone
-			at := strings.LastIndexByte(got, ',')
-			verdict := got[:at]
-			if strings.HasSuffix(verdict, ",refused") {
-				verdict = "refused"
+			// the report's columns are counters,damaged,verdict,reason;
+			// only the verdict is the contract (docs/rulings.json
+			// refusal-verdict-only), never the counters or reason.
+			fields := strings.Split(got, ",")
+			verdict := got
+			if len(fields) >= 7 {
+				verdict = fields[6]
 			}
 			if verdict != h.verdict {
 				t.Errorf("%s (%s %s): read %s, want %s", h.name, key, h.root, got, h.verdict)
