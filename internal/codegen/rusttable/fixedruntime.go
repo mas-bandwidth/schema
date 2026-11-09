@@ -1685,22 +1685,21 @@ fn compile_entry(
                 ..TableFixedEntry::default()
             });
         }
-        12 | 33 => {
-            // text: the length, held to MY bound in units, then the content
-            let unit = if me.kind == 33 { 2u32 } else { 1u32 };
+        12 => {
+            // text: the length, held to MY bound in bytes, then the content
             let bytes = me.size.saturating_sub(4).min(te.size.saturating_sub(4));
-            // THE CAP IS THE SPAN'S, IN UNITS, AND THE SPAN IS THE SHORTER OF
-            // THE TWO (§5.2 TEXT: span := min(me.size, te.size) - 4, cap :=
-            // span / unit). The READER's own bound is the wrong number here: a
-            // reader whose bound GREW copies only the writer's span, so a
-            // length between the writer's bound and the reader's reads bytes
-            // this entry never landed, and the clamp that should have fired and
-            // counted does not.
+            // THE CAP IS THE SPAN'S, AND THE SPAN IS THE SHORTER OF THE TWO
+            // (§5.2 TEXT: span := min(me.size, te.size) - 4, cap := span). The
+            // READER's own bound is the wrong number here: a reader whose bound
+            // GREW copies only the writer's span, so a length between the
+            // writer's bound and the reader's reads bytes this entry never
+            // landed, and the clamp that should have fired and counted does
+            // not.
             c.push(TableFixedEntry {
                 src: their_at,
                 dst: my_at,
                 size: bytes,
-                aux: bytes.checked_div(unit).unwrap_or(0),
+                aux: bytes,
                 guard_off: goff as u32,
                 guard_count: gcount as u8,
                 op: TableFixedOp::Text,

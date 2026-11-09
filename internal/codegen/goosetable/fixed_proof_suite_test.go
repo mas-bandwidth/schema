@@ -534,35 +534,6 @@ fixed table T { s string(8) }
 `,
 			want: "true 2 true",
 		},
-		// 31. port/goose/fixed/utf16-values
-		{
-			id: "utf16-values",
-			schema: `package probe
-fixed table T { w wstring(4) }
-`,
-			root:  "T",
-			body:  12,
-			count: 2,
-			cppSetup: `
-    value[1].w[0] = 0x0041;
-    value[1].w[1] = 0x03b1;
-    value[1].w[2] = 0xd83d;
-    value[1].w[3] = 0xde00;
-    value[1].w_length = 4;
-`,
-			main: `fn main() {
-    var v0 = probe::T { .. };
-    var v1 = probe::T { W: [0x0041, 0x03b1, 0xd83d, 0xde00], WLength: 4 };
-    var out: u8[>..] = [];
-    let w = probe::TFixedSave([v0, v1], out);
-    var back: probe::T[2] = [probe::T { .. }; 2];
-    var rep = schema_rt::FixedReport { .. };
-    let n = probe::TFixedLoad(back, out, rep);
-    print(w > 0, " ", n, " ", back[0].WLength == 0 && back[1].WLength == 4 && back[1].W[1] == 0x03b1 && back[1].W[3] == 0xde00);
-}
-`,
-			want: "true 2 true",
-		},
 		// 32. port/goose/fixed/byte-buffers
 		{
 			id: "byte-buffers",

@@ -222,13 +222,6 @@ var versionRows = []versionRow{
         arm.y == 55,
         "the field appended to the arm's payload is not its declared default: y={} (a union zeroed whole, not reset arm by arm)", arm.y
     );`},
-	{row: "wstring_grow", poison: true, check: `
-    // Independent producer: test/tables/versioning_numbers.cpp's eight
-    // UTF-16 code units include both halves of a surrogate pair and U+FFFF.
-    assert_eq!(values[0].text_length, 8);
-    assert_eq!(&values[0].text[..8], &[0x0068, 0x0065, 0x006c, 0x006c, 0x006f, 0xd83d, 0xde00, 0xffff]);
-    assert!(values[0].text[8..].iter().all(|&u| u == 0), "grown UTF-16 storage is not zero-prefilled");
-    `},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------

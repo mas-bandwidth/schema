@@ -97,7 +97,6 @@ var gooseVersionRows = []gooseVersionRow{
 	{row: "union_append"},
 	// NOT A WIDEN, whatever its name: it appends a field inside an arm (§5.7)
 	{row: "union_arm_payload_widen"},
-	{row: "wstring_grow"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------

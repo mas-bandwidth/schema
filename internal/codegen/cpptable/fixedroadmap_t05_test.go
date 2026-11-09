@@ -3,11 +3,11 @@ package cpptable
 // TestFixedRoadmapCppT05Evolution proves this card's rows of the `fixed-tables`
 // roadmap node on the cpp leg: the text tasks cpp/C3 (text length clamp), cpp/C4
 // (text content refuses BY NAME) and cpp/R24 (ill-formed text in the USED
-// units). The law is docs/FIXED-FORM-ALGORITHM.md
+// bytes). The law is docs/FIXED-FORM-ALGORITHM.md
 // §4.5's `text` row and docs/SPEC-TABLES.md §3.4:
 //
 //   `v := SLE(4, record+src)` out_of_range into `[0, cap]`, `COUNT out_of_range` if it
-//   fired. ... The CONTENT RULES apply to the USED UNITS and nothing else:
+//   fired. ... The CONTENT RULES apply to the USED BYTES and nothing else:
 //   UTF-8 validity over `v` bytes, never over `N`. A content violation
 //   REFUSES BY NAME.
 //
@@ -176,72 +176,6 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
 		}
 	})
 
-	t.Run("cpp/C5", func(t *testing.T) {
-		t.Parallel()
-		body := `
-    // A lawful one-record file: caption wstring(8) = "wxyz" (4 units, cap 8),
-    // its code-unit payload little-endian. FxWide reaches it at a nested level.
-    {
-        FxWide v;
-        FxWideReset( v );
-        const char16_t u[8] = { u'w',u'x',u'y',u'z',u'W',u'X',u'Y',u'Z' };
-        memcpy( v.caption, u, sizeof( u ) ); v.caption_length = 8;
-        v.seq = 1000;
-        n = FxWideFixedSave( &v, 1, data, (int64_t) sizeof( data ) );
-        if ( n <= 0 ) { printf( "C5: save failed\n" ); return 1; }
-    }
-    const int64_t filelen = n;
-    static const uint8_t cu[16] = { 'w',0,'x',0,'y',0,'z',0,'W',0,'X',0,'Y',0,'Z',0 };
-    int64_t at = find_bytes( data, n, cu, 16 );
-    if ( at < 4 ) { printf( "C5: the wide payload is not locatable: %lld\n", (long long) at ); return 1; }
-    uint8_t * word = data + at - 4;
-
-    // THE BOUND IS IN CODE UNITS, NOT BYTES: a used length of 16 bytes is 8
-    // units and in cap, but a length 16 written as the WIRE's unit count is
-    // past cap 8 and refuses length_over_bound by name — the unit the bound is
-    // counted in is the verdict (docs/SPEC-TABLES.md §3.4).
-    TableFixedPut32( word, 16 );
-    {
-        memset( &r, 0, sizeof( r ) );
-        for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.damaged || r.reason != length_over_bound )
-            { printf( "C5: byte-vs-unit refusal n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
-        if ( r.unknown != 0 || r.widened != 0 )
-            { printf( "C5: refused but a counter moved: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
-    }
-    // CONTENT OVER v, NEVER 2N: with the used length v=4, a lone surrogate at
-    // unit 5 is PAST the walked range and the read stays clean — the check is
-    // over the USED UNITS and nothing else.
-    TableFixedPut32( word, 4 );
-    data[at + 10] = 0x00; data[at + 11] = 0xD8; // a lone high surrogate at unit 5
-    {
-        memset( &r, 0, sizeof( r ) );
-        for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.damaged || r.refused )
-            { printf( "C5: a surrogate past v=4 was walked: n=%lld malformed=%d refused=%d\n", (long long) n, (int) r.damaged, (int) r.refused ); return 1; }
-    }
-    // INSIDE v: the same surrogate at unit 2 with v=4 IS content the walk
-    // checks — the check fires (the verdict itself is cpp/C4's; here it is that
-    // the walk reaches it at all).
-    data[at + 10] = 'X'; data[at + 11] = 0x00; // restore unit 5
-    data[at + 4] = 0x00; data[at + 5] = 0xD8;  // a lone surrogate at unit 2
-    {
-        memset( &r, 0, sizeof( r ) );
-        for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( !( r.damaged || r.refused ) )
-            { printf( "C5: a surrogate inside v=4 was NOT content-checked\n" ); return 1; }
-    }
-    printf( "C5 wide code units hold\n" );
-`
-		out, err := cppRunFixedProbe(t, filepath.Join("..", "..", "..", "test", "tables", "FXW.schema"), "FxWide", body)
-		if err != nil {
-			t.Fatalf("cpp/C5: %v\n%s", err, out)
-		}
-	})
-
 	t.Run("cpp/C4", func(t *testing.T) {
 		t.Parallel()
 		body := `
@@ -313,46 +247,34 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     data[at + 2] = 0xC0;
     {
         memset( &r, 0, sizeof( r ) );
-        for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != 1 || r.refused || r.damaged || r.refused != 0 )
-            { printf( "R24: 8 units, in cap: n=%lld out_of_range=%d\n", (long long) n, r.refused ); return 1; }
-        if ( back[0].caption_length != 8 )
-            { printf( "R24: the 8 units did not land: %d\n", back[0].caption_length ); return 1; }
+        for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
+        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        if ( n != -1 || !r.refused || r.damaged || r.reason != TableMessageReason::text_ill_formed )
+            { printf( "R24: ill-formed used bytes n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 )
+            { printf( "R24: a refusal moved a counter: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
-    // 9 CODE UNITS is ONE PAST the cap: it refuses length_over_bound by name,
-    // counted in UNITS, not in 8 BYTES (docs/SPEC-TABLES.md §3.4).
+    // 9 BYTES is ONE PAST the cap: it refuses length_over_bound by name.
+    data[at + 2] = 'E';
     TableFixedPut32( data + at - 4, 9 );
     {
         memset( &r, 0, sizeof( r ) );
-        for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
+        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != -1 || !r.refused || r.damaged || r.reason != length_over_bound )
-            { printf( "R24: 9 units should refuse: n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
+            { printf( "R24: 9 bytes should refuse: n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
         if ( r.unknown != 0 || r.widened != 0 )
             { printf( "R24: refused but a counter moved: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
-    // SLACK IS NOT JUDGED: a lone surrogate PAST the used units is no refusal.
+    // SLACK IS NOT JUDGED: an ill-formed byte PAST the used bytes is no refusal.
     TableFixedPut32( data + at - 4, 4 );
-    data[at + 10] = 0x00; data[at + 11] = 0xD8;
+    data[at + 6] = 0xC0;
     {
         memset( &r, 0, sizeof( r ) );
-        for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
+        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != 1 || r.refused || r.damaged )
-            { printf( "R24: a slack unit past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.damaged ); return 1; }
-    }
-    // ILL-FORMED TEXT IN THE USED UNITS REFUSES BY NAME (TableMessageReason::text_ill_formed).
-    data[at + 10] = 'X'; data[at + 11] = 0x00;
-    data[at + 4] = 0x00; data[at + 5] = 0xD8;
-    {
-        memset( &r, 0, sizeof( r ) );
-        for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.damaged || r.reason != TableMessageReason::text_ill_formed )
-            { printf( "R24: ill-formed used units n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
-        if ( r.unknown != 0 || r.widened != 0 )
-            { printf( "R24: a refusal moved a counter: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
+            { printf( "R24: a slack byte past v was judged: n=%lld refused=%d malformed=%d\n", (long long) n, (int) r.refused, (int) r.damaged ); return 1; }
     }
     // THE LENGTH REFUSAL AND THE CONTENT REFUSAL ON THE SAME RECORD: the length
     // word forged ONE PAST THE CAP (9 bytes) AND the used bytes ill-formed. The
@@ -360,11 +282,12 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
     // a count or length past the PLAN's bound is checked before any destination
     // byte is written (docs/SPEC-TABLES.md §3.4). REFUSE is total: no counter
     // moves and nothing is decoded.
+    data[at + 2] = 0xC0;
     TableFixedPut32( data + at - 4, 9 );
     {
         memset( &r, 0, sizeof( r ) );
-        for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
-        n = FxWideFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
+        for ( int k = 0; k < 4; ++k ) { FxRootReset( back[k] ); }
+        n = FxRootFixedLoad( back, 4, data, filelen, plan, 4096, NULL, &r );
         if ( n != -1 || !r.refused || r.damaged || r.reason != length_over_bound )
             { printf( "R24: length+content n=%lld refused=%d malformed=%d reason=%d\n", (long long) n, (int) r.refused, (int) r.damaged, (int) r.reason ); return 1; }
         if ( r.unknown != 0 || r.widened != 0 )
