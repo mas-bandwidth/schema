@@ -258,6 +258,7 @@ var goInvocation = regexp.MustCompile(`\bgo\s+(?:run|build|test|vet)\b[^\n]*`)
 // leg at `make test`. A working tree cannot see the difference between a file
 // it owns and a file the repository owns. Git can, so the gate asks git.
 func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var text strings.Builder
@@ -1439,6 +1440,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 
 	for _, tc := range mutations {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			cloned := make(map[string]string, len(wfs))
 			maps.Copy(cloned, wfs)
 			orig := cloned[tc.workflow]
