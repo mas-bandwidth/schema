@@ -43,7 +43,7 @@ func TestPointerTargetKindsElixir(t *testing.T) {
 	var p strings.Builder
 	p.WriteString(`alias Probe.Table,as: T
 store=%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 `)
 	for _, row := range rows {
 		v := m.New(u.Tables[row.Writer])
@@ -58,6 +58,22 @@ zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retain
 		dest := m.New(u.Tables[row.Reader])
 		r = tabletext.Report{}
 		ok, e := tablewire.Decode(m, dest, wire, &r)
+		refused := row.KindMismatch > 0
+		if refused {
+			if ok || !tablewire.ReadRefusal(e) || !r.Refused || r.Reason == "" {
+				t.Fatalf("%s SPEC3.1 oracle: %+v %v", row.Name, r, e)
+			}
+			fmt.Fprintf(&p, `wire=Base.decode16!(%q,case: :lower)
+{:ok,original,_}=T.from_json(%q,%q)
+{:ok,^wire}=T.save(%q,original)
+for _<-1..2 do
+ for result<-[T.load(%q,wire),T.load_retain(%q,wire,store,zero)] do
+  unless elem(result,0)==:error and elem(result,2).reason != "" ,do: raise(%q<>" strict refusal "<>inspect(result))
+ end
+end
+`, hex.EncodeToString(wire), row.Writer, string(row.Input), row.Writer, row.Reader, row.Reader, row.Name)
+			continue
+		}
 		if !ok || e != nil || int(r.Unknown) != row.Unknown || r.Refused {
 			t.Fatalf("%s SPEC3.1 oracle: %+v %v", row.Name, r, e)
 		}
@@ -81,12 +97,12 @@ zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retain
 for _<-1..2 do
  for result<-[T.load(%q,wire),T.load_retain(%q,wire,store,zero)] do
   v=elem(result,1);r=elem(result,2)
-  unless elem(result,0)==:ok and r.kind_mismatch==%d and r.unknown==%d and r.blob_shared==0 and true,do: raise(%q<>" "<>inspect(result))
+  unless elem(result,0)==:ok and r.unknown==%d and r.reason == "" and true,do: raise(%q<>" "<>inspect(result))
   {:ok,text}=T.to_json(%q,v)
   unless text==%q,do: raise(%q<>" value "<>text)
  end
 end
-`, hex.EncodeToString(wire), row.Writer, string(row.Input), row.Writer, row.Reader, row.Reader, row.KindMismatch, row.Unknown, row.Name, row.Reader, string(canonical)+"\n", row.Name)
+`, hex.EncodeToString(wire), row.Writer, string(row.Input), row.Writer, row.Reader, row.Reader, row.Unknown, row.Name, row.Reader, string(canonical)+"\n", row.Name)
 	}
 	p.WriteString("IO.puts(\"POINTER_TARGET_KINDS_OK\")\n")
 	out, e := runArmProbe(t, elixirBinary(t), generateElixir(t, u), p.String())
@@ -116,9 +132,9 @@ func TestNodeTableWrongKindElixir(t *testing.T) {
 	p := fmt.Sprintf(`alias Featurewitnesses.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("ArrayRoot",wire),T.load_retain("ArrayRoot",wire,store,zero)] do
- unless elem(result,0)==:error and elem(result,1)==:malformed and elem(result,2).malformed,do: raise("reserved node kind "<>inspect(result))
+ unless elem(result,0)==:error and elem(result,1)==:malformed and elem(result,2).reason=="wire_damaged",do: raise("reserved node kind "<>inspect(result))
 end
 IO.puts("NODE_TABLE_KIND_OK")
 `, hex.EncodeToString(wire))
