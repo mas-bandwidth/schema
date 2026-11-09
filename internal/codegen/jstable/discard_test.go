@@ -251,7 +251,7 @@ if (m.GraphLoadRetain(wire("graph.bin"), kept, kr) === null || kept.count === 0 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(first) == 0 || first[0] != 1 {
+			if len(first) != 0 && first[0] != 1 {
 				continue
 			}
 			rows[fs[2]] = append(rows[fs[2]], row{fs[1], fs[3], wirePath})
