@@ -331,8 +331,13 @@ jobs:
         name: the tables-<lang>-release targets the Makefile and make/*.mk carry
         run: |
           # and every leg's release wire-fuzz gate, from the leg list
-          # make/wire-fuzz-release.mk holds (tables-wire-fuzz-release-<leg>)
-          targets=$( { grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//'; sed -n 's/^WIRE_FUZZ_RELEASE_LEGS *:= *//p' make/wire-fuzz-release.mk | tr ' ' '\n' | sed 's/^/tables-wire-fuzz-release-/'; } | sort -u | jq -R . | jq -sc .)
+          # make/wire-fuzz-release.mk holds (tables-wire-fuzz-release-<leg>),
+          # plus the 100,000-mutant per-leg wire-fuzz campaigns moved from
+          # ci-full.yml (card green-fit-fuzz-smoke: C# fuzz (region) 135 s,
+          # C# fuzz (wire), Dart fuzz (wire) 142 s in run 42556155793, with
+          # the C# build step at 117 s capped and 148 s nightly; ci-full.yml
+          # keeps the seeded N=2000 per-commit smoke).
+          targets=$( { grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//'; sed -n 's/^WIRE_FUZZ_RELEASE_LEGS *:= *//p' make/wire-fuzz-release.mk | tr ' ' '\n' | sed 's/^/tables-wire-fuzz-release-/'; printf '%s\n' tables-cs-wire-fuzz tables-cs-region-fuzz tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain tables-dart-wire-fuzz; } | sort -u | jq -R . | jq -sc .)
           echo "$targets"
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 

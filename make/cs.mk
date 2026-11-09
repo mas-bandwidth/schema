@@ -495,9 +495,12 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang cs --out generated/bench/cs/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
+# tables-cs-clean runs dotnet format and dotnet build with EnableNETAnalyzers=true
+# over this same project; skipping the analyzer pass here avoids paying it a
+# second time on every conformance and wire-fuzz driver build (card green-fit-fuzz-smoke).
 .PHONY: build-conformance-cs
 build-conformance-cs: build/tables-generated-cs/.stamp cards-cs-generate
-	cd test/conformance/cs && $(DOTNET) build -v q --nologo
+	cd test/conformance/cs && $(DOTNET) build -v q --nologo -p:RunAnalyzers=false
 
 # THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
 # different sabotage from the C++ one above on purpose. That one flips a byte of
@@ -824,6 +827,21 @@ tables-cs-fixed-roadmap:
 tables-cs-fixed-rows: tables-fixedform-corpus
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT14CompressedFloats|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
 	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
+
+# THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's cs-fuzz
+# rows run the enumerated pass and CS_FUZZ_SMOKE_N seeded random mutants per
+# commit (the N=100000 rows ran 135 s in run 42556155793, with the C# build
+# step at 117 s capped and 148 s nightly), while the full 100,000-mutant
+# tables-cs-wire-fuzz and tables-cs-region-fuzz campaigns (and the 500,000-mutant
+# tables-cs-release passes) run in certify.yml's nightly tier.
+CS_FUZZ_SMOKE_N ?= 2000
+
+.PHONY: tables-cs-wire-fuzz-smoke tables-cs-region-fuzz-smoke
+tables-cs-wire-fuzz-smoke: build-conformance-cs build/conformance-harness
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
+
+tables-cs-region-fuzz-smoke: build-conformance-cs build/conformance-harness
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
