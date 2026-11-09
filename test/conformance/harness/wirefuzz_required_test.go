@@ -42,7 +42,7 @@ func TestWireFuzzRequiredRefusal(t *testing.T) {
 					if len(answer.encoded) != 0 {
 						t.Fatal("missing required fields produced default bytes")
 					}
-					for _, good := range []legReply{{loaded: false}, {loaded: true, report: Counts{Refused: true}}, {loaded: true, report: Counts{Malformed: true}}} {
+					for _, good := range []legReply{{loaded: false, report: Counts{Refused: true}}, {loaded: true, report: Counts{Refused: true}}, {loaded: true, report: Counts{Malformed: true}}} {
 						if verdict := wireVerdict(root, good, answer, len(wire)); verdict != "" {
 							t.Fatal(verdict)
 						}
