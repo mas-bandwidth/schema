@@ -774,9 +774,46 @@ jobs:
     # the file; carrying no job-level `if:` makes all of these unrepresentable to
     # skip. The one condition is the fleet's fork guard: a fork's pull request
     # never reaches our runners.
+    #
+    # THE BYTE-IDENTITY HALF IS A ROW PER LANGUAGE. Run 42556155793 (runner
+    # vision-6) killed this job at 121s, exit 137, "per-commit jobs finish in
+    # 2m". The tree half was 5s (generated-tree-negative-controls) plus 18s
+    # (test/generated-tree/verify). `make tables-block-zero-cost` then spent
+    # 13s generating C++, 8s generating C# and 42s generating C into the
+    # symbol-grep stamps, 18s on the block-less `go build -overlay`, and was
+    # killed 8s into a second C++ pass: the byte comparison had not started.
+    # Those stamps are the same macros the comparison runs again. Each
+    # language is now its own row (tables-block-zero-cost-cpp, -cs, and the
+    # two C rows below), grepping and comparing a fresh arm, with units that
+    # do not share an --out directory running in parallel inside the row.
+    # The tree check stays the `tree` row. Nothing moved to certify.yml.
+    # `make tables-block-zero-cost` still runs all three languages, for
+    # `make test` and ci-fast.yml's block-gate.
+    #
+    # C WAS STILL OVER. Run 42571846331, job generated (zero-cost-c), 153s
+    # from start to complete, 140s of log, the make step 148s. Both arms ran
+    # the whole language one after the other. block, blockhome, messages and
+    # examples are now the heavy row (tables-block-zero-cost-c-heavy) and
+    # the other units are tables-block-zero-cost-c-rest. Each row runs its
+    # two arms together.
+    name: generated (${{ matrix.row }})
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - row: tree
+            target: generated-tree
+          - row: zero-cost-cpp
+            target: tables-block-zero-cost-cpp
+          - row: zero-cost-cs
+            target: tables-block-zero-cost-cs
+          - row: zero-cost-c-heavy
+            target: tables-block-zero-cost-c-heavy
+          - row: zero-cost-c-rest
+            target: tables-block-zero-cost-c-rest
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -789,17 +826,20 @@ jobs:
           cache: false
 
       - name: the gate's own negative control
+        if: matrix.row == 'tree'
         run: make generated-tree-negative-controls
 
       - name: the committed generated/ tree is what this compiler emits, from an empty directory
+        if: matrix.row == 'tree'
         run: |
           test/generated-tree/verify || {
             echo "::error::the committed generated/ tree is not what the compiler at this sha emits. The lists above name every file: regenerate with 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit them, 'git rm' the ones it no longer emits, or name tracked build wiring in test/generated-tree/not-emitted."
             exit 1
           }
 
-      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
-        run: make tables-block-zero-cost
+      - name: block zero-cost byte-identity (${{ matrix.row }})
+        if: matrix.row != 'tree'
+        run: make ${{ matrix.target }}
 
   # THE PINS ARE CURRENT (issue #461). The job above asks this question of
   # generated/ and asks it of nothing under testdata/, so a pin regenerated

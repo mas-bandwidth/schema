@@ -227,7 +227,12 @@ func runCTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte, e
 	if err != nil {
 		return probeOut, fmt.Errorf("the C probe failed: %w", err)
 	}
-	m := tabletext.NewModel(u)
+	// The leg's root_save writes FORM 1, the variable form, and the engine
+	// refuses form 1 for a fixed root as previous_form before it reads a byte
+	// (docs/SPEC-TABLES.md §3.4). So the engine reads these wires through the
+	// same declarations as a variable table, the class whose file form is
+	// form 1: the fields, and so the text, are the same.
+	m := tabletext.NewModel(cUnitOf(t, strings.Replace(cTextDifferentialSchema, "fixed table Root", "table Root", 1)))
 	msgs, err := compareCTextDifferential(m, outDir, cTextDifferentialN)
 	if err != nil {
 		return probeOut, err

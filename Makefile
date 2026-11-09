@@ -1740,15 +1740,25 @@ if [ "$$d" = "0" ]; then echo "block zero-cost gate: $(1) $$n Table sources byte
 [ "$$d" = "0" ]
 endef
 
-.PHONY: tables-block-zero-cost
-tables-block-zero-cost: bin/schema build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp $(BLOCKLESS_SCHEMA)
-	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
-	          build/tables-generated-cs/*/*Table.cs; do \
-		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
-			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
-		fi; \
-	done
-	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
+# ONE LANGUAGE PER TARGET. ci-full.yml's generated job runs these as matrix
+# rows: tables-block-zero-cost-cpp, tables-block-zero-cost-cs,
+# tables-block-zero-cost-c-heavy, and tables-block-zero-cost-c-rest.
+# The aggregate below still runs every language, which is what
+# `make test` and ci-fast.yml's block-gate ask for. Each target's commands
+# are the same macros the old recipe expanded (tables_generate,
+# tables_generate_cs, tables_generate_c, tables_generate_c_collections), so a
+# unit added to a macro is a unit this gate compares. The symbol greps read
+# the fresh ordinary arm: that is the same emission the stamp dependency used
+# to scan, and building the stamps only to throw them away was most of the
+# per-commit minute (run 42556155793: 13s C++, 8s C#, 42s C, then the
+# comparison started over).
+#
+# Units that share an --out directory stay in order (cpp's vnum directory is
+# one directory for many schemas). Every other directory is a separate
+# process, at most eight at a time: those writes do not share a directory,
+# and the slow unit (C maps, about 5s on that run) is the row's generation
+# time instead of the sum.
+#
 # The grep runs over the CODE, with every // comment stripped first: what the
 # gate holds is that no block CONSTRUCT is in a Table source, and a comment
 # naming one (the arena runtime describes its allocator as the shape
@@ -1760,29 +1770,19 @@ tables-block-zero-cost: bin/schema build/tables-generated/.stamp build/tables-ge
 # no Table source carries one BLOCK symbol — and the byte comparison below.
 # C# message and cook writers read the announcement's BuildVersion property;
 # the accelerator constant itself still belongs in the Block/Cook runtime.
-	@for f in build/tables-generated-cs/*/*Table.cs; do \
-		if grep -nE "(^|[[:space:]])(const|readonly)([[:space:]]+static)?[[:space:]]+ulong[[:space:]]+BuildVersion([[:space:]]|=|;)" $$f; then \
-			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources declare the accelerator BuildVersion constant: $$f"; exit 1; \
-		fi; \
-	done
-	@echo "block zero-cost gate: the C# Table sources declare no accelerator build-version constant"
-	@rm -rf $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c $(BLOCKFUL_ROOT)
-	@mkdir -p $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c $(BLOCKFUL_ROOT)/cpp $(BLOCKFUL_ROOT)/cs $(BLOCKFUL_ROOT)/c
-	$(call tables_generate,./bin/schema,$(BLOCKFUL_ROOT)/cpp)
-	$(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
-	$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
-	$(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)
-	$(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)
-	$(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
-	$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
-	$(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
-	@if find $(BLOCKLESS_ROOT) -name '*Block.*' | grep -q .; then \
-		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
-		find $(BLOCKLESS_ROOT) -name '*Block.*'; exit 1; \
-	fi
-	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
-	@$(call tables_byte_identical,cs,$(BLOCKFUL_ROOT)/cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
-	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+#
+# Run 42571846331: the single C row was 153s (job) / 140s (log). The two
+# arms ran one after the other. block, blockhome, messages and examples
+# (RenderFrame, PartFrame, ToolMessage, WideBlob) are the heavy row, and
+# the arms of a row run together. The rest row keeps the floor of 60 from
+# the 132 files that run compared; the heavy row's floor is its own files.
+# Helper defines and per-language targets live at the end of this Makefile
+# so recipe line numbers above line 6049 remain invariant.
+.PHONY: tables-block-zero-cost tables-block-zero-cost-cpp tables-block-zero-cost-cs
+.PHONY: tables-block-zero-cost-c tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest
+tables-block-zero-cost: tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c
+	@echo "block zero-cost gate: cpp, cs and c Table sources byte-identical with the block form removed"
+
 
 # THE NEGATIVE CONTROL. The block-less comparison above is a gate with no blade
 # until it is shown able to refuse a Table source that moved: the nearest
@@ -4541,7 +4541,7 @@ tables-lists-clamp-negative-control: bin/schema build/tables-generated/.stamp
 # under the sabotage the load is accepted and the refusal check goes red.
 .PHONY: tables-lists-element-kind-negative-control
 tables-lists-element-kind-negative-control: bin/schema build/tables-generated/.stamp
-	$(call list_negative_control,elemkind,'s@else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }@else if ( elem_kind != %d \&\& false ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; } // SABOTAGED@',internal/codegen/cpptable/lists.go,decoding under a changed element kind left the list gate GREEN)
+	$(call list_negative_control,elemkind,'s@else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }@else if ( elem_kind != %d \&\& false ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; } // SABOTAGED@',internal/codegen/cpptable/lists.go,decoding under a changed element kind left the list gate GREEN)
 
 # LoadMeasure OVER A LIST OF TABLES HOLDING LISTS, summed at ONE DEPTH only:
 # `list_nested` meets it, and the measure goes red against the region Load
@@ -5484,7 +5484,7 @@ tables-ref-ordinal-negative-control:
 .PHONY: tables-ref-ordinal-shared-negative-control
 tables-ref-ordinal-shared-negative-control:
 	@rm -rf build/ref-ordinal-shared-nc && mkdir -p build/ref-ordinal-shared-nc
-	@sed -e 's|const uint64_t r = ref( id );|const int32_t nc_before = count; const uint64_t r = ref( id );|; s|ordinal_of\[ int32_t( r ) - 1 \] = ` + ordinalType + `( ordinal );|if ( count != nc_before ) { ordinal_of[ int32_t( r ) - 1 ] = ` + ordinalType + `( ordinal ); } // NEGATIVE CONTROL: only a fresh append records its ordinal|' \
+	@sed -e 's|const uint64_t r = ref( id );|const int32_t nc_before = count; const uint64_t r = ref( id );|; s|ordinal_of\[int32_t( r ) - 1\] = ` + ordinalType + `( ordinal );|if ( count != nc_before ) { ordinal_of[int32_t( r ) - 1] = ` + ordinalType + `( ordinal ); } // NEGATIVE CONTROL: only a fresh append records its ordinal|' \
 		internal/codegen/cpptable/cpptable.go > build/ref-ordinal-shared-nc/emitter.go.txt
 	@cmp -s internal/codegen/cpptable/cpptable.go build/ref-ordinal-shared-nc/emitter.go.txt && \
 		{ echo "NEGATIVE CONTROL: the hit-path sabotage patched nothing"; exit 1; } || true
@@ -7765,3 +7765,158 @@ pins-conformance: bin/schema build/conformance-harness
 	$(CXX) $(COOK_CXXFLAGS) $(COOK_INCLUDES) test/tables/cook_main.cpp -o build/schema_test_cook
 	$(call pins_compile_cxx,build/conformance-cpp,$(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES),test/conformance/cpp/main.cpp $(PINS_CONFORMANCE_SOURCES),conformance)
 	./build/conformance-harness pin
+
+
+
+define tables_run_arm
+	set -eu; \
+	tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	awk 'BEGIN{printf "%s\n", ENVIRON["$(1)"]}' > "$$tmp/cmds"; \
+	while IFS= read -r line; do \
+		line=$$(printf '%s' "$$line" | sed 's/^[[:space:]]*//'); \
+		case "$$line" in \
+			''|\#*) continue;; \
+		esac; \
+		out=$$(printf '%s\n' "$$line" | awk '{for(i=1;i<=NF;i++) if($$i=="--out"){print $$(i+1); exit}}'); \
+		if [ -z "$$out" ]; then \
+			echo "ZERO-COST GATE FAILED: a generate line names no --out: $$line"; \
+			exit 1; \
+		fi; \
+		base=$${out##*/}; \
+		case "$$base" in \
+			block|blockhome|messages|examples) kind=heavy ;; \
+			*) kind=rest ;; \
+		esac; \
+		if [ -n "$(3)" ] && [ "$(3)" != "$$kind" ]; then \
+			continue; \
+		fi; \
+		key=$$(printf '%s' "$$out" | cksum | awk '{print $$1}'); \
+		printf '%s\n' "$$line" >> "$$tmp/b.$$key"; \
+	done < "$$tmp/cmds"; \
+	n=$$(find "$$tmp" -name 'b.*' | wc -l | tr -d ' '); \
+	if [ "$$n" -eq 0 ]; then \
+		echo "ZERO-COST GATE FAILED: $(2) expanded to no generate commands"; \
+		exit 1; \
+	fi; \
+	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
+	slot=0; pids=''; fail=0; \
+	for b in "$$tmp"/b.*; do \
+		bash -c 'set -eu; while IFS= read -r c; do bash -c "$$c"; done < "$$1"' _ "$$b" & \
+		pids="$$pids $$!"; \
+		slot=$$((slot+1)); \
+		if [ "$$slot" -ge "$$procs" ]; then \
+			for p in $$pids; do wait "$$p" || fail=1; done; \
+			pids=''; slot=0; \
+		fi; \
+	done; \
+	for p in $$pids; do wait "$$p" || fail=1; done; \
+	if [ "$$fail" != 0 ]; then \
+		echo "ZERO-COST GATE FAILED: $(2) generate failed"; \
+		exit 1; \
+	fi
+endef
+
+# The two arms write different trees. Run 42571846331 measured the C row at
+# 153s (job), 140s of log: the arms ran one after the other, and that sum
+# was the row. Overlap them. $(1) blockful env, $(3) blockless env,
+# $(2) label, $(4) heavy|rest|empty.
+define tables_run_both_arms
+	@set +e; \
+	( $(call tables_run_arm,$(1),$(2) blockful,$(4)) ) & p1=$$!; \
+	( $(call tables_run_arm,$(3),$(2) blockless,$(4)) ) & p2=$$!; \
+	e1=0; e2=0; \
+	wait $$p1 || e1=$$?; \
+	wait $$p2 || e2=$$?; \
+	if [ "$$e1" != 0 ] || [ "$$e2" != 0 ]; then \
+		echo "ZERO-COST GATE FAILED: $(2) $(4) arm failed"; \
+		exit 1; \
+	fi
+endef
+
+define tables_zero_cost_symbol_grep
+	@for f in $(1); do \
+		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
+			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
+		fi; \
+	done; \
+	echo "block zero-cost gate: no Table source carries one symbol of the block form"
+endef
+
+define tables_zero_cost_no_block_files
+	@if find $(1) -name '*Block.*' | grep -q .; then \
+		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
+		find $(1) -name '*Block.*'; exit 1; \
+	fi
+endef
+
+# $(call) drops the trailing newline of a define. Two calls written on one
+# assignment then glue the last command of the first to the first command of
+# the second (a tab, no newline), and schema reports the next binary path as
+# a unit file. This is one newline, put back between those calls.
+define tables_zero_cost_nl
+
+
+endef
+
+.PHONY: tables-block-zero-cost tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest
+
+tables-block-zero-cost-cpp: export ZERO_COST_CPP_BLOCKFUL = $(call tables_generate,./bin/schema,$(BLOCKFUL_ROOT)/cpp)
+tables-block-zero-cost-cpp: export ZERO_COST_CPP_BLOCKLESS = $(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)
+tables-block-zero-cost-cpp: bin/schema $(BLOCKLESS_SCHEMA)
+	@rm -rf $(BLOCKFUL_ROOT)/cpp $(BLOCKLESS_ROOT)/cpp
+	@mkdir -p $(BLOCKFUL_ROOT)/cpp $(BLOCKLESS_ROOT)/cpp
+	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKFUL,cpp blockful)
+	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKLESS,cpp blockless)
+	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
+	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cpp)
+	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+
+tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKFUL = $(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
+tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKLESS = $(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
+tables-block-zero-cost-cs: bin/schema $(BLOCKLESS_SCHEMA)
+	@rm -rf $(BLOCKFUL_ROOT)/cs $(BLOCKLESS_ROOT)/cs
+	@mkdir -p $(BLOCKFUL_ROOT)/cs $(BLOCKLESS_ROOT)/cs
+	@$(call tables_run_arm,ZERO_COST_CS_BLOCKFUL,cs blockful)
+	@$(call tables_run_arm,ZERO_COST_CS_BLOCKLESS,cs blockless)
+	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cs/*/*Table.cs)
+	@for f in $(BLOCKFUL_ROOT)/cs/*/*Table.cs; do \
+		if grep -nE "(^|[[:space:]])(const|readonly)([[:space:]]+static)?[[:space:]]+ulong[[:space:]]+BuildVersion([[:space:]]|=|;)" $$f; then \
+			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources declare the accelerator BuildVersion constant: $$f"; exit 1; \
+		fi; \
+	done
+	@echo "block zero-cost gate: the C# Table sources declare no accelerator build-version constant"
+	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cs)
+	@$(call tables_byte_identical,cs,$(BLOCKFUL_ROOT)/cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
+
+tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest: export ZERO_COST_C_BLOCKFUL = $(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)$(tables_zero_cost_nl)$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
+tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest: export ZERO_COST_C_BLOCKLESS = $(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)$(tables_zero_cost_nl)$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
+
+# Run 42571846331: the single C row was 153s (job) / 140s (log). The two
+# arms ran one after the other. block, blockhome, messages and examples
+# (RenderFrame, PartFrame, ToolMessage, WideBlob) are the heavy row, and
+# the arms of a row run together. The rest row keeps the floor of 60 from
+# the 132 files that run compared; the heavy row's floor is its own files.
+tables-block-zero-cost-c-heavy: bin/schema $(BLOCKLESS_SCHEMA)
+	@rm -rf $(BLOCKFUL_ROOT)/c/block $(BLOCKFUL_ROOT)/c/blockhome $(BLOCKFUL_ROOT)/c/messages $(BLOCKFUL_ROOT)/c/examples
+	@rm -rf $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
+	@mkdir -p $(BLOCKFUL_ROOT)/c/block $(BLOCKFUL_ROOT)/c/blockhome $(BLOCKFUL_ROOT)/c/messages $(BLOCKFUL_ROOT)/c/examples
+	@mkdir -p $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
+	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,heavy)
+	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',2)
+
+tables-block-zero-cost-c-rest: bin/schema $(BLOCKLESS_SCHEMA)
+	@rm -rf $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
+	@mkdir -p $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
+	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,rest)
+	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+
+# Serial on purpose: the rest row deletes the whole C tree, so it must not
+# overlap the heavy row in one workspace.
+tables-block-zero-cost-c: bin/schema $(BLOCKLESS_SCHEMA)
+	@$(MAKE) tables-block-zero-cost-c-heavy
+	@$(MAKE) tables-block-zero-cost-c-rest
+	@echo "block zero-cost gate: c Table sources byte-identical with the block form removed"
