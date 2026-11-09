@@ -297,7 +297,7 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
-func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, depth, indent int) { //nolint:gocyclo
+func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, depth, indent int) {
 	if f.Type.Optional {
 		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
 		// (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
@@ -316,7 +316,7 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 	g.emitFixedWritePayload(f, off, buf, val, depth, indent)
 }
 
-func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, depth, indent int) { //nolint:gocyclo
+func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, depth, indent int) {
 	ind := strings.Repeat(" ", indent)
 	base := off
 	switch {
