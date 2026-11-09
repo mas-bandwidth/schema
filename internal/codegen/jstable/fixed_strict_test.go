@@ -97,35 +97,84 @@ func TestJsFixedLoadRefusesNeverClamps(t *testing.T) {
 	}
 }
 
-// TestJsFixedLoadRefusesNeverClampsNegativeControl plants each regression — a
-// decode that clamps a bool to true, a decode that clamps a range, and a
-// runtime text op that clamps — into the real artifact's shapes and verifies
-// the checker reports it. It is the guard that TestJsFixedLoadRefusesNeverClamps
-// would go green over code that still clamps.
+// TestJsFixedLoadRefusesNeverClampsNegativeControl generates the real artifact,
+// verifies the clean shapes hold the strict read, then replants each regression
+// into that same generated text — a decode that clamps a ranged scalar and
+// counts report.oor, a decode that lands a bool byte above 1 as true, and a
+// runtime text op that clamps the length and counts — and verifies the checker
+// reports each one. It is the guard that TestJsFixedLoadRefusesNeverClamps would
+// go green over code that still clamps.
 func TestJsFixedLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 	t.Parallel()
 
-	// A decode that lands a bool byte above 1 as true and clamps a range.
-	buggyDecode := `export function RFixedDecode(value, view, at, report) {
-  value.lead = view.getUint32(at, true);
-  value.flag = view.getUint8(at + 4) !== 0;
-  value.rng = view.getInt32(at + 5, true);
-  if (value.rng < -10) { value.rng = -10; report.oor++; } else if (value.rng > 10) { value.rng = 10; report.oor++; }
-}`
-	// A runtime text op that clamps the length and counts.
-	buggyRun := `export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstView, remap, report) {
-  case TableFixedOpText: { const v = TableFixedGetU32(src, s) | 0; if (v < 0) { v = 0; report.oor++; } else if (v > cap) { v = cap; report.oor++; } }
-}`
-	if faults := checkJsFixedLoadNeverClamps(buggyDecode, buggyRun); len(faults) == 0 {
-		t.Fatal("negative control failed to detect the clamped decode and runtime")
+	u := loadSchemaString(t, "neverclamps.schema", jsFixedNeverClampsSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	var decodeBody, runBody string
+	for _, body := range files {
+		s := string(body)
+		if d := jsFn(s, "RFixedDecode"); d != "" {
+			decodeBody = d
+		}
+		if r := jsFn(s, "TableFixedRun"); r != "" {
+			runBody = r
+		}
+	}
+	if decodeBody == "" || runBody == "" {
+		t.Fatal("no real RFixedDecode/TableFixedRun was generated")
 	}
 
-	// A clean-shaped decode that merely omits every refusal must be flagged too:
-	// four decode refusals and three runtime refusals, and no clamp counted.
-	if faults := checkJsFixedLoadNeverClamps(
-		`export function RFixedDecode(value, view, at, report) { value.lead = view.getUint32(at, true); }`,
-		`export function TableFixedRun() {}`,
-	); len(faults) != 7 {
-		t.Fatalf("negative control did not flag every missing refusal: %v", faults)
+	// hasFault reports whether a specific diagnostic is among the checker's.
+	hasFault := func(faults []string, want string) bool {
+		for _, f := range faults {
+			if f == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	// The clean generated artifact holds the strict read; each regression below
+	// must be introduced by mutating it, never by feeding hand-written literals.
+	if faults := checkJsFixedLoadNeverClamps(decodeBody, runBody); len(faults) != 0 {
+		t.Fatalf("clean artifact should hold the strict read:\n  %s", strings.Join(faults, "\n  "))
+	}
+
+	// Plant a clamp in the real decode: the ranged-scalar refusal becomes a
+	// clamp that lands an edge and counts report.oor.
+	decRangeClamp := strings.Replace(decodeBody,
+		"if (value.rng < -10 || value.rng > 10) { report.refused = TableFixedRefusal.OutOfRange; return; }",
+		"if (value.rng < -10) { value.rng = -10; report.oor++; } else if (value.rng > 10) { value.rng = 10; report.oor++; }", 1)
+	if decRangeClamp == decodeBody {
+		t.Fatal("could not find the ranged-scalar refusal to mutate")
+	}
+	if faults := checkJsFixedLoadNeverClamps(decRangeClamp, runBody); !hasFault(faults, "decode still clamps and counts oor") {
+		t.Fatalf("negative control did not flag the ranged-scalar clamp: %v", faults)
+	}
+
+	// Plant a bool byte above 1 landing true in the real decode: the
+	// wire_damaged refusal becomes a bare nonzero-is-true assignment.
+	decBoolLand := strings.Replace(decodeBody,
+		"{ const b = view.getUint8(at + 4); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }",
+		"value.flag = view.getUint8(at + 4) !== 0;", 1)
+	if decBoolLand == decodeBody {
+		t.Fatal("could not find the bool-byte refusal to mutate")
+	}
+	if faults := checkJsFixedLoadNeverClamps(decBoolLand, runBody); !hasFault(faults, "decode lacks TableFixedRefusal.WireDamaged") {
+		t.Fatalf("negative control did not flag a bool byte above 1 landing true: %v", faults)
+	}
+
+	// Plant a clamp in the real runtime: the text-length refusal becomes a
+	// clamp that counts report.oor.
+	runTextClamp := strings.Replace(runBody,
+		"if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }",
+		"if (v < 0) { v = 0; report.oor++; } else if (v > cap) { v = cap; report.oor++; }", 1)
+	if runTextClamp == runBody {
+		t.Fatal("could not find the text-length refusal to mutate")
+	}
+	if faults := checkJsFixedLoadNeverClamps(decodeBody, runTextClamp); !hasFault(faults, "runtime still clamps and counts oor") {
+		t.Fatalf("negative control did not flag the runtime text clamp: %v", faults)
 	}
 }
