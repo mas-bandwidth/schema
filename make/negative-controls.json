@@ -598,82 +598,138 @@
       ]
     },
     {
-      "name": "wire-fuzz",
-      "when": "pull-request",
-      "why": "the tolerant-wire oracle and nested-arm trailing controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
+      "name": "wire-fuzz-cpp-cycle",
+      "when": "nightly",
+      "why": "the C++ cycle-verdict control (docs/SPEC-TABLES.md \u00a73.1): the verdict is removed from a COPY of arena.go through a Go build overlay and TestPointerNamingAnOpenNodeIsRefusedCPP runs as one SCHEMA_SLOW gate. It is its own row. In CI full run 42608548526 on head 9480e504b this row ran 119 s (11:24:11Z..11:26:10Z), past the 110 s per-commit ceiling and close to the 120 s kill, so it moves to nightly like its linear twin wire-fuzz-cpp-cycle-linear, whose recipe sets go test -timeout 300s and whose probe has no alarm. One control, nightly, where the job timeout is 60 minutes.",
       "targets": [
-        "tables-wire-fuzz-discard-negative-control",
-        "tables-cpp-cycle-negative-control",
-        "tables-cpp-cycle-linear-negative-control",
+        "tables-cpp-cycle-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-cpp-cycle-linear",
+      "when": "nightly",
+      "why": "the C++ linear-walk control (docs/SPEC-TABLES.md \u00a73.1): a COPY of arena.go enters a shared node once per path, and TestDiamondChainLoadsLinearCPP must go red. The recipe is SCHEMA_SLOW=1 go test -timeout 300s, and cppHeldRun's probe has no alarm, so a walk that does not return holds the job until that timeout. 300 s cannot fit a per-commit row (110 s target, 2-minute kill). Nightly, one control. This card has not timed a completed run; the bound is the timeout written in the recipe.",
+      "targets": [
+        "tables-cpp-cycle-linear-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-engine-cycle",
+      "when": "pull-request",
+      "why": "the engine's cyclic-wire controls: a pointer to an OPEN node is let through, and a CLOSED node is re-entered, each in a COPY of decodenodes.go through a Go build overlay, so the framing oracle check and the diamond-chain gate go red. Two related engine gates, both plain Go tests, fit one row together. Measured 79 s in CI full run 42608548526 (and 28 s in run 42616597055), under the 110 s per-commit ceiling.",
+      "targets": [
         "tables-engine-cycle-negative-control",
-        "tables-engine-cycle-linear-negative-control",
-        "tables-cpp-retain-refusal-negative-control",
-        "tables-cpp-fixed-refusal-negative-control",
-        "tables-wire-fuzz-nested-arm-trailing-negative-control",
+        "tables-engine-cycle-linear-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-cpp-refusal",
+      "when": "pull-request",
+      "why": "the C++ retaining-load refusal control (docs/SPEC-TABLES.md \u00a73.3, \u00a76.6): the store reset is removed from a COPY of pointers.go and TestRefusedLoadsHandBackNothingCPP runs as one SCHEMA_SLOW gate. Its own row, so it does not share a job with the fixed-batch twin. Measured 23 s in CI full run 42608548526 (and 63 s in run 42613741359), under the 110 s per-commit ceiling.",
+      "targets": [
+        "tables-cpp-retain-refusal-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-cpp-fixed-refusal",
+      "when": "pull-request",
+      "why": "the C++ fixed-batch refusal control (docs/SPEC-TABLES.md \u00a74, \u00a76.5): the no_layout reset is removed from a COPY of fixedform.go and TestFixedRefusalHandsBackNothingCPP runs as one SCHEMA_SLOW gate. Its own row, beside the retaining-load twin, so the two compiles do not share a per-commit job. Measured 41 s in CI full run 42608548526 (and 28 s in run 42616597055), under the 110 s per-commit ceiling.",
+      "targets": [
+        "tables-cpp-fixed-refusal-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-discard",
+      "when": "pull-request",
+      "why": "the verdict-only contract control (docs/rulings.json refusal-verdict-only): a refused answer's bytes are compared whole through a Go build overlay on a COPY of wirefuzz.go, so TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues goes red. It is a single Go test and fits a row alone. Measured 35 s in CI full run 42608548526 (and 20 s in run 42616597055), under the 110 s per-commit ceiling.",
+      "targets": [
+        "tables-wire-fuzz-discard-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-message-text",
+      "when": "pull-request",
+      "why": "the message-text leg control, one per pull-request row: it rebuilds the schema compiler under a source overlay on a COPY of the emitter's messageload.go, regenerates the C++ leg, and replays the pinned vector message_ill_formed_text through the conformance harness. In CI full run 42608548526 on head 9480e504b this row passed green in 23 s (11:24:21Z..11:24:44Z), well under the 110 s per-commit ceiling, so it stays on the pull request. The earlier claim that it fails on a 0-match anchor does not match that run and is removed.",
+      "targets": [
+        "tables-wire-fuzz-message-text-leg-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-oracle",
+      "when": "nightly",
+      "why": "the tolerant-wire oracle's body-span clamp (docs/SPEC-TABLES.md \u00a74.2), removed from a COPY of decode.go and replayed through build/wire-fuzz-cpp at --n 0. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
+      "targets": [
         "tables-wire-fuzz-oracle-negative-control"
       ]
     },
     {
-      "name": "wire-fuzz-message-oracle",
-      "when": "pull-request",
-      "why": "the tolerant-wire oracles for the message form's text and blob records, and the retain one. Measured 3 s over 3 controls.",
+      "name": "wire-fuzz-nested-arm-trailing",
+      "when": "nightly",
+      "why": "the nested-union envelope's trailing-bytes control: the oracle is taught the opposite reading through a Go build overlay on a COPY of decode.go and the pinned vector nested_arm_trailing is replayed through build/wire-fuzz-cpp. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
       "targets": [
-        "tables-wire-fuzz-message-text-oracle-negative-control",
+        "tables-wire-fuzz-nested-arm-trailing-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-message-oracle",
+      "when": "nightly",
+      "why": "the message-text oracle: the reading is flipped through a Go build overlay on a COPY of messagedecode.go and the pinned vector message_ill_formed_text is replayed through build/wire-fuzz-cpp. The per-commit row of this name was killed at 129 s of job wall clock on run 42554833739. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
+      "targets": [
+        "tables-wire-fuzz-message-text-oracle-negative-control"
+      ]
+    },
+    {
+      "name": "wire-fuzz-retain-oracle",
+      "when": "nightly",
+      "why": "the retention oracle's drop-rule control: the walk's verdict is ignored through a Go build overlay on a COPY of retain.go and the retention leg runs against build/wire-fuzz-cpp. It shared the per-commit wire-fuzz-message-oracle row, killed at 129 s on run 42554833739. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
+      "targets": [
         "tables-wire-fuzz-retain-oracle-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-length",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 23 s on the author's machine and 59 s on the runner.",
+      "when": "nightly",
+      "why": "the string-length fit check, removed from a COPY of the C++ emitter (codecs.go), then a regenerated corpus and a fresh leg. The per-commit row's job wall clock was 132 s on run 42554833739. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
       "targets": [
         "tables-wire-fuzz-length-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-index",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 24 s on the author's machine and 62 s on the runner.",
+      "when": "nightly",
+      "why": "the node-index range check, removed from a COPY of the C++ emitter (arena.go), then a regenerated corpus and a fresh leg. The per-commit row's job wall clock was 134 s on runs 42556155793 and 42554833739. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
       "targets": [
         "tables-wire-fuzz-index-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-arm-terminator",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 23 s on the author's machine and 59 s on the runner.",
+      "when": "nightly",
+      "why": "the arm-body terminator check, removed from a COPY of the C++ emitter (arms.go), then a regenerated corpus and a fresh leg. The per-commit row's job wall clock was 134 s and 129 s on runs 42556155793 and 42554833739. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
       "targets": [
         "tables-wire-fuzz-arm-terminator-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-arm-width",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 30 s on the author's machine and 73 s on the runner, the longest of the family.",
+      "when": "nightly",
+      "why": "the arm-width check, removed from a COPY of the C++ emitter (arms.go), then a regenerated corpus and a fresh leg. On run 42556155793 the per-commit row died exit 137 at 129 s of job wall clock while g++ was still compiling the sabotaged leg; run 42554833739 recorded 137 s. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
       "targets": [
         "tables-wire-fuzz-arm-width-negative-control"
       ]
     },
     {
       "name": "wire-fuzz-wide-text",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 28 s on the author's machine and 75 s on the runner.",
+      "when": "nightly",
+      "why": "the kind-33 surrogate pairing check, removed from a COPY of the C++ emitter (text.go), then a regenerated corpus and a fresh leg. The per-commit row's job wall clock was 129 s and 144 s on runs 42556155793 and 42554833739. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
       "targets": [
         "tables-wire-fuzz-wide-text-negative-control"
       ]
     },
     {
-      "name": "wire-fuzz-message-text",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine.",
-      "targets": [
-        "tables-wire-fuzz-message-text-leg-negative-control"
-      ]
-    },
-    {
       "name": "wire-fuzz-retain-class",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 29 s on the author's machine.",
+      "when": "nightly",
+      "why": "the retain-class check, removed from a COPY of the C++ emitter, then a regenerated corpus and a fresh leg. The per-commit row's job wall clock was 143 s and 132 s on runs 42556155793 and 42554833739. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
       "targets": [
         "tables-wire-fuzz-retain-class-negative-control"
       ]
@@ -2243,11 +2299,11 @@
     },
     {
       "target": "tables-wire-fuzz-negative-control",
-      "reason": "an umbrella over the twelve tolerant-wire leaves, which the wire-fuzz groups run between them. Each leaf rebuilds the compiler under an overlay and costs 55 s to 75 s on the runner, so they run one per job; the umbrella in any one of them would re-run all twelve and take the job to six minutes."
+      "reason": "an umbrella over eight tolerant-wire leaves (length, index, arm-width, arm-terminator, oracle, wide-text, message-text-oracle, message-text-leg). Seven of them each rebuild the compiler under an overlay and compile a fresh C++ leg, which the per-commit rows could not finish (runs 42556155793 and 42554833739: killed at 129-144 s), so each of those is its own nightly row. message-text-leg stays a per-commit row: in CI full run 42608548526 it passed green in 23 s. The umbrella in any one row would re-run the leaves."
     },
     {
       "target": "tables-wire-fuzz-retain-negative-control",
-      "reason": "an umbrella over the two retain leaves, tables-wire-fuzz-retain-oracle-negative-control and tables-wire-fuzz-retain-class-negative-control, which the wire-fuzz-message-oracle and wire-fuzz-retain-class groups run between them. It carries no recipe of its own, so the umbrella in either group re-runs the other group's leaf to prove a second time what that job proves once."
+      "reason": "an umbrella over tables-wire-fuzz-retain-oracle-negative-control and tables-wire-fuzz-retain-class-negative-control, each its own nightly row. It carries no recipe of its own, so the umbrella in either row would re-run the other leaf."
     },
     {
       "target": "tables-big-endian-negative-control",
