@@ -70,7 +70,10 @@ func TestGooseDieWithParent(t *testing.T) {
 		t.Fatalf("the helper's child %d was not running; helper output:\n%s", pid, output.String())
 	}
 	if err := cmd.Process.Kill(); err != nil {
-		t.Fatalf("kill the parent helper: %v", err)
+		// The helper may already have exited, reporting that its driver
+		// died on its own; Wait below reaps it and its output is named
+		// in the failure if the driver is somehow still running.
+		t.Logf("kill the parent helper: %v (helper output follows if it exited early)", err)
 	}
 	_ = cmd.Wait()
 	helperDone = true
@@ -101,7 +104,14 @@ func TestGooseDieWithParentHelper(t *testing.T) {
 	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0o644); err != nil {
 		t.Fatalf("write the driver pid: %v", err)
 	}
-	select {}
+	// Stay alive until the parent test kills this helper. Waiting on the
+	// driver (instead of blocking forever) means a driver that dies on
+	// its own ends the helper at once with the reason in its output,
+	// rather than leaving a parent whose driver is already gone.
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("the driver exited before its parent was killed: %v", err)
+	}
+	t.Fatal("the driver exited before its parent was killed")
 }
 
 func readDieWithParentPID(path string) int {
