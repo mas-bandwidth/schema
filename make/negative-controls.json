@@ -1015,7 +1015,7 @@
       "name": "js-proof",
       "when": "pull-request",
       "node": "26",
-      "why": "the JavaScript leg's 3.0.0 proof controls (docs/PORTING.md M5, M6, M11, M12, M14, M18, M21, I4, I6, I7, I12, J3): each copies one internal/codegen/jstable source through tools/sabotage, reaches it by a Go overlay, and requires the gate the register cell names red on that property's own line; plus the conformance leg with its per-case absent writers silenced. Split out of the `js-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the eight lighter registered-cell controls, and js-proof-2 carries the cook and the rest. 4 s to 10 s per control on hulk, with bin/schema and the generated tree already built.",
+      "why": "the JavaScript leg's 3.0.0 proof controls (docs/PORTING.md M5, M6, M11, M12, M14, M18, M21, I4, I6, I7, I12, J3): each copies one internal/codegen/jstable source through tools/sabotage, reaches it by a Go overlay, and requires the gate the register cell names red on that property's own line; with the conformance leg and its per-case absent writers moved to js-proof-2. Split out of the `js-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the eight lighter registered-cell controls, and js-proof-2 carries the conformance leg and the rest. 4 s to 10 s per control on hulk, with bin/schema and the generated tree already built.",
       "targets": [
         "tables-js-keyed-shift-negative-control",
         "tables-js-variable-class-identity-negative-control",
