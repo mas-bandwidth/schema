@@ -114,15 +114,17 @@ func runTextCases(t *testing.T, src, root string, cases []textCase, wantRefused 
 	return diffs
 }
 
-// textVerdict is a jsonProbe line without its two report counters: the
-// verdict, the reason and the canonical text, which is what the one read
-// defines (docs/SPEC-TABLES.md §6.5).
+// textVerdict is a jsonProbe line's verdict and canonical text (its first
+// and last fields; the text is hex or "-"), which is what the one read
+// defines (docs/SPEC-TABLES.md §6.5). The report's counters and reason are
+// the reader's own diagnostics and are never compared across languages
+// (docs/rulings.json refusal-verdict-only).
 func textVerdict(line string) string {
-	f := strings.SplitN(line, " ", 4)
-	if len(f) < 4 {
+	f := strings.Fields(line)
+	if len(f) < 2 {
 		return line
 	}
-	return f[0] + " " + f[3]
+	return f[0] + " " + f[len(f)-1]
 }
 
 const requiredText = `package probe
@@ -153,10 +155,9 @@ var requiredCases = []textCase{
 var requiredRefused = map[string]bool{"lacks_n": true, "lacks_both": true, "element_lacks_k": true, "pointee_empty": true, "kind_mismatch_is_named": true}
 
 // TestMooJsonRequired: a JSON object that leaves out a required key refuses
-// the read by name, missing_required, never as damage, at any depth (§2.3);
-// a key named with a mismatched kind is still named.
+// the read, at any depth (§2.3), and a key named with a mismatched kind
+// refuses; the verdict and the text are the engine's.
 func TestMooJsonRequired(t *testing.T) {
-	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	for _, d := range runTextCases(t, requiredText, "Player", requiredCases, requiredRefused, nil) {
@@ -229,9 +230,9 @@ var unboundedCases = []textCase{
 }
 
 // TestMooJsonUnboundedText: an unbounded element or key is never clamped for
-// its length; a [..N] list's count still clamps; a zero refuses (§2.13.1).
+// its length and reads whole; a [..N] list past its count refuses, and so
+// does a zero (§2.13.1); the verdict and the text are the engine's.
 func TestMooJsonUnboundedText(t *testing.T) {
-	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	for _, d := range runTextCases(t, unboundedText, "Where", unboundedCases, map[string]bool{"zero_refuses": true, "count_clamps": true}, nil) {
