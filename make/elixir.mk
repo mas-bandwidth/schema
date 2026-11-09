@@ -308,25 +308,25 @@ test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-
 #   walk   (I11) the text reader stores the negation of every bool field:
 #          json-read red; json-write and wire green.
 #   shared (M6)  the pack walk's identity check is gone, so a node two
-#          pointers name is written twice: wire and json-read (whose
-#          answer is the saved wire) red; json-write and report green.
+#          pointers name is written twice: wire, json-read and report (whose
+#          answers save the wire) red; json-write green.
 #   label  (M14) the text writer never labels a shared node and writes it in
 #          full at every pointer: json-write red; json-read and wire green.
 #   ids    (M20) the id table is written in reverse first-use order while the
 #          body keeps its references: wire red; json-write green.
-#   arm    (M18) an arm header under another kind reads as the declared arm
-#          instead of a counted kind mismatch: report red; json-write green.
-#   order  (I7)  a byte-swapped block magic is no longer refused by name as a
-#          foreign order: block-reason red; block green.
-#   mapsort (M19) the writer sorts a map's entries DESCENDING: wire red;
-#          report green.
+#   arm    (M18) an arm whose L is not its kind's width is read instead of
+#          refused: framing red; wire, report and json-write green.
+#   order  (I7)  a byte-swapped block magic is accepted instead of refused as a
+#          foreign order: block-foreign red; block green.
+#   mapsort (M19) the writer sorts a map's entries DESCENDING: wire and report
+#          red; framing green.
 ELIXIR_CONFORMANCE_WALK_SED   := -e 's|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {not raw, report}|'
-ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if Enum.any?(acc, fn n -> node_content(n) == c end) do|    if false and Enum.any?(acc, fn n -> node_content(n) == c end) do|'
+ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if Enum.any?(acc, fn n -> node_content(n) == c end) do|    if length(acc) > 16 and Enum.any?(acc, fn n -> node_content(n) == c end) do|'
 ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if n < 2 do$$|    if true or n < 2 do|'
 ELIXIR_CONFORMANCE_IDS_SED    := -e 's|        {ref, Map.put(ids, id, ref), \[id \| order\]}|        {ref, Map.put(ids, id, ref), order ++ [id]}|'
-ELIXIR_CONFORMANCE_ARM_SED    := -e 's| when byte_size(content) >= l and k == a.arm_kind ->| when byte_size(content) >= l ->|'
+ELIXIR_CONFORMANCE_ARM_SED    := -e 's|arm_framing_damaged?(a, inner) ->|false and arm_framing_damaged?(a, inner) ->|'
 ELIXIR_CONFORMANCE_MAPSORT_SED := -e 's~^    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)$$~    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end, :desc)~'
-ELIXIR_CONFORMANCE_ORDER_SED  := -e 's|magic == B.foreign_magic() -> {:error, :foreign_order}|false -> {:error, :foreign_order}|'
+ELIXIR_CONFORMANCE_ORDER_SED  := -e 's|magic == B.foreign_magic() -> {:error, :foreign_order}|magic == B.foreign_magic() -> {:ok, bytes}|'
 
 # $(call ELIXIR_CONFORMANCE_CONTROL,dir,emitter,sedvar,red surfaces,green surfaces,what)
 define ELIXIR_CONFORMANCE_CONTROL
@@ -353,7 +353,7 @@ conformance-negative-control-elixir-walk: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-walk,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_WALK_SED,json-read,json-write wire,a text reader that negates every bool)
 
 conformance-negative-control-elixir-shared: build/conformance-harness
-	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-shared,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_SHARED_SED,wire json-read,json-write report,a pack walk that writes a shared node twice)
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-shared,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_SHARED_SED,wire json-read report,json-write,a pack walk that writes a shared node twice)
 
 conformance-negative-control-elixir-label: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-label,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_LABEL_SED,json-write,json-read wire,a text writer that never labels a shared node)
@@ -362,13 +362,13 @@ conformance-negative-control-elixir-ids: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-ids,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_IDS_SED,wire,json-write,an id table written in reverse first-use order)
 
 conformance-negative-control-elixir-arm: build/conformance-harness
-	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-arm,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_ARM_SED,report,json-write,an arm header under another kind read as the declared arm)
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-arm,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_ARM_SED,framing,wire report json-write,an arm header whose length is not its kind's width read as valid)
 
 conformance-negative-control-elixir-order: build/conformance-harness
-	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-order,internal/codegen/elixirtable/block.go,ELIXIR_CONFORMANCE_ORDER_SED,block-reason,block,a block reader that no longer names a foreign byte order)
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-order,internal/codegen/elixirtable/block.go,ELIXIR_CONFORMANCE_ORDER_SED,block-foreign,block,a block reader that accepts a foreign byte order)
 
 conformance-negative-control-elixir-mapsort: build/conformance-harness
-	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-mapsort,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_MAPSORT_SED,wire,report,a map writer that sorts its entries descending)
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-mapsort,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_MAPSORT_SED,wire report,framing,a map writer that sorts its entries descending)
 
 test-elixir: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
 	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
