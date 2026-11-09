@@ -93,7 +93,7 @@ cs)
 		;;
 	write-refusal-message)
 		file=$out/generated/examples/TabledemoTable.cs
-		perl -0pi -e 's{\Qw.Put(bits, ValueBits(f.Kind, shape));\E}{w.Put(bits ^ 1, ValueBits(f.Kind, shape)); // SABOTAGED: message value moved}g' "$file"
+		perl -0pi -e 's{\Qif (!Collect(values[i], type, ref ids)) { return -1; }\E}{Collect(values[i], type, ref ids); // SABOTAGED: message write guard removed}g' "$file"
 		;;
 	*) echo "unknown surface: $surface" >&2; exit 1 ;;
 	esac
