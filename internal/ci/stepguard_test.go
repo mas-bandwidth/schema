@@ -16,7 +16,6 @@ import (
 var stepGuardExempt = map[string]bool{
 	"leg-tagged":        true,
 	"negative-controls": true,
-	"pins":              true,
 }
 
 var (
