@@ -4,13 +4,18 @@
 // field reads `true` as `false`. The writer never runs this arm, so
 // `dart / json-read` goes red while `json-write` and `wire` stay green, which
 // is what says the harness found the defect in GENERATED code and localized it
-// to the reader.
+// to the reader. The one exception is hasLoadout: the json-hostile
+// unknown-name rows are read through this same walk and carry that field, so
+// negating it would turn json-hostile red beside json-read (the script
+// already makes the same exception for cook-write, which builds its inputs
+// via fromJson). Leaving hasLoadout alone keeps the control on the surface
+// it names; every other bool field in every table is still negated.
 package main
 
 func init() {
 	sabotages["table-dart-text-walk-bool"] = []edit{{
-		old: `		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.kindMismatch++; }\n", name)`,
-		new: `		g.pf("\t\t\t\tif (val is bool) { v.%s = !val; /* SABOTAGED: the read stores the negation */ } else { r.kindMismatch++; }\n", name)`,
+		old: `		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.refuse('kind_mismatch'); }\n", name)`,
+		new: `		if name == "hasLoadout" { g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.refuse('kind_mismatch'); }\n", name) } else { g.pf("\t\t\t\tif (val is bool) { v.%s = !val; /* SABOTAGED: the read stores the negation */ } else { r.refuse('kind_mismatch'); }\n", name) }`,
 	}}
 }
 
