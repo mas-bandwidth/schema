@@ -42,7 +42,7 @@ fixed table Rec
     hp    int32 = 50 | min = 0, max = 100
     tier  Tier
     pick  Pick
-    opt   ?uint16 | min = 1, max = 9000
+    opt   ?uint16 | min = 0, max = 9000
     marks [..8]int32 | min = -1000, max = 1000
     name  string(16)
     seq   uint64

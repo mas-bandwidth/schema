@@ -175,7 +175,6 @@ func javaCycleOverwritten(t *testing.T, m *tabletext.Model) []byte {
 }
 
 func TestJavaCyclicWireIsDamage(t *testing.T) {
-	t.Skip("generator gap, re-pinned and red: a repeated field id is damage (strict-only decision 5, the overwritten row); the Java wire readFields has no repeated-id check, so it keeps a value the oracle refuses")
 	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java cycle gate)")
 	t.Parallel()
 	u, m := javaCycleModel(t, javaCycleSchema)
@@ -221,6 +220,17 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 	mapCycle := javaCycleEncode(t, mw, 4, nil, 77, mapLinks)
 	javaCyclePatch(t, mapCycle, 4, 2)
 
+	// A pure cycle, every record still reached: root(1) -> A(2) -> B(3) -> C(4),
+	// with A.right also naming C. Patching B's pointer to C back to A makes
+	// A -> B -> A while C stays reached through A.right, so the cycle is the
+	// one fault (mid, self and to_root also leave a record unreached).
+	pure := javaCycleEncode(t, mw, 4, nil, 77, []javaCycleLink{{0, "left", 1}, {1, "left", 2}, {1, "right", 3}, {2, "left", 3}})
+	purePat := []byte{byte(ir.TableKindPointer), 4}
+	if n := bytes.Count(pure, purePat); n != 2 {
+		t.Fatalf("pure-cycle pointer pattern matched %d times, want 2", n)
+	}
+	pure[bytes.LastIndex(pure, purePat)+1] = 2
+
 	overwritten := javaCycleOverwritten(t, m)
 
 	const levels = 40
@@ -244,6 +254,7 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 	rows := []row{
 		{"twin", twin, true},
 		{"mid", mid, false},
+		{"pure_cycle", pure, false},
 		{"self", self, false},
 		{"to_root", toRoot, false},
 		{"unreached", unreached, false},
@@ -267,11 +278,15 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 		name, file, old, new, want string
 	}{
 		{"intact", "", "", "", ""},
-		{"no_cycle_check", "NodeVariable.java", "if (TableVariable.cyclic(nt))", "if (false && TableVariable.cyclic(nt))", "FAILED: mid (load)"},
-		{"no_list_cycle", "NodeVariable.java", "for (Long idx : v.itemsIdx) {", "for (Long idx : java.util.Collections.<Long>emptyList()) {", "FAILED: list_cycle (load)"},
-		{"no_map_cycle", "NodeVariable.java", "for (NodeLookupEntryVariable.Value elem : v.lookup) {", "for (NodeLookupEntryVariable.Value elem : java.util.Collections.<NodeLookupEntryVariable.Value>emptyList()) {", "FAILED: map_cycle (load)"},
-		{"no_retain_clear", "NodeRetain.java", "if (TableVariable.cyclic(nt)) {", "if (TableVariable.cyclic(nt)) { if (true) { report.damaged = true; return null; }", "FAILED: mid (retain not cleared)"},
-		{"closed_as_open", "TableVariable.java", "if (state[t] == 1) {", "if (state[t] != 0) {", "FAILED: diamond (load)"},
+		// THE WIRE-ALONE CHECK judges the pointer graph before any value is
+		// decoded (TableVariable.WireCheck.graph; tla/ReadOrder.tla), so each
+		// witness edits that walk: a cycle passed over, an unreached record
+		// passed over, a list slot's pointer not counted as an edge,
+		// and a closed node taken for an open one.
+		{"no_cycle_check", "TableVariable.java", "if (mark[t] == 1) {", "if (mark[t] == 1) { continue; } if (false) {", "FAILED: pure_cycle (load)"},
+		{"no_unreached_check", "TableVariable.java", "if (mark[k] == 0) {", "if (mark[k] == 0 && false) {", "FAILED: unreached (load)"},
+		{"no_list_edges", "TableVariable.java", "            return p == end || damage();\n        }\n\n        boolean keyed(", "            if (kind == 17) { edgeCount -= (int) count; }\n            return p == end || damage();\n        }\n\n        boolean keyed(", "FAILED: list_twin (load)"},
+		{"closed_as_open", "TableVariable.java", "if (mark[t] == 1) {", "if (mark[t] != 0) {", "FAILED: diamond (load)"},
 	}
 
 	for _, w := range witnesses {
@@ -282,8 +297,8 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 			maps.Copy(cp, files)
 			if w.file != "" {
 				src := string(cp[w.file])
-				if !strings.Contains(src, w.old) {
-					t.Fatalf("%s: missing target in %s", w.name, w.file)
+				if n := strings.Count(src, w.old); n != 1 {
+					t.Fatalf("%s: target in %s matched %d times, want 1", w.name, w.file, n)
 				}
 				cp[w.file] = []byte(strings.ReplaceAll(src, w.old, w.new))
 			}

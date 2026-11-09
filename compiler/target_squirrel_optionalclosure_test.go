@@ -56,8 +56,8 @@ func TestSquirrelCarriesOptionalVariableClosure(t *testing.T) {
 		if len(fields) != 4 {
 			t.Fatalf("probe line %q is not a case, saved hex, round-trip hex and a verdict", line)
 		}
-		if fields[3] != "ok" {
-			t.Errorf("%s: load report says %s", fields[0], fields[3])
+		if fields[3] != "accepted" {
+			t.Errorf("%s: the strict read answered %s", fields[0], fields[3])
 			continue
 		}
 		first, err := hex.DecodeString(fields[1])
@@ -86,6 +86,10 @@ func TestSquirrelCarriesOptionalVariableClosure(t *testing.T) {
 	if len(wantAbsent) != 0 {
 		t.Logf("the absent value is not zero bytes (%d); tablewire decides its bytes", len(wantAbsent))
 	}
+
+	// THE STRICT READ REFUSES what the root cannot hold, with its negative
+	// control (docs/SPEC-TABLES.md §6.5).
+	squirrelStrictRefusal(t, u, files, "Outer", "package probe\ntable Outer\n{\n    inner int32\n}\n", `{"inner":5}`)
 }
 
 func encodeWire(t *testing.T, m *tabletext.Model, root, json string) []byte {
@@ -103,10 +107,11 @@ func encodeWire(t *testing.T, m *tabletext.Model, root, json string) []byte {
 }
 
 // squirrelOptionalClosureProbe is the script sqrun runs: build the value in the
-// emitted module's API, save it, load and save again, and print, for the absent
+// emitted module's API, save it, load it through the strict read
+// (docs/SPEC-TABLES.md §6.5) and save again, and print, for the absent
 // and present cases, the saved bytes, the round-trip bytes and a verdict.
 func squirrelOptionalClosureProbe(module string) string {
-	return `local schema = dofile("probe/schema_module.nut", true);
+	return squirrelVerdict + `local schema = dofile("probe/schema_module.nut", true);
 local T = schema.require(` + quoteSquirrel(module) + `);
 local L = schema.require("schema_table_load");
 local S = schema.require("schema_table_save");
@@ -125,14 +130,13 @@ local run = function(label, present) {
   }
   local saved = S.save(T, "Outer", v);
   if (saved == null) { print(label + " save null malformed\n"); return; }
-  local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
-  local back = L.loadTolerant(T, "Outer", saved, report);
-  if (back == null) { print(label + " load null malformed\n"); return; }
+  local report = {};
+  local back = L.load(T, "Outer", saved, report);
+  if (back == null) { print(label + " load null " + report.reason + "\n"); return; }
   local again = S.save(T, "Outer", back);
   if (again == null) { print(label + " resave null malformed\n"); return; }
   print(label + " " + hex(saved) + " " + hex(again) +
-    " " + (report.malformed ? "malformed" : "ok") + "\n");
+    " " + ::verdict(back, report) + "\n");
 };
 run("absent", false);
 run("present", true);

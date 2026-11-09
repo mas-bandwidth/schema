@@ -32,6 +32,7 @@ public final class FixedTableRetain {
         }
         FixedTableVariable.Value v = new FixedTableVariable.Value();
         readFieldsRetain(r, v, null, retain, report, path, 0);
+        TableVariable.settleNonFinite(report);
         if (report.refused) {
             retain.used = 0;
             retain.idUsed = 0;

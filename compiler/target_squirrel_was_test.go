@@ -71,8 +71,9 @@ table L
 
 // squirrelWasProbe is the run under the pinned interpreter: save the renamed
 // value, read it back, then read the old-name wire into the renamed field and
-// save it again. Every answer is a line; the test owns the comparison.
-const squirrelWasProbe = `local inputs = dofile("inputs.nut", true);
+// save it again, every read the strict read (docs/SPEC-TABLES.md §6.5). Every
+// answer is a line; the test owns the comparison.
+const squirrelWasProbe = squirrelVerdict + `local inputs = dofile("inputs.nut", true);
 local schema = dofile("schema_module.nut", true);
 local T = schema.require("ProbeTables");
 local L = schema.require("schema_table_load");
@@ -84,19 +85,18 @@ local hex = function(b) {
   for (local i = 0; i < b.len(); i++) s += format("%02x", b[i] & 0xff);
   return s;
 };
-local report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-                 duplicate = 0, malformed = false, refused = false };
+local report = {};
 local v = T.L();
 v.Grade = "Argent";
 local saved = S.save(T, "L", v);
 print("SAVE:" + hex(saved) + "\n");
 
-local back = L.loadTolerant(T, "L", saved, report);
-print("LOADED:" + back.Grade + ":" + report.malformed + ":" + report.refused + "\n");
+local back = L.load(T, "L", saved, report);
+print("LOADED:" + ::verdict(back, report) + ":" + back.Grade + "\n");
 print("RESAVE:" + hex(S.save(T, "L", back)) + "\n");
 
-local old = L.loadTolerant(T, "L", inputs["old"], report);
-print("OLDLOADED:" + old.Grade + ":" + report.malformed + ":" + report.refused + "\n");
+local old = L.load(T, "L", inputs["old"], report);
+print("OLDLOADED:" + ::verdict(old, report) + ":" + old.Grade + "\n");
 print("OLDRESAVE:" + hex(S.save(T, "L", old)) + "\n");
 `
 
@@ -215,13 +215,17 @@ func TestSquirrelCarriesWasRows(t *testing.T) {
 	if got, want := lines["RESAVE"], lines["SAVE"]; got != want {
 		t.Errorf("Squirrel save-load-save moved the bytes: %s against %s", got, want)
 	}
-	if got, want := lines["LOADED"], "Argent:false:false"; got != want {
+	if got, want := lines["LOADED"], "accepted:Argent"; got != want {
 		t.Errorf("the saved value did not load back as Argent: %s, want %s", got, want)
 	}
-	if got, want := lines["OLDLOADED"], "Argent:false:false"; got != want {
+	if got, want := lines["OLDLOADED"], "accepted:Argent"; got != want {
 		t.Errorf("the old-name wire did not load into the renamed field: %s, want %s", got, want)
 	}
 	if got, want := lines["OLDRESAVE"], hex.EncodeToString(oldWire); got != want {
 		t.Errorf("the old-name wire did not save back byte for byte: %s against %s", got, want)
 	}
+
+	// THE STRICT READ REFUSES what the renamed root cannot hold: the field
+	// written as text where the enum is declared, with its negative control.
+	squirrelStrictRefusal(t, probe, files, "L", "package probe\n\ntable L\n{\n    grade string(16)\n}\n", `{"grade":"Argent"}`)
 }

@@ -58,6 +58,7 @@
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-negative-control",
+        "tables-json-write-refusal-negative-control",
         "tables-retain-fixed-class-negative-control",
         "tables-runtime-home-negative-control",
         "tables-slot-negative-control",
