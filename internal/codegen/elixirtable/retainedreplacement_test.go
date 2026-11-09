@@ -50,7 +50,22 @@ func TestRetainedReplacementCorpusElixir(t *testing.T) {
 				store := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
 				var read, save tabletext.Report
 				ok, e := tablewire.DecodeRetain(m, value, wire, &store, &read)
-				if e != nil || !ok || read.Refused || read.Unknown != row.Unknown || read.Retained != row.Retained || read.RetainLost != row.LoadLost {
+				if !ok || tablewire.ReadRefusal(e) || read.Refused || read.Reason != "" {
+					// A repeated field id in one body is damage: both
+					// readers refuse the whole load with a reason.
+					if ok || !tablewire.ReadRefusal(e) || !read.Refused || read.Reason == "" {
+						t.Fatalf("%s independent load: %v %v %+v", row.Name, ok, e, read)
+					}
+					fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+for result<-[T.load(%q,wire),T.load_retain(%q,wire,store,zero)] do
+ unless elem(result,0)==:error and elem(result,2).reason != "" ,do: raise(%q<>" strict refusal "<>inspect(result))
+end
+`, row.Wire, row.Root, row.Root, row.Name)
+					continue
+				}
+				if e != nil || read.Unknown != row.Unknown || read.Retained != row.Retained || read.RetainLost != row.LoadLost {
 					t.Fatalf("%s independent load: %v %v %+v", row.Name, ok, e, read)
 				}
 				out, e := tablewire.EncodeRetain(m, value, &store, &save)
@@ -72,14 +87,14 @@ unless text==%q,do: raise(%q<>" plain value "<>text)
 {:ok,bytes}=T.save(%q,plain)
 unless Base.encode16(bytes,case: :lower)==%q,do: raise(%q<>" plain save "<>inspect(bytes))
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 {:ok,value,report,store}=T.load_retain(%q,wire,store,zero)
-unless true and report.unknown==%d and report.kind_mismatch==%d and report.retained==%d and report.retain_lost==%d,do: raise(%q<>" load "<>inspect(report))
+unless true and report.unknown==%d and report.reason == "" and report.retained==%d and report.retain_lost==%d,do: raise(%q<>" load "<>inspect(report))
 {:ok,text}=T.to_json(%q,value)
 unless text==%q,do: raise(%q<>" value "<>text)
 {:ok,bytes,report,_}=T.save_retain(%q,value,store,zero)
 unless Base.encode16(bytes,case: :lower)==%q and report.retain_lost==%d,do: raise(%q<>" save "<>inspect({Base.encode16(bytes,case: :lower),report}))
-`, row.Wire, row.Root, row.Root, string(text)+"\n", row.Name, row.Root, hex.EncodeToString(plain), row.Name, row.Root, row.Unknown, row.KindMismatch, row.Retained, row.LoadLost, row.Name, row.Root, string(text)+"\n", row.Name, row.Root, row.Saved, row.SaveLost, row.Name)
+`, row.Wire, row.Root, row.Root, string(text)+"\n", row.Name, row.Root, hex.EncodeToString(plain), row.Name, row.Root, row.Unknown, row.Retained, row.LoadLost, row.Name, row.Root, string(text)+"\n", row.Name, row.Root, row.Saved, row.SaveLost, row.Name)
 			}
 			probe.WriteString("IO.puts(\"RETAINED_REPLACEMENT_OK\")\n")
 			out := runCompleteUnitProbe(t, u, probe.String())
