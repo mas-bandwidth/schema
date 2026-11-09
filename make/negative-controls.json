@@ -1080,8 +1080,8 @@
     },
     {
       "name": "cs-leg-region-cycle",
-      "when": "pull-request",
-      "why": "the C# table leg's region-cycle control (make/cs.mk cs_leg_sabotage2): the wire-alone walk's cycle check and the region-graph decode behind it taken out at two layers (wirecheck.go and regiongraph.go), so a cycle is not discarded on a region, retaining or builder load. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-6 group when that pair of rebuilds ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 139 s wall, both killed at the rule).",
+      "when": "nightly",
+      "why": "the C# table leg's region-cycle control (make/cs.mk cs_leg_sabotage2): the wire-alone walk's cycle check and the region-graph decode behind it taken out at two layers (wirecheck.go and regiongraph.go), so a cycle is not discarded on a region, retaining or builder load. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-6 group when that pair of rebuilds ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 139 s wall, both killed at the rule). On this branch, run 42581138991 at eaa5b7b, the one-target row was cancelled at 312 s wall with no assertion failure (job 08:29:56Z-08:35:08Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-leg-region-cycle-negative-control"
       ],
