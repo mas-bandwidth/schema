@@ -2169,8 +2169,8 @@ jobs:
   # defined in all (`go run ./tools/negativecontrols check` prints that count,
   # so it is one command rather than a number to keep in step by hand).
   #
-  # The base-* (non-C) toolchain carries 192 targets in 61 groups: 43
-  # pull-request groups (157 targets) and 18 nightly groups (35 targets),
+  # The base-* (non-C) toolchain carries 170 targets in 47 groups: 29
+  # pull-request groups (135 targets) and 18 nightly groups (35 targets),
   # rather than one job: the map gate alone is 17 controls at 4 s each on the
   # author's machine and about 2x that on the runner, and the conformance
   # driver's two sabotage rebuilds are 45 s and 47 s of runner time on their
