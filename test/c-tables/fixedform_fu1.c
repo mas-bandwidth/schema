@@ -54,7 +54,7 @@ void fixed_fu1_read_own( const uint8_t * data, int64_t bytes )
     tblfu1_table_report_t r;
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfu1_fu_root_fixed_load_tolerant( back, 2, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 2,
+    fixed_check( tblfu1_fu_root_fixed_load( back, 2, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 2,
                  "C text under an arm: the identity read takes both records" );
     fixed_check( back[0].pick.type == TBLFU1_PICK_TYPE_LABELLED, "C text under an arm: identity, the SECOND arm" );
     fixed_check( back[0].pick.as.labelled.lead == 101,
@@ -68,6 +68,6 @@ void fixed_fu1_read_own( const uint8_t * data, int64_t bytes )
                  "C text under an arm: identity, the rest of the labelled record" );
     fixed_check( back[1].pick.type == TBLFU1_PICK_TYPE_PLAIN && back[1].pick.as.plain.n == 303 && back[1].tail == 12,
                  "C text under an arm: identity, the FIRST arm as well" );
-    fixed_check( r.clamped == 0 && !r.malformed && !r.refused,
+    fixed_check( !r.refused && r.unknown == 0 && r.widened == 0,
                  "C text under an arm: identity, a clean read moves no counter" );
 }
