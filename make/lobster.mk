@@ -59,9 +59,12 @@ toolchain-lobster:
 # (internal/codegen/lobstertable), each under the pinned toolchain. The
 # fixed-form tests read the shared byte-oracle corpus, so it is built first,
 # and SCHEMA_REQUIRE_CORPUS=1 makes a missing oracle a failure rather than the
-# skip a bare `go test` takes.
-.PHONY: test-lobster update-goldens-lobster
-test-lobster: toolchain-lobster build/fixedform-corpus/.stamp
+# skip a bare `go test` takes. The package run is its own target,
+# test-lobster-packages, so ci-fast's Lobster rows can run it on a row of its
+# own; test-lobster runs it exactly as before.
+.PHONY: test-lobster test-lobster-packages update-goldens-lobster
+test-lobster: toolchain-lobster build/fixedform-corpus/.stamp test-lobster-packages
+test-lobster-packages: toolchain-lobster build/fixedform-corpus/.stamp
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
 update-goldens-lobster: ;
 
