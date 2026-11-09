@@ -18,9 +18,12 @@ LUA_URL     := https://www.lua.org/ftp/$(LUA_TARBALL)
 # the mirror of the same tarball in this repository's `deps` prerelease, tried
 # only when LUA_URL is unreachable; both are held to LUA_SHA256 below
 LUA_FALLBACK_URL := https://github.com/mas-bandwidth/schema/releases/download/deps/$(LUA_TARBALL)
+# the sources, in the order dist-lua tries them
+LUA_URLS := $(LUA_URL) $(LUA_FALLBACK_URL)
 LUA_SHA256  := 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae
 # fail fast on an unreachable host instead of hanging the whole CI job
 LUA_CURL_MAX_TIME ?= 30
+LUA_CURL ?= curl -fsSL --max-time $(LUA_CURL_MAX_TIME)
 LUA ?= $(CURDIR)/dist/lua-$(LUA_VERSION)/src/lua
 # the conformance driver and the Go tests (internal/codegen/lua/luarun) read
 # the pin from the environment
@@ -30,13 +33,20 @@ export LUA
 dist-lua:
 	@mkdir -p dist
 	@if [ ! -f dist/$(LUA_TARBALL) ]; then \
-		if curl -fsSL --max-time $(LUA_CURL_MAX_TIME) -o dist/$(LUA_TARBALL).part $(LUA_URL); then \
-			mv dist/$(LUA_TARBALL).part dist/$(LUA_TARBALL); \
-		else \
-			echo "dist-lua: $(LUA_URL) unreachable; trying $(LUA_FALLBACK_URL)"; \
-			rm -f dist/$(LUA_TARBALL).part; \
-			curl -fsSL --max-time $(LUA_CURL_MAX_TIME) -o dist/$(LUA_TARBALL).part $(LUA_FALLBACK_URL) && \
+		fetched=; \
+		for url in $(LUA_URLS); do \
+			echo "dist-lua: fetching $$url"; \
+			if $(LUA_CURL) -o dist/$(LUA_TARBALL).part "$$url"; then \
 				mv dist/$(LUA_TARBALL).part dist/$(LUA_TARBALL); \
+				fetched=1; \
+				break; \
+			fi; \
+			echo "dist-lua: $$url unreachable"; \
+			rm -f dist/$(LUA_TARBALL).part; \
+		done; \
+		if [ -z "$$fetched" ]; then \
+			echo "dist-lua: no source for $(LUA_TARBALL) could be reached"; \
+			exit 1; \
 		fi; \
 	fi
 	@got=$$(sha256sum dist/$(LUA_TARBALL) 2>/dev/null | cut -d" " -f1); \
@@ -47,7 +57,7 @@ dist-lua:
 		exit 1; fi
 	@rm -rf dist/lua-$(LUA_VERSION) && tar -xzf dist/$(LUA_TARBALL) -C dist
 	$(MAKE) -C dist/lua-$(LUA_VERSION) $(if $(filter Darwin,$(shell uname -s)),macosx,linux)
-	@echo "dist-lua: Lua $(LUA_VERSION) $(LUA_URL) sha256 $(LUA_SHA256)"
+	@echo "dist-lua: Lua $(LUA_VERSION) $(LUA_TARBALL) sha256 $(LUA_SHA256)"
 	@echo "dist-lua: $$(dist/lua-$(LUA_VERSION)/src/lua -v)"
 
 # THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
