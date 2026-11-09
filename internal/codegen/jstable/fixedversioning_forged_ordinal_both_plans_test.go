@@ -51,16 +51,18 @@ const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]
 const report = new TableFixedReport(); const r = report;
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, back.length, data, data.length, plan, report);
-if (n !== 1) { fail("the forged file carries one record: n=" + n + " " + reason(r)); }
-if (r.refused !== 0 || r.damaged) { fail("a forged ordinal is not a refusal and not malformed: " + reason(r)); }
-if (back[0].tier !== 0) { fail("a forged ordinal lands None: " + show(back[0])); }
-if (back[0].tier === 4) { fail("a forged ordinal never lands Platinum: " + show(back[0])); }
-if (back[0].seq !== 9) { fail("the scalar after the enum is untouched: " + show(back[0])); }
-if (r.oor !== 1) { fail("the forged ordinal is counted exactly once: " + reason(r)); }
-if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
-  fail("no other counter moved: " + reason(r));
+if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
+  fail("a forged ordinal past the writer's set refuses out_of_range: n=" + n + " " + reason(r));
 }
-`, forged)
+if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
+  fail("no counter moves on a refusal: " + reason(r));
+}
+const clean = readFileSync(%q);
+const cleanReport = new TableFixedReport();
+if (TLoad(back, back.length, clean, clean.length, plan, cleanReport) !== 1 || cleanReport.refused !== 0) {
+  fail("the unforged file must read cleanly: " + reason(cleanReport));
+}
+`, forged, old)
 
 	out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, body)
 	if err != nil {

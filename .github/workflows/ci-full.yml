@@ -142,7 +142,7 @@ jobs:
   # The compiler's own test suite, and the only job in this file that reads a
   # Go source file. `go test ./...` covers internal/fuzz, whose seeded corpus
   # re-executes every crasher ever found — a short, bounded run, not a
-  # campaign (the unit-rest-fuzz row runs it, with its property and oracle tests).
+  # campaign (the unit-rest row runs it, with its property and oracle tests).
   # The one campaign in that package, the random-schema table differential
   # (TestRandomTableDifferential and its negative control), skips itself here:
   # it runs only under SCHEMA_TABLE_DIFF=1, which only `make fuzz-tables-diff`
@@ -184,45 +184,46 @@ jobs:
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
-    # MORE ROWS, NOT LESS WORK. On main this family was cut to eight rows and
-    # still went over the two-minute rule: unit-codegen 148 s (69 s of tests
-    # after 45 s of pins), unit-compiler-1 142 s, unit-compiler-2 135 s,
-    # unit-rest 127 s and unit-elixir 135 s. A matrix row is a job, so the fix
-    # is more rows in parallel, each holding only the packages (or the -run
-    # partition of ./compiler) it runs and only the pins those packages need.
-    # Lua (22 s) and Squirrel (16 s), previously installed in unit-codegen,
-    # now ride only unit-codegen-lua and unit-codegen-squirrel. Nothing leaves
-    # per-commit: the same steps run, partitioned across rows.
+    # EIGHT ROWS, because this job was 650 s median (2026-09-11) and a matrix
+    # row is a job: the emitter packages, the compiler package in two halves,
+    # everything else, the Elixir emitter alone, the slow-gate accounting in
+    # two halves, and the seven fixed-form
+    # versioning suites that cannot ride `go test ./...` at all. Every step
+    # below is the step it was; what is new is which row runs it, and no step
+    # runs in none of them or in two.
+    #   unit-codegen    — go test ./internal/codegen/... less elixirtable
+    #   unit-compiler-1 — go test ./compiler, the tests one pattern names
+    #   unit-compiler-2 — go test ./compiler, every other test
+    #   unit-rest       — go vet ./..., go test over everything that is
+    #                     neither an emitter package nor ./compiler, the
+    #                     projection's three controls, the toolchain control,
+    #                     the python leg and the one Linux cache write
+    #   unit-elixir     — go test internal/codegen/elixirtable, alone
+    #   slow-gate-codegen — the slowtest accounting (schema#988) over the
+    #                     emitter packages
+    #   slow-gate-rest  — the same accounting over every other package
+    #   versioning      — §5 on the Go, C, Rust, Java, JavaScript, Dart, C#
+    #                     and Elixir legs, with the three SDKs only that row
+    #                     needs
     #
-    #   unit-codegen-*      go test over one emitter family, and only the pin
-    #                       that family's generated code executes
-    #   unit-compiler-*     ./compiler, partitioned by test name; -run rows
-    #                       name their tests and the -skip rows take the rest,
-    #                       so a new test still lands in exactly one row
-    #   unit-elixir-*       internal/codegen/elixirtable, partitioned by test
-    #                       name; unit-elixir-alloc runs the load-sensitive
-    #                       allocation test with nothing else beside it
-    #   unit-vet            go vet ./...
-    #   unit-rest-*         everything that is neither an emitter package nor
-    #                       ./compiler, split by package family
-    #   unit-controls       the projection's three controls and the toolchain
-    #                       control
-    #   slow-gate-codegen   the slowtest accounting (schema#988) over the
-    #                       emitter packages
-    #   slow-gate-rest      the same accounting over every other package
-    #   versioning          §5 on the Go, C, Rust, Java, JavaScript, Dart, C#
-    #                       and Elixir legs, with the three SDKs only that row
-    #                       needs
-    #
-    # WHICH ROW SELECTS WHICH TEST is held by tools/slowgatescan's
-    # TestCIFullGoTestRunsEveryTestExactlyOnce: a test that no row selects, or
-    # that two rows select, is red there by name. The module-wide complement in
-    # unit-rest-internal and unit-rest-outer keeps a new package covered
-    # without an edit here.
+    # WHY unit-rest WAS CUT AGAIN (2026-10-27). On run 40596125566 the one
+    # unit-rest row ran 14m55s against this 15-minute cap: the complement's
+    # `go test` took 7m26s, nearly all of it ./compiler (441 s; the next
+    # package, internal/fuzz, was 79 s and internal/goldens 77 s), the
+    # accounting's plain `go test ./...` took 6m22s more, and the Java
+    # versioning suite, whose step carried no row condition, ran 41 s in every
+    # row. So ./compiler is two rows split by test name, the accounting is two
+    # rows split by package, and the Java suite is the versioning row's alone.
+    # internal/codegen/elixirtable is a row of its own: its allocation test is
+    # load-sensitive, and alone it is 4m35s, which would put unit-rest over
+    # half its cap. Which
+    # row runs which package and which test is held by
+    # tools/slowgatescan's TestCIFullGoTestRunsEveryTestExactlyOnce: a test
+    # that no row selects, or that two rows select, is red there by name.
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen-c, unit-codegen-cpptable, unit-codegen-ctable, unit-codegen-csharp, unit-codegen-dart, unit-codegen-elixir, unit-codegen-go, unit-codegen-goose, unit-codegen-java, unit-codegen-js, unit-codegen-lobster, unit-codegen-lua, unit-codegen-luau, unit-codegen-moo, unit-codegen-rust, unit-codegen-squirrel, unit-codegen-rest, unit-compiler-cpp-table, unit-compiler-cpp, unit-compiler-cpp-caps, unit-compiler-ctable-w, unit-compiler-ctable, unit-compiler-c-issue, unit-compiler-l, unit-compiler-squirrel, unit-compiler-a, unit-compiler-b, unit-compiler-c, unit-compiler-d, unit-elixir-a, unit-elixir-dg, unit-elixir-fixed-vr, unit-elixir-fixed-other, unit-elixir-im, unit-elixir-nz, unit-elixir-alloc, unit-vet, unit-rest-ci-lua, unit-rest-ci-squirrel, unit-rest-ci-s, unit-rest-ci-rest, unit-rest-fuzz, unit-rest-goldens, unit-rest-check, unit-rest-harness, unit-rest-internal, unit-rest-outer, unit-controls, slow-gate-codegen, slow-gate-rest, versioning ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -238,7 +239,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
-          # compiler.TestRustEverySchemaNameIsReachable (unit-compiler-b) builds the
+          # compiler.TestRustEverySchemaNameIsReachable (unit-rest) builds the
           # generated crates against the sibling serialize.rs.
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
 
@@ -354,11 +355,11 @@ jobs:
       # (internal/codegen/luau/luaurun). Installed as make/luau.mk's dist-luau
       # does, the sha256 refused before anything is unpacked.
       - name: install the Luau pin
-        if: matrix.group == 'unit-codegen-luau' || matrix.group == 'unit-compiler-l' || matrix.group == 'unit-rest-ci-lua' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
         run: make dist-luau
 
       - name: go vet
-        if: matrix.group == 'unit-vet'
+        if: matrix.group == 'unit-rest'
         run: go vet ./...
 
       # THE LUA PIN for the test steps below: internal/codegen/lua,
@@ -367,7 +368,7 @@ jobs:
       # skip, without it. make/lua.mk's dist-lua builds it from source at the
       # sha256 it names, into dist/lua-<version>/, which is the LUA default.
       - name: install the Lua pin
-        if: matrix.group == 'unit-codegen-lua' || matrix.group == 'unit-rest-ci-lua' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
         run: make dist-lua
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
@@ -375,18 +376,20 @@ jobs:
       # and fail, never skip, without it. make/goose.mk's dist-goose installs it
       # at the sha256 it names, into the dist/ path the leg's default names.
       - name: install the Goose pin
-        if: matrix.group == 'unit-codegen-goose'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
         run: make dist-goose
 
       # THE SQUIRREL PIN, on the three rows that run generated Squirrel and on
-      # no other: internal/codegen/squirrel and squirreltable, compiler's
-      # TestSquirrel* and internal/ci's hostile-corpus runner. The slow-gate
-      # rows run plain `go test`, where every Squirrel test skips at
+      # no other. Under SCHEMA_SLOW=1 internal/codegen/squirrel and
+      # squirreltable (unit-codegen), compiler's TestSquirrel* (unit-compiler-2;
+      # no Squirrel test matches the first half's pattern) and internal/ci's
+      # hostile-corpus runner (unit-rest) fail, never skip, without it. The
+      # slow-gate rows run plain `go test`, where every Squirrel test skips at
       # internal/slowtest.Gate before the interpreter is resolved, so they pay
       # nothing. make/squirrel.mk's dist-squirrel builds sq at the sha256 it
       # names, into the dist/ path the leg's default names.
       - name: install the Squirrel pin
-        if: matrix.group == 'unit-codegen-squirrel' || matrix.group == 'unit-compiler-squirrel' || matrix.group == 'unit-rest-ci-squirrel'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest'
         run: make dist-squirrel
 
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
@@ -398,16 +401,16 @@ jobs:
       # 1-2 minute iteration rule on unit tests."). THIS LANE SETS IT, so the
       # merge and nightly runs check exactly what they checked before.
       #
-      # LESS internal/codegen/elixirtable, which the unit-elixir-* rows run in
-      # steps of their own: its TestOffsetsComposeFromHalvesElixir measures
-      # allocations and is load-sensitive, so it runs with no other test beside
-      # it, on unit-elixir-alloc (2026-10-27).
+      # LESS internal/codegen/elixirtable, which the unit-rest row runs in a
+      # step of its own: its TestOffsetsComposeFromHalvesElixir measures
+      # allocations and is load-sensitive, so it runs with no other package's
+      # tests beside it, on a row of its own (2026-10-27).
       # THE MOO PIN for the emitter rows: internal/codegen/moo runs the
       # generated modules under the pinned interpreter and its analyzer, and
       # under SCHEMA_SLOW=1 fails, never skips, without them (make/moo.mk;
       # .github/actions/moo builds the pin once per runner image and caches it).
       - uses: ./.github/actions/moo
-        if: matrix.group == 'unit-codegen-moo' || matrix.group == 'slow-gate-codegen'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'slow-gate-codegen'
 
       # THE LOBSTER PIN for the emitter row: internal/codegen/lobster and
       # internal/codegen/lobstertable run generated Lobster under the pinned
@@ -417,7 +420,7 @@ jobs:
       # default names. The release binary links libOpenGL and libGLX, which the
       # fleet hosts carry and a hosted fallback does not.
       - name: install the Lobster pin
-        if: matrix.group == 'unit-codegen-lobster'
+        if: matrix.group == 'unit-codegen'
         run: |
           set -euo pipefail
           if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
@@ -426,110 +429,11 @@ jobs:
           fi
           make dist-lobster
 
-      - name: go test the C and C++ emitter packages
-        if: matrix.group == 'unit-codegen-c'
+      - name: go test the emitter packages
+        if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/c ./internal/codegen/cpp
-
-      - name: go test the C++ table emitter package
-        if: matrix.group == 'unit-codegen-cpptable'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/cpptable
-
-      - name: go test the C table emitter package
-        if: matrix.group == 'unit-codegen-ctable'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/ctable
-
-      - name: go test the C# emitter packages
-        if: matrix.group == 'unit-codegen-csharp'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/csharp ./internal/codegen/cstable
-
-      - name: go test the Dart emitter packages
-        if: matrix.group == 'unit-codegen-dart'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/dart ./internal/codegen/darttable
-
-      - name: go test the Elixir emitter package (not elixirtable)
-        if: matrix.group == 'unit-codegen-elixir'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/elixir
-
-      - name: go test the Go emitter packages
-        if: matrix.group == 'unit-codegen-go'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/golang ./internal/codegen/gotable
-
-      - name: go test the Goose emitter packages
-        if: matrix.group == 'unit-codegen-goose'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/goose ./internal/codegen/goosetable
-
-      - name: go test the Java emitter packages
-        if: matrix.group == 'unit-codegen-java'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/java ./internal/codegen/javatable
-
-      - name: go test the JavaScript emitter packages
-        if: matrix.group == 'unit-codegen-js'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/js ./internal/codegen/jstable
-
-      - name: go test the Lobster emitter packages
-        if: matrix.group == 'unit-codegen-lobster'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/lobster ./internal/codegen/lobstertable
-
-      - name: go test the Lua emitter packages
-        if: matrix.group == 'unit-codegen-lua'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/lua ./internal/codegen/luatable
-
-      - name: go test the Luau emitter packages
-        if: matrix.group == 'unit-codegen-luau'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/luau ./internal/codegen/luautable
-
-      - name: go test the Moo emitter packages
-        if: matrix.group == 'unit-codegen-moo'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/moo ./internal/codegen/mootable
-
-      - name: go test the Rust emitter packages
-        if: matrix.group == 'unit-codegen-rust'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/rust ./internal/codegen/rusttable
-
-      - name: go test the Squirrel emitter packages
-        if: matrix.group == 'unit-codegen-squirrel'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/squirrel ./internal/codegen/squirreltable
-
-      # The emitters not named above: ccommon, cqualify, python and any package
-      # added later. The exclusion list is every family row, so a new package
-      # lands here without an edit and runs exactly once.
-      - name: go test the remaining emitter packages
-        if: matrix.group == 'unit-codegen-rest'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/codegen/c$' | grep -v '/codegen/cpp$' | grep -v '/codegen/cpptable$' | grep -v '/codegen/ctable$' | grep -v '/codegen/csharp$' | grep -v '/codegen/cstable$' | grep -v '/codegen/dart$' | grep -v '/codegen/darttable$' | grep -v '/codegen/elixir$' | grep -v '/codegen/golang$' | grep -v '/codegen/gotable$' | grep -v '/codegen/goose$' | grep -v '/codegen/goosetable$' | grep -v '/codegen/java$' | grep -v '/codegen/javatable$' | grep -v '/codegen/js$' | grep -v '/codegen/jstable$' | grep -v '/codegen/lobster$' | grep -v '/codegen/lobstertable$' | grep -v '/codegen/lua$' | grep -v '/codegen/luatable$' | grep -v '/codegen/luau$' | grep -v '/codegen/luautable$' | grep -v '/codegen/moo$' | grep -v '/codegen/mootable$' | grep -v '/codegen/rust$' | grep -v '/codegen/rusttable$' | grep -v '/codegen/squirrel$' | grep -v '/codegen/squirreltable$')
+        run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$')
 
       # THE LOBSTER FIXED FORM AGAINST THE REFERENCE'S BYTES. The step above
       # runs internal/codegen/lobstertable without build/fixedform-corpus, so
@@ -538,203 +442,52 @@ jobs:
       # sets SCHEMA_REQUIRE_CORPUS=1, under which a missing oracle is a
       # failure. The two packages' suites are seconds, so the repeat is cheap.
       - name: the Lobster fixed form reads the reference's bytes
-        if: matrix.group == 'unit-codegen-lobster'
+        if: matrix.group == 'unit-codegen'
         run: make test-lobster
 
-      # THE COMPILER PACKAGE, PARTITIONED BY TEST NAME. One test binary is one
-      # -run cut, so each row names its tests and the last rows -skip into the
-      # long tail. The spellings are literal here because tools/slowgatescan
-      # credits what these lines select; its
-      # TestCIFullGoTestRunsEveryTestExactlyOnce goes red if a test is in no
-      # row or in two. -v keeps each test's time in the log for rebalancing.
-      - name: go test ./compiler, TestCppT
-        if: matrix.group == 'unit-compiler-cpp-table'
+      # THE COMPILER PACKAGE, IN TWO ROWS, because on its own it is 441 s of
+      # the complement below and one package is one test binary: the only cut
+      # that splits it is by test name. ONE PATTERN, handed to -run on the
+      # first row and to -skip on the second, so the two rows are complements
+      # and a new test lands in the second row with no edit here. It is spelled
+      # out on both lines because tools/slowgatescan reads these lines and
+      # credits what they select (a shell variable would earn nothing), and
+      # its TestCIFullGoTestRunsEveryTestExactlyOnce goes red if the two
+      # spellings ever stop being complements. The pattern was balanced on a
+      # -json timing of the package (2026-10-27: the C++ and issue tests 138 s,
+      # the rest 142 s, at GOMAXPROCS=4); -v keeps each test's time in the log
+      # for the next rebalance.
+      - name: go test the compiler package, first half
+        if: matrix.group == 'unit-compiler-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^TestCppT'
+        run: go test -v ./compiler -run '^Test(Cpp|CPP|Issue)'
 
-      - name: go test ./compiler, the rest of TestCpp
-        if: matrix.group == 'unit-compiler-cpp'
+      - name: go test the compiler package, second half
+        if: matrix.group == 'unit-compiler-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^TestCpp[^T]'
+        run: go test -v ./compiler -skip '^Test(Cpp|CPP|Issue)'
 
-      - name: go test ./compiler, TestCPP
-        if: matrix.group == 'unit-compiler-cpp-caps'
+      # AND THE COMPLEMENT, derived from `go list` rather than listed here, so a
+      # new package lands in this row with no edit to this file.
+      - name: go test everything that is not an emitter package or the compiler
+        if: matrix.group == 'unit-rest'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^TestCPP'
+        run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/compiler$')
 
-      - name: go test ./compiler, TestCTableW
-        if: matrix.group == 'unit-compiler-ctable-w'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^TestCTableW'
-
-      - name: go test ./compiler, the rest of TestCTable
-        if: matrix.group == 'unit-compiler-ctable'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^TestCTable[^W]'
-
-      - name: go test ./compiler, the rest of C and Issue
-        if: matrix.group == 'unit-compiler-c-issue'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^Test(C|Issue)' -skip '^Test(Cpp|CPP|CT)'
-
-      - name: go test ./compiler, TestL
-        if: matrix.group == 'unit-compiler-l'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^TestL'
-
-      - name: go test ./compiler, TestSquirrel
-        if: matrix.group == 'unit-compiler-squirrel'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^TestSquirrel'
-
-      - name: go test ./compiler, A through G and I
-        if: matrix.group == 'unit-compiler-a'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^Test[A-BD-GI]' -skip '^TestIssue'
-
-      - name: go test ./compiler, H through O less L
-        if: matrix.group == 'unit-compiler-b'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^Test[HJ-O]' -skip '^TestL'
-
-      - name: go test ./compiler, P through Z less S
-        if: matrix.group == 'unit-compiler-c'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^Test[P-RT-Z]'
-
-      - name: go test ./compiler, S less Squirrel
-        if: matrix.group == 'unit-compiler-d'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^TestS' -skip '^TestSquirrel'
-
-      # internal/ci, partitioned by the toolchain its tests execute. The Lua
-      # row is every test whose name carries Lua (which includes Luau); the
-      # Squirrel row is every test whose name carries Squirrel; the other two
-      # rows are the pure-Go wiring tests and need no interpreter pin.
-      - name: go test ./internal/ci, the Lua and Luau lanes
-        if: matrix.group == 'unit-rest-ci-lua'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/ci -run 'Lua'
-
-      - name: go test ./internal/ci, the Squirrel lanes
-        if: matrix.group == 'unit-rest-ci-squirrel'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/ci -run 'Squirrel'
-
-      - name: go test ./internal/ci, the S rows without an interpreter
-        if: matrix.group == 'unit-rest-ci-s'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/ci -run '^TestS' -skip 'Lua|Squirrel'
-
-      - name: go test ./internal/ci, every other test
-        if: matrix.group == 'unit-rest-ci-rest'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/ci -run '^Test[A-KM-RT-Z]'
-
-      - name: go test ./internal/fuzz
-        if: matrix.group == 'unit-rest-fuzz'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/fuzz
-
-      - name: go test ./internal/goldens
-        if: matrix.group == 'unit-rest-goldens'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/goldens
-
-      - name: go test ./internal/check
-        if: matrix.group == 'unit-rest-check'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./internal/check
-
-      - name: go test ./test/conformance/harness
-        if: matrix.group == 'unit-rest-harness'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test ./test/conformance/harness
-
-      # Every internal package that is neither an emitter package, internal/ci
-      # nor one of the heavy packages on their own rows. The complement keeps a
-      # new package covered.
-      - name: go test the remaining internal packages
-        if: matrix.group == 'unit-rest-internal'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test $(go list ./internal/... | grep -v '/internal/codegen/' | grep -v '/internal/ci$' | grep -v '/internal/fuzz$' | grep -v '/internal/goldens$' | grep -v '/internal/check$')
-
-      # Everything outside internal/ and ./compiler, less the conformance
-      # harness on its own row. This is where cmd, tools, ir, bench and the
-      # remaining test packages run.
-      - name: go test the packages outside internal and ./compiler
-        if: matrix.group == 'unit-rest-outer'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test $(go list ./... | grep -v '/internal/' | grep -v '/compiler$' | grep -v '/test/conformance/harness$')
-
-      # THE ELIXIR EMITTER'S PACKAGE, PARTITIONED BY TEST NAME, with its
-      # allocation test alone: TestOffsetsComposeFromHalvesElixir measures heap
-      # words and is load-sensitive, so no other test runs in its row.
+      # THE ELIXIR EMITTER'S PACKAGE, ALONE. Its allocation test measures heap
+      # words and is load-sensitive, so it is not inside the emitter row's
+      # `go test`, where every codegen package compiles and runs at once; it
+      # runs on a row with nothing else on it.
       # -count=1 because a self-hosted runner keeps its Go test cache warm,
       # and a cached pass is a measurement taken on some earlier run's load.
-      - name: go test elixirtable, A through C
-        if: matrix.group == 'unit-elixir-a'
+      - name: go test the Elixir emitter package on its own
+        if: matrix.group == 'unit-elixir'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -count=1 ./internal/codegen/elixirtable -run '^Test[A-C]'
-
-      - name: go test elixirtable, D through G less Fixed
-        if: matrix.group == 'unit-elixir-dg'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -count=1 ./internal/codegen/elixirtable -run '^Test[D-G]' -skip '^TestFixed'
-
-      - name: go test elixirtable, TestFixedV and TestFixedR
-        if: matrix.group == 'unit-elixir-fixed-vr'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -count=1 ./internal/codegen/elixirtable -run '^TestFixed[VR]'
-
-      - name: go test elixirtable, the rest of TestFixed
-        if: matrix.group == 'unit-elixir-fixed-other'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -count=1 ./internal/codegen/elixirtable -run '^TestFixed[^VR]'
-
-      - name: go test elixirtable, I through M
-        if: matrix.group == 'unit-elixir-im'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -count=1 ./internal/codegen/elixirtable -run '^Test[I-M]'
-
-      - name: go test elixirtable, N through Z less the allocation test
-        if: matrix.group == 'unit-elixir-nz'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -count=1 ./internal/codegen/elixirtable -run '^Test[N-Z]' -skip '^TestOffsetsComposeFromHalvesElixir$'
-
-      - name: go test elixirtable, the allocation test alone
-        if: matrix.group == 'unit-elixir-alloc'
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -count=1 ./internal/codegen/elixirtable -run '^TestOffsetsComposeFromHalvesElixir$'
+        run: go test -count=1 ./internal/codegen/elixirtable
 
       # AND THE ACCOUNTING FOR THE TWO STEPS ABOVE (schema#988, G5). The two
       # steps set SCHEMA_SLOW=1, so on this lane every gated test runs; that is
@@ -800,7 +553,7 @@ jobs:
       #
       # THE ../serialize.rs CHECKOUT comes from the job's checkout block above,
       # at the same pinned tag the rest of this file uses (it moved there when
-      # compiler.TestRustEverySchemaNameIsReachable needed it too).
+      # unit-rest's compiler.TestRustEverySchemaNameIsReachable needed it too).
       # Every probe crate depends on `serialize-official` by path; without it the
       # suite fails by name on the missing sibling rather than skipping, which is
       # the behaviour this whole gate is for.
@@ -904,7 +657,7 @@ jobs:
       # red proves a gate is watching. All three are Go-only and take seconds,
       # so they belong on the diff.
       - name: the projection's gates go red without what they watch
-        if: matrix.group == 'unit-controls'
+        if: matrix.group == 'unit-rest'
         run: |
           make projection-variant-order-negative-control
           make projection-wire-law-negative-control
@@ -919,7 +672,7 @@ jobs:
       # refusal, which is the state this runner is already in, and takes about
       # a second.
       - name: the toolchain gate goes red without the toolchains it pins
-        if: matrix.group == 'unit-controls'
+        if: matrix.group == 'unit-rest'
         run: make toolchain-negative-control
 
       # THE ONE LINUX WRITER, per the block at the top of this job. It is last
@@ -928,7 +681,7 @@ jobs:
       # `actions/cache/save` cannot redden a job: a key another run reserved
       # first is a logged warning and this step's success.
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: matrix.group == 'unit-rest-internal' && runner.environment == 'github-hosted'
+        if: matrix.group == 'unit-rest' && runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1088,6 +841,20 @@ jobs:
   # paragraph above still names the real remedy: that closing `go test ./...`
   # duplicates the go-test job and is the time to reclaim when someone wants
   # it, which is a change to `update-goldens` and belongs to its own diff.
+  # SHARDED BY PIN FAMILY FOR THE 2-MINUTE FLEET RULE. On main, the single
+  # `pins` job was killed at the 120s per-commit fleet cap (133s wall: 24s on
+  # `make dist-lua` plus Luau/Goose/Lobster installs, then 85s capped / 302s
+  # uncapped nightly in `make -j conformance-pin update-goldens`, exit 137).
+  # Those four language-toolchain installs and `update-goldens`'s closing
+  # `go test ./...` existed only for that duplicate `go test ./...`, which
+  # `go-test` already runs across its matrix rows. The pin writers themselves
+  # now fan out across five parallel rows (`pins-source`, `pins-wire-packet`,
+  # `pins-wire-tables`, `pins-wire-tables-forms`, `pins-conformance`), each
+  # generating and compiling only the units its writer touches in parallel and
+  # diffing `testdata/` against HEAD in ~10-25s wall. Nothing is dropped from
+  # per-commit; `make conformance-pin update-goldens` remains the local
+  # single-command entry point, and `nightly-conformance.yml` also runs the
+  # full C++ reference corpus check nightly.
   pins:
     # Runs on EVERY same-repository pull request, not behind the `full-ci`
     # label (issue #1421): like `generated`, a stale pin is a "this diff is
@@ -1097,33 +864,42 @@ jobs:
     # skipped before it can reach the fleet runners.
     #
     # THE FLEET'S RUNNERS (standing rule, 2026-10-21: every CI job on fleet
-    # runners, never GitHub-hosted). On a hosted two-core runner the re-pin
-    # reached the 15-minute timeout; the timeout is not raised to fit that
-    # runner. The setup steps below run only on a hosted fallback.
+    # runners, never GitHub-hosted). The setup steps below run only on a
+    # hosted fallback.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # on a hetzner runner sharing its host with a second job the re-pin
-    # runs 12-15 minutes, so the bound is 25
-    timeout-minutes: 25
+    name: pins (${{ matrix.row }})
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - row: source
+            target: pins-source
+          - row: wire-packet
+            target: pins-wire-packet
+          - row: wire-tables
+            target: pins-wire-tables
+          - row: wire-tables-forms
+            target: pins-wire-tables-forms
+          - row: conformance
+            target: pins-conformance
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check out the C++, C# and Go serialize runtimes (pinned releases)
+      - name: Check out the C++ serialize runtime (pinned release)
+        if: matrix.row != 'source'
         run: |
           set -euo pipefail
           cd ..
           # A self-hosted runner's workspace PARENT persists between runs: the
-          # previous run's clones are removed and re-cloned at the pinned tag
+          # previous run's clone is removed and re-cloned at the pinned tag
           # every time, never reused (as go-test does).
-          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
+          rm -rf serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
-          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
-          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
-          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
 
       # the runner's own pinned go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -1149,39 +925,13 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      # update-goldens ends in `go test ./...`, which runs the Lua packages
-      # under the pinned interpreter (make/lua.mk's dist-lua)
-      - name: install the Lua pin
-        run: make dist-lua
-
-      # THE LUAU PIN: update-goldens runs the Luau type-wire golden tests, which
-      # run generated Luau under the pinned interpreter and fail, never skip,
-      # without it (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
-      - name: install the Luau pin
-        run: make dist-luau
-
-      # update-goldens ends in `go test ./...`, which runs the Goose packages
-      # under the pinned compiler (make/goose.mk's dist-goose)
-      - name: install the Goose pin
-        run: make dist-goose
-      # and the Lobster packages under the pinned compiler (make/lobster.mk's
-      # dist-lobster).
-      - name: install the Lobster pin
-        run: |
-          set -euo pipefail
-          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
-          fi
-          make dist-lobster
-
-      - name: rewrite every pin under testdata/ from the reference
-        run: make -j"$(nproc)" conformance-pin update-goldens
+      - name: rewrite pin family (${{ matrix.row }}) under testdata/ from the reference
+        run: make -j"$(nproc)" "${{ matrix.target }}"
 
       - name: the pins are current
         run: |
           git diff --exit-code -- testdata/ || {
-            echo "::error::a pin under testdata/ is stale: the current compiler and the C++ reference write different bytes. Run 'make conformance-pin update-goldens' and commit what changes."
+            echo "::error::a pin under testdata/ is stale in row ${{ matrix.row }}: the current compiler and the C++ reference write different bytes. Run 'make conformance-pin update-goldens' and commit what changes."
             exit 1
           }
           untracked=$(git status --porcelain testdata/)
@@ -1358,11 +1108,9 @@ jobs:
 
       # The BEAM is two versions and one step. No ELIXIRC override is needed:
       # make/elixir.mk's default prefixes the repo-local dist/ onto PATH and
-      # falls through to the toolchain this step installed. The fleet's schema
-      # runners carry OTP and Elixir on PATH; setup-beam needs ImageOS, which
-      # only a hosted runner sets.
+      # falls through to the toolchain this step installed.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != '' && runner.environment == 'github-hosted'
+        if: matrix.otp != ''
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
@@ -1705,21 +1453,11 @@ jobs:
   # target still runs both halves in order for `make test` and the nightly;
   # this job runs one half per row.
   #
-  # SPLIT INTO SUITE SHARDS (card green-fit-cs-tables-leg): even one
-  # configuration measured 133 s in run 42554833739 (12 s corpus generation
-  # + 106 s `run the leg`), over the fleet's 120 s per-commit kill, so each
-  # configuration is now split by suite partition (wire, core, evolution,
-  # fixed; Program.cs runs one partition per invocation, all of them with
-  # no argument). This job runs all eight config x shard rows in parallel;
-  # nothing moves to nightly and nothing is dropped — the umbrella
-  # `tables-cs-leg` target still runs both configurations whole. The
-  # dispatch evidence (run id and slowest row) is recorded on the card.
-  #
   # internal/ci/tableslegs_test.go is what keeps this job from being quietly
   # deleted: TestEveryNamedTableLegRunsOnEveryPullRequest refuses a named leg
   # with no pull-request coverage.
   cs-tables:
-    name: C# tables leg (${{ matrix.config }}-${{ matrix.shard }})
+    name: C# tables leg (${{ matrix.config }})
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -1730,7 +1468,6 @@ jobs:
       fail-fast: false
       matrix:
         config: [debug, release]
-        shard: [wire, core, evolution, fixed]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1773,7 +1510,7 @@ jobs:
         run: make -j"$(nproc)" bin/schema build/tables-generated-cs/.stamp
 
       - name: run the leg
-        run: make tables-cs-leg-${{ matrix.config }}-${{ matrix.shard }}
+        run: make tables-cs-leg-${{ matrix.config }}
 
 
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
@@ -2456,20 +2193,6 @@ jobs:
   # which the wire-fuzz-message-oracle and wire-fuzz-retain-class rows run
   # between them, so it sits in the plan's exclusion list beside the other
   # umbrellas rather than in a job that would run one of those leaves twice.
-  #
-  # THE JAVA, JAVASCRIPT AND DART ROWS WERE SPLIT AGAIN ON 2026-11-09. On runs
-  # 42556155793 and 42554833739 the rows java, java-proof, java-versioning,
-  # java-wire-fuzz, js, js-proof, dart and dart-conformance all ran 129-142 s
-  # on a loaded runner and were killed at the 120 s rule. They are now split
-  # into the java-cards/java-packet, java-proof/java-proof-2,
-  # java-wire-fuzz/java-wire-fuzz-2, js/js-tables-1/js-tables-2,
-  # js-proof/js-proof-2, dart/dart-tables-1/dart-tables-2 and
-  # dart-conformance/dart-conformance-2 groups, each a family that shares a
-  # compile and stays inside the rule on a loaded runner. The one control that
-  # could not fit at any split — java-versioning, a single control measured at
-  # 68 s quiet and 129-142 s on the loaded runner — moved to the nightly tier,
-  # where certify.yml runs it on the schedule it carries; its `why` in
-  # make/negative-controls.json says where and why.
   negative-controls-matrix:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -2616,10 +2339,8 @@ jobs:
       - uses: ./.github/actions/google-java-format
         if: matrix.java != ''
 
-      # The fleet's schema runners carry OTP and Elixir on PATH; setup-beam
-      # needs ImageOS, which only a hosted runner sets.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != '' && runner.environment == 'github-hosted'
+        if: matrix.otp != ''
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}

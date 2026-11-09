@@ -63,16 +63,11 @@ func cookWritableField(u *ir.Unit, f *ir.Field, seen map[string]bool) (bool, str
 	case t.TextUnbounded():
 		return false, "unbounded text (a blob node)"
 	}
-	if (t.Kind == ir.TString || t.Kind == ir.TBytes) && f.Array != ir.ArrayNone {
+	if (t.Kind == ir.TString || t.Kind == ir.TWString || t.Kind == ir.TBytes) && (f.Array != ir.ArrayNone || f.KeyEnum != "") {
 		return false, "an array of text"
 	}
 	switch t.Kind {
-	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TBits, ir.TString, ir.TBytes:
-		return true, ""
-	case ir.TInt:
-		if t.Width > 64 {
-			return false, "a 128-bit integer"
-		}
+	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TBits, ir.TString, ir.TWString, ir.TBytes, ir.TInt, ir.TFixed:
 		return true, ""
 	case ir.TNamed:
 		switch r := t.Ref.(type) {
@@ -81,9 +76,6 @@ func cookWritableField(u *ir.Unit, f *ir.Field, seen map[string]bool) (bool, str
 		case *ir.Struct:
 			return cookWritable(u, r, seen)
 		case *ir.Union:
-			if f.Array != ir.ArrayNone {
-				return false, "an array of unions"
-			}
 			for _, v := range r.Variants {
 				if v.Void() {
 					continue
@@ -158,7 +150,7 @@ func emitCookWrite(g *goose.Gen, u *ir.Unit, records []*ir.Struct) {
 		g.Pf("fn %sCookPut(v: const %s&, b: u8[:], at: i64, big: bool) -> bool {\n%s    return true;\n}\n", st.Name, typ, w.put.String())
 		g.Declare(st.Name + "CookFromLoaded")
 		g.Pf("fn %sCookFromLoaded(v: %s&, data: const u8[:], vals: const %s::LoadVal[:], rec: i64) {\n", st.Name, typ, rt)
-		g.Pf("    if rec < 0 || !vals[rec].made { return; }\n%s}\n", w.cp.String())
+		g.Pf("    v = %s { .. };\n%s}\n", typ, w.cp.String())
 	}
 	g.Pf("\n")
 	emitCookRegionLayout(g, u)
@@ -187,6 +179,12 @@ func (w *cookWriter) field(f *ir.Field, src, dst string, offset int64, ordinal i
 		w.pl(1, "%s::cook_put(b, at + %d, %sLength as! u64, 4, big);", rt, pieces[1].Offset, src)
 		w.pl(1, "%s::cook_put_bytes(b, at + %d, %s[0..%sLength as! i64]);", rt, pieces[0].Offset, src, src)
 		w.cl(1, "if %s { %sLength = %s::cook_loaded_text(data, vals, %s, %s); }", ride, dst, rt, slot, dst)
+	case t.Kind == ir.TWString:
+		bound := t.Size
+		w.pl(1, "if %sLength < 0 || %sLength > %d { return false; }", src, src, bound)
+		w.pl(1, "%s::cook_put(b, at + %d, %sLength as! u64, 4, big);", rt, pieces[1].Offset, src)
+		w.pl(1, "%s::cook_put_wtext(b, at + %d, %s[0..%sLength as! i64], big);", rt, pieces[0].Offset, src, src)
+		w.cl(1, "if %s { %sLength = %s::cook_loaded_wtext(data, vals, %s, %s); }", ride, dst, rt, slot, dst)
 	case f.Array != ir.ArrayNone || f.KeyEnum != "":
 		facts := ir.BlockFieldOf(w.u, f, offset, false)
 		if f.Array == ir.ArrayCounted {
@@ -245,9 +243,14 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 		w.pl(ind, "if (%s & 0x7FF0000000000000) == 0x7FF0000000000000 { return false; }", x)
 		w.pl(ind, "%s::cook_put(b, at + %s, %s, 8, big);", rt, at, x)
 		w.cl(ind, "if %s { %s = %s::accel_bits_f64(%s); }", ride, dst, rt, bits)
-	case ir.TInt, ir.TBits:
+	case ir.TInt, ir.TFixed, ir.TBits:
 		typ := elemTypeOf(w.g.Slots(f)[0].Type)
 		width := int64(t.Width) / 8
+		if width == 16 {
+			w.pl(ind, "%s::cook_put_wide(b, at + %s, %s, big);", rt, at, src)
+			w.cl(ind, "if %s { %s = %s::cook_loaded_wide(vals, %s); }", ride, dst, rt, s)
+			break
+		}
 		if t.Kind == ir.TBits {
 			width = 4
 			if t.Width > 32 {
@@ -269,9 +272,19 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 		case *ir.Flags:
 			scalar(8, false, w.g.TypeRef(r.Name, false))
 		case *ir.Struct:
-			w.g.TypeRef(r.Name, r.IsTable)
-			w.pl(ind, "if !%sCookPut(%s, b, at + %s, big) { return false; }", r.Name, src, at)
-			w.cl(ind, "if %s { %sCookFromLoaded(%s, data, vals, %s); }", ride, r.Name, dst, s)
+			rTyp := w.g.TypeRef(r.Name, r.IsTable)
+			if f.Type.Optional && f.Array == ir.ArrayNone && f.KeyEnum == "" {
+				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")
+				w.pl(ind, "if %sPresent { if !%sCookPut(%s, b, at + %s, big) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPut(%s, b, at + %s, big) { return false; } }", src, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
+			} else if f.Array == ir.ArrayCounted {
+				arr, idx, _ := strings.Cut(src, "[")
+				idx = strings.TrimSuffix(idx, "]")
+				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")
+				w.pl(ind, "if %s < %sCount as! i64 { if !%sCookPut(%s, b, at + %s, big) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPut(%s, b, at + %s, big) { return false; } }", idx, arr, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
+			} else {
+				w.pl(ind, "if !%sCookPut(%s, b, at + %s, big) { return false; }", r.Name, src, at)
+			}
+			w.cl(ind, "%sCookFromLoaded(%s, data, vals, %s);", r.Name, dst, s)
 		case *ir.Union:
 			w.union(r, src, dst, at, s, ind)
 		}
@@ -313,10 +326,39 @@ func (w *cookWriter) union(un *ir.Union, src, dst, at, s string, ind int) {
 			w.pl(ind+1, "%s::cook_put(b, at + %s + %d, %sLength as! u64, 4, big);", rt, at, armOffset+pieces[1].Offset, a)
 			w.pl(ind+1, "%s::cook_put_bytes(b, at + %s, %s[0..%sLength as! i64]);", rt, off, a, a)
 			w.cl(ind+1, "if %s::cook_loaded_rode(vals, %s) { %s.%sLength = %s::cook_loaded_text(data, vals, %s, %s.%s); }", rt, payload, dst, arm, rt, payload, dst, arm)
-		case af.Array != ir.ArrayNone || af.Type.Optional:
-			// an arm of an array or an optional: the fixed writer's arm
-			// spelling of a field line, which this corpus does not carry
-			w.pl(ind+1, "return false; // arm %s: an array or optional arm has no typed writer yet", v.Name)
+		case af.Type.Kind == ir.TWString:
+			a := src + "." + arm
+			w.pl(ind+1, "if %sLength < 0 || %sLength > %d { return false; }", a, a, af.Type.Size)
+			w.pl(ind+1, "%s::cook_put(b, at + %s + %d, %sLength as! u64, 4, big);", rt, at, armOffset+pieces[1].Offset, a)
+			w.pl(ind+1, "%s::cook_put_wtext(b, at + %s, %s[0..%sLength as! i64], big);", rt, off, a, a)
+			w.cl(ind+1, "if %s::cook_loaded_rode(vals, %s) { %s.%sLength = %s::cook_loaded_wtext(data, vals, %s, %s.%s); }", rt, payload, dst, arm, rt, payload, dst, arm)
+		case af.Array != ir.ArrayNone || af.KeyEnum != "":
+			a, d := src+"."+arm, dst+"."+arm
+			facts := ir.BlockFieldOf(w.u, &af, 0, false)
+			if af.Type.Optional {
+				present := pieces[len(pieces)-1].Offset
+				w.pl(ind+1, "%s::cook_put(b, at + %s + %d, if %sPresent { 1 } else { 0 }, 1, big);", rt, at, armOffset+present, a)
+				w.cl(ind+1, "%sPresent = %s::cook_loaded_rode(vals, %s);", d, rt, payload)
+			}
+			if af.Array == ir.ArrayCounted {
+				w.pl(ind+1, "if %sCount < 0 || %sCount > %d { return false; }", a, a, af.ArrayBound)
+				w.pl(ind+1, "%s::cook_put(b, at + %s + %d, %sCount as! u64, 4, big);", rt, at, armOffset+facts.CountOffset, a)
+				w.cl(ind+1, "if %s::cook_loaded_rode(vals, %s) { %sCount = %s::cook_loaded_count(vals, %s, %d); }", rt, payload, d, rt, payload, af.ArrayBound)
+			}
+			i := w.fresh("idx")
+			w.pl(ind+1, "for %s in %d {", i, af.ArrayBound)
+			w.cl(ind+1, "for %s in %d {", i, af.ArrayBound)
+			es := w.fresh("el")
+			w.cl(ind+2, "let %s = %s::cook_loaded_elem(vals, %s, %s);", es, rt, payload, i)
+			w.value(&af, a+"["+i+"]", d+"["+i+"]", fmt.Sprintf("%s + %d + %s * %d", at, armOffset+pieces[0].Offset, i, facts.ElemSize), es, ind+2)
+			w.pl(ind+1, "}")
+			w.cl(ind+1, "}")
+		case af.Type.Optional:
+			a, d := src+"."+arm, dst+"."+arm
+			present := pieces[len(pieces)-1].Offset
+			w.pl(ind+1, "%s::cook_put(b, at + %s + %d, if %sPresent { 1 } else { 0 }, 1, big);", rt, at, armOffset+present, a)
+			w.cl(ind+1, "%sPresent = %s::cook_loaded_rode(vals, %s);", d, rt, payload)
+			w.value(&af, a, d, fmt.Sprintf("%s + %d", at, armOffset+pieces[0].Offset), payload, ind+1)
 		default:
 			w.value(&af, src+"."+arm, dst+"."+arm, fmt.Sprintf("%s + %d", at, armOffset+pieces[0].Offset), payload, ind+1)
 		}
