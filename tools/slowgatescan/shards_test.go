@@ -251,8 +251,12 @@ func TestSlowGateCoverageShardsCoverAllShards(t *testing.T) {
 	for _, half := range []string{"codegen", "rest"} {
 		target := "slow-gate-coverage-" + half
 		seen := map[int]bool{}
-		for _, sm := range regexp.MustCompile(`make `+target+` SLOWGATE_SHARD=(\d+)`).FindAllStringSubmatch(text, -1) {
+		want := n // a step may override SLOWGATE_SHARDS for its half
+		for _, sm := range regexp.MustCompile(`make `+target+` SLOWGATE_SHARD=(\d+)(?: SLOWGATE_SHARDS=(\d+))?`).FindAllStringSubmatch(text, -1) {
 			k, _ := strconv.Atoi(sm[1])
+			if sm[2] != "" {
+				want, _ = strconv.Atoi(sm[2])
+			}
 			if seen[k] {
 				t.Errorf("%s shard %d is run by two rows", target, k)
 			}
@@ -262,10 +266,10 @@ func TestSlowGateCoverageShardsCoverAllShards(t *testing.T) {
 				t.Errorf("%s shard %d has no matrix group %s", target, k, group)
 			}
 		}
-		if len(seen) != n {
-			t.Errorf("%s runs %d shards, want %d (SLOWGATE_SHARDS)", target, len(seen), n)
+		if len(seen) != want {
+			t.Errorf("%s runs %d shards, want %d (SLOWGATE_SHARDS)", target, len(seen), want)
 		}
-		for k := 0; k < n; k++ {
+		for k := 0; k < want; k++ {
 			if !seen[k] {
 				t.Errorf("%s shard %d is run by no row: its packages are read by nobody", target, k)
 			}

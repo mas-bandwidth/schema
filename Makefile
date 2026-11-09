@@ -7610,7 +7610,7 @@ slow-gate-coverage: deps
 # running it again here in plain mode was most of the wall this split
 # removes. The scanner still fails a shard whose transcript holds no
 # skip, and still fails any skip it reads that nobody runs.
-SLOWGATE_SHARDS ?= 6
+SLOWGATE_SHARDS ?= 12
 .PHONY: slow-gate-coverage-codegen slow-gate-coverage-rest
 slow-gate-coverage-codegen: deps
 	@mkdir -p build/slowgate
