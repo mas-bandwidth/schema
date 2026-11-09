@@ -128,6 +128,38 @@ func materialise(m *Manifest, work string) error {
 		}
 	}
 
+	// THE GROWN ANNOUNCEMENTS (docs/SPEC-TABLES.md §3, §3.3): each is its
+	// connection's committed announcement with the id table padded
+	if len(m.Grown) > 0 {
+		if err := os.MkdirAll(filepath.Join(fixtures, "announce"), 0o755); err != nil {
+			return err
+		}
+	}
+	for i := range m.Grown {
+		g := &m.Grown[i]
+		msg, err := m.LookupMessage(g.Message)
+		if err != nil {
+			return err
+		}
+		c, err := m.LookupConnection(msg.Connection)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(c.Wire)
+		if err != nil {
+			return err
+		}
+		grown, err := GrowIdTable(data, g.Entries, g.Repeat)
+		if err != nil {
+			return fmt.Errorf("announce-grown %s: %w", g.Name, err)
+		}
+		out := filepath.Join(fixtures, "announce", g.Name+".bin")
+		if err := os.WriteFile(out, grown, 0o644); err != nil {
+			return err
+		}
+		g.File = out
+	}
+
 	for i := range m.Forgeries {
 		f := &m.Forgeries[i]
 		src, ok := base[f.Base]
@@ -204,6 +236,21 @@ func deriveManifest(m *Manifest, path string) error {
 	}
 	for _, msg := range m.Messages {
 		fmt.Fprintf(&b, "message %s %s %s %s %s\n", msg.Name, msg.Connection, msg.Root, msg.FileWire, msg.MessageWire)
+	}
+	for _, g := range m.Grown {
+		// A GROWN ANNOUNCEMENT IS AN ORDINARY CONNECTION to a driver, keyed by
+		// the row's own name, and its row an ordinary message on it: whether
+		// the announcement is malformed is the answer, and stays withheld.
+		msg, err := m.LookupMessage(g.Message)
+		if err != nil {
+			return err
+		}
+		c, err := m.LookupConnection(msg.Connection)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", g.Name, c.Unit, c.BuildVersion, g.File)
+		fmt.Fprintf(&b, "message %s %s %s %s %s\n", g.Name, g.Name, msg.Root, msg.FileWire, msg.MessageWire)
 	}
 	for _, rc := range m.Retains {
 		// THE ANSWER IS WITHHELD, as it is everywhere else: a driver is handed
@@ -373,6 +420,24 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{name: msg.Name, want: want})
+		}
+		// A GROWN ANNOUNCEMENT (§3, §3.3): one the read accepts announces the
+		// connection's own vocabulary, so the row owes its message golden; a
+		// malformed one sets no vocabulary, and the row owes a refusal verdict.
+		for _, g := range m.Grown {
+			if g.Refused {
+				out = append(out, expectation{name: g.Name})
+				continue
+			}
+			msg, err := m.LookupMessage(g.Message)
+			if err != nil {
+				return nil, err
+			}
+			want, err := os.ReadFile(msg.MessageWire)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, expectation{name: g.Name, want: want})
 		}
 	case "retain":
 		// Retention preserves the complete known value independently of how
@@ -773,6 +838,14 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 
 	got, err := os.ReadFile(answer)
 	if err != nil {
+		// A MALFORMED ANNOUNCEMENT IS NOT A MISSING FEATURE: a leg that names
+		// it on a row whose announcement the reference accepts refused input
+		// the rule says is well formed.
+		if reason, rerr := os.ReadFile(answer + ".absent"); surface == "message" && rerr == nil && string(reason) == AnnouncementMalformed {
+			r.failures = append(r.failures, fmt.Sprintf("%s: the leg refused the announcement as malformed, and the row owes its message golden", e.name))
+			r.mark(e.name, outcomeFail)
+			return
+		}
 		if _, absent := os.Stat(answer + ".absent"); absent == nil {
 			// An ordinary per-case absence is a missing feature for this leg.
 			r.missing++
