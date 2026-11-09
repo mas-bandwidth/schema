@@ -7609,3 +7609,159 @@ test: deps
 .PHONY: tables-go-checked-cook
 tables-go-checked-cook:
 	SCHEMA_SLOW=1 go test -count=1 -v ./compiler -run '^TestCheckedCookGoConsumers'
+
+# ---- THE PINS MATRIX TARGETS (ci-full.yml's pins job) ------------------------
+#
+# Each row of ci-full.yml's pins matrix rewrites one family of committed pins
+# under testdata/ and diffs testdata/ against HEAD. `make conformance-pin
+# update-goldens` remains the single-command maintainer entry point; the five
+# targets below partition the same writers across parallel fleet rows without
+# update-goldens' duplicate closing `go test ./...` (already run by go-test),
+# so every row finishes well inside the 2-minute per-commit cap:
+#   - pins-source:            testdata/golden/ (pure-Go + C++, C and C# table sources)
+#   - pins-wire-packet:       testdata/wire/*.bin, *.bits, packet-defaults/, bench_*.bin
+#   - pins-wire-tables:       testdata/wire/tables/ from test/tables/main.cpp
+#   - pins-wire-tables-forms: testdata/wire/tables/ (block/maps/lists/arms/wide/retain)
+#                             plus testdata/conformance/tables/ (harness generate)
+#   - pins-conformance:       testdata/conformance/tables/cook/ and forgeries.txt
+
+define pins_generate_dirs
+	@set -eu; \
+	tmp="build/pins-tmp/$(3)"; \
+	rm -rf "$$tmp" && mkdir -p "$$tmp"; \
+	awk 'BEGIN{printf "%s\n", ENVIRON["$(1)"]}' > "$$tmp/cmds"; \
+	want=" $(2) "; \
+	while IFS= read -r line; do \
+		line=$$(printf '%s' "$$line" | sed 's/^[[:space:]]*//'); \
+		case "$$line" in ''|\#*) continue;; esac; \
+		out=$$(printf '%s\n' "$$line" | awk '{for(i=1;i<=NF;i++) if($$i=="--out"){print $$(i+1); exit}}'); \
+		base=$${out##*/}; \
+		case "$$want" in \
+			*" $$base "*) \
+				printf '%s\n' "$$line" >> "$$tmp/b.$$base";; \
+		esac; \
+	done < "$$tmp/cmds"; \
+	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
+	slot=0; pids=''; fail=0; \
+	for b in "$$tmp"/b.*; do \
+		[ -f "$$b" ] || continue; \
+		bash -c 'set -eu; while IFS= read -r c; do bash -c "$$c"; done < "$$1"' _ "$$b" & \
+		pids="$$pids $$!"; \
+		slot=$$((slot+1)); \
+		if [ "$$slot" -ge "$$procs" ]; then \
+			for p in $$pids; do wait "$$p" || fail=1; done; \
+			pids=''; slot=0; \
+		fi; \
+	done; \
+	for p in $$pids; do wait "$$p" || fail=1; done; \
+	rm -rf "$$tmp"; \
+	[ "$$fail" = 0 ]
+endef
+
+define pins_compile_cxx
+	@set -eu; \
+	objdir="build/pins-tmp/$(4)-objs"; \
+	rm -rf "$$objdir" && mkdir -p "$$objdir"; \
+	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
+	slot=0; pids=''; fail=0; idx=0; objs=''; \
+	for src in $(3); do \
+		idx=$$((idx+1)); \
+		obj="$$objdir/$$idx.o"; \
+		objs="$$objs $$obj"; \
+		$(CXX) $(2) -c "$$src" -o "$$obj" & \
+		pids="$$pids $$!"; \
+		slot=$$((slot+1)); \
+		if [ "$$slot" -ge "$$procs" ]; then \
+			for p in $$pids; do wait "$$p" || fail=1; done; \
+			pids=''; slot=0; \
+		fi; \
+	done; \
+	for p in $$pids; do wait "$$p" || fail=1; done; \
+	[ "$$fail" = 0 ]; \
+	mkdir -p $$(dirname $(1)); \
+	$(CXX) $(2) $$objs -o $(1); \
+	rm -rf "$$objdir"
+endef
+
+PINS_SOURCE_CPP_DIRS := examples pointers block blockhome messages stream blobs scalars maps lists arms wide
+PINS_SOURCE_C_DIRS   := examples block pointers
+PINS_SOURCE_CS_DIRS  := examples block blockhome
+
+.PHONY: pins-source
+pins-source: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
+pins-source: export PINS_C_GENERATE = $(call tables_generate_c,./bin/schema,build/tables-generated-c)
+pins-source: export PINS_CS_GENERATE = $(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
+pins-source: bin/schema
+	@mkdir -p testdata/golden build/tables-generated build/tables-generated-c build/tables-generated-cs
+	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_SOURCE_CPP_DIRS),cpp-source)
+	$(call pins_generate_dirs,PINS_C_GENERATE,$(PINS_SOURCE_C_DIRS),c-source)
+	$(call pins_generate_dirs,PINS_CS_GENERATE,$(PINS_SOURCE_CS_DIRS),cs-source)
+	@for d in $(PINS_SOURCE_CPP_DIRS); do \
+		mkdir -p testdata/golden/tables/$$d; \
+		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
+	done
+	@for d in $(PINS_SOURCE_C_DIRS); do \
+		mkdir -p testdata/golden/tables/$$d-c; \
+		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
+	done
+	@for d in $(PINS_SOURCE_CS_DIRS); do \
+		mkdir -p testdata/golden/tables/$$d-cs; \
+		cp build/tables-generated-cs/$$d/*Table.cs testdata/golden/tables/$$d-cs/; \
+	done
+	go test ./internal/goldens -update -run 'TestGolden'
+	go test ./internal/goldens -count=1
+
+.PHONY: pins-wire-packet
+pins-wire-packet: packet-defaults-goldens build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table
+	@mkdir -p testdata/wire testdata/wire/tables
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
+	./build/schema_test_bench_table pin
+
+PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stream blobs m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 f1 scalars backend vocab vocab9 bases
+
+.PHONY: pins-wire-tables
+pins-wire-tables: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
+pins-wire-tables: bin/schema test/tables/main.cpp test/tables/message_form.h
+	@rm -rf build/tables-generated && mkdir -p testdata/wire/tables build/tables-generated
+	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_WIRE_TABLES_DIRS),wire-tables)
+	@touch build/tables-generated/.stamp
+	$(call pins_compile_cxx,build/schema_test_tables,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/main.cpp $(TABLES_JSON_SOURCES),wire-tables)
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
+
+PINS_WIRE_FORMS_DIRS := block maps lists arms rt1 rt2 rt3
+
+.PHONY: pins-wire-tables-forms
+pins-wire-tables-forms: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
+pins-wire-tables-forms: bin/schema build/conformance-harness build/schema_test_wide_table
+	@mkdir -p build/tables-generated testdata/wire/tables
+	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_WIRE_FORMS_DIRS),wire-forms)
+	@touch build/tables-generated/.stamp
+	$(call pins_compile_cxx,build/schema_test_block,$(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES),test/tables/block_main.cpp $(BLOCK_SOURCES),wire-block)
+	$(call pins_compile_cxx,build/schema_test_maps,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/maps_main.cpp $(MAPS_SOURCES),wire-maps)
+	$(call pins_compile_cxx,build/schema_test_lists,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/lists_main.cpp $(LISTS_SOURCES),wire-lists)
+	$(call pins_compile_cxx,build/schema_test_arms,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/arms_main.cpp $(ARMS_SOURCES),wire-arms)
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/retain_main.cpp -o build/schema_test_retain
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_maps
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_arms
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_wide_table
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
+	./build/conformance-harness generate
+
+PINS_CONFORMANCE_DIRS := maps lists widelist examples v1 v2 p1 p2 p3 block pointers messages stream m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 blobs scalars scalars2 backend vocab vocab9 arms rt1 wide features
+PINS_CONFORMANCE_SOURCES = $$(ls build/tables-generated/maps/*Table.cpp build/tables-generated/lists/*Table.cpp build/tables-generated/widelist/*Table.cpp) $(filter-out build/tables-generated/maps/% build/tables-generated/lists/% build/tables-generated/widelist/%,$(CONFORMANCE_SOURCES))
+
+.PHONY: pins-conformance
+pins-conformance: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
+pins-conformance: bin/schema build/conformance-harness
+	@rm -rf build/tables-generated && mkdir -p build/tables-generated
+	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_CONFORMANCE_DIRS),conformance)
+	@touch build/tables-generated/.stamp
+	$(CXX) $(COOK_CXXFLAGS) $(COOK_INCLUDES) test/tables/cook_main.cpp -o build/schema_test_cook
+	$(call pins_compile_cxx,build/conformance-cpp,$(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES),test/conformance/cpp/main.cpp $(PINS_CONFORMANCE_SOURCES),conformance)
+	./build/conformance-harness pin
