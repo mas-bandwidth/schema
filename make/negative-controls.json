@@ -17,49 +17,91 @@
       ]
     },
     {
-      "name": "base-2",
+      "name": "base-2-1",
       "when": "pull-request",
-      "why": "the two Go ref-ordinal controls, which share one SCHEMA_SLOW compiler test build under an overlay (53 s together), with the zero-range, union-arm, C accessor, list and map walk, block race, C++ name, run-copy and accessor controls: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 86 s of control time on that run.",
+      "why": "first slice of base-2 (split after base-2 ran 100-108 s of control time and 124-138 s wall on runs 42556155793 and 42554833739): zero-range, union-arm-order, and block-race Go/C++ controls. Measured 14 s of control time on run 42556155793 and 54 s on loaded run 42554833739 over 3 controls.",
       "targets": [
         "check-zero-range-negative-control",
         "projection-union-arm-order-negative-control",
+        "tables-block-race-negative-control"
+      ]
+    },
+    {
+      "name": "base-2-2",
+      "when": "pull-request",
+      "why": "second slice of base-2 (split after base-2 ran 124-138 s wall on runs 42556155793 and 42554833739): C and C++ accessor and reserved-name controls. Measured 15 s of control time on run 42556155793 and 34 s on loaded run 42554833739 over 3 controls.",
+      "targets": [
         "tables-accessor-negative-control",
-        "tables-block-race-negative-control",
         "tables-c-accessor-negative-control",
+        "tables-cpp-names-negative-control"
+      ]
+    },
+    {
+      "name": "base-2-3",
+      "when": "pull-request",
+      "why": "third slice of base-2 (split after base-2 ran 124-138 s wall on runs 42556155793 and 42554833739): C/C++ text-differential, fixedform-run-copy, JSON list/map walk, and shared ref-ordinal controls. Measured 15 s of control time on run 42556155793 over 6 controls.",
+      "targets": [
         "tables-c-text-differential-negative-control",
-        "tables-cpp-names-negative-control",
         "tables-cpp-text-differential-negative-control",
         "tables-fixedform-run-copy-negative-control",
         "tables-json-list-walk-negative-controls",
         "tables-json-map-walk-negative-controls",
-        "tables-ref-ordinal-negative-control",
         "tables-ref-ordinal-shared-negative-control"
       ]
     },
     {
-      "name": "base-3",
+      "name": "base-2-4",
       "when": "pull-request",
-      "why": "the C two-units control and the generated C tree it builds (23 s), the doc/tags family (17 s), the projection's wire-law and variant-order controls, the C ref-ordinal rewind, and the small refusers: clamps, JSON, was, retention, runtime homes, zero-cost, block, python packet and toolchain: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
+      "why": "fourth slice of base-2: tables-ref-ordinal-negative-control compiles the generated C++ examples unit inside TestCppTableRefOrdinalBytes and ran 57 s of control time on run 42556155793, so it takes its own row.",
+      "targets": [
+        "tables-ref-ordinal-negative-control"
+      ]
+    },
+    {
+      "name": "base-3-1",
+      "when": "pull-request",
+      "why": "first slice of base-3 (split after base-3 ran >98 s of control time and 139 s wall on loaded run 42554833739): build-version, message-form lock, projection order/wire-law, and C++ block-const / block-fill-refuser controls. Measured 23 s of control time on run 42556155793 and 48 s on run 42554833739 over 6 controls.",
       "targets": [
         "build-version-elemkind-negative-control",
         "message-form-fixed-only-lock-negative-control",
         "projection-variant-order-negative-control",
         "projection-wire-law-negative-control",
         "tables-block-const-negative-control",
-        "tables-block-fill-refuser-negative-control",
+        "tables-block-fill-refuser-negative-control"
+      ]
+    },
+    {
+      "name": "base-3-2",
+      "when": "pull-request",
+      "why": "second slice of base-3 (split after base-3 ran 139 s wall on loaded run 42554833739): block zero-cost, C ref-ordinal, C two-units, clamp-limits, and C++ runtime-home controls. Measured 20 s of control time on run 42556155793 and 50 s on run 42554833739 over 6 controls.",
+      "targets": [
         "tables-block-zero-cost-negative-control",
         "tables-c-ref-ordinal-negative-control",
         "tables-c-two-units-negative-controls",
         "tables-clamp-limits-negative-control",
         "tables-cpp-runtime-home-bytes-negative-control",
-        "tables-cpp-runtime-home-negative-control",
+        "tables-cpp-runtime-home-negative-control"
+      ]
+    },
+    {
+      "name": "base-3-3",
+      "when": "pull-request",
+      "why": "third slice of base-3 (split after base-3 ran 139 s wall on loaded run 42554833739): doctags, fixed-twin, JSON clamp/keyed-dup/read/write-refusal, and retain-fixed-class controls. Measured 8 s of control time on run 42556155793 over 7 controls.",
+      "targets": [
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
         "tables-json-negative-control",
         "tables-json-write-refusal-negative-control",
-        "tables-retain-fixed-class-negative-control",
+        "tables-retain-fixed-class-negative-control"
+      ]
+    },
+    {
+      "name": "base-3-4",
+      "when": "pull-request",
+      "why": "fourth slice of base-3 (split after base-3 ran 139 s wall on loaded run 42554833739): runtime-home, slot, view-containment, was/wasrows, wire-text-total, zero-cost, and toolchain controls. Measured 11 s of control time on run 42556155793 over 8 controls.",
+      "targets": [
         "tables-runtime-home-negative-control",
         "tables-slot-negative-control",
         "tables-view-containment-negative-control",
@@ -71,22 +113,43 @@
       ]
     },
     {
-      "name": "base-packet",
+      "name": "base-packet-1",
       "when": "pull-request",
-      "why": "the five packet families on the host toolchain, and the wide-scalar controls beside them: each is one small compile off the generated tree, and they share it. Measured 42 s over 22 controls, before the Go finite-float control (two small Go builds) joined them.",
+      "why": "first slice of base-packet (split after base-packet ran >103 s of control time and 131-138 s wall on runs 42556155793 and 42554833739): C, C++, and Go packet-arm-defaults controls. Measured 34 s of control time on run 42556155793 and 55 s on loaded run 42554833739 over 3 controls.",
       "targets": [
         "packet-arm-defaults-c-negative-control",
         "packet-arm-defaults-cpp-negative-control",
-        "packet-arm-defaults-go-negative-control",
+        "packet-arm-defaults-go-negative-control"
+      ]
+    },
+    {
+      "name": "base-packet-2",
+      "when": "pull-request",
+      "why": "second slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): C and Go packet-defaults and Go packet-finite controls. Measured 33 s of control time on run 42556155793 and 37 s on loaded run 42554833739 over 3 controls.",
+      "targets": [
         "packet-defaults-c-negative-control",
         "packet-defaults-go-negative-control",
-        "packet-finite-go-negative-control",
+        "packet-finite-go-negative-control"
+      ]
+    },
+    {
+      "name": "base-packet-3",
+      "when": "pull-request",
+      "why": "third slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-utf8 (C, Go) and packet-void read/write (C, C++) controls. Measured 28 s of control time on run 42556155793 over 6 controls.",
+      "targets": [
         "packet-utf8-c-negative-control",
         "packet-utf8-go-negative-control",
         "packet-void-c-read-negative-control",
         "packet-void-c-write-negative-control",
         "packet-void-cpp-read-negative-control",
-        "packet-void-cpp-write-negative-control",
+        "packet-void-cpp-write-negative-control"
+      ]
+    },
+    {
+      "name": "base-packet-4",
+      "when": "pull-request",
+      "why": "fourth slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-wide (C, Go) and wide string/table negative controls. Measured 25 s of control time over 10 controls.",
+      "targets": [
         "packet-wide-c-negative-control",
         "packet-wide-go-negative-control",
         "wide-no-align-negative-control",
@@ -101,28 +164,56 @@
     },
     {
       "name": "base-conformance-1",
-      "when": "pull-request",
-      "why": "the shared conformance harness's C++ side: the sabotaged C++ reference (its own 72 s compile on top of the unsabotaged build/conformance-cpp's 72 s), and the block-dump and reference-surface controls, which reuse that unsabotaged build. The completed C driver has three separate compile-heavy groups below; combining them exceeded the five-minute job ceiling on run 34186742566. One half of what was the single `base-conformance` group, cut on 2026-10-28 because that group ran 261 s median and 296 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 259 s of control time over 7 controls). Measured about 111 s of control time on run 40684770225 and 152 s on run 40684250024; the two compiles are the floor.",
+      "when": "nightly",
+      "why": "conformance-negative-control compiles all C++ CONFORMANCE_SOURCES twice in single-threaded g++ invocations (build/conformance-cpp plus the -DCONFORMANCE_SABOTAGE_CLAMP binary), running >107 s of control time and 131 s wall on run 42556155793 (killed at 2m) and >77 s inside the first g++ call on run 42554833739 (136 s wall, killed at 2m).",
       "targets": [
-        "conformance-negative-control",
+        "conformance-negative-control"
+      ]
+    },
+    {
+      "name": "base-conformance-reference",
+      "when": "nightly",
+      "why": "conformance-negative-control-block-dump and conformance-negative-control-reference-surface both depend on build/conformance-cpp, which compiles all C++ CONFORMANCE_SOURCES in one single-threaded g++ invocation and alone ran >77 s on loaded run 42554833739 (killed at 136 s wall before build/conformance-cpp finished).",
+      "targets": [
         "conformance-negative-control-block-dump",
         "conformance-negative-control-reference-surface"
       ]
     },
     {
-      "name": "base-conformance-2",
-      "when": "pull-request",
-      "why": "the shared conformance harness's Go side: the Go leg's wire, walk and wire-fuzz controls, which share one generated Go tree and one build/conformance-go (72 s together on run 40684250024), and the Go rows control beside them. One half of what was the single `base-conformance` group, cut on 2026-10-28 because that group ran 261 s median and 296 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 259 s of control time over 7 controls). Measured about 75 s of control time on run 40684770225 and 108 s on run 40684250024. The framing control (conformance-negative-control-go-framing: the generated reader's 4096 id-table entry cap removed, frame_entries_4097 red) rebuilds only the driver over that tree, about 3 s, and so do the key-order control (conformance-negative-control-go-key-order: the generated text writer walks every map in descending key order, map_key_order and map_text_order red on json-write) and the text-refusal control (conformance-negative-control-go-text-refusal: the generated text writer writes storage that is not text instead of refusing it, text_refuse_illformed and text_refuse_unpaired red on json-write). The proof gate's end-to-end control (proof-negative-control: the Go leg run twice through a substituted registry, once with one wire answer deleted, and tools/matrix proof required red naming that case) rides here on the same build/conformance-go. The Lua packet finite-float control rides here because this row installs the pinned Lua interpreter (make dist-lua) and already builds build/schema-lua for conformance-negative-control-lua; on that build it is two small sabotage-tool runs and two Lua checker runs over one generated unit, 3.7 s on the studio with a cold Go build cache, so the row stays inside the 120 s rule.",
+      "name": "base-conformance-2-1",
+      "when": "nightly",
+      "why": "first slice of base-conformance-2: every target depends on build/conformance-go -> build/tables-generated-go/.stamp (31 serial schema generate --lang go plus go mod tidy invocations in make/go.mk), which alone took 86 s before the first control started on run 42556155793 (128 s wall, killed at 2m) and >88 s inside build/tables-generated-go/.stamp on loaded run 42554833739 (136 s wall, killed before the first control started).",
       "targets": [
         "conformance-negative-control-go",
         "conformance-negative-control-go-cycle",
-        "conformance-negative-control-go-walk",
+        "conformance-negative-control-go-walk"
+      ]
+    },
+    {
+      "name": "base-conformance-2-2",
+      "when": "nightly",
+      "why": "second slice of base-conformance-2: Go key-order, text-refusal, and framing conformance controls, which depend on build/conformance-go -> build/tables-generated-go/.stamp (86 s prerequisite on run 42556155793 and >88 s on run 42554833739, past the ~75 s per-commit control ceiling before the first control runs).",
+      "targets": [
         "conformance-negative-control-go-key-order",
         "conformance-negative-control-go-text-refusal",
-        "conformance-negative-control-go-framing",
+        "conformance-negative-control-go-framing"
+      ]
+    },
+    {
+      "name": "base-conformance-2-3",
+      "when": "nightly",
+      "why": "third slice of base-conformance-2: tables-go-wire-fuzz-negative-control and proof-negative-control, which depend on build/conformance-go -> build/tables-generated-go/.stamp (86 s prerequisite on run 42556155793 and >88 s on run 42554833739, past the ~75 s per-commit control ceiling before the first control runs).",
+      "targets": [
         "tables-go-wire-fuzz-negative-control",
-        "conformance-go-rows-negative-control",
         "proof-negative-control"
+      ]
+    },
+    {
+      "name": "base-conformance-go-rows",
+      "when": "nightly",
+      "why": "conformance-go-rows-negative-control builds both build/tables-generated-go/.stamp (39-88 s) and build/fixedform-corpus/.stamp (49 s) before running 45 Go conformance row tests, exceeding the ~75 s per-commit control ceiling on its own.",
+      "targets": [
+        "conformance-go-rows-negative-control"
       ]
     },
     {
@@ -215,8 +306,8 @@
     },
     {
       "name": "base-conformance-cpp",
-      "when": "pull-request",
-      "why": "The C++ reference's emitter-side conformance control, alone: it overlay-rebuilds the compiler, regenerates the whole C++ table tree through it and rebuilds the reference driver, which is the compile weight of a complete-driver rebuild. The driver-flip control in base-conformance shares a job with the harness controls; this one is the emitter rebuild they deliberately do not carry.",
+      "when": "nightly",
+      "why": "conformance-negative-control-cpp rebuilds the compiler under an overlay, regenerates all 31 C++ table units, and compiles all C++ CONFORMANCE_SOURCES in one single-threaded g++ call, running 82 s of control time (104 s wall) on run 42556155793 and >84 s (140 s wall, killed at 2m) on loaded run 42554833739.",
       "targets": [
         "conformance-negative-control-cpp"
       ]
@@ -302,8 +393,8 @@
     },
     {
       "name": "base-conformance-absence",
-      "when": "pull-request",
-      "why": "one control, and it is alone because it costs 47 s on the runner: it rebuilds the C++ reference driver under a sabotage the way the group above does, and the two together do not fit the owner's rule in one job. Measured 15 s over 1 control.",
+      "when": "nightly",
+      "why": "conformance-negative-control-absent builds build/tables-generated-go/.stamp, build/conformance-go, build/conformance-cpp, and a sabotaged C++ conformance binary in one job, running >106 s of control time (129 s wall, killed at 2m) on run 42556155793 and >111 s (130 s wall, killed at 2m) on run 42554833739.",
       "targets": [
         "conformance-negative-control-absent"
       ]
@@ -323,8 +414,8 @@
     },
     {
       "name": "base-maps-depth",
-      "when": "pull-request",
-      "why": "the map gate's depth, duplicate, entry-node and fit controls. Measured 19 s over 4 controls.",
+      "when": "nightly",
+      "why": "every tables-maps-*-negative-control target invokes map_negative_control, regenerating all 13 map schema units and compiling test/tables/maps_main.cpp plus all 13 build/tables-map-X/maps/*Table.cpp files (286k lines of generated C++) in one single-threaded g++ call; tables-maps-depth-negative-control alone ran 84 s of control time on run 42554833739 (135 s wall, killed at 2m), past the ~75 s per-commit control ceiling on a single target. base-maps and tables-json-map-walk-negative-controls stay on pull-request.",
       "targets": [
         "tables-maps-depth-negative-control",
         "tables-maps-duplicate-negative-control",
@@ -334,8 +425,8 @@
     },
     {
       "name": "base-maps-keys",
-      "when": "pull-request",
-      "why": "the map gate's four key controls: the domain, the identity, the kind and the length. Measured 19 s over 4 controls.",
+      "when": "nightly",
+      "why": "each target invokes map_negative_control (286k lines of generated C++ compiled in one single-threaded g++ call); tables-maps-key-domain-negative-control alone ran 81 s of control time on both run 42556155793 (135 s wall, killed at 2m) and run 42554833739 (140 s wall, killed at 2m), past the ~75 s per-commit control ceiling on a single target.",
       "targets": [
         "tables-maps-key-domain-negative-control",
         "tables-maps-key-identity-negative-control",
@@ -345,8 +436,8 @@
     },
     {
       "name": "base-maps-order",
-      "when": "pull-request",
-      "why": "the map gate's placement, ordering and reset controls. Measured 19 s over 5 controls.",
+      "when": "nightly",
+      "why": "each target invokes map_negative_control (286k lines of generated C++ compiled in one single-threaded g++ call); tables-maps-place-failure-negative-control alone ran 86 s of control time on run 42554833739 (137 s wall, killed at 2m), past the ~75 s per-commit control ceiling on a single target.",
       "targets": [
         "tables-maps-place-failure-negative-control",
         "tables-maps-sort-negative-control",
@@ -387,24 +478,45 @@
       ]
     },
     {
-      "name": "base-arms",
+      "name": "base-arms-1",
       "when": "pull-request",
-      "why": "the union-arm traversal gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. Measured 16 s over 8 controls.",
+      "why": "first slice of base-arms (split after base-arms ran >83 s of control time and 136 s wall on loaded run 42554833739): array-framing and cook-arm union controls, each compiling test/tables/arms_main.cpp against U1Table.cpp. Measured 20 s of control time on run 42556155793 and 27 s on run 42554833739 over 2 controls.",
       "targets": [
         "tables-arms-array-framing-negative-control",
-        "tables-arms-cook-arm-negative-control",
+        "tables-arms-cook-arm-negative-control"
+      ]
+    },
+    {
+      "name": "base-arms-2",
+      "when": "pull-request",
+      "why": "second slice of base-arms (split after base-arms ran 136 s wall on loaded run 42554833739): cook-check, list-edge, and nested-union controls. Measured 18 s of control time on run 42556155793 and 34 s on run 42554833739 over 3 controls.",
+      "targets": [
         "tables-arms-cook-check-negative-control",
         "tables-arms-list-edge-negative-control",
-        "tables-arms-negative-controls",
-        "tables-arms-nested-union-negative-control",
+        "tables-arms-nested-union-negative-control"
+      ]
+    },
+    {
+      "name": "base-arms-3",
+      "when": "pull-request",
+      "why": "third slice of base-arms (split after base-arms ran 136 s wall on loaded run 42554833739): reachable and slot-index union controls. Measured 13 s of control time on run 42556155793 and 23 s on run 42554833739 over 2 controls.",
+      "targets": [
         "tables-arms-reachable-negative-control",
         "tables-arms-slot-index-negative-control"
       ]
     },
     {
+      "name": "base-arms-all",
+      "when": "nightly",
+      "why": "tables-arms-negative-controls is the composite umbrella PHONY that runs all seven tables-arms-*-negative-control leaves serially in one job (>83 s of control time and 136 s wall on run 42554833739, killed at 2m). The seven leaves run per commit across base-arms-1, base-arms-2, and base-arms-3; the serial umbrella runs nightly.",
+      "targets": [
+        "tables-arms-negative-controls"
+      ]
+    },
+    {
       "name": "base-shared-node-1",
-      "when": "pull-request",
-      "why": "the two Go fuzz controls, which read the same walk the arm gate does and share one generated Go tree. One half of what was the single `base-shared-node` group, cut on 2026-10-28 because that group ran 234 s median and 268 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 184 s of control time over 3 controls). Measured about 52 s of control time on run 40684770225 and 58 s on run 40684250024.",
+      "when": "nightly",
+      "why": "tables-go-fuzz-extent-negative-control and tables-go-fuzz-maximum-negative-control depend on build/tables-generated-go/.stamp (31 serial schema generate --lang go plus go mod tidy invocations in make/go.mk), which ran 39 s on run 42556155793 (50 s control time, 72 s wall) and >99 s alone on loaded run 42554833739 (killed at 134 s wall inside build/tables-generated-go/.stamp before the first 5 s control started).",
       "targets": [
         "tables-go-fuzz-extent-negative-control",
         "tables-go-fuzz-maximum-negative-control"
@@ -412,8 +524,8 @@
     },
     {
       "name": "base-shared-node-2",
-      "when": "pull-request",
-      "why": "the shared-node control alone: the tables suite rebuilt against a pack with no identity map, one C++ compile of every generated table. One half of what was the single `base-shared-node` group, cut on 2026-10-28 because that group ran 234 s median and 268 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 184 s of control time over 3 controls). Measured about 113 s of control time on run 40684770225 and 126 s on run 40684250024, nearly all of it that one compile, so it cannot be cut further by grouping.",
+      "when": "nightly",
+      "why": "tables-shared-node-negative-control regenerates all 31 C++ table units under a no-identity overlay and compiles test/tables/main.cpp plus all build/tables-no-identity/*/*Table.cpp in one single-threaded g++ invocation, running >113 s of control time (136 s wall, killed at 2m) on run 42556155793 and >106 s (129 s wall, killed at 2m) on run 42554833739.",
       "targets": [
         "tables-shared-node-negative-control"
       ]
@@ -435,34 +547,62 @@
     {
       "name": "base-cook-2",
       "when": "pull-request",
-      "why": "the cook's controls and the C++ soak's control (its sabotaged soak compile is 32 s to 42 s on the runner; it goes red on its first sample): one cooked corpus, built once, that every one of them reads, and the same generated tables tree the C++ soak compiles. One half of what was the single `base-cook` group, cut on 2026-10-28 because that group ran 200 s median and 218 s max against the job's five-minute timeout over 14 ci-full runs (run 40684770225: 146 s of control time over 14 controls). Measured about 76 s of control time on run 40684770225 and 93 s on run 40684051433. The C++ usage control (docs/PORTING.md I12) rides here beside the cook it documents: one overlay compiler build and one compile of the page's examples.",
+      "why": "first slice of base-cook-2 (split after base-cook-2 ran 117-138 s wall on runs 42556155793 and 42554833739): the three cook-open controls sharing build/cook-open/.stamp plus tables-cook-write-negative-control. Measured 20 s of control time on run 42556155793 over 4 controls.",
       "targets": [
-        "tables-cpp-soak-negative-control",
-        "tables-cook-fuzz-negative-control",
         "tables-cook-open-lengths-negative-control",
         "tables-cook-open-root-negative-control",
         "tables-cook-open-walk-negative-control",
+        "tables-cook-write-negative-control"
+      ]
+    },
+    {
+      "name": "base-cook-3",
+      "when": "pull-request",
+      "why": "second slice of base-cook-2 (split after base-cook-2 ran 117-138 s wall on runs 42556155793 and 42554833739): cook-fuzz, cook-write-hooks, and cpp-usage negative controls. Measured 28 s of control time over 3 controls.",
+      "targets": [
+        "tables-cook-fuzz-negative-control",
         "tables-cook-write-hooks-negative-control",
-        "tables-cook-write-negative-control",
         "tables-cpp-usage-negative-control"
+      ]
+    },
+    {
+      "name": "base-cpp-soak",
+      "when": "nightly",
+      "why": "tables-cpp-soak-negative-control compiles nine generated C++ soak units with -O2 in a single g++ invocation, taking 67 s of control time on run 42556155793 and >85 s inside g++ on loaded run 42554833739 (killed at 138 s wall), past the ~75 s per-commit control ceiling on its own.",
+      "targets": [
+        "tables-cpp-soak-negative-control"
       ]
     },
     {
       "name": "base-keyed",
       "when": "pull-request",
-      "why": "the keyed-collection controls. The iteration control is the long one. Measured 17 s over 3 controls.",
+      "why": "the two single-unit C++ keyed refusal controls (tables-keyed-max-refusal-negative-control and tables-keyed-none-refusal-negative-control), each compiling only K1Table.cpp. Measured 5 s of control time over 2 controls after splitting out tables-keyed-iteration-negative-control.",
       "targets": [
-        "tables-keyed-iteration-negative-control",
         "tables-keyed-max-refusal-negative-control",
         "tables-keyed-none-refusal-negative-control"
       ]
     },
     {
-      "name": "base-keyed-shift",
-      "when": "pull-request",
-      "why": "the keyed shift control and the flat-wire one, which are 76 s of control time beside the group above on run 34115675206. Measured 12 s over 2 controls.",
+      "name": "base-keyed-iteration",
+      "when": "nightly",
+      "why": "tables-keyed-iteration-negative-control regenerates all 31 C++ table units under a first-slot overlay and compiles test/tables/main.cpp plus all build/tables-first-slot/*/*Table.cpp in one single-threaded g++ invocation, running >81 s of control time (140 s wall, killed at 2m) on run 42556155793 and >111 s (128 s wall, killed at 2m) on run 42554833739.",
       "targets": [
-        "tables-flat-wire-negative-control",
+        "tables-keyed-iteration-negative-control"
+      ]
+    },
+    {
+      "name": "base-flat-wire",
+      "when": "pull-request",
+      "why": "tables-flat-wire-negative-control (split from base-keyed-shift after tables-keyed-shift-negative-control ran 129-137 s wall on runs 42556155793 and 42554833739). Measured 5 s of control time on run 42556155793 and 19 s on loaded run 42554833739.",
+      "targets": [
+        "tables-flat-wire-negative-control"
+      ]
+    },
+    {
+      "name": "base-keyed-shift",
+      "when": "nightly",
+      "why": "tables-keyed-shift-negative-control regenerates all 31 C++ table units under the keyed-shift overlay and compiles test/tables/main.cpp plus all build/tables-keyed-shift/*/*Table.cpp in one single-threaded g++ invocation, running >104 s of control time (129 s wall, killed at 2m) on run 42556155793 and >63 s inside g++ (137 s wall, killed at 2m) on loaded run 42554833739.",
+      "targets": [
         "tables-keyed-shift-negative-control"
       ]
     },
@@ -571,8 +711,8 @@
     },
     {
       "name": "base-cpp-hostile-corpus",
-      "when": "pull-request",
-      "why": "the C++ port's hostile-corpus control, the C one's twin: the same planted verdict over the sanitized C++ case binary. Go, the host C and C++ compilers and the serialize sibling, and nothing else; a group of its own because the nine sanitized C++ units are most of its cost.",
+      "when": "nightly",
+      "why": "schema-cpp-runs-hostile-corpus-negative-control generates 9 C++ schema units and compiles the C++ hostile-corpus runner under -fsanitize=address,undefined twice, running 68 s of control time (90 s wall) on run 42556155793 and >93 s (138 s wall, killed at 2m) on loaded run 42554833739.",
       "targets": [
         "schema-cpp-runs-hostile-corpus-negative-control"
       ]
