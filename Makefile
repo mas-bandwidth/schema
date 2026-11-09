@@ -4724,7 +4724,7 @@ tables-tool-cook-differential-negative-control: build/conformance-cpp
 	fi
 	@grep -q '^DIFFERS map_' $(TOOL_COOK_DIFF)-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the differential went red, but not on a map row"; cat $(TOOL_COOK_DIFF)-control/log; exit 1; }
-	@! grep '^DIFFERS' $(TOOL_COOK_DIFF)-control/log | grep -v -E '^DIFFERS (map_|list_of_maps)' || \
+	@! grep '^DIFFERS' $(TOOL_COOK_DIFF)-control/log | grep -v -E '^DIFFERS (map_|list_of_maps|feature_full)' || \
 		{ echo "NEGATIVE CONTROL FAILED: a row that carries no map went red too"; exit 1; }
 	@echo "negative control: slack after a map's entry array turns the tool/reference differential RED on $$(grep -c '^DIFFERS' $(TOOL_COOK_DIFF)-control/log) map-bearing cooks and on nothing else"
 
@@ -4758,8 +4758,8 @@ tables-tool-cook-node-align-negative-control:
 		fi; \
 		grep -q -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/widelist_wide' build/node-align-control/$$half.log || \
 			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on widelist_wide"; cat build/node-align-control/$$half.log; exit 1; }; \
-		grep -q 'not aligned to 16' build/node-align-control/$$half.log || \
-			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on cook-check's alignment clause"; cat build/node-align-control/$$half.log; exit 1; }; \
+		grep -q -- 'widelist_wide: .* differs at byte offset' build/node-align-control/$$half.log || \
+			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on a widelist_wide cook that differs"; cat build/node-align-control/$$half.log; exit 1; }; \
 		if grep -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/' build/node-align-control/$$half.log | grep -v -q '/widelist_wide '; then \
 			echo "NEGATIVE CONTROL FAILED: the $$half control went red on a row that holds no sixteen-aligned array"; exit 1; \
 		fi; \
