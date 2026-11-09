@@ -517,7 +517,11 @@ skip_entry = function(R, e, ctx)
     if not ok then return false end
     if ref == 0 then return true end
     local ve = ctx.vocab[ref]
-    return ve ~= nil and ve.kind == 0 and ve.id ~= NODE_ID and ve.id ~= 0xfffffffffffffffe and ve.id ~= 0xfffffffffffffffd
+    return ve ~= nil
+      and ve.kind == 0
+      and ve.id ~= NODE_ID
+      and ve.id ~= 0xfffffffffffffffe
+      and ve.id ~= 0xfffffffffffffffd
   elseif k == 15 then
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
@@ -547,7 +551,11 @@ skip_entry = function(R, e, ctx)
     if w > 0 then
       local raw, ok = R:get(w)
       if not ok then return false end
-      if k == 14 then n = raw + n else n = raw end
+      if k == 14 then
+        n = raw + n
+      else
+        n = raw
+      end
     end
     if k == 14 and e.elem == 6 and (e.inner == nil or e.inner.packing == nil) then
       if not R:align() then return false end
@@ -560,7 +568,13 @@ skip_entry = function(R, e, ctx)
         local kref, kok = R:get(ctx.refBits)
         if not kok or kref == 0 then return false end
         local ke = ctx.vocab[kref]
-        if ke == nil or ke.kind ~= 0 or ke.id == NODE_ID or ke.id == 0xfffffffffffffffe or ke.id == 0xfffffffffffffffd then
+        if
+          ke == nil
+          or ke.kind ~= 0
+          or ke.id == NODE_ID
+          or ke.id == 0xfffffffffffffffe
+          or ke.id == 0xfffffffffffffffd
+        then
           return false
         end
       end
@@ -687,7 +701,13 @@ read_value = function(R, T, f, holder, key, ctx, e)
         local kref, kok = R:get(ctx.refBits)
         if not kok or kref == 0 then return false end
         local ke = ctx.vocab[kref]
-        if ke == nil or ke.kind ~= 0 or ke.id == NODE_ID or ke.id == 0xfffffffffffffffe or ke.id == 0xfffffffffffffffd then
+        if
+          ke == nil
+          or ke.kind ~= 0
+          or ke.id == NODE_ID
+          or ke.id == 0xfffffffffffffffe
+          or ke.id == 0xfffffffffffffffd
+        then
           return false
         end
         local kidx = variant_index(d.keyed, ke.id)
@@ -708,7 +728,13 @@ read_value = function(R, T, f, holder, key, ctx, e)
     end
     if not ok then return false end
     local elem_u8 = (e ~= nil and e.elem == 6) or (e == nil and d.elem_kind == 6)
-    if elem_u8 and d.elem_kind == 6 and d.elem.shape ~= "bytes" and (inner == nil or inner.packing == nil) and d.elem.lo == nil then
+    if
+      elem_u8
+      and d.elem_kind == 6
+      and d.elem.shape ~= "bytes"
+      and (inner == nil or inner.packing == nil)
+      and d.elem.lo == nil
+    then
       if not R:align() then return false end
       local raw = R:raw(n)
       if raw == nil then return false end
@@ -965,7 +991,11 @@ end
 -- known_kind is §3's closed set plus the 0 an entry takes when its framing is
 -- not an entry's to give (§3.3).
 local function known_kind(kind)
-  return kind == 0 or (kind >= 1 and kind <= 17) or (kind >= 18 and kind <= 29) or (kind >= 30 and kind <= 33) or kind == 36
+  return kind == 0
+    or (kind >= 1 and kind <= 17)
+    or (kind >= 18 and kind <= 29)
+    or (kind >= 30 and kind <= 33)
+    or kind == 36
 end
 
 -- read_shape steps over one announced shape and retains its width and range
@@ -1008,9 +1038,7 @@ local function read_shape(e, s, at)
     local min
     min, at = leb(at)
     if at == nil then return nil end
-    if kind >= 2 and kind <= 5 then
-      min = (min >> 1) ~ -(min & 1)
-    end
+    if kind >= 2 and kind <= 5 then min = (min >> 1) ~ -(min & 1) end
     e.min = min
     return at
   elseif kind == 10 then
