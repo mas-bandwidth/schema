@@ -8,15 +8,16 @@
 # required red on the named surface with its neighbours green. No tracked
 # file is written, so an interrupt leaves no sabotaged tree.
 #
-#   report  load.lua counts every unknown field twice: the three surfaces that
-#           print the load's counters red (`lua / report`, `lua / framing`,
-#           and `lua / retain`) and nothing else; `wire`,
-#           `json-read` and `retain-save` green (the sabotage moves no byte).
+#   report  load.lua refuses every unknown field as damaged: the three surfaces
+#           that carry variable-form wires with unknown fields red
+#           (`lua / framing`, `lua / retain`, and `lua / retain-save`) and
+#           nothing else; `wire`, `json-read` and `cook-write` green.
 #   walk    json.lua's field-key match never matches the first declared
-#           field: the text READER's two surfaces red (`lua / json-read`, and
-#           `lua / json-hostile`, which reads through the same match) and
-#           nothing else; `json-write`, `wire` and every other surface green,
-#           so the break is the text walk's and the matrix localizes it (I11).
+#           field: the text READER's three surfaces red (`lua / json-read`,
+#           `lua / json-hostile`, and `lua / cook-write`, which reads through
+#           the same match) and nothing else; `json-write`, `wire` and every
+#           other surface green, so the break is the text walk's and the matrix
+#           localizes it (I11).
 #   framing descriptor.lua's id-table entry bound (docs/SPEC-TABLES.md §3,
 #           4096) is lifted: a wire whose id table names 4097 entries loads
 #           instead of being refused as malformed, so `lua / framing`
@@ -38,7 +39,7 @@ mkdir -p "$out"
 case "$mode" in
 report)
     source=internal/codegen/luatable/runtime/load.lua
-    sed 's/report.unknown = report.unknown + 1$/report.unknown = report.unknown + 1 + 1/' "$source" > "$out/runtime.lua"
+    sed 's/report.unknown = report.unknown + 1$/report.unknown = report.unknown + 1; report.damaged = true/' "$source" > "$out/runtime.lua"
     ;;
 walk)
     source=internal/codegen/luatable/runtime/json.lua
@@ -50,7 +51,7 @@ framing)
     ;;
 cycle)
     source=internal/codegen/luatable/runtime/load.lua
-    sed 's/^    if not report.damaged and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.damaged = true end$/    if false then report.damaged = true end/' "$source" > "$out/runtime.lua"
+    sed -e 's/^    if not report.damaged and D.cyclic(T, desc, root, placed(ctx.nodes)) then report.damaged = true end$/    if false then report.damaged = true end/' -e 's/^        if mark\[index\] == 1 then return wc_fail(c, "wire_damaged") end$/        if false then return wc_fail(c, "wire_damaged") end/' "$source" > "$out/runtime.lua"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -85,8 +86,8 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *lua / [a-z-]+' "$out/log" | sed 's/^ *lua \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing report retain " ; green="wire json-read retain-save" ;;
-walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+report) want="framing retain retain-save " ; green="wire json-read cook-write" ;;
+walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle)  want="framing " ; green="wire report" ;;
 esac

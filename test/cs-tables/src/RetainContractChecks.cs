@@ -10,6 +10,7 @@ static partial class Program
     static unsafe void RetainProbe(byte[] wire,int captured,int remaining,int lost,int saveLost,Action<RT.Node> check=null,int idsCapacity=1024,bool audit=true)
     {
         long need=RT.Schema.NodeLoadMeasure(wire);
+        Check(need>=0,"retention contract measure "+Convert.ToHexString(wire)); if(need<0) { return; }
         byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)need,64);
         byte* bytes=(byte*)NativeMemory.Alloc(16384);
         RT.TableRetain.Id* ids=(RT.TableRetain.Id*)NativeMemory.Alloc((nuint)(1024*sizeof(RT.TableRetain.Id)));
@@ -40,12 +41,30 @@ static partial class Program
         }
         finally { NativeMemory.AlignedFree(region); NativeMemory.Free(bytes); NativeMemory.Free(ids); }
     }
+    static unsafe void RetainRefused(byte[] wire,string what)
+    {
+        long need=RT.Schema.NodeLoadMeasure(wire);
+        Check(need<0,what+": measure refuses");
+        byte* region=(byte*)NativeMemory.AlignedAlloc(4096,64);
+        byte* bytes=stackalloc byte[1024]; RT.TableRetain.Id* ids=stackalloc RT.TableRetain.Id[64];
+        try
+        {
+            var store=new RT.TableRetain { Bytes=bytes,Capacity=1024,Ids=ids,IdCapacity=64 };
+            var report=new RT.TableReport();
+            Check(RT.Schema.NodeLoadRetain((IntPtr)region,4096,wire,ref store,report)==null && report.Damaged,what);
+            Check(store.Used==0 && store.Count==0,what+": the store stays empty");
+        }
+        finally { NativeMemory.AlignedFree(region); }
+    }
     static unsafe void RetainDamagedArm()
     {
         // Minimized from the differential corpus: an arm captures a field,
         // then fails. Its disappearing path is a save loss, not a replacement.
         byte[] wire=Convert.FromHexString("01010803000000020f030d0a04030306010105110200060c1602070a040e03060102051103000707040e030601030000c03a5cb5072eb7082652b3285633d4d8228e3c877681830f054aa33067555b8528f025a0ba6c31e5ffffffffffffffff82e051f9dc6843cf0700000000000000");
         long need=Streamdemo.Schema.FeedLoadMeasure(wire);
+        // the wire-alone walk finds the damage before anything is sized
+        Check(need<0,"damaged retained union arm refuses the measure");
+        need=1<<16;
         byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)need,64);
         byte* bytes=stackalloc byte[4096]; Streamdemo.TableRetain.Id* ids=stackalloc Streamdemo.TableRetain.Id[128];
         var retain=new Streamdemo.TableRetain { Bytes=bytes,Capacity=4096,Ids=ids,IdCapacity=128 };
@@ -86,11 +105,16 @@ static partial class Program
     {
         byte[] future=Join(RetainScalar(2,7),new byte[]{0});
         byte[] known=Join(RetainScalar(3,2),new byte[]{0});
-        RetainProbe(Fixture(Join(RetainFrame(1,13,future),RetainFrame(1,13,known),new byte[]{0}),"inner","future","hits"),1,0,0,0,n=>Check(n.Inner.Hits==2,"last table occurrence wins"));
+        // THE SAME FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §6.5):
+        // the retaining load refuses the whole file and captures nothing.
+        RetainRefused(Fixture(Join(RetainFrame(1,13,future),RetainFrame(1,13,known),new byte[]{0}),"inner","future","hits"),"a repeated table field id refuses the retaining load");
         byte[] list=Join(new byte[]{13,1},Var((ulong)future.Length),future);
-        RetainProbe(Fixture(Join(RetainFrame(1,14,list),RetainFrame(1,14,Array.Empty<byte>()),new byte[]{0}),"list","future"),1,1,0,0,n=>Check(n.ListCount==1,"inert list occurrence preserves its predecessor"));
-        RetainProbe(Fixture(Join(RetainFrame(1,14,list),RetainFrame(1,14,new byte[]{13,0}),new byte[]{0}),"list","future"),1,0,0,0,n=>Check(n.ListCount==0,"empty list replaces its predecessor"));
-        RetainProbe(Fixture(Join(RetainFrame(1,13,RetainScalar(2,7)),new byte[]{0}),"future","deeper"),0,0,1,0);
+        RetainRefused(Fixture(Join(RetainFrame(1,14,list),RetainFrame(1,14,Array.Empty<byte>()),new byte[]{0}),"list","future"),"a repeated list field id with an empty L refuses the retaining load");
+        RetainRefused(Fixture(Join(RetainFrame(1,14,list),RetainFrame(1,14,new byte[]{13,0}),new byte[]{0}),"list","future"),"a repeated list field id refuses the retaining load");
+        // the same list once is the control: it loads and captures its unknown field
+        RetainProbe(Fixture(Join(RetainFrame(1,14,list),new byte[]{0}),"list","future"),1,1,0,0,n=>Check(n.ListCount==1,"a list carried once keeps its element"));
+        // a nested body with no terminator is damage, not a lost capture
+        RetainRefused(Fixture(Join(RetainFrame(1,13,RetainScalar(2,7)),new byte[]{0}),"future","deeper"),"an unterminated nested body refuses the retaining load");
         // A by-value body containing only an unknown field must survive elision.
         RetainProbe(Fixture(Join(RetainFrame(1,13,future),new byte[]{0}),"inner","future"),1,1,0,0);
         RetainProbe(Fixture(Join(RetainFrame(1,13,future),new byte[]{0}),"inner","future"),1,1,0,1,idsCapacity:0);
@@ -101,7 +125,10 @@ static partial class Program
         byte[] high=Join(RetainScalar(2,42),RetainScalar(3,5),new byte[]{0});
         byte[] bankLow=Join(new byte[]{13,1,4},Var((ulong)low.Length),low);
         byte[] bankHigh=Join(new byte[]{13,1,5},Var((ulong)high.Length),high);
-        RetainProbe(Fixture(Join(RetainFrame(1,16,bankLow),RetainFrame(1,16,bankHigh),new byte[]{0}),"banks","future","hits","Low","High"),2,2,0,0,n=>Check(n.Banks[1].Hits==4 && n.Banks[2].Hits==5,"disjoint keyed bodies survive"));
+        RetainRefused(Fixture(Join(RetainFrame(1,16,bankLow),RetainFrame(1,16,bankHigh),new byte[]{0}),"banks","future","hits","Low","High"),"a repeated keyed field id refuses the retaining load");
+        // both slots in one keyed body is the lawful form of the same value
+        byte[] banks=Join(new byte[]{13,2,4},Var((ulong)low.Length),low,new byte[]{5},Var((ulong)high.Length),high);
+        RetainProbe(Fixture(Join(RetainFrame(1,16,banks),new byte[]{0}),"banks","future","hits","Low","High"),2,2,0,0,n=>Check(n.Banks[1].Hits==4 && n.Banks[2].Hits==5,"two keyed slots in one body survive"));
         foreach(int depth in new int[]{8,20,40,64,65})
         {
             byte[] content=Join(RetainScalar(2,1),new byte[]{0});

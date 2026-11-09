@@ -776,7 +776,7 @@ public static partial class TableWire
         }
     }
 
-` + tableVariableWireSource + tableLoadMeasureSource + tableMapWireSource + tableMessageSource + tableMessageReadSource + tableNativeSource + `
+` + tableWireCheckSource + tableVariableWireSource + tableLoadMeasureSource + tableMapWireSource + tableMessageSource + tableMessageReadSource + tableNativeSource + `
     static ulong Read64(ReadOnlySpan<byte> bytes, int offset)
     {
         return System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset));
@@ -1245,6 +1245,9 @@ public static partial class TableWire
     static bool CollectionCap(TableReport report)
     { report.Refused = true; report.Reason = "count_over_extent_cap"; return false; }
     static bool Damage(TableReport report) { report.Damaged = true; return false; }
+    // EndsEarly is the announcement's framing pre-walk (AnnounceRead): a body
+    // whose terminator comes before its last byte. A file load runs the whole
+    // wire-alone walk instead (WireCheck).
     static bool EndsEarly(Reader r)
     {
         while (r.Ref(out ulong reference, out _))
@@ -1731,7 +1734,11 @@ public static partial class TableWire
         ReadOnlySpan<byte> vocabulary = bytes.Slice(end, (int)count * 8);
         if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
-        if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
+        // THE WIRE-ALONE CONDITIONS (docs/SPEC-TABLES.md §6.5) are judged over
+        // every byte before anything is decoded, known fields and unknown alike.
+        int whole = WireCheck(r.Buffer, vocabulary, false, out bool wireNonFinite);
+        if (whole == WireDamaged) { Damage(report); return Finish(report, Verdict.Damaged); }
+        if (whole != WireWhole) { Fail(report, whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"); return Finish(report, Verdict.Refused); }
         bool damagedBefore = report.Damaged;
         report.Damaged = false;
         // Managed collections grow only after each bounded element. The actual
@@ -1739,6 +1746,7 @@ public static partial class TableWire
         // region extent scan can visit map values their keys would not admit.
         if (type.Variable) { r.Graph = ReadGraph(r, value, type, report); }
         bool complete = ReadBody(ref r, value, type, report, false);
+        if (wireNonFinite && report.NonFiniteFloat == null) { report.NonFiniteFloat = "a float the wire carries"; report.NonFiniteReason = "non_finite_float: a float the wire carries"; }
         if (NonFiniteRefused(report)) { report.Damaged |= damagedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
         if (report.Refused) { report.Damaged |= damagedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)

@@ -10,7 +10,7 @@ import (
 )
 
 // The populated file and JSON are pinned by compiled generated Go, outside
-// this emitter. The native BEAM probe also checks empty roots, clamping and
+// this emitter. The native BEAM probe also checks empty roots, strict refusal of out-of-range values and
 // wrong root shapes rather than crediting declarations or successful compile.
 func TestArrayRootElixir(t *testing.T) {
 	slowtest.Gate(t, "Elixir array-root runtime")
@@ -47,37 +47,37 @@ func TestArrayRootElixir(t *testing.T) {
  value=%%{"values" => [3,17,-5]}
  {:ok, ^want}=T.save("ArrayRoot",value)
  {:ok, ^value, report}=T.load("ArrayRoot",want)
- Probe.check(report.clamped==0 and true,"wire clean")
+ Probe.check(report.reason=="" and report.unknown==0 and report.widened==0,"wire clean")
  {:ok, ^text}=T.to_json("ArrayRoot",value)
  {:ok, ^value, report}=T.from_json("ArrayRoot",text)
- Probe.check(report.kind_mismatch==0 and report.clamped==0,"JSON clean")
+ Probe.check(report.reason=="" and report.unknown==0,"JSON clean")
  {:ok, "[]\n"}=T.to_json("ArrayRoot",%%{"values"=>[]})
  {:ok, %%{"values"=>[]}, _}=T.from_json("ArrayRoot","[]")
  for wrong <- ["{}","{\"values\":[1]}","null","1","true","\"x\"","[] []"] do
   Probe.check(match?({:error,_,_},T.from_json("ArrayRoot",wrong)),"array root accepts "<>wrong)
  end
  Probe.check(match?({:error,_,_},T.from_json("ObjectRoot","[]")),"object root accepted bare array")
- {:ok, %%{"values"=>[1,2]}, report}=T.from_json("Bounded","[1,2,3]")
- Probe.check(report.clamped==1,"bounded root clamp")
- {:ok, %%{"values"=>[2147483647,-2147483648]}, report}=T.from_json("ArrayRoot","[2147483648,-2147483649]")
- Probe.check(report.clamped==2,"scalar storage clamps")
+ {:error, :malformed, breport}=T.from_json("Bounded","[1,2,3]")
+ Probe.check(is_map(breport),"bounded root over bound refuses whole")
+ {:error, :malformed, sreport}=T.from_json("ArrayRoot","[2147483648,-2147483649]")
+ Probe.check(is_map(sreport),"scalar storage out of range refuses whole")
  clean="{\"direct\":[1],\"rows\":[[2],[3]],\"mapping\":{\"1\":[4]},\"choice\":{\"items\":[5]}}"
  {:ok, nested, report}=T.from_json("Nested",clean)
- Probe.check(report.kind_mismatch==0 and true,"nested arrays clean")
+ Probe.check(report.reason=="" and true,"nested arrays clean")
  Probe.check(nested["choice"]=={"items",%%{"values"=>[5]}},"array union arm selected")
  {:ok,nested_text}=T.to_json("Nested",nested)
  Probe.check(not String.contains?(nested_text,"values"),"nested arrays have no object wrapper")
  {:ok,nested_again,report}=T.from_json("Nested",nested_text)
- Probe.check(nested_again==nested and report.kind_mismatch==0,"nested array JSON roundtrip")
+ Probe.check(nested_again==nested and report.reason=="","nested array JSON roundtrip")
  {:ok,nested_wire}=T.save("Nested",nested)
  {:ok,loaded,_}=T.load("Nested",nested_wire)
  {:ok,^nested_text}=T.to_json("Nested",loaded)
  wrong="{\"direct\":{},\"rows\":[{}],\"mapping\":{\"1\":{}},\"choice\":{\"items\":{}}}"
- {:ok, nested, report}=T.from_json("Nested",wrong)
- Probe.check(report.kind_mismatch==4 and true,"nested shape mismatch counts")
- Probe.check(nested["choice"]==nil,"wrong-shaped array union arm stays None")
- {:error,:json_root_not_array,report}=T.from_json("ArrayRoot","{}")
- Probe.check(report.malformed and report.reason=="json_root_not_array: ArrayRoot","named root refusal")
+ {:error, :malformed, wreport}=T.from_json("Nested",wrong)
+ Probe.check(is_map(wreport),"nested shape mismatch refuses whole")
+ 
+ {:error,:malformed,report}=T.from_json("ArrayRoot","{}")
+ Probe.check(is_map(report),"named root refusal")
  IO.puts("ARRAY_ROOT_OK")
  `, hex.EncodeToString(wire), string(text))
 	out, err := runArmProbe(t, bin, generateElixir(t, u), probe)

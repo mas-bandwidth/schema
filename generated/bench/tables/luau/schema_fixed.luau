@@ -398,6 +398,28 @@ local function readScalar(f: any, w: Node, buf: buffer, at: number): any
 	return v
 end
 
+-- cmp128 orders two 128-bit pairs { lo, hi }: -1, 0 or 1. shl128 shifts one
+-- left by n bits (a fixed-point bound in value units onto its raw storage).
+local function cmp128(a: any, b: any, unsigned: boolean): number
+	if a.hi ~= b.hi then
+		local less = if unsigned then integer.ult(a.hi, b.hi) else integer.lt(a.hi, b.hi)
+		return if less then -1 else 1
+	end
+	if a.lo == b.lo then return 0 end
+	return if integer.ult(a.lo, b.lo) then -1 else 1
+end
+
+local function shl128(a: any, n: number): any
+	if n >= 64 then
+		return { lo = 0i, hi = integer.lshift(a.lo, integer.create(n - 64)) }
+	end
+	local ni = integer.create(n)
+	return {
+		lo = integer.lshift(a.lo, ni),
+		hi = integer.bor(integer.lshift(a.hi, ni), integer.rshift(a.lo, integer.create(64 - n))),
+	}
+end
+
 local function lessThan(a: any, b: any, isSigned: boolean): boolean
 	if typeof(a) == "integer" and typeof(b) == "integer" then
 		if isSigned then return integer.lt(a, b) end
@@ -414,7 +436,15 @@ end
 -- writer's; an older writer's own narrower ranges ride its lineage entry.
 local function bounds(f: any, v: any, cx: Cx): any
 	local lo, hi = f.lo, f.hi
-	if lo ~= nil and hi ~= nil and typeof(lo) ~= "table" then
+	if lo ~= nil and hi ~= nil and typeof(lo) == "table" and typeof(v) == "table" then
+		-- a 128-bit range on its two halves (§4.6), the high halves compared
+		-- signed (or unsigned), the low halves always unsigned
+		if f.fbits ~= nil and f.fbits > 0 then
+			lo, hi = shl128(lo, f.fbits), shl128(hi, f.fbits)
+		end
+		local unsigned = f.signed == false
+		if cmp128(v, lo, unsigned) < 0 or cmp128(v, hi, unsigned) > 0 then error(outOfRange(f), 0) end
+	elseif lo ~= nil and hi ~= nil and typeof(lo) ~= "table" then
 		if f.fbits ~= nil and f.fbits > 0 then
 			if typeof(lo) == "integer" then
 				lo = integer.lshift(lo, integer.create(f.fbits))
@@ -430,6 +460,9 @@ local function bounds(f: any, v: any, cx: Cx): any
 		local isSigned = f.signed ~= false
 		if f.s == "float" then
 			if v == v and (v < lo or v > hi) then error(outOfRange(f), 0) end
+			-- a ranged float's -0 lands as +0, uncounted (docs/SPEC-TABLES.md
+			-- §3.3, the special values)
+			if v == 0 then v = 0 end
 		elseif lessThan(v, lo, isSigned) or lessThan(hi, v, isSigned) then
 			error(outOfRange(f), 0)
 		end
@@ -558,6 +591,38 @@ local function readUnion(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 	return v
 end
 
+-- A [N]uint8 or [E]uint8 is a buffer, 0-based; every other array is a
+-- 1-based list (docs/PORT-LUAU.md, THE TYPE MAPPING). The constructor's value
+-- says which: slots is the reader's mine slots at their defaults, in the same
+-- shape, and slotAt / setSlot read and write one 1-based slot of either.
+local function slots(def: any, mine: number): any
+	if typeof(def) == "buffer" then
+		local b = buffer.create(mine)
+		buffer.copy(b, 0, def, 0, math.min(mine, buffer.len(def)))
+		return b
+	end
+	local out = table.create(mine)
+	for i = 1, mine do
+		out[i] = if def ~= nil then def[i] else nil
+	end
+	return out
+end
+
+local function slotAt(x: any, i: number): any
+	if typeof(x) == "buffer" then
+		return if i <= buffer.len(x) then buffer.readu8(x, i - 1) else nil
+	end
+	return x[i]
+end
+
+local function setSlot(x: any, i: number, v: any)
+	if typeof(x) == "buffer" then
+		buffer.writeu8(x, i - 1, v)
+	else
+		x[i] = v
+	end
+end
+
 local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx, def: any): (any, any)
 	local we, re = w.children[1], r.children[1]
 	if f.s == "bytes" then
@@ -579,25 +644,19 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
 		if count > mine then count = mine end
-		local out = table.create(mine)
-		for i = 1, mine do
-			out[i] = if def ~= nil then def[i] else nil
-		end
+		local out = slots(def, mine)
 		for i = 1, count do
-			local got = readPair(e, we, re, buf, at + head + (i - 1) * we.size, cx, out[i])
-			if got ~= MISSING then out[i] = got end
+			local got = readPair(e, we, re, buf, at + head + (i - 1) * we.size, cx, slotAt(out, i))
+			if got ~= MISSING then setSlot(out, i, got) end
 		end
 		return out, count
 	end
 	-- a fixed array: the writer's elements land, the reader's slots past them
 	-- keep THE ELEMENT'S DEFAULTS (§5.2 EMIT kind 14, bill §12.6)
-	local out = table.create(mine)
-	for i = 1, mine do
-		out[i] = if def ~= nil then def[i] else nil
-	end
+	local out = slots(def, mine)
 	for i = 1, math.min(theirs, mine) do
-		local got = readPair(e, we, re, buf, at + (i - 1) * we.size, cx, out[i])
-		if got ~= MISSING then out[i] = got end
+		local got = readPair(e, we, re, buf, at + (i - 1) * we.size, cx, slotAt(out, i))
+		if got ~= MISSING then setSlot(out, i, got) end
 	end
 	return out, nil
 end
@@ -605,18 +664,14 @@ end
 local function readKeyed(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx, def: any): any
 	local wkey, we = w.children[1], w.children[2]
 	local rkey, re = r.children[1], r.children[2]
-	local slots = #rkey.children
-	local out = table.create(slots)
-	for i = 1, slots do
-		out[i] = if def ~= nil then def[i] else nil
-	end
+	local out = slots(def, #rkey.children)
 	-- per reader slot, the writer's slot of the key variant with the same id
 	-- (§5.2 EMIT kind 16); a slot an appended key opened keeps its default
-	for i = 1, slots do
+	for i = 1, #rkey.children do
 		local j = if w == r then i else childIndexById(wkey.children, rkey.children[i].id)
 		if j ~= 0 then
-			local got = readPair(f.e, we, re, buf, at + (j - 1) * we.size, cx, out[i])
-			if got ~= MISSING then out[i] = got end
+			local got = readPair(f.e, we, re, buf, at + (j - 1) * we.size, cx, slotAt(out, i))
+			if got ~= MISSING then setSlot(out, i, got) end
 		end
 	end
 	return out
@@ -795,21 +850,21 @@ function writeOne(f: any, n: Node, value: any, buf: buffer)
 			local c = childAt(n, 1) :: Node
 			shift(c, COUNT)
 			for i = 1, count do
-				writeOne(e, c, value[slot][i], buf)
+				writeOne(e, c, slotAt(value[slot], i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(COUNT + count * c.size))
 		elseif f.array == "keyed" then
 			local c = childAt(n, 2) :: Node
 			for i = 1, f.bound or 0 do
-				writeOne(e, c, value[slot][i], buf)
+				writeOne(e, c, slotAt(value[slot], i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(f.bound or 0) * c.size)
 		else
 			local c = childAt(n, 1) :: Node
 			for i = 1, f.bound or 0 do
-				writeOne(e, c, value[slot][i], buf)
+				writeOne(e, c, slotAt(value[slot], i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(f.bound or 0) * c.size)

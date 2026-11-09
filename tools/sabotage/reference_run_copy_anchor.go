@@ -17,17 +17,21 @@ func init() {
 		old: `    if ( n <= 32 )
     {
         uint64_t w[2];
-        memcpy( w, s, 16 ); memcpy( d, w, 16 );
-        memcpy( w, s + n - 16, 16 ); memcpy( d + n - 16, w, 16 );
+        memcpy( w, s, 16 );
+        memcpy( d, w, 16 );
+        memcpy( w, s + n - 16, 16 );
+        memcpy( d + n - 16, w, 16 );
         return;
     }`,
 		new: `    if ( n <= 32 )
     {
         uint64_t w[4];
-        memcpy( w, s, 16 ); memcpy( d, w, 16 );
+        memcpy( w, s, 16 );
+        memcpy( d, w, 16 );
         // SABOTAGED: a THIRTY-TWO anchored at the run's end, which for n < 32
         // begins in front of the run
-        memcpy( w, s + n - 32, 32 ); memcpy( d + n - 32, w, 32 );
+        memcpy( w, s + n - 32, 32 );
+        memcpy( d + n - 32, w, 32 );
         return;
     }`,
 	}}

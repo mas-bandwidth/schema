@@ -9,10 +9,10 @@
 -- malformed, clamped and kind_mismatch, each with the first field the walk saw
 -- move it; a form byte the root's own form does not read (message_form_as_file,
 -- newer_form, previous_form, unknown_form); integrity_mismatch; and the fixed reader's own
--- names for a form-3 file. It does NOT refuse unknown, widened or duplicate
--- alone (§6.5: unknown is evolution, widened decoded exactly; a repeated map
--- key is last-wins, §2.8, §4): those stay counted on the report, with the
--- field each first moved on.
+-- names for a form-3 file. It does NOT refuse unknown or widened alone (§6.5:
+-- unknown is evolution, widened decoded exactly): those stay counted on the
+-- report, with the field each first moved on. A repeated map key is damage
+-- (docs/plans/strict-only.md decision 5) and refuses.
 --
 -- For form 1 it is a WRAPPER over schema_load.luau's strict variable read (which
 -- judges the walk walk L.loadWalk, §6.5); this file keeps the form

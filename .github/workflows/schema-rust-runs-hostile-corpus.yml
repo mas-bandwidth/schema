@@ -32,11 +32,19 @@ jobs:
     # Fleet only: a fork pull request has no fleet runner and is skipped before
     # it can reach one.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: corpus (${{ matrix.profile }})
     runs-on: [self-hosted, linux, x64, schema]
-    timeout-minutes: 15
+    # the fleet caps a per-commit job at two minutes; the one job that built
+    # and ran both cargo profiles at -j 4 took 218-421 s (2026-11-08, 19 PR
+    # runs), so each profile is a row of its own and cargo uses every core
+    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [ release, debug ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # A self-hosted runner's workspace parent persists between runs: the
@@ -55,8 +63,8 @@ jobs:
       # the fleet's schema runners carry rust on PATH (the toolchains role)
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
         if: runner.environment == 'github-hosted'
-      - name: the corpus gate (release and debug)
-        run: make schema-rust-runs-hostile-corpus RUSTUP_BIN="$(dirname "$(command -v cargo)")"
+      - name: the corpus gate (${{ matrix.profile }})
+        run: make schema-rust-runs-hostile-corpus RUSTUP_BIN="$(dirname "$(command -v cargo)")" RUST_HOSTILE_PROFILES=${{ matrix.profile }} RUST_HOSTILE_JOBS="$(getconf _NPROCESSORS_ONLN)"
 
   negative-control:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

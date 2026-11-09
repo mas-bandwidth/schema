@@ -1,0 +1,194 @@
+package elixirtable
+
+// The strict read is one read: the whole value or a refusal. A count past the
+// writing endpoint's bound must refuse the whole load by name and move no
+// counter, never clamp and return a partial value. These probes pin that rule
+// on the real generated artifact, and the negative control plants its fault in
+// the artifact by turning the plan's count refusal into a clamp, which must
+// make the probe go red.
+
+import (
+	"bytes"
+	"fmt"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+func TestElixirFixedVersioningProbesStrict(t *testing.T) {
+	corpus := fixedCorpus(t)
+	elixirBin := elixirBinary(t)
+
+	oldFile := filepath.Join(corpus, "old_array_bounded_grow.bin")
+	data, err := os.ReadFile(oldFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	needle := []byte{0xAA, 0xAA, 0xAA, 0xAA, 0x04, 0x00, 0x00, 0x00}
+	if n := bytes.Count(data, needle); n != 1 {
+		t.Fatalf("the locator %X occurs %d times, want exactly once", needle, n)
+	}
+	at := bytes.Index(data, needle)
+	data[at+4] = 0x07 // the forge: the count word 4 -> 7, past the writer's 4
+
+	forged := filepath.Join(t.TempDir(), "hostile_array_bounded_grow.bin")
+	if err := os.WriteFile(forged, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	body := `  data = File.read!(file())
+  {tag, values, report} = load(data)
+  check(tag == :error,
+    "a count past the writer's bound must refuse: #{inspect(tag)} #{why(report)}")
+  check(not is_list(values),
+    "the refusal built no value list: #{inspect(values)}")
+  check(report.unknown == 0 and report.widened == 0,
+    "the refusal moved nothing: #{why(report)}")`
+
+	out, err := runVersionProbe(t, elixirBin, "VNEW_array_bounded_grow", []string{"VOLD_array_bounded_grow"}, 0, forged, body)
+	if err != nil {
+		t.Fatalf("a forged count past the writer's bound did not refuse: %v\n%s", err, out)
+	}
+}
+
+func TestElixirFixedVersioningProbesStrictNegativeControl(t *testing.T) {
+	corpus := fixedCorpus(t)
+	elixirBin := elixirBinary(t)
+
+	oldFile := filepath.Join(corpus, "old_array_bounded_grow.bin")
+	data, err := os.ReadFile(oldFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	needle := []byte{0xAA, 0xAA, 0xAA, 0xAA, 0x04, 0x00, 0x00, 0x00}
+	if n := bytes.Count(data, needle); n != 1 {
+		t.Fatalf("the locator %X occurs %d times, want exactly once", needle, n)
+	}
+	at := bytes.Index(data, needle)
+	data[at+4] = 0x07
+
+	forged := filepath.Join(t.TempDir(), "hostile_array_bounded_grow.bin")
+	if err := os.WriteFile(forged, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	body := `  data = File.read!(file())
+  {tag, values, report} = load(data)
+  check(tag == :error,
+    "a count past the writer's bound must refuse: #{inspect(tag)} #{why(report)}")
+  check(not is_list(values),
+    "the refusal built no value list: #{inspect(values)}")
+  check(report.unknown == 0 and report.widened == 0,
+    "the refusal moved nothing: #{why(report)}")`
+
+	patch := func(files map[string][]byte) {
+		elixirPatch(t, files, "raw > max -> throw({:refuse, :count_over_bound})", "raw > max -> {max, report}")
+	}
+	out, err := runPatchedVersionProbe(t, elixirBin, "VNEW_array_bounded_grow", []string{"VOLD_array_bounded_grow"}, 0, forged, patch, body)
+	if err == nil {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the count refusal without its throw left the probe GREEN\n%s", out)
+	}
+}
+
+// runPatchedVersionProbe is runVersionProbe with an artifact patch step: the
+// generated files are rewritten by `patch` before the probe runs, so a negative
+// control can plant its fault in the real emitted code.
+func runPatchedVersionProbe(t *testing.T, elixirBin, reader string, older []string, retire int, file string, patch func(map[string][]byte), body string) (string, error) {
+	t.Helper()
+	u := versionSchema(t, reader)
+	lineage := map[string][]FixedLineageEntry{}
+	for i, base := range older {
+		o := versionSchema(t, base)
+		for _, st := range fixedRoots(o) {
+			e, ok := FixedLineageOf(o, st.Name)
+			if !ok {
+				t.Fatalf("no lineage entry for %s", st.Name)
+			}
+			e.Retired = i < retire
+			if e.Retired {
+				e.Reason = "retired by the test's lock"
+			}
+			lineage[st.Name] = append(lineage[st.Name], e)
+		}
+	}
+	files, err := elixir.Generate(u)
+	if err != nil {
+		t.Fatalf("generate packet: %v", err)
+	}
+	tables, err := GenerateLineage(u, lineage)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	maps.Copy(files, tables)
+	if patch != nil {
+		patch(files)
+	}
+	dir := t.TempDir()
+	var names []string
+	for name, data := range files {
+		if strings.Contains(name, "/") || !strings.HasSuffix(name, ".ex") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, name)
+	}
+	st := versionRoot(t, u)
+	snake := ir.RustSnake(st.Name)
+	mod := ir.GoExportName(u.Package) + "." + ir.GoExportName(fileOf(t, u, st.Name)) + FixedModuleSuffix
+	probe := fmt.Sprintf(`# GENERATED BY internal/codegen/elixirtable/slow_fixed_strict_test.go
+defmodule Probe do
+  import Bitwise
+  alias %[1]s, as: T
+
+  def file, do: %[3]s
+  def prefill, do: T.%[2]s_fixed_prefill()
+  def fresh_value, do: %%%[4]s{}
+
+  def load(data), do: T.%[2]s_fixed_load(data)
+  def load(data, opts), do: T.%[2]s_fixed_load(data, opts)
+
+  def why(r), do: inspect(r)
+
+  def check(true, _what), do: :ok
+
+  def check(false, what) do
+    IO.puts(:stderr, "FAIL: " <> what)
+    Process.put(:failed, true)
+  end
+
+  def run do
+%[5]s
+    if Process.get(:failed) do
+      System.halt(1)
+    else
+      IO.puts("ok")
+    end
+  end
+end
+
+Probe.run()
+`, mod, snake, elixirString(file), ir.GoExportName(u.Package)+"."+st.Name, indentBody(body))
+	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{}
+	for _, n := range sortedRuntimeFirst(names) {
+		args = append(args, "-r", n)
+	}
+	args = append(args, "probe.exs")
+	cmd := exec.Command(elixirBin, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}

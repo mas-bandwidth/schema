@@ -22,12 +22,12 @@
 // THE SURFACES (test/conformance/harness/run.go). The table wire, form 1
 // (docs/SPEC-TABLES.md §3, §3.1, §4; docs/PORT-GOOSE.md, THE TABLE WIRE):
 //   wire         load every instance and save it back, byte for byte
-//   report       load every report row, print §4's counters and verdict,
-//                then the §16 text of the value when the read reads
-//   framing      load every framing row, print §4's counters and verdict and,
-//                for a clean read the row owes a value, the §16 text after it
-//   retain       load with retention (§6.6), print the load's three counters
-//                and the save's retain_lost
+//   report       load every report row, print the verdict, the §16 text of
+//                the value, and the canonical write-back wire in `<case>.wire`
+//   framing      load every framing row, print the verdict and the §16 text
+//                of the value a clean read owes, and the write-back wire
+//   retain       load with retention (§6.6), print the verdict and the
+//                complete known §16 value
 //   retain-save  the bytes that retaining save writes back
 // The message form, form 2 (docs/SPEC-TABLES.md §3.3):
 //   message      AnnounceRead the connection's announcement, LoadMessages the
@@ -37,12 +37,12 @@
 //                json-read and json-hostile call one entry point, the
 //                tolerant read (test/conformance/README.md)
 //   json-write   form-1 load -> the canonical text, against the pinned text
-//   json-hostile a tolerant read of <tree>/<root>.json, its report and the
-//                §16 text of the value it left: through
-//                the unit's text glue for a root it names (unit.goose, which
-//                the shell driver copies from units/<unit>.goose, or the empty
-//                unit.goose beside this file), and through the flat value
-//                table for every other root
+//   json-hostile a tolerant read of <tree>/<root>.json, the verdict, the §16
+//                text of the value it left, and the write-back wire in
+//                `<case>.wire`: through the unit's text glue for a root it
+//                names (unit.goose, which the shell driver copies from
+//                units/<unit>.goose, or the empty unit.goose beside this file),
+//                and through the flat value table for every other root
 // The cook's and the block form's surfaces are accel.goose's: the shell
 // driver runs that program for them.
 import os;
@@ -81,7 +81,42 @@ fn absent(name: const u8[:], reason: const u8[:]) {
     write_stdout(line);
 }
 
-fn bool_word(b: bool) -> const u8[:] { if b { "true" } else { "false" } }
+// emit_read writes one accepted read's two owed forms (test/conformance/
+// README.md): the verdict line and the complete value in name, and the
+// canonical write-back wire in name.wire, after the JSON text `json` has been
+// produced. If the write-back is refused or absent, the verdict is held beside
+// an absent marker: the read did not fail, the value is the missing feature.
+fn load_instance(root: const u8[:], data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&) -> i64 {
+    let at = conformance_json_read(root, "", data, vals, nodes);
+    if at != -2 { return at; }
+    var report = schema_rt::LoadReport { .. };
+    return schema_rt::load_table(conformance_unit(), root, data[0..data.len], vals, nodes, report);
+}
+
+fn save_instance(root: const u8[:], data: const u8[:], vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&, at: i64, out: u8[>..<]&) -> i64 {
+    var fixed: u8[>..] = [];
+    let r = conformance_json_write(root, data, vals, nodes, -1 - at, fixed);
+    if r >= 0 {
+        out.append(fixed);
+        return r;
+    }
+    return schema_rt::save_table(conformance_unit(), root, data, vals, nodes, at, out);
+}
+
+fn emit_read(name: const u8[:], root: const u8[:], data: const u8[:], vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&, at: i64, json: const u8[:]) {
+    var wire: u8[>..<] = [];
+    let refusal = save_instance(root, data, vals, nodes, at, wire);
+    if refusal != 0 {
+        answer(name, "read\n");
+        absent(name, "");
+        return;
+    }
+    var line: u8[>..] = [];
+    line.append("read\n");
+    line.append(json);
+    answer(name, line);
+    answer(str(name, ".wire"), wire);
+}
 
 // load_file reads a wire, aborting the run on a file the manifest names and
 // the tree does not hold (the harness prints the stderr line).
@@ -92,10 +127,11 @@ fn load_file(path: const u8[:], out: u8[>..]&) {
     }
 }
 
-// surface_report: §4's counters and verdict, `u,k,w,c,d,malformed,verdict`,
-// then the §16 text of the value when the read reads. A root the glue writes
-// no text for answers the line alone beside its absence: the verdict is held
-// and the value is the missing feature (test/conformance/README.md).
+// surface_report: §4's verdict, the complete §16 text of the value the read
+// leaves, and the canonical write-back wire in `<case>.wire`. A leg the glue
+// cannot write the value for answers the verdict line alone beside its absence:
+// the verdict is held and the value is the missing feature
+// (test/conformance/README.md).
 fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -115,53 +151,47 @@ fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
         } else {
             at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
         }
-        let refused = report.refused || report.non_finite;
-        var text: u8[>..] = [];
-        text.append(str(report.unknown, ",", report.mismatch, ",", report.widened, ",", report.oor, ",",
-                        report.repeated, ",", bool_word(report.body_damaged), ",",
-                        if refused { "refused" } else { "read" }, "\n"));
-        if !refused && !report.body_damaged && at >= 0 {
-            var json: u8[>..] = [];
-            if conformance_json_write(f[3], data, vals, nodes, at, json) < 0 {
-                answer(f[1], text);
-                absent(f[1], "");
-                continue;
-            }
-            text.append(json);
+        if report.refused || schema_rt::load_error(report, at) != schema_rt::LoadRefuseOk {
+            answer(f[1], "refused\n");
+            continue;
         }
-        answer(f[1], text);
+        var json: u8[>..] = [];
+        if conformance_json_write(f[3], data, vals, nodes, at, json) < 0 {
+            answer(f[1], "read\n");
+            absent(f[1], "");
+            continue;
+        }
+        emit_read(f[1], f[3], data, vals, nodes, at, json);
     }
 }
 
 // surface_framing: the framing vectors (docs/LAYERS/1-framing.md): §4's
-// counters and verdict, then the §16 text of the value a clean read leaves,
-// unless the row is marked `no-value`. Damaged input owes the report line
-// alone, because damage discards the whole load (§4).
+// verdict, then the §16 text of the value a clean read leaves and the write-back
+// wire in `<case>.wire`. Damaged or refused input owes `refused\n` alone,
+// because damage discards the whole load (§4).
 fn surface_framing(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
         if f.len < 5 || f[0] != "framing" || f[2] != unit { continue; }
-        var no_value = false;
-        for mark in f { if mark == "no-value" { no_value = true; } }
         var data: u8[>..] = [];
         load_file(f[4], data);
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
         let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
-        var out: u8[>..] = [];
-        out.append(str(report.unknown, ",", report.mismatch, ",", report.widened, ",", report.oor, ",",
-                       report.repeated, ",", bool_word(report.body_damaged), ",",
-                       if report.refused || report.non_finite { "refused" } else { "read" }, "\n"));
-        if !no_value && root >= 0 && !report.body_damaged && !report.refused && !report.non_finite {
-            var json: u8[>..] = [];
-            if conformance_json_write(f[3], data, vals, nodes, root, json) < 0 {
-                write_stderr(str("driver: ", f[1], " JSON writer refused\n"));
-                exit(1);
-            }
-            out.append(json);
+        if report.refused || schema_rt::load_error(report, root) != schema_rt::LoadRefuseOk {
+            answer(f[1], "refused\n");
+            continue;
         }
-        answer(f[1], out);
+        var json: u8[>..] = [];
+        if f.len < 7 || f[6] != "-" {
+            if conformance_json_write(f[3], data, vals, nodes, root, json) < 0 {
+                answer(f[1], "read\n");
+                absent(f[1], "");
+                continue;
+            }
+        }
+        emit_read(f[1], f[3], data, vals, nodes, root, json);
     }
 }
 
@@ -226,8 +256,7 @@ fn surface_json(lines: const u8[:][:], unit: const u8[:], writing: bool) {
         var result: i64 = -1;
         if writing {
             load_file(f[4], data);
-            var report = schema_rt::LoadReport { .. };
-            let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+            let at = load_instance(f[3], data, vals, nodes);
             if at < 0 { write_stderr(str("driver: ", f[1], " does not load\n")); exit(1); }
             var json: u8[>..] = [];
             result = conformance_json_write(f[3], data, vals, nodes, at, json);
@@ -236,7 +265,7 @@ fn surface_json(lines: const u8[:][:], unit: const u8[:], writing: bool) {
             var text: u8[>..] = [];
             load_file(str("testdata/conformance/tables/json/", f[1], ".json"), text);
             result = conformance_json_read(f[3], text, data, vals, nodes);
-            if result >= 0 && schema_rt::save_table(conformance_unit(), f[3], data, vals, nodes, result, out) != 0 { result = -2; }
+            if result >= 0 && save_instance(f[3], data, vals, nodes, result, out) != 0 { result = -2; }
         }
         if result < 0 { write_stderr(str("driver: ", f[1], " JSON bridge refused\n")); exit(1); }
         answer(name, out);
@@ -256,8 +285,7 @@ fn surface_write_refusal(lines: const u8[:][:], unit: const u8[:]) {
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         load_file(f[4], data);
-        var report = schema_rt::LoadReport { .. };
-        let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        let at = load_instance(f[3], data, vals, nodes);
         if at < 0 { write_stderr(str("driver: ", f[1], " does not load\n")); exit(1); }
         if !damage_text(data, vals, at, f[5]) { write_stderr(str("driver: ", f[1], ": damage ", f[5], " names no text field\n")); exit(1); }
         let name = str(f[1], ".json");
@@ -345,21 +373,48 @@ fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
             write_stderr(str("driver: ", f[1], " does not load\n"));
             exit(1);
         }
-        let load_retained = report.retained;
-        let load_lost = report.retain_lost;
-        let load_unknown = report.unknown;
         var out: u8[>..<] = [];
         let refusal = schema_rt::save_table_retain(conformance_unit(), f[3], data, vals, nodes, root, store, report, out);
-        if refusal != 0 {
-            absent(f[1], schema_rt::save_refusal_name(refusal));
-            continue;
-        }
         if saved {
+            if refusal != 0 {
+                absent(f[1], schema_rt::save_refusal_name(refusal));
+                continue;
+            }
             answer(f[1], out);
         } else {
-            answer(f[1], str(load_retained, ",", load_lost, ",", load_unknown, " ", report.retain_lost - load_lost, "\n"));
+            // the complete known value, one read: acceptance or refusal
+            var json: u8[>..] = [];
+            if conformance_json_write(f[3], data, vals, nodes, root, json) < 0 {
+                answer(f[1], "read\n");
+                absent(f[1], "");
+                continue;
+            }
+            var line: u8[>..] = [];
+            line.append("read\n");
+            line.append(json);
+            answer(f[1], line);
         }
     }
+}
+
+// json_strict_refused asks the glue's verdict arm (conformance_json_verdict)
+// whether the strict read refuses this text: damage, a kind mismatch or an
+// out-of-range count in its seven-field line (`u,k,w,c,d,malformed,verdict`)
+// refuses the whole read, however much a tolerant read would keep. A glue
+// that answers nothing (a gate that drives no text arm) holds no verdict, and
+// the tolerant read's own answer stands.
+fn json_strict_refused(root: const u8[:], text: const u8[:]) -> bool {
+    var verdict: u8[>..] = [];
+    conformance_json_verdict(root, text, verdict);
+    if verdict.len == 0 { return false; }
+    if verdict.len >= 7 && verdict[..7] == "refused" { return true; }
+    let lines = split(verdict, '\n');
+    if lines.len == 0 { return false; }
+    let f = split(lines[0], ',');
+    if f.len < 7 { return false; }
+    let mismatch, mok = parse_int(f[1]);
+    let oor, ook = parse_int(f[3]);
+    return (mok && mismatch > 0) || (ook && oor > 0) || f[5] == "true";
 }
 
 // surface_json_hostile: the verdict of a tolerant read of <tree>/<root>.json
@@ -372,11 +427,27 @@ fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
         if f.len < 5 || f[0] != "json-hostile" || f[2] != unit { continue; }
+        var text: u8[>..] = [];
+        load_file(str(f[4], "/", f[3], ".json"), text);
+        if json_strict_refused(f[3], text) {
+            answer(f[1], "refused\n");
+            continue;
+        }
         var data: u8[>..] = [];
-        load_file(str(f[4], "/", f[3], ".json"), data);
-        var verdict: u8[>..] = [];
-        if !unit_json_verdict(f[3], data, verdict) { conformance_json_verdict(f[3], data, verdict); }
-        answer(f[1], verdict);
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        var at = conformance_json_read(f[3], text, data, vals, nodes);
+        if at < 0 {
+            answer(f[1], "refused\n");
+            continue;
+        }
+        var json: u8[>..] = [];
+        if conformance_json_write(f[3], data, vals, nodes, at, json) < 0 {
+            answer(f[1], "read\n");
+            absent(f[1], "");
+            continue;
+        }
+        emit_read(f[1], f[3], data, vals, nodes, at, json);
     }
 }
 

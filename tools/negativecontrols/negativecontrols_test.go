@@ -760,6 +760,82 @@ func TestAToolBoundGroupInstallsItsTool(t *testing.T) {
 	}
 }
 
+// perCommitCapSeconds is the fleet rule a runner enforces by killing a
+// per-commit job (exit 137): two minutes. GitHub's timeout-minutes is a
+// larger bound and does not enforce it.
+const perCommitCapSeconds = 120
+
+// recordedRowOverCap reports a pull-request row whose recorded time is past
+// the cap. Zero seconds is unrecorded and is not judged. A nightly row may
+// record a time past the cap.
+func recordedRowOverCap(g Group) string {
+	if g.Seconds == 0 || g.When != whenPullRequest {
+		return ""
+	}
+	if g.Seconds > perCommitCapSeconds {
+		return fmt.Sprintf("%s records %.0f s on %s, past the %d s per-commit cap", g.Name, g.Seconds, g.When, perCommitCapSeconds)
+	}
+	return ""
+}
+
+// TestRecordedRowTimeFitsTheCap refuses a pull-request row whose recorded
+// time is past two minutes. The two rows this card measured past the cap
+// (base-c-foreign at 256 s, python-toolchain at 140 s) are nightly, where a
+// recorded time past the cap is allowed. The check reads the recorded field.
+// It does not time a make, and it does not parse a why line: historical why
+// lines name numbers that are not this row's time.
+func TestRecordedRowTimeFitsTheCap(t *testing.T) {
+	planted := Group{Name: "planted-over-cap", When: whenPullRequest, Seconds: 256}
+	if recordedRowOverCap(planted) == "" {
+		t.Fatal("PLANTED: a pull-request row recorded at 256 s must fail the cap")
+	}
+	nightly := Group{Name: "planted-nightly", When: whenNightly, Seconds: 256}
+	if msg := recordedRowOverCap(nightly); msg != "" {
+		t.Fatalf("PLANTED: a nightly row may record 256 s, got %s", msg)
+	}
+	unrecorded := Group{Name: "planted-unrecorded", When: whenPullRequest}
+	if msg := recordedRowOverCap(unrecorded); msg != "" {
+		t.Fatalf("PLANTED: an unrecorded pull-request row is not judged, got %s", msg)
+	}
+
+	m, err := loadManifest(testRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Group{}
+	for _, g := range m.Groups {
+		byName[g.Name] = g
+		if msg := recordedRowOverCap(g); msg != "" {
+			t.Error(msg)
+		}
+	}
+	for _, name := range []string{"base-c-foreign", "python-toolchain"} {
+		g, ok := byName[name]
+		if !ok {
+			t.Errorf("group %s is missing from the plan", name)
+			continue
+		}
+		if g.When != whenNightly {
+			t.Errorf("group %s is %s: its recorded time is past the per-commit cap, so it runs on the nightly tier", name, g.When)
+		}
+		if g.Seconds <= perCommitCapSeconds {
+			t.Errorf("group %s records %.0f s: the measurement that put it on the nightly tier is missing", name, g.Seconds)
+		}
+	}
+	if g := byName["python-toolchain"]; g.Python != "pin" {
+		t.Errorf("python-toolchain python field is %q, want pin", g.Python)
+	}
+	for _, when := range []string{whenPullRequest, whenNightly} {
+		out, err := m.matrix(when)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(out), `"seconds"`) {
+			t.Errorf("the %s matrix carries seconds: that field is a record for this test, not a workflow input", when)
+		}
+	}
+}
+
 // TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap holds the split of the
 // seventeen base-* (non-C) rows that were killed at two minutes on runs
 // 42556155793 and 42554833739 (green-fit-negctl-base): every one of the 114

@@ -87,20 +87,22 @@ for {arm, wire, text} <- [
  value = %{"u" => arm}
  {:ok, ^wire} = Probe.Table.save("R", value)
  {:ok, back, report} = Probe.Table.load("R", wire)
- check.(back["u"] == arm and !report.malformed, "plain read")
+ check.(back["u"] == arm and report.reason == "", "plain read")
  {:ok, ^text} = Probe.Table.to_json("R", value)
  {:ok, json, jr} = Probe.Table.from_json("R", text)
- check.(json["u"] == arm and !jr.malformed and true, "JSON read")
+ check.(json["u"] == arm and jr.reason == "" and true, "JSON read")
  retain = %{records: [], used: 0, cap: 65536, ids: [], id_cap: 4096}
- report = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+ report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
  {:ok, retained, rr, store} = Probe.Table.load_retain("R", wire, retain, report)
- check.(retained["u"] == arm and !rr.malformed, "retaining read")
+ check.(retained["u"] == arm and rr.reason == "", "retaining read")
  {:ok, ^wire, _, _} = Probe.Table.save_retain("R", retained, store, rr)
 end
-{:ok, wrong, wr} = Probe.Table.from_json("R", ~s({"u":{"Empty":17}}))
-check.(wrong["u"] == nil and wr.kind_mismatch == 1 and !wr.malformed, "void payload refusal")
+case Probe.Table.from_json("R", ~s({"u":{"Empty":17}})) do
+  {:error, a, wr} -> check.(a == :malformed or wr.reason != "", "void payload refusal " <> inspect(wr))
+  other -> check.(false, "void payload refusal " <> inspect(other))
+end
 {:ok, unknown, ur} = Probe.Table.from_json("R", ~s({"u":{"Missing":null}}))
-check.(unknown["u"] == nil and ur.unknown == 1 and !ur.malformed, "unknown arm")
+check.(unknown["u"] == nil and ur.unknown == 1 and ur.reason == "", "unknown arm")
 IO.puts("void unions passed")
 `
 			if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {

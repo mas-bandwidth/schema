@@ -35,13 +35,12 @@ build/conformance-luau: $(LUAU_CONFORMANCE_DRIVER)/inputs.luau $(LUAU_CONFORMANC
 # wire-fuzz gates read build/conformance-luau under make -j. Each is required to turn EXACTLY its surfaces red and leave every other
 # surface of the matrix passing:
 #
-#   1. the LOAD: one report counter is forced to differ from the corpus
-#      expectation, so `report` and `retain` (which prints the load's unknown
-#      count) go red while `wire`, whose saved bytes the counter does not
-#      touch, stays green;
+#   1. the LOAD: every unknown field met in the variable walk raises
+#      malformed, so `framing`, `retain` and `retain-save` go red while
+#      `wire`, which carries no unknown field, stays green;
 #   2. the ACCELERATOR READERS: the cook's reserved-words clause and the
 #      block's pitch clause are cut out of Check and BlockOpen, so the two
-#      forgery batteries and the two reason surfaces go red while the cook and
+#      forgery batteries go red while the cook and
 #      block opens, dumps and foreign refusals, which those clauses never
 #      decide, stay green.
 .PHONY: conformance-negative-control-luau
@@ -56,8 +55,9 @@ conformance-negative-control-luau: build/conformance-harness build/conformance-l
 # harness required red on exactly the named surfaces with the neighbours green.
 # test/conformance/luau/negative-control holds both and says what each requires.
 #
-# conformance-negative-control-luau-emitter  the load report's unknown counter
-#                                            (report and retain red, wire green)
+# conformance-negative-control-luau-emitter  the load's unknown-field skip
+#                                            (framing, retain and retain-save red,
+#                                            wire green)
 # conformance-negative-control-luau-walk     the text walk's field-key match (I11:
 #                                            json-read and json-hostile red,
 #                                            json-write and wire green)

@@ -60,7 +60,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
     assert_eq!(n, 1, "the forged file carries one record, not {n}");
     assert!(!report.refused && !report.damaged, "an in-range read is not a refusal: {:?}", report);
 %s`, checks.String())
-			if want.Clamped > 0 {
+			if want.Refused || want.Clamped > 0 {
 				verdict = `    assert!(n.is_none(), "a value past the WRITER's range was read, not refused: {:?}", report);
     assert!(
         report.refused && report.reason == TableFixedReason::OutOfRange,

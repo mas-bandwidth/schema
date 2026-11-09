@@ -512,6 +512,7 @@ local function skip_container(inp, close, depth, graph)
   end
   inp.p = inp.p + 1
   local first = true
+  local seen = close == "}" and {} or nil
   while true do
     local c = peek(inp)
     if c == close then
@@ -525,6 +526,11 @@ local function skip_container(inp, close, depth, graph)
     if close == "}" then
       local key, _, ok = scan_string(inp, MAX_KEY)
       if not ok then return false end
+      if seen[key] then
+        inp.bad = true
+        return false
+      end
+      seen[key] = true
       if peek(inp) ~= ":" then
         inp.bad = true
         return false
@@ -2383,6 +2389,7 @@ function J.FromJson(T, name, text, report)
     reason = "kind_mismatch"
   end
   if reason ~= nil then
+    report.refused = 1
     report.Reason = reason
     report.reason = reason
     return nil
@@ -2443,8 +2450,8 @@ local function write_string(w, s)
     else
       local width = utf8_seq(s, i)
       if width < 0 then
-        raw(w, utf8_encode(0xfffd))
-        i = i + 1
+        -- ill-formed UTF-8 refuses the value; it is not replaced (§16.3)
+        return false
       else
         raw(w, s:sub(i, i + width - 1))
         i = i + width
@@ -2452,6 +2459,7 @@ local function write_string(w, s)
     end
   end
   put(w, '"')
+  return true
 end
 
 local function write_wstring(w, units)
@@ -2467,7 +2475,8 @@ local function write_wstring(w, units)
         i = i + 1
       end
     end
-    if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
+    -- a lone or out-of-order surrogate refuses; it is not replaced
+    if code >= 0xd800 and code <= 0xdfff then return false end
     if code == 34 then
       raw(w, '\\"')
     elseif code == 92 then
@@ -2490,6 +2499,7 @@ local function write_wstring(w, units)
     i = i + 1
   end
   put(w, '"')
+  return true
 end
 
 local function write_base64(w, data)
@@ -2674,7 +2684,7 @@ write_fields = function(T, desc, v, depth, g, w, any)
       end
       any = true
       line(w, depth + 1)
-      write_string(w, fd.key)
+      if not write_string(w, fd.key) then return false, any end
       raw(w, ": ")
       if not write_field(T, fd, v, depth + 1, g, w) then return false, any end
     end
@@ -2746,7 +2756,7 @@ local function write_union(T, u, val, depth, g, w)
   if arm == nil then return false end
   put(w, "{")
   line(w, depth + 1)
-  write_string(w, arm.name)
+  if not write_string(w, arm.name) then return false end
   raw(w, ": ")
   if arm.field == nil then
     raw(w, "null")
@@ -2799,7 +2809,7 @@ local function write_text_list(T, fd, _d, vf, val, depth, _g, w)
     if texts[i] == false then
       raw(w, "null")
     else
-      write_string(w, texts[i])
+      if not write_string(w, texts[i]) then return false end
     end
   end
   line(w, depth)
@@ -2847,7 +2857,7 @@ local function write_keyed(T, fd, val, depth, g, w)
     line(w, depth + 1)
     local keyed = fd.keyed and fd.keyed[slot]
     if keyed == nil then return false end
-    write_string(w, keyed[1])
+    if not write_string(w, keyed[1]) then return false end
     raw(w, ": ")
     local x = val[slot]
     if x == nil then x = zero_elem(T, fd.elem) end
@@ -2870,9 +2880,9 @@ local function write_map(T, fd, val, depth, g, w)
     if i > 1 then put(w, ",") end
     line(w, depth + 1)
     if kf.shape == "string" then
-      write_string(w, key)
+      if not write_string(w, key) then return false end
     else
-      write_string(w, kf.signed and string.format("%d", key) or u64_text(key))
+      if not write_string(w, kf.signed and string.format("%d", key) or u64_text(key)) then return false end
     end
     raw(w, ": ")
     if not write_value(T, fd.value_field, val[key], depth + 1, g, w, true) then return false end
@@ -2887,11 +2897,9 @@ write_value = function(T, d, val, depth, g, w, _elem)
   if s == "pointer" then
     return write_pointer(T, d.target, val, depth, g, w)
   elseif s == "string" then
-    write_string(w, val or "")
-    return true
+    return write_string(w, val or "")
   elseif s == "wstring" then
-    write_wstring(w, val or {})
-    return true
+    return write_wstring(w, val or {})
   elseif s == "bytes" then
     write_base64(w, val or "")
     return true
@@ -2909,7 +2917,7 @@ write_value = function(T, d, val, depth, g, w, _elem)
     if (g.count[val] or 0) > 1 then return false end
     local body = type(val) == "table" and val.value or val
     if s == "string_blob" then
-      write_string(w, body)
+      if not write_string(w, body) then return false end
     else
       write_base64(w, body)
     end
@@ -2926,15 +2934,9 @@ write_value = function(T, d, val, depth, g, w, _elem)
   elseif s == "map" then
     return write_map(T, d, val or {}, depth, g, w)
   elseif s == "enum" then
-    if val == nil or val == false then
-      write_string(w, "None")
-      return true
-    end
+    if val == nil or val == false then return write_string(w, "None") end
     for _, v in ipairs(d.variants) do
-      if v[1] == val then
-        write_string(w, val)
-        return true
-      end
+      if v[1] == val then return write_string(w, val) end
     end
     return false
   elseif s == "flags" then
@@ -2952,7 +2954,7 @@ write_value = function(T, d, val, depth, g, w, _elem)
         if not first then put(w, ",") end
         first = false
         line(w, depth + 1)
-        write_string(w, name)
+        if not write_string(w, name) then return false end
         seen = seen | (1 << (i - 1))
       end
     end

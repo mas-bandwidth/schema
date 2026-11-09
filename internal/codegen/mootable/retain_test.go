@@ -22,9 +22,13 @@ import (
 const retainFull = 1 << 20
 
 // retainRow is one `retain` row of the tables manifest (FORMAT.md):
-// <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>.
+// <case> <unit> <root> <wire> <capacity> <ids> <save>, with the legacy
+// <counters> <save lost> columns between ids and saves in the accepted
+// ten-field syntax. The row pins the verdict (every row is readable) and the
+// save; the counters are evolution diagnostics, held to the Go reference engine
+// and never pinned.
 type retainRow struct {
-	caseName, unit, root, wire, capacity, ids, counters, saveLost, saves string
+	caseName, unit, root, wire, capacity, ids, saves string
 }
 
 func retainRows(t *testing.T) []retainRow {
@@ -38,9 +42,15 @@ func retainRows(t *testing.T) []retainRow {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		x := strings.Fields(sc.Text())
-		if len(x) >= 10 && x[0] == "retain" {
-			rows = append(rows, retainRow{x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9]})
+		if len(x) > 0 && x[0] == "retain" {
+			if len(x) != 8 && len(x) != 10 {
+				t.Fatalf("a retain row has %d fields, want 8 or 10: %q", len(x), sc.Text())
+			}
+			rows = append(rows, retainRow{x[1], x[2], x[3], x[4], x[5], x[6], x[len(x)-1]})
 		}
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
 	}
 	return rows
 }
@@ -48,14 +58,39 @@ func retainRows(t *testing.T) []retainRow {
 // retainOut is one retaining load and save, as either engine answers it.
 type retainOut struct {
 	used, retained, lost, unknown int
-	value                         bool // the load answered a value
-	malformed                     bool // damage makes all other results undefined
+	value                         bool // the VERDICT: the load answered the whole value
+	malformed                     bool // moo's own damage flag; a diagnostic, never compared with Go
 	save                          []byte
 	saveLost                      int
 	saveErr                       string
 }
 
 func (o retainOut) counters() string { return fmt.Sprintf("%d,%d,%d", o.retained, o.lost, o.unknown) }
+
+// sameRetain is the verdict-first comparison of one retaining load and save
+// under the one strict read (docs/plans/strict-only.md): both engines answer
+// the whole value or both refuse it. A refusal defines nothing else, neither a
+// counter nor the store, and the reason is never compared across languages
+// (docs/rulings.json refusal-verdict-only). An answered value is held to the
+// store bytes used, the evolution diagnostics (retained, retain_lost,
+// unknown), the retain_lost the save adds and the saved bytes.
+func sameRetain(got, want retainOut) bool {
+	if got.value != want.value {
+		return false
+	}
+	if !got.value {
+		return len(got.save) == 0 && len(want.save) == 0
+	}
+	return got.used == want.used && got.counters() == want.counters() && got.saveLost == want.saveLost &&
+		string(got.save) == string(want.save) && (got.saveErr == "") == (want.saveErr == "")
+}
+
+func (o retainOut) String() string {
+	if !o.value {
+		return "refused"
+	}
+	return fmt.Sprintf("used %d %s lost %d %s %x", o.used, o.counters(), o.saveLost, o.saveErr, o.save)
+}
 
 // retainProbe is the moo main: LoadRetain at (capacity, ids), print the store's
 // bytes and the three counters and the plain unknown, then SaveRetain and
@@ -120,12 +155,10 @@ func goRetain(t *testing.T, u *ir.Unit, rootName string, wire []byte, capacity, 
 	keep := &tablewire.Retain{Capacity: capacity, IdCapacity: ids}
 	var rep tabletext.Report
 	ok, err := tablewire.DecodeRetain(m, inst, wire, keep, &rep)
-	o := retainOut{used: keep.Used(), retained: rep.Retained, lost: rep.RetainLost, unknown: rep.Unknown, malformed: rep.Refused}
-	if err != nil || rep.Refused {
-		return o
+	if err != nil || rep.Refused || !ok {
+		return retainOut{}
 	}
-	_ = ok
-	o.value = true
+	o := retainOut{used: keep.Used(), retained: rep.Retained, lost: rep.RetainLost, unknown: rep.Unknown, value: true}
 	before := rep.RetainLost
 	save, err := tablewire.EncodeRetain(m, inst, keep, &rep)
 	if err != nil {
@@ -138,11 +171,13 @@ func goRetain(t *testing.T, u *ir.Unit, rootName string, wire []byte, capacity, 
 }
 
 // TestMooRetainAnswersTheManifest answers every `retain` row of the tables
-// manifest (docs/SPEC-TABLES.md §6.6; FORMAT.md): the load's three counters at
-// the row's capacities (`short` is one byte under what a `full` load used),
-// the retain_lost the save adds, and the pinned save byte for byte. Each row
-// is also held to the Go reference engine at the same capacities: the same
-// store bytes used, the same counters, the same saved bytes.
+// manifest (docs/SPEC-TABLES.md §6.6; FORMAT.md) under the one strict read:
+// every row is readable, so the retaining load answers the whole value at the
+// row's capacities (`short` is one byte under what a `full` load used), and
+// the save is the pinned file byte for byte. Each row is also held to the Go
+// reference engine (internal/tablewire DecodeRetain, EncodeRetain) at the same
+// capacities: the same verdict, store bytes used, evolution diagnostics and
+// saved bytes.
 func TestMooRetainAnswersTheManifest(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
@@ -152,6 +187,7 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 		t.Fatal("the manifest names no retain row")
 	}
 	cache := map[string]*generatedUnit{}
+	pinned := 0
 	for _, row := range rows {
 		g := cache[row.unit]
 		if g == nil {
@@ -174,15 +210,9 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 			capacity = mooRetain(t, g, row.root, wire, retainFull, ids).used - 1
 		}
 		got := mooRetain(t, g, row.root, wire, capacity, ids)
-		if got.counters() != row.counters {
-			t.Errorf("%s: load counters %s, want %s", row.caseName, got.counters(), row.counters)
-		}
 		if !got.value || got.saveErr != "" {
-			t.Errorf("%s: no save: value=%v %s", row.caseName, got.value, got.saveErr)
+			t.Errorf("%s: the read refused a readable row, or the save failed: value=%v %s", row.caseName, got.value, got.saveErr)
 			continue
-		}
-		if strconv.Itoa(got.saveLost) != row.saveLost {
-			t.Errorf("%s: the save lost %d, want %s", row.caseName, got.saveLost, row.saveLost)
 		}
 		if row.saves != "-" {
 			want, err := os.ReadFile(filepath.Join(root, row.saves))
@@ -192,12 +222,14 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 			if string(got.save) != string(want) {
 				t.Errorf("%s: the save is not the pinned file: %s", row.caseName, firstDiff(got.save, want))
 			}
+			pinned++
 		}
-		oracle := goRetain(t, g.unit, row.root, wire, capacity, ids)
-		if got.used != oracle.used || got.counters() != oracle.counters() || got.saveLost != oracle.saveLost || string(got.save) != string(oracle.save) {
-			t.Errorf("%s: moo and the Go engine disagree:\nmoo: used %d %s lost %d %x\ngo:  used %d %s lost %d %x", row.caseName,
-				got.used, got.counters(), got.saveLost, got.save, oracle.used, oracle.counters(), oracle.saveLost, oracle.save)
+		if oracle := goRetain(t, g.unit, row.root, wire, capacity, ids); !sameRetain(got, oracle) {
+			t.Errorf("%s: moo and the Go engine disagree:\nmoo: %v\ngo:  %v", row.caseName, got, oracle)
 		}
+	}
+	if pinned == 0 {
+		t.Fatal("no retain row pins a save")
 	}
 }
 
@@ -242,21 +274,40 @@ func variableUnit(t *testing.T, units map[string][]string, key string) *generate
 // TestMooRetainMatchesTheGoEngine is the retention differential on EVOLVED
 // PAIRS: every `report` and `instance` row of the tables manifest is bytes a
 // build reads that it may not have written. moo's retaining load and save and
-// the Go engine's must agree on the store bytes used, the counters, the
-// retain_lost the save adds and the saved bytes, at a full capacity, at one
-// byte under what that used, and with the caller's id list one short of what
-// the full save interned.
+// the Go engine's must give the same verdict and, where both answer the value,
+// agree on the store bytes used, the evolution diagnostics, the retain_lost
+// the save adds and the saved bytes, at a full capacity, at one byte under
+// what that used, and with the caller's id list one short of what the full
+// save interned. TestMooRetainDifferentialNegativeControl is its control.
 func TestMooRetainMatchesTheGoEngine(t *testing.T) {
-	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
+	compared, retaining, bad := evolvedRetainDifferential(t, nil, false)
+	for _, b := range bad {
+		t.Error(b)
+	}
+	if retaining == 0 {
+		t.Fatal("no corpus wire retained anything: the differential proves nothing")
+	}
+	t.Logf("%d retaining load/save pairs agree with the Go engine (%d wires retain)", compared, retaining)
+}
+
+// evolvedRetainDifferential runs every `report` and `instance` row through
+// moo's retaining load and save and the Go engine's, each unit's emitted
+// files first passed to plant (nil for none), and answers the probes that
+// agreed, the wires that retain and one line per disagreement. With
+// onlyRetaining it probes only the wires the Go engine retains from.
+func evolvedRetainDifferential(t *testing.T, plant func(*generatedUnit), onlyRetaining bool) (compared, retaining int, bad []string) {
+	t.Helper()
 	units, _ := readManifest(t)
 	cache := map[string]*generatedUnit{}
-	compared, retaining := 0, 0
 	for _, row := range manifestRows(t) {
-		g := cache[row.unit]
-		if g == nil {
+		g, seen := cache[row.unit]
+		if !seen {
 			g = variableUnit(t, units, row.unit)
+			if g != nil && g.err == nil && plant != nil {
+				plant(g)
+			}
 			cache[row.unit] = g
 		}
 		if g == nil || g.err != nil {
@@ -278,25 +329,98 @@ func TestMooRetainMatchesTheGoEngine(t *testing.T) {
 					probes = append(probes, probe{retainFull, len(keep.Ids()) - 1})
 				}
 			}
+		} else if onlyRetaining {
+			continue
 		}
 		for _, p := range probes {
 			want := goRetain(t, g.unit, row.root, wire, p.capacity, p.ids)
 			got := mooRetain(t, g, row.root, wire, p.capacity, p.ids)
-			if got.used != want.used || got.counters() != want.counters() || got.value != want.value ||
-				got.saveLost != want.saveLost || string(got.save) != string(want.save) || (got.saveErr == "") != (want.saveErr == "") {
-				t.Errorf("%s (%s/%s) at capacity %d ids %d: moo and the Go engine disagree:\nmoo: used %d %s value %v lost %d %s %x\ngo:  used %d %s value %v lost %d %s %x",
-					row.caseName, row.unit, row.root, p.capacity, p.ids,
-					got.used, got.counters(), got.value, got.saveLost, got.saveErr, got.save,
-					want.used, want.counters(), want.value, want.saveLost, want.saveErr, want.save)
+			if !sameRetain(got, want) {
+				bad = append(bad, fmt.Sprintf("%s (%s/%s) at capacity %d ids %d: moo and the Go engine disagree:\nmoo: %v\ngo:  %v",
+					row.caseName, row.unit, row.root, p.capacity, p.ids, got, want))
 				continue
 			}
 			compared++
 		}
 	}
-	if retaining == 0 {
-		t.Fatal("no corpus wire retained anything: the differential proves nothing")
-	}
-	t.Logf("%d retaining load/save pairs agree with the Go engine (%d wires retain)", compared, retaining)
+	return compared, retaining, bad
+}
+
+// retainTailWrite is the save hook's write of a kept record in the emitted
+// table_retain.moo: planted out, every save that carries a retained record
+// loses it.
+const retainTailWrite = "\t\t\t\tapi.str(w, buffer.readstring(inner.b, 0, inner.n))\n"
+
+func plantRetainTailWrite(t *testing.T, g *generatedUnit) {
+	t.Helper()
+	removeMooDiscard(t, g, "table_retain.moo", retainTailWrite, "")
+}
+
+// plantRetainKeepsDamage removes both of the one read's discards and phase
+// one, the wire-alone walk that refuses damage before the decode: a damaged
+// retaining load then answers a partial value.
+func plantRetainKeepsDamage(t *testing.T, g *generatedUnit) {
+	t.Helper()
+	removeMooDiscard(t, g, "table_load.moo", wirePhaseOne, wirePhaseOneOff, "\tif report.bodyDamaged then\n\t\treturn nil\n\tend\n", "",
+		"\t\t\t\trep.field = witness(root, b, k)\n\t\t\t\treturn nil\n\t\t\tend\n\t\t\tif k == \"missingRequired\"", "\t\t\t\trep.field = witness(root, b, k)\n\t\t\t\treturn v\n\t\t\tend\n\t\t\tif k == \"missingRequired\"")
+}
+
+// TestMooRetainDifferentialNegativeControl holds each verdict-first
+// differential to a planted defect in the emitted runtime: with the save's
+// write of a kept record planted out, the manifest rows, the evolved pairs and
+// the occurrence wires each disagree with the Go engine; with the damage
+// discards and phase one planted out, a damaged occurrence wire answers a
+// value where the Go engine refuses the whole load.
+func TestMooRetainDifferentialNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
+	t.Parallel()
+	t.Run("save-tail/manifest", func(t *testing.T) {
+		t.Parallel()
+		units, _ := readManifest(t)
+		cache := map[string]*generatedUnit{}
+		red := 0
+		for _, row := range retainRows(t) {
+			g := cache[row.unit]
+			if g == nil {
+				g = generateUnit(t, units, row.unit)
+				plantRetainTailWrite(t, g)
+				cache[row.unit] = g
+			}
+			wire, err := os.ReadFile(filepath.Join(root, row.wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids := -1
+			if row.ids != "full" {
+				ids, _ = strconv.Atoi(row.ids)
+			}
+			if !sameRetain(mooRetain(t, g, row.root, wire, retainFull, ids), goRetain(t, g.unit, row.root, wire, retainFull, ids)) {
+				red++
+			}
+		}
+		if red == 0 {
+			t.Fatal("every manifest retain row still agrees with the Go engine with the tail write planted out")
+		}
+	})
+	t.Run("save-tail/evolved", func(t *testing.T) {
+		t.Parallel()
+		_, retaining, bad := evolvedRetainDifferential(t, func(g *generatedUnit) { plantRetainTailWrite(t, g) }, true)
+		if retaining == 0 || len(bad) == 0 {
+			t.Fatalf("the evolved-pair differential stays green with the tail write planted out (%d wires retain)", retaining)
+		}
+	})
+	t.Run("save-tail/occurrence", func(t *testing.T) {
+		t.Parallel()
+		if _, _, bad := occurrenceRetainDifferential(t, func(g *generatedUnit) { plantRetainTailWrite(t, g) }); len(bad) == 0 {
+			t.Fatal("the occurrence differential stays green with the tail write planted out")
+		}
+	})
+	t.Run("keeps-damage/occurrence", func(t *testing.T) {
+		t.Parallel()
+		if _, _, bad := occurrenceRetainDifferential(t, func(g *generatedUnit) { plantRetainKeepsDamage(t, g) }); len(bad) == 0 {
+			t.Fatal("the occurrence differential stays green with the damage discards planted out")
+		}
+	})
 }
 
 // TestMooRetainRefusesANonFiniteRetainedFloat: a retained unknown field of a
@@ -334,20 +458,31 @@ print(tostring(v ~= nil) .. " " .. tostring(report.reason) .. " " .. report.reta
 	}
 }
 
+// schemaUnit generates the unit at one schema file. The retain controls name
+// the file they sabotage. A blank manifest key is not a path: generateUnit
+// would report "unit : no .schema files found" and the control would never
+// reach its gate.
+func schemaUnit(t *testing.T, rel string) *generatedUnit {
+	t.Helper()
+	return generateUnit(t, map[string][]string{rel: {rel}}, rel)
+}
+
 // TestMooRetainNegativeControl plants out the save hook's write of a kept
 // record (one anchor in the emitted table_retain.moo) and requires the
 // manifest's round-trip row to go red against its pinned save.
 func TestMooRetainNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
-	units, _ := readManifest(t)
 	var row retainRow
 	for _, r := range retainRows(t) {
 		if r.caseName == "retain_round_trip" {
 			row = r
 		}
 	}
-	g := generateUnit(t, units, row.unit)
+	if row.caseName != "retain_round_trip" {
+		t.Fatal("the manifest has no retain_round_trip row")
+	}
+	g := schemaUnit(t, "test/tables/RT1.schema")
 	wire, err := os.ReadFile(filepath.Join(root, row.wire))
 	if err != nil {
 		t.Fatal(err)
@@ -361,7 +496,7 @@ func TestMooRetainNegativeControl(t *testing.T) {
 	}
 	path := filepath.Join(g.dir, "table_retain.moo")
 	src := string(g.files["table_retain.moo"])
-	const anchor = "\t\t\t\tapi.str(w, buffer.readstring(inner.b, 0, inner.n))\n"
+	const anchor = retainTailWrite
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the tail-write anchor is not in table_retain.moo exactly once")
 	}
@@ -387,14 +522,16 @@ end
 
 func retainRoundTripRow(t *testing.T) (*generatedUnit, retainRow, []byte) {
 	t.Helper()
-	units, _ := readManifest(t)
 	var row retainRow
 	for _, r := range retainRows(t) {
 		if r.caseName == "retain_round_trip" {
 			row = r
 		}
 	}
-	g := generateUnit(t, units, row.unit)
+	if row.caseName != "retain_round_trip" {
+		t.Fatal("the manifest has no retain_round_trip row")
+	}
+	g := schemaUnit(t, "test/tables/RT1.schema")
 	wire, err := os.ReadFile(filepath.Join(root, row.wire))
 	if err != nil {
 		t.Fatal(err)
@@ -464,8 +601,7 @@ end
 func TestMooRetainRefusesWhatThePageRefuses(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
-	units, _ := readManifest(t)
-	fixed := generateUnit(t, units, "tblv2")
+	fixed := schemaUnit(t, "test/tables/V2.schema")
 	g, row, wire := retainRoundTripRow(t)
 	fixedMain := "--!strict\nlocal inputs = require(\"./inputs\")\nlocal L = require(\"./table_load\")\nlocal R = require(\"./table_retain\")\n" + fixed.requireAll() + `
 local report = L.newReport()

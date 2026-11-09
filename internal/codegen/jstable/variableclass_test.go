@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -86,8 +87,8 @@ type vcCase struct {
 }
 
 func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
-	t.Skip("layer 4 (js): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
+	slowtest.Gate(t, "node (it runs the generated modules)")
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -219,7 +220,7 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 	{
 		inst := pm.New(pm.Lookup("Probe"))
 		var rep tabletext.Report
-		if !pm.Read(inst, []byte(`{"note": "shared"}`), &rep) || rep != (tabletext.Report{}) {
+		if !pm.Read(inst, []byte(`{"note": "shared", "least": [0, 0]}`), &rep) || rep != (tabletext.Report{}) {
 			t.Fatalf("probe_shared_string: the oracle did not read the text cleanly: %+v", rep)
 		}
 		var note, note2 *tabletext.Field
@@ -261,7 +262,7 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 		}
 		inst := pm.New(pm.Lookup("Probe"))
 		var rep tabletext.Report
-		text := `{"wide": "` + base64.StdEncoding.EncodeToString(data) + `"}`
+		text := `{"wide": "` + base64.StdEncoding.EncodeToString(data) + `", "least": [0, 0]}`
 		if !pm.Read(inst, []byte(text), &rep) || rep != (tabletext.Report{}) {
 			t.Fatalf("probe_wide_%d: the oracle did not read the text cleanly: %+v", n, rep)
 		}
@@ -534,6 +535,10 @@ func variableClassChain(t *testing.T, pm *tabletext.Model, n int) *vcCase {
 		t.Fatalf("no field %s", name)
 		return nil
 	}
+	least := field(inst, "least")
+	least.Count = 2
+	least.Elems[0].U = 0
+	least.Elems[1].U = 0
 	var prev *tabletext.Instance
 	for k := range n {
 		leaf := pm.New(pm.Lookup("Leaf"))
@@ -626,14 +631,14 @@ table Probe
     leaves []*Leaf
     head   *Leaf
     tail   int32
-    least  [2..4]uint8
+    least  [..4]uint8
     wide   bytes(16384)
 }
 `
 
 // variableClassProbeTexts are the probe instances, as the oracle reads them.
 var variableClassProbeTexts = []struct{ name, text string }{
-	{"probe_default", `{}`},
+	{"probe_default", `{"least": [0, 0]}`},
 	{"probe_full", `{
   "u8v": 200, "u16v": 65535, "u32v": 4000000000, "u64v": 18446744073709551615,
   "i8v": -128, "i16v": -100, "f32v": 3.25, "f64v": -1e-300, "flag": false,
@@ -647,23 +652,23 @@ var variableClassProbeTexts = []struct{ name, text string }{
   "tail": -7,
   "least": [1, 2, 3, 4]
 }`},
-	// A DECLARED MINIMUM MOVES NOTHING ON THE TABLE WIRE: [2..4]T holding one
-	// element is [..4]T's bytes (the oracle reads ArrayMin nowhere); none is
-	// probe_edges, four is probe_full, and five is the clamp case below
-	{"probe_least_one", `{"least": [9]}`},
+	// A DECLARED MINIMUM IS ENFORCED ON THE WRITE: [2..4]T holding fewer than
+	// two elements refuses the encode (count under its minimum), four is
+	// probe_full, and five is the clamp case below
+	{"probe_least_one", `{"least": [9, 10]}`},
 	// A BLOB IS A NODE, NUMBERED BY OBJECT (docs/SPEC-TABLES.md §2.5, §3.1):
 	// two slots holding EQUAL bytes in two blobs are two records, which the
 	// oracle writes and a by-content numbering would merge into one
-	{"probe_equal_strings", `{"note": "hi", "note2": "hi"}`},
-	{"probe_empty_strings", `{"note": "", "note2": ""}`},
-	{"probe_equal_bytes", `{"blob": "AQI=", "blob2": "AQI="}`},
-	{"probe_empty_bytes", `{"blob": "", "blob2": ""}`},
+	{"probe_equal_strings", `{"note": "hi", "note2": "hi", "least": [0, 0]}`},
+	{"probe_empty_strings", `{"note": "", "note2": "", "least": [0, 0]}`},
+	{"probe_equal_bytes", `{"blob": "AQI=", "blob2": "AQI=", "least": [0, 0]}`},
+	{"probe_empty_bytes", `{"blob": "", "blob2": "", "least": [0, 0]}`},
 	{"probe_edges", `{
   "u8v": 0, "f32v": 0, "flag": true, "b10": 0, "raw": "", "blob": "", "note": "",
   "mood": "None", "nums": [], "spots": [{"x": 0, "y": 1.5, "tag": 0}],
   "spot": {"x": 0, "y": 1.5, "tag": 0},
   "leaves": [null], "head": {"id": 0, "name": "", "next": null},
-  "least": []
+  "least": [0, 0]
 }`},
 }
 

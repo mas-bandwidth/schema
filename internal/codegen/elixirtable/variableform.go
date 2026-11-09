@@ -1472,6 +1472,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
 
+    # A bits(N) value past the range its WIDTH implies refuses the read (§4),
+    # and the reason names the field.
+    {:out_of_range, name} ->
+      {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
     :wire_damaged ->
       {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
@@ -1498,6 +1503,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp reasoned(report, {:non_finite_float, name}),
     do: Map.put(report, :reason, "non_finite_float: " <> name)
+
+  defp reasoned(report, {:out_of_range, name}),
+    do: Map.put(report, :reason, "out_of_range: " <> name)
 
   defp reasoned(report, _damage),
     do: Map.put(report, :reason, "wire_damaged")
@@ -1639,6 +1647,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                         # kind damages the numbering and discards the load.
                         # A fixed root has no such transport arm.
                         if kind == 12 do
+                          if strict_flag?() and node_bin != nil, do: throw(:wire_damaged)
                           # a node table riding twice: the LAST is the
                           # numbering (§3 last-wins; framing N7)
                           entries(rest3, ids, allowed, transport, acc, payload)
@@ -1959,6 +1968,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     report = merge_report(report, own_report)
 
+    if strict_flag?(), do: strict_reachable!(records, root)
+
     records = records |> Map.put(1, root) |> final_blob_slots(desc)
     {assemble_directory(records), report}
   end
@@ -2041,6 +2052,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # events — an unknown id, a kind mismatch, an out-of-range value, a reference
   # a reader cannot name — read on, and the halt is the one exception.
   defp decode(desc, fields, nodes, ids, terminated) do
+    # the same field id twice in one body is damage (§3, §4): no field
+    # lands, however well each occurrence would read on its own
+    if length(fields) != length(Enum.uniq_by(fields, fn {id, _kind, _payload} -> id end)),
+      do: throw(:wire_damaged)
+
     {status, value, report} =
       Enum.reduce_while(fields, {:cont, Map.new(), empty_report()}, fn {id, kind, payload},
                                                                        {_status, value, report} ->
@@ -2048,11 +2064,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           nil ->
             report = %{report | unknown: report.unknown + 1}
 
+            if strict_flag?() and payload != :unframed,
+              do: strict_unknown!(kind, payload, nodes, ids)
+
             if payload == :unframed,
               do: {:halt, {:halt, value, report}},
               else: {:cont, {:cont, value, report}}
 
           f ->
+            if strict_flag?() and Map.has_key?(value, f.name), do: throw(:wire_damaged)
+
             cond do
               payload == :unframed ->
                 # The field header was read, but its payload never framed.
@@ -2072,6 +2093,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
                   {:cont, :inert, report} ->
+                    if strict_flag?(), do: throw(:wire_damaged)
                     {:cont, {:cont, inert_required_field(f, value), report}}
 
                   {:cont, v, report} ->
@@ -2822,8 +2844,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(_f, _rest, 0, _nodes, _ids, acc, report),
-    do: {Enum.reverse(acc), report}
+  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
+    if strict_flag?() and rest != <<>>, do: throw(:wire_damaged)
+    {Enum.reverse(acc), report}
+  end
 
   defp read_list_elements(%{text_list: true, elem_kind: 12} = f, rest, n, nodes, ids, acc, report) do
     case leb(rest) do
@@ -3130,6 +3154,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end
       end
 
+      if Map.get(f, :t) in [:string, :wstring] and field_active?(f, desc, value) do
+        text = Map.get(value, f.name, f.default)
+
+        unless Map.get(f, :optional, false) and text == nil do
+          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+        end
+      end
+
       if Map.get(f, :required, false) and field_active?(f, desc, value) do
         required_value(f, Map.get(value, f.name, f.default))
       end
@@ -3395,6 +3427,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp clamp_int(v, %{min: _lo, max: hi}, _report) when v > hi,
     do: {hi, throw(:wire_damaged)}
 
+  # A bits(N) field RIDES AS THE NARROWEST UNSIGNED KIND THAT HOLDS IT (§3), so
+  # its payload can carry a value above 2^N - 1 that the declaration cannot.
+  # THE READ NEVER CLAMPS (§4): the value past the range the WIDTH implies
+  # refuses the whole load, out_of_range, naming the field.
+  defp clamp_int(v, %{bits: bits, name: name}, report) when is_integer(bits) and bits > 0 do
+    if v > Bitwise.bsl(1, bits) - 1,
+      do: throw({:out_of_range, name}),
+      else: {v, report}
+  end
+
   defp clamp_int(v, _f, report), do: {v, report}
 
   defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
@@ -3606,6 +3648,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       end
     catch
       {:missing_required, report} -> {:error, :missing_required, report}
+      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
       :wire_damaged -> {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
@@ -4009,6 +4052,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  defp json_float_reads_back?(text, v, 4), do: json_float32_direct(text) == v
+
   defp json_float_reads_back?(text, v, width) do
     case Float.parse(text) do
       {back, ""} -> json_float_narrow(back, width) == v
@@ -4024,6 +4069,107 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_float_narrow(back, _), do: back
+
+  # A float32 read-back parses the decimal directly to float32, never
+  # through a float64: the twice-rounded parse lands on the neighbour for
+  # the two values docs/SPEC-TABLES.md §16 names, so the check is exact
+  # integer arithmetic on the decimal the %g loop spelled.
+  defp json_float32_direct(text) do
+    {sign, rest} =
+      case text do
+        "-" <> r -> {-1, r}
+        "+" <> r -> {1, r}
+        r -> {1, r}
+      end
+
+    {mant_text, exp} =
+      case String.split(rest, ["e", "E"]) do
+        [m] -> {m, 0}
+        [m, e] -> {m, String.to_integer(e)}
+      end
+
+    {int_part, frac_part} =
+      case String.split(mant_text, ".") do
+        [i] -> {i, ""}
+        [i, f] -> {i, f}
+      end
+
+    case Integer.parse(int_part <> frac_part) do
+      {0, ""} -> if sign < 0, do: -0.0, else: 0.0
+      {m, ""} -> json_float32_from_decimal(sign, m, exp - String.length(frac_part))
+      _ -> nil
+    end
+  end
+
+  defp json_float32_from_decimal(sign, m, e10) do
+    {num, den} =
+      if e10 >= 0,
+        do: {m * Integer.pow(10, e10), 1},
+        else: {m, Integer.pow(10, -e10)}
+
+    e0 = json_int_bits(num) - json_int_bits(den)
+
+    e =
+      cond do
+        json_ge_pow2?(num, den, e0 + 1) -> e0 + 1
+        json_ge_pow2?(num, den, e0) -> e0
+        true -> e0 - 1
+      end
+
+    sign_bit = if sign < 0, do: 1, else: 0
+
+    bits =
+      cond do
+        e > 127 ->
+          nil
+
+        e >= -126 ->
+          q = json_round_scaled(num, den, e - 23)
+          {q, e} = if q >= 1 <<< 24, do: {div(q, 2), e + 1}, else: {q, e}
+
+          if e > 127,
+            do: nil,
+            else: (sign_bit <<< 31) + ((e + 127) <<< 23) + (q - (1 <<< 23))
+
+        true ->
+          q = json_round_scaled(num, den, -149)
+
+          if q >= 1 <<< 23,
+            do: (sign_bit <<< 31) + (1 <<< 23) + (q - (1 <<< 23)),
+            else: (sign_bit <<< 31) + q
+      end
+
+    case bits do
+      nil ->
+        nil
+
+      b ->
+        <<n::float-32>> = <<b::32>>
+        n
+    end
+  end
+
+  defp json_int_bits(n), do: byte_size(Integer.to_string(n, 2))
+
+  defp json_ge_pow2?(num, den, e) when e >= 0, do: num >= den <<< e
+  defp json_ge_pow2?(num, den, e), do: num <<< -e >= den
+
+  defp json_round_scaled(num, den, shift) when shift >= 0,
+    do: json_round_div(num, den <<< shift)
+
+  defp json_round_scaled(num, den, shift), do: json_round_div(num <<< -shift, den)
+
+  defp json_round_div(num, den) do
+    q = div(num, den)
+    r = rem(num, den)
+
+    cond do
+      2 * r > den -> q + 1
+      2 * r < den -> q
+      rem(q, 2) == 1 -> q + 1
+      true -> q
+    end
+  end
 
   # json_format_g is C's %.*g for a finite double: the exponent form when the
   # decimal exponent is below -4 or at least the precision, the plain form
@@ -5891,6 +6037,12 @@ const variableRetainSource = `
       {:error, :non_finite_float, reasoned(report, {:non_finite_float, name}),
        %{retain | records: [], used: 0, ids: []}}
 
+    # A bits(N) value past the range its WIDTH implies refuses the retaining
+    # read as it does the plain one (§4): nothing lands and nothing is retained.
+    {:out_of_range, name} ->
+      {:error, :out_of_range, reasoned(report, {:out_of_range, name}),
+       %{retain | records: [], used: 0, ids: []}}
+
     :wire_damaged ->
       {:error, :malformed, reasoned(report, :malformed),
        %{retain | records: [], used: 0, ids: []}}
@@ -6248,6 +6400,9 @@ const variableRetainSource = `
   # ---- the retaining read: decode with a caller-owned store (§6.6) ----
 
   defp decode_retain(desc, fields, nodes, ids, retain, report, path, terminated) do
+    if length(fields) != length(Enum.uniq_by(fields, fn {id, _kind, _payload} -> id end)),
+      do: throw(:wire_damaged)
+
     {status, value, report, retain} =
       Enum.reduce_while(fields, {:cont, Map.new(), report, retain}, fn {id, kind, payload},
                                                                        {_status, value, report,

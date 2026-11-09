@@ -114,23 +114,44 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 			var rep tabletext.Report
 			got, ok, err := tablewire.DecodeMessages(m, insts, batch, &vocab, &rep)
 			if err != nil || !ok || got != n {
-				t.Fatalf("the Go reference reads the batch as n=%d ok=%v err=%v", got, ok, err)
-			}
-			want, err := tablewire.EncodeMessages(m, insts)
-			if err != nil {
-				t.Fatalf("the Go reference refuses to encode what it read: %v", err)
+				// A strict refusal is the answer (docs/SPEC-TABLES.md §6.5).
+				// Goose must refuse the same batch by the same reason.
+				reason := tablewire.RefusalReason(err)
+				r := gooseMsgProbe(t, gooseMsgCase{unit: reader, root: root, data: batch, announce: announce, capacity: n})
+				if r.announced != "1 ok 0 0" {
+					t.Fatalf("AnnounceRead of the writer's announcement answered %q:\n%s", r.announced, r.raw)
+				}
+				if r.loadN >= 0 || r.loadReason != reason {
+					t.Fatalf("the Go reference refused %s (n=%d ok=%v err=%v); Goose answered n=%d %s:\n%s", reason, got, ok, err, r.loadN, r.loadReason, r.raw)
+				}
+				return
 			}
 			var values [][]string
 			for _, inst := range insts {
 				values = append(values, gooseInstAssign(t, "", inst))
 			}
+			want, encErr := tablewire.EncodeMessages(m, insts)
 
 			// THE GOOSE LEG: AnnounceRead the writer, LoadMessages, SaveMessages
 			r := gooseMsgProbe(t, gooseMsgCase{unit: reader, root: root, values: values, data: batch, announce: announce})
 			if r.announced != "1 ok 0 0" {
 				t.Fatalf("AnnounceRead of the writer's announcement answered %q:\n%s", r.announced, r.raw)
 			}
-			r.agrees(t, want, n)
+			if encErr != nil {
+				// The reference decoded a value its own encoder will not write
+				// back (a flag bit the reader's variants do not name). The
+				// landed values are still the oracle.
+				if r.loadN != int64(n) || r.loadReason != "ok" || r.loadMalformed {
+					t.Fatalf("the Go reference read the batch and will not encode it (%v); Goose answered n=%d %s malformed=%v:\n%s", encErr, r.loadN, r.loadReason, r.loadMalformed, r.raw)
+				}
+				for k := range r.got {
+					if k >= len(r.want) || r.got[k] != r.want[k] {
+						t.Fatalf("body %d loaded\n got  %s\n want %s", k, r.got[k], r.want[k])
+					}
+				}
+			} else {
+				r.agrees(t, want, n)
+			}
 			type counter struct {
 				name      string
 				got, want int64

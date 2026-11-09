@@ -52,7 +52,19 @@ const READ = (f, wantBits, clamped, tag) => {
 };
 READ(%[1]q, %[4]d, 0, "old_");
 READ(%[2]q, %[5]d, 0, "hostile_");
-READ(%[3]q, 0x40000000, 1, "past_");
+{
+  const data = readFileSync(%[3]q);
+  const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
+  const report = new TableFixedReport(); const r = report;
+  const plan = TNewPlan(4096, 4096);
+  const n = TLoad(back, back.length, data, data.length, plan, report);
+  if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
+    fail("past_: expected out_of_range refusal: n=" + n + " " + reason(r));
+  }
+  if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
+    fail("past_: a refusal moved a counter: " + reason(r));
+  }
+}
 `, filepath.Join(corpus, "old_cfloat_range_widen.bin"),
 		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"),
 		filepath.Join(corpus, "past_cfloat_range_widen.bin"), oldAim, hostileAim)

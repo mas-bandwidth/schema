@@ -44,7 +44,11 @@ const tableBuilderLoadSource = `
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)idCount * 8);
         if (!DistinctVocabulary(ids)) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
-        if (EndsEarly(root)) { Damage(report); Finish(report, Verdict.Damaged); return false; }
+        int whole = WireCheck(root.Buffer, ids, false, out _);
+        if (whole == WireDamaged) { Damage(report); Finish(report, Verdict.Damaged); return false; }
+        // THE BUILDER READ IS THE ONE READ TOO: the two apart answers keep
+        // their names and every other non-whole answer refuses (docs/SPEC-TABLES.md §6.5).
+        if (whole != WireWhole) { Fail(report, whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"); Finish(report, Verdict.Refused); return false; }
         bool good = NodeFrames(root, out Reader records, out int count);
         if (!good) { count = 0; Damage(report); }
         byte* directory = (byte*)worker.Arena.Allocator.Get(((long)count + 1) * 16);

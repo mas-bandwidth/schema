@@ -1671,6 +1671,7 @@ tables-js-release-negative-control: bin/schema build/tables-generated-js/.stamp 
 conformance-negative-control-js-absent: build/conformance-harness build/tables-generated-js/.stamp
 	@rm -rf build/$@ && mkdir -p build/$@
 	@sed '/\.absent"/s/writeFileSync(/void (/' test/conformance/js/main.mjs > build/$@/main.mjs
+	@cp test/conformance/js/fixed.mjs build/$@/fixed.mjs
 	@[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" = "$$(grep -c 'writeFileSync(join(outDir.*\.absent"' test/conformance/js/main.mjs)" ] && \
 		[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" -gt 0 ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach every absent writer"; exit 1; }
@@ -1683,6 +1684,24 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on a case left with no answer"; cat build/$@/log; exit 1; }
 	@echo "negative control: a JavaScript leg whose per-case absences write nothing turns its conformance run RED"
 
+# The fixed roots are read and written in form 3 (test/conformance/js/fixed.mjs).
+# A driver copy whose bridge hands every fixed root back to the variable form
+# must turn the wire surface RED on a fixed root's golden.
+conformance-negative-control-js-fixed: build/conformance-harness build/tables-generated-js/.stamp
+	@rm -rf build/$@ && mkdir -p build/$@
+	@cp test/conformance/js/main.mjs build/$@/main.mjs
+	@sed 's/  if (row === undefined) { return codec; }/  if (row !== null) { return codec; }/' test/conformance/js/fixed.mjs > build/$@/fixed.mjs
+	@! cmp -s test/conformance/js/fixed.mjs build/$@/fixed.mjs || { echo "NEGATIVE CONTROL FAILED: the sabotage changed nothing"; exit 1; }
+	@printf '#!/bin/sh\nexec "$${NODE:-node}" $(CURDIR)/build/$@/main.mjs "$$@"\n' > build/$@/driver && chmod +x build/$@/driver
+	@printf 'js build/$@/driver\n' > build/$@/drivers.txt
+	@if NODE=$(NODE) ./build/conformance-harness run --drivers build/$@/drivers.txt --work build/$@/work > build/$@/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: fixed roots read in the variable form and the run stayed green"; cat build/$@/log; exit 1; \
+	fi
+	@grep -qF 'root_full: load refused' build/$@/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on a fixed root's wire"; cat build/$@/log; exit 1; }
+	@echo "negative control: a JavaScript driver that reads fixed roots in the variable form turns its wire surface RED on root_full"
+
+test-js: conformance-negative-control-js-fixed
 test-js: tables-js-keyed-shift-negative-control
 test-js: tables-js-variable-class-identity-negative-control
 test-js: tables-js-variable-class-label-negative-control
@@ -1769,3 +1788,16 @@ test-js: tables-js-helper-closure
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-js/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's js-fuzz
+# rows run the enumerated pass and JS_FUZZ_SMOKE_N seeded random mutants per
+# commit, while the full 100,000-mutant tables-js-wire-fuzz-plain and
+# tables-js-wire-fuzz-retain campaigns run in certify.yml's nightly tier.
+JS_FUZZ_SMOKE_N ?= 2000
+
+.PHONY: tables-js-wire-fuzz-plain-smoke tables-js-wire-fuzz-retain-smoke
+tables-js-wire-fuzz-plain-smoke: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	$(MAKE) tables-js-wire-fuzz-plain SEED=$(SEED) N=$(JS_FUZZ_SMOKE_N)
+
+tables-js-wire-fuzz-retain-smoke: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	$(MAKE) tables-js-wire-fuzz-retain SEED=$(SEED) N=$(JS_FUZZ_SMOKE_N)

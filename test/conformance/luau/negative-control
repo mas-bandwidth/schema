@@ -40,7 +40,7 @@ mkdir -p "$out"
 case "$mode" in
 report)
 	source=internal/codegen/luautable/runtime/schema_load.luau
-	sed 's/report.unknown = report.unknown + 1$/report.unknown = report.unknown + 1 + 1/' "$source" > "$out/runtime.luau"
+	perl -pe 's/^(\s*)(_?report)\.unknown = \2\.unknown \+ 1$/$1$2.unknown = $2.unknown + 1; $2.malformed = true/' "$source" > "$out/runtime.luau"
 	;;
 walk)
 	source=internal/codegen/luautable/runtime/schema_json.luau
@@ -113,7 +113,7 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *luau / [a-z-]+' "$out/log" | sed 's/^ *luau \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="report retain " ; green="wire json-read retain-save" ;;
+report) want="framing retain retain-save " ; green="wire json-read cook-write" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle) want="framing " ; green="wire report" ;;

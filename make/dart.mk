@@ -269,7 +269,7 @@ tables-dart-standalone: build/tables-generated-dart/.stamp
 .PHONY: tables-dart-standalone-negative-control
 tables-dart-standalone-negative-control:
 	@rm -rf build/dart-standalone-nc && mkdir -p build/dart-standalone-nc
-	@sed 's|h.WriteString("import '"'"'dart:typed_data'"'"';\n\n")|h.WriteString("import '"'"'dart:typed_data'"'"';\nimport '"'"'package:collection/collection.dart'"'"'; // SABOTAGED\n\n")|' \
+	@sed 's|h.WriteString("import '"'"'dart:typed_data'"'"';\\n\\n")|h.WriteString("import '"'"'dart:typed_data'"'"';\\nimport '"'"'package:collection/collection.dart'"'"'; // SABOTAGED\\n\\n")|' \
 		internal/codegen/darttable/block.go > build/dart-standalone-nc/darttable.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-standalone-nc/darttable.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -522,8 +522,8 @@ DART_FUZZ_MUTANTS ?= 4000
 .PHONY: tables-dart-fuzz-negative-control
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
-	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\n        return (null, TableRefuseReason.badLayout);\n      }\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
-	     -e 's|g.pf("    if (padding > extent - used) {\n      return (null, TableRefuseReason.truncated);\n    }\n")|// SABOTAGED: the padding bound is gone|' \
+	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\\n        return (null, TableRefuseReason.badLayout);\\n      }\\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
+	     -e 's|g.pf("    if (padding > extent - used) {\\n      return (null, TableRefuseReason.truncated);\\n    }\\n")|// SABOTAGED: the padding bound is gone|' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -554,7 +554,7 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 .PHONY: tables-dart-fuzz-lead-negative-control
 tables-dart-fuzz-lead-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-lead-nc && mkdir -p build/dart-fuzz-lead-nc
-	@sed -e 's#g.pf("    if (base %% %d != 0) {\n      return (null, TableRefuseReason.unalignedBase);\n    }\n", ir.BlockAlign)#// SABOTAGED: the base-alignment check is gone#' \
+	@sed -e 's#g.pf("    if (base %% %d != 0) {\\n      return (null, TableRefuseReason.unalignedBase);\\n    }\\n", ir.BlockAlign)#// SABOTAGED: the base-alignment check is gone#' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-lead-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-lead-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -871,13 +871,13 @@ tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stam
 # ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
 # comparing a file with itself). The sabotage replaces the ONE name that carries
 # §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
-# the reader — with `layout_malformed`, and the OLD-REFUSES-NEW column must go
+# the reader — with `layout_damaged`, and the OLD-REFUSES-NEW column must go
 # red naming it. `go test -overlay` is the same trick the other controls use on
 # `go build`: the emitter is replaced for one run and the tree is never touched.
 .PHONY: tables-dart-versioning-negative-control
 tables-dart-versioning-negative-control: tables-fixedform-corpus
 	@rm -rf build/dart-versioning-nc && mkdir -p build/dart-versioning-nc
-	@sed 's|report.refused = TableFixedRefusal.layoutNewer;|report.refused = TableFixedRefusal.layoutMalformed; // SABOTAGED|' \
+	@sed 's|report.refused = TableFixedRefusal.layoutNewer;|report.refused = TableFixedRefusal.layoutDamaged; // SABOTAGED|' \
 		internal/codegen/darttable/fixedmodule.go > build/dart-versioning-nc/fixedmodule.go.txt
 	@grep -q SABOTAGED build/dart-versioning-nc/fixedmodule.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
@@ -1646,7 +1646,7 @@ tables-dart-accessor-negative-control: build/cook-fuzz/.stamp
 .PHONY: tables-dart-slot-negative-control
 tables-dart-slot-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-agree-slot-nc && mkdir -p build/dart-agree-slot-nc
-	@sed -e 's|g.pf("        offset: %d,\n", fl.Offset)|g.pf("        offset: %d,\n", fl.Offset+slotMoved(record, f.Name))|' \
+	@sed -e 's|g.pf("        offset: %d,\\n", fl.Offset)|g.pf("        offset: %d,\\n", fl.Offset+slotMoved(record, f.Name))|' \
 		internal/codegen/darttable/cook.go > build/dart-agree-slot-nc/cook.go.txt
 	@grep -q 'slotMoved(record, f.Name)' build/dart-agree-slot-nc/cook.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing - the emitter moved"; exit 1; }
@@ -1752,10 +1752,21 @@ test-dart: tables-dart-usage tables-dart-usage-negative-control
 # (wire-fuzz --builder --retain, docs/SPEC-TABLES.md §6.6). Dart's mutable
 # file reader uses the builder oracle; region sizing remains independently
 # checked by native extent tests.
-.PHONY: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
+# THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's
+# dart-fuzz row runs the enumerated pass and DART_FUZZ_SMOKE_N seeded random
+# mutants per commit (the N=100000 campaign ran 142 s in run 42556155793, over
+# the 120 s per-commit cap), while the full 100,000-mutant tables-dart-wire-fuzz
+# campaign (and tables-dart-release's 500,000-mutant passes) runs in
+# certify.yml's nightly tier.
+DART_FUZZ_SMOKE_N ?= 2000
+
+.PHONY: tables-dart-wire-fuzz tables-dart-wire-fuzz-smoke tables-dart-wire-fuzz-negative-control
+tables-dart-wire-fuzz-smoke: build/conformance-harness build/conformance-dart
+	$(MAKE) tables-dart-wire-fuzz SEED=$(SEED) N=$(DART_FUZZ_SMOKE_N)
+
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
 	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
-	./build/conformance-harness wire-fuzz --builder --finite-owed tables-finite/dart --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
 
 # Its control: the emitter's counted-list `widened` count is removed
 # (tools/sabotage table-dart-wire-widen), every unit the driver reads is
@@ -1816,3 +1827,30 @@ test-dart: conformance-dart-text-boundary
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# A FORGED ORDINAL REFUSES (STRICT 100; docs/SPEC-TABLES.md §4,
+# docs/plans/strict-only.md). TestFixedVersioningForgedOrdinalBothPlans reads an
+# enum ordinal forged past the writer's variants through the compiled plan and
+# the identity plan and requires an out_of_range refusal on both. The control
+# takes the compiled plan's ordinal refusal out of the Dart fixed runtime
+# through go test -overlay, so the forged ordinal lands None as the retired
+# tolerant read did; the test must go red on exactly that.
+DART_ORDINAL_NC := build/dart-forged-ordinal-nc
+.PHONY: tables-dart-forged-ordinal-negative-control
+tables-dart-forged-ordinal-negative-control: tables-fixedform-corpus
+	@rm -rf $(DART_ORDINAL_NC) && mkdir -p $(DART_ORDINAL_NC)
+	@sed -e 's/if (raw < 0 || raw > remap\[remapAt\]) {/if (raw < 0 || raw > remap[remapAt]) { raw = 0; } else if (false) { \/\/ NEGATIVE CONTROL/' \
+		internal/codegen/darttable/fixedruntime.go > $(DART_ORDINAL_NC)/fixedruntime.go.txt
+	@cmp -s internal/codegen/darttable/fixedruntime.go $(DART_ORDINAL_NC)/fixedruntime.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Dart forged-ordinal sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixedruntime.go":"%s/$(DART_ORDINAL_NC)/fixedruntime.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(DART_ORDINAL_NC)/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test -count=1 -overlay $(DART_ORDINAL_NC)/overlay.json \
+			-run '^TestFixedVersioningForgedOrdinalBothPlans$$' ./internal/codegen/darttable > $(DART_ORDINAL_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the forged-ordinal refusal is gone and the gate stayed green"; \
+		cat $(DART_ORDINAL_NC)/log; exit 1; \
+	fi
+	@grep -q "a forged ordinal refuses the whole read" $(DART_ORDINAL_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(DART_ORDINAL_NC)/log; exit 1; }
+	@echo "negative control: a Dart compiled plan that lands a forged ordinal turns TestFixedVersioningForgedOrdinalBothPlans RED"
