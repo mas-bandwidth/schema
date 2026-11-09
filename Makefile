@@ -4541,7 +4541,7 @@ tables-lists-clamp-negative-control: bin/schema build/tables-generated/.stamp
 # under the sabotage the load is accepted and the refusal check goes red.
 .PHONY: tables-lists-element-kind-negative-control
 tables-lists-element-kind-negative-control: bin/schema build/tables-generated/.stamp
-	$(call list_negative_control,elemkind,'s@else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; }@else if ( elem_kind != %d \&\& false ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch;; r.offset = body_end; break; } // SABOTAGED@',internal/codegen/cpptable/lists.go,decoding under a changed element kind left the list gate GREEN)
+	$(call list_negative_control,elemkind,'s@else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }@else if ( elem_kind != %d \&\& false ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; } // SABOTAGED@',internal/codegen/cpptable/lists.go,decoding under a changed element kind left the list gate GREEN)
 
 # LoadMeasure OVER A LIST OF TABLES HOLDING LISTS, summed at ONE DEPTH only:
 # `list_nested` meets it, and the measure goes red against the region Load
