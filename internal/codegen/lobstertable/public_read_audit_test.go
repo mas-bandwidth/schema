@@ -81,32 +81,35 @@ print("pass")
 // depth zero. The text-array case proves that a leaf's length adds no level.
 func auditUnknownDepthWire(levels int, leaf string) []byte {
 	inner, kind := []byte{0}, byte(13)
-	if leaf == "array" {
+	switch leaf {
+	case "array":
 		inner, kind = []byte{4, 1, 7, 0, 0, 0}, 14
-	} else if leaf == "keyed" {
+	case "keyed":
 		inner, kind = []byte{4, 1, 1, 4, 7, 0, 0, 0}, 16
-	} else if leaf == "text-array" {
+	case "text-array":
 		inner, kind = []byte{12, 1, 1, 'x'}, 14
-	} else if leaf == "scalar-union" {
+	case "scalar-union":
 		inner = []byte{1, 15, 1, 4, 4, 7, 0, 0, 0, 0}
 	}
-	if leaf == "union-wrapper" {
+	switch leaf {
+	case "union-wrapper":
 		for range levels {
 			arm := binary.AppendUvarint([]byte{1, 15}, uint64(len(inner)))
 			inner = append(arm, inner...)
 		}
 		inner = append(append([]byte{1, 15}, inner...), 0)
-	} else if leaf == "union-table" {
+	case "union-table":
 		for range levels {
 			arm := binary.AppendUvarint([]byte{1, 13}, uint64(len(inner)))
 			arm = append(arm, inner...)
 			inner = append(append([]byte{1, 15}, arm...), 0)
 		}
-	} else {
+	default:
 		for level := levels - 1; level >= 0; level-- {
 			body := binary.AppendUvarint([]byte{1, kind}, uint64(len(inner)))
 			body = append(body, inner...)
-			inner, kind = append(body, 0), 13
+			inner = append(append([]byte{}, body...), 0)
+			kind = 13
 		}
 	}
 	wire := append([]byte{1}, inner...)

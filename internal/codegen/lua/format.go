@@ -403,11 +403,12 @@ func quoted(q, body string) string {
 		if body[i] == '\\' {
 			n = escapeLen(body[i:])
 		}
-		if body[i:i+n] == `\"` {
+		switch body[i : i+n] {
+		case `\"`:
 			b.WriteByte('"')
-		} else if body[i:i+n] == "'" {
+		case "'":
 			b.WriteString(`\'`)
-		} else {
+		default:
 			b.WriteString(body[i : i+n])
 		}
 		i += n

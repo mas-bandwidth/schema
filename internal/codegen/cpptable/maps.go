@@ -931,7 +931,8 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 	g.pf("// The four overloads the map runtime's templates reach by argument-dependent\n")
 	g.pf("// lookup. Nothing outside this file names them.\n")
 	g.pf("static_assert( alignof( %s ) <= kTableAlign, \"a map entry's alignment must fit the arena's\" );\n", n)
-	if ir.MapKeyUnbounded(f) {
+	switch {
+	case ir.MapKeyUnbounded(f):
 		g.pf("static const int32_t k%sKeyBound = (int32_t) kTableBlobMaxLength;\n\n", n)
 		g.pf("inline int TableEntryOrder( const TableArena * arena, const %s & a, const %s & b )\n{\n", n, n)
 		g.pf("    int32_t alen = 0, blen = 0;\n")
@@ -954,7 +955,7 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("inline const char * TableEntryKey( const TableArena * arena, const %s & entry ) { int32_t len = 0; const char * s = ( arena != NULL ) ? schema_table_text_at_( *arena, entry.key, len ) : schema_table_text_at_( entry.key, len ); return s != NULL ? s : \"\"; }\n", n)
 		g.pf("inline bool TableEntrySetKey( TableWorker & worker, %s & entry, TableMapKeyRef key )\n{\n", n)
 		g.pf("    return schema_table_text_store_( worker, entry.key, key.data, (int64_t) key.length );\n}\n")
-	} else if mapKeyIsString(f) {
+	case mapKeyIsString(f):
 		bound := key.Type.Size
 		g.pf("static const int32_t k%sKeyBound = %d; // string(%d): the key's storage, and the length an insert refuses past\n\n", n, bound, bound)
 		g.pf("inline int TableEntryOrder( const %s & a, const %s & b )\n{\n", n, n)
@@ -976,7 +977,7 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("    entry.key[key.length] = 0; // NUL-terminated BESIDE its length, for a C call site\n")
 		g.pf("    entry.key_length = key.length;\n}\n")
 		g.pf("inline bool TableEntrySetKey( TableWorker &, %s & entry, TableMapKeyRef key ) { TableEntrySetKey( entry, key ); return true; }\n", n)
-	} else {
+	default:
 		order := mapKeyOrderType(f)
 		typ, _ := g.cppFieldType(key.Type)
 		g.pf("\ninline int TableEntryOrder( const %s & a, const %s & b )\n{\n", n, n)

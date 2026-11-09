@@ -112,9 +112,10 @@ for(final order in [Endian.little,Endian.big]){
 		model := tabletext.NewModel(other)
 		value := model.New(other.Tables["Root"])
 		input := `{"tags":{"1":3}}`
-		if decl == "int32" {
+		switch decl {
+		case "int32":
 			input = `{"tags":3}`
-		} else if decl == "[]int32" {
+		case "[]int32":
 			input = `{"tags":[3]}`
 		}
 		if !model.Read(value, []byte(input), &tabletext.Report{}) {
@@ -124,7 +125,7 @@ for(final order in [Endian.little,Endian.big]){
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(&b, "{final wire=Uint8List.fromList([%s]);final r=w.TableWireReport();final v=w.rootWireLoad(wire,r);check(r.refused,'map mismatch presence %s');}\n", strings.Trim(strings.ReplaceAll(fmt.Sprint(wire), " ", ","), "[]"), decl)
+		fmt.Fprintf(&b, "{final wire=Uint8List.fromList([%s]);final r=w.TableWireReport();final v=w.rootWireLoad(wire,r);check(r.refused,'map mismatch presence %s');}\n", strings.Trim(strings.ReplaceAll(fmt.Sprint(string(wire)), " ", ","), "[]"), decl)
 	}
 	b.WriteString(`{
 final r=w.TableTextReport();final v=w.rootFromJson('{"values":{"a":"bad","b":null,"c":7,"c":false}}',r);

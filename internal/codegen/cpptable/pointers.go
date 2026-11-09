@@ -114,18 +114,6 @@ func blobWord(f *ir.Field) string {
 // *string's does (docs/SPEC-TABLES.md §6.3).
 func blobTerminated(f *ir.Field) bool { return f.Type.Kind == ir.TString }
 
-// blobTypeIdConst is the generated runtime's name for a byte buffer's reserved
-// type id (docs/SPEC-TABLES.md §3.1).
-// blobTypeId is the RESERVED node type id a byte buffer's record rides under
-// (docs/SPEC-TABLES.md §2.5, §3.1), as a value — what blobTypeIdConst spells
-// as the emitted constant's name.
-func blobTypeId(f *ir.Field) uint64 {
-	if f.Type.Kind == ir.TString {
-		return ir.StringWireTypeId
-	}
-	return ir.BytesWireTypeId
-}
-
 func blobTypeIdConst(f *ir.Field) string {
 	if f.Type.Kind == ir.TString {
 		return "kTableStringTypeId"

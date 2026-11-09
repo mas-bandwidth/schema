@@ -199,7 +199,7 @@ func TestLuaBlockEligibilityNegativeControlFunctional(t *testing.T) {
 			if strings.Join(got, "\n") != strings.Join(want, "\n") {
 				t.Fatalf("wrong plant failure: got %v, want %v", got, want)
 			}
-			t.Log(fmt.Sprintf("guard bypass caught: %v", got))
+			t.Logf("guard bypass caught: %v", got)
 		})
 	}
 }

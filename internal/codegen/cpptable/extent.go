@@ -1191,15 +1191,6 @@ func (g *tableGen) emitUnreachedExtentRefusal(f *ir.Field, ref *ir.Struct, subje
 	g.pf("    }\n")
 }
 
-// alignOfList is one list element's alignment in the region, which is where
-// a list's carved array begins.
-func alignOfList(u *ir.Unit, f *ir.Field) int64 {
-	if _, align := ir.ListElementLayout(u, f); align > 0 {
-		return align
-	}
-	return 8
-}
-
 // A union element has the same hidden-slot obligation as a nested table.
 // Walk its set arm solely to ask whether its by-value containers are empty.
 func (g *tableGen) emitUnreachedUnionExtentRefusal(f *ir.Field, ev edgeVisitor) {

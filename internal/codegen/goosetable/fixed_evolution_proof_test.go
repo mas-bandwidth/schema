@@ -19,7 +19,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// 1. port/goose/fixed/file-envelope (F1, F2, F3, F4, F7, F8, F12)
+// 1. port/goose/fixed/file-envelope (F1, F2, F3, F4, F7, F8, F12).
 func TestGooseFixedProofFileEnvelope(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -130,7 +130,7 @@ fixed table Point {
 	}
 }
 
-// 2. port/goose/fixed/batch-capacity (F9)
+// 2. port/goose/fixed/batch-capacity (F9).
 func TestGooseFixedProofBatchCapacity(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -158,7 +158,7 @@ fixed table Point {
 	}
 }
 
-// 3. port/goose/fixed/definition-hash (R4, R5, W11, W12)
+// 3. port/goose/fixed/definition-hash (R4, R5, W11, W12).
 func TestGooseFixedProofDefinitionHash(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -213,7 +213,7 @@ fixed table T {
 	})
 }
 
-// 4. port/goose/fixed/retired-runtime (R10, R15)
+// 4. port/goose/fixed/retired-runtime (R10, R15).
 func TestGooseFixedProofRetiredRuntime(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -230,7 +230,7 @@ func TestGooseFixedProofRetiredRuntime(t *testing.T) {
 	_ = newer
 }
 
-// 5. port/goose/fixed/optional-values (E5, W2)
+// 5. port/goose/fixed/optional-values (E5, W2).
 func TestGooseFixedProofOptionalValues(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -271,7 +271,7 @@ fixed table T {
 	}
 }
 
-// 6. port/goose/fixed/reports (E9, R16, R18)
+// 6. port/goose/fixed/reports (E9, R16, R18).
 func TestGooseFixedProofReports(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -308,7 +308,7 @@ fixed table T {
 	}
 }
 
-// 7. port/goose/fixed/array-bounds (C1, C2, R11)
+// 7. port/goose/fixed/array-bounds (C1, C2, R11).
 func TestGooseFixedProofArrayBounds(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -333,7 +333,7 @@ func TestGooseFixedProofArrayBounds(t *testing.T) {
 	rOver.refuses(t, "count_over_bound", false, 0)
 }
 
-// 8. port/goose/fixed/text (C3, C4, C5, R24)
+// 8. port/goose/fixed/text (C3, C4, C5, R24).
 func TestGooseFixedProofText(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -398,7 +398,7 @@ fixed table T {
 	}
 }
 
-// 9. port/goose/fixed/ordinals (C9, C10, R31)
+// 9. port/goose/fixed/ordinals (C9, C10, R31).
 func TestGooseFixedProofOrdinals(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -467,7 +467,7 @@ fixed table Lineage {
 	}
 }
 
-// 10. port/goose/fixed/normalization (C12, C13, R17)
+// 10. port/goose/fixed/normalization (C12, C13, R17).
 func TestGooseFixedProofNormalization(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -499,7 +499,7 @@ fixed table T {
 	}
 }
 
-// 11. port/goose/fixed/live-extents (C14, W4, W9)
+// 11. port/goose/fixed/live-extents (C14, W4, W9).
 func TestGooseFixedProofLiveExtents(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -535,7 +535,7 @@ fixed table T {
 	}
 }
 
-// 12. port/goose/fixed/writing (W1, W3, W5, W8)
+// 12. port/goose/fixed/writing (W1, W3, W5, W8).
 func TestGooseFixedProofWriting(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -588,7 +588,7 @@ fixed table T {
 	}
 }
 
-// 13. port/goose/fixed/union-guards (W7, W16, R28)
+// 13. port/goose/fixed/union-guards (W7, W16, R28).
 func TestGooseFixedProofUnionGuards(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -652,7 +652,7 @@ fixed table T {
 	}
 }
 
-// 14. port/goose/fixed/plan-execution (W6, P1)
+// 14. port/goose/fixed/plan-execution (W6, P1).
 func TestGooseFixedProofPlanExecution(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
@@ -727,7 +727,7 @@ fixed table T {
 	}
 }
 
-// 15. port/goose/fixed/interoperability (W13, P2, R27)
+// 15. port/goose/fixed/interoperability (W13, P2, R27).
 func TestGooseFixedProofInteroperability(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")

@@ -342,11 +342,12 @@ func fpQuantRows(t *testing.T, u *ir.Unit, model *tabletext.Model, control strin
 		var set strings.Builder
 		for k, n := range names {
 			x := values[k][i]
-			if x < float32(fields[k].FMin) {
+			switch {
+			case x < float32(fields[k].FMin):
 				x = float32(fields[k].FMin)
-			} else if x > float32(fields[k].FMax) {
+			case x > float32(fields[k].FMax):
 				x = float32(fields[k].FMax)
-			} else if x == 0 {
+			case x == 0:
 				x = 0
 			}
 			nfField(t, inst, n).Cell.F = float64(x)

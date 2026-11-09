@@ -59,7 +59,10 @@ func TestFormatWritesStyLuasShapes(t *testing.T) {
 // double quotes than single quotes, when the literal takes single quotes and
 // only its single quotes are escaped. A unit test: no formatter process.
 func TestByteStringUsesStyLuaQuotePreference(t *testing.T) {
-	cases := []struct{ name, want string; in []byte }{
+	cases := []struct {
+		name, want string
+		in         []byte
+	}{
 		{"no quotes", `"abc"`, []byte("abc")},
 		{"one double", `'a"b'`, []byte(`a"b`)},
 		{"one single", `"a'b"`, []byte(`a'b`)},

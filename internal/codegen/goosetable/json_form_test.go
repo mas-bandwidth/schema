@@ -361,13 +361,12 @@ func jsonWalkSabotage(t *testing.T, unit string, files map[string][]byte) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: no %s in TablesTable.goose", head)
 	}
 	body := src[at:]
-	end := strings.Index(body, "\n}\n")
-	fn := body[:end]
+	fn, tail, _ := strings.Cut(body, "\n}\n")
 	swapped := strings.Replace(strings.Replace(strings.Replace(fn, "if o == 0 {", "if o == @ {", 1), "if o == 1 {", "if o == 0 {", 1), "if o == @ {", "if o == 1 {", 1)
 	if swapped == fn {
 		t.Fatal("NEGATIVE CONTROL FAILED: the sabotage changed nothing")
 	}
-	files["TablesTable.goose"] = []byte(src[:at] + swapped + body[end:])
+	files["TablesTable.goose"] = []byte(src[:at] + swapped + "\n}\n" + tail)
 }
 
 func TestGooseJSONWalkNegativeControl(t *testing.T) {

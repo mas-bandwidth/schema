@@ -42,10 +42,10 @@ func withFixedClassWire(u *ir.Unit, ns, runtime string) string {
 	load.WriteString("    end\n")
 	load.WriteString("  end\n\n")
 	for _, st := range roots {
-		load.WriteString(fmt.Sprintf("  def strict_load(%q, data) when is_binary(data), do: load(%q, data)\n\n", st.Name, st.Name))
+		fmt.Fprintf(&load, "  def strict_load(%q, data) when is_binary(data), do: load(%q, data)\n\n", st.Name, st.Name)
 	}
 	for _, st := range noFile {
-		load.WriteString(fmt.Sprintf("  def strict_load(%q, _data),\n    do: {:error, :no_file_form, Map.put(empty_report(), :reason, \"unknown_form\")}\n\n", st.Name))
+		fmt.Fprintf(&load, "  def strict_load(%q, _data),\n    do: {:error, :no_file_form, Map.put(empty_report(), :reason, \"unknown_form\")}\n\n", st.Name)
 	}
 	load.WriteString("  def strict_load(table, data) when is_binary(data), do: variable_load(table, data)\n\n")
 	load.WriteString(strictHelpers)

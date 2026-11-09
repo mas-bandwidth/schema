@@ -99,7 +99,7 @@ assert(values[1].z == 123456789 and values[2].z == 123456789, "cross-build field
 `, ModuleName(receiver), len(ir.TableVocabulary(sender)), ir.TableMessageRefBits(len(ir.TableVocabulary(sender)))))
 	_, stderr, err := luarun.Try(t, dir, "main.lua", map[string][]byte{"announce": ir.TableAnnouncement(sender), "batch": batch})
 	if err != nil {
-		return fmt.Errorf("%v: %s", err, stderr)
+		return fmt.Errorf("%w: %s", err, stderr)
 	}
 	return nil
 }

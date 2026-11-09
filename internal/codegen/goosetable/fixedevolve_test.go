@@ -678,7 +678,7 @@ fixed table Lineage
 		idx1 := strings.Index(code, fmt.Sprintf("else if h == 0x%016x {\n        pick = 2;", e1.Wire))
 		idx2 := strings.Index(code, fmt.Sprintf("else if h == 0x%016x {\n        pick = 3;", e2.Wire))
 		idxCur := strings.Index(code, "if h == LineageFixedHash {\n        pick = 0;")
-		if idxCur < 0 || idx0 < 0 || idx1 < 0 || idx2 < 0 || !(idxCur < idx0 && idx0 < idx1 && idx1 < idx2) {
+		if idxCur < 0 || idx0 < 0 || idx1 < 0 || idx2 < 0 || (idxCur >= idx0 || idx0 >= idx1 || idx1 >= idx2) {
 			t.Fatalf("R1: lineage dispatch not in oldest-first order after pick=0:\n%s", code)
 		}
 		// R2: Verify record_bytes uses e1.Record (10) and e2.Record (16) directly without adding 8 again.

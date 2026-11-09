@@ -58,7 +58,7 @@ zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retain
 		dest := m.New(u.Tables[row.Reader])
 		r = tabletext.Report{}
 		ok, e := tablewire.Decode(m, dest, wire, &r)
-		if !ok || e != nil || int(r.Unknown) != row.Unknown || r.Refused {
+		if !ok || e != nil || r.Unknown != row.Unknown || r.Refused {
 			t.Fatalf("%s SPEC3.1 oracle: %+v %v", row.Name, r, e)
 		}
 		canonical, e := m.Write(dest)

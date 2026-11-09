@@ -61,7 +61,7 @@ const (
 	gooseTextDifferentialN    = 200
 
 	// the walk's float32 precision ceiling (runtime/schema_json.goose,
-	// json_put_float); the negative control caps it at six
+	// json_put_float); the negative control caps it at six.
 	gooseTextDifferentialAnchor   = "        high = 9;\n"
 	gooseTextDifferentialSabotage = "        high = 6; // SABOTAGED\n"
 )
@@ -236,7 +236,7 @@ func gooseTextDiffInstance(m *tabletext.Model, lines []string, defaults bool) (*
 		for w := range strings.FieldsSeq(l) {
 			v, err := strconv.ParseUint(w, 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("probe line %q: %v", l, err)
+				return nil, fmt.Errorf("probe line %q: %w", l, err)
 			}
 			bits = append(bits, v)
 		}

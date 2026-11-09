@@ -107,12 +107,13 @@ func requiredRangeCheck(f *ir.Field, expr, ind, refusal string) string {
 		cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, fmtFloat(f.FMin), expr, fmtFloat(f.FMax))
 	} else if f.HasIntRange {
 		lo, hi, _ := ir.TableRawRange(f)
-		if isWide(f) {
+		switch {
+		case isWide(f):
 			cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, bigLiteral(lo), expr, bigLiteral(hi))
-		} else if f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 64 {
+		case f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 64:
 			value := "BigInt.from(" + expr + ").toUnsigned(64)"
 			cond = fmt.Sprintf("%s >= %s && %s <= %s", value, bigLiteral(lo), value, bigLiteral(hi))
-		} else {
+		default:
 			cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, dartBoundLiteral(lo), expr, dartBoundLiteral(hi))
 		}
 	}

@@ -237,13 +237,6 @@ func cookField(g *lobster.Gen, f *ir.Field, off int64) string {
 	return rt + ".CookField { " + strings.Join(parts, ", ") + " }"
 }
 
-func alignUp(v, a int64) int64 {
-	if a <= 1 {
-		return v
-	}
-	return (v + a - 1) / a * a
-}
-
 // recordHasExtent reports a record with any container reachable by value
 // (docs/SPEC-TABLES.md §2.9, §7.2): its node is the record plus the extent.
 func recordHasExtent(u *ir.Unit, st *ir.Struct) bool {

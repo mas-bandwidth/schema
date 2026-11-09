@@ -5026,15 +5026,16 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		case ir.TBool:
 			fmt.Fprintf(b, "                b.append(v.%s.get(i) ? \"true\" : \"false\");\n", m)
 		case ir.TInt:
-			if f.Type.Timestamp {
+			switch {
+			case f.Type.Timestamp:
 				fmt.Fprintf(b, "                TableJson.writeTimestamp(b, v.%s.get(i));\n", m)
-			} else if f.Type.Signed {
+			case f.Type.Signed:
 				if f.Type.Width <= 32 {
 					fmt.Fprintf(b, "                b.append(Integer.toString(v.%s.get(i)));\n", m)
 				} else {
 					fmt.Fprintf(b, "                b.append(Long.toString(v.%s.get(i)));\n", m)
 				}
-			} else {
+			default:
 				if f.Type.Width <= 32 {
 					fmt.Fprintf(b, "                b.append(Integer.toUnsignedString(v.%s.get(i)));\n", m)
 				} else {
@@ -5304,11 +5305,12 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 			fmt.Fprintf(b, "        b.append(Integer.toUnsignedString(v.%s));\n", m)
 		}
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits):
-		if f.Type.Timestamp {
+		switch {
+		case f.Type.Timestamp:
 			fmt.Fprintf(b, "        TableJson.writeTimestamp(b, v.%s);\n", m)
-		} else if f.Type.Signed && f.Type.Kind == ir.TInt {
+		case f.Type.Signed && f.Type.Kind == ir.TInt:
 			fmt.Fprintf(b, "        b.append(Long.toString(v.%s));\n", m)
-		} else {
+		default:
 			fmt.Fprintf(b, "        b.append(Long.toUnsignedString(v.%s));\n", m)
 		}
 	case f.Type.Kind == ir.TNamed:
@@ -6254,11 +6256,12 @@ func writeVariableGraphField(b *strings.Builder, f *ir.Field) {
 	if f.Required && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 		if f.HasIntRange && !variableWide(f) {
 			min, max := jsonIntRange(f)
-			if f.Type.Signed && f.Type.Kind == ir.TInt {
+			switch {
+			case f.Type.Signed && f.Type.Kind == ir.TInt:
 				fmt.Fprintf(b, "        if ((long) v.%s < %s || (long) v.%s > %s) return false;\n", m, min, m, max)
-			} else if f.Type.Width <= 32 {
+			case f.Type.Width <= 32:
 				fmt.Fprintf(b, "        if (Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) < 0 || Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) > 0) return false;\n", m, min, m, max)
-			} else {
+			default:
 				fmt.Fprintf(b, "        if (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0) return false;\n", m, min, m, max)
 			}
 		} else if f.HasFloatRange {

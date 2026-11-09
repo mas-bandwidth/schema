@@ -65,7 +65,7 @@ func TestKeyedElementWideningElixir(t *testing.T) {
 		v := m.New(u.Tables["Root"])
 		var report tabletext.Report
 		ok, e := tablewire.Decode(m, v, wire, &report)
-		if ok == tc.malformed || tablewire.ReadRefusal(e) != tc.malformed || int(report.Widened) != tc.widened {
+		if ok == tc.malformed || tablewire.ReadRefusal(e) != tc.malformed || report.Widened != tc.widened {
 			t.Fatalf("%s oracle: %v %v %+v", tc.name, ok, e, report)
 		}
 		text := ""

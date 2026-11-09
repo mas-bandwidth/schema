@@ -352,7 +352,8 @@ func TestLuauTableLoadNegativeControl(t *testing.T) {
 func runWire(t *testing.T, g *generatedUnit, rootName string, wire []byte) string {
 	t.Helper()
 	probe := strings.Replace(loadProbe(g, rootName), "local report: any = {}\n", "", 1)
-	probe = probe[:strings.Index(probe, "local v = load.load(")] + fmt.Sprintf(`local report: any = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+	head, _, _ := strings.Cut(probe, "local v = load.load(")
+	probe = head + fmt.Sprintf(`local report: any = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 load.loadWalk(%q, inputs.wire, report)
 print("duplicate=" .. tostring(report.duplicate))
 `, rootName)

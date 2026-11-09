@@ -170,7 +170,6 @@ table Root {
 		t.Fatalf("the map field does not lead the wire as the test expects: %x", wire)
 	}
 	var names, wants []string
-	var damaged []bool
 	for i := 4; i < 4+int(wire[3]); i++ {
 		for _, b := range []byte{0x00, 0x01, 0x02, 0x0c, 0x0e, 0xff} {
 			if wire[i] == b {
@@ -189,7 +188,6 @@ table Root {
 			}
 			names = append(names, name)
 			wants = append(wants, fmt.Sprintf("%s %t %d", name, ref.Refused, len(got.Fields[0].Entries)))
-			damaged = append(damaged, ref.Refused)
 		}
 	}
 	if len(names) == 0 {

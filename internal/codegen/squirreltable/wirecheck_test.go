@@ -17,7 +17,7 @@ import (
 
 const (
 	// sqWireCheckCall is the load's one call of the check, and
-	// sqWireCheckOff the state a check that saw nothing answers
+	// sqWireCheckOff the state a check that saw nothing answers.
 	sqWireCheckCall = "wireCheck(bytes, 1, end, table, false)"
 	sqWireCheckOff  = "{ fail = null, nonFinite = false }"
 )
@@ -33,7 +33,7 @@ func withoutWireCheck(t *testing.T, src string) string {
 }
 
 // graphdemo.Scene with a zero byte inside a string the walk does not read
-// (fuzz mutant, release wire fuzz)
+// (fuzz mutant, release wire fuzz).
 const sqUnreachedTextMutant = "01010c0474726565020402000000031102041104051107060c4d06070e080401000000010c0161091103000707080402000000000a0d0b0c03746f700c11050d1106000a080b0c046c656674000a090b0c050069676874000e0d0f04030000000b0c036d69640000861b638ebaadbcc437ea08982cc662bb030c9a5fcc128f0a95b31e51efb8255be84db4487b6d5feeffffffffffffffffa99fa6a599c80ef6ea0ce83094fde47c28f025a0ba6c31e51d434c78a3907eb93d62cb8fecfc7f39b01c04a2ad70b02405d8145753aaaa76c8c204b4a28a8b9d66fe00649160807a0f00000000000000"
 
 var sqUnreachedTextCase = sqVectorCase{"unreached_text", "graphdemo", "tables/pointers", "Scene",

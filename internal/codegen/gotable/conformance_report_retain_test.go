@@ -101,7 +101,7 @@ func goReportAndRetainRows(t *testing.T, root string) ([]goReportRow, []goRetain
 		t.Fatal(err)
 	}
 	verdicts := map[string]string{}
-	for _, line := range strings.Split(string(reportsData), "\n") {
+	for line := range strings.SplitSeq(string(reportsData), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -117,7 +117,7 @@ func goReportAndRetainRows(t *testing.T, root string) ([]goReportRow, []goRetain
 	}
 	var reports []goReportRow
 	var retains []goRetainRow
-	for _, line := range strings.Split(string(manifestData), "\n") {
+	for line := range strings.SplitSeq(string(manifestData), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
