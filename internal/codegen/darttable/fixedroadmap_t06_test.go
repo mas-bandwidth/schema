@@ -204,36 +204,45 @@ func t06R31(t *testing.T) {
 		"R31 a 256-variant enum's ordinal rides at two bytes")
 }
 
-// t06C12: C12 "bool byte != 0". docs/FIXED-FORM-ALGORITHM.md §4.5: a bool is
-// ONE byte and lands as `byte != 0` — an endpoint's 2 is true, not malformed. The
-// scalar bool and the bool-run array both take the comparator.
+// t06C12: C12 "bool byte". docs/FIXED-FORM-ALGORITHM.md §4.5: a bool byte
+// other than 0 or 1 refuses wire_damaged (TableFixedRefusal.damaged) — an
+// endpoint's 2 is neither stored nor normalized to true. The scalar bool and
+// the bool-run array both take the refusal.
 func t06C12(t *testing.T) {
 	src := t06Generated(t, "VNEW_hostile_bool")
 	body := t02Block(t, src, "void hbbFixedDecode(", "\n}\n")
-	t02Has(t, body, "value.flag = view.getUint8(at) != 0;",
-		"C12 a scalar bool lands as `byte != 0`")
-	t02Has(t, body, "value.flags[i] = view.getUint8(at + 10 + i * 1) != 0;",
-		"C12 a bool-run array element lands as `byte != 0`")
+	t02Has(t, body, "final b = view.getUint8(at);",
+		"C12 a scalar bool reads its byte before landing it")
+	t02Has(t, body, "if (b > 1) {",
+		"C12 a scalar bool byte past 1 refuses")
+	t02Has(t, body, "value.flag = b != 0;",
+		"C12 a scalar bool lands only a 0/1 byte")
+	t02Has(t, body, "value.flags[i] = b != 0;",
+		"C12 a bool-run array element lands only a 0/1 byte")
 }
 
-// t06C13: C13 "present flag byte != 0". docs/FIXED-FORM-ALGORITHM.md §4.5: the
-// optional's present byte is ONE byte and lands as `byte != 0`.
+// t06C13: C13 "present flag byte". docs/FIXED-FORM-ALGORITHM.md §4.5: an
+// optional's present byte other than 0 or 1 refuses wire_damaged.
 func t06C13(t *testing.T) {
 	src := t06Generated(t, "VNEW_hostile_bool")
 	body := t02Block(t, src, "void hbbFixedDecode(", "\n}\n")
-	t02Has(t, body, "value.linkPresent = view.getUint8(at + 1) != 0;",
-		"C13 an optional's present byte lands as `byte != 0`")
+	t02Has(t, body, "final p = view.getUint8(at + 1);",
+		"C13 an optional's present byte is read before landing it")
+	t02Has(t, body, "if (p > 1) {",
+		"C13 a present byte past 1 refuses")
+	t02Has(t, body, "value.linkPresent = p != 0;",
+		"C13 an optional's present byte lands only a 0/1 byte")
 }
 
-// t06R17: R17 "a bool or present byte that is not 0/1 normalises and counts
-// nothing". docs/FIXED-FORM-ALGORITHM.md §4.5: `!= 0` is the whole of the
-// normalization, so a 2 (or any nonzero) is TRUE and NOT a counter; the byte
-// is a wire value the reader's rule already names, not a hostile landing.
+// t06R17: R17 "a bool or present byte that is not 0/1 refuses wire_damaged
+// and counts nothing". docs/FIXED-FORM-ALGORITHM.md §4.5: the refusal is
+// TableFixedRefusal.damaged, the load discards the whole batch on it, and no
+// counter moves.
 func t06R17(t *testing.T) {
 	src := t06Generated(t, "VNEW_hostile_bool")
 	body := t02Block(t, src, "void hbbFixedDecode(", "\n}\n")
-	if !strings.Contains(body, "? ") && strings.Count(body, "!= 0") < 3 {
-		t.Errorf("R17 a non-0/1 byte must normalise through `!= 0`: the decode carries %d comparators", strings.Count(body, "!= 0"))
+	if n := strings.Count(body, "report.refused = TableFixedRefusal.damaged;"); n < 3 {
+		t.Errorf("R17 a non-0/1 byte must refuse wire_damaged: the decode carries %d damaged refusals, want at least 3", n)
 	}
 	if strings.Contains(body, "clamped") {
 		t.Errorf("R17 a bool or present byte that is not 0/1 counts NOTHING, but the decode names a counter")

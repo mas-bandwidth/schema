@@ -19907,3 +19907,398 @@ Readers ship before writers, by a margin a reader can roll back across; the floo
 live clients and the backend. When a table has grown past sense: create a new table, deprecate the old,
 clean out the cruft, ship the backend reading both, then the client, and when nothing live speaks the old
 table, remove it.
+
+## 22. The write algorithm: one value, one byte string
+
+**EVERY IMPLEMENTATION WRITES THE SAME BYTES FOR THE SAME VALUE, AND THIS
+SECTION IS THE ALGORITHM THEY FOLLOW.** The project owner, 2026-11-03: *"the
+only thing that matters is, can we read in the data in each language, and get
+the valid values in"* / *"and we test this by checking that it can write out
+that data the same way"* / *"and each implementation MUST write out the exact
+same bytes, so there needs to be some specification for how iteration is done
+on write, and in what order etc. that is cross language."*
+
+The reader-side sections leave a writer free where the reader cannot tell the
+difference: field order inside a body is not part of the READ contract (§3),
+and an id table in any order resolves. That freedom is the reader's
+tolerance, and it is not a writer's licence. **A CONFORMING WRITER HAS NO
+FREEDOM AT ALL**: every degree of freedom the reader tolerates is pinned below
+to one answer, so a value has one canonical byte string per form, and two
+implementations that follow this section produce it byte for byte. Each step
+names the section that owns the rule, what the Go reference
+(`internal/tablewire`, `internal/tablecook`) and the C++ writer (the generated
+`Save`, `CookFrom`, `FixedSave` and `SaveMessages`) do today, and, where they
+differed, which one the rule took. Where the two agree and the rule was already
+stated elsewhere, this section is the index and the other section is the law;
+where a rule was stated nowhere, it is stated HERE, and this is its home.
+
+**THE RULE THAT CHOOSES BETWEEN TWO SPELLINGS IS THE ONE EVERY LEG CAN MEET AT
+ITS FASTEST.** A pin that costs one language a sort, an allocation or a second
+pass where another pays nothing is the wrong pin. Each choice below is the
+spelling a straight-line writer reaches without a decision at run time:
+declaration order is the generated code's own order, minimal LEB128 is the
+shortest loop, an ascending key order is the order a region already holds
+(§2.8), and a zero byte is what a template already holds (§3.4).
+
+**THE GATE IS THE OWNER'S TEST, STATED AS ONE: READ EVERY INPUT, WRITE IT
+BACK, AND COMPARE THE BYTES** (§22.7). A read that lands the valid values and a
+write that follows this section produce the canonical bytes, so the bytes
+compared across every leg are the proof that every leg read the same values.
+
+### 22.1 Form `1`, the variable form: the file
+
+A save writes, in this order and nothing else:
+
+1. **THE FORM BYTE `1`** (§3, THE FIRST BYTE). Nothing rides in front of it.
+2. **THE ROOT BODY'S FIELDS** (§22.2), in declaration order.
+3. **THE ROOT'S RETAINED TAIL**, only on a `SaveRetain` of a region that holds
+   one (§6.6, §22.4).
+4. **THE NODE-TABLE FIELD**, only when the numbering (§22.3) holds a record:
+   the reserved id `0xFFFFFFFFFFFFFFFF`'s reference, kind `12`, `L`, then the
+   node count and the records in index order (§3.1). A root that reaches no
+   node writes no node-table field.
+5. **THE ROOT'S ZERO REFERENCE**, one byte `0`.
+6. **THE ID TABLE** (§22.5): the entries, each a little-endian `u64`, then the
+   entry count, a little-endian `u64`.
+7. **THE INTEGRITY TRAILER**, only when the root declares `integrity`
+   (§2.14): the little-endian CRC-32C (Castagnoli, the reflected polynomial
+   `0x82F63B78`, initial value and final XOR `0xFFFFFFFF`) of every byte
+   written in steps 1 through 6.
+
+Go writes exactly this sequence in `encodeWith`; the C++ writer writes it in
+the generated `Save`. They agree on every pinned wire.
+
+### 22.2 Form `1`: a body, field by field
+
+**EVERY BODY IS WRITTEN IN DECLARATION ORDER**: the root's, a nested table's,
+an array element's, a map entry's, a union arm's table, and a node record's.
+Declaration order is the order the fields appear in the WRITING build's
+declaration, a field inside an `if` group at the place the group declares it.
+It is the order the reference has always written in (§3, "Field ORDER"), and
+the C++ writer writes in it too. A reader accepts any order (§3); a writer
+writes this one.
+
+**EACH FIELD IS WRITTEN OR ELIDED BY ONE TABLE, AND THE TABLE IS COMPLETE.** A
+written field is its header (the id reference, then the kind byte, §3) and its
+payload. An elided field writes nothing and spends nothing in the id table
+(§22.5). A `| required` field (§2.3) is never elided: it is written whatever
+it holds, by the row's own framing, and its EMPTY shapes are spelled out: a
+`None` union is its header and the arm reference `0`; a null pointer is its
+header and the index `0`; an empty `[E]T` is its header, `L = 2`, the element
+kind and `N = 0`; an empty counted array, map or text is its header and the
+empty body or `L = 0`; an all-default nested body is `L = 1` and its
+terminator. A field in an `if` group whose guard is FALSE is elided whatever
+its storage holds (§3). **A `| deprecated` FIELD IS WRITTEN AS HELD on this
+form**, under the same elision as any field, because a file is never
+clobbered: a value an older build wrote is carried, not reset (§2.10). The
+fixed form is the other way, and §22.6 says so.
+
+| the field | elided when | when written |
+|---|---|---|
+| a bare integer, `bool`, `bits(N)`, an enum, a `flags` mask, a fixed-point value, a 128-bit integer, a `timestamp` | it equals its declared default (zero when none is declared) | the kind of §3's mapping, the payload at its width |
+| a PLAIN `float32`/`float64` | its BIT PATTERN equals the default's, so a `-0` against a `+0` default rides (§3.3) | the bit pattern as held, never normalized |
+| a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the bit pattern as held |
+| `string(N)`, `string` | its bytes equal the declared default's (empty when none is declared) | kind `12`, `L` then the bytes as held, no normalization of any kind |
+| `wstring(N)` | it is empty (it takes no default, SPEC.md §4.12) | `L` = twice the unit count, then the units |
+| a nested `T` by value (a `type` or a `table`) | its body would be its terminator alone: every field of it elided, and no retained field in it (§6.6) | kind `13`, `L`, the body |
+| `?T`, `?[..]T`, `?map` (an optional) | it is absent | ALWAYS when present, even entirely default: a present optional array or map with no element writes its two-byte body, element kind and `N = 0` |
+| `*T`, `*bytes`, `*string`, `*wstring` (a pointer or blob slot) | it is null | ALWAYS when not null, even when the node is entirely default: kind `17`, the node index (§22.3) |
+| `[N]T` whose element is NOT kind `13` | EVERY element equals its default, a plain float element compared by BIT PATTERN as above | all `N` elements |
+| `[N]T` whose element is kind `13` (a `type` or a `table`) | NEVER: position is identity, so the field always rides | all `N` elements, each its own `L` and body, an all-default element as `L = 1` and its terminator |
+| `[..N]T`, `[]T`, a text list | the live count is `0` | the live count and that many elements |
+| `bytes(N)` | its bytes equal the declared default's (empty when none is declared) | kind `14` over element kind `6`: `L`, `0x06`, `N`, the bytes, so two bytes `01 02` are `ref 0E 04 06 02 01 02` |
+| `[E]T` (enum-keyed) | no slot is present | the present slots in ascending ORDINAL of the key enum, each `key reference, L, element`; a slot holding its default (a table slot whose body is its terminator alone) is not present (§3.2) |
+| a union | it is `None` | the arm reference, the arm's kind byte, `L`, the arm payload (§3's arm table); a SET arm is never elided, whatever it holds |
+| a plain `map[K]V` | it holds no entry | §22.2.1 |
+
+Go holds this table in `encodeField` (`internal/tablewire/encode.go`), and the
+C++ writer in the generated `SaveBodyFields`. **The two agree on every row**,
+and the conformance corpus holds each row with a pinned wire (§22.7).
+
+**A WRITTEN PAYLOAD IS ALWAYS ITS EXACT BYTES**:
+
+- **EVERY LEB128 IS MINIMAL**: every reference, `L`, count, node index and
+  node count is the shortest LEB128 that spells the value (§3), seven value
+  bits a byte, the lowest group first, the high bit set on every byte but the
+  last. There is no padded spelling and no fixed-width spelling of a
+  LEB128-framed value.
+- **THERE IS NO ZIGZAG ON THIS WIRE.** A signed integer rides two's
+  complement at its storage width, fixed width, little-endian (§3's payload
+  table); LEB128 frames only unsigned quantities (references, lengths, counts,
+  indices).
+- **EVERY FIXED-WIDTH NUMBER IS LITTLE-ENDIAN**, a 128-bit value as its low
+  64-bit half then its high half (§3).
+- **`L` IS THE EXACT BYTE LENGTH OF WHAT FOLLOWS IT**, computed before the
+  bytes are written, and nothing is ever patched in place: Go builds a nested
+  body before its length, and the C++ writer measures it first. The two are
+  the same number because measure and save walk one order (§9).
+- **A `bool` IS `0` OR `1`**, and a float is finite: a writer refuses a NaN
+  and an infinity by name (§3) and never writes one.
+- **A VALUE OUTSIDE ITS FIELD'S DOMAIN IS REFUSED, `invalid_value`, ON EVERY
+  FORM**: a ranged or fixed-point value off its bounds, a `bits(N)` past `N`
+  bits, a count past its bound, a text past its capacity. Nothing is written
+  for a refused value, and no writer clamps or masks one into range. The
+  mechanism per leg is the write contract's (SPEC.md §5; mas-bandwidth/schema
+  #2792): a leg that refuses in every build refuses here, and the C, C++ and
+  other assert legs refuse in their debug builds, where a release build's
+  bytes for a broken contract are outside it ("In low level languages like
+  C/C++ our intent is to do this at debug time for speed", the project owner).
+- **KIND `31` IS NEVER WRITTEN** by a writer of this major, and kind `32` is
+  written only as a payload-free arm, `L = 0` (§3).
+
+#### 22.2.1 Arrays, unions and maps
+
+- **AN ARRAY** (`[N]T`, `[..N]T`, `[]T`, `bytes(N)`, a text list, and a map) is
+  kind `14`, `L`, the element kind byte, `N`, then the elements in INDEX
+  ORDER. `N` is the declared extent for `[N]T` and the live count otherwise.
+  An element is never elided inside an array: a table element is its own `L`
+  and body (an all-default one `L = 1`, `0x00`), a union element whose union is
+  `None` is the single byte `0`, a pointer element that is null is the index
+  `0`, an enum element that is `None` is the reference `0`, and a scalar
+  element is its width (§3, array elements).
+- **A UNION** is the arm reference to the SET arm's id, the arm's kind byte by
+  §3's arm table, `L`, and the arm payload. The arm's id is its name's
+  `fnv1a64` (§5), never its position.
+- **A MAP** is kind `14` over element kind `13`: one generated `{ key, value }`
+  entry per key, **IN ASCENDING KEY ORDER, with no key twice** (§2.8). An entry
+  is never elided, because its key is its identity. **AN ENTRY IS AN ORDINARY
+  BODY**: the `key` field then the `value` field, each by the elision table
+  above, so a key at its default (`0`, or the empty string) is not written
+  inside its entry, and a value at its default is not written either; an
+  entry whose key and value are both default is `L = 1` and its terminator.
+  Go and the C++ writer both elide inside the entry today, and the corpus
+  pins it (`edge_map_keys`, `edge_text_keys`).
+
+**THE KEY ORDER, PER KEY KIND, AND THE ONE COMPARE EACH LEG SPELLS** (§2.8):
+
+| key | compare | the trap it closes |
+|---|---|---|
+| `int8` … `int64` | the SIGNED value | `-1` before `0`; a compare of the two's complement bytes or of the unsigned bits puts `-1` last |
+| `uint8` … `uint64` | the UNSIGNED value | `128` after `127`, `0x80000000` after `0x7FFFFFFF`, `2^63` after `2^63 - 1`: a signed compare (Java's `byte` and `long`, C#'s `sbyte`) puts the high half first. Java spells `Integer.compareUnsigned` and `Long.compareUnsigned`, and widens a `byte` with `& 0xFF` |
+| `uint16`/`uint32`/`uint64` | by VALUE, never by the little-endian bytes | `256` (`00 01`) after `255` (`FF 00`) |
+| `string(N)`, `string` | the UTF-8 BYTES, unsigned, `memcmp` over the common length, then the shorter first | never UTF-16 code units (Java, C#, JavaScript and Dart compare strings in UTF-16, which puts U+1F600 below U+FF61, and U+FF61 is first in byte order), never a locale or a case fold (`Z` is `0x5A`, before `a`), never a code point compare that a surrogate pair skews |
+
+**A BUILDER HOLDS ONE ENTRY PER KEY**: an insert of a key already present
+replaces the entry (§2.8), so a writer never meets two entries under one key
+and never has a duplicate to order. A writer whose entries are already
+ascending (a region loaded from a wire, which the reader verified ascending,
+or a cook) writes them as they lie; a builder's entries are sorted at the
+write, and a STABLE sort is not required because no two keys compare equal.
+
+### 22.3 Form `1`: the node numbering, and the node table
+
+**THE NUMBERING IS THE FIRST-VISIT ORDER OF ONE DEPTH-FIRST PRE-ORDER WALK FROM
+THE ROOT** (§3.1), and the walk is pinned to the step:
+
+1. Index `0` is null and index `1` is the root. The root's records start at
+   `2`, in the order they are first reached.
+2. A body is walked FIELD BY FIELD IN DECLARATION ORDER, skipping exactly the
+   fields §22.2 elides because nothing is there to walk: a false guard's
+   fields, an absent optional, a null pointer. A `| deprecated` pointer is
+   written as held (§22.2), so it is walked and numbered like any other.
+3. A POINTER (a `*T` field, a pointer element, a pointer arm) to a node not
+   yet numbered numbers it NOW, with the next index, and then the walk
+   DESCENDS INTO THAT NODE before it takes the next field or element of the
+   body it came from. That is what depth-first pre-order means here: a chain
+   `head -> l1 -> l2 -> l3` numbers all three before the walk reaches the
+   field after `head`, where a breadth-first walk would number that field's
+   node second.
+4. A pointer to a node ALREADY NUMBERED is a SHARE: it takes that index and
+   the walk does not descend again. A diamond is one node under one index,
+   numbered where it was first reached.
+5. A BY-VALUE EDGE is descended in place, at its field's position: a nested
+   table, every element of an array in index order, every present slot of an
+   enum-keyed array in ordinal order, a present optional's value, a union's
+   SET arm, and every entry of a map in ASCENDING KEY ORDER (§22.2.1). A
+   by-value edge declared before a pointer field reaches its nodes first
+   (`stream_arm_first`, §3.1).
+6. A BLOB (`*bytes`, `*string`, `*wstring`) is numbered as a node with no
+   descent.
+7. **A CYCLE CANNOT BE WRITTEN**: a pointer to a node still OPEN on the walk's
+   path is refused at save by name (`data_cycle`, §3.1), and a blob named from
+   two slots is refused (`blob_shared`, §2.5). So the graph a writer writes is
+   a DAG rooted at `1`, and every DAG has exactly one numbering under this
+   walk.
+
+**THE NODE-TABLE FIELD'S PAYLOAD** is the node count, then one record per
+index from `2` upward: the record's type id REFERENCE (the target table's
+name, or `bytes`, `string`, `wstring` for a blob, §3.1), the body's `L`, then
+the body, written by §22.2 exactly as any body (a blob's body is its bytes).
+
+Go numbers in `Number` (`internal/tablewire/nodes.go`) and the C++ writer in
+the generated numbering walk; measure, save, `Lock` and `Cook` all walk this
+one order (§3.1, §6.3, §7.6). The corpus pins the walk with `graph_shared`,
+`stream_arm_first`, `node_diamond_chain` and `edge_graph_diamond`, whose
+chain-before-tree order a breadth-first walk numbers differently. The walk is
+modelled in `tla/NodeNumbering.tla` over POINTER-ONLY graphs (a by-value
+edge splices its body's slots in at its field's position, so it is the same
+walk, and the model does not draw it): the stack loop a port writes, checked
+against this recursive definition over every graph of four nodes with two
+ordered pointer slots each, with the cycle refusal, and two reversed witnesses
+(slots walked last to first, and breadth first) that each go red.
+
+### 22.4 Form `1`: retained unknown fields
+
+A `SaveRetain` writes every retained field AT THE END OF THE BODY IT WAS
+RETAINED FROM, after that body's declared fields, IN THE ORDER IT WAS
+RETAINED, which is the order the load met them (§6.6). In the ROOT the tail
+sits BEFORE the node-table field (§22.1, step 3). A retained field is written
+as its header and payload with every id it names RE-INTERNED into this
+file's id table at the place it is written (§22.5), and every length that
+frames a rewritten reference recomputed. A body that holds a retained field
+does not elide (§6.6). The result is a fixed point: a file saved once and
+loaded and saved again is the same bytes (`retain-save`, §6.6).
+
+### 22.5 Form `1`: the id table
+
+**THE ID TABLE IS THE SEQUENCE OF DISTINCT IDS IN THE ORDER THEIR REFERENCES
+FIRST APPEAR IN THE BYTES WRITTEN**, from the form byte through the last node
+record, and nothing else (§3). The reference `0` names no id, so it is never
+an entry and takes no place in the order; an id whose HASH is `0` is an
+ordinary id, entered at its first nonzero reference like any other. Because a field's header is written
+before its payload, a field's id precedes every id inside its payload; a
+union's field id precedes its arm's; an enum-keyed slot's key precedes the
+element's ids; a node record's type id precedes its body's; the node-table id
+precedes every record's. A retained field's ids take their place in this one
+sequence where the field is written (§6.6). An elided field's id appears
+nowhere, so a writer that interns an id before it knows the field elides
+withdraws it (Go's `mark`/`rollback`; the C++ writer measures first). The
+count is the number of entries, a fixed little-endian `u64`.
+
+### 22.6 Forms `2`, `3`, the cook, and the packet wire
+
+**THE MESSAGE FORM, form `2`** (§3.3). The batch writes the form byte `2`,
+`M - 1` in eight bits, then the `M` bodies **in the order the caller handed
+them to `SaveMessages`**: the writer never reorders, merges or splits a batch,
+and refuses `M = 0` and `M > 256` by name (§3.3). A body is its fields in
+declaration order under §22.2's elision table (§3.3, "Elision, defaults, and
+what a reader reports"), each a reference at `bits_required(0, E)` bits from
+the CONNECTION's vocabulary and the packet wire's payload for that
+declaration, then the body's zero reference. A quantized (compressed) float
+is the packet wire's `PUT` of its quantized index, with the packet wire's two
+roundings and no fused multiply-add (PACKET-WIRE-ALGORITHM.md §2.5). **A
+COMPRESSED FLOAT ELIDES BY ITS HELD VALUE, compared `==` with its default
+BEFORE QUANTIZATION** (§3.3), so a held value that quantizes to the default's
+index but is not the default still rides. Every align pad bit and the final
+flush's pad bits are zero. A value outside its domain refuses the whole batch
+`invalid_value` (§22.2), and the bit stream never keeps a value's low bits: a
+`flags` mask is the one payload written at a width narrower than its storage
+on purpose, its bits past the writer's own variant count dropped by width, the
+row §3.3 moves for this form. **THE INTEGRITY TRAILER IS PER BATCH** when the
+root declares `integrity` (§2.14): the little-endian CRC-32C of every byte of
+the batch, form byte through the final pad, appended after it. **THE ANNOUNCEMENT IS A
+COMPILE-TIME CONSTANT** (§3.3): a form-`1` file whose body is the build version
+then the vocabulary, the vocabulary's entries in the cook projection's order
+followed by the reserved tail (§3.3, "The vocabulary"), so a backend emits it
+as a constant byte array and no two backends can order it differently.
+
+**THE FIXED FORM, form `3`** (§3.4, FIXED-FORM-ALGORITHM.md §2, §3.1). The
+file header is the form byte `3`, SEVEN ZERO BYTES, the layout hash (`u64`
+LE), the layout's byte length (`u32` LE) and the layout bytes, which are a
+compile-time constant of the build (FIXED-FORM-ALGORITHM.md §1); then the
+records, each the hash and the root's body. **A RECORD IS WRITTEN ONTO A
+ZEROED TEMPLATE**, so every byte of SLACK is ZERO: the bytes past a counted
+array's live count, past a text's or a byte buffer's used length, behind a
+narrower union arm, and the payload of an absent optional. A count, a length,
+a present flag or a union tag always stands in front of the slack it governs.
+There is no padding between fields (§3.4), so slack is the only byte a value
+does not decide, and it is pinned to zero. A writer stores the LIVE extent
+only: a counted array writes `count` elements and never an unused slot's
+storage, and an absent optional writes its flag `0` and skips the payload store
+(FIXED-FORM-ALGORITHM.md §3.1, fixes 1 and 13). **A `| deprecated` SLOT
+CARRIES ITS DEFAULT IMAGE, FOR EVERY SHAPE** (§3.4): whatever the value holds,
+a deprecated field is written as its type's reset value would write it (a
+scalar its declared default or zero, a text its default, a counted array its
+empty count, an optional absent, a nested type its own default body), and a
+deprecated union arm of a `type` or `table` is that type's default body, an
+arm of any other shape the template's zeros, because an arm takes no specified
+default. Go copies the owner's default body and the C++ writer writes the
+field from the owner's reset value. **THE INTEGRITY TRAILER IS PER FILE** when
+the root declares `integrity` (§2.14): the little-endian CRC-32C of every byte
+before it, header, layout and every record, after the last record. The lineage
+and the plans (§21.5) are compile-time data in the generated code and never
+ride the file.
+
+**THE COOK** (§7.1, §7.2, §7.6). The header words are written in the cook's
+byte order, the two reserved words zero; the nodes are laid out in §22.3's
+numbering order, with the one difference that a cook does not refuse a blob
+named from two slots (§22.3 step 7's `blob_shared`): a cook's slots address
+one region, so a shared blob is one node there. The root sits at offset `0`,
+each node at
+`align_up( offset, alignof )` for its own type; every byte the layout does not
+assign a value is ZERO: the padding between storage pieces and between nodes,
+an unset union arm's bytes, the slots past a counted array's live count, the
+bytes past a text's terminator, the tail that rounds `data_length` up to the
+region's alignment. A map's entries lie in ascending key order (§2.8). The
+attribution part is always written, `16 × nodes` bytes in index order. `schema cook`
+is the reference, and a runtime's `Cook` writes its bytes in both orders
+(`cook-write`, §7.6).
+
+**THE PACKET WIRE** (SPEC.md §4, PACKET-WIRE-ALGORITHM.md §2). The writer is a
+straight line of field operations in declared order; arrays write their count
+then that many elements in index order; a union writes its positional tag then
+the selected arm only; every `reserved(N)`, every `align` pad and the final
+flush are zero bits; a compressed float takes §2.5's two roundings. Nothing
+in the packet wire is the writer's choice, and the fixtures of
+PACKET-WIRE-ALGORITHM.md §6 hold it.
+
+### 22.7 The gate: read every input, write it back, compare the bytes
+
+**THE CONFORMANCE HARNESS IS THE GATE, AND IT HOLDS EVERY LEG TO THE CANONICAL
+BYTES ON EVERY WRITING SURFACE** (test/conformance/README.md):
+
+| surface | what each leg reads | what it writes | held to |
+|---|---|---|---|
+| `wire` | every instance's canonical wire | `Save` of the value | the instance's own wire, byte for byte |
+| `rewrite` | every input that READS and is not canonical: each evolution (`report`) row and each framing row that reads, and the hand-built spellings of this section (fields out of declaration order, an id table out of first-use order, a field written twice) | `Save` of the value the read leaves | the canonical bytes the oracle writes for that value, `testdata/conformance/tables/rewrite/<case>.bin` |
+| `message` | every message-form batch | `SaveMessages` | the batch, byte for byte |
+| `retain-save` | every retention row | `SaveRetain` | the pinned save |
+| `cook-write` | every instance's wire | `Cook`, both byte orders | `schema cook`'s bytes |
+| `json-read` | every instance's text, and one HAND-AUTHORED text (`edge_map_keys_unsorted`) whose map keys arrive out of order, so a leg's BUILDER sort is what lands the bytes | `Save` of the value | the instance's wire |
+
+**THE GATE'S EXCEPTIONS, NAMED.** A value no writer can write is not a
+rewrite row: a blob named from two slots (`blob_shared`, §2.5) is refused at
+save by every writer, so its instances answer the named refusal on `wire` and
+it has no canonical bytes (and under the strict read it is refused on read as
+well). **Form `3`'s bytes are not a harness surface**: they are held per leg
+against the C++ reference's byte oracle, `make tables-fixedform-corpus`
+(test/tables/fixedform_dump.cpp, with the values each file holds in its
+manifest), by each leg's `tables-<lang>-fixedform` gate and the conformance
+rows that read it.
+
+Each surface compares every leg against ONE expected byte string, so two legs
+that pass write identical bytes: the cross-leg equality is a consequence and
+needs no pairwise compare. **THE CANONICAL BYTES OF A REWRITE ROW ARE A FIXED
+POINT**: `make conformance-generate` reads each input with the oracle, writes
+the value, reads those bytes again and writes them again, and refuses a row
+whose second write differs.
+
+**THE EDGE VECTORS** are one instance per degree of freedom above, each a trap
+for one wrong implementation of it: `edge_map_keys` (string keys whose byte
+order and UTF-16 order disagree, `Z` before `a`, the empty key, a prefix
+before its extension; `uint32` keys across `2^31`; `uint8` keys across `128`;
+`int16` keys across zero; two keys and a pointer field naming one node; an
+entry whose value is an empty map), `edge_text_keys` (`uint16` keys whose
+little-endian bytes sort the other way; `int32` keys at both extremes; keys
+and values at their defaults), `edge_by_name` (unbounded string keys past 127
+bytes, two of them sharing a 129-byte prefix and differing in the last byte,
+keys U+0080 and U+00FF as UTF-8; a present empty
+optional map; a required field at its default; the integrity trailer),
+`edge_u64_keys` (`uint64` keys at `2^63 - 1`, `2^63` and `2^64 - 1`, which a
+compare on a signed 64-bit integer orders backwards, and `string(300)` keys of
+199 and 200 bytes, one the other's prefix),
+`edge_graph_diamond` (a diamond, a chain the depth-first walk numbers before
+the tree, shares reached from an array of by-value tables) and
+`edge_stream_union` (a union arm that numbers nodes before the pointer fields
+declared after it, a fixed array of pointers whose first slot is null).
+
+**THE NEGATIVE CONTROLS** (`make conformance-negative-control-write-order`)
+break the Go leg's writer three times, in copies of its generated code, and
+require the gate to go red on the surface that owns the break: a loaded
+region's map entries walked DESCENDING turn `go / wire` red on
+`edge_map_keys`; a builder's map written in INSERTION ORDER turns
+`go / json-read` red on `edge_map_keys_unsorted` while `wire` stays green; and
+the numbering walk taking a body's fields in REVERSE turns `go / wire` red on
+`edge_graph_diamond` and `go / rewrite` red on `node_diamond_chain`. Each run
+also requires what its break cannot reach to stay green, so the control
+localizes the break rather than reddening everything.

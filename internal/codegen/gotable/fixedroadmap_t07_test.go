@@ -120,7 +120,7 @@ func t07GoW4(t *testing.T) {
 	if !strings.Contains(block, "if v < 0 || uint32(v) > capn") || !strings.Contains(block, "return TableRefuseLengthOverBound.Error()") {
 		t.Error("W4: a length past the capacity refuses by name, once (§3.1, §4.5)")
 	}
-	if !strings.Contains(t07RuntimeCase(t, "tableFixedText", "tableFixedOrdinal"), "binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))") {
+	if !strings.Contains(t07RuntimeCase(t, "tableFixedText", "tableFixedOrdinal"), "binary.NativeEndian.PutUint32(dst[p.Dst:], uint32(v))") {
 		t.Error("W4: the reader lands the USED length (§3.1)")
 	}
 	if strings.Contains(block, "Malformed") {

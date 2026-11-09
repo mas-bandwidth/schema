@@ -837,6 +837,16 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 	return true
 end
 
+-- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
+-- (docs/PORT-LUAU.md, THE TYPE MAPPING)
+local function put(dst: any, i: number, x: any)
+	if typeof(dst) == "buffer" then
+		buffer.writeu8(dst, i - 1, x)
+	else
+		dst[i] = x
+	end
+end
+
 -- AN ENUM-KEYED ARRAY (§2.4, §3.2): its own kind 16, each element a key
 -- reference and then its framed payload. A key this reader cannot name is
 -- skipped; an element kind the declaration does not name is one kind_mismatch.
@@ -903,7 +913,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			else
 				x = scalar_at(payload, e or {}, ek, report)
 			end
-			if at > 0 and dst ~= nil and x ~= nil then dst[at] = x end
+			if at > 0 and dst ~= nil and x ~= nil then put(dst, at, x) end
 		end
 	end
 	r.at = endpos
@@ -1047,16 +1057,6 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	-- its live length rides as n, the table.pack convention, and the save reads it
 	if fd.array == "list" and fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob") then dst.n = got end
 	return true
-end
-
--- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
--- (docs/PORT-LUAU.md, THE TYPE MAPPING)
-local function put(dst: any, i: number, x: any)
-	if typeof(dst) == "buffer" then
-		buffer.writeu8(dst, i - 1, x)
-	else
-		dst[i] = x
-	end
 end
 
 -- the bytes one text-list element contributes to its total
@@ -2307,25 +2307,45 @@ local function wireDamage(b: buffer, top: any, ids: { integer }): boolean
 			if scanPayload(p, nxt, ek) then return true end
 			p = nxt
 		end
-		return false
+		-- bytes left inside an array's or map's L after its elements are damage
+		return p ~= e
 	end
 	local function scanKeyedBody(s: number, e: number): boolean
 		if e - s < 2 then return true end
 		local ek = buffer.readu8(b, s)
 		local count, p = leb(b, s + 1, e)
 		if count == nil then return true end
+		local seenKeys: { [number]: boolean } = {}
 		for _ = 1, count do
 			local key, q = leb(b, p, e)
-			if key == nil then return true end
+			if key == nil or key == 0 or key > #ids then return true end
+			if seenKeys[key] then return true end
+			seenKeys[key] = true
 			local n, after = leb(b, q, e)
 			if n == nil or after + n > e then return true end
 			if scanContent(after, after + n, ek) then return true end
 			p = after + n
 		end
-		return false
+		-- bytes left inside a keyed array's L after its slots are damage
+		return p ~= e
 	end
 	scanContent = function(s: number, e: number, kind: number): boolean
-		if kind == 13 then
+		-- an L-framed fixed-width payload is exactly its kind's width: a
+		-- keyed slot, union arm or array-of-framed payload carrying extra
+		-- or missing bytes is damage, for wide scalars (fixed-point and
+		-- 128-bit kinds included) as for any other fixed-width kind
+		local w = width_of(kind)
+		if w > 0 then return e - s ~= w end
+		if kind == 12 then
+			return not utf8_ok(b, s, e - s)
+		elseif kind == 33 then
+			if (e - s) % 2 ~= 0 then return true end
+			return not wide_ok(b, s, e - s)
+		elseif kind == 32 then
+			return e ~= s
+		elseif kind == 31 then
+			return false
+		elseif kind == 13 then
 			local inner = walkBody(b, s, e, ids)
 			if inner == nil or inner.term + 1 ~= e then return true end
 			return checkFields(inner.fields)
@@ -2334,14 +2354,25 @@ local function wireDamage(b: buffer, top: any, ids: { integer }): boolean
 		elseif kind == 16 then
 			return scanKeyedBody(s, e)
 		elseif kind == 17 then
-			local idx = leb(b, s, e)
-			if idx == nil or idx > recordCount + 1 then return true end
+			local idx, p = leb(b, s, e)
+			if idx == nil or p ~= e or idx > recordCount + 1 then return true end
 			edges[idx] = true
 			return false
+		elseif kind == 30 then
+			local ref, p = leb(b, s, e)
+			if ref == nil or p ~= e or ref > #ids then return true end
+			return false
 		elseif kind == 15 then
-			return scanPayload(s, e, kind)
+			local ref, p = leb(b, s, e)
+			if ref == nil then return true end
+			if ref == 0 then return p ~= e end
+			if ref > #ids or p >= e then return true end
+			local kb = buffer.readu8(b, p)
+			local n, after = leb(b, p + 1, e)
+			if n == nil or after + n ~= e then return true end
+			return scanContent(after, after + n, kb)
 		end
-		return false
+		return true
 	end
 	scanPayload = function(at: number, e: number, kind: number): boolean
 		if kind == 17 then

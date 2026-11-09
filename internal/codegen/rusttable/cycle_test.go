@@ -21,7 +21,8 @@ import (
 // and node_cycle_mid, plus an unreached cycle, are read through graphdemo's
 // ListNode load and load_retain, and each must report malformed and hand back
 // None with both retention stores empty; an overwritten self-edge in the same
-// body loads clean; node_chain_two and node_diamond_chain (Scene, 82 shared
+// body is a repeated field id and damage under the one read; node_chain_two and
+// node_diamond_chain (Scene, 82 shared
 // nodes and 2^40 paths) must load clean, the diamond inside a linear-pass
 // deadline; and pointer cycles through list elements, map values, and false-
 // guard slots are refused while their acyclic twins load clean.
@@ -65,7 +66,9 @@ func TestCyclicWireIsDamageRustNegativeControl(t *testing.T) {
 			t.Errorf("the reversed witness did not fail on %s:\n%s", row, out)
 		}
 	}
-	for _, row := range []string{"node_chain_two", "node_diamond_chain", "overwritten_self_cycle"} {
+	// overwritten_self_cycle is not in this list: its repeated field id is
+	// damage under the one read, whether or not the cycle refusal is disabled.
+	for _, row := range []string{"node_chain_two", "node_diamond_chain"} {
 		if strings.Contains(out, "FAIL: "+row) {
 			t.Errorf("the reversed witness failed on the acyclic %s too:\n%s", row, out)
 		}
@@ -153,7 +156,7 @@ func runRustCycleProbe(t *testing.T, edit func(string) string) (string, error) {
     {
         let mut r = TableReport::default();
         let v = list_node_load(&OVERWRITTEN_WIRE, &mut r);
-        check(!r.damaged && v.as_ref().is_some_and(|n| n.next.is_none()), "overwritten_self_cycle: overwritten self-edge should load clean");
+        check(r.damaged && v.is_none(), "overwritten_self_cycle: a repeated field id is damage");
     }
 
     {

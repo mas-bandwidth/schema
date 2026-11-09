@@ -88,7 +88,7 @@ namespace Cards
             _report = report;
         }
 
-        // Report is the tolerant read report the load filled (the generated
+        // Report is the strict read report the load filled (the generated
         // TableReport, docs/SPEC-TABLES.md §16).
         public TableReport Report => _report;
 
@@ -110,7 +110,7 @@ namespace Cards
 
         // Load reads wire into a Record using the generated load
         // (docs/SPEC-TABLES.md §6.2; tables/cards/cards.go: Load). Failures
-        // and malformed wire throw; tolerant events ride in the returned
+        // and damaged wire throw; evolution events ride in the returned
         // report. The ORIGINAL wire is copied, never rewritten, so an old
         // input is preserved byte for byte. Load enforces the known-field
         // bounds without rewriting its input.
@@ -123,7 +123,7 @@ namespace Cards
                 Schema.CardLoad(card, wire, report);
                 throw new CardException("cards: wire is not a card");
             }
-            if (!Schema.CardLoad(card, wire, report) || report.Malformed || report.Refused)
+            if (!Schema.CardLoad(card, wire, report) || report.Damaged || report.Refused)
             {
                 throw new CardException("cards: wire is malformed");
             }
@@ -134,11 +134,11 @@ namespace Cards
         }
 
         // ReadStrict reads wire and refuses any data the current declaration
-        // cannot support: Unknown, KindMismatch, Clamped, Malformed and every
-        // load failure (docs/SPEC-TABLES.md §4: wire tolerance;
-        // tables/cards/upgrade.go: ReadStrict). A safe Widened event does not
-        // refuse. It returns no usable Record on rejection: the refusal is a
-        // thrown CardException and no bytes are published.
+        // cannot support: Unknown fields and every load refusal
+        // (docs/SPEC-TABLES.md §4; tables/cards/upgrade.go: ReadStrict). A
+        // safe Widened event does not refuse. It returns no usable Record
+        // on rejection: the refusal is a thrown CardException and no bytes
+        // are published.
         public static Record ReadStrict(byte[] wire)
         {
             TableReport report;
@@ -148,17 +148,7 @@ namespace Cards
                 throw new CardException("cards: strict: " + report.Unknown
                     + " unknown field(s), unsupported data");
             }
-            if (report.KindMismatch > 0)
-            {
-                throw new CardException("cards: strict: " + report.KindMismatch
-                    + " kind mismatch(es), unsupported data");
-            }
-            if (report.Clamped > 0)
-            {
-                throw new CardException("cards: strict: " + report.Clamped
-                    + " clamped value(s), unsupported data");
-            }
-            if (report.Malformed)
+            if (report.Damaged || report.Refused)
             {
                 throw new CardException("cards: strict: malformed wire, unsupported data");
             }
@@ -174,8 +164,8 @@ namespace Cards
         // retained load and the retained save; the known-field bounds are
         // checked before anything is published; and it returns no output,
         // throwing a named CardException, when any value would be lost —
-        // RetainLost, KindMismatch, Clamped or Malformed — or when the wire is
-        // refused. The input wire is never mutated and no replacement occurs
+        // RetainLost — or when the wire is damaged or refused. The input
+        // wire is never mutated and no replacement occurs
         // on error, and the result is idempotent: upgrading an already-upgraded
         // wire is byte-for-byte the same.
         //
@@ -277,9 +267,8 @@ namespace Cards
 
         // LossErr names the report events that make a rewrite unsafe
         // (docs/SPEC-TABLES.md §6.6; tables/cards/upgrade.go: lossErr): any
-        // retained field that could not be kept, any kind mismatch, any
-        // clamped value, or framing damage. Unknown, Retained and Widened
-        // alone are not loss (§4).
+        // retained field that could not be kept, or a damaged or refused
+        // read. Unknown, Retained and Widened alone are not loss (§4).
         internal static void LossErr(TableReport report)
         {
             if (report.RetainLost > 0)
@@ -287,17 +276,7 @@ namespace Cards
                 throw new CardException("cards: upgrade: " + report.RetainLost
                     + " retained field(s) lost, refusing to replace");
             }
-            if (report.KindMismatch > 0)
-            {
-                throw new CardException("cards: upgrade: " + report.KindMismatch
-                    + " kind mismatch(es), refusing to replace");
-            }
-            if (report.Clamped > 0)
-            {
-                throw new CardException("cards: upgrade: " + report.Clamped
-                    + " clamped value(s), refusing to replace");
-            }
-            if (report.Malformed)
+            if (report.Damaged || report.Refused)
             {
                 throw new CardException("cards: upgrade: malformed wire, refusing to replace");
             }
@@ -307,15 +286,14 @@ namespace Cards
         // or rewrite: a silent loss means the "task" the hash would cover is
         // incomplete, and an ordinary rewrite cannot carry unknown fields —
         // tla/CardHops.tla's reversed witness EditDropsUnknown is the fault
-        // this refusal keeps from happening (docs/SPEC-TABLES.md §4: wire
-        // tolerance; §6.6: retain-unknown; tables/cards/edit.go: refuseLossy).
+        // this refusal keeps from happening (docs/SPEC-TABLES.md §4;
+        // §6.6: retain-unknown; tables/cards/edit.go: refuseLossy).
         internal static void RefuseLossy(TableReport rep)
         {
-            if (rep.Unknown > 0 || rep.KindMismatch > 0 || rep.Clamped > 0 || rep.RetainLost > 0 || rep.Malformed)
+            if (rep.Unknown > 0 || rep.RetainLost > 0 || rep.Damaged || rep.Refused)
             {
                 throw new CardException("cards: record has loss events (unknown=" + rep.Unknown
-                    + " kindMismatch=" + rep.KindMismatch + " clamped=" + rep.Clamped
-                    + " retainLost=" + rep.RetainLost + " malformed=" + rep.Malformed
+                    + " retainLost=" + rep.RetainLost + " damaged=" + rep.Damaged
                     + "): refused, never hashed or rewritten");
             }
         }
@@ -332,8 +310,8 @@ namespace Cards
         // exact bytes, and each list is an unsigned 64-bit little-endian entry
         // count followed by its length-prefixed elements, so field and element
         // boundaries cannot collide (docs/SPEC-TABLES.md §5; tables/cards/
-        // edit.go: TaskHash). A null or lossy record (unknown or mismatched
-        // fields, clamped values, retain loss, malformed) is refused with an
+        // edit.go: TaskHash). A null or lossy record (unknown fields,
+        // retain loss, or a damaged or refused read) is refused with an
         // error and never hashed into an apparently valid digest.
         public static byte[] TaskHash(Record record)
         {
@@ -599,8 +577,8 @@ namespace Cards
 
         // FromJson builds a Record from JSON text through the generated text
         // read and the generated save (docs/SPEC-TABLES.md §16;
-        // tables/cards/cards.go: FromJSON). Unknown, mismatched, clamped and
-        // malformed inputs are refused, as are the customer bounds. Bytes are
+        // tables/cards/cards.go: FromJSON). Unknown fields and every read
+        // the generated parse refuses are refused, as are the customer bounds. Bytes are
         // published only on complete success; a refused write leaves no
         // destination and mutates nothing.
         public static Record FromJson(byte[] text)
@@ -613,14 +591,13 @@ namespace Cards
             }
             var card = new Card();
             var report = new TableReport();
-            if (!Schema.CardFromJson(card, text, report) || report.Malformed)
+            if (!Schema.CardFromJson(card, text, report) || report.Damaged || report.Refused)
             {
                 throw new CardException("cards: JSON is malformed");
             }
-            if (report.Unknown > 0 || report.KindMismatch > 0 || report.Clamped > 0)
+            if (report.Unknown > 0)
             {
                 throw new CardException("cards: JSON has loss events (unknown=" + report.Unknown
-                    + " kindMismatch=" + report.KindMismatch + " clamped=" + report.Clamped
                     + "): refused, never truncated");
             }
             CheckCard(card);

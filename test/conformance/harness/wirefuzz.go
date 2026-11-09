@@ -264,15 +264,15 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		}
 		encode = func() ([]byte, error) { return tablewire.EncodeMessages(r.model, batch) }
 	}
-	// Region decode on fixed or variable checks framing first.
-	if r.variable && !r.message && !r.builder {
-		if _, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data); refused {
+	// Region decode on fixed or variable checks framing and storage cap first.
+	if !r.message {
+		if size, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data); size > ir.MaxSizeBytes || (r.variable && !r.builder && refused) {
 			ans.report = Counts{Refused: true}
 			return ans, nil
 		}
 	}
 	ok, derr := decode()
-	strictOK := strictReportClean(&rep) && (r.message || strictWireCheckForRoot(r.def, data))
+	strictOK := strictReportClean(&rep) && ((r.message && strictMessageSkipDepthOK(r.def, r.vocabulary, data)) || (!r.message && strictWireCheckForRoot(r.def, data)))
 	if !strictOK || derr != nil || !ok {
 		rep.Refused = true
 	}

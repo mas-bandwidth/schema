@@ -156,13 +156,28 @@ digest = fn mod, table, value ->
   end
 end
 
-# The engine's reason names are its own; the port's :malformed is the corpus's
-# `damaged` (a read that reports a malformed event without naming a refusal).
+# The engine's reason names are its own. The manifest names only these
+# refusals; every other refusal the port can name — a range violation, a
+# malformed or a shared-node event — is the corpus's `damaged`.
+named_reasons =
+  MapSet.new([
+    "newer_form",
+    "message_form_as_file",
+    "no_vocabulary",
+    "second_announcement",
+    "vocabulary_too_large",
+    "batch_too_large",
+    "count_refusal",
+    "non_finite_float"
+  ])
+
 reason = fn
+  :count_over_extent_cap -> "count_refusal"
   :malformed -> "damaged"
   :shared -> "damaged"
-  :count_over_extent_cap -> "count_refusal"
-  r -> to_string(r)
+  r ->
+    name = to_string(r)
+    if MapSet.member?(named_reasons, name), do: name, else: "damaged"
 end
 
 # Measure, Save and the text writer on an accepted value; a raise in any of

@@ -11,6 +11,10 @@ for mode in wire json; do
         json) source=internal/codegen/cstable/json.go; sabotage=table-cs-json-field ;;
     esac
     go run ./tools/sabotage -name "$sabotage" -out "$dir/source.gotext" "$source"
+    if [ "$mode" = wire ]; then
+        sed -i -e "s/if (ids\[i\] == ids\[i - 1\]) { return false; }/if (ids[i] == ids[i - 1] \&\& count < 0) { return false; }/" \
+               -e "s/if (id == Read64(vocabulary, j)) { return false; }/if (id == Read64(vocabulary, j) \&\& count < 0) { return false; }/" "$dir/source.gotext"
+    fi
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$PWD" "$source" "$PWD" "$dir" > "$dir/overlay.json"
     go build -overlay="$dir/overlay.json" -o "$dir/schema" ./cmd/schema
     for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2 scalars scalars2 caption pointers blobs p2 w1 w2 lists widelist maps stream g1 backend vocab vocab9 r1 r2 rt1 featurewitnesses; do
@@ -44,7 +48,7 @@ for mode in wire json; do
         esac
         "$dir/schema" generate --lang cs --out "$dir/generated/$unit" "$input"
     done
-    "$dotnet" build test/conformance/cs --nologo -v quiet \
+    "$dotnet" build test/conformance/cs --nologo -v quiet -p:RunAnalyzers=false \
         -p:TablesGeneratedDir="$PWD/$dir/generated" \
         -p:BaseIntermediateOutputPath="$PWD/$dir/obj/" -o "$dir/checker"
     if [ "$mode" = wire ]; then
@@ -66,9 +70,9 @@ for mode in wire json; do
         for surface in wire report json-write block block-foreign block-dump forgery; do
             grep -Eq "^$surface +pass " "$dir/log" || { cat "$dir/log"; exit 1; }
         done
-        # Hostile JSON exercises the same reader, so it may also fail. Every
+        # Hostile JSON and cook-write JSON construction exercise the same reader, so they may also fail. Every
         # unrelated surface must remain green and the failure must be a value.
-        if grep '^  cs / ' "$dir/log" | grep -Ev '^  cs / json-(read|hostile):' >/dev/null; then
+        if grep '^  cs / ' "$dir/log" | grep -Ev '^  cs / (json-(read|hostile)|cook-write):' >/dev/null; then
             cat "$dir/log"; exit 1
         fi
         if grep -Eq 'driver exited|driver wrote nothing' "$dir/log"; then

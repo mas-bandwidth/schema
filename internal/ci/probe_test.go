@@ -9,12 +9,16 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Run the real probe recipe and compiler in a small isolated repository. A
 // supported port may produce Go source importing its runtime; the compiler's
 // final go test ./... must not discover that temporary package as its own.
 func TestWideScalarProbeModuleBoundary(t *testing.T) {
+	slowtest.Gate(t, "make and the Go toolchain (it builds cmd/schema and runs the wide-scalar probe recipe)")
+	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skipf("probe recipe requires make: %v", err)
 	}

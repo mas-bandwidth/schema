@@ -249,7 +249,7 @@ end
 
 -- ---- the owning facade (tables/cards/cards.go) -----------------------------------
 
--- readWire is the one tolerant read every facade read shares: the load
+-- readWire is the one strict read every facade read shares: the load
 -- into a zeroed report. Damaged input never publishes a partial record.
 local function readWire(wire)
   local report = newReport()
@@ -259,9 +259,9 @@ local function readWire(wire)
 end
 
 -- Load reads wire into a Record (docs/SPEC-TABLES.md §6.2). Refusals and
--- malformed wire are errors; tolerant events ride in the returned report. The
--- ORIGINAL wire is kept, never rewritten, so an old input is preserved byte
--- for byte.
+-- malformed wire are errors; the strict report rides in the returned record.
+-- The ORIGINAL wire is kept, never rewritten, so an old input is preserved
+-- byte for byte.
 function M.Load(wire)
   local root, err, report = readWire(wire)
   if err ~= nil then return nil, err end
@@ -282,12 +282,6 @@ function M.FromJSON(text)
   local root = codec.FromJSON(text, report)
   if root == nil or report.damaged or report.reason ~= nil then
     return nil, refuse("cards: JSON is refused: " .. tostring(report.reason or "malformed"), "malformed")
-  end
-  -- the text read is strict (docs/SPEC-TABLES.md §4): a kind change, an
-  -- out-of-range value or a repeated key refuses the whole text, as does an
-  -- unknown field, never truncated
-  if (report.kindChanged or 0) > 0 or (report.outOfRange or 0) > 0 or (report.repeatedKey or 0) > 0 then
-    return nil, refuse("cards: JSON is refused: a value the declaration cannot hold", "malformed")
   end
   if report.unknown > 0 then
     return nil, refuse(string.format("cards: JSON has %d unknown field(s): refused, never truncated", report.unknown),
