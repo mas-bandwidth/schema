@@ -822,7 +822,7 @@ func (g *cookGen) emitCookExtentValue(f *ir.Field, val, addr, ind string, write 
 	g.pf("%s  final %s = %s;\n", ind, u, val)
 	g.pf("%s  switch (%s.armTag) {\n", ind, u)
 	for i, arm := range un.Variants {
-		if arm.Void() || !(arm.F.IsList() || arm.F.IsMap() || fieldHasLists(g.unit, arm.F)) {
+		if arm.Void() || (!arm.F.IsList() && !arm.F.IsMap() && !fieldHasLists(g.unit, arm.F)) {
 			continue
 		}
 		g.pf("%s    case %d:\n", ind, i+1)

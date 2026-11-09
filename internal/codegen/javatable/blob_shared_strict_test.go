@@ -75,9 +75,9 @@ func runJavaBlobSharedStrict(t *testing.T, mutate func(unitName, fileName, src s
 				ok, err = tablewire.Decode(m, v, wire, &r)
 			}
 			if err != nil && !tablewire.ReadRefusal(err) {
-				return fmt.Errorf("%s retain=%v: oracle: %v", row.Name, retaining, err)
+				return fmt.Errorf("%s retain=%v: oracle: %w", row.Name, retaining, err)
 			}
-			reason := strings.SplitN(r.Reason, ":", 2)[0]
+			reason, _, _ := strings.Cut(r.Reason, ":")
 			damaged := (!ok || r.Refused) && reason == "wire_damaged"
 			refused := (!ok || r.Refused) && !damaged
 			ov := oracleVerdict{
@@ -135,8 +135,8 @@ func runJavaBlobSharedStrict(t *testing.T, mutate func(unitName, fileName, src s
 			elems = append(elems, fmt.Sprintf("(byte) 0x%02x", b))
 		}
 		ov := verdicts[tc.Name]
-		censusBody.WriteString(fmt.Sprintf("        checkCensus(%q, new byte[]{%s}, %q, %t, %t, %q);\n",
-			tc.Name, strings.Join(elems, ", "), tc.Saved, ov.refused, ov.damaged, ov.reason))
+		fmt.Fprintf(&censusBody, "        checkCensus(%q, new byte[]{%s}, %q, %t, %t, %q);\n",
+			tc.Name, strings.Join(elems, ", "), tc.Saved, ov.refused, ov.damaged, ov.reason)
 	}
 
 	censusPkg := javaPackageOf(censusUnit)
@@ -275,7 +275,7 @@ public final class BlobSharedStrictDriver {
 	}
 	javac, javaBin := javaTools(t)
 	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
-		return fmt.Errorf("javac: %v\n%s", err, out)
+		return fmt.Errorf("javac: %w\n%s", err, out)
 	}
 	wire, err := filepath.Abs(filepath.Join(repo, "testdata", "wire", "tables", "blob_shared.bin"))
 	if err != nil {
@@ -287,7 +287,7 @@ public final class BlobSharedStrictDriver {
 	}
 	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "BlobSharedStrictDriver", wire, swire).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("java: %v\n%s", err, out)
+		return fmt.Errorf("java: %w\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "BLOB SHARED STRICT OK ") {
 		return fmt.Errorf("unexpected output: %s", out)

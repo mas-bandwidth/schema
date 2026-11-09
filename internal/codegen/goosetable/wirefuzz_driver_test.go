@@ -47,7 +47,8 @@ func checkGooseRetainingReplies(t *testing.T, out []byte, retained uint32) {
 		h := out[:47]
 		out = out[47:]
 		n := int64(binary.LittleEndian.Uint64(h[39:]))
-		if name == "clean" {
+		switch name {
+		case "clean":
 			want := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 			if h[0] != 1 || !bytes.Equal(h[1:23], make([]byte, 22)) || !bytes.Equal(h[31:39], make([]byte, 8)) {
 				t.Errorf("clean: incorrect reply: %x", h)
@@ -59,7 +60,7 @@ func checkGooseRetainingReplies(t *testing.T, out []byte, retained uint32) {
 				t.Error("clean: default value wire changed")
 			}
 			out = out[int(n):]
-		} else if name == "evolution" {
+		case "evolution":
 			want, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt1_save.bin"))
 			if err != nil {
 				t.Fatal(err)
@@ -74,7 +75,7 @@ func checkGooseRetainingReplies(t *testing.T, out []byte, retained uint32) {
 				t.Error("evolution: retained save differs from committed oracle bytes")
 			}
 			out = out[int(n):]
-		} else {
+		default:
 			// Damage and unsupported forms expose no value; counters on damage are undefined.
 			if h[0] != 0 || n != -1 {
 				t.Errorf("%s: refusal exposed a value: %x", name, h)

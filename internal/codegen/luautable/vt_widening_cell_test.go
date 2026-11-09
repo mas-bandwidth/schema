@@ -84,7 +84,7 @@ func readEmittedRuntime(t *testing.T, dir string) string {
 // bytes — the clause that makes list_scalar_widen a refusal.
 func luauArrayTrailingBytesRefused(src string) bool {
 	const anchor = "got == keep and keep == count and sub.at < sub.e"
-	for _, line := range strings.Split(src, "\n") {
+	for line := range strings.SplitSeq(src, "\n") {
 		if strings.Contains(line, anchor) && strings.Contains(line, "report.malformed = true") {
 			return true
 		}

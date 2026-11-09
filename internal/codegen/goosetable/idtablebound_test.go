@@ -163,7 +163,8 @@ func TestGooseIdTableBoundNegativeControl(t *testing.T) {
 	red := idBoundRed(t, idBoundAnswers(t, sabotage(t, "wire_load.goose", "let IdTableBound: i64 = 4096;\n", "let IdTableBound: i64 = 4097;\n")))
 	var names []string
 	for _, r := range red {
-		names = append(names, r[:strings.Index(r, ":")])
+		name, _, _ := strings.Cut(r, ":")
+		names = append(names, name)
 	}
 	want := []string{"id_table_4097 plain", "id_table_4097 retain", "id_table_4097_value plain"}
 	if !slices.Equal(names, want) {

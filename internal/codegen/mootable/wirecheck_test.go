@@ -46,7 +46,7 @@ func framingVerdicts(t *testing.T, edit func(t *testing.T, g *generatedUnit)) (g
 			inputs[name] = readRoot(t, f[4])
 			fmt.Fprintf(&b, "do\n\tlocal rep = L.newReport()\n\tlocal v = L.ReadStrict(%q, inputs.%s, rep)\n\tprint(%q .. \" \" .. (if v ~= nil and not rep.damaged and rep.reason == nil then \"read\" else \"refused\"))\nend\n", f[3], name, f[1])
 		}
-		for _, line := range strings.Split(g.run(t, b.String(), inputs), "\n") {
+		for line := range strings.SplitSeq(g.run(t, b.String(), inputs), "\n") {
 			name, verdict, ok := strings.Cut(line, " ")
 			if !ok {
 				t.Fatalf("unit %s: probe line %q", key, line)

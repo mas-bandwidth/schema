@@ -239,10 +239,10 @@ func TestMooWireFuzzVerdictPipe(t *testing.T) {
 	slowtest.Gate(t, "moo (it builds and runs the wire-fuzz verdict pipe)")
 	generated := mooFuzzStagePipeUnits(t, mooFuzzPipeUnits, nil)
 	manifest := writeMooWireFuzzManifest(t, map[string]bool{
-		"tabledemo": true,
-		"graphdemo": true,
+		"tabledemo":  true,
+		"graphdemo":  true,
 		"streamdemo": true,
-		"blobdemo": true,
+		"blobdemo":   true,
 	})
 	for _, tc := range []struct {
 		name   string
@@ -251,7 +251,6 @@ func TestMooWireFuzzVerdictPipe(t *testing.T) {
 		{name: "plain"},
 		{name: "retain", retain: true},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			out := runMooWireFuzzVerdictPipe(t, generated, manifest, tc.retain, 200, true)

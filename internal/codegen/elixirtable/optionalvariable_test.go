@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -254,9 +255,7 @@ IO.puts("ok")
 	}
 
 	planted := map[string][]byte{}
-	for name, data := range files {
-		planted[name] = data
-	}
+	maps.Copy(planted, files)
 	elixirPatch(t, planted,
 		"defp clamp_count(n, %{max_count: max}, _report) when n > max,\n    do: {max, throw(:wire_damaged)}",
 		"defp clamp_count(n, %{max_count: max}, report) when n > max,\n    do: {max, report}")

@@ -22,6 +22,7 @@ package cpp
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -659,9 +660,7 @@ func packetDefaultsGenerated(t *testing.T) map[string][]byte {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		for file, data := range generated {
-			files[file] = data
-		}
+		maps.Copy(files, generated)
 	}
 	return files
 }

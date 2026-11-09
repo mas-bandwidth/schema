@@ -5979,7 +5979,7 @@ func WeaponConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 	{
 		es := src + 17
 		ed := dst + uint32(unsafe.Offsetof(WeaponConfig{}.Effect))
-		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(EffectRow{}.Type)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
+		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(EffectRow{}.Type)), Size: 1, DstSize: uint8(unsafe.Sizeof(Effect{}.Type)), Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
 		n++
 		{ // arm buff, ordinal 1
 			guardAt := n

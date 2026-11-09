@@ -202,14 +202,8 @@ func vtCellsCountOk(files map[string][]byte) error {
 		n += strings.Count(s, vtCellsOkAnchor)
 		if near == "" {
 			if i := strings.Index(s, "Verdict.BodyStopped"); i >= 0 {
-				a := i - 40
-				if a < 0 {
-					a = 0
-				}
-				b := i + 80
-				if b > len(s) {
-					b = len(s)
-				}
+				a := max(i-40, 0)
+				b := min(i+80, len(s))
 				near = s[a:b]
 			}
 		}

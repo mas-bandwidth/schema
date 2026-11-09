@@ -88,17 +88,14 @@ func goBuildDriver(t *testing.T, root, overlayPath string) string {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = filepath.Join(root, "test", "conformance", "go")
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if _, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(filepath.Join(root, "build", "tables-generated-go"))
 		goEnsureGeneratedTables(t, root)
 		retry := exec.CommandContext(ctx, "go", args...)
 		retry.Dir = cmd.Dir
-		if out2, err2 := retry.CombinedOutput(); err2 == nil {
-			return bin
-		} else {
-			out, err = out2, err2
+		if out2, err2 := retry.CombinedOutput(); err2 != nil {
+			t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err2, out2)
 		}
-		t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return bin
 }
@@ -110,7 +107,7 @@ func goReportAndRetainRows(t *testing.T, root string) ([]goReportRow, []goRetain
 		t.Fatal(err)
 	}
 	verdicts := map[string]string{}
-	for _, line := range strings.Split(string(reportsData), "\n") {
+	for line := range strings.SplitSeq(string(reportsData), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -126,7 +123,7 @@ func goReportAndRetainRows(t *testing.T, root string) ([]goReportRow, []goRetain
 	}
 	var reports []goReportRow
 	var retains []goRetainRow
-	for _, line := range strings.Split(string(manifestData), "\n") {
+	for line := range strings.SplitSeq(string(manifestData), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

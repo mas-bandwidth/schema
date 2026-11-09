@@ -114,21 +114,19 @@ func sqRetainMessageOracle(t *testing.T) (map[string][]byte, []byte, []byte) {
 	count := int(extraWire[len(extraWire)-8])
 	trailerStart := len(extraWire) - 8 - count*8
 	trailer := extraWire[trailerStart:]
-	mismatchBody := []byte{
+	mismatchWire := append([]byte{
 		1,                    // form 1
 		3, 12, 2, 0x68, 0x69, // extra = "hi" (captured into retain store)
 		2, 12, 0, // x with kind 12 (string) -> kind_mismatch on int32 field x
 		0, // root terminator
-	}
-	mismatchWire := append(mismatchBody, trailer...)
+	}, trailer...)
 
-	damagedRepeatBody := []byte{
+	damagedRepeatWire := append([]byte{
 		1,                    // form 1
 		3, 12, 2, 0x68, 0x69, // extra = "hi" (captured into retain store)
 		3, 12, 2, 0x79, 0x6f, // repeated unknown id 3 in the same body -> bodyDamaged
 		0, // root terminator
-	}
-	damagedRepeatWire := append(damagedRepeatBody, trailer...)
+	}, trailer...)
 
 	return saves, mismatchWire, damagedRepeatWire
 }

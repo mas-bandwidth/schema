@@ -21,6 +21,7 @@ package javatable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -451,9 +452,7 @@ func TestJavaVariableCellsStrictNegativeControl(t *testing.T) {
 
 	for cell, a := range javaVarCellAnchors {
 		planted := map[string]string{}
-		for name, src := range base {
-			planted[name] = src
-		}
+		maps.Copy(planted, base)
 		for _, w := range a.want {
 			planted[a.src] = strings.ReplaceAll(planted[a.src], w, "/* SABOTAGED: strict spelling removed */")
 		}

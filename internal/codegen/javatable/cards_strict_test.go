@@ -225,7 +225,7 @@ func javaCardsBuildAndRun(t *testing.T, javac, java, repo string, generated map[
 	javacArgs := append([]string{"--release", "17", "-nowarn", "-d", classesDir}, javaFiles...)
 	buildCmd := exec.Command(javac, javacArgs...)
 	if out, err := buildCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("javac failed: %v\n%s", err, out)
+		return fmt.Errorf("javac failed: %w\n%s", err, out)
 	}
 
 	manifestPath := filepath.Join(repo, "tables", "cards", "conformance", "MANIFEST.txt")
@@ -246,7 +246,7 @@ func javaCardsBuildAndRun(t *testing.T, javac, java, repo string, generated map[
 	runCmd := exec.Command(java, runArgs...)
 	runCmd.Dir = repo
 	if out, err := runCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("StrictCardsRunner failed: %v\n%s", err, out)
+		return fmt.Errorf("StrictCardsRunner failed: %w\n%s", err, out)
 	}
 
 	for _, surface := range javaCardsSurfaces {
@@ -285,11 +285,11 @@ func javaCardsCheckSurface(surface string, rows [][]string, outDir, expectedDir 
 	checkFile := func(name string) error {
 		got, err := os.ReadFile(filepath.Join(outDir, name))
 		if err != nil {
-			return fmt.Errorf("surface %s: missing output %s: %v", surface, name, err)
+			return fmt.Errorf("surface %s: missing output %s: %w", surface, name, err)
 		}
 		want, err := os.ReadFile(filepath.Join(expectedDir, name))
 		if err != nil {
-			return fmt.Errorf("surface %s: missing expected %s: %v", surface, name, err)
+			return fmt.Errorf("surface %s: missing expected %s: %w", surface, name, err)
 		}
 		if !bytes.Equal(got, want) {
 			return fmt.Errorf("surface %s: %s differs from expected:\ngot:\n%s\nwant:\n%s", surface, name, got, want)

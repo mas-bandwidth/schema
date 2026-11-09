@@ -165,7 +165,8 @@ func TestMooLoadRefusalReasonsNegativeControl(t *testing.T) {
 			})
 			var red []string
 			for _, b := range bad {
-				red = append(red, b[:strings.Index(b, ":")])
+				name, _, _ := strings.Cut(b, ":")
+				red = append(red, name)
 			}
 			slices.Sort(red)
 			want := slices.Clone(ctl.red)

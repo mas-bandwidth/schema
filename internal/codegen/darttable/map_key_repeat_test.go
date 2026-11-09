@@ -16,56 +16,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-func dartMapKeyCase(t *testing.T, b *strings.Builder, m *tabletext.Model, def *ir.Struct, name string, data []byte, wantCount, wantUnknown, wantMismatch, wantWidened int) {
-	t.Helper()
-	for _, retaining := range []bool{false, true} {
-		v := m.New(def)
-		var r tabletext.Report
-		store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
-		var ok bool
-		var err error
-		if retaining {
-			ok, err = tablewire.DecodeRetain(m, v, data, store, &r)
-		} else {
-			ok, err = tablewire.Decode(m, v, data, &r)
-		}
-		if !ok || err != nil || r.Refused || len(v.Fields[0].Entries) != wantCount || r.Unknown != wantUnknown || wantMismatch != 0 || r.Widened != wantWidened {
-			t.Fatalf("%s oracle count%d report%+v err%v", name, len(v.Fields[0].Entries), r, err)
-		}
-		text, err := m.Write(v)
-		if err != nil {
-			t.Fatal(err)
-		}
-		saved, err := tablewire.Encode(m, v)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var sr tabletext.Report
-		retained, err := tablewire.EncodeRetain(m, v, store, &sr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fn := dartName(def.Name)
-		load := fmt.Sprintf("w.%sWireLoad(data,r)", fn)
-		if retaining {
-			load = fmt.Sprintf("w.%sWireLoadRetain(data,store,r)", fn)
-		}
-		fmt.Fprintf(b, `{final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));
-for(var repeat=0;repeat<2;repeat++){
- final r=w.TableWireReport();final v=%s;
- check(!r.refused&&r.unknown==%d&&r.widened==%d&&r.retained==%d&&r.retainLost==%d,%q);
- check(w.%sToJson(v)==%q,%q);
- check(hex(w.%sWireSave(v))==%q,%q);
-`, hex.EncodeToString(data), load, r.Unknown, r.Widened, r.Retained, r.RetainLost, name+" report", fn, string(text)+"\n", name+" values", fn, hex.EncodeToString(saved), name+" bytes")
-		if retaining {
-			fmt.Fprintf(b, ` final sr=w.TableWireReport();final saved=w.%sWireSaveRetain(v,store,sr);
- check(hex(saved)==%q&&sr.retainLost==%d,%q);
-`, fn, hex.EncodeToString(retained), sr.RetainLost, name+" retained bytes")
-		}
-		b.WriteString("}}\n")
-	}
-}
-
 // dartMapKeyRefused pins a repeated or wrong-kind map key as a whole-load
 // refusal on both legs (docs/plans/strict-only.md decisions 5 and 6).
 func dartMapKeyRefused(t *testing.T, b *strings.Builder, m *tabletext.Model, def *ir.Struct, name string, data []byte) {
