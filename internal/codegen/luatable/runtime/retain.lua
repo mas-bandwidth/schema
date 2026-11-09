@@ -1305,9 +1305,10 @@ capture_body = function(T, atable, b, at, lim, desc, path, report, retain)
 end
 
 local function capture(T, name, bytes, retain, report)
+  local desc = T.Tables[name]
+  if desc ~= nil and desc.integrity ~= nil and #bytes >= 5 then bytes = bytes:sub(1, #bytes - 4) end
   local o = wire_open(bytes)
   if o == nil then return end
-  local desc = T.Tables[name]
   capture_body(T, o.table, bytes, 1, o.lim, desc, path_root(), report, retain)
   local raw = wire_nodes(bytes, o)
   for k, rec in ipairs(raw) do
@@ -1367,7 +1368,9 @@ local function save_retain(T, name, v, retain, report)
     w_u64(idx, id)
   end
   w_u64(idx, #ids.list)
-  return table.concat(idx.parts)
+  local out = table.concat(idx.parts)
+  if desc.integrity ~= nil then out = out .. string.pack("<I4", load.crc32c(out)) end
+  return out
 end
 
 local function fixed_refusal(name)
@@ -1406,6 +1409,7 @@ function S.LoadRetain(T, name, bytes, retain, report)
   -- a count past the int32 storage cap refuses the read (§2.9): nothing is
   -- captured, and the store is left empty
   if rep.reason == "count_over_extent_cap" then return nil end
+  if v == nil and (rep.reason ~= "non_finite_float" or rep.nonFiniteFloat ~= nil) then return nil end
   local retainedBefore, lostBefore = rep.retained, rep.retainLost
   capture(T, name, bytes, retain, rep)
   -- a retained unknown float that is not finite refuses the whole read, and

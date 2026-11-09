@@ -223,27 +223,48 @@
     },
     {
       "name": "base-c-conformance",
-      "when": "pull-request",
-      "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds.",
+      "when": "nightly",
+      "why": "The C JSON driver sabotage, alone: it overlay-rebuilds the compiler, regenerates the whole C table tree through it, rebuilds the complete C conformance driver and runs one harness leg. Split from the old three-target base-c-conformance group, whose control step measured 96 s on both run 42556155793 and run 42554833739 (127-134 s wall on the loaded fleet, past the 120 s per-commit rule), so the message and retain compiler probes that shared this job now run as base-c-conformance-message and base-c-conformance-retain in parallel rows. Moved nightly: alone on this branch its row measured 275 s wall (200 s control step) on run 42568368976 and 116 s wall (99 s control) on run 42578656888, so a single complete-driver compile cannot fit the per-commit rule on the loaded fleet; it moves to the nightly tier (certify.yml), where it still runs in full, while the message and retain probes stay on the pull request.",
       "targets": [
-        "conformance-negative-control-c",
-        "tables-c-message-negative-control",
+        "conformance-negative-control-c"
+      ]
+    },
+    {
+      "name": "base-c-conformance-message",
+      "when": "pull-request",
+      "why": "The C message control, alone: a wrong compile-time field slot in the generated C message writer, planted through a Go build overlay, must turn the independent wire comparison (TestCTableMessageSave) red. It pays one SCHEMA_SLOW compiler test build. Split from the old three-target base-c-conformance group, whose control step measured 96 s on both run 42556155793 and run 42554833739 (127-134 s wall), so it no longer pays the complete C driver compile in base-c-conformance before it starts.",
+      "targets": [
+        "tables-c-message-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-conformance-retain",
+      "when": "pull-request",
+      "why": "The C retention control, alone: a retained field dropped from the emitted C, planted through a Go build overlay, must turn the public round-trip report (TestCTableRetainFile) red. It pays one SCHEMA_SLOW compiler test build. Split from the old three-target base-c-conformance group, whose control step measured 96 s on both run 42556155793 and run 42554833739 (127-134 s wall), so it no longer pays the complete C driver compile in base-c-conformance before it starts.",
+      "targets": [
         "tables-c-retain-negative-control"
       ]
     },
     {
       "name": "base-c-wire",
-      "when": "pull-request",
-      "why": "The complete C wire roster rebuilt with a permissive LEB reader took about 99 seconds on run 34186742566. Keep that compile in its own job within the control-time budget.",
+      "when": "nightly",
+      "why": "The complete C wire roster rebuilt with a permissive LEB reader, alone: one complete C wire-fuzz driver compile against a scratch copy of the generated units, then the differential at seed 1. Split from the old two-target base-c-wire group, whose control step measured 83 s on run 42556155793 (135-145 s wall on the loaded fleet, past the 120 s per-commit rule); the widelist extent control that shared this job now runs as base-c-wire-widelist, because each target pays its own complete driver compile. Moved nightly: alone on this branch its row measured 141 s wall (118 s control step) on run 42568368976 and 149 s wall (122 s control) on run 42578656888, so it cannot fit the per-commit rule on the loaded fleet; it moves to the nightly tier (certify.yml), where it still runs in full.",
       "targets": [
-        "tables-c-wire-fuzz-negative-control",
+        "tables-c-wire-fuzz-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-wire-widelist",
+      "when": "nightly",
+      "why": "The C widelist extent-alignment control, alone: the 16-byte extent alignment of 128-bit sequences removed in a scratch copy of the generated widelist unit, one complete C wire-fuzz driver compile against it, and the pinned widelist mutants replayed. Split from the old two-target base-c-wire group, whose control step measured 83 s on run 42556155793 (135-145 s wall), because each target pays its own complete driver compile. Moved nightly: alone on this branch its row was cancelled at 318 s wall (232 s control step) on run 42568368976 and measured 127 s wall (110 s control) on run 42578656888, so it cannot fit the per-commit rule on the loaded fleet; it moves to the nightly tier (certify.yml), where it still runs in full.",
+      "targets": [
         "tables-c-widelist-extent-align16-negative-control"
       ]
     },
     {
       "name": "base-c-skip-timestamp",
-      "when": "pull-request",
-      "why": "the C reader's kind-36 skip control (docs/SPEC-TABLES.md \u00a73): the timestamp kind taken out of the generated skip table in a scratch copy, the wire-fuzz driver rebuilt against it, and the pinned root_full mutant replayed against the engine. Alone for the reason base-c-wire is: a complete C driver compile is the floor of the job.",
+      "when": "nightly",
+      "why": "the C reader's kind-36 skip control (docs/SPEC-TABLES.md \u00a73): the timestamp kind taken out of the generated skip table in a scratch copy, the wire-fuzz driver rebuilt against it, and a pinned featurewitnesses ArrayRoot body carrying one unknown kind-36 field replayed against the engine. Alone for the reason base-c-wire is: a complete C driver compile is the floor of the job. Moved nightly: its control step measured 75 s on run 42556155793 and 106 s on run 42554833739 (96-126 s wall), on top of the shared setup and build. It is already a single control whose floor is one complete C wire-fuzz driver compile, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
       "targets": [
         "tables-c-skip-timestamp-kind-negative-control"
       ]
@@ -508,16 +529,16 @@
     },
     {
       "name": "base-c-absent",
-      "when": "pull-request",
-      "why": "the C driver's per-case absence control (docs/PORTING.md I4): a complete C conformance driver rebuilt from a sabotaged main.c and one harness run of the C leg. Alone for the reason base-c-foreign is: a complete C driver compile is the floor of the job.",
+      "when": "nightly",
+      "why": "the C driver's per-case absence control (docs/PORTING.md I4): a complete C conformance driver rebuilt from a sabotaged main.c and one harness run of the C leg. Alone for the reason base-c-foreign is: a complete C driver compile is the floor of the job. Moved nightly: its control step measured 95 s on run 42556155793 and 93 s on run 42554833739 (135-150 s wall), on top of the shared setup and build. It is already a single control whose floor is one complete C conformance driver compile, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
       "targets": [
         "conformance-negative-control-c-absent"
       ]
     },
     {
       "name": "base-c-framing",
-      "when": "pull-request",
-      "why": "the C driver's framing control (docs/LAYERS/1-framing.md): a complete C conformance driver rebuilt against a scratch copy of the generated units with the 4096-entry id-table cap removed, and one harness run of the C leg. Alone for the reason base-c-absent is: a complete C driver compile is the floor of the job.",
+      "when": "nightly",
+      "why": "the C driver's framing control (docs/LAYERS/1-framing.md): a complete C conformance driver rebuilt against a scratch copy of the generated units with the 4096-entry id-table cap removed, and one harness run of the C leg. Alone for the reason base-c-absent is: a complete C driver compile is the floor of the job. Moved nightly: its control step measured 111 s on run 42556155793 and 84 s on run 42554833739 (129-136 s wall), on top of the shared setup and build. It is already a single control whose floor is one complete C conformance driver compile, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
       "targets": [
         "conformance-negative-control-c-framing"
       ]
@@ -533,8 +554,8 @@
     },
     {
       "name": "base-c-finite",
-      "when": "pull-request",
-      "why": "the C leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md \u00a73.3, the 2026-10-27 finite rule): it blinds each check in the emitted C in turn (the variable read at both widths, the message read at both widths, the fixed finite pass, the retained unknown, and the file, message, fixed and cook writers) and requires exactly that check's rows of TestCFiniteFloats red and every other row green. Ten small cc builds of one probe unit, about 3 s together on the author's machine (arm64 macOS), so well inside the rule on its own row.",
+      "when": "nightly",
+      "why": "the C leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md \u00a73.3, the 2026-10-27 finite rule): it blinds each check in the emitted C in turn (the variable read at both widths, the message read at both widths, the fixed finite pass, the retained unknown, and the file, message, fixed and cook writers) and requires exactly that check's rows of TestCFiniteFloats red and every other row green. Ten small cc builds of one probe unit, about 3 s together on the author's machine (arm64 macOS). Moved nightly: on the fleet its control step measured 99 s on run 42556155793 and 77 s on run 42554833739 (132-133 s wall), on top of the shared setup and build; that 3 s figure was the author's quiet machine and is not the fleet measurement. It is a single SCHEMA_SLOW go test that blinds ten checks in turn, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
       "targets": [
         "tables-c-finite-float-negative-control"
       ]
@@ -737,12 +758,13 @@
     {
       "name": "cs-tables",
       "when": "pull-request",
-      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout. With them, M12's byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red (one overlay build and one unit generated, a few seconds).",
+      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout. With them, M12's byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red (one overlay build and one unit generated, a few seconds). With them also the repeated-field-id wire control (make/cs.mk, landed on the new base without a plan entry, so TestEveryDefinedControlIsInThePlan was red at base 383c364d8): the walk's repeated-id refusals removed from the emitted artifact, required red on its own unit check, a few seconds.",
       "targets": [
         "tables-cs-pack-negative-control",
         "tables-cs-fixedform-arm-negative-control",
         "tables-cs-json-differential-negative-control",
-        "tables-cs-byte-order-negative-control"
+        "tables-cs-byte-order-negative-control",
+        "tables-cs-wire-fuzz-repeated-id-negative-control"
       ],
       "dotnet": "pin"
     },
