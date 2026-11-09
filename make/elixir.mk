@@ -1629,7 +1629,7 @@ test-elixir: tables-elixir-keyed tables-elixir-keyed-none-negative-control table
 # colliding with the module it writes for schema file Card.schema
 # (docs/SPEC-TABLES.md §11): a table lowers to a module in the TABLE backend,
 # so the packet emitter skips it and the command reaches elixirtable.
-cards-elixir-generate:
+cards-elixir-generate: bin/schema
 	@rm -rf build/tables-generated-elixir/cards
 	@mkdir -p build/tables-generated-elixir/cards
 	./bin/schema generate --lang elixir --out build/tables-generated-elixir/cards tables/cards

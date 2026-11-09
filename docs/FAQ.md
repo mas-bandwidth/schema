@@ -273,24 +273,29 @@ hand-crafted hostile bytes in the cross-language test corpus.
 
 ## Do writes validate like reads do?
 
-No. **The guarantee is on reads** — that is where untrusted input arrives, and
-it holds in all nine languages.
+Not in the same way, but **every writer refuses a value its declaration does
+not admit**. [SPEC.md](SPEC.md) §5.1 is the closed list: a ranged integer off
+its `min`/`max`, a `bits(N)` value wider than `N`, a count or length past its
+bound, an enum ordinal or union tag outside its set, a NaN or an infinity, or
+ill-formed text (bad UTF-8, a zero byte, an unpaired surrogate). The mechanism
+is each language's own correctness idiom: C++ and C use `assert`/`NDEBUG`, C#
+uses `Debug.Assert`, Rust uses `debug_assert!`, Dart and Java use `assert`
+(`--enable-asserts`, `-ea`), and the JavaScript flat writers take the
+checked/production fork at load — all debug-only, so a release build pays
+nothing and may write an off-declaration value that the reader on the other end
+refuses. Languages without a dormant assert — Go, Elixir and the others §5.1
+names — refuse in every build by their own error idiom. A language should verify
+correctness the way that language verifies correctness, so the write side is not
+uniform across builds or targets. A count or length that would index past the
+writer's own storage is refused in every build in every leg.
 
-On the write side each language uses its own correctness idiom: C++ and C
-have `assert`/`NDEBUG`, a check that disappears in release, so that is what
-they use;
-Go has no assert idiom, so it returns `ErrValueOutOfRange`, and the BEAM has
-no dormant assert at all, so Elixir raises `ArgumentError` in every build.
-Those two are the only every-build write side of the nine. The other seven
-are debug-only: C# through `Debug.Assert`, Rust through `debug_assert!`,
-Dart and Java through the language's own `assert`, and JavaScript through
-the checked/production fork its flat writers take at load. A language should
-verify correctness the way that language verifies correctness — which means
-the write side is not uniform across targets, and you should not build on it.
+Reads are different: **the read guarantee is unconditional** — that is where
+untrusted input arrives, and it holds in all nine languages in every build.
 Keep values inside their declared bounds when you write them — your code
 already knows they are,
 and in a game shipping at 60 Hz re-checking every field on the write path is a
 cost with no buyer. See
+[SPEC.md](SPEC.md#51-the-write-contract) and
 [USAGE.md](USAGE.md#writes-are-the-callers-responsibility).
 
 ## Is everything supported in all nine languages?

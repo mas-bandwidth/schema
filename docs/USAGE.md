@@ -747,14 +747,11 @@ count no reader accepts. It is the one place storage starts at something other
 than zero without a declared default, and `[..N]` is born at 0 as usual.
 
 Writing a count outside its bound is **caller error**, and it is a write-side
-contract like every other (SPEC.md §5): it asserts in DEBUG in each target
-whose language has that idiom, and is refused in every build only in Go and
-Elixir, which have none.
-The count guards the element loop and the pack subtracts the low bound, so
-an out-of-range count wraps and a release build will happily write bytes no
-reader takes — which is why the debug assert is worth having, and why
-keeping the count in range is your job. The READ refuses an out-of-range
-count in every build, in all nine.
+contract like every other (SPEC.md §5.1): it asserts in DEBUG in each target
+whose language has that idiom and is refused in every build in every target
+that has none. A build whose check is compiled out may write bytes no reader
+takes; the READ refuses an out-of-range count in every build, in every target.
+Keeping the count in range is your job.
 
 On a fixed table (SPEC-TABLES.md §3.4) the refusal has a name: a count past
 its bound is `count_over_bound` and a text length past its bound is

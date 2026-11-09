@@ -91,10 +91,12 @@ what the language specifies, in a way that weakens a check.
   buffer; how that buffer arrived is not its concern.
 - **Confidentiality.** schema does no encryption. The wire is plaintext bits by
   design; encrypt at the transport layer.
-- **Write-side validation.** Writes are the caller's responsibility and this is
-  documented ([FAQ](FAQ.md), [USAGE.md](USAGE.md)). A program that writes an
-  out-of-range value is buggy, but that is not a vulnerability in schema — the
-  guarantee is on reads.
+- **A write whose value is off its declaration, in a build whose check is
+  compiled out.** Every writer refuses a value its declaration does not admit,
+  by the leg's own idiom ([SPEC.md](SPEC.md) §5.1): an assert leg does so in its
+  DEBUG build and a release build may write the value. That is a caller bug, not
+  a vulnerability in schema — the reader on the other end refuses the value, and
+  the read guarantee holds in every build ([FAQ](FAQ.md), [USAGE.md](USAGE.md)).
 
 ## What we do to find these ourselves
 

@@ -48,6 +48,39 @@ func GunnerSettingsSaveMessageBody(w *TableMessageWriter, value *GunnerSettings)
 			if value.CallsignLength < 0 || value.CallsignLength > 24 {
 				return false
 			}
+			{
+				n := int(value.CallsignLength)
+				var hi, z uint64
+				p := value.Callsign[:n]
+				for len(p) >= 16 {
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
+					hi |= x | y
+					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
+					p = p[16:]
+				}
+				if len(p) >= 8 {
+					x := tableUTF8Word(p)
+					hi |= x
+					z |= (x - 0x0101010101010101) &^ x
+					p = p[8:]
+				}
+				if len(p) > 0 {
+					if n >= 8 {
+						x := tableUTF8Word(value.Callsign[n-8:])
+						hi |= x
+						z |= (x - 0x0101010101010101) &^ x
+					} else {
+						for _, c := range p {
+							x := uint64(c)
+							hi |= x
+							z |= (x - 1) &^ x
+						}
+					}
+				}
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Callsign[:n]) {
+					return false
+				}
+			}
 			w.Put(uint64(value.CallsignLength), 5)
 			w.Raw(value.Callsign[:value.CallsignLength])
 		}
@@ -299,6 +332,39 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 			w.Put(95, TableMessageRefBitsHere)
 			if value.DisplayNameLength < 0 || value.DisplayNameLength > 32 {
 				return false
+			}
+			{
+				n := int(value.DisplayNameLength)
+				var hi, z uint64
+				p := value.DisplayName[:n]
+				for len(p) >= 16 {
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
+					hi |= x | y
+					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
+					p = p[16:]
+				}
+				if len(p) >= 8 {
+					x := tableUTF8Word(p)
+					hi |= x
+					z |= (x - 0x0101010101010101) &^ x
+					p = p[8:]
+				}
+				if len(p) > 0 {
+					if n >= 8 {
+						x := tableUTF8Word(value.DisplayName[n-8:])
+						hi |= x
+						z |= (x - 0x0101010101010101) &^ x
+					} else {
+						for _, c := range p {
+							x := uint64(c)
+							hi |= x
+							z |= (x - 1) &^ x
+						}
+					}
+				}
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.DisplayName[:n]) {
+					return false
+				}
 			}
 			w.Put(uint64(value.DisplayNameLength), 6)
 			w.Raw(value.DisplayName[:value.DisplayNameLength])
@@ -710,6 +776,39 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 			w.Put(9, TableMessageRefBitsHere)
 			if value.BuildNoteLength < 0 || value.BuildNoteLength > 48 {
 				return false
+			}
+			{
+				n := int(value.BuildNoteLength)
+				var hi, z uint64
+				p := value.BuildNote[:n]
+				for len(p) >= 16 {
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
+					hi |= x | y
+					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
+					p = p[16:]
+				}
+				if len(p) >= 8 {
+					x := tableUTF8Word(p)
+					hi |= x
+					z |= (x - 0x0101010101010101) &^ x
+					p = p[8:]
+				}
+				if len(p) > 0 {
+					if n >= 8 {
+						x := tableUTF8Word(value.BuildNote[n-8:])
+						hi |= x
+						z |= (x - 0x0101010101010101) &^ x
+					} else {
+						for _, c := range p {
+							x := uint64(c)
+							hi |= x
+							z |= (x - 1) &^ x
+						}
+					}
+				}
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.BuildNote[:n]) {
+					return false
+				}
 			}
 			w.Put(uint64(value.BuildNoteLength), 6)
 			w.Raw(value.BuildNote[:value.BuildNoteLength])

@@ -824,17 +824,40 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 // drive, each answering through the root's own generated functions. The
 // report type is inferred from the generated load, so the driver names no
 // runtime type that two of a unit's runtimes both export.
+macro_rules! fixed_save_from_variable {
+    ($krate:ident, $val:ident, $row:ident, $cook:ident, $save:ident, $measure:ident) => {
+        |v: &$krate::$val| -> Result<Vec<u8>, String> {
+            let cooked = $krate::$cook(v, 1)?;
+            let row: $krate::$row = unsafe {
+                std::ptr::read_unaligned(cooked.as_ptr().add(64) as *const $krate::$row)
+            };
+            let mut buffer = vec![0u8; $krate::$measure(1)];
+            match $krate::$save(&[row], &mut buffer) {
+                Some(written) => {
+                    buffer.truncate(written);
+                    Ok(buffer)
+                }
+                None => Err(String::from("fixed save refused the value")),
+            }
+        }
+    };
+}
+
 macro_rules! with_root {
     ($unit:expr, $root:expr, |$load:ident, $save:ident, $to_json:ident, $from_json:ident| $body:expr) => {{
         match ($unit, $root) {
             ("scalars", "SimState") => {
-                #[allow(unused_imports)]
-                use scalars::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_save_checked as $save, sim_state_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use scalars::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(scalars, SimState, SimStateRow, sim_state_cook_write, sim_state_fixed_save, sim_state_fixed_measure);
                 Some($body)
             }
             ("tblscalars2", "SimState") => {
-                #[allow(unused_imports)]
-                use tblscalars2::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_save_checked as $save, sim_state_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblscalars2::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblscalars2, SimState, SimStateRow, sim_state_cook_write, sim_state_fixed_save, sim_state_fixed_measure);
                 Some($body)
             }
             ("graphdemo", "Scene") => {
@@ -903,33 +926,45 @@ macro_rules! with_root {
                 Some($body)
             }
             ("tabledemo", "RootConfig") => {
-                #[allow(unused_imports)]
-                use tabledemo::{root_config_from_json_bytes as $from_json, root_config_load as $load, root_config_save_checked as $save, root_config_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{root_config_from_json_bytes as $from_json, root_config_load as $load, root_config_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, RootConfig, RootConfigRow, root_config_cook_write, root_config_fixed_save, root_config_fixed_measure);
                 Some($body)
             }
             ("tabledemo", "PackConfig") => {
-                #[allow(unused_imports)]
-                use tabledemo::{pack_config_from_json_bytes as $from_json, pack_config_load as $load, pack_config_save_checked as $save, pack_config_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{pack_config_from_json_bytes as $from_json, pack_config_load as $load, pack_config_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, PackConfig, PackConfigRow, pack_config_cook_write, pack_config_fixed_save, pack_config_fixed_measure);
                 Some($body)
             }
             ("tabledemo", "LoadoutConfig") => {
-                #[allow(unused_imports)]
-                use tabledemo::{loadout_config_from_json_bytes as $from_json, loadout_config_load as $load, loadout_config_save_checked as $save, loadout_config_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{loadout_config_from_json_bytes as $from_json, loadout_config_load as $load, loadout_config_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, LoadoutConfig, LoadoutConfigRow, loadout_config_cook_write, loadout_config_fixed_save, loadout_config_fixed_measure);
                 Some($body)
             }
             ("tabledemo", "ProfileConfig") => {
-                #[allow(unused_imports)]
-                use tabledemo::{profile_config_from_json_bytes as $from_json, profile_config_load as $load, profile_config_save_checked as $save, profile_config_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{profile_config_from_json_bytes as $from_json, profile_config_load as $load, profile_config_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, ProfileConfig, ProfileConfigRow, profile_config_cook_write, profile_config_fixed_save, profile_config_fixed_measure);
                 Some($body)
             }
             ("tabledemo", "ArchiveConfig") => {
-                #[allow(unused_imports)]
-                use tabledemo::{archive_config_from_json_bytes as $from_json, archive_config_load as $load, archive_config_save_checked as $save, archive_config_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{archive_config_from_json_bytes as $from_json, archive_config_load as $load, archive_config_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, ArchiveConfig, ArchiveConfigRow, archive_config_cook_write, archive_config_fixed_save, archive_config_fixed_measure);
                 Some($body)
             }
             ("tabledemo", "KeyedConfig") => {
-                #[allow(unused_imports)]
-                use tabledemo::{keyed_config_from_json_bytes as $from_json, keyed_config_load as $load, keyed_config_save_checked as $save, keyed_config_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tabledemo::{keyed_config_from_json_bytes as $from_json, keyed_config_load as $load, keyed_config_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tabledemo, KeyedConfig, KeyedConfigRow, keyed_config_cook_write, keyed_config_fixed_save, keyed_config_fixed_measure);
                 Some($body)
             }
             ("tabledemo", "WideBlob") => {
@@ -1003,58 +1038,80 @@ macro_rules! with_root {
                 Some($body)
             }
             ("messagedemo", "ToolMessage") => {
-                #[allow(unused_imports)]
-                use messagedemo::{tool_message_from_json_bytes as $from_json, tool_message_load as $load, tool_message_save_checked as $save, tool_message_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use messagedemo::{tool_message_from_json_bytes as $from_json, tool_message_load as $load, tool_message_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(messagedemo, ToolMessage, ToolMessageRow, tool_message_cook_write, tool_message_fixed_save, tool_message_fixed_measure);
                 Some($body)
             }
             ("backenddemo", "LoginRequest") => {
-                #[allow(unused_imports)]
-                use backenddemo::{login_request_from_json_bytes as $from_json, login_request_load as $load, login_request_save_checked as $save, login_request_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use backenddemo::{login_request_from_json_bytes as $from_json, login_request_load as $load, login_request_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(backenddemo, LoginRequest, LoginRequestRow, login_request_cook_write, login_request_fixed_save, login_request_fixed_measure);
                 Some($body)
             }
             ("backenddemo", "MatchResult") => {
-                #[allow(unused_imports)]
-                use backenddemo::{match_result_from_json_bytes as $from_json, match_result_load as $load, match_result_save_checked as $save, match_result_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use backenddemo::{match_result_from_json_bytes as $from_json, match_result_load as $load, match_result_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(backenddemo, MatchResult, MatchResultRow, match_result_cook_write, match_result_fixed_save, match_result_fixed_measure);
                 Some($body)
             }
             ("backenddemo", "StorePurchase") => {
-                #[allow(unused_imports)]
-                use backenddemo::{store_purchase_from_json_bytes as $from_json, store_purchase_load as $load, store_purchase_save_checked as $save, store_purchase_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use backenddemo::{store_purchase_from_json_bytes as $from_json, store_purchase_load as $load, store_purchase_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(backenddemo, StorePurchase, StorePurchaseRow, store_purchase_cook_write, store_purchase_fixed_save, store_purchase_fixed_measure);
                 Some($body)
             }
             ("vocabdemo", "Wide00") => {
-                #[allow(unused_imports)]
-                use vocabdemo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use vocabdemo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(vocabdemo, Wide00, Wide00Row, wide00_cook_write, wide00_fixed_save, wide00_fixed_measure);
                 Some($body)
             }
             ("vocabdemo", "Wide09") => {
-                #[allow(unused_imports)]
-                use vocabdemo::{wide09_from_json_bytes as $from_json, wide09_load as $load, wide09_save_checked as $save, wide09_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use vocabdemo::{wide09_from_json_bytes as $from_json, wide09_load as $load, wide09_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(vocabdemo, Wide09, Wide09Row, wide09_cook_write, wide09_fixed_save, wide09_fixed_measure);
                 Some($body)
             }
             ("vocab9demo", "Wide00") => {
-                #[allow(unused_imports)]
-                use vocab9demo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use vocab9demo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(vocab9demo, Wide00, Wide00Row, wide00_cook_write, wide00_fixed_save, wide00_fixed_measure);
                 Some($body)
             }
             ("vocab9demo", "Wide19") => {
-                #[allow(unused_imports)]
-                use vocab9demo::{wide19_from_json_bytes as $from_json, wide19_load as $load, wide19_save_checked as $save, wide19_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use vocab9demo::{wide19_from_json_bytes as $from_json, wide19_load as $load, wide19_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(vocab9demo, Wide19, Wide19Row, wide19_cook_write, wide19_fixed_save, wide19_fixed_measure);
                 Some($body)
             }
             ("tblv1", "Cfg") => {
-                #[allow(unused_imports)]
-                use tblv1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblv1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblv1, Cfg, CfgRow, cfg_cook_write, cfg_fixed_save, cfg_fixed_measure);
                 Some($body)
             }
             ("tblv2", "Cfg") => {
-                #[allow(unused_imports)]
-                use tblv2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblv2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblv2, Cfg, CfgRow, cfg_cook_write, cfg_fixed_save, cfg_fixed_measure);
                 Some($body)
             }
             ("tblp1", "Chain") => {
-                #[allow(unused_imports)]
-                use tblp1::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblp1::{chain_from_json_bytes as $from_json, chain_load as $load, chain_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblp1, Chain, ChainRow, chain_cook_write, chain_fixed_save, chain_fixed_measure);
                 Some($body)
             }
             ("tblp2", "Chain") => {
@@ -1063,33 +1120,45 @@ macro_rules! with_root {
                 Some($body)
             }
             ("tblp3", "Chain") => {
-                #[allow(unused_imports)]
-                use tblp3::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblp3::{chain_from_json_bytes as $from_json, chain_load as $load, chain_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblp3, Chain, ChainRow, chain_cook_write, chain_fixed_save, chain_fixed_measure);
                 Some($body)
             }
             ("tblm1", "Msg") => {
-                #[allow(unused_imports)]
-                use tblm1::{msg_from_json_bytes as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblm1::{msg_from_json_bytes as $from_json, msg_load as $load, msg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblm1, Msg, MsgRow, msg_cook_write, msg_fixed_save, msg_fixed_measure);
                 Some($body)
             }
             ("tblm2", "Msg") => {
-                #[allow(unused_imports)]
-                use tblm2::{msg_from_json_bytes as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblm2::{msg_from_json_bytes as $from_json, msg_load as $load, msg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblm2, Msg, MsgRow, msg_cook_write, msg_fixed_save, msg_fixed_measure);
                 Some($body)
             }
             ("tbla2", "Root") => {
-                #[allow(unused_imports)]
-                use tbla2::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tbla2::{root_from_json_bytes as $from_json, root_load as $load, root_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tbla2, Root, RootRow, root_cook_write, root_fixed_save, root_fixed_measure);
                 Some($body)
             }
             ("tblk1", "Root") => {
-                #[allow(unused_imports)]
-                use tblk1::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblk1::{root_from_json_bytes as $from_json, root_load as $load, root_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblk1, Root, RootRow, root_cook_write, root_fixed_save, root_fixed_measure);
                 Some($body)
             }
             ("tblk2", "Root") => {
-                #[allow(unused_imports)]
-                use tblk2::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblk2::{root_from_json_bytes as $from_json, root_load as $load, root_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblk2, Root, RootRow, root_cook_write, root_fixed_save, root_fixed_measure);
                 Some($body)
             }
             ("tblw1", "Fleet") => {
@@ -1103,13 +1172,17 @@ macro_rules! with_root {
                 Some($body)
             }
             ("tblr1", "Cfg") => {
-                #[allow(unused_imports)]
-                use tblr1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblr1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblr1, Cfg, CfgRow, cfg_cook_write, cfg_fixed_save, cfg_fixed_measure);
                 Some($body)
             }
             ("tblr2", "Cfg") => {
-                #[allow(unused_imports)]
-                use tblr2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use tblr2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblr2, Cfg, CfgRow, cfg_cook_write, cfg_fixed_save, cfg_fixed_measure);
                 Some($body)
             }
             // wstring(N) ON THE TABLE WIRE (docs/SPEC-TABLES.md §3 kind 33,
@@ -1118,13 +1191,17 @@ macro_rules! with_root {
             // (its own field, a `type` it reaches, an element and a union arm)
             // and Stamp beside it; map_text is the kind as a MAP VALUE (§2.8)
             ("widedemo", "Caption") => {
-                #[allow(unused_imports)]
-                use widedemo::{caption_from_json_bytes as $from_json, caption_load as $load, caption_save_checked as $save, caption_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use widedemo::{caption_from_json_bytes as $from_json, caption_load as $load, caption_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(widedemo, Caption, CaptionRow, caption_cook_write, caption_fixed_save, caption_fixed_measure);
                 Some($body)
             }
             ("widedemo", "Stamp") => {
-                #[allow(unused_imports)]
-                use widedemo::{stamp_from_json_bytes as $from_json, stamp_load as $load, stamp_save_checked as $save, stamp_to_json_checked as $to_json};
+                #[allow(unused_imports, unused_variables)]
+                use widedemo::{stamp_from_json_bytes as $from_json, stamp_load as $load, stamp_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(widedemo, Stamp, StampRow, stamp_cook_write, stamp_fixed_save, stamp_fixed_measure);
                 Some($body)
             }
             ("mapdemo", "Text") => {
@@ -1208,11 +1285,24 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("backenddemo", "StorePurchase") => fixed_read!(backenddemo, store_purchase_fixed_load, store_purchase_fixed_save, store_purchase_fixed_measure, StorePurchaseRow, data),
         ("messagedemo", "ToolMessage") => fixed_read!(messagedemo, tool_message_fixed_load, tool_message_fixed_save, tool_message_fixed_measure, ToolMessageRow, data),
         ("scalars", "SimState") => fixed_read!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
+        ("tblscalars2", "SimState") => fixed_read!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tabledemo", "ArchiveConfig") => fixed_read!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, data),
         ("tabledemo", "KeyedConfig") => fixed_read!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, data),
         ("tabledemo", "LoadoutConfig") => fixed_read!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, data),
+        ("tabledemo", "PackConfig") => fixed_read!(tabledemo, pack_config_fixed_load, pack_config_fixed_save, pack_config_fixed_measure, PackConfigRow, data),
         ("tabledemo", "ProfileConfig") => fixed_read!(tabledemo, profile_config_fixed_load, profile_config_fixed_save, profile_config_fixed_measure, ProfileConfigRow, data),
         ("tabledemo", "RootConfig") => fixed_read!(tabledemo, root_config_fixed_load, root_config_fixed_save, root_config_fixed_measure, RootConfigRow, data),
+        ("tabledemo", "WideBlob") => {
+            let mut values = vec![tabledemo::WideBlobRow::default(); 1];
+            let mut plan = [tabledemo::TableFixedEntry::default(); 1];
+            let mut remap = [0u16; 1];
+            let mut report = tabledemo::TableFixedReport::default();
+            let _ = tabledemo::wide_blob_fixed_load(&mut values, data, &mut plan, &mut remap, &mut report);
+            FixedRead { unknown: report.unknown, widened: report.widened, read: false, save: None }
+        }
+        ("tbla2", "Root") => fixed_read!(tbla2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, data),
+        ("tblk1", "Root") => fixed_read!(tblk1, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, data),
+        ("tblk2", "Root") => fixed_read!(tblk2, root_fixed_load, root_fixed_save, root_fixed_measure, RootRow, data),
         ("tblm1", "Msg") => fixed_read!(tblm1, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, data),
         ("tblm2", "Msg") => fixed_read!(tblm2, msg_fixed_load, msg_fixed_save, msg_fixed_measure, MsgRow, data),
         ("tblp1", "Chain") => fixed_read!(tblp1, chain_fixed_load, chain_fixed_save, chain_fixed_measure, ChainRow, data),

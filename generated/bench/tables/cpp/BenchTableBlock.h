@@ -343,7 +343,11 @@ struct TableEntityBlockStorage
     {
         allocator = from;
         allocation = allocator.alloc( allocator.context, TableEntityBlockMaxBytes + 63 );
-        if ( allocation == NULL ) { base = NULL; return false; }
+        if ( allocation == NULL )
+        {
+            base = NULL;
+            return false;
+        }
         const uintptr_t raw = (uintptr_t) allocation;
         base = (uint8_t *) ( ( raw + 63 ) & ~(uintptr_t) 63 );
         return true;
@@ -468,7 +472,8 @@ static_assert( offsetof( TableEntityBlock::Projection, firing ) == 81, "TableEnt
 // BlockBytes after they join (§19.1).
 inline bool TableEntityBlockBegin( TableEntityBlock & block, TableEntityBlockStorage & storage, const TableEntityCounts & counts, TableBlockRefusal * refusal = NULL )
 {
-    (void) counts; (void) refusal; // no out-of-line array: no count to refuse
+    (void) counts;
+    (void) refusal; // no out-of-line array: no count to refuse
     if ( storage.base == NULL )
         return false; // Create was not called, or the allocator refused
     block.base = storage.base;
@@ -561,7 +566,11 @@ struct TableStatBlockStorage
     {
         allocator = from;
         allocation = allocator.alloc( allocator.context, TableStatBlockMaxBytes + 63 );
-        if ( allocation == NULL ) { base = NULL; return false; }
+        if ( allocation == NULL )
+        {
+            base = NULL;
+            return false;
+        }
         const uintptr_t raw = (uintptr_t) allocation;
         base = (uint8_t *) ( ( raw + 63 ) & ~(uintptr_t) 63 );
         return true;
@@ -662,7 +671,8 @@ static_assert( offsetof( TableStatBlock::Projection, delta ) == 28, "TableStat's
 // BlockBytes after they join (§19.1).
 inline bool TableStatBlockBegin( TableStatBlock & block, TableStatBlockStorage & storage, const TableStatCounts & counts, TableBlockRefusal * refusal = NULL )
 {
-    (void) counts; (void) refusal; // no out-of-line array: no count to refuse
+    (void) counts;
+    (void) refusal; // no out-of-line array: no count to refuse
     if ( storage.base == NULL )
         return false; // Create was not called, or the allocator refused
     block.base = storage.base;

@@ -5489,7 +5489,7 @@ CPP_DISCARD_NC := build/cpp-discard-nc
 .PHONY: tables-cpp-discard-negative-control
 tables-cpp-discard-negative-control:
 	@rm -rf $(CPP_DISCARD_NC) && mkdir -p $(CPP_DISCARD_NC)
-	@sed -e 's|if ( to->damaged ) { %sReset( value ); return TableOpenDamaged; }|if ( false ) { %sReset( value ); return TableOpenDamaged; } // NEGATIVE CONTROL: the discard is gone|' \
+	@sed -e 's|if ( to->damaged )\\n    {\\n        %\[1\]sReset( value );\\n        return TableOpenDamaged;|if ( false )\\n    {\\n        %[1]sReset( value );\\n        return TableOpenDamaged; // NEGATIVE CONTROL: the discard is gone|' \
 		internal/codegen/cpptable/codecs.go > $(CPP_DISCARD_NC)/codecs.go.txt
 	@cmp -s internal/codegen/cpptable/codecs.go $(CPP_DISCARD_NC)/codecs.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ discard sabotage patched nothing"; exit 1; } || true

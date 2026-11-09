@@ -17292,8 +17292,11 @@ past its declared total (§2.13), a table value past the depth cap (W2), and
 STORAGE THAT IS NOT TEXT, `invalid_value`: a narrow string holding ill-formed
 UTF-8 or a wide string holding an unpaired surrogate (W8), which is refused
 and never replaced: the write returns `-1`, measure returns
-`-1`, and no prefix of a text is ever a result. Measure returns exactly the
-length write produces.
+`-1`, and no prefix of a text is ever a result. A ZERO BYTE OR UNIT IS NOT
+ILL-FORMED HERE: W8 spells it `\u0000`, because JSON has a spelling for it.
+The binary writers' rule is docs/SPEC.md §5.1 row 8, where a zero byte or unit
+is `invalid_value` (a reader of those forms refuses it as `text_ill_formed`).
+Measure returns exactly the length write produces.
 
 **W1. The graph pass** (the variable class only, §16.7). Walk the value in
 W3's order and count, for every node, the slots that name it, visiting each
