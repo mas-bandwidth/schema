@@ -986,9 +986,25 @@ func TableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 			}
 		}
 	}
+	// A RUN COALESCES ONLY WITHIN ONE LANE WIDTH: the read lands each
+	// scalar little-endian-to-native at its own width, so a merged run must
+	// still know the width of the scalars it carries. Byte-wide entries
+	// carry lane one; a wider copy carries its own size. A merged run
+	// stamps its lane on DstSize (no copy entry of its own uses that lane);
+	// an unmerged copy keeps DstSize zero and the read takes its size.
+	laneOf := func(e TableFixedEntry) uint32 {
+		if e.Op == TableFixedBool || e.Size <= 1 {
+			return 1
+		}
+		return e.Size
+	}
+	lanes := make([]uint32, written)
+	plain := make([]bool, written)
 	out := 0
 	for i := range written {
 		if out > 0 && raw[out-1].Op == raw[i].Op && TableFixedRuns(raw[i].Op) &&
+			plain[out-1] && raw[i].DstSize == 0 &&
+			lanes[out-1] == laneOf(raw[i]) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
 			raw[out-1].Aux == 0 && raw[i].Aux == 0 &&
@@ -997,10 +1013,13 @@ func TableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 			raw[out-1].GuardIndex == raw[i].GuardIndex && raw[out-1].GuardCount == raw[i].GuardCount &&
 			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
 			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
+			raw[out-1].DstSize = uint8(lanes[out-1])
 			raw[out-1].Size += raw[i].Size
 			continue
 		}
 		raw[out] = raw[i]
+		lanes[out] = laneOf(raw[i])
+		plain[out] = raw[i].DstSize == 0
 		out++
 	}
 	n = out
@@ -1053,6 +1072,55 @@ func TableFixedCopyRun(d, s []byte, n uint32) {
 	copy(d[:n], s[:n])
 }
 
+// THE READ'S DESTINATION IS CALLER STORAGE, not wire: a scalar the wire
+// carries little-endian lands in a Go value the host reads in its own order,
+// so every multi-byte landing below converts little-endian on the source
+// side to native on the destination side. On a little-endian host the two
+// orders are one and the conversion is the byte copy it always was.
+// tableFixedPutNative lands v in storage at the given width; a width past
+// eight (a 128-bit lane) takes the low word native and zeroes the rest,
+// which is what the widen that uses it always wrote past its value.
+func TableFixedPutNative(b []byte, v uint64, size uint32) {
+	if size > 8 {
+		binary.NativeEndian.PutUint64(b, v)
+		clear(b[8:size])
+		return
+	}
+	var tmp, probe [8]byte
+	binary.NativeEndian.PutUint64(tmp[:], v)
+	binary.NativeEndian.PutUint16(probe[:], 1)
+	if probe[0] == 1 {
+		copy(b, tmp[:size])
+	} else {
+		copy(b, tmp[8-size:])
+	}
+}
+
+// tableFixedCopyNative lands size source bytes in storage lane by lane: a
+// lane is one scalar (1, 2, 4 or 8 bytes, or a 128-bit lane's two words),
+// read little-endian and written native. A lane of one is a plain copy.
+func TableFixedCopyNative(d, s []byte, size, lane uint32) {
+	if lane <= 1 || size < lane {
+		copy(d[:size], s[:size])
+		return
+	}
+	for off := uint32(0); off+lane <= size; off += lane {
+		switch lane {
+		case 2:
+			binary.NativeEndian.PutUint16(d[off:], binary.LittleEndian.Uint16(s[off:]))
+		case 4:
+			binary.NativeEndian.PutUint32(d[off:], binary.LittleEndian.Uint32(s[off:]))
+		case 8:
+			binary.NativeEndian.PutUint64(d[off:], binary.LittleEndian.Uint64(s[off:]))
+		case 16:
+			binary.NativeEndian.PutUint64(d[off:], binary.LittleEndian.Uint64(s[off:]))
+			binary.NativeEndian.PutUint64(d[off+8:], binary.LittleEndian.Uint64(s[off+8:]))
+		default:
+			copy(d[off:off+lane], s[off:off+lane])
+		}
+	}
+}
+
 func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
 	// REFUSE is total even for direct callers of the runner: the generated load
 	// performs this pre-scan too, but the compiled-plan tests and any future
@@ -1089,15 +1157,34 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 		}
 		switch p.Op {
 		case TableFixedCopy:
-			TableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
+			// A copy lands SCALARS: little-endian on the wire, native in
+			// storage, at the lane width the plan builder kept (DstSize on
+			// a coalesced run, the entry's own size on a lone entry). A
+			// DstSize WIDER than the entry is a lone scalar whose storage
+			// is wider than its wire width (a tag or an enum in a uint32):
+			// it lands native at the storage width, zero-extended.
+			if uint32(p.DstSize) > p.Size {
+				TableFixedPutNative(dst[p.Dst:], TableFixedTagAt(src, p.Src, uint8(p.Size)), uint32(p.DstSize))
+				break
+			}
+			lane := uint32(p.DstSize)
+			if lane == 0 {
+				lane = p.Size
+			}
+			TableFixedCopyNative(dst[p.Dst:], src[p.Src:], p.Size, lane)
 		case TableFixedTag, TableFixedBool:
 			// The check loop refused a tag past the reader's arm count and a
 			// bool or present byte other than 0 or 1 before this run, so the
-			// bytes land as they are (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5).
-			TableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
+			// bytes land as they are (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5) —
+			// a bool byte as itself, a tag as one native scalar.
+			if p.Op == TableFixedTag {
+				TableFixedCopyNative(dst[p.Dst:], src[p.Src:], p.Size, p.Size)
+			} else {
+				TableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
+			}
 		case TableFixedCount:
 			v := int32(TableFixedGet32(src[p.Src:]))
-			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
+			binary.NativeEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case TableFixedText:
 			v := int32(TableFixedGet32(src[p.Src:]))
 			unit := uint32(1)
@@ -1107,8 +1194,15 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			capn := p.Size / unit
 			// tableFixedTextRefusal above already proved the used extent and
 			// content; this path only lands the validated value and live bytes.
-			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
-			TableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
+			binary.NativeEndian.PutUint32(dst[p.Dst:], uint32(v))
+			if p.Meta == TableFixedTextWide {
+				// A wstring's storage is native uint16 units, not wire bytes.
+				for off := uint32(0); off+2 <= p.Size; off += 2 {
+					binary.NativeEndian.PutUint16(dst[p.Aux+off:], binary.LittleEndian.Uint16(src[p.Src+4+off:]))
+				}
+			} else {
+				TableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
+			}
 			if p.Meta != TableFixedTextBytes && uint32(v) < capn {
 				off := p.Aux + uint32(v)*unit
 				dst[off] = 0
@@ -1133,11 +1227,11 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			case 1:
 				dst[p.Dst] = uint8(v)
 			case 2:
-				binary.LittleEndian.PutUint16(dst[p.Dst:], uint16(v))
+				binary.NativeEndian.PutUint16(dst[p.Dst:], uint16(v))
 			case 8:
-				binary.LittleEndian.PutUint64(dst[p.Dst:], uint64(v))
+				binary.NativeEndian.PutUint64(dst[p.Dst:], uint64(v))
 			default:
-				binary.LittleEndian.PutUint32(dst[p.Dst:], v)
+				binary.NativeEndian.PutUint32(dst[p.Dst:], v)
 			}
 		case TableFixedWiden:
 			var raw uint64
@@ -1151,21 +1245,16 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 					raw |= ^((top << 1) - 1)
 				}
 			}
-			for i := range p.DstSize {
-				dst[p.Dst+uint32(i)] = byte(raw >> (8 * i))
-			}
+			TableFixedPutNative(dst[p.Dst:], raw, uint32(p.DstSize))
 			report.Widened++
 		case TableFixedWidenF:
 			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3,
 			// §21.2): exact for a finite float32; a NaN or an infinity stays one,
 			// and the finite pass after the run refuses it.
-			TableFixedPut64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(TableFixedGet32(src[p.Src:])))))
+			binary.NativeEndian.PutUint64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(TableFixedGet32(src[p.Src:])))))
 			report.Widened++
 		case TableFixedConst:
-			aux := p.Aux
-			for i := range p.Size {
-				dst[p.Dst+i] = byte(aux >> (8 * i))
-			}
+			TableFixedPutNative(dst[p.Dst:], uint64(p.Aux), p.Size)
 			// The unguarded None const lands None; the check loop refused a raw
 			// tag past the writer's arm count (this entry's DstSize) before this
 			// run (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.6). tableFixedSrcEnd gives
@@ -2011,4 +2100,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x67281dd57e4ffeb8
+const Version uint64 = 0xa8cd4fb39c1113e9
