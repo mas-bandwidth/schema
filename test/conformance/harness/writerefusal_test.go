@@ -56,7 +56,6 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 	for _, wr := range m.WriteRefusals {
 		wr := wr
 		t.Run(wr.Surface()+"/"+wr.Name, func(t *testing.T) {
-			t.Parallel()
 			answer, err := writeRefusalAnswer(root, m, u, wr)
 			if err != nil {
 				t.Fatal(err)
