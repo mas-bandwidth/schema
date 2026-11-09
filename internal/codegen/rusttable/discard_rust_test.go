@@ -53,7 +53,7 @@ table Graph
 // by assumption.
 func rustDiscardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	t.Helper()
-	m := tabletext.NewModel(u)
+	m := fcVariableModel(u)
 	inst := m.New(m.Lookup(root))
 	var r tabletext.Report
 	if !m.Read(inst, []byte(text), &r) {

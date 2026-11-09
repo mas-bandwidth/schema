@@ -476,11 +476,18 @@ impl TableNodeReader {
                 let bytes = &wire[start..stop];
                 if tid == BYTES_TYPE_ID && bytes_edge {
                     reader.slots.push(TableNodeSlot::Bytes(Rc::from(bytes)));
-                } else if tid == STRING_TYPE_ID && string_edge {
-                    if text_valid(bytes) {
-                        reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
+                } else if tid == STRING_TYPE_ID {
+                    if string_edge {
+                        if text_valid(bytes) {
+                            reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
+                        } else {
+                            report.damaged = true;
+                            reader.slots.push(TableNodeSlot::Null);
+                        }
                     } else {
-                        report.damaged = true;
+                        if !text_valid(bytes) { report.damaged = true; }
+                        report.unknown += 1;
+                        if retaining { report.retain_lost += 1; }
                         reader.slots.push(TableNodeSlot::Null);
                     }
                 } else if placeable.contains(&tid) {
@@ -639,30 +646,146 @@ impl TableNodeReader {
         false
     }
 
-    pub fn note_unknown_payload(&mut self, kind: u8, payload: &[u8], report: &mut TableReport) {
+    fn note_unknown_pointer(&mut self, index: u64, report: &mut TableReport) {
+        if !self.good || index == 0 { return; }
+        if index == 1 { report.damaged = true; return; }
+        if index - 2 >= self.slots.len() as u64 { report.damaged = true; return; }
+        let k = (index - 2) as usize;
+        if matches!(self.slots[k], TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_)) {
+            self.name_blob(index, report);
+        } else {
+            if self.blob_named.len() < self.slots.len() {
+                self.blob_named.resize(self.slots.len(), false);
+            }
+            self.blob_named[k] = true;
+        }
+    }
+
+    pub fn note_unknown_payload(&mut self, ids: &[u64], kind: u8, payload: &[u8], depth: usize, report: &mut TableReport) {
+        if depth > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+        let w = table_kind_width(kind);
+        if w > 0 {
+            if payload.len() != w || (kind == 1 && payload[0] > 1) { report.damaged = true; }
+            return;
+        }
         let mut off = 0usize;
         match kind {
+            30 => {
+                let Some(r) = leb_read(payload, &mut off) else { report.damaged = true; return; };
+                if off != payload.len() || r as usize > ids.len() { report.damaged = true; }
+            }
             17 => {
                 let Some(index) = leb_read(payload, &mut off) else { report.damaged = true; return; };
                 if off != payload.len() { report.damaged = true; return; }
-                if !self.good || index == 0 { return; }
-                if index == 1 { report.damaged = true; return; }
-                if index - 2 >= self.slots.len() as u64 { report.damaged = true; return; }
-                let k = (index - 2) as usize;
-                if matches!(self.slots[k], TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_)) {
-                    self.name_blob(index, report);
-                } else {
-                    if self.blob_named.len() < self.slots.len() {
-                        self.blob_named.resize(self.slots.len(), false);
+                self.note_unknown_pointer(index, report);
+            }
+            12 | 13 | 14 | 16 | 31 | 32 | 33 => {
+                let Some(n) = leb_read(payload, &mut off) else { report.damaged = true; return; };
+                if off + (n as usize) != payload.len() { report.damaged = true; return; }
+                self.note_unknown_content(ids, kind, &payload[off..], depth, report);
+            }
+            15 => self.note_unknown_content(ids, 15, payload, depth, report),
+            _ => { report.damaged = true; }
+        }
+    }
+
+    pub fn note_unknown_content(&mut self, ids: &[u64], kind: u8, content: &[u8], depth: usize, report: &mut TableReport) {
+        if depth > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+        let w = table_kind_width(kind);
+        if w > 0 {
+            if content.len() != w || (kind == 1 && content[0] > 1) { report.damaged = true; }
+            return;
+        }
+        let mut off = 0usize;
+        match kind {
+            12 => { if !text_valid(content) { report.damaged = true; } }
+            31 => {}
+            32 => { if !content.is_empty() { report.damaged = true; } }
+            33 => { if table_wide_units(content).is_none() { report.damaged = true; } }
+            30 => {
+                let Some(r) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if off != content.len() || r as usize > ids.len() { report.damaged = true; }
+            }
+            17 => {
+                let Some(index) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if off != content.len() { report.damaged = true; return; }
+                self.note_unknown_pointer(index, report);
+            }
+            13 => {
+                if depth + 1 > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+                let mut seen_ids: Vec<u64> = Vec::new();
+                loop {
+                    let Some(r) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                    if r == 0 {
+                        if off != content.len() { report.damaged = true; }
+                        return;
                     }
-                    self.blob_named[k] = true;
+                    let Some(id) = ref_id(ids, r) else { report.damaged = true; return; };
+                    if id == NODE_TABLE_ID || id == BUILD_VERSION_ID || id == VOCABULARY_ID || seen_ids.contains(&id) {
+                        report.damaged = true;
+                        return;
+                    }
+                    seen_ids.push(id);
+                    if off >= content.len() { report.damaged = true; return; }
+                    let fkind = content[off]; off += 1;
+                    let fstart = off;
+                    if !leb_skip(content, &mut off, content.len(), fkind) { report.damaged = true; return; }
+                    self.note_unknown_payload(ids, fkind, &content[fstart..off], depth + 1, report);
+                    if report.damaged || self.count_refused { return; }
                 }
             }
-            14 | 16 => {
-                let Some(n) = leb_read(payload, &mut off) else { report.damaged = true; return; };
-                if n < 2 || off + n as usize != payload.len() { report.damaged = true; }
+            14 => {
+                if depth + 1 > TABLE_RETAIN_DEPTH_CAP || content.len() < 2 { report.damaged = true; return; }
+                let ek = content[0];
+                if matches!(ek, 16 | 32) { report.damaged = true; return; }
+                off = 1;
+                let Some(count) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if count > 0x7fffffff { let _ = self.refuse_count(report); return; }
+                for _ in 0..count {
+                    let estart = off;
+                    if !leb_skip(content, &mut off, content.len(), ek) { report.damaged = true; return; }
+                    self.note_unknown_payload(ids, ek, &content[estart..off], depth + 1, report);
+                    if report.damaged || self.count_refused { return; }
+                }
+                if off != content.len() { report.damaged = true; }
             }
-            _ => {}
+            16 => {
+                if depth + 1 > TABLE_RETAIN_DEPTH_CAP || content.len() < 2 { report.damaged = true; return; }
+                let ek = content[0];
+                if matches!(ek, 14 | 16 | 12 | 31 | 32 | 33) { report.damaged = true; return; }
+                off = 1;
+                let Some(count) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if count > 0x7fffffff { let _ = self.refuse_count(report); return; }
+                let mut seen_keys: Vec<u64> = Vec::new();
+                for _ in 0..count {
+                    let Some(kref) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                    if kref == 0 || kref as usize > ids.len() { report.damaged = true; return; }
+                    let kid = ids[kref as usize - 1];
+                    if seen_keys.contains(&kid) { report.damaged = true; return; }
+                    seen_keys.push(kid);
+                    let Some(el) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                    if off > content.len() || el > (content.len() - off) as u64 { report.damaged = true; return; }
+                    let eend = off + el as usize;
+                    self.note_unknown_content(ids, ek, &content[off..eend], depth + 1, report);
+                    if report.damaged || self.count_refused { return; }
+                    off = eend;
+                }
+                if off != content.len() { report.damaged = true; }
+            }
+            15 => {
+                let Some(aref) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if aref == 0 {
+                    if off != content.len() { report.damaged = true; }
+                    return;
+                }
+                if aref as usize > ids.len() || off >= content.len() { report.damaged = true; return; }
+                let akind = content[off]; off += 1;
+                let Some(al) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if off + (al as usize) != content.len() { report.damaged = true; return; }
+                let next_depth = if matches!(akind, 13 | 14 | 15 | 16) { depth + 1 } else { depth };
+                self.note_unknown_content(ids, akind, &content[off..], next_depth, report);
+            }
+            _ => { report.damaged = true; }
         }
     }
 

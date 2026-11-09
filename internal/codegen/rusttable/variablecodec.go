@@ -1018,6 +1018,7 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	if hasRequired(st) {
 		fmt.Fprintf(b, "    let mut seen = [false; %d];\n", len(st.Fields))
 	}
+	fmt.Fprintf(b, "    let mut seen_ids: Vec<u64> = Vec::new();\n")
 	fmt.Fprintf(b, "    while *off < end {\n")
 	fmt.Fprintf(b, "        let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };\n")
 	if hasRequired(st) {
@@ -1029,6 +1030,7 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "        if r == 0 { return true; }\n")
 	}
 	fmt.Fprintf(b, "        let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };\n")
+	fmt.Fprintf(b, "        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }\n")
 	fmt.Fprintf(b, "        if *off >= end { report.damaged = true; return false; }\n")
 	fmt.Fprintf(b, "        let kind = wire[*off]; *off += 1;\n")
 	fmt.Fprintf(b, "        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)\n")
@@ -1053,7 +1055,7 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                report.unknown += 1;\n")
 	fmt.Fprintf(b, "                let start = *off;\n")
 	fmt.Fprintf(b, "                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }\n")
-	fmt.Fprintf(b, "                nodes.note_unknown_payload(kind, &wire[start..*off], report);\n")
+	fmt.Fprintf(b, "                nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);\n")
 	fmt.Fprintf(b, "                if let Some(ret) = retain.as_deref_mut() {\n")
 	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
 	// §3.3, §6.6, ruling 3 of 2026-10-27): a NaN or an infinity is not kept and
@@ -1362,6 +1364,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	if f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, "%swhile %s.len() < %d { %s.push(prior.get(%s.len()).cloned()%s); }\n", i4, field, f.ArrayBound, field, field, orElse(fieldDefault(scalarOnly(f))))
 	}
+	fmt.Fprintf(b, "%sif *off != sub { report.damaged = true; }\n", i4)
 	fmt.Fprintf(b, "%s}\n", i3)
 	fmt.Fprintf(b, "%s    }\n", i2)
 	fmt.Fprintf(b, "%s}\n", i2)
@@ -1969,6 +1972,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    // its refusal and diagnostic prefix follow the oracle order (§3.1, §4).\n")
 	fmt.Fprintf(b, "    for k in 0..nodes.slots.len() {\n")
 	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { variable_node_decode(wire, ids, &mut nodes, k, report); }\n")
+	fmt.Fprintf(b, "        else if matches!(nodes.slots[k], TableNodeSlot::Null) { let (tid, start, stop) = nodes.recs[k]; if tid != BYTES_TYPE_ID && tid != STRING_TYPE_ID { nodes.note_unknown_content(ids, 13, &wire[start..stop], 0, report); } }\n")
 	fmt.Fprintf(b, "        if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
