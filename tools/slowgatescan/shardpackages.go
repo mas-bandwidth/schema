@@ -23,6 +23,14 @@ func shardPackages(root, half string, shard, shards int) ([]string, error) {
 	module := modulePath
 	weights := map[string]int{}
 	for dir, tests := range byDir {
+		// The scanner's own package names the gate only inside fixture
+		// strings (its tests feed synthetic transcripts to the accounting);
+		// no test in it ever skips at the gate, so a shard of it alone
+		// holds no skip and the coverage scan refuses the transcript.
+		// Its tests' verdict is the unit rows', like any non-gated package.
+		if dir == "tools/slowgatescan" {
+			continue
+		}
 		isCodegen := dir == "internal/codegen" || strings.HasPrefix(dir, "internal/codegen/")
 		switch half {
 		case "codegen":
