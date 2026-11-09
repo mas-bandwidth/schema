@@ -181,9 +181,10 @@ func (r luauEvoRunner) LoadLineage(t *testing.T, u *ir.Unit, root string, lineag
 	if len(u.Files) > 0 && (u.Files[0].Base == "P1" || u.Files[0].Base == "P3") {
 		for k, v := range fields {
 			if strings.HasSuffix(k, "_present") {
-				if v == "true" {
+				switch v {
+				case "true":
 					fields[k] = "1"
-				} else if v == "false" {
+				case "false":
 					fields[k] = "0"
 				}
 			}

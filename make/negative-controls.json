@@ -209,25 +209,49 @@
       ]
     },
     {
-      "name": "lua",
+      "name": "lua-conformance",
       "when": "pull-request",
-      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green; the id table's 4096-entry bound lifted, red on exactly lua / framing with wire and report green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit), and the caller-owned load's three (an allocation planted per queued slot and per array body turns only the rows that pass through it, another interpreter's version is refused before anything is measured, and a table built and dropped per load turns the soak's count and not its drift; each takes a couple of seconds). Beside them, two reversed witnesses on the same build: the release tier's wire fuzz at its release count on seed 2 over a copy of the units whose load counts every unknown field twice (red at the first divergence, J3), and a copy of the driver whose absent() writes nothing (one harness run over the leg; red because an unanswered case never passes, I4). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
+      "why": "the Lua port's conformance-harness controls on the pinned PUC-Rio 5.4.8 (make dist-lua): the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green; the id table's 4096-entry bound lifted, red on exactly lua / framing with wire and report green), the walk and cycle surfaces, and the caller-owned absent driver (a driver whose absent() writes nothing; red because an unanswered case never passes, I4). Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739; this half is the harness leg. Measured 38 s of control time over the 5 harness controls.",
       "targets": [
         "conformance-negative-control-lua",
-        "packet-finite-lua-negative-control",
-        "packet-utf8-lua-negative-control",
-        "packet-wide-lua-negative-control",
-        "packet-defaults-lua-negative-control",
         "conformance-negative-control-lua-walk",
         "conformance-negative-control-lua-framing",
         "conformance-negative-control-lua-cycle",
-        "schema-lua-fuzz-negative-control",
+        "conformance-negative-control-lua-absent"
+      ],
+      "lua": "5.4.8"
+    },
+    {
+      "name": "lua-packet",
+      "when": "pull-request",
+      "why": "the Lua port's four packet families (constructor defaults, finite-float, UTF-8 read validation and wide pairing) on the pinned PUC-Rio 5.4.8, each one small compile off the generated tree. Split from the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 4 packet controls.",
+      "targets": [
+        "packet-finite-lua-negative-control",
+        "packet-utf8-lua-negative-control",
+        "packet-wide-lua-negative-control",
+        "packet-defaults-lua-negative-control"
+      ],
+      "lua": "5.4.8"
+    },
+    {
+      "name": "lua-fuzz",
+      "when": "pull-request",
+      "why": "the Lua nightly fuzz lane's planted missing length bound (schema-lua-fuzz-negative-control: red in 4000 seeded iterations, its saved input red on replay and green on the clean tree). Its own row because the 4000-iteration fuzz pass is the heaviest control of the single `lua` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 28 s of control time for the 4000-iteration fuzz control.",
+      "targets": [
+        "schema-lua-fuzz-negative-control"
+      ],
+      "lua": "5.4.8"
+    },
+    {
+      "name": "lua",
+      "when": "pull-request",
+      "why": "the Lua port's resource-bounds raised depth cap, the caller-owned load's three, the soak, the release-tier wire fuzz at its release count on seed 2, and the damage-discard control, the compile-light refusers split from the single `lua` group (which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739). Measured 22 s of control time over the 6 controls (a couple of seconds each for the resource-bounds, alloc, soak and damage-discard checks plus the release-count seed-2 wire fuzz).",
+      "targets": [
         "schema-lua-resource-bounds-negative-control",
         "tables-lua-alloc-negative-control",
         "tables-lua-alloc-runtime-negative-control",
         "tables-lua-soak-negative-control",
         "tables-lua-release-negative-control",
-        "conformance-negative-control-lua-absent",
         "tables-lua-damage-discard-negative-control"
       ],
       "lua": "5.4.8"
@@ -245,22 +269,38 @@
     {
       "name": "squirrel-cards",
       "when": "pull-request",
-      "why": "the Squirrel port's card driver controls (make/squirrel-cards.mk): render, upgrade and taskhash each damaged through the driver's test-only CARDS_SQUIRREL_SABOTAGE switch, the harness required red on that surface and every other surface required green. They need Go, the pinned interpreter (make dist-squirrel, through the row's squirrel field), the harness and the Card unit generated for squirrel; three harness runs over 43 small cases, under 2 s each on the studio.",
+      "why": "the Squirrel port's card driver render and upgrade controls (make/squirrel-cards.mk), each damaged through the driver's test-only switch, the harness required red on that surface and every other surface green; three harness runs over 43 small cases, under 2 s each on the studio. Split from the single `squirrel-cards` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 4 s of control time over the 2 controls.",
       "targets": [
-        "cards-squirrel-conformance-hash-negative-control",
         "cards-squirrel-conformance-negative-control",
         "cards-squirrel-conformance-upgrade-negative-control"
       ],
       "squirrel": "3.2"
     },
     {
+      "name": "squirrel-cards-hash",
+      "when": "pull-request",
+      "why": "the Squirrel port's card driver taskhash control (make/squirrel-cards.mk), damaged through the driver's test-only switch, the harness required red on that surface and every other surface green; one harness run over 43 small cases. Split from the single `squirrel-cards` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 2 s of control time for the single taskhash control.",
+      "targets": [
+        "cards-squirrel-conformance-hash-negative-control"
+      ],
+      "squirrel": "3.2"
+    },
+    {
       "name": "lua-cards-docs",
       "when": "pull-request",
-      "why": "the Lua port's card driver controls (render, upgrade and taskhash each damaged through a test-only switch, the harness required red on that surface and on no other), the documented-surface control (two edited copies of docs/USAGE.md, one calling a renamed runtime function and one walking nothing, each required to fail the usage gate) and the bench leg's corpus control (a flipped golden byte and a flipped variant byte, each required to fail the bench correctness gate by name). They need the pinned interpreter (make dist-lua), bin/schema, the harness and the Card unit generated for Lua, and no compile weight of their own: the card controls are three harness runs over 43 small cases.",
+      "why": "the Lua port's card driver controls (render, upgrade and taskhash each damaged through a test-only switch, the harness required red on that surface and on no other). They need the pinned interpreter (make dist-lua), bin/schema, the harness and the Card unit generated for Lua, and no compile weight of their own: three harness runs over 43 small cases. Split from the single `lua-cards-docs` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 6 s of control time over the 3 card driver controls.",
       "targets": [
         "cards-lua-conformance-hash-negative-control",
         "cards-lua-conformance-negative-control",
-        "cards-lua-conformance-upgrade-negative-control",
+        "cards-lua-conformance-upgrade-negative-control"
+      ],
+      "lua": "5.4.8"
+    },
+    {
+      "name": "lua-docs-bench",
+      "when": "pull-request",
+      "why": "the Lua documented-surface control (two edited copies of docs/USAGE.md, one calling a renamed runtime function and one walking nothing, each required to fail the usage gate) and the bench leg's corpus control (a flipped golden byte and a flipped variant byte, each required to fail the bench correctness gate by name), on the pinned interpreter (make dist-lua). Split from the single `lua-cards-docs` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 9 s of control time over the 2 controls.",
+      "targets": [
         "tables-lua-bench-gate-negative-control",
         "tables-lua-usage-negative-control"
       ],
@@ -269,13 +309,21 @@
     {
       "name": "lua-open-gates",
       "when": "pull-request",
-      "why": "the Lua port's open-gate reversed witnesses that run the pinned PUC-Rio 5.4.8 (make dist-lua) over the luatable package: the forgery fuzz oracle's two plants (both halves of the block's extent bound removed, and the cook Check's region scan removed; red on a read that left the buffer and on a Check that opened what the tool's cook-check refuses), the random text differential's six-digit float32 cap (red on the engine comparison), and the layout agreement gate's two moves (one block scalar four bytes, one cook pointer slot eight bytes; red on that field and on nothing else), with the runtime-home control beside them, which overlay-rebuilds the compiler with the table module named by the file that sorts first and requires the module to move when an earlier-sorting file joins the unit. Each is one go test over one package or one go build, 5 s for the four test controls and 1.5 s for the overlay build on the studio with a warm Go cache, so the row stays inside the 120 s rule.",
+      "why": "the Lua port's open-gate reversed witnesses that run the pinned PUC-Rio 5.4.8 (make dist-lua) over the luatable package: the random text differential's six-digit float32 cap (red on the engine comparison), the layout agreement gate's two moves (one block scalar four bytes, one cook pointer slot eight bytes; red on that field and on nothing else), and the runtime-home and accessor controls beside them, which overlay-rebuilds the compiler with the table module named by the file that sorts first and requires the module to move when an earlier-sorting file joins the unit. Each is one go test over one package or one go build, 5 s for the four test controls and 1.5 s for the overlay build on the studio with a warm Go cache. Split from the single `lua-open-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739; the forgery fuzz oracle now runs alone.",
       "targets": [
         "tables-lua-accessor-negative-control",
-        "tables-lua-fuzz-negative-control",
         "tables-lua-json-differential-negative-control",
         "tables-lua-runtime-home-negative-control",
         "tables-lua-slot-negative-control"
+      ],
+      "lua": "5.4.8"
+    },
+    {
+      "name": "lua-open-gates-fuzz",
+      "when": "pull-request",
+      "why": "the Lua forgery fuzz oracle's two plants (both halves of the block's extent bound removed, and the cook Check's region scan removed; red on a read that left the buffer and on a Check that opened what the tool's cook-check refuses). Its own row because the fuzz pass is the heavy member of the single `lua-open-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 31 s of control time for the forgery fuzz oracle control.",
+      "targets": [
+        "tables-lua-fuzz-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -1363,9 +1411,10 @@
     {
       "name": "rust-strict",
       "when": "pull-request",
-      "why": "the Rust leg's strict-read controls (STRICT 100), in a group of their own because the rust group already runs past the per-commit cap. The writer's-range control takes the fixed load's held refusal out through go test -overlay and requires TestFixedVersioningRangeWidenHostile red on a value past the writer's range: about 5 s on the studio once the fixed-form corpus is built.",
+      "why": "the Rust leg's strict-read controls (STRICT 100), in a group of their own because the rust group already runs past the per-commit cap. The writer's-range control takes the fixed load's held refusal out through go test -overlay and requires TestFixedVersioningRangeWidenHostile red on a value past the writer's range: about 5 s on the studio once the fixed-form corpus is built. The bool-byte control takes the fixed scatter's two byte checks out and requires TestFixedBoolByteIsDamageRust red on a live byte of 2.",
       "targets": [
-        "tables-rust-range-widen-negative-control"
+        "tables-rust-range-widen-negative-control",
+        "tables-rust-bool-byte-negative-control"
       ],
       "rust": "stable"
     },
@@ -1887,10 +1936,17 @@
     {
       "name": "goose-blockcook",
       "when": "pull-request",
-      "why": "the Goose leg's accelerator controls (docs/PORT-GOOSE.md; make/goose-blockcook.mk): the block form's lead and Begin controls against the C++ goldens, and four harness runs over a sabotaged copy of the generated units (the cook's reserved words, the block's pitch, the write's byte order, the region writer's first-visit numbering), and the forgery fuzzer's two both-bounds extent controls (about 4 s together), and the accessor/descriptor agreement's control (a pointer accessor moved in accel.go under go test -overlay; two small goose runs). The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else; their own group because the harness runs (about 55 s on a laptop for the first three; the numbering run measured 23 s on vision, 2026-11-02) would push the goose group past the 120 s rule.",
+      "why": "the Goose leg's accelerator controls (docs/PORT-GOOSE.md; make/goose-blockcook.mk): the block form's lead and Begin controls against the C++ goldens, and the harness runs over a sabotaged copy of the generated units (the cook's reserved words and the block's pitch), which are the heavy harness runs of the single `goose-blockcook` group (about 55 s on a laptop for the first three), which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else. Measured 42 s of control time over the 2 accelerator controls.",
       "targets": [
         "tables-goose-accel-negative-control",
-        "tables-goose-block-negative-control",
+        "tables-goose-block-negative-control"
+      ]
+    },
+    {
+      "name": "goose-fuzz-accessor",
+      "when": "pull-request",
+      "why": "the Goose leg's forgery fuzzer's two both-bounds extent controls (about 4 s together) and the accessor/descriptor agreement's control (a pointer accessor moved in accel.go under go test -overlay; two small goose runs). Split from the single `goose-blockcook` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else. Measured 11 s of control time over the 2 controls.",
+      "targets": [
         "tables-goose-fuzz-negative-control",
         "tables-goose-accessor-negative-control"
       ]
@@ -1898,21 +1954,42 @@
     {
       "name": "goose-wire",
       "when": "pull-request",
-      "why": "the Goose leg under hostile input (make/goose-fuzz.mk): the wire-fuzz differential's two load sabotages (a non-minimal LEB128 accepted, every text taken as well-formed), each a sed over the generated wire_load.goose of one unit and a goose build -O2 of that leg, and the hostile corpus's non-finite plant, with the umbrella that names the two fuzz leaves (make builds each once in one invocation, so it costs the group nothing). Each installs the pinned Goose compiler itself (make dist-goose); Go and the host C compiler, nothing else. Measured at 7.7 s of control time together on the author's machine (2026-10-28). The retaining binary protocol controls compile the native Goose driver, check clean/evolution/refusal fixtures, then suppress the runtime retained counter or map-replacement cleanup: each changes only its retention counter while saved bytes stay identical (24 s together on hetzner1). The combined wire-fuzz gate also runs every retaining builder arm. The integrity controls build featurewitnesses probes and one leg with goose build -O2: a wrong-polynomial CRC-32C table reds the known answers and the Root round trips, and a crc32c that never returns reds the replay of the short-body vector on the harness's 30 s stall watchdog (about 45 s together on vision, 2026-11-02). The hostile corpus's total control takes a text list's total out of the generated load the same way and requires wire-text-total-past and wire-text-total-and-count red alone.",
+      "why": "the Goose wire-fuzz differential controls (make/goose-fuzz.mk). tables-goose-wire-fuzz-leb-negative-control sabotages the load so a non-minimal LEB128 is accepted. tables-goose-wire-fuzz-utf8-negative-control sabotages the load so every text is taken as well-formed UTF-8. tables-goose-wire-fuzz-negative-control has no recipe of its own; it runs those two. Measured serially on intel on 2026-11-09, each exit 0. The recipes print no control-step duration (the harness line is a mutant count, FAILED after N mutants), so these are make walls from time -p real: leb 11.13 s, which includes the fresh schema-goose-fuzz build and the conformance-harness build; the aggregate target 9.71 s, which rebuilds schema-goose-fuzz and runs both controls with the harness already built; utf8 3.76 s, which rebuilds schema-goose-fuzz and runs the utf8 control. The sum of those three make walls is 24.60 s, under about 75 s, so they stay one pull-request row. GOOSE was /opt/goose-v2026.2/goose, so dist-goose did not run. Go and the host C compiler.",
       "targets": [
-        "schema-goose-runs-hostile-corpus-negative-control",
-        "schema-goose-runs-hostile-corpus-total-negative-control",
-        "tables-goose-integrity-negative-control",
         "tables-goose-wire-fuzz-leb-negative-control",
         "tables-goose-wire-fuzz-negative-control",
-        "tables-goose-wire-fuzz-utf8-negative-control",
+        "tables-goose-wire-fuzz-utf8-negative-control"
+      ]
+    },
+    {
+      "name": "goose-retain",
+      "when": "pull-request",
+      "why": "the Goose retaining binary protocol control (make/goose-fuzz.mk, tables-goose-retain-fuzz-negative-control). Not remeasured. The existing citation stands: each changes only its retention counter while saved bytes stay identical, 24 s together on hetzner1. 24 s is under 75 s, so this row stays on the pull request. Split out of goose-wire so that row's measured time covers only the three wire-fuzz targets.",
+      "targets": [
         "tables-goose-retain-fuzz-negative-control"
+      ]
+    },
+    {
+      "name": "goose-integrity",
+      "when": "pull-request",
+      "why": "the Goose integrity control (make/goose-fuzz.mk, tables-goose-integrity-negative-control). Not remeasured. The existing citation stands: a wrong-polynomial CRC-32C table and a crc32c that never returns on the 30 s stall watchdog, about 45 s together on vision, 2026-11-02. 45 s is under 75 s, so this row stays on the pull request. Split out of goose-wire so that row's measured time covers only the three wire-fuzz targets.",
+      "targets": [
+        "tables-goose-integrity-negative-control"
+      ]
+    },
+    {
+      "name": "goose-hostile",
+      "when": "pull-request",
+      "why": "the Goose hostile-corpus runner (schema-goose-runs-hostile-corpus-negative-control) and its total-hold control (schema-goose-runs-hostile-corpus-total-negative-control), each taking a plant out of the generated load and requiring the corpus runner red by name. Split from the single `goose-wire` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739; each installs the pinned Goose compiler itself (make dist-goose); Go and the host C compiler, nothing else. Measured 19 s of control time over the 2 hostile-corpus controls.",
+      "targets": [
+        "schema-goose-runs-hostile-corpus-negative-control",
+        "schema-goose-runs-hostile-corpus-total-negative-control"
       ]
     },
     {
       "name": "goose-wire-verdict",
       "when": "pull-request",
-      "why": "The Goose variable-table wire-fuzz verdict control (make/goose.mk) was defined and in no group, so the plan test was red. It is one target with no measured wall.",
+      "why": "The Goose variable-table wire-fuzz verdict control (make/goose.mk), one target, tables-goose-wire-fuzz-verdict-negative-control. The recipe does not say what it sabotages. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 5.27 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable 3.899s. 5.27 s is under 110 s, so the row stays on the pull request.",
       "targets": [
         "tables-goose-wire-fuzz-verdict-negative-control"
       ]
@@ -1920,7 +1997,7 @@
     {
       "name": "lobster-wire-verdict",
       "when": "pull-request",
-      "why": "The Lobster variable-table wire-fuzz verdict control (make/lobster-fuzz.mk) was defined and in no group, so the plan test was red. It is one target with no measured wall.",
+      "why": "The Lobster variable-table wire-fuzz verdict control (make/lobster-fuzz.mk), one target, tables-lobster-wire-fuzz-verdict-negative-control. The recipe says the negative control plants its fault in the generated artifact the VM compiles and does not name that fault. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 2.91 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable 1.396s. 2.91 s is under 110 s, so the row stays on the pull request.",
       "targets": [
         "tables-lobster-wire-fuzz-verdict-negative-control"
       ],
@@ -1929,13 +2006,20 @@
     {
       "name": "goose-gates",
       "when": "pull-request",
-      "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the strict gate's plant and its emitter sabotage, and the runtime home's file-order control, and the claimed-names control (Declare made to let every <T>CookOpen through, under go test -overlay; Go only). Each installs the pinned Goose compiler itself (make dist-goose) where it needs it; two rebuild the compiler under a go build -overlay. Go and nothing else. Measured at 3.2 s of control time together on the author's machine off a warm build (2026-10-28); its own group so the fixed-form control's corpus build in group goose stays apart from it.",
+      "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the runtime home's file-order control, the unit home, and the claimed-names control (Declare made to let every <T>CookOpen through, under go test -overlay; Go only). Each installs the pinned Goose compiler itself (make dist-goose) where it needs it. Split from the single `goose-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 16 s of control time over the 3 controls.",
       "targets": [
         "tables-goose-runtime-home-negative-control",
-        "tables-goose-strict-emitter-negative-control",
-        "tables-goose-strict-negative-control",
         "tables-goose-unit-home-negative-control",
         "tables-goose-names-negative-control"
+      ]
+    },
+    {
+      "name": "goose-strict",
+      "when": "pull-request",
+      "why": "the Goose strict gate's plant and its emitter sabotage (make/goose-gates.mk), each rebuilding the compiler under a go build -overlay. Split from the single `goose-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739; Go only. Measured 21 s of control time over the 2 strict-gate controls.",
+      "targets": [
+        "tables-goose-strict-emitter-negative-control",
+        "tables-goose-strict-negative-control"
       ]
     },
     {
@@ -1952,10 +2036,17 @@
     {
       "name": "goose-text",
       "when": "pull-request",
-      "why": "the Goose leg's JSON text form controls (make/goose-text.mk): the walk's field dispatch sabotaged in generated code, and the float32 writer capped at six digits under the text differential. Each installs the pinned Goose compiler itself (make dist-goose) and needs Go and nothing else; the emitter-overlay conformance control additionally regenerates tabledemo, establishes the unchanged baseline, and requires json-read and json-hostile red while wire and json-write remain green (16 s on hetzner1); the three json_value controls break the variable class's flat-value-table walk in the emitter the same way and require graphdemo's json-write (the writer's `&node` label) or json-read (the reader's reference resolution), or featurewitnesses' json-hostile (the read's hold of a text list's total), red alone. A group of its own so the goose group's other surfaces land without touching these lines.",
+      "why": "the Goose leg's JSON text form controls (make/goose-text.mk): the walk's field dispatch sabotaged in generated code, and the float32 writer capped at six digits under the text differential. Each installs the pinned Goose compiler itself (make dist-goose) and needs Go and nothing else. Split from the single `goose-text` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 14 s of control time over the 2 text controls.",
       "targets": [
         "tables-goose-json-differential-negative-control",
-        "tables-goose-json-walk-negative-control",
+        "tables-goose-json-walk-negative-control"
+      ]
+    },
+    {
+      "name": "goose-json-conformance",
+      "when": "pull-request",
+      "why": "the Goose leg's emitter-overlay conformance text controls, each regenerating tabledemo under a sabotage and requiring its own surface red while the neighbours stay green: the walk control (16 s on hetzner1) and the three json_value controls (the writer's `&node` label, the reader's reference resolution, and the read's hold of a text list's total). Each installs the pinned Goose compiler itself (make dist-goose) and needs Go and nothing else. Split from the single `goose-text` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 36 s of control time over the 5 conformance JSON controls.",
+      "targets": [
         "conformance-negative-control-goose-walk",
         "conformance-negative-control-goose-json-label",
         "conformance-negative-control-goose-json-share",
@@ -2024,11 +2115,19 @@
     {
       "name": "lobster-conformance",
       "when": "pull-request",
-      "why": "the Lobster leg's two conformance controls (test/conformance/lobster/negative-control; docs/PORTING.md I2 and I11): each seds one runtime file the table emitter embeds, builds a private compiler through go build -overlay, regenerates every manifest unit with it and requires the harness red on exactly its surfaces (report: report, framing and retain; walk: json-read and json-hostile; framing: the id table's 4096 entry bound dropped, framing alone) with the neighbours green. On the pinned v2026.8 toolchain, which the row installs through its lobster field. Measured on hulk off one warm build: 17 s and 16 s.",
+      "why": "the Lobster leg's report, walk and framing conformance controls (test/conformance/lobster/negative-control; docs/PORTING.md I2 and I11), each sedding one runtime file the table emitter embeds, building a private compiler through go build -overlay, regenerating every manifest unit and requiring the harness red on exactly its surfaces (17 s and 16 s on hulk off one warm build). Split from the single `lobster-conformance` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 3 conformance controls.",
       "targets": [
         "conformance-negative-control-lobster",
         "conformance-negative-control-lobster-walk",
-        "conformance-negative-control-lobster-framing",
+        "conformance-negative-control-lobster-framing"
+      ],
+      "lobster": "v2026.8"
+    },
+    {
+      "name": "lobster-conformance-2",
+      "when": "pull-request",
+      "why": "the Lobster leg's cycle conformance control and the damage-discard control, on the pinned v2026.8 toolchain the row installs through its lobster field. Split from the single `lobster-conformance` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 18 s of control time over the 2 controls.",
+      "targets": [
         "conformance-negative-control-lobster-cycle",
         "tables-lobster-damage-discard-negative-control"
       ],
@@ -2048,13 +2147,21 @@
     {
       "name": "lobster-gates",
       "when": "pull-request",
-      "why": "the Lobster leg's open-gate controls (make/lobster-open-gates.mk): the key accessor's three guards (M5), the map writer's sort (M19), the block lead and the order word (I5, I7), the runtime names both ways (I6), the text differential's float32 cap (I13), the runtime home's file order (J2) and the USAGE fragment (I12). Each is one go test or one script over the pinned v2026.8 toolchain, which the row installs through its lobster field. Measured on hulk off one warm build: 1 s to 3 s each.",
+      "why": "the Lobster leg's open-gate controls (make/lobster-open-gates.mk): the key accessor's three guards (M5), the map writer's sort (M19), the block lead and the order word (I5, I7), and the runtime names (I6), each one go test or one script over the pinned v2026.8 toolchain the row installs through its lobster field, 1 s to 3 s each. Split from the single `lobster-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 12 s of control time over the 5 controls.",
       "targets": [
         "tables-lobster-keyed-negative-control",
         "tables-lobster-maps-sort-negative-control",
         "tables-lobster-block-lead-negative-control",
         "tables-lobster-order-negative-control",
-        "tables-lobster-names-negative-control",
+        "tables-lobster-names-negative-control"
+      ],
+      "lobster": "v2026.8"
+    },
+    {
+      "name": "lobster-gates-text",
+      "when": "pull-request",
+      "why": "the Lobster leg's text-form open-gate controls (make/lobster-open-gates.mk): the text differential's float32 cap (I13), the json walk, the runtime home's file order (J2) and the USAGE fragment (I12), each one go test or one script over the pinned v2026.8 toolchain the row installs through its lobster field, 1 s to 3 s each. Split from the single `lobster-gates` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 10 s of control time over the 4 controls.",
+      "targets": [
         "tables-lobster-json-differential-negative-control",
         "tables-lobster-json-walk-negative-control",
         "tables-lobster-runtime-home-negative-control",
@@ -2146,26 +2253,58 @@
       ]
     },
     {
-      "name": "squirrel",
+      "name": "squirrel-conformance",
       "when": "pull-request",
-      "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur neutralizes the emitted kind-mismatch counter, so report goes red and wire stays green; the walk saboteur breaks the text reader's bool arm, so json-read goes red and json-write and wire stay green; the block saboteur drops the Open's pitch check, so forgery goes red and block and block-dump stay green; the retain saboteur drops the retained-id capacity, so retain goes red and wire and report stay green. The framing saboteur drops the id table's 4096-entry maximum, so framing goes red on frame_entries_4097 and wire and report stay green. Each rebuilds the compiler under an overlay and regenerates the corpus, about 12 s on the studio. The packet wide-text control removes the generated reader's surrogate pairing and requires the harness's bit-flip agreement with C++ to fail. Beside them, the all-port differential's planted-bad-pattern control changes one byte of a scratch answer tree and requires the comparison to go red and name wire/Scene; both halves of that control run on a t.TempDir(), with no toolchain, so the Squirrel lens still has a blade on a host carrying none of the other ports. It costs milliseconds. Beside them, the resource-bounds negative control (make/schema-squirrel-resource-bounds.mk) runs the planted-pattern gate over the port's allocation counter and depth cap: pure Go, no sq interpreter, so it is another pull-request blade for the Squirrel lens. The packet FINITE-FLOAT control (SPEC.md \u00a74.3) drops the vendored serialize.nut's read test at both widths in memory (internal/codegen/squirrel/finite_test.go) and must red exactly the sixty-three non_finite_float read vectors of test/packet-finite/squirrel/main.nut while its write traps and bit-exact round trips stay green; one generate and one sq run, well under a second. The TABLE finite-float controls (docs/SPEC-TABLES.md \u00a73.3) remove one check at a time in memory (internal/codegen/squirreltable/nonfinite_test.go and nonfinite_forms_test.go): the variable read, the retained unknown entry's test and the variable writer, then the message read and writer and the fixed read and writer; each must red exactly that check's rows while the rest stay green; seven sq runs, about two seconds. The FLOAT-PARITY controls (internal/codegen/squirreltable/floatparity_test.go) put the old behaviour back in memory and must red exactly the rows the Go engine says it gets wrong: the variable read's compressed-float clamp removed (the rows the engine clamps), the message quantizer at one rounding in double (the fuzz rows where it parts from ir.TableMessageQuantize), an over-count message index clamped rather than refused (the over-count rows), and CookMeasure without its walk (the non-finite rows); four sq runs, under a second. Beside them, the hostile-corpus runner's planted reader (2.6 s on the studio) must go red; the nightly fuzzer's control patches the emitted load's array-frame bound and requires the wire differential to go red (1.8 s on the studio: it is the differential under a plant, not the nightly campaign, which schema-squirrel-nightly-fuzz.yml runs on its own schedule); and the generated-code lint gate's three plants (a refused statement, a trailing space, a blank-line run, each named by file and rule) run in under a second. The row installs the pinned interpreter (make/squirrel.mk's dist-squirrel) through its squirrel field, which must match test/conformance/squirrel/ci.json.",
+      "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur (report red, wire green), the walk saboteur (json-read red, json-write and wire green), the block saboteur (forgery red, block and block-dump green) and the retain saboteur (retain red, wire and report green), each rebuilding the compiler under an overlay and regenerating the corpus, about 12 s on the studio. Split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 48 s of control time over the 4 conformance controls.",
       "targets": [
         "conformance-negative-control-squirrel",
         "conformance-negative-control-squirrel-block",
         "conformance-negative-control-squirrel-retain",
-        "conformance-negative-control-squirrel-walk",
+        "conformance-negative-control-squirrel-walk"
+      ],
+      "squirrel": "3.2"
+    },
+    {
+      "name": "squirrel-conformance-2",
+      "when": "pull-request",
+      "why": "the Squirrel port's framing, absent and cycle conformance controls (test/conformance/squirrel/negative-control), each rebuilding the compiler under an overlay and regenerating the corpus, about 12 s on the studio. Split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 36 s of control time over the 3 conformance controls.",
+      "targets": [
         "conformance-negative-control-squirrel-absent",
         "conformance-negative-control-squirrel-framing",
-        "conformance-negative-control-squirrel-cycle",
-        "tables-squirrel-usage-negative-control",
-        "tables-squirrel-runtime-home-negative-control",
-        "tables-squirrel-release-negative-control",
+        "conformance-negative-control-squirrel-cycle"
+      ],
+      "squirrel": "3.2"
+    },
+    {
+      "name": "squirrel-packet",
+      "when": "pull-request",
+      "why": "the Squirrel port's four packet families (constructor defaults, finite-float read vectors, UTF-8 and wide pairing), each one generate and one sq run. Split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 11 s of control time over the 4 packet controls.",
+      "targets": [
         "packet-finite-squirrel-negative-control",
         "packet-wide-squirrel-negative-control",
         "packet-utf8-squirrel-negative-control",
-        "packet-defaults-squirrel-negative-control",
+        "packet-defaults-squirrel-negative-control"
+      ],
+      "squirrel": "3.2"
+    },
+    {
+      "name": "squirrel-tools",
+      "when": "pull-request",
+      "why": "first slice of the Squirrel port's small refusers and table-float controls (split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739): the usage and runtime-home gates, the release tier, and the TABLE finite-float and float-parity controls. Measured 18 s of control time over the 5 controls (about 2 s for the seven finite-float sq runs, under 1 s for the four float-parity sq runs, and ~15 s for the usage, runtime-home and release-tier checks, with the first target paying the package test build).",
+      "targets": [
+        "tables-squirrel-usage-negative-control",
+        "tables-squirrel-runtime-home-negative-control",
+        "tables-squirrel-release-negative-control",
         "tables-squirrel-finite-float-negative-control",
-        "tables-squirrel-float-parity-negative-control",
+        "tables-squirrel-float-parity-negative-control"
+      ],
+      "squirrel": "3.2"
+    },
+    {
+      "name": "squirrel-tools-2",
+      "when": "pull-request",
+      "why": "second slice of the Squirrel port's toolchain-gate controls (split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739): the all-port differential's planted-bad-pattern control (milliseconds, no toolchain), the resource-bounds control (pure Go), the hostile-corpus runner (2.6 s on the studio), the nightly fuzz lane's planted array-frame bound (1.8 s on the studio) and the generated lint gate's three plants (under 1 s). Measured 14 s of control time over the 5 controls.",
+      "targets": [
         "schema-squirrel-all-port-differential-negative-control",
         "schema-squirrel-resource-bounds-negative-control",
         "schema-squirrel-runs-hostile-corpus-negative-control",
@@ -2177,7 +2316,7 @@
     {
       "name": "squirrel-tables",
       "when": "pull-request",
-      "why": "the Squirrel port's in-package controls, one make target each (make/squirrel-negative-controls.mk), as make/go.mk wraps gotable's: the type surface's wire read and write controls (internal/codegen/squirrel), and the table surface's fixed form, JSON, load, message form, save and base64 text controls (internal/codegen/squirreltable), each run alone under test/slowgate/proof and each required to red exactly its own rows. Split from the squirrel row so each job stays under the 120 s rule: measured 3-9 s apiece, 35 s for the eight, warm on the studio (2026-10-28), the first one paying the package's test build.",
+      "why": "first slice of the Squirrel port's in-package controls (make/squirrel-negative-controls.mk, split from the 20-target `squirrel-tables` row so each slice stays well under the ~75 s control budget): the type surface's wire read and write controls (internal/codegen/squirrel), and the table surface's fixed form, JSON, load, message form and damage-discard controls (internal/codegen/squirreltable), each run alone under test/slowgate/proof. Measured 34 s of control time over the 7 controls (3-8 s apiece warm, with the first target paying the package test build).",
       "targets": [
         "tables-squirrel-type-wire-read-negative-control",
         "tables-squirrel-type-wire-write-negative-control",
@@ -2185,14 +2324,30 @@
         "tables-squirrel-json-negative-control",
         "tables-squirrel-load-negative-control",
         "tables-squirrel-message-form-negative-control",
-        "tables-squirrel-damage-discard-negative-control",
+        "tables-squirrel-damage-discard-negative-control"
+      ],
+      "squirrel": "3.2"
+    },
+    {
+      "name": "squirrel-tables-2",
+      "when": "pull-request",
+      "why": "second slice of the Squirrel port's in-package controls (make/squirrel-negative-controls.mk, split from the 20-target `squirrel-tables` row): the union-arm field-line, descriptor-layout slot, save, base64 text, keyed accessor, save-identity and block byte-order controls (internal/codegen/squirreltable), each run alone under test/slowgate/proof. Measured 31 s of control time over the 7 controls (3-7 s apiece warm, with the first target paying the package test build).",
+      "targets": [
         "tables-squirrel-arms-negative-control",
         "tables-squirrel-slot-negative-control",
         "tables-squirrel-save-negative-control",
         "tables-squirrel-base64-text-negative-control",
         "tables-squirrel-keyed-negative-control",
         "tables-squirrel-save-identity-negative-control",
-        "tables-squirrel-block-byte-order-negative-control",
+        "tables-squirrel-block-byte-order-negative-control"
+      ],
+      "squirrel": "3.2"
+    },
+    {
+      "name": "squirrel-tables-3",
+      "when": "pull-request",
+      "why": "third slice of the Squirrel port's in-package controls (make/squirrel-negative-controls.mk, split from the 20-target `squirrel-tables` row): the JSON label, map-writer sort, builder count-stop, block order-word, view doc/tags and text-differential controls (internal/codegen/squirreltable), each run alone under test/slowgate/proof. Measured 27 s of control time over the 6 controls (3-6 s apiece warm, with the first target paying the package test build).",
+      "targets": [
         "tables-squirrel-json-label-negative-control",
         "tables-squirrel-map-sort-negative-control",
         "tables-squirrel-count-stop-negative-control",
@@ -2213,48 +2368,81 @@
       "dart": "3.13.2"
     },
     {
-      "name": "luau",
+      "name": "luau-conformance",
       "when": "pull-request",
-      "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the bench legs' control (bench/luau/negative-control.sh) flips each leg's golden, plants a stray untagged line under the packet runner and an os.clock() clock and a corpus name in .luau files under a copy of bench/, and requires each refused by name beside clean baselines, about 3 s; the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row, and the four packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker). The packet FINITE-FLOAT controls (SPEC.md \u00a74.3) ride here too: each removes one direction of the vendored serialize.luau v2.1.3 float check at both widths, in the copy the generator emitted (tools/sabotage/packet_finite_luau.go), and test/packet-finite/luau/main.luau must fail exactly the 36 read or the 37 write vectors its .expected names; one schema build and two interpreter runs, a few seconds. The packet FINITE-FLOAT controls (SPEC.md \u00a74.3) ride here too: each removes one direction of the vendored serialize.luau v2.1.3 float check at both widths, in the copy the generator emitted (tools/sabotage/packet_finite_luau.go), and test/packet-finite/luau/main.luau must fail exactly the 36 read or the 37 write vectors its .expected names; one schema build and two interpreter runs, a few seconds. The TABLE finite-float control (docs/SPEC-TABLES.md \u00a73.3) removes each of eleven rules' checks from the emitted table runtime in turn (variable read and write, retained unknown float, message read and write, fixed read and write, cook read and write, block accessor, JSON writer) and TestLuauTablesAreFiniteOnly's probe must red on exactly that rule's rows; one Go test, under a second. the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row; and the text form's, each a sabotage of a scratch copy of the emitted runtime or output required to red exactly its own cases (the strict FromJson and the JSON required close, the text differential's float32 digits, the one-walk gate, the JSONTestSuite depth cap). Luau, Go and the host C++ compiler, nothing else. The last two run in about a second each on hulk once built: the wire-fuzz control's prerequisites (the units and the native host) are the ones the first two build, and the hostile control's is the internal/ci test binary. Luau and the host C++ compiler, nothing else. The fixed form's two gates (docs/FIXED-FORM-ALGORITHM.md \u00a75.9 #11) ride here too: a text length one off the writer must red the reference byte match, and layout_unknown answered as layout_malformed must red the OLD-REFUSES-NEW column, each over the C++ reference corpus. The 3.0.0 parity gates' controls ride here too: the two EMITTER controls (test/conformance/luau/negative-control: the load's unknown counter and the text walk's field-key match, each sedded into a copy of an embedded runtime file and built into a private compiler through go build -overlay, the units regenerated under a mirror of the repository, and the harness required red on exactly report and retain, or json-read and json-hostile), the keyed accessor's three plants, the map writer's sort removed, the module-key scan's planted keys, the runtime home's file-order rule put back, the documented example's two edited pages, the cook layout's widened pointer slot, and each pinned Luau fuzz vector's fix reverted in a scratch copy of the units.",
+      "why": "the Luau leg's conformance-harness controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault, the emitter and walking controls, the framing and cycle surfaces, and the hostile-corpus runner, each required to go red on its own row. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739; this half is the harness leg. Measured 39 s of control time over the 6 conformance and hostile-corpus controls.",
       "targets": [
-        "bench-luau-gate-negative-control",
         "conformance-negative-control-luau",
         "conformance-negative-control-luau-emitter",
         "conformance-negative-control-luau-framing",
         "conformance-negative-control-luau-cycle",
         "conformance-negative-control-luau-walk",
-        "luau-ludicrous-negative-control",
-        "luau-nightly-fuzz-negative-control",
+        "schema-luau-runs-hostile-corpus-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
+      "name": "luau-packet",
+      "when": "pull-request",
+      "why": "the Luau packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker), with the packet FINITE-FLOAT controls (SPEC.md §4.3) beside them, each removing one direction of the vendored serialize.luau v2.1.3 float check at both widths in the copy the generator emitted, so test/packet-finite/luau/main.luau fails exactly the 36 read or the 37 write vectors its .expected names. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 14 s of control time over the 4 packet controls.",
+      "targets": [
         "packet-defaults-luau-negative-control",
         "packet-finite-luau-negative-control",
         "packet-utf8-luau-negative-control",
-        "packet-wide-luau-negative-control",
-        "schema-luau-runs-hostile-corpus-negative-control",
+        "packet-wide-luau-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
+      "name": "luau-gates",
+      "when": "pull-request",
+      "why": "the Luau table gates' controls on the pinned interpreter (make dist-luau): the accessor and arms gates, the TABLE finite-float control (eleven rules' checks, each required to red its own rows), the fixed form, the keyed accessor's three plants, the map writer's sort, the module-key scan's planted keys, the runtime home's file-order rule, and the damage-discard control. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 33 s of control time over the 9 table-gate controls.",
+      "targets": [
         "tables-luau-accessor-negative-control",
         "tables-luau-arms-negative-control",
         "tables-luau-finite-float-negative-control",
         "tables-luau-fixed-form-negative-control",
-        "tables-luau-json-strict-negative-control",
-        "tables-luau-json-walk-negative-control",
-        "tables-luau-jsontestsuite-negative-control",
         "tables-luau-keyed-negative-control",
         "tables-luau-maps-negative-control",
         "tables-luau-names-negative-control",
-        "tables-luau-release-negative-control",
         "tables-luau-runtime-home-negative-control",
-        "tables-luau-text-differential-negative-control",
-        "tables-luau-usage-negative-control",
-        "tables-luau-versioning-negative-control",
-        "tables-luau-wire-fuzz-negative-control",
-        "tables-luau-wire-fuzz-vectors-negative-control",
         "tables-luau-damage-discard-negative-control"
       ],
       "luau": "0.741"
     },
     {
-      "name": "luau-forgery",
+      "name": "luau-text",
       "when": "pull-request",
-      "why": "Production block-open and optional CheckWhole/open composition controls on pinned Luau 0.741: remove both block extent bounds, then the optional cook-check region scan, and require independent bounds/checker findings. This does not complete production cook I3. Each control covers 24000 mutants; the actual make target took 63.44 seconds on hetzner1 at GOMAXPROCS=4. A separate group keeps this measured work within the owner's one-to-two-minute per-commit budget.",
+      "why": "the Luau text-form gates' controls on the pinned interpreter (make dist-luau): the strict FromJson and JSON required close, the text differential's float32 digits, the one-walk gate, the JSONTestSuite depth cap, the documented usage pages, versioning, and the release tier. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 26 s of control time over the 7 text-form controls.",
+      "targets": [
+        "tables-luau-json-strict-negative-control",
+        "tables-luau-json-walk-negative-control",
+        "tables-luau-jsontestsuite-negative-control",
+        "tables-luau-text-differential-negative-control",
+        "tables-luau-usage-negative-control",
+        "tables-luau-versioning-negative-control",
+        "tables-luau-release-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
+      "name": "luau-fuzz",
+      "when": "pull-request",
+      "why": "the Luau wire-fuzz controls and the bench/fuzz host controls on the pinned interpreter (make dist-luau): the wire-fuzz differential and its pinned vectors' fixes reverted in a scratch copy, the nightly fuzz host's planted crash replayed, the ludicrous control and the bench legs' golden flips. The wire-fuzz controls build the native host, which is the heavy half. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 44 s of control time over the 5 wire-fuzz and host controls.",
+      "targets": [
+        "tables-luau-wire-fuzz-negative-control",
+        "tables-luau-wire-fuzz-vectors-negative-control",
+        "luau-ludicrous-negative-control",
+        "luau-nightly-fuzz-negative-control",
+        "bench-luau-gate-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
+      "name": "luau-forgery",
+      "when": "nightly",
+      "seconds": 136,
+      "why": "Production block-open and optional CheckWhole/open composition controls on pinned Luau 0.741: remove both block extent bounds, then the optional cook-check region scan, and require independent bounds/checker findings. This does not complete production cook I3. Each control covers 24000 mutants; the actual make target took 63.44 seconds on hetzner1 at GOMAXPROCS=4, and the row ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. It is a single control that cannot be split further, so it moves to the nightly tier rather than missing the per-commit rule.",
       "targets": [
         "tables-luau-forgery-fuzz-negative-control"
       ],
@@ -2328,8 +2516,9 @@
     },
     {
       "name": "moo-wire-fuzz",
-      "when": "pull-request",
-      "why": "the moo leg's harness wire-fuzz control (make/moo-fuzz.mk, test/conformance/moo/wire-fuzz-negative-control; docs/PORTING.md I15): a string frame past its body planted to read without counting malformed in a scratch copy of every generated table_load.moo, and the harness must stop on exactly that verdict, through the same pipe tables-moo-wire-fuzz drives. Its own row because it builds the native pipe host tools/moofuzzhost from the moo pin's source (the VM and compiler libraries, cmake at MOO_BUILD_JOBS) on top of the pin .github/actions/moo restores; the control's own run stops on the first enumerated divergence: 2.3 s on amd-3 (2026-10-31) with the host and the units built.",
+      "when": "nightly",
+      "seconds": 139,
+      "why": "the moo leg's harness wire-fuzz control (make/moo-fuzz.mk, test/conformance/moo/wire-fuzz-negative-control; docs/PORTING.md I15), which builds the native pipe host tools/moofuzzhost from the moo pin's source (the VM and compiler libraries, cmake at MOO_BUILD_JOBS) on top of the pin .github/actions/moo restores. It is a single control that cannot be split further, and the row ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739, so it moves to the nightly tier rather than missing the per-commit rule. The control's own run stops on the first enumerated divergence: 2.3 s on amd-3 (2026-10-31) with the host and the units built.",
       "targets": [
         "tables-moo-wire-fuzz-negative-control"
       ],

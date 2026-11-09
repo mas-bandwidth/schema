@@ -63,8 +63,8 @@ func fixedWriterBoundsOf(f, w *ir.Field, at int64) []fixedWriterBound {
 		half := new(big.Int).Lsh(one, bits-1)
 		smin, smax = new(big.Int).Neg(half), new(big.Int).Sub(half, one)
 	}
-	low := lo.Cmp(smin) > 0 && !(rok && lo.Cmp(rlo) == 0)
-	high := hi.Cmp(smax) < 0 && !(rok && hi.Cmp(rhi) == 0)
+	low := lo.Cmp(smin) > 0 && (!rok || lo.Cmp(rlo) != 0)
+	high := hi.Cmp(smax) < 0 && (!rok || hi.Cmp(rhi) != 0)
 	if !low && !high {
 		return nil
 	}

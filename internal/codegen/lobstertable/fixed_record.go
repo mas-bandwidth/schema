@@ -157,7 +157,8 @@ func (p *fixedRecordProjection) element(f *ir.Field, typed, cell, ind string) {
 		if t.Kind == ir.TWString {
 			value = cell + ".units"
 		}
-		if p.toTyped {
+		switch {
+		case p.toTyped:
 			p.g.Pf("%s%s = length(%s)\n", ind, length, value)
 			p.check(fmt.Sprintf("%s > %d", length, t.Size), ind)
 			if t.Kind == ir.TWString {
@@ -168,17 +169,18 @@ func (p *fixedRecordProjection) element(f *ir.Field, typed, cell, ind string) {
 			} else {
 				p.g.Pf("%s%s = write_substring(%s, 0, %s, false)\n", ind, typed, typed, value)
 			}
-		} else if t.Kind == ir.TWString {
+		case t.Kind == ir.TWString:
 			i := p.local()
 			p.g.Pf("%s%s = []\n", ind, value)
 			p.g.Pf("%sfor(%s) %s: push(%s, read_uint16_le(%s, %s * 2))\n", ind, length, i, value, typed, i)
-		} else {
+		default:
 			p.g.Pf("%s%s = substring(%s, 0, %s)\n", ind, value, typed, length)
 		}
 	case ir.TInt, ir.TFixed, ir.TBits:
-		if t.Width > 64 {
+		switch {
+		case t.Width > 64:
 			p.assign(typed, cell+".w", ind)
-		} else if t.Kind == ir.TFixed {
+		case t.Kind == ir.TFixed:
 			if p.toTyped {
 				hi := "0"
 				if t.Signed {
@@ -193,7 +195,7 @@ func (p *fixedRecordProjection) element(f *ir.Field, typed, cell, ind string) {
 				}
 				p.g.Pf("%s%s.w = schema_rt.Int128 { lo: %s, hi: %s }\n", ind, cell, typed, hi)
 			}
-		} else {
+		default:
 			p.assign(typed, cell+".i", ind)
 		}
 	}

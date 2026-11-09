@@ -59,23 +59,6 @@ func loadRows(t *testing.T) []loadRow {
 	return rows
 }
 
-// reportLines reads reports.txt into case -> "u,k,w,c,d,m,verdict".
-func reportLines(t *testing.T) map[string]string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "reports.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := map[string]string{}
-	for line := range strings.SplitSeq(string(data), "\n") {
-		x := strings.Fields(line)
-		if len(x) >= 2 && !strings.HasPrefix(x[0], "#") {
-			out[x[0]] = x[1]
-		}
-	}
-	return out
-}
-
 // loadUnit is one generated unit: the checked IR and the directory its
 // Lobster modules were written into.
 type loadUnit struct {
@@ -632,6 +615,3 @@ func TestLobsterTableLoadBytesCountPastItsBody(t *testing.T) {
 		t.Logf("%s: %x -> %s, value equal to Go or discarded as damage", row.name, row.data, line)
 	}
 }
-
-// damaged recognizes whole refusal for older harness callers.
-func damaged(line string) bool { return line == "refused" }

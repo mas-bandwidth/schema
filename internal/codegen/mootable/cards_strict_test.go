@@ -214,7 +214,7 @@ func runMooCardsSurface(t *testing.T, generated map[string][]byte, facade map[st
 	}
 
 	outputs := map[string][]byte{}
-	for _, line := range strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(stdout.String(), "\n"), "\n") {
 		fields := strings.SplitN(line, " ", 3)
 		if len(fields) != 3 || fields[0] != "FILE" {
 			return nil, rows, fmt.Errorf("unexpected moo output %q", line)

@@ -1769,54 +1769,27 @@ fn the_text_under_an_arm() {
     }
 
     // ---------------------------------------------------------------------
-    // AND THE TWO BYTES THAT ARE TRUE WHEN THEY ARE NOT ZERO (§3.4).
-    //
-    // A `bool` and an optional's PRESENCE each ride as one byte, and the
-    // ruling on both is `!= 0` and not `== 1`: a writer that spells `true` 2,
-    // or presence 7, is a writer this reader still understands, and neither
-    // is damage, a clamp or a refusal. FU1's body leads with those two bytes
-    // exactly so the forgery below is at a known offset, and both reader
-    // paths answer for them — the identity plan copies the byte verbatim out
-    // of a stranger's record, and the compiled plan copies it verbatim too,
-    // so the scatter is the one place the ruling can live.
+    // A BOOL OR PRESENT BYTE THAT IS NOT 0 OR 1 IS DAMAGE (§4.5, the strict
+    // read). A `bool` and an optional's PRESENCE each ride as one byte; a live
+    // byte past 1 is wire_damaged, a whole-load discard: the load answers
+    // None, `damaged` is set, nothing is refused, and every caller row is back
+    // at its declared default. FU1's body leads with those two bytes, so the
+    // forgeries below are at a known offset.
     // ---------------------------------------------------------------------
     let body0 = records_at(&file) + 8;
-    let mut forged = file.clone();
-    forged[body0] = 2; // `flag`, spelled true the way a stranger spelled it
-    forged[body0 + 1] = 7; // `note`'s present byte, likewise
-
-    let mut mine2 = [tblfu1::FuRootRow::default(); 4];
-    let mut r3 = tblfu1::TableFixedReport::default();
-    let n3 = tblfu1::fu_root_fixed_load(&mut mine2, &forged, &mut plan, &mut remap, &mut r3);
-    check(n3 == Some(2), "stray true bytes: the identity read still takes both records");
-    check(mine2[0].flag, "stray true bytes: a bool byte of 2 lands TRUE on the identity path");
-    check(
-        mine2[0].note_present && mine2[0].note == 44,
-        "stray true bytes: a present byte of 7 lands PRESENT, and the payload with it",
-    );
-    check(
-        r3 == tblfu1::TableFixedReport::default(),
-        "stray true bytes: and neither is damage, a clamp or a refusal",
-    );
-
-    if !retired(
-        "the_text_under_an_arm's compiled stray-true-bytes half",
-        "FU2 reading FU1's forged file is a cross-schema read; the identity half above still holds the `!= 0` ruling on both bytes",
-        LINEAGE,
-    ) {
-    let mut theirs2 = [tblfu2::FuRootRow::default(); 4];
-    let mut r4 = tblfu2::TableFixedReport::default();
-    let n4 = tblfu2::fu_root_fixed_load(&mut theirs2, &forged, &mut plan2, &mut remap2, &mut r4);
-    check(n4 == Some(2), "stray true bytes: the compiled read still takes both records");
-    check(theirs2[0].flag, "stray true bytes: a bool byte of 2 lands TRUE on the COMPILED path too");
-    check(
-        theirs2[0].note_present && theirs2[0].note == 44,
-        "stray true bytes: and a present byte of 7 lands PRESENT there as well",
-    );
-    check(
-        !r4.damaged && !r4.refused,
-        "stray true bytes: the compiled path calls neither of them an event either",
-    );
+    for (at, forged, what) in [(body0, 2u8, "a bool byte of 2"), (body0 + 1, 7u8, "a present byte of 7")] {
+        let mut bad = file.clone();
+        bad[at] = forged;
+        let mut mine2 = [tblfu1::FuRootRow::default(); 4];
+        mine2[0].flag = true;
+        let mut r3 = tblfu1::TableFixedReport::default();
+        let n3 = tblfu1::fu_root_fixed_load(&mut mine2, &bad, &mut plan, &mut remap, &mut r3);
+        check(n3.is_none(), &format!("stray true bytes: {what} discards the whole load"));
+        check(r3.damaged && !r3.refused, &format!("stray true bytes: {what} is damage, never a refusal"));
+        check(
+            !mine2[0].flag && !mine2[0].note_present,
+            &format!("stray true bytes: {what} leaves every caller row at its default"),
+        );
     }
 
     // NEGATIVE CONTROL FOR THE CONTROL: the SAME bytes with those two zeroed

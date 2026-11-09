@@ -77,8 +77,7 @@ func (g *cookGen) cookGraphRecords(name string) []string {
 		// writer lays it in the holder's extent, and a record reached only
 		// through an entry (an `Item` a `*Item` value names) is a node
 		seen := map[string]bool{}
-		var walk func(string)
-		walk = func(n string) {
+		walk := func(n string) {
 			cookWalk(g.unit, n, func(r string, _ *ir.MemberLayout) {
 				if seen[r] {
 					return

@@ -14,6 +14,7 @@ package darttable
 // directly; `make tables-dart-fixed-form` is the functional harness.
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -181,14 +182,6 @@ func TestDartFixedCellsStrictNegativeControl(t *testing.T) {
 	if faults := checkDartFixedCellsStrict(decode, run, load, all); len(faults) != 0 {
 		t.Fatalf("clean artifact should hold the strict read:\n  %s", strings.Join(faults, "\n  "))
 	}
-	hasFault := func(faults []string, want string) bool {
-		for _, f := range faults {
-			if f == want {
-				return true
-			}
-		}
-		return false
-	}
 	mustChange := func(name, mutated, original string) {
 		t.Helper()
 		if mutated == original {
@@ -199,31 +192,31 @@ func TestDartFixedCellsStrictNegativeControl(t *testing.T) {
 	// A bool byte of 2 landing true again.
 	bad := strings.ReplaceAll(decode, "if (b > 1) {", "if (b > 255) {")
 	mustChange("bool", bad, decode)
-	if faults := checkDartFixedCellsStrict(bad, run, load, all); !hasFault(faults, "decode lacks wire_damaged bool refusal") {
+	if faults := checkDartFixedCellsStrict(bad, run, load, all); !slices.Contains(faults, "decode lacks wire_damaged bool refusal") {
 		t.Fatalf("negative control did not flag the bool landing: %v", faults)
 	}
 	// A present byte of 2 landing present again.
 	bad = strings.ReplaceAll(decode, "if (p > 1) {", "if (p > 255) {")
 	mustChange("present", bad, decode)
-	if faults := checkDartFixedCellsStrict(bad, run, load, all); !hasFault(faults, "decode lacks wire_damaged present refusal") {
+	if faults := checkDartFixedCellsStrict(bad, run, load, all); !slices.Contains(faults, "decode lacks wire_damaged present refusal") {
 		t.Fatalf("negative control did not flag the present landing: %v", faults)
 	}
 	// A count past its bound clamped in the run instead of refused.
 	badRun := strings.Replace(run, "return TableFixedRefusal.countOverBound;", "counted = size;", 1)
 	mustChange("count", badRun, run)
-	if faults := checkDartFixedCellsStrict(decode, badRun, load, all); !hasFault(faults, "runtime lacks TableFixedRefusal.countOverBound") {
+	if faults := checkDartFixedCellsStrict(decode, badRun, load, all); !slices.Contains(faults, "runtime lacks TableFixedRefusal.countOverBound") {
 		t.Fatalf("negative control did not flag the count clamp: %v", faults)
 	}
 	// A retired clamped counter planted in the real artifact text.
 	badAll := strings.Replace(all, "int widened = 0;", "int widened = 0;\n  int clamped = 0;", 1)
 	mustChange("retired", badAll, all)
-	if faults := checkDartFixedCellsStrict(decode, run, load, badAll); !hasFault(faults, "generated code still carries retired name int clamped =") {
+	if faults := checkDartFixedCellsStrict(decode, run, load, badAll); !slices.Contains(faults, "generated code still carries retired name int clamped =") {
 		t.Fatalf("negative control did not flag the retired counter: %v", faults)
 	}
 	// A load that lands a refused read: the discard of written records gone.
 	badLoad := strings.ReplaceAll(load, "initR(values[j])", "values[j]")
 	mustChange("discard", badLoad, load)
-	if faults := checkDartFixedCellsStrict(decode, run, badLoad, all); !hasFault(faults, "load does not restore defaults on refusal") {
+	if faults := checkDartFixedCellsStrict(decode, run, badLoad, all); !slices.Contains(faults, "load does not restore defaults on refusal") {
 		t.Fatalf("negative control did not flag the landing load: %v", faults)
 	}
 }

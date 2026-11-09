@@ -720,8 +720,21 @@ fn v_lineage_merge() {
 		if tc.trueBytes {
 			mutate = `    let layout_bytes = u32::from_le_bytes(data[16..20].try_into().unwrap()) as usize;
     let body = 20 + layout_bytes + 8;
-    data[body] = 2;
-    data[body + 1] = 7;`
+    // STRICT (FIXED-FORM-ALGORITHM §4.5): a live bool byte of 2 or a live
+    // present byte of 7 is wire_damaged, a whole-load discard on the compiled
+    // path, every caller row back at its declared default.
+    for (at, forged) in [(body, 2u8), (body + 1, 7u8)] {
+        let mut bad = data.clone();
+        bad[at] = forged;
+        let mut rows = vec![ROWTYPE::default(); 3];
+        rows[0].flag = true;
+        let mut plan = vec![TableFixedEntry::default(); 4096];
+        let mut remap = vec![0u16; 4096];
+        let mut report = TableFixedReport::default();
+        assert_eq!(LOADFN(&mut rows, &bad, &mut plan, &mut remap, &mut report), None, "byte {forged} at {at}");
+        assert!(report.damaged && !report.refused, "{:?}", report);
+        assert!(!rows[0].flag && !rows[0].note_present, "a damaged load left a caller value");
+    }`
 		}
 		probes = append(probes, versionProbe{
 			name: "probe_" + tc.name, reader: "FU2", older: []string{"FU1"},

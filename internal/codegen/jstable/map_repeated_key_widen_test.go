@@ -36,7 +36,7 @@ func TestJavaScriptMapRepeatedKeyLastKindWins(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			cases = append(cases, row{name, root, hex.EncodeToString(wire), hex.EncodeToString(saved), []int{int(rep.Unknown), 0, int(rep.Widened), 0, 0}})
+			cases = append(cases, row{name, root, hex.EncodeToString(wire), hex.EncodeToString(saved), []int{rep.Unknown, 0, rep.Widened, 0, 0}})
 		}
 		files, err := generateVariableFiles(u, nil)
 		if err != nil {

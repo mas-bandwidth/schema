@@ -257,7 +257,7 @@ func (l *literal) field(rec string, fv *tabletext.Field) {
 			l.pf("%s = {}\n", at)
 		}
 		for i := 0; i < count; i++ {
-			l.pf("%s[%d] = %s\n", at, i+1, mooString([]byte(fv.Elems[i].Tab.Fields[0].Cell.Str)))
+			l.pf("%s[%d] = %s\n", at, i+1, mooString(fv.Elems[i].Tab.Fields[0].Cell.Str))
 		}
 	case f.IsMap():
 		l.pf("%s = {}\n", at)

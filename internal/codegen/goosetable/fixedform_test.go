@@ -760,7 +760,7 @@ fn main() {
     var tol_low: probe::T[1] = [probe::T { .. }; 1];
     var rep_low = schema_rt::FixedReport { .. };
     let n_low = probe::TFixedLoad(tol_low, low_file, rep_low);
-    print("load_low ", n_low, " ", rep_low.oor, " ", tol_low[0].X, " ", tol_low[0].U.lo, " ", tol_low[0].S.lo as! i64);
+    print("load_low ", n_low, " ", schema_rt::fixed_refusal_name(rep_low.reason), " ", rep_low.oor, " ", tol_low[0].X, " ", tol_low[0].U.lo, " ", tol_low[0].S.lo as! i64);
 
     // 4. Forged above-max record bytes: all 4 fields above max.
     var high_file: u8[>..] = [];
@@ -791,7 +791,7 @@ fn main() {
     var tol_high: probe::T[1] = [probe::T { .. }; 1];
     var rep_high = schema_rt::FixedReport { .. };
     let n_high = probe::TFixedLoad(tol_high, high_file, rep_high);
-    print("load_high ", n_high, " ", rep_high.oor, " ", tol_high[0].X, " ", tol_high[0].U.lo, " ", tol_high[0].S.lo, " ", tol_high[0].Fx.lo == 0x000a000000000000 && tol_high[0].Fx.hi == 0);
+    print("load_high ", n_high, " ", schema_rt::fixed_refusal_name(rep_high.reason), " ", rep_high.oor, " ", tol_high[0].X, " ", tol_high[0].U.lo, " ", tol_high[0].S.lo, " ", tol_high[0].Fx.lo == 0 && tol_high[0].Fx.hi == 0);
 }
 `, nil)
 		wantLines := []string{
@@ -799,8 +799,8 @@ fn main() {
 			"save_refuse -1 -1 -1",
 			"raw_low -100 5 -600 18446744073709551615",
 			"clamp_helper_low 4 -5 10 -500 true",
-			"load_low 1 4 -5 10 -500",
-			"load_high 1 4 5 1000 500 true",
+			"load_low -1 out_of_range 0 0 10 0",
+			"load_high -1 out_of_range 0 0 10 0 true",
 		}
 		if got := strings.Split(out, "\n"); strings.Join(got, "\n") != strings.Join(wantLines, "\n") {
 			t.Fatalf("C7 probe output:\n got:\n%s\nwant:\n%s", out, strings.Join(wantLines, "\n"))
@@ -947,8 +947,8 @@ fn main() {
 		wantLines := []string{
 			"save_raw true true",
 			"raw_before_clamp true true",
-			"clamp_low 1 1 true",
-			"clamp_high 1 1 true",
+			"clamp_low -1 0 false",
+			"clamp_high -1 0 false",
 			"norm_negz 1 0 true",
 		}
 		if strings.Join(strings.Split(out, "\n"), "\n") != strings.Join(wantLines, "\n") {

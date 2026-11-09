@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,7 +114,7 @@ func vtExec(t *testing.T, dir, main string, inputs map[string][]byte) (string, e
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("luau %s: %v\n%s", main, err, stderr.Bytes())
+		return "", fmt.Errorf("luau %s: %w\n%s", main, err, stderr.Bytes())
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }
@@ -219,9 +220,7 @@ func vtEmitUnit(t *testing.T, u *ir.Unit, patches []vtPatch) *generatedUnit {
 	if err != nil {
 		t.Fatalf("luautable generate: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	g := &generatedUnit{dir: t.TempDir(), files: files, loaded: true}
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(g.dir, name), data, 0o644); err != nil {

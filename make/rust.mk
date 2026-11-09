@@ -1748,3 +1748,26 @@ tables-rust-range-widen-negative-control: tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(RUST_RANGE_NC)/log; exit 1; }
 	@echo "negative control: a Rust fixed read that lands a value past the writer's range turns TestFixedVersioningRangeWidenHostile RED"
+
+# A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS DAMAGE (STRICT 100;
+# docs/FIXED-FORM-ALGORITHM.md §4.5). The control takes both of the fixed
+# scatter's byte checks out through go test -overlay, so a byte of 2 lands as a
+# bool; TestFixedBoolByteIsDamageRust must go red on the live cases.
+RUST_BOOL_NC := build/rust-bool-byte-nc
+.PHONY: tables-rust-bool-byte-negative-control
+tables-rust-bool-byte-negative-control:
+	@mkdir -p $(RUST_BOOL_NC)
+	@sed -e 's|if b\[|if false \&\& b[|' internal/codegen/rusttable/fixedform.go > $(RUST_BOOL_NC)/fixedform.go.txt
+	@test "$$(diff internal/codegen/rusttable/fixedform.go $(RUST_BOOL_NC)/fixedform.go.txt | grep -c '^>')" = 2 || \
+		{ echo "NEGATIVE CONTROL: the Rust bool-byte sabotage did not patch exactly the two checks"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_BOOL_NC)/fixedform.go.txt"}}\n' \
+		"$$PWD" "$$PWD" > $(RUST_BOOL_NC)/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_BOOL_NC)/overlay.json \
+			-run '^TestFixedBoolByteIsDamageRust$$' ./internal/codegen/rusttable > $(RUST_BOOL_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the bool-byte check is gone and the gate stayed green"; \
+		cat $(RUST_BOOL_NC)/log; exit 1; \
+	fi
+	@grep -q "a live byte of 2 must be damage" $(RUST_BOOL_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_BOOL_NC)/log; exit 1; }
+	@echo "negative control: a Rust fixed read that lands a bool byte of 2 turns TestFixedBoolByteIsDamageRust RED"

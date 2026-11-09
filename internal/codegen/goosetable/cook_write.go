@@ -273,15 +273,16 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 			scalar(8, false, w.g.TypeRef(r.Name, false))
 		case *ir.Struct:
 			rTyp := w.g.TypeRef(r.Name, r.IsTable)
-			if f.Type.Optional && f.Array == ir.ArrayNone && f.KeyEnum == "" {
+			switch {
+			case f.Type.Optional && f.Array == ir.ArrayNone && f.KeyEnum == "":
 				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")
 				w.pl(ind, "if %sPresent { if !%sCookPut(%s, b, at + %s, big) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPut(%s, b, at + %s, big) { return false; } }", src, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
-			} else if f.Array == ir.ArrayCounted {
+			case f.Array == ir.ArrayCounted:
 				arr, idx, _ := strings.Cut(src, "[")
 				idx = strings.TrimSuffix(idx, "]")
 				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")
 				w.pl(ind, "if %s < %sCount as! i64 { if !%sCookPut(%s, b, at + %s, big) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPut(%s, b, at + %s, big) { return false; } }", idx, arr, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
-			} else {
+			default:
 				w.pl(ind, "if !%sCookPut(%s, b, at + %s, big) { return false; }", r.Name, src, at)
 			}
 			w.cl(ind, "%sCookFromLoaded(%s, data, vals, %s);", r.Name, dst, s)

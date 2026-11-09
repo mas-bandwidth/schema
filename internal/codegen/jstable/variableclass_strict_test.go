@@ -11,6 +11,7 @@ package jstable
 // catches it.
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -131,15 +132,6 @@ func TestJsVariableClassStrictNegativeControl(t *testing.T) {
 		t.Fatal("no real TableVariableLoad/TableVariableStrictMark was generated")
 	}
 
-	hasFault := func(faults []string, want string) bool {
-		for _, f := range faults {
-			if f == want {
-				return true
-			}
-		}
-		return false
-	}
-
 	// The clean generated artifact holds the strict read; each regression below
 	// must be introduced by mutating it, never by feeding hand-written literals.
 	if faults := checkJsVariableStrict(loadBody, markBody); len(faults) != 0 {
@@ -154,7 +146,7 @@ func TestJsVariableClassStrictNegativeControl(t *testing.T) {
 	if markDropOor == markBody {
 		t.Fatal("could not find the strict mark's sum to mutate")
 	}
-	if faults := checkJsVariableStrict(loadBody, markDropOor); !hasFault(faults, "strict mark omits oor") {
+	if faults := checkJsVariableStrict(loadBody, markDropOor); !slices.Contains(faults, "strict mark omits oor") {
 		t.Fatalf("negative control did not flag a strict mark that omits oor: %v", faults)
 	}
 
@@ -166,7 +158,7 @@ func TestJsVariableClassStrictNegativeControl(t *testing.T) {
 	if loadDropRefusal == loadBody {
 		t.Fatal("could not find the strict-mark refusal to mutate")
 	}
-	if faults := checkJsVariableStrict(loadDropRefusal, markBody); !hasFault(faults, "load does not refuse the whole value on a moved strict mark") {
+	if faults := checkJsVariableStrict(loadDropRefusal, markBody); !slices.Contains(faults, "load does not refuse the whole value on a moved strict mark") {
 		t.Fatalf("negative control did not flag the dropped strict-mark refusal: %v", faults)
 	}
 
@@ -178,7 +170,7 @@ func TestJsVariableClassStrictNegativeControl(t *testing.T) {
 	if loadDropDamage == loadBody {
 		t.Fatal("could not find the damage discard to mutate")
 	}
-	if faults := checkJsVariableStrict(loadDropDamage, markBody); !hasFault(faults, "load does not discard the whole value on damage") {
+	if faults := checkJsVariableStrict(loadDropDamage, markBody); !slices.Contains(faults, "load does not discard the whole value on damage") {
 		t.Fatalf("negative control did not flag the dropped damage discard: %v", faults)
 	}
 }

@@ -17,6 +17,7 @@ package lobstertable_test
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -178,9 +179,7 @@ func generateLobsterWireUnits(t *testing.T, root, dest string, keys []string, ma
 		if err != nil {
 			t.Fatalf("%s: lobstertable.Generate: %v", key, err)
 		}
-		for name, data := range tables {
-			files[name] = data
-		}
+		maps.Copy(files, tables)
 		dir := filepath.Join(dest, key)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)

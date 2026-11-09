@@ -3518,16 +3518,6 @@ func (g *tableGen) emitCountedTailReset(f *ir.Field, ind string) {
 	g.pf("%s}\n", ind)
 }
 
-// cppActionLines reindents a generated failure action at its use site.
-// The same action can occur in a field, an array element, or a nested body.
-func cppActionLines(action, ind string) string {
-	lines := strings.Split(action, "\n")
-	for i := range lines {
-		lines[i] = strings.TrimSpace(lines[i])
-	}
-	return strings.Join(lines, "\n"+ind)
-}
-
 // unitHasRequired reports whether any table of the unit marks a field
 // `| required` (docs/SPEC-TABLES.md §2.3): only then does a body end ask the
 // shared report whether a body below it was refused for a missing one. The

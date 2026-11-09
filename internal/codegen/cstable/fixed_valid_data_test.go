@@ -2,6 +2,7 @@ package cstable_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -145,7 +146,7 @@ func requireValidDataSlow(t *testing.T) {
 
 func validDataOK(out, id string) bool {
 	prefix := "OK: " + id
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(line, prefix) {
 			return true
 		}
@@ -219,7 +220,7 @@ func runCSharpValidData(t *testing.T, checks string) (string, int) {
 	out, err := run.CombinedOutput()
 	code := 0
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			code = ee.ExitCode()
 		} else {
 			t.Fatalf("dotnet exec: %v\n%s", err, out)

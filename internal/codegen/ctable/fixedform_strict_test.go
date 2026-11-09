@@ -901,7 +901,7 @@ func TestCFixedFormSourcesStrictNegativeControl(t *testing.T) {
 		}
 		for _, p := range plants {
 			mut := maps.Clone(base)
-			mut[p.file] = mut[p.file] + p.bad
+			mut[p.file] += p.bad
 			if err := checkCFixedFormSourcesStrict(mut); err == nil {
 				t.Fatalf("negative control %s: checkCFixedFormSourcesStrict accepted planted %q in %s", p.name, p.bad, p.file)
 			}

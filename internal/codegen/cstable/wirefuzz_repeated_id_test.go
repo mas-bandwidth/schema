@@ -47,16 +47,16 @@ const (
 // csWireFuzzSlice is the emitted text between two signatures. The signatures
 // bound a method because the runtime emits one method after another.
 func csWireFuzzSlice(src, start, end string) (string, error) {
-	i := strings.Index(src, start)
-	if i < 0 {
+	_, after, ok := strings.Cut(src, start)
+	if !ok {
 		return "", fmt.Errorf("the emitted runtime has no %q", start)
 	}
-	rest := src[i+len(start):]
-	j := strings.Index(rest, end)
-	if j < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, end)
+	if !ok0 {
 		return "", fmt.Errorf("the emitted runtime has no %q after %q", end, start)
 	}
-	return rest[:j], nil
+	return before0, nil
 }
 
 // csWireFuzzRepeatedIdRule holds the emitted wire-alone walk to the rule: a

@@ -1130,7 +1130,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 # arm reads the absent pin through the variable, so the pin lives in one place.
 .PHONY: tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain
 tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --mixed-builder --finite-owed tables-finite/js \
+	@./build/conformance-harness wire-fuzz --mixed-builder \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-plain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-plain.log; \
@@ -1142,7 +1142,7 @@ tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.
 		echo 'tables-js-wire-fuzz-plain FAILED: the absent set is not $(TABLES_JS_WIRE_FUZZ_ABSENT) as pinned in make/js.mk'; exit 1; }
 
 tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --mixed-builder --finite-owed tables-finite/js --retain \
+	@./build/conformance-harness wire-fuzz --mixed-builder --retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-retain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-retain.log; \
@@ -1171,12 +1171,12 @@ tables-js-wire-fuzz-negative-control: build/conformance-harness build/tables-gen
 	done
 	@grep -q 'SABOTAGED enum reference range' build/js-wire-fuzz-sabotage/generated/examples/TabledemoVariable.js || \
 		{ echo 'NEGATIVE CONTROL FAILED: the enum reference range sabotage patched nothing'; exit 1; }
-	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-wire-fuzz-sabotage/generated ./build/conformance-harness wire-fuzz --mixed-builder --finite-owed tables-finite/js \
+	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-wire-fuzz-sabotage/generated ./build/conformance-harness wire-fuzz --mixed-builder \
 			--driver 'test/conformance/js/driver wire-fuzz' --seed 1 --n 0 --failed build/js-wire-fuzz-sabotage/failed.bin \
 			> build/js-wire-fuzz-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: an enum reference past the id table was read as unknown and the differential stayed green'; exit 1; \
 	fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' build/js-wire-fuzz-sabotage/log || \
+	@grep -qE 'read acceptance differs: the leg says true, the oracle says false|the report differs|the oracle discards a damaged load' build/js-wire-fuzz-sabotage/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the differential went red, but not on the report'; cat build/js-wire-fuzz-sabotage/log; exit 1; }
 	@echo 'JavaScript wire negative control: an enum reference past the id table changes the read report'
 

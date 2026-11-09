@@ -301,7 +301,8 @@ func TestMooStringIdentityNegativeControl(t *testing.T) {
 			})
 			red := map[string]bool{}
 			for _, b := range bad {
-				red[b[:strings.Index(b, ":")]] = true
+				name, _, _ := strings.Cut(b, ":")
+				red[name] = true
 			}
 			for _, row := range ctl.red {
 				if !red[row] {

@@ -12,6 +12,7 @@ package jstable
 //     returning -1.
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -118,15 +119,6 @@ func TestJsFixedRoadmapRowsStrictNegativeControl(t *testing.T) {
 	t.Parallel()
 	loadBody, refuseBatchBody, decodeBody, runBody := generateJsFixedRoadmapStrictBodies(t)
 
-	hasFault := func(faults []string, want string) bool {
-		for _, f := range faults {
-			if f == want {
-				return true
-			}
-		}
-		return false
-	}
-
 	if faults := checkJsFixedRoadmapRowsStrict(loadBody, refuseBatchBody, decodeBody, runBody); len(faults) != 0 {
 		t.Fatalf("clean artifact should hold the strict fixed roadmap read:\n  %s", strings.Join(faults, "\n  "))
 	}
@@ -139,7 +131,7 @@ func TestJsFixedRoadmapRowsStrictNegativeControl(t *testing.T) {
 	if loadNoReset == loadBody {
 		t.Fatal("could not find RFixedRefuseBatch call in RFixedLoad to mutate")
 	}
-	if faults := checkJsFixedRoadmapRowsStrict(loadNoReset, refuseBatchBody, decodeBody, runBody); !hasFault(faults, "RFixedLoad exits on stage.refused without RFixedRefuseBatch") {
+	if faults := checkJsFixedRoadmapRowsStrict(loadNoReset, refuseBatchBody, decodeBody, runBody); !slices.Contains(faults, "RFixedLoad exits on stage.refused without RFixedRefuseBatch") {
 		t.Fatalf("negative control did not flag RFixedLoad skipping RFixedRefuseBatch: %v", faults)
 	}
 
@@ -150,7 +142,7 @@ func TestJsFixedRoadmapRowsStrictNegativeControl(t *testing.T) {
 	if batchNoInit == refuseBatchBody {
 		t.Fatal("could not find InitR loop in RFixedRefuseBatch to mutate")
 	}
-	if faults := checkJsFixedRoadmapRowsStrict(loadBody, batchNoInit, decodeBody, runBody); !hasFault(faults, "RFixedRefuseBatch does not reset values[0..k] via InitR") {
+	if faults := checkJsFixedRoadmapRowsStrict(loadBody, batchNoInit, decodeBody, runBody); !slices.Contains(faults, "RFixedRefuseBatch does not reset values[0..k] via InitR") {
 		t.Fatalf("negative control did not flag RFixedRefuseBatch omitting InitR: %v", faults)
 	}
 
@@ -162,7 +154,7 @@ func TestJsFixedRoadmapRowsStrictNegativeControl(t *testing.T) {
 	if decRangeClamp == decodeBody {
 		t.Fatal("could not find ranged-scalar refusal in RFixedDecode to mutate")
 	}
-	if faults := checkJsFixedRoadmapRowsStrict(loadBody, refuseBatchBody, decRangeClamp, runBody); !hasFault(faults, "decode still clamps and counts oor") {
+	if faults := checkJsFixedRoadmapRowsStrict(loadBody, refuseBatchBody, decRangeClamp, runBody); !slices.Contains(faults, "decode still clamps and counts oor") {
 		t.Fatalf("negative control did not flag decode ranged-scalar clamp: %v", faults)
 	}
 
@@ -171,7 +163,7 @@ func TestJsFixedRoadmapRowsStrictNegativeControl(t *testing.T) {
 	if decNoWireDamaged == decodeBody {
 		t.Fatal("could not find TableFixedRefusal.WireDamaged in RFixedDecode to mutate")
 	}
-	if faults := checkJsFixedRoadmapRowsStrict(loadBody, refuseBatchBody, decNoWireDamaged, runBody); !hasFault(faults, "decode lacks TableFixedRefusal.WireDamaged") {
+	if faults := checkJsFixedRoadmapRowsStrict(loadBody, refuseBatchBody, decNoWireDamaged, runBody); !slices.Contains(faults, "decode lacks TableFixedRefusal.WireDamaged") {
 		t.Fatalf("negative control did not flag missing WireDamaged in decode: %v", faults)
 	}
 
@@ -183,7 +175,7 @@ func TestJsFixedRoadmapRowsStrictNegativeControl(t *testing.T) {
 	if runTextClamp == runBody {
 		t.Fatal("could not find text-length refusal in TableFixedRun to mutate")
 	}
-	if faults := checkJsFixedRoadmapRowsStrict(loadBody, refuseBatchBody, decodeBody, runTextClamp); !hasFault(faults, "runtime still clamps and counts oor") {
+	if faults := checkJsFixedRoadmapRowsStrict(loadBody, refuseBatchBody, decodeBody, runTextClamp); !slices.Contains(faults, "runtime still clamps and counts oor") {
 		t.Fatalf("negative control did not flag runtime text-length clamp: %v", faults)
 	}
 }

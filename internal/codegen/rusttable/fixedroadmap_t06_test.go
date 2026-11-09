@@ -251,10 +251,10 @@ fixed table T
 
 // ---- rust/C12 ----------------------------------------------------------------
 
-// t06C12 holds rust/C12 "bool byte != 0" to §4.5's reader table: "a `bool` or a
-// PRESENT FLAG lands as `byte != 0`, normalised to the language's own true.
-// `0x02` is not a bool a reader stores verbatim (fix 2)". The emitted scatter
-// compares the byte against zero instead of copying it.
+// t06C12 holds rust/C12 to §4.5's strict reader table: a `bool` byte other than
+// 0 or 1 is wire_damaged, on live data only (§3.4's slack rule). The emitted
+// scatter lands the byte as `== 1` and, at slack depth zero, marks the load
+// damaged for any byte past 1. TestFixedBoolByteIsDamageRust runs the row.
 func t06C12(t *testing.T) {
 	text := t06Fixed(t, `package probe
 
@@ -267,15 +267,17 @@ fixed table T
 	if scatter == "" {
 		t.Fatal("C12: t_fixed_scatter is not emitted")
 	}
-	t06Has(t, scatter, "value.ok = b[at] != 0;",
-		"C12 a bool byte lands as `byte != 0`, never the raw byte")
+	t06Has(t, scatter, "if b[at] > 1 && report.slack == 0 {",
+		"C12 a live bool byte past 1 is checked")
+	t06Has(t, scatter, "report.damaged = true;", "C12 a live bool byte past 1 is damage")
+	t06Has(t, scatter, "value.ok = b[at] == 1;", "C12 a bool byte lands as `byte == 1`")
 }
 
 // ---- rust/C13 ----------------------------------------------------------------
 
-// t06C13 holds rust/C13 "present flag byte != 0" to the same §4.5 row, spelled
-// for the optional's companion byte: the present flag lands as `byte != 0` and
-// is never stored verbatim, and it is read BEFORE the payload it guards.
+// t06C13 holds rust/C13 to the same §4.5 row, spelled for the optional's
+// companion byte: a live present byte past 1 is damage, the flag lands as
+// `== 1`, and it is read BEFORE the payload it guards.
 func t06C13(t *testing.T) {
 	text := t06Fixed(t, `package probe
 
@@ -288,9 +290,12 @@ fixed table T
 	if scatter == "" {
 		t.Fatal("C13: t_fixed_scatter is not emitted")
 	}
-	t06Has(t, scatter, "value.link_present = b[0] != 0;",
-		"C13 a present flag byte lands as `byte != 0`, never the raw byte")
-	if present, payload := strings.Index(scatter, "value.link_present = b[0] != 0;"),
+	t06Has(t, scatter, "if b[0] > 1 && report.slack == 0 {",
+		"C13 a live present byte past 1 is checked")
+	t06Has(t, scatter, "report.damaged = true;", "C13 a live present byte past 1 is damage")
+	t06Has(t, scatter, "value.link_present = b[0] == 1;",
+		"C13 a present flag byte lands as `byte == 1`")
+	if present, payload := strings.Index(scatter, "value.link_present = b[0] == 1;"),
 		strings.Index(scatter, "value.link = "); present < 0 || payload < 0 || present > payload {
 		t.Errorf("C13: the present flag is not read before the payload it guards:\n%s", scatter)
 	}
@@ -298,23 +303,24 @@ fixed table T
 
 // ---- rust/R17 -----------------------------------------------------------------
 
-// t06R17 holds rust/R17 "a bool or present byte that is not 0/1 normalises and
-// counts nothing" to §4.5: the normalisation is the `!= 0` comparison, and it is
-// NOT a clamp — a byte that is neither 0 nor 1 is a lawful normalisation of the
-// language's true and moves no counter. The emitted scatter for a bool and for
-// an optional's present byte carries the comparison and no `clamped` at all.
+// t06R17 holds rust/R17 to §4.5's strict read: a bool or present byte that is
+// not 0/1 is wire_damaged (a whole-load discard), never a normalisation and
+// never a held count. The emitted scatter for a bool and for an optional's
+// present byte carries the damage check and no `report.held`.
 func t06R17(t *testing.T) {
-	for _, tc := range []struct{ name, src, want string }{
-		{"bool", "package probe\n\nfixed table T { ok bool }\n", "value.ok = b[at] != 0;"},
-		{"present", "package probe\n\nfixed table T { link ?int32 }\n", "value.link_present = b[0] != 0;"},
+	for _, tc := range []struct{ name, src, check, want string }{
+		{"bool", "package probe\n\nfixed table T { ok bool }\n", "if b[at] > 1 && report.slack == 0 {", "value.ok = b[at] == 1;"},
+		{"present", "package probe\n\nfixed table T { link ?int32 }\n", "if b[0] > 1 && report.slack == 0 {", "value.link_present = b[0] == 1;"},
 	} {
 		scatter := t06Fn(t06Fixed(t, tc.src), "t_fixed_scatter")
 		if scatter == "" {
 			t.Fatalf("R17 %s: t_fixed_scatter is not emitted", tc.name)
 		}
-		t06Has(t, scatter, tc.want, "R17 the byte normalises through `!= 0`")
+		t06Has(t, scatter, tc.check, "R17 a live byte past 1 is checked")
+		t06Has(t, scatter, "report.damaged = true;", "R17 a live byte past 1 is damage")
+		t06Has(t, scatter, tc.want, "R17 the byte lands as `== 1`")
 		if strings.Contains(scatter, "report.held") {
-			t.Errorf("R17 %s: a non-0/1 byte COUNTED; normalising a bool or present byte counts nothing:\n%s", tc.name, scatter)
+			t.Errorf("R17 %s: a non-0/1 byte COUNTED held; it is damage, never a held count:\n%s", tc.name, scatter)
 		}
 	}
 }
