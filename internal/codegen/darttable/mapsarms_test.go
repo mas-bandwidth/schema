@@ -145,20 +145,58 @@ func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, re
 	}
 	// THE FIXED LIBRARIES (form 3) BESIDE THE VARIABLE ONE: the fixed roots'
 	// oracle wires are form 3, so their resave runs through the Fixed codec.
-	var fixedNames []string
 	for name, src := range files {
 		if strings.HasSuffix(name, "Fixed.dart") {
 			if err := os.WriteFile(filepath.Join(dir, name), src, 0o600); err != nil {
 				t.Fatal(err)
 			}
+		}
+	}
+	probe := resaveOracleProbe(wireName, files, rows)
+	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"--enable-asserts", "probe.dart"}
+	for _, r := range rows {
+		abs, err := filepath.Abs(filepath.Join(repo, r.path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		refusal := r.refusal
+		if refusal == "" {
+			refusal = "-"
+		}
+		args = append(args, r.name, r.root, abs, refusal)
+	}
+	cmd := exec.Command(dartBinary(t), args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("oracle round trip over the generated %s: %v\n%s", wireName, err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("probe did not report ok: %s", out)
+	}
+}
+
+// resaveOracleProbe is the probe resaveOracleRows writes. A root whose
+// artifact contains `int <name>FixedLoad(` resaves with FixedLoad/FixedSave (one read: the records or a
+// refusal) and never WireLoad/WireSave. That artifact is a form-3 file. A root with no Fixed
+// codec stays on the form-1 wire. A fixed table past the form's bounds keeps
+// form 1 and has no FixedLoad.
+func resaveOracleProbe(wireName string, files map[string][]byte, rows []oracleRow) string {
+	var fixedNames []string
+	for name := range files {
+		if strings.HasSuffix(name, "Fixed.dart") {
 			fixedNames = append(fixedNames, name)
 		}
 	}
 	sort.Strings(fixedNames)
-	// Only a root with a real Fixed codec in the artifact rides form 3;
-	// a fixed table past the form's bounds keeps form 1 and has none.
 	fixedRoots := map[string]bool{}
 	for _, r := range rows {
+		if r.root == "" {
+			continue
+		}
 		fn := strings.ToLower(r.root[:1]) + r.root[1:]
 		for _, name := range fixedNames {
 			if strings.Contains(string(files[name]), "int "+fn+"FixedLoad(") {
@@ -166,10 +204,11 @@ func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, re
 			}
 		}
 	}
-
 	roots := map[string]bool{}
 	for _, r := range rows {
-		roots[r.root] = true
+		if r.root != "" {
+			roots[r.root] = true
+		}
 	}
 	var names []string
 	for r := range roots {
@@ -215,7 +254,7 @@ func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, re
 			sw.WriteString("      }\n")
 		}
 	}
-	probe := `import 'dart:io';
+	return `import 'dart:io';
 import 'dart:typed_data';
 ` + imports.String() + `
 Uint8List resave(String root, Uint8List wire) {
@@ -263,30 +302,6 @@ void main(List<String> args) {
   stdout.writeln('ok');
 }
 `
-	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	args := []string{"--enable-asserts", "probe.dart"}
-	for _, r := range rows {
-		abs, err := filepath.Abs(filepath.Join(repo, r.path))
-		if err != nil {
-			t.Fatal(err)
-		}
-		refusal := r.refusal
-		if refusal == "" {
-			refusal = "-"
-		}
-		args = append(args, r.name, r.root, abs, refusal)
-	}
-	cmd := exec.Command(dartBinary(t), args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("oracle round trip over the generated %s: %v\n%s", wireName, err, out)
-	}
-	if !strings.Contains(string(out), "ok") {
-		t.Fatalf("probe did not report ok: %s", out)
-	}
 }
 
 // packetFiles is the unit's packet libraries (internal/codegen/dart): the
