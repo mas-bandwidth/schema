@@ -15,10 +15,11 @@ import (
 // shared cross-version vectors every leg reads (fixedvector.WriterRange): an
 // OLD writer's file with one ranged value forged past that writer's range, read
 // by the NEW reader whose own range is wider. The reader clamps to the WRITER's
-// range and counts `clamped` once: a scalar, one element of a ranged fixed
-// array (held the same as a scalar), and a uint64 at or above 2^63 (compared
-// unsigned, so it lands the max). The answer is the manifest's `expect=`, which
-// is what the C++ reference's own NEW reader landed from the same bytes.
+// range: a scalar, one element of a ranged fixed array (held the same as a
+// scalar), and a uint64 at or above 2^63 (compared unsigned, so it lands the
+// max). The clamp count is the retired manifest field, zero on every dumped
+// line (fixedvector.Expect.Clamped). The landed values are the manifest's
+// `expect=`, which is what the C++ reference's own NEW reader landed.
 func TestGooseFixedVersioningRangeWidenHostile(t *testing.T) {
 	slowtest.Gate(t, "goose (it runs the generated NEW reader over the forged file)")
 	t.Parallel()
@@ -56,7 +57,7 @@ func TestGooseFixedVersioningRangeWidenHostile(t *testing.T) {
 				}
 			}
 			if got.clamped != want.Clamped {
-				t.Errorf("clamped=%d, want exactly %d: one forged value, one clamp", got.clamped, want.Clamped)
+				t.Errorf("clamped=%d, want exactly %d: the retired clamp count stays zero", got.clamped, want.Clamped)
 			}
 			if got.widened != 0 || got.unknown != 0 || got.kindMismatch != 0 {
 				t.Errorf("a counter that must not move did: %s", got.raw)

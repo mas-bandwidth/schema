@@ -166,12 +166,17 @@ jobs:
       packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
       broad: ${{ steps.pick.outputs.broad }}
+      rows: ${{ steps.rows.outputs.rows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # the merge base with the target branch is what names the diff, so
-          # the whole history is needed rather than the single merge commit
+          # the whole history is needed rather than the single merge commit.
+          # BLOBLESS: the diff needs commits and trees, never the old blobs.
+          # A cold runner's full fetch was 58-111 s of this job (runs
+          # 42491594592, 42451891639); a blobless one is a few seconds.
           fetch-depth: 0
+          filter: blob:none
 
       - name: the diff, the packages and the legs
         id: pick
@@ -305,6 +310,31 @@ jobs:
             echo "* legs: \`$json\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # THE GO TEST ROWS (tools/gotestrows): the packages above, cut into
+      # go-test-touched matrix rows that each fit the fleet's two-minute
+      # per-commit cap. Light packages are packed together by their measured
+      # seconds (.github/go-test-rows.txt); a package the table splits gets a
+      # row per named test pattern plus the complement row that skips them all,
+      # so every selected test runs in exactly one row and a new test lands in
+      # a row with no edit. gotable adds the two make rows below.
+      - name: the go test rows
+        id: rows
+        if: steps.pick.outputs.packages != ''
+        env:
+          PACKAGES: ${{ steps.pick.outputs.packages }}
+          BROAD: ${{ steps.pick.outputs.broad }}
+        run: |
+          set -euo pipefail
+          flags=""
+          [ "$BROAD" = yes ] && flags="-short"
+          case " $PACKAGES " in
+            *" ./internal/codegen/gotable "*|*" ./... "*) flags="$flags -gotable-extras" ;;
+          esac
+          # shellcheck disable=SC2086
+          rows=$(go run ./tools/gotestrows $flags $PACKAGES)
+          echo "$rows"
+          echo "rows=$rows" >> "$GITHUB_OUTPUT"
+
   # THE CHEAP LINTS, the ones that answer in seconds and catch the mistake a
   # human would otherwise find by reading. modernize runs here too (issue
   # #1424): the full `lint` job is gated behind the `full-ci` label on pull
@@ -428,16 +458,30 @@ jobs:
   # a PR into fixed-table-form was green in every ci-fast job having run
   # nothing. This job is the door that still opens below main, so when the
   # packages include gotable it runs tables-go-fixedform itself.
+  #
+  # ONE ROW PER MATRIX JOB, because the fleet caps a per-commit job at two
+  # minutes (a job past it is killed, exit 137) and one job running every
+  # selected package did not fit: a broad diff's `go test -short ./...` ran
+  # 1186 s in one job (run 42457948089), and a run on a capped host was killed
+  # two minutes in, inside bench/tools (run 42451891639). `plan`'s rows step
+  # (tools/gotestrows) cuts the selection into rows by measured seconds; each
+  # row runs the same `go test` over its share, with the same flags, and the
+  # two make targets below are rows of their own.
   go-test-touched:
     needs: plan
     if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    name: go-test-touched (${{ matrix.row }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # fleet: 81 s median, 587 s at worst; a broad diff runs `go test -short ./...`
-    # on a four-core hosted runner from a restored cache
-    timeout-minutes: 30
+    # the fleet's per-commit cap is two minutes; this bound only frees a hung
+    # runner sooner on a host that does not enforce it
+    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.rows) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -455,9 +499,8 @@ jobs:
       # THE PINS ARE THE FILE'S OWN, the same SERIALIZE*_TAG values ci-full.yml
       # reads, so this lane compiles against the runtime the full lane does.
       #
-      # Measured on a fleet host's own network: the four shallow clones are
-      # ~0.6 s each, ~2.5 s total for ~4.8 MB — inside the floor named at the
-      # top of this file, not a new minute.
+      # Measured on a fleet host's own network: the shallow clones are 3-4 s
+      # together (run 42492071587, every host).
       - name: Check out the C++, C, C# and Go serialize runtimes (pinned releases)
         run: |
           set -euo pipefail
@@ -515,93 +558,85 @@ jobs:
             exit 1
           fi
 
-      # THE LUA PIN, exactly as ci-full.yml's go-test installs it:
-      # internal/codegen/lua, internal/codegen/luatable and the Lua lanes under
-      # internal/ci run generated Lua under the pinned PUC-Rio interpreter and
-      # FAIL, never skip, without it. make/lua.mk's dist-lua builds it from
-      # source at the sha256 it names, into dist/lua-<version>/, the LUA default.
-      - name: install the Lua pin when a Lua package is touched
+      # THE INTERPRETER PINS this row's packages run under, exactly as
+      # ci-full.yml's go-test installs them, and they FAIL, never skip, without
+      # them: the Lua pin (make/lua.mk dist-lua) for internal/codegen/lua*,
+      # luatable and the Lua lanes under internal/ci; the Luau pin
+      # (make/luau.mk dist-luau) always, for the Luau packages, the compiler's
+      # Luau testgen gate and the Luau lanes under internal/ci; the Goose pin
+      # (make/goose.mk dist-goose) for internal/codegen/goose*; the Lobster pin
+      # (make/lobster.mk dist-lobster) for internal/codegen/lobster*. A broad
+      # diff installs all four on every row, as the one job did. Each is put at
+      # the dist/ path its make file names by .github/actions/dist-pins, which
+      # runs the same make target, its sha256 check included, once per fleet
+      # runner and copies the verified tree in afterwards: the four pins were
+      # 29-65 s of every job here (run 42492071587). The Lobster release
+      # binary links libOpenGL and libGLX, which the fleet hosts carry and the
+      # hosted ubuntu image does not, so a hosted fallback installs those two.
+      - name: which interpreter pins this row needs
+        id: pins
+        if: matrix.packages != ''
         env:
-          PACKAGES: ${{ needs.plan.outputs.packages }}
-        run: |
-          set -euo pipefail
-          case " $PACKAGES " in
-            *" ./internal/codegen/lua"*|*" ./internal/ci "*|*" ./... "*)
-              make dist-lua
-              ;;
-          esac
-
-      # THE LUAU PIN: the Luau packages, the compiler's Luau testgen gate and
-      # the Luau lanes under internal/ci run generated Luau under the pinned
-      # interpreter and fail, never skip, without it
-      # (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
-      - name: install the Luau pin
-        run: make dist-luau
-      # THE Goose PIN, when a Goose package is touched: internal/codegen/goose
-      # and internal/codegen/goosetable (the only importers of gooserun) run
-      # generated Goose under the pinned compiler and fail, never skip,
-      # without it. make/goose.mk's dist-goose installs it at the sha256 it
-      # names, into the dist/ path gooserun's default names; ci-full.yml's
-      # go-test does the same.
-      - name: install the Goose pin
-        if: contains(needs.plan.outputs.packages, '/codegen/goose') || contains(needs.plan.outputs.packages, './...')
-        run: make dist-goose
-
-      # THE LOBSTER PIN, when the packages include a Lobster one (or are
-      # broad): internal/codegen/lobster and internal/codegen/lobstertable run
-      # generated Lobster under the pinned compiler and fail, never skip,
-      # without it (internal/codegen/lobster/lobsterrun). make/lobster.mk's
-      # dist-lobster installs it at the sha256 it names, into the dist/ path
-      # lobsterrun's default names. The release binary links libOpenGL and
-      # libGLX, which the fleet hosts carry and the hosted ubuntu image does
-      # not, so a hosted fallback installs those two first.
-      - name: install the Lobster pin
-        env:
-          PACKAGES: ${{ needs.plan.outputs.packages }}
-        run: |
-          set -euo pipefail
-          case " $PACKAGES " in
-            *" ./internal/codegen/lobster "*|*" ./internal/codegen/lobstertable "*|*" ./... "*)
-              if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
-                sudo apt-get update
-                sudo apt-get install -y --no-install-recommends libopengl0 libglx0
-              fi
-              make dist-lobster
-              ;;
-          esac
-
-      - name: go test the touched packages
-        env:
-          PACKAGES: ${{ needs.plan.outputs.packages }}
+          PACKAGES: ${{ matrix.packages }}
           BROAD: ${{ needs.plan.outputs.broad }}
         run: |
           set -euo pipefail
-          echo "packages: $PACKAGES"
-          # go test stops any one package at 10 minutes by default; on the
-          # four-core hosted runner goosetable, gotable and javatable each run
-          # past that when a broad diff runs them side by side, so the package
-          # limit is 25 minutes, inside the job's 30
+          pins="luau"
+          if [ "$BROAD" = yes ]; then
+            pins="lua luau goose lobster"
+          else
+            case " $PACKAGES " in *" ./internal/codegen/lua"*|*" ./internal/ci "*) pins="$pins lua" ;; esac
+            case " $PACKAGES " in *" ./internal/codegen/goose"*) pins="$pins goose" ;; esac
+            case " $PACKAGES " in *" ./internal/codegen/lobster "*|*" ./internal/codegen/lobstertable "*) pins="$pins lobster" ;; esac
+          fi
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ] && case " $pins " in *" lobster "*) true ;; *) false ;; esac; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          echo "pins=$pins" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/dist-pins
+        if: matrix.packages != ''
+        with:
+          pins: ${{ steps.pins.outputs.pins }}
+
+      - name: go test this row's packages
+        if: matrix.packages != ''
+        env:
+          PACKAGES: ${{ matrix.packages }}
+          RUN: ${{ matrix.run }}
+          SKIP: ${{ matrix.skip }}
+          BROAD: ${{ needs.plan.outputs.broad }}
+        run: |
+          set -euo pipefail
+          echo "packages: $PACKAGES${RUN:+ -run $RUN}${SKIP:+ -skip $SKIP}"
+          short=""
           if [ "$BROAD" = yes ]; then
             # a broad diff's own gate is the full suite in ci-full.yml; here it
             # is bounded so the lane keeps its budget, and the short run still
             # catches the ordinary mistake in minutes rather than at merge
             echo "::notice::broad diff — the whole suite runs in ci-full.yml; this lane runs it with -short"
-            # shellcheck disable=SC2086
-            go test -short -timeout 25m $PACKAGES
-          else
-            # shellcheck disable=SC2086
-            go test -timeout 25m $PACKAGES
+            short=-short
           fi
-          # schema#1376: TestFixedForm* skip without SCHEMA_SLOW, and the go
-          # leg-gate is skipped on PRs below main. tables-go-fixedform is the
-          # existing make target that runs them under the slow gate; the
-          # hyphenated tables-go-fixed-form is the binary byte gate and does
-          # not.
-          case " $PACKAGES " in
-            *" ./internal/codegen/gotable "*|*" ./... "*)
-              make tables-go-fixedform
-              make conformance-go-rows
-              ;;
+          # an empty -run selects every test and an empty -skip skips none
+          # shellcheck disable=SC2086
+          go test $short -timeout 25m $PACKAGES -run "$RUN" -skip "$SKIP"
+
+      # schema#1376: TestFixedForm* skip without SCHEMA_SLOW, and the go
+      # leg-gate is skipped on PRs below main. tables-go-fixedform is the
+      # existing make target that runs them under the slow gate; the
+      # hyphenated tables-go-fixed-form is the binary byte gate and does
+      # not. conformance-go-rows rides beside it as it always has. When the
+      # packages include gotable, `plan` adds one row for each.
+      - name: the gotable make rows
+        if: matrix.make != ''
+        env:
+          TARGET: ${{ matrix.make }}
+        run: |
+          set -euo pipefail
+          case "$TARGET" in
+            tables-go-fixedform) make tables-go-fixedform ;;
+            conformance-go-rows) make conformance-go-rows ;;
+            *) echo "::error::go-test-touched has no make row '$TARGET'"; exit 1 ;;
           esac
 
   # THE TOUCHED LEG'S TWO GATES: the fixed form's bytes and §5's versioning
@@ -682,11 +717,11 @@ jobs:
       - name: read the .NET SDK pin
         if: matrix.leg == 'cs'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: matrix.leg == 'cs' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: matrix.leg == 'js' && runner.environment == 'github-hosted'
         with:
           # the version test/conformance/js/ci.json names
@@ -697,7 +732,7 @@ jobs:
         if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         if: matrix.leg == 'java' && runner.environment == 'github-hosted'
         with:
           distribution: temurin
@@ -767,11 +802,12 @@ jobs:
             # the Goose leg's fixed form against the reference's bytes (make/goose.mk)
             # and its versioning rows (make/goose-versioning.mk), under the pinned compiler
             goose)  make dist-goose test-goose tables-goose-versioning tables-goose-message-form ;;
-            # test-lobster holds the fixed form to the reference's byte oracle
-            # (SCHEMA_REQUIRE_CORPUS=1) beside both packages' suites; the strict
-            # gate compiles every generated unit with zero warnings; the bench
-            # legs' gate runs both runners over their corpus, no clock
-            lobster) make test-lobster tables-lobster-clean bench-lobster-gate ;;
+            # the strict gate compiles every generated unit with zero
+            # warnings; the bench legs' gate runs both runners over their
+            # corpus, no clock. test-lobster, which holds the fixed form to the
+            # reference's byte oracle beside both packages' suites, runs in
+            # the leg-gate-lobster rows below.
+            lobster) make tables-lobster-clean bench-lobster-gate ;;
             # the Squirrel card leg under the pinned interpreter
             # (make/squirrel-cards.mk): the facade's unit tests, the card
             # corpus on all nine surfaces, and the three negative controls
@@ -779,4 +815,100 @@ jobs:
                       make cards-squirrel-test cards-squirrel-conformance
                       make cards-squirrel-conformance-negative-control cards-squirrel-conformance-upgrade-negative-control cards-squirrel-conformance-hash-negative-control ;;
             *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
+          esac
+
+  # THE LOBSTER LEG'S test-lobster, IN ROWS. As one leg-gate row the Lobster
+  # leg ran 128-913 s (40 runs, 2026-11-08; 462 s on amd-2, where the four
+  # conformance controls were 131 s, the wire-fuzz trio 100 s, the forgery
+  # fuzz 133 s, its control 145 s and the two packages' suites 152 s), and
+  # the fleet kills a per-commit job at two minutes. So test-lobster's work
+  # is cut into rows by make target, each a job of its own:
+  #   conformance-a / -b  — the four conformance controls, two each
+  #   wire-fuzz           — tables-lobster-wire-fuzz
+  #   packages            — test-lobster-packages, the two packages' suites
+  #                         under SCHEMA_REQUIRE_CORPUS=1 (make/lobster.mk)
+  #   gates               — EVERY OTHER prerequisite of test-lobster, read
+  #                         from make itself at run time, so a prerequisite
+  #                         added to test-lobster lands here with no edit
+  # THE FORGERY FUZZ PAIR (tables-lobster-fuzz and its control, 133 s and
+  # 145 s alone) is the one thing not on this per-commit lane: a fuzz oracle
+  # over the whole corpus is nightly-class work, and its control is already
+  # the nightly `lobster-forgery` negative-control group. Both still run, and
+  # still go red on their own failure, in `make test-lobster` on ci-full.yml's
+  # go-test unit-codegen row on every merge to main, on the nightly, and on a
+  # pull request labelled full-ci.
+  leg-gate-lobster:
+    needs: plan
+    if: contains(needs.plan.outputs.legs, '"lobster"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    name: fixed form + versioning (lobster ${{ matrix.part }})
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    # the fleet's per-commit cap is two minutes; this bound only frees a hung
+    # runner sooner on a host that does not enforce it
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [ conformance-a, conformance-b, wire-fuzz, packages, gates ]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the C++ reference dumps build/fixedform-corpus, every leg's oracle
+      - name: Check out the C++ serialize reference (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # THE LOBSTER PIN (make/lobster.mk's dist-lobster: the release archive,
+      # its sha256 refused before it is unpacked, into dist/lobster-<version>/).
+      # A hosted fallback adds the two GL libraries the release binary links.
+      - name: the pinned Lobster
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster
+
+      - name: test-lobster, ${{ matrix.part }}
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          set -euo pipefail
+          a="conformance-negative-control-lobster conformance-negative-control-lobster-walk"
+          b="conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle"
+          w="tables-lobster-wire-fuzz"
+          p="test-lobster-packages"
+          nightly="tables-lobster-fuzz tables-lobster-fuzz-negative-control"
+          case "$PART" in
+            conformance-a) make toolchain-lobster $a ;;
+            conformance-b) make toolchain-lobster $b ;;
+            wire-fuzz)     make toolchain-lobster $w ;;
+            packages)      make $p ;;
+            gates)
+              # test-lobster's prerequisites as make reads them, less the
+              # rows above and the nightly pair
+              all=$( { make -pq test-lobster 2>/dev/null || true; } | sed -n '/^test-lobster: /{s///p;q;}')
+              [ -n "$all" ] || { echo "::error::make printed no prerequisites for test-lobster"; exit 1; }
+              rest=""
+              for t in $all; do
+                case " $a $b $w $p $nightly " in *" $t "*) continue ;; esac
+                rest="$rest $t"
+              done
+              echo "gates:$rest"
+              # shellcheck disable=SC2086
+              make $rest ;;
+            *) echo "::error::leg-gate-lobster has no part '$PART'"; exit 1 ;;
           esac

@@ -33,6 +33,9 @@ RUST_HOSTILE_BUILD    ?= build/rust-hostile
 RUST_HOSTILE_FINDINGS ?= test/rust-hostile/known-findings.tsv
 RUST_HOSTILE_TARGET   ?= $(RUST_HOSTILE_BUILD)/target
 RUST_HOSTILE_JOBS     ?= 4
+# the cargo profiles built and run: both, unless a caller names one (CI runs
+# release and debug as two rows of one matrix, each under the two-minute cap)
+RUST_HOSTILE_PROFILES ?= release debug
 
 # every schema the manifest names, read off its third column
 RUST_HOSTILE_SCHEMAS = $(shell awk -F'\t' 'substr($$1, 1, 1) != "\043" && NF == 9 { print $$3 }' $(RUST_HOSTILE_CORPUS)/manifest.tsv | sort -u)
@@ -75,16 +78,17 @@ $(RUST_HOSTILE_BUILD)/.stamp: bin/schema make/schema-rust-runs-hostile-corpus.mk
 
 .PHONY: schema-rust-runs-hostile-corpus-build
 schema-rust-runs-hostile-corpus-build: $(RUST_HOSTILE_BUILD)/.stamp
-	$(RUST_HOSTILE_CARGO) --release
-	$(RUST_HOSTILE_CARGO)
+	$(if $(filter release,$(RUST_HOSTILE_PROFILES)),$(RUST_HOSTILE_CARGO) --release)
+	$(if $(filter debug,$(RUST_HOSTILE_PROFILES)),$(RUST_HOSTILE_CARGO))
 
 # Both profiles run and report before the target decides, so a red release run
 # never hides what the debug run says.
 .PHONY: schema-rust-runs-hostile-corpus
 schema-rust-runs-hostile-corpus: schema-rust-runs-hostile-corpus-build
 	@status=0; \
-	$(RUST_HOSTILE_TARGET)/release/rust-hostile "$(RUST_HOSTILE_CORPUS)" "$(RUST_HOSTILE_FINDINGS)" release || status=1; \
-	$(RUST_HOSTILE_TARGET)/debug/rust-hostile "$(RUST_HOSTILE_CORPUS)" "$(RUST_HOSTILE_FINDINGS)" debug || status=1; \
+	for profile in $(RUST_HOSTILE_PROFILES); do \
+		$(RUST_HOSTILE_TARGET)/$$profile/rust-hostile "$(RUST_HOSTILE_CORPUS)" "$(RUST_HOSTILE_FINDINGS)" $$profile || status=1; \
+	done; \
 	exit $$status
 
 # The port's normal unit target runs the corpus: this file is included after
@@ -103,7 +107,7 @@ schema-rust-runs-hostile-corpus-negative-control: schema-rust-runs-hostile-corpu
 		$(RUST_HOSTILE_CORPUS)/manifest.tsv > $(RUST_HOSTILE_BUILD)/plant/corpus/manifest.tsv
 	@if cmp -s $(RUST_HOSTILE_CORPUS)/manifest.tsv $(RUST_HOSTILE_BUILD)/plant/corpus/manifest.tsv; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted verdict did not apply'; exit 1; fi
-	@for profile in release debug; do \
+	@for profile in $(RUST_HOSTILE_PROFILES); do \
 		if $(RUST_HOSTILE_TARGET)/$$profile/rust-hostile $(RUST_HOSTILE_BUILD)/plant/corpus "$(RUST_HOSTILE_FINDINGS)" $$profile \
 				> $(RUST_HOSTILE_BUILD)/plant/log-$$profile 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED ($$profile): a changed committed verdict left the corpus green"; \

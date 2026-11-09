@@ -1342,7 +1342,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEP 9 and STEP 10.
 	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
 	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
-	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n")
+	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {\n\t\treport.Refuse(TableRefuseWireDamaged, \"\")\n\t\treport.Reason = TableRefuseTruncated.Error()\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())\n\t}\n")
 	// Prefill is the dest ranges the winning plan does not land, copied from

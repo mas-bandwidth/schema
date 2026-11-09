@@ -55,24 +55,15 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 	// and never the writer's 1; the neighbour seq stays 15; no other counter
 	// moves.
 	landing := `
-if (n !== 1) { fail("the forged file carries one record: n=" + n + " " + reason(r)); }
-if (r.refused !== 0 || r.damaged) { fail("a forged tag is not a refusal and not malformed: " + reason(r)); }
-if (back[0].pick.type !== 0) { fail("a forged tag lands None: " + show(back[0])); }
-if (back[0].pick.type === 9) { fail("a forged tag never lands the forged 9: " + show(back[0])); }
-if (back[0].pick.type === 1) { fail("a forged tag never lands the writer's 1: " + show(back[0])); }
-if (back[0].seq !== 15) { fail("the neighbour after the union is untouched: " + show(back[0])); }
+if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
+  fail("a forged tag past the writer's arm set refuses out_of_range: n=" + n + " " + reason(r));
+}
 if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
-  fail("no other counter moved: " + reason(r));
+  fail("no counter moves on a refusal: " + reason(r));
 }
 `
 
-	// THE IDENTITY PLAN ALSO COUNTS the forge: the whole body is one OP_COPY, so
-	// the forged 9 reaches the decode projection raw and the union-tag clamp
-	// fires once. `== 1` EXACTLY, never `>= 1`, for the same reason the forged
-	// ordinal row asserts it.
-	identityCount := `
-if (r.oor !== 1) { fail("the forged tag is counted exactly once, never twice: " + reason(r)); }
-`
+	identityCount := ``
 
 	forge := `
 const data = readFileSync(%q);

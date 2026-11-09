@@ -22,8 +22,7 @@ func TestLuauFixedVersioningWriterBoundCount(t *testing.T) {
 const luauWriterBoundBody = `local report: any = {}
 local values = LOAD("file", report)
 check(values == nil and report.reason == "count_over_bound", "a count past the WRITER's 4 owes count_over_bound, never the reader's 8: " .. why(report))
-check(not report.malformed, "a refusal by name never sets malformed too")
-check(report.clamped == 0 and report.unknown == 0 and report.kindMismatch == 0 and report.widened == 0 and report.duplicate == 0,
+check(report.unknown == 0 and report.kindMismatch == 0 and report.widened == 0,
 	"REFUSE is total: no counter moves: " .. why(report))
 `
 

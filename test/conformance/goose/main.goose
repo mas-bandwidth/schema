@@ -165,8 +165,11 @@ fn surface_framing(lines: const u8[:][:], unit: const u8[:]) {
     }
 }
 
-// surface_wire: every instance loaded and saved back (§3). A save the writer
-// refuses by name (a blob two slots name, §2.5) is a named absence.
+// surface_wire: every instance loaded and saved back (§3). A blob two slots
+// name (§2.5) is refused by the strict read itself: that refusal is the row's
+// answer (the corpus marks it wire-refused), a named absence, and any other
+// refusal of a corpus instance fails the run. A save the writer refuses by
+// name is a named absence.
 fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -187,6 +190,10 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
         let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        if root < 0 && report.reason == schema_rt::LoadRefuseBlobShared {
+            absent(f[1], "blob_shared");
+            continue;
+        }
         if root < 0 {
             write_stderr(str("driver: ", f[1], " does not load\n"));
             exit(1);
@@ -218,9 +225,9 @@ fn surface_json(lines: const u8[:][:], unit: const u8[:], writing: bool) {
         var out: u8[>..<] = [];
         var result: i64 = -1;
         if writing {
-            load_file(f[4], data);
-            var report = schema_rt::LoadReport { .. };
-            let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+            var raw: u8[>..] = [];
+            load_file(f[4], raw);
+            let at = conformance_load_into_vals(f[3], raw, data, vals, nodes);
             if at < 0 { write_stderr(str("driver: ", f[1], " does not load\n")); exit(1); }
             var json: u8[>..] = [];
             result = conformance_json_write(f[3], data, vals, nodes, at, json);
@@ -229,7 +236,7 @@ fn surface_json(lines: const u8[:][:], unit: const u8[:], writing: bool) {
             var text: u8[>..] = [];
             load_file(str("testdata/conformance/tables/json/", f[1], ".json"), text);
             result = conformance_json_read(f[3], text, data, vals, nodes);
-            if result >= 0 && schema_rt::save_table(conformance_unit(), f[3], data, vals, nodes, result, out) != 0 { result = -2; }
+            if result >= 0 && conformance_save_from_vals(f[3], data, vals, nodes, result, out) != 0 { result = -2; }
         }
         if result < 0 { write_stderr(str("driver: ", f[1], " JSON bridge refused\n")); exit(1); }
         answer(name, out);
@@ -248,9 +255,9 @@ fn surface_write_refusal(lines: const u8[:][:], unit: const u8[:]) {
         var data: u8[>..] = [];
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
-        load_file(f[4], data);
-        var report = schema_rt::LoadReport { .. };
-        let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        var raw: u8[>..] = [];
+        load_file(f[4], raw);
+        let at = conformance_load_into_vals(f[3], raw, data, vals, nodes);
         if at < 0 { write_stderr(str("driver: ", f[1], " does not load\n")); exit(1); }
         if !damage_text(data, vals, at, f[5]) { write_stderr(str("driver: ", f[1], ": damage ", f[5], " names no text field\n")); exit(1); }
         let name = str(f[1], ".json");
@@ -368,8 +375,10 @@ fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
         var data: u8[>..] = [];
         load_file(str(f[4], "/", f[3], ".json"), data);
         var verdict: u8[>..] = [];
-        if !unit_json_verdict(f[3], data, verdict) { conformance_json_verdict(f[3], data, verdict); }
+        var wire: u8[>..<] = [];
+        if !unit_json_verdict(f[3], data, verdict, wire) { conformance_json_verdict(f[3], data, verdict, wire); }
         answer(f[1], verdict);
+        if wire.len > 0 { answer(str(f[1], ".wire"), wire); }
     }
 }
 

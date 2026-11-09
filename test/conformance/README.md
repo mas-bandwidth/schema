@@ -507,6 +507,10 @@ driver is.
 
 The reply header remains 47 bytes for transport compatibility. Its semantic
 acceptance bit is `loaded && !refused && !malformed`; no counter affects it.
+**A refusal names itself**: when the oracle refuses, the leg's reply must carry
+`refused` or `malformed`. A bare `loaded` false with neither is not a refusal
+and is compared red, because under strict-only a refused load's report is the
+refusal.
 
 - **`loaded`** is the reader's success result for every root class. Preserve it
   if a later writer fails; a save failure must not disguise a read acceptance.

@@ -48,6 +48,9 @@ table Graph
 // jsDiscardWriter is the reader's unit one build later: Graph gained a field
 // ahead of the damage, so a retaining read has an unknown field in its store
 // by the time it meets the damage, and a discard that forgets the store shows.
+// Root is a plain table here even though the reader declares it fixed: a fixed
+// root's writer emits form 3 (§3.4), and this gate damages the variable form's
+// nested body, which is the form the reader's variable loader reads.
 const jsDiscardWriter = `package discardjs
 
 fixed table Inner
@@ -55,7 +58,7 @@ fixed table Inner
     n int32 = 0
 }
 
-fixed table Root
+table Root
 {
     a     int32 = 0
     inner Inner
@@ -74,9 +77,9 @@ table Graph
 
 // jsDiscardWire encodes the text under the writer's unit and then damages the
 // nested body: Inner's one field, kind 4 holding 3, gets the kind 37 no reader
-// can skip. The engine is asked first, under the READER's unit, so the vector
+// can skip. The engine is asked first, under the writer's unit, so the vector
 // is damaged by the rule and not by assumption. It answers the clean wire too.
-func jsDiscardWire(t *testing.T, writer, reader *ir.Unit, root, text string) (clean, damaged []byte) {
+func jsDiscardWire(t *testing.T, writer *ir.Unit, root, text string) (clean, damaged []byte) {
 	t.Helper()
 	m := tabletext.NewModel(writer)
 	inst := m.New(m.Lookup(root))
@@ -94,7 +97,7 @@ func jsDiscardWire(t *testing.T, writer, reader *ir.Unit, root, text string) (cl
 		t.Fatalf("%s: Inner's body is not where this test expects it", root)
 	}
 	wire[at] = 37
-	rm := tabletext.NewModel(reader)
+	rm := tabletext.NewModel(writer)
 	var report tabletext.Report
 	if ok, err := tablewire.Decode(rm, rm.New(rm.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
@@ -145,17 +148,19 @@ console.log("ok");
 
 // TestDamageDiscardsTheWholeLoadJavaScript is the JavaScript leg's gate for
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that meets
-// damage hands back nothing to use and its report says malformed.
+// damage hands back nothing to use and its report refuses the read.
 //
 //   - nested: damage inside a nested body, with whole fields before and after
-//     it, makes the fixed root's and the variable root's Load answer null, the
-//     retaining LoadRetain answer null with its store empty (an unknown field
-//     it had kept before the damage is gone), and FromJson answer null on text
-//     that does not read. The same wires undamaged load, so a reader that
-//     refused everything would be red here too.
+//     it, makes both roots' Load answer null, the retaining LoadRetain answer
+//     null with its store empty (an unknown field it had kept before the
+//     damage is gone), and FromJson answer null on text that does not read.
+//     The same wires undamaged load, so a reader that refused everything would
+//     be red here too.
 //   - framing: every `framing` row of the conformance manifest whose verdict is
-//     malformed (docs/LAYERS/1-framing.md), through Load and LoadRetain of the
-//     row's root, answers null with the store empty.
+//     refused (docs/LAYERS/1-framing.md) and whose bytes carry the variable
+//     form, through Load and LoadRetain of the row's root, answers null with
+//     the store empty. A row whose first byte is another form is the form
+//     gate's, not this one's.
 //
 // The message batch's half is TestMessageFormBatchJavaScript/damage: a damaged
 // batch delivers no body. Red if any read hands back what it decoded.
@@ -167,8 +172,8 @@ func TestDamageDiscardsTheWholeLoadJavaScript(t *testing.T) {
 		t.Parallel()
 		reader := loadSchemaString(t, "discard.schema", jsDiscardReader)
 		writer := loadSchemaString(t, "discard.schema", jsDiscardWriter)
-		fixedClean, fixedDamaged := jsDiscardWire(t, writer, reader, "Root", `{"a":5,"inner":{"n":3},"b":9}`)
-		graphClean, graphDamaged := jsDiscardWire(t, writer, reader, "Graph", `{"a":5,"x":7,"inner":{"n":3},"b":9}`)
+		fixedClean, fixedDamaged := jsDiscardWire(t, writer, "Root", `{"a":5,"inner":{"n":3},"b":9}`)
+		graphClean, graphDamaged := jsDiscardWire(t, writer, "Graph", `{"a":5,"x":7,"inner":{"n":3},"b":9}`)
 		jsDiscardRun(t, reader, map[string][]byte{
 			"fixed.bin": fixedClean, "fixed-damaged.bin": fixedDamaged,
 			"graph.bin": graphClean, "graph-damaged.bin": graphDamaged,
@@ -178,30 +183,30 @@ for (const root of ["Root", "Graph"]) {
   const base = root === "Root" ? "fixed" : "graph";
   const good = new m.TableVariableReport();
   const gv = m[root + "Load"](wire(base + ".bin"), good);
-  if (gv === null || good.damaged || gv.a !== 5 || gv.b !== 9 || gv.inner.n !== 3) {
+  if (gv === null || good.err() !== null || gv.a !== 5 || gv.b !== 9 || gv.inner.n !== 3) {
     fail(root + ": the clean wire did not load: " + JSON.stringify(good));
   }
   const r = new m.TableVariableReport();
   const v = m[root + "Load"](wire(base + "-damaged.bin"), r);
   if (v !== null) { fail(root + ": Load handed back a value on damage: a=" + v.a + " b=" + v.b); }
-  if (!r.damaged) { fail(root + ": Load's report does not say malformed"); }
+  if (r.err() === null) { fail(root + ": Load's report does not refuse the read"); }
   const retain = new m.TableVariableRetain(new Uint8Array(1 << 12), new Array(64));
   const rr = new m.TableVariableReport();
   const rv = m[root + "LoadRetain"](wire(base + "-damaged.bin"), retain, rr);
   if (rv !== null) { fail(root + ": LoadRetain handed back a value on damage"); }
-  if (!rr.damaged || retain.used !== 0 || retain.count !== 0) {
-    fail(root + ": LoadRetain kept a store on damage: malformed=" + rr.damaged + " used=" + retain.used + " count=" + retain.count);
+  if (rr.err() === null || retain.used !== 0 || retain.count !== 0) {
+    fail(root + ": LoadRetain kept a store on damage: refused=" + (rr.err() !== null) + " used=" + retain.used + " count=" + retain.count);
   }
   const tr = new m.TableVariableReport();
   const tv = m[root + "FromJson"]('{"a":5,"inner":{"n":3},"b":9', tr);
   if (tv !== null) { fail(root + ": FromJson handed back a value on text that does not read"); }
-  if (!tr.damaged) { fail(root + ": FromJson's report does not say malformed"); }
+  if (tr.err() === null) { fail(root + ": FromJson's report does not refuse the read"); }
 }
 // the retaining read keeps the unknown field on the clean wire, so an empty
 // store after the damaged read is the discard and not a store never filled
 const kept = new m.TableVariableRetain(new Uint8Array(1 << 12), new Array(64));
 const kr = new m.TableVariableReport();
-if (m.GraphLoadRetain(wire("graph.bin"), kept, kr) === null || kept.count === 0) {
+if (m.GraphLoadRetain(wire("graph.bin"), kept, kr) === null || kept.count === 0 || kr.err() !== null) {
   fail("Graph: the clean wire's retaining read kept nothing: count=" + kept.count + " " + JSON.stringify(kr));
 }
 `)
@@ -232,19 +237,30 @@ if (m.GraphLoadRetain(wire("graph.bin"), kept, kr) === null || kept.count === 0)
 		sc := bufio.NewScanner(f)
 		for sc.Scan() {
 			fs := strings.Fields(sc.Text())
-			if len(fs) < 6 || fs[0] != "framing" || fs[5] != "malformed" {
+			if len(fs) < 6 || fs[0] != "framing" || fs[5] != "refused" {
 				continue
 			}
 			if _, ok := units[fs[2]]; !ok {
 				t.Fatalf("framing row %s names unit %s, which this gate does not load: add it", fs[1], fs[2])
 			}
-			rows[fs[2]] = append(rows[fs[2]], row{fs[1], fs[3], filepath.Join(repo, fs[4])})
+			// This gate walks the VARIABLE form: a row whose first byte names
+			// another form is the form gate's, and a fixed-class root answers
+			// its defaults there rather than discarding (§3).
+			wirePath := filepath.Join(repo, fs[4])
+			first, err := os.ReadFile(wirePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(first) != 0 && first[0] != 1 {
+				continue
+			}
+			rows[fs[2]] = append(rows[fs[2]], row{fs[1], fs[3], wirePath})
 		}
 		if err := sc.Err(); err != nil {
 			t.Fatal(err)
 		}
 		if len(rows) == 0 {
-			t.Fatal("the manifest holds no malformed framing row")
+			t.Fatal("the manifest holds no refused framing row through the variable form")
 		}
 		names := make([]string, 0, len(rows))
 		for n := range rows {
@@ -268,14 +284,14 @@ for (const row of %s) {
   const wire = new Uint8Array(readFileSync(row.wire));
   const r = new m.TableVariableReport();
   const v = m[row.root + "Load"](wire, r);
-  if (v !== null) { fail(row.case + ": Load handed back a value on damage"); }
-  if (!r.damaged) { fail(row.case + ": Load's report does not say malformed"); }
+  if (v !== null) { fail(row.case + ": Load handed back a value on a refused wire"); }
+  if (r.err() === null) { fail(row.case + ": Load's report does not refuse the read"); }
   const retain = new m.TableVariableRetain(new Uint8Array(1 << 16), new Array(256));
   const rr = new m.TableVariableReport();
   const rv = m[row.root + "LoadRetain"](wire, retain, rr);
-  if (rv !== null) { fail(row.case + ": LoadRetain handed back a value on damage"); }
-  if (!rr.damaged || retain.used !== 0 || retain.count !== 0) {
-    fail(row.case + ": LoadRetain kept a store on damage: malformed=" + rr.damaged + " used=" + retain.used + " count=" + retain.count);
+  if (rv !== null) { fail(row.case + ": LoadRetain handed back a value on a refused wire"); }
+  if (rr.err() === null || retain.used !== 0 || retain.count !== 0) {
+    fail(row.case + ": LoadRetain kept a store on a refused wire: refused=" + (rr.err() !== null) + " used=" + retain.used + " count=" + retain.count);
   }
 }
 `, js))
@@ -288,7 +304,7 @@ for (const row of %s) {
 // WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn, 2026-10-31): the
 // manifest's cycle rows (a node naming itself, a node naming the root, a cycle
 // in the middle of a chain) load as nothing through Load and LoadRetain with
-// the report saying malformed, and the two acyclic rows beside them load: a
+// the report refusing the read, and the two acyclic rows beside them load: a
 // chain, and a diamond chain of forty levels whose 2^40 paths a walk that
 // re-entered shared nodes would never finish.
 func TestCyclicWireIsDamageJavaScript(t *testing.T) {
@@ -329,7 +345,10 @@ func TestCyclicWireIsDamageJavaScript(t *testing.T) {
 		if fs[2] != "graphdemo" {
 			t.Fatalf("%s names unit %s, not graphdemo", fs[1], fs[2])
 		}
-		if want := "malformed"; !load && fs[5] != want {
+		// THE VERDICT IS THE WHOLE CONTRACT (docs/rulings.json
+		// refusal-verdict-only): a cycle row is refused, and why is this
+		// leg's own diagnostic.
+		if want := "refused"; !load && fs[5] != want {
 			t.Fatalf("%s: the manifest's verdict is %s, not %s", fs[1], fs[5], want)
 		}
 		rows = append(rows, row{fs[1], fs[3], filepath.Join(repo, fs[4]), load})
@@ -345,7 +364,39 @@ func TestCyclicWireIsDamageJavaScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := loadUnitForMeasure(t, repo, "tables/pointers")
-	jsDiscardRun(t, u, nil, fmt.Sprintf(`
+	// THE OVERWRITTEN SELF-EDGE: the root body names `next` twice, first as
+	// the root itself and then as null, and the node record's own self-edge
+	// is nulled. Its verdict is the Go engine's (a repeated field id is
+	// damage under strict-only, docs/plans/strict-only.md decision 5), so the
+	// probe below owes exactly what the oracle answers.
+	var selfWire string
+	for _, r := range rows {
+		if r.Case == "node_cycle_self" {
+			selfWire = r.Wire
+		}
+	}
+	base, err := os.ReadFile(selfWire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	over := make([]byte, 0, len(base)+3)
+	over = append(over, base[:7]...)
+	over = append(over, 3, 17, 1, 3, 17, 0)
+	over = append(over, base[10:]...)
+	for i := 13; i+2 < len(over); i++ {
+		if over[i] == 3 && over[i+1] == 17 && over[i+2] == 2 {
+			over[i+2] = 0
+			break
+		}
+	}
+	gm := tabletext.NewModel(u)
+	var grep tabletext.Report
+	overLoads, err := tablewire.Decode(gm, gm.New(gm.Lookup("ListNode")), over, &grep)
+	if err != nil && !tablewire.ReadRefusal(err) {
+		t.Fatalf("overwritten_self_cycle: the oracle failed: %v", err)
+	}
+	overLoads = overLoads && err == nil
+	jsDiscardRun(t, u, map[string][]byte{"overwritten_self_cycle.bin": over}, fmt.Sprintf(`
 for (const row of %s) {
   const wire = new Uint8Array(readFileSync(row.wire));
   const r = new m.TableVariableReport();
@@ -354,13 +405,13 @@ for (const row of %s) {
   const rr = new m.TableVariableReport();
   const rv = m[row.root + "LoadRetain"](wire, retain, rr);
   if (row.load) {
-    if (v === null || r.damaged) { fail(row.case + ": an acyclic wire did not load: " + JSON.stringify(r)); }
-    if (rv === null || rr.damaged) { fail(row.case + ": an acyclic wire did not load retained: " + JSON.stringify(rr)); }
+    if (v === null || r.err() !== null) { fail(row.case + ": an acyclic wire did not load: " + JSON.stringify(r)); }
+    if (rv === null || rr.err() !== null) { fail(row.case + ": an acyclic wire did not load retained: " + JSON.stringify(rr)); }
     continue;
   }
-  if (v !== null || !r.damaged) { fail(row.case + ": a cyclic wire loaded (malformed=" + r.damaged + ")"); }
-  if (rv !== null || !rr.damaged || retain.used !== 0 || retain.count !== 0) {
-    fail(row.case + ": a cyclic wire loaded retained (malformed=" + rr.damaged + " used=" + retain.used + ")");
+  if (v !== null || r.err() === null) { fail(row.case + ": a cyclic wire loaded (reason=" + r.err() + ")"); }
+  if (rv !== null || rr.err() === null || retain.used !== 0 || retain.count !== 0) {
+    fail(row.case + ": a cyclic wire loaded retained (reason=" + rr.err() + " used=" + retain.used + ")");
   }
 }
 // Unreached cycle: zero the root's next pointer (byte 9: 2 -> 0) in node_cycle_mid
@@ -371,34 +422,24 @@ for (const row of %s) {
   unreached[9] = 0;
   const r = new m.TableVariableReport();
   const v = m.ListNodeLoad(unreached, r);
-  if (v !== null || !r.damaged) { fail("unreached_cycle: loaded (malformed=" + r.damaged + ")"); }
+  if (v !== null || r.err() === null) { fail("unreached_cycle: a cyclic wire loaded (reason=" + r.err() + ")"); }
 }
-// Overwritten self-edge in the same body: next = 1 (self) followed by next = 0 (null)
-// in the root body must load cleanly with next === null because only final stored
-// slots belong to the loaded graph (§3.1).
+// Overwritten self-edge in the same body (built and judged by the Go engine
+// above): this leg owes the oracle's verdict, and a read that returns holds
+// next === null, the final stored slot (§3.1).
 {
-  const selfRow = (%s).find(x => x.case === "node_cycle_self");
-  const base = new Uint8Array(readFileSync(selfRow.wire));
-  // Insert [3, 17, 1] before [3, 17, 2] at offset 7, and change [3, 17, 2] to [3, 17, 0]
-  // while zeroing the node record's self-edge so the only self-edge was the overwritten one.
-  const over = new Uint8Array(base.length + 3);
-  over.set(base.subarray(0, 7), 0);
-  over.set([3, 17, 1, 3, 17, 0], 7);
-  over.set(base.subarray(10), 13);
-  // In the node record body (which starts after the node header), replace [3, 17, 2] with [3, 17, 0]
-  for (let i = 13; i + 2 < over.length; i++) {
-    if (over[i] === 3 && over[i + 1] === 17 && over[i + 2] === 2) {
-      over[i + 2] = 0;
-      break;
-    }
-  }
+  const over = new Uint8Array(readFileSync("overwritten_self_cycle.bin"));
   const r = new m.TableVariableReport();
   const v = m.ListNodeLoad(over, r);
-  if (v === null || r.damaged || v.next !== null) {
-    fail("overwritten_self_cycle: refused or next !== null: " + JSON.stringify(r));
+  if (%t) {
+    if (v === null || r.err() !== null || v.next !== null) {
+      fail("overwritten_self_cycle: refused or next !== null: " + JSON.stringify(r));
+    }
+  } else if (v !== null || r.err() === null) {
+    fail("overwritten_self_cycle: a repeated field id loaded (the oracle refuses it)");
   }
 }
-`, js, js, js))
+`, js, js, overLoads))
 
 	// List, map, and false-guard pointer-slot cycles (§2.8, §2.9, §3.1).
 	cu := loadSchemaString(t, "cycle.schema", `package cyclecheck
@@ -494,9 +535,9 @@ for (const [name, wantLoad] of [
   const r = new m.TableVariableReport();
   const v = m.NodeLoad(wire, r);
   if (wantLoad) {
-    if (v === null || r.damaged) { fail(name + ": did not load: " + JSON.stringify(r)); }
+    if (v === null || r.err() !== null) { fail(name + ": did not load: " + JSON.stringify(r)); }
   } else {
-    if (v !== null || !r.damaged) { fail(name + ": a cyclic wire loaded (malformed=" + r.damaged + ")"); }
+    if (v !== null || r.err() === null) { fail(name + ": a cyclic wire loaded (reason=" + r.err() + ")"); }
   }
 }
 `)

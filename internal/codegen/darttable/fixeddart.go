@@ -982,35 +982,32 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 				}
 				g.pf("%s    break;\n", ind)
 			}
-			// A TAG PAST THE LAST ARM IS None (§3.4): the arms run from 1 and
-			// tag 0 is None, so a tag beyond them names storage NO DECLARATION
-			// DESCRIBES. It lands None and counts one clamp — the same landing
-			// the compiled plan gives it through its own remap, so the identity
-			// path and a stranger's plan agree about a hostile tag.
+			// A TAG PAST THE LAST ARM REFUSES THE READ out_of_range (§3.4,
+			// docs/plans/strict-only.md): the arms run from 1 and tag 0 is
+			// None, so a tag beyond them names storage NO DECLARATION
+			// DESCRIBES. The compiled plan's None const refuses the same tag,
+			// so the identity path and a stranger's plan agree about it.
 			g.pf("%s  default:\n", ind)
 			g.pf("%s    %s.type = %s;\n", ind, expr, tagNone)
-			g.pf("%s    report.unknown++;\n", ind)
+			g.pf("%s    report.refused = TableFixedRefusal.outOfRange;\n", ind)
 			g.pf("%s    break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
 			g.need(r.Name)
 			g.loadTag(ind, expr, fixedOff(base, at), int64(r.StorageBits/8), r.Name)
-			// AN ORDINAL PAST THE LAST VARIANT IS None (§3.4): the ordinal is
-			// the variant's POSITION IN THE LAYOUT, from 1, and the layout
-			// lists this reader's variants and no more. Past them it lands 0
-			// and counts one clamp.
+			// AN ORDINAL PAST THE LAST VARIANT REFUSES THE READ out_of_range
+			// (§3.4, docs/plans/strict-only.md): the ordinal is the variant's
+			// POSITION IN THE LAYOUT, from 1, and the layout lists this
+			// reader's variants and no more.
 			//
 			// THIS TEST ONLY EVER SEES THE IDENTITY PLAN'S BYTES. On a
-			// compiled plan the `ordinal` op has already landed a forged value
-			// as None before this line runs, so `> n` cannot trip and the
-			// count has to be made THERE — it is (fixedruntime.go, the ordinal
-			// case). §5.4 asks for `clamped` on BOTH plans, and the two paths
-			// now each make their own; the note that used to stand here said
-			// this test covered both, which was false.
+			// compiled plan the `ordinal` op refuses a value past the WRITER's
+			// count before this line runs (fixedruntime.go, the ordinal case),
+			// so both plans refuse the same forged ordinal.
 			if n := len(r.Variants); n > 0 {
 				g.pf("%sif (%s > %d) {\n", ind, expr, n)
 				g.pf("%s  %s = %s.none;\n", ind, expr, r.Name)
-				g.pf("%s  report.unknown++;\n", ind)
+				g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
 				g.pf("%s}\n", ind)
 			}
 			return

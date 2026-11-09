@@ -195,7 +195,7 @@ func(p tableRetainPath)step(ordinal,index uint32)tableRetainPath{if p.depth<len(
 func(t *TableRetain)reset(base unsafe.Pointer,directory []TableNodeDirEntry){if t!=nil{t.Used=0;t.Count=0;t.idUsed=0;t.base=base;t.directory=directory}}
 func tableRetainRecordSize(b []byte)int{return int(binary.LittleEndian.Uint32(b))}
 func(t *TableRetain)matches(b []byte,p tableRetainPath,under bool,field bool,ordinal uint32)bool{
- node:=binary.LittleEndian.Uint32(b[4:]);depth:=int(binary.LittleEndian.Uint32(b[8:]));if node==0||int(node)>len(t.directory)||t.directory[node-1].Offset==^uint64(0)||unsafe.Add(t.base,t.directory[node-1].Offset)!=p.at{return false}
+ node:=binary.LittleEndian.Uint32(b[4:]);depth:=int(binary.LittleEndian.Uint32(b[8:]));if node==0||int(node)>len(t.directory)||t.directory[node-1].Offset==^uint64(0)||unsafe.Add(t.base,t.directory[node-1].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))!=p.at{return false}
  if depth<p.depth||!under&&depth!=p.depth||field&&depth==p.depth||p.depth>len(p.steps){return false}
  for i := range p.depth {if binary.LittleEndian.Uint32(b[26+i*8:])!=p.steps[i].ordinal||binary.LittleEndian.Uint32(b[30+i*8:])!=p.steps[i].index{return false}}
  return !field||binary.LittleEndian.Uint32(b[26+p.depth*8:])==ordinal
@@ -211,8 +211,8 @@ func(r *TableRetainReader)Body()(TableRetainReader,bool){sub,ok:=r.tableRetainPl
 // §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's or 11's raw bits, and a NaN
 // or an infinity refuses the read as non_finite_float, named <owner>.0x<id>.
 func(r *TableRetainReader)capture(id uint64,kind uint8,owner string)bool{
- at:=r.Offset;if !r.Skip(kind){return false};if r.Retain==nil{return true};t:=r.Retain;p:=r.Path
- if kind==10&&binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000==0x7f800000||kind==11&&binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000==0x7ff0000000000000 {r.Report.Refuse(TableRefuseNonFiniteFloat,tableRetainedFloatName(owner,id));return false}
+ at:=r.Offset;if r.Retain!=nil&&(kind==10&&r.Has(4)&&binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000==0x7f800000||kind==11&&r.Has(8)&&binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000==0x7ff0000000000000) {r.Report.Refuse(TableRefuseNonFiniteFloat,tableRetainedFloatName(owner,id));return false}
+ if !tableWireSkipValue(&r.tableRetainPlainReader,kind){return false};if r.Retain==nil{return true};t:=r.Retain;p:=r.Path
  limit:=int64(len(t.Bytes))-t.Used-int64(26+p.depth*8);if limit<0{r.Report.RetainLost++;return true};probe:=tableRetainIn{r:TableReader{Buffer:r.Buffer[at:r.Offset],Ids:r.Ids},w:TableWriter{Measuring:true},limit:limit}
  if p.depth>len(p.steps)||!probe.payload(kind,0)||probe.r.Offset!=int64(len(probe.r.Buffer)){r.Report.RetainLost++;return true}
  need:=int64(26+p.depth*8)+probe.w.Offset;if need>0xffffffff||need>int64(len(t.Bytes))-t.Used{r.Report.RetainLost++;return true}

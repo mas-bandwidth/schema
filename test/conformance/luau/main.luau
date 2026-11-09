@@ -198,96 +198,135 @@ local function noText(f: { string }): boolean
 	return f[6] == "no-text"
 end
 
--- the WIRE surface loads a form-1 wire and re-saves it (§3). An instance
--- line is `instance <name> <unit> <root> <wire>` (test/conformance/harness/
--- run.go, deriveManifest).
+-- the WIRE surface loads a form-1 (variable) or form-3 (fixed) wire and
+-- re-saves it (§3). An instance line is `instance <name> <unit> <root> <wire>`
+-- (test/conformance/harness/run.go, deriveManifest). The read is the STRICT
+-- one (§6.5): the whole value, or a refusal, never a recovered value beside a
+-- refusing counter.
 local function surfaceWire(lines: { { string } })
 	for _, f in kind(lines, "instance") do
 		local u = unit(f[3])
 		if u == nil or rootOf(u, f[4]) == nil then
 			say(f[2], nil)
 		else
-			-- the TOLERANT read, as the reference leg's driver reads (§6.5)
-			local v = u.load.loadWalk(f[4], file(f[5]), report())
+			local r = report()
+			local v = u.load.load(f[4], file(f[5]), r)
 			if v == nil then
-				error("load refused " .. f[5])
-			end
-			local saved, why = u.save.save(u.S.lookup(f[4]), v)
-			if saved == nil and why ~= nil and why.name == "blob_shared" then
-				-- every writer refuses one blob named from two slots
-				-- (docs/SPEC-TABLES.md §2.5): the case is a NAMED refusal, and
-				-- the harness holds the name to the manifest's go-refusal
-				print(f[2] .. " absent blob_shared")
-			elseif saved == nil then
-				error("save refused " .. f[5])
+				if r.reason == "blob_shared" then
+					-- one blob named from two slots (docs/SPEC-TABLES.md §2.5)
+					-- is a NAMED refusal, and the harness holds the name
+					print(f[2] .. " absent blob_shared")
+				else
+					error(f[2] .. ": load refused " .. f[5])
+				end
 			else
-				say(f[2], saved)
+				local saved, why = u.save.save(u.S.lookup(f[4]), v)
+				if saved == nil and why ~= nil and why.name == "blob_shared" then
+					-- every writer refuses one blob named from two slots
+					-- (docs/SPEC-TABLES.md §2.5): the case is a NAMED refusal
+					print(f[2] .. " absent blob_shared")
+				elseif saved == nil then
+					error(f[2] .. ": save refused " .. f[5])
+				else
+					say(f[2], saved)
+				end
 			end
 		end
 	end
 end
 
--- The value half of a report and json-hostile answer (test/conformance/README.md):
--- the §16 text of the value the read left, after its report line.
-local function withValue(u: any, f: { string }, line: string, v: any): string
+-- THE STRICT READ (docs/SPEC-TABLES.md §6.5): one call returns the whole
+-- value or nothing. These surfaces call load (ReadStrict), never the tolerant
+-- walk.
+local function strictLoad(u: any, f: { string }): (any?, any)
+	local r = report()
+	local v = u.load.load(f[4], file(f[5]), r)
+	return v, r
+end
+
+-- An accepted read writes the §16 text and <case>.wire, the canonical save of
+-- that value; a refusal writes `refused` and nothing else (test/conformance/
+-- README.md, "Every read has one outcome").
+local function writeReadBack(u: any, f: { string }, v: any?)
+	if v == nil then
+		sayText(f[2], "refused\n")
+		return
+	end
 	local jr = report()
 	local json = u.json.ToJson(f[4], v, jr)
 	if json == nil then
 		error(f[2] .. ": ToJson refused the value (" .. tostring(jr.reason) .. ")")
 	end
-	return line .. buffer.tostring(json)
+	local saved, why = u.save.save(u.S.lookup(f[4]), v)
+	if saved == nil then
+		error(f[2] .. ": save refused the value (" .. tostring(why and why.name) .. ")")
+	end
+	say(f[2] .. ".wire", saved)
+	sayText(f[2], "read\n" .. buffer.tostring(json))
 end
 
--- the REPORT surface is the six counters and the verdict (§4), then the §16
--- text of the value when the read reads
+-- the REPORT surface is the strict read, then `read` and the §16 text and
+-- <case>.wire, or `refused` and nothing else (§4)
 local function surfaceReport(lines: { { string } })
 	for _, f in kind(lines, "report") do
 		local u = unit(f[3])
 		if u == nil or rootOf(u, f[4]) == nil then
 			say(f[2], nil)
 		else
-			local r = report()
-			local v = u.load.loadWalk(f[4], file(f[5]), r)
-			local refused = r.refused > 0
-			local malformed = r.malformed or (v == nil and not refused)
-			local text = string.format("%d,%d,%d,%d,%d,%s,%s\n",
-				r.unknown, r.kindMismatch, r.widened, r.clamped,
-				r.duplicate, tostring(malformed), refused and "refused" or "read")
-			if not refused and not malformed then
-				text = withValue(u, f, text, v)
-			end
-			sayText(f[2], text)
+			local v, _ = strictLoad(u, f)
+			writeReadBack(u, f, v)
 		end
 	end
 end
 
--- THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
--- `report` surface prints it, then the §16 text of the value the read left,
--- unless the row says `no-value` or the read was refused. Damaged input is
--- discarded whole (docs/SPEC-TABLES.md §4): the leg owes the refusal and
--- nothing else. A line is `framing <case> <unit> <root> <wire> [no-value]`.
+-- THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the strict read, then
+-- `read` and the §16 text of the value the read left and <case>.wire, unless
+-- the row says `no-value` or the read was refused. Damaged input is discarded
+-- whole (docs/SPEC-TABLES.md §4): the leg owes the refusal and nothing else. A
+-- line is `framing <case> <unit> <root> <wire> [no-value]`.
+--
+-- A form-1 file at a FIXED root is the variable read, and the save that
+-- follows is this build's form 3 (docs/LAYERS/1-framing.md). ReadStrict
+-- answers previous_form for that form byte, so the framing surface alone
+-- reads it through ReadStrictVariable; the shared descriptor is readonly
+-- and is never modified, and the save still sees the fixed root.
+local function framingLoad(u: any, f: { string }): (any?, any)
+	local d = u.S.lookup(f[4])
+	local b = file(f[5])
+	if d.fixed and buffer.len(b) >= 1 and buffer.readu8(b, 0) == 1 then
+		local r = report()
+		local v = u.load.ReadStrictVariable(f[4], b, r)
+		return v, r
+	end
+	return strictLoad(u, f)
+end
+
 local function surfaceFraming(lines: { { string } })
 	for _, f in kind(lines, "framing") do
 		local u = unit(f[3])
 		if u == nil or rootOf(u, f[4]) == nil then
 			say(f[2], nil)
 		else
-			local r = report()
-			local v = u.load.loadWalk(f[4], file(f[5]), r)
-			local refused = r.refused > 0
-			local malformed = r.malformed or (v == nil and not refused)
-			local text = string.format("%d,%d,%d,%d,%d,%s,%s\n",
-				r.unknown, r.kindMismatch, r.widened, r.clamped,
-				r.duplicate, tostring(malformed), refused and "refused" or "read")
-			if v ~= nil and not refused and not malformed and f[6] ~= "no-value" then
-				local jr = report()
-				local json = u.json.ToJson(f[4], v, jr)
-				if json == nil then
-					error(f[2] .. ": ToJson refused the value (" .. tostring(jr.reason) .. ")")
+			local v, _ = framingLoad(u, f)
+			if v == nil then
+				sayText(f[2], "refused\n")
+			else
+				local text = "read\n"
+				if f[6] ~= "no-value" then
+					local jr = report()
+					local json = u.json.ToJson(f[4], v, jr)
+					if json == nil then
+						error(f[2] .. ": ToJson refused the value (" .. tostring(jr.reason) .. ")")
+					end
+					text = text .. buffer.tostring(json)
 				end
-				text ..= buffer.tostring(json)
+				local saved, why = u.save.save(u.S.lookup(f[4]), v)
+				if saved == nil then
+					error(f[2] .. ": save refused the value (" .. tostring(why and why.name) .. ")")
+				end
+				say(f[2] .. ".wire", saved)
+				sayText(f[2], text)
 			end
-			sayText(f[2], text)
 		end
 	end
 end
@@ -298,8 +337,8 @@ end
 -- <case>.json) and saves the value; json-write loads the wire and writes the
 -- text; json-hostile reads one tree's <root>.json and answers the report and
 -- the value's text, or `refused`. A `no-text` instance is no text case at all.
--- json-read and json-hostile call one entry point, the TOLERANT text read
--- fromJsonWalk (test/conformance/README.md).
+-- json-read and json-hostile call one entry point, the STRICT text read
+-- FromJson (test/conformance/README.md).
 
 local function surfaceJsonRead(lines: { { string } })
 	for _, f in kind(lines, "instance") do
@@ -309,9 +348,9 @@ local function surfaceJsonRead(lines: { { string } })
 				say(f[2], nil)
 			else
 				local r = report()
-				local v = u.json.fromJsonWalk(f[4], file("testdata/conformance/tables/json/" .. f[2] .. ".json"), r)
-				if v == nil or r.malformed then
-					error(f[2] .. ": fromJsonWalk refused the text (" .. tostring(r.reason) .. ")")
+				local v = u.json.FromJson(f[4], file("testdata/conformance/tables/json/" .. f[2] .. ".json"), r)
+				if v == nil then
+					error(f[2] .. ": FromJson refused the text (" .. tostring(r.reason) .. ")")
 				end
 				local saved, why = u.save.save(u.S.lookup(f[4]), v)
 				if saved == nil then
@@ -354,16 +393,16 @@ local function surfaceJsonWrite(lines: { { string } })
 			if u == nil or rootOf(u, f[4]) == nil then
 				say(f[2] .. ".json", nil)
 			else
-				local v = u.load.loadWalk(f[4], file(f[5]), report())
-				if v == nil then
-					error(f[2] .. ": load refused " .. f[5])
-				end
-				local r = report()
-				local text = u.json.ToJson(f[4], v, r)
-				if text == nil then
-					error(f[2] .. ": ToJson refused the value (" .. tostring(r.reason) .. ")")
-				end
-				say(f[2] .. ".json", text)
+			local r = report()
+			local v = u.load.load(f[4], file(f[5]), r)
+			if v == nil then
+				error(f[2] .. ": load refused " .. f[5])
+			end
+			local text = u.json.ToJson(f[4], v, r)
+			if text == nil then
+				error(f[2] .. ": ToJson refused the value (" .. tostring(r.reason) .. ")")
+			end
+			say(f[2] .. ".json", text)
 			end
 		end
 	end
@@ -376,17 +415,21 @@ local function surfaceJsonWrite(lines: { { string } })
 		if u == nil or rootOf(u, f[4]) == nil then
 			say(f[2] .. ".json", nil)
 		else
-			local v = u.load.loadWalk(f[4], file(f[5]), report())
+			local r = report()
+			local v = u.load.load(f[4], file(f[5]), r)
 			if v == nil then
 				error(f[2] .. ": load refused " .. f[5])
 			end
 			damageText(v, f[6])
-			local text = u.json.ToJson(f[4], v, report())
+			local text = u.json.ToJson(f[4], v, r)
 			say(f[2] .. ".json", text or buffer.fromstring("refused\n"))
 		end
 	end
 end
 
+-- THE TEXT FORM's hostile battery (§16.2, §16.3, §17.5): the STRICT text read
+-- FromJson, then `read` and the §16 text and <case>.wire, or `refused` and
+-- no wire.
 local function surfaceJsonHostile(lines: { { string } })
 	for _, f in kind(lines, "json-hostile") do
 		local u = unit(f[3])
@@ -394,13 +437,8 @@ local function surfaceJsonHostile(lines: { { string } })
 			say(f[2], nil)
 		else
 			local r = report()
-			local v = u.json.fromJsonWalk(f[4], file(f[5] .. "/" .. f[4] .. ".json"), r)
-			if v == nil or r.malformed or (r.refused or 0) > 0 then
-				sayText(f[2], "refused\n")
-			else
-				sayText(f[2], withValue(u, f, string.format("%d,%d,%d,%d,%d,false,read\n",
-					r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate), v))
-			end
+			local v = u.json.FromJson(f[4], file(f[5] .. "/" .. f[4] .. ".json"), r)
+			writeReadBack(u, f, v)
 		end
 	end
 end
@@ -408,13 +446,14 @@ end
 -- ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) -----------------------------
 --
 -- THE TWO RETAIN SURFACES ARE ONE ROUND TRIP AND TWO SHAPES
--- (test/conformance/README.md): `retain` prints the two load counters beside
--- the `unknown` retention never moves and the save's own `retain_lost`;
--- `retain-save` writes the bytes the pair saved. A row's byte capacity is a
--- RULE: `short` is ONE BYTE SHORT OF THE LAST RECORD this port wrote, so the
--- row loads once at a roomy capacity, reads what its own store used, and loads
--- again one byte under that. The id list's capacity is a COUNT and travels as
--- one.
+-- (test/conformance/README.md): `retain` prints the 7-field read line
+-- (the harness's Counts: the five counters, malformed, and the verdict) and
+-- the §16 text of the complete known value; `retain-save` writes the bytes the
+-- pair saved. A refusal writes `refused` and nothing else. A row's byte
+-- capacity is a RULE: `short` is ONE BYTE SHORT OF THE LAST RECORD this port
+-- wrote, so the row loads once at a roomy capacity, reads what its own store
+-- used, and loads again one byte under that. The id list's capacity is a COUNT
+-- and travels as one.
 local function surfaceRetain(lines: { { string } }, saves: boolean)
 	local capacityBytes = 1048576
 	local fullIds = 131072
@@ -438,25 +477,37 @@ local function surfaceRetain(lines: { { string } }, saves: boolean)
 				local r = report()
 				local root, store = u.retain.LoadRetain(f[4], wire, r, capacity, ids)
 				if root == nil or r.malformed then
-					error(f[2] .. ": retained load refused (" .. tostring(r.reason) .. ")")
-				end
-				local retained, lost, unknown = r.retained, r.retainLost, r.unknown
-				local out, why = u.retain.SaveRetain(f[4], root, store, r)
-				if out == nil then
-					error(f[2] .. ": retaining save refused (" .. tostring(why and why.name) .. ")")
-				end
-				local saveLost = r.retainLost - lost
-				-- THE SAVE IS REPEATABLE: a second walk with a fresh report
-				-- writes the same bytes and answers the same save-side loss
-				local second = report()
-				local again = u.retain.SaveRetain(f[4], root, store, second)
-				if again == nil or buffer.tostring(again) ~= buffer.tostring(out) or second.retainLost ~= saveLost then
-					error(f[2] .. ": save is not repeatable")
-				end
-				if saves then
-					say(f[2], out)
+					if not saves then
+						sayText(f[2], "refused\n")
+					end
 				else
-					sayText(f[2], string.format("%d,%d,%d %d\n", retained, lost, unknown, saveLost))
+					local unknown, kindMismatch, widened, clamped, duplicate =
+						r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate
+					local lost = r.retainLost
+					local out, why = u.retain.SaveRetain(f[4], root, store, r)
+					if out == nil then
+						error(f[2] .. ": retaining save refused (" .. tostring(why and why.name) .. ")")
+					end
+					local saveLost = r.retainLost - lost
+					-- THE SAVE IS REPEATABLE: a second walk with a fresh report
+					-- writes the same bytes and answers the same save-side loss
+					local second = report()
+					local again = u.retain.SaveRetain(f[4], root, store, second)
+					if again == nil or buffer.tostring(again) ~= buffer.tostring(out) or second.retainLost ~= saveLost then
+						error(f[2] .. ": save is not repeatable")
+					end
+					if saves then
+						say(f[2], out)
+					else
+						local jr = report()
+						local json = u.json.ToJson(f[4], root, jr)
+						if json == nil then
+							error(f[2] .. ": ToJson refused the value (" .. tostring(jr.reason) .. ")")
+						end
+						sayText(f[2], string.format("%d,%d,%d,%d,%d,false,read\n",
+							unknown, kindMismatch, widened, clamped, duplicate)
+							.. buffer.tostring(json))
+					end
 				end
 			end
 		end

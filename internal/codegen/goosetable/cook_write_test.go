@@ -31,7 +31,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -171,10 +170,13 @@ type cookWire struct {
 // is cooked through its typed writer or its region writer, whichever the
 // unit's generated cook module declares.
 func cookWriteProgram(ns string, files map[string][]byte, wires []cookWire) string {
-	var cooks strings.Builder
+	var cooks, tables strings.Builder
 	for name, data := range files {
 		if strings.HasSuffix(name, "Cook.goose") {
 			cooks.Write(data)
+		}
+		if strings.HasSuffix(name, "Table.goose") {
+			tables.Write(data)
 		}
 	}
 	roots := map[string]bool{}
@@ -190,6 +192,13 @@ func cookWriteProgram(ns string, files map[string][]byte, wires []cookWire) stri
 	b.WriteString("import os;\nimport .all;\n\n")
 	b.WriteString(gooserun.HexProbe)
 	b.WriteString("\nfn measure(r: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], root: i64) -> i64 {\n")
+	b.WriteString("    if data.len > 0 && data[0] == 3 {\n")
+	for _, r := range names {
+		if !strings.Contains(cooks.String(), "fn "+r+"CookMeasure(data: ") && strings.Contains(tables.String(), "fn "+r+"FixedLoad(") {
+			fmt.Fprintf(&b, "        if r == %q {\n            var v: %s::%s[1] = [%s::%s { .. }];\n            var rep = schema_rt::FixedReport { .. };\n            if %s::%sFixedLoad(v[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -3; }\n            return %s::%sCookMeasure();\n        }\n", r, ns, r, ns, r, ns, r, ns, r)
+		}
+	}
+	b.WriteString("        return -2;\n    }\n")
 	for _, r := range names {
 		if strings.Contains(cooks.String(), "fn "+r+"CookMeasure(data: ") {
 			fmt.Fprintf(&b, "    if r == %q { return %s::%sCookMeasure(data, vals, nodes, root); }\n", r, ns, r)
@@ -198,6 +207,13 @@ func cookWriteProgram(ns string, files map[string][]byte, wires []cookWire) stri
 		}
 	}
 	b.WriteString("    return -2;\n}\n\nfn cook(r: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], root: i64, out: u8[:], big: bool) -> bool {\n")
+	b.WriteString("    if data.len > 0 && data[0] == 3 {\n")
+	for _, r := range names {
+		if !strings.Contains(cooks.String(), "fn "+r+"CookMeasure(data: ") && strings.Contains(tables.String(), "fn "+r+"FixedLoad(") {
+			fmt.Fprintf(&b, "        if r == %q {\n            var v: %s::%s[1] = [%s::%s { .. }];\n            var rep = schema_rt::FixedReport { .. };\n            if %s::%sFixedLoad(v[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return false; }\n            return %s::%sCook(v[0], out, big);\n        }\n", r, ns, r, ns, r, ns, r, ns, r)
+		}
+	}
+	b.WriteString("        return false;\n    }\n")
 	for _, r := range names {
 		if strings.Contains(cooks.String(), "fn "+r+"CookMeasure(data: ") {
 			fmt.Fprintf(&b, "    if r == %q { return %s::%sCook(data, vals, nodes, root, out, big); }\n", r, ns, r)
@@ -213,9 +229,12 @@ fn one(file: const u8[:], r: const u8[:]) {
     if !read_file(file, data) { write_stdout("bad unreadable\n"); return; }
     var vals: schema_rt::LoadVal[>..] = [];
     var nodes: schema_rt::LoadNode[>..] = [];
-    var report = schema_rt::LoadReport { .. };
-    let root = schema_rt::load_table(%s::TableUnit, r, data, vals, nodes, report);
-    if root < 0 || report.body_damaged || report.refused { write_stdout("bad load\n"); write_stdout("bad load\n"); return; }
+    var root: i64 = 0;
+    if data.len == 0 || data[0] != 3 {
+        var report = schema_rt::LoadReport { .. };
+        root = schema_rt::load_table(%s::TableUnit, r, data, vals, nodes, report);
+        if root < 0 || report.body_damaged || report.refused { write_stdout("bad load\n"); write_stdout("bad load\n"); return; }
+    }
     var big = false;
     while true {
         let need = measure(r, data, vals, nodes, root);
@@ -524,7 +543,7 @@ func cookBounds(t *testing.T, override map[string][]byte) (string, bool) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(goosePath, "run", "main.goose")
+	cmd := gooserun.Command(t, goosePath, "run", "main.goose")
 	cmd.Dir = run
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

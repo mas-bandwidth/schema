@@ -1675,12 +1675,18 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
   // reference's LoadBodyRetain opens with TableRetain.discard(Path,false,0),
   // which is what keeps a repeated map entry from leaving two records.
   if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, false, 0); }
+  // THE REFERENCES THIS BODY HAS NAMED: one id rides once per body, known or
+  // not, and a repeat is damage (docs/SPEC-TABLES.md §6.5; the engine's
+  // wirecheck.go body). The id table holds each id once, so the reference
+  // stands for the id. A body is a handful of fields, so a scan beats a Set.
+  let rode = null;
   for (;;) {
     if (TableVariableCountRefused(report) || report.missingRequired !== missingBefore || report.missingRequired !== st.missingBefore) { return false; }
     const ref = r.leb();
     if (r.bad) { report.damaged = true; return false; }
     if (ref === 0) { return TableVariableRequireSeen(c, v, seen, report); }
     if (ref > table.length) { report.damaged = true; return false; }
+    if (rode === null) { rode = [ref]; } else if (rode.includes(ref)) { report.damaged = true; return false; } else { rode.push(ref); }
     if (r.at >= r.end) { report.damaged = true; return false; }
     const kind = r.u8();
     const id = table[ref - 1];

@@ -46,14 +46,16 @@ func writeModuleDir(t *testing.T, dir string, files map[string][]byte) []string 
 	// loads files in the order given, so a sorted order that put <Base>Cook.ex
 	// before BuildVersion.ex would fail to compile the corpus.
 	// The packet codecs' support module loads first for the same reason: every
-	// file module imports from it at COMPILE time.
+	// file module imports from it at COMPILE time. The fixed form's runtime
+	// loads first too: a fixed module's lineage hook calls it at LOAD time,
+	// before a sorted order would reach it for a name like CaptionFixed.
 	sort.Strings(names)
 	first := []string{BuildVersionModule + ".ex"}
 	rest := make([]string, 0, len(names))
 	for _, n := range names {
 		switch n {
 		case BuildVersionModule + ".ex":
-		case "PacketRuntime.ex", "CookRuntime.ex", "FixedRuntime.ex":
+		case "PacketRuntime.ex", "CookRuntime.ex", "FixedRuntime.ex", "TableRuntime.ex":
 			first = append(first, n)
 		default:
 			rest = append(rest, n)

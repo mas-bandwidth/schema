@@ -134,8 +134,9 @@ table LiveRoot
 
 // THE BOUNDS PASS IS THE DECODE. Identity is one OP_COPY of the whole body,
 // so the plan never holds an enum's set or a ranged integer's min/max; the
-// projection both paths share is where those close. The clamp is against
-// the enum's top wire value (r.Max). No clamp plan op. No identity door.
+// projection both paths share is where those close. It REFUSES out_of_range
+// against the enum's top wire value (r.Max) and a ranged scalar's min/max.
+// No clamp plan op. No identity door.
 func TestDecodeClampsEnumOrdinalAndRangedInt(t *testing.T) {
 	u := unitFrom(t, `package probe
 
@@ -173,11 +174,11 @@ fixed table Root
 	if body == "" {
 		t.Fatal("RootFixedDecode was not a closed function")
 	}
-	if !strings.Contains(body, "if (value.n < 0)") || !strings.Contains(body, "value.n = 1000; report.oor++") {
-		t.Fatalf("ranged integer decode must clamp to the reader's min/max:\n%s", body)
+	if !strings.Contains(body, "if (value.n < 0 || value.n > 1000) { report.refused = TableFixedRefusal.OutOfRange; return; }") {
+		t.Fatalf("ranged integer decode must refuse out_of_range past the reader's min/max:\n%s", body)
 	}
-	if !strings.Contains(body, "if (value.grade > 3)") || !strings.Contains(body, "value.grade = 0; report.oor++") {
-		t.Fatalf("enum ordinal decode must land None past the top value:\n%s", body)
+	if !strings.Contains(body, "if (value.grade > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }") {
+		t.Fatalf("enum ordinal decode must refuse out_of_range past the top value:\n%s", body)
 	}
 	if !strings.Contains(body, "i < value.marksCount") {
 		t.Fatalf("counted ranged array must still walk the live count:\n%s", body)

@@ -577,7 +577,7 @@ func cT08GuardChain(t *testing.T) {
 		!strings.Contains(header, "root_fixed_guards[] = {") {
 		t.Fatal("the header does not publish the pool with the outermost link")
 	}
-	if !strings.Contains(header, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ) },", leaf.GuardIndex)) {
+	if !strings.Contains(header, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) {
 		t.Fatal("no published plan entry carries count 3 at the chain's offset")
 	}
 	// The C++ reference now carries the same identity-plan guard chain rather

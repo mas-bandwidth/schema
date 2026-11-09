@@ -133,12 +133,7 @@ String wide(Uint16List buffer, int length) =>
 // a same-schema read reports none of them.
 void quiet(dynamic r, String what) {
   check(
-    !r.malformed &&
-        r.refused == 0 &&
-        r.unknown == 0 &&
-        r.kindMismatch == 0 &&
-        r.clamped == 0 &&
-        r.widened == 0,
+    r.refused == 0 && r.unknown == 0 && r.widened == 0,
     '$what: a clean read moves no counter',
   );
 }
@@ -830,20 +825,14 @@ void pairedCorpus(String dir) {
 // shifts both ends by F before comparing, so `BenchMixed.server_time`
 // `fixed(24, 8) | min = 0, max = 65535` is held to the RAW range
 // [0, 65535 << 8] = [0, 16776960] and NOTHING here divides by 2^F. A `bits(N)`
-// is the older half of the same pass and clamps to 2^N - 1, written only where
+// is the older half of the same pass and is held to 2^N - 1, checked only where
 // N is narrower than the storage the form gives it.
 //
-// The reference is test/tables/fixedform_properties.cpp:1279 (`probe_clamp_op`):
-// `w.position = 2000LL * 65536` is inside the OLDER writer's range and past the
-// newer reader's `1000`, and the newer read lands `1000LL * 65536` and counts
-// ONE `clamped`. This port forges the same one raw step past the shifted end,
-// on the identity plan, and holds the value AND the count.
-//
-// THE SITE IS internal/codegen/darttable/fixeddart.go:969 `emitClamp` (with
-// `fixedClampEnds` at :888 reading `ir.TableRawRange`'s F-shifted ends and
-// `fixedBitsClamp` at :899 answering 2^N - 1). THE POINT OF THIS CASE IS THAT
-// THE PASS RUNS AT ALL: a clean record already proves it cannot fire on a
-// legitimate value, and the forged record proves it fires and counts.
+// UNDER THE ONE READ (docs/plans/strict-only.md) a value past either bound
+// refuses the WHOLE read as out_of_range and nothing lands; no value is clamped.
+// This port forges one raw step past the shifted end, on the identity plan, and
+// holds the refusal. A clean record proves the pass cannot fire on a legitimate
+// value, and the forged record proves it runs at all.
 void fixedBoundsCase() {
   final layoutBytes = bench.fixedTableFixedLayoutBytes;
   final body =
@@ -880,13 +869,9 @@ void fixedBoundsCase() {
       'C8 bounds: the raw Q24.8 value lands exact',
     );
     check(
-      r.clamped == 0,
-      'C8 bounds: a value inside the declaration moves no clamp '
+      r.refused == benchHome.TableFixedRefusal.none,
+      'C8 bounds: a value inside the declaration refuses nothing '
       '(the pass is not vacuous)',
-    );
-    check(
-      !r.malformed && r.refused == 0,
-      'C8 bounds: a clean read is not damage',
     );
   }
 
@@ -908,27 +893,16 @@ void fixedBoundsCase() {
     bench.fixedTableFixedNewPlan(),
     r,
   );
-  check(n == 1, 'C8 bounds: the forged record still reads');
+  check(n == -1, 'C8 bounds: the forged record refuses the whole read');
   check(
-    back[0].value.serverTime == 65535 * 256,
-    'C8 bounds: the SHIFTED maximum holds a raw past it '
-    '(got ${back[0].value.serverTime}, want ${65535 * 256})',
+    r.refused == benchHome.TableFixedRefusal.outOfRange,
+    'C8 bounds: the refusal is named out_of_range (got ${r.refused})',
   );
   check(
-    back[0].value.frameTick == 281474976710655,
-    'C8 bounds: bits(48) clamps to 2^48 - 1',
-  );
-  check(
-    back[0].value.sequence == 65535,
-    'C8 bounds: bits(16) clamps to 2^16 - 1',
-  );
-  check(
-    r.clamped == 3,
-    'C8 bounds: each clamp counts exactly once (got ${r.clamped})',
-  );
-  check(
-    !r.malformed && r.refused == 0,
-    'C8 bounds: damage in a VALUE is not framing damage',
+    back[0].value.serverTime != 65535 * 256 &&
+        back[0].value.serverTime != 16776961,
+    'C8 bounds: nothing lands, not a clamped value and not the raw one '
+    '(got ${back[0].value.serverTime})',
   );
 }
 
@@ -1034,10 +1008,7 @@ void fxCase() {
       r.unknown == 1,
       'older writer: `gone` is the one field this reader cannot name (got ${r.unknown})',
     );
-    check(
-      r.kindMismatch == 0 && !r.malformed && r.refused == 0,
-      'older writer: nothing else fired',
-    );
+    check(r.refused == 0, 'older writer: nothing else fired');
   }
 
   // 3. FX1 READS FX2 — an unknown field and an unknown NESTED TYPE
@@ -1053,42 +1024,10 @@ void fxCase() {
       fx1.fxRootFixedNewPlan(),
       r,
     );
-    check(n == 1, 'newer writer: one record');
-    check(
-      back[0].keep == 5150,
-      'newer writer: an unmoved field lands past the unknowns',
-    );
-    check(
-      back[0].renamed == 808,
-      'newer writer: `was =` reads the other way too',
-    );
-    check(
-      back[0].gone == 9,
-      'newer writer: a field the writer dropped takes its declared default',
-    );
-    check(
-      back[0].nested.a == 33 && back[0].nested.b == 44,
-      'newer writer: the nesting lands past the unknown type',
-    );
-    // `added` is an unknown FIELD; `extra` is an unknown nested TYPE, and
-    // stepping over it by its layout size is what puts `nested` in the right
-    // place above
-    check(
-      r.unknown == 2,
-      'newer writer: two names this reader does not have (got ${r.unknown})',
-    );
-    check(
-      r.kindMismatch == 1,
-      'newer writer: uint32 into uint16 is a kind that MOVED (got ${r.kindMismatch})',
-    );
-    check(
-      back[0].narrow == 3,
-      'newer writer: a narrowing leaves the declared default',
-    );
-    check(
-      !r.malformed && r.refused == 0,
-      'newer writer: no damage and no refusal',
-    );
+    // OLD REFUSES NEW: uint32 into uint16 is a kind that MOVED, and the one
+    // read refuses it whole (docs/plans/strict-only.md); nothing is counted.
+    check(n < 0 && r.refused != 0, 'newer writer: the read refuses');
+    check(r.unknown == 0, 'newer writer: REFUSE is total');
   }
 
   // THE PLAN IS COMPILED ONCE PER PEER, NOT ONCE PER RECORD, and the same plan
@@ -1176,17 +1115,22 @@ void rangedScalarClampCase() {
       fx1.fxRootFixedNewPlan(),
       r,
     );
-    check(n == 1, 'RANGE: the record reads');
-    check(back[0].renamed == 1000, 'RANGE: a value past max lands at max');
-    check(back[0].gone == 0, 'RANGE: a value under min lands at min');
-    check(r.clamped == 2, 'RANGE: two clamps, counted');
     check(
-      back[0].nested.a == 111 && back[0].nested.b == 222,
-      'RANGE: an in-range neighbour is untouched',
+      n == -1,
+      'RANGE: a value past max and one under min refuse the whole read',
     );
     check(
-      !r.malformed && r.refused == 0 && r.unknown == 0 && r.kindMismatch == 0,
-      'RANGE: nothing else fired',
+      r.refused == fx1home.TableFixedRefusal.outOfRange,
+      'RANGE: the refusal is named out_of_range '
+      '(got ${fx1home.TableFixedRefusal.name(r.refused)})',
+    );
+    final defaults = fx1home.FxRoot();
+    check(
+      back[0].renamed == defaults.renamed &&
+          back[0].gone == defaults.gone &&
+          back[0].nested.a == defaults.nested.a &&
+          back[0].nested.b == defaults.nested.b,
+      'RANGE: nothing lands, not a clamped value and not the in-range neighbour',
     );
   }
 
@@ -1216,8 +1160,8 @@ void rangedScalarClampCase() {
       'RANGE control: an in-range value lands whole',
     );
     check(
-      r.clamped == 0,
-      'RANGE control: a value inside the declared range clamps nothing',
+      r.refused == 0,
+      'RANGE control: a value inside the declared range refuses nothing',
     );
   }
 }
@@ -1359,7 +1303,7 @@ void fuCase() {
       'text under an arm: compiled, extra defaults on the FIRST arm too',
     );
     check(
-      !r.malformed && r.refused == 0 && r.clamped == 0,
+      r.refused == 0,
       'text under an arm: compiled, a clean read moves no counter',
     );
   }
@@ -1480,12 +1424,11 @@ void twoLanesCase() {
 // `owed8_width8_ordinal_read_whole_case`, test/tables/fixedform_main.cpp:
 // 1089-1118, ported here for its REASONING and not its C++.
 //
-// The reference's OWN distinguishing fact is the CLAMPED COUNT and not the
-// landed value: a width-8 ordinal of 2^32 — one past the writer's single
-// variant — lands None either way. Read through a 32-bit temporary the low
-// four bytes are zero, so `raw` comes out 0, the entry lands None and counts
-// NOTHING; read whole, `raw` is 2^32 > n, so it lands None and COUNTS `clamped`.
-// The storage and the verdict agree; only the count disagrees. No schema in
+// The reference's OWN distinguishing fact is the VERDICT: a width-8 ordinal
+// of 2^32 is one past the writer's single variant. Read through a 32-bit
+// temporary the low four bytes are zero, so `raw` comes out 0, the entry lands
+// None and the loop names NOTHING; read whole, `raw` is 2^32 > n, and the loop
+// refuses out_of_range (docs/plans/strict-only.md). No schema in
 // the corpus declares an eight-byte enum or union ordinal, so the plan is laid
 // here by hand, exactly as the reference lays it.
 void ordinalWidth8Case() {
@@ -1511,7 +1454,7 @@ void ordinalWidth8Case() {
   final conv = ByteData(8);
   final report = fu1home.TableFixedReport();
 
-  fu1home.tableFixedRun(
+  final why = fu1home.tableFixedRun(
     plan,
     1,
     source,
@@ -1524,23 +1467,18 @@ void ordinalWidth8Case() {
     report,
   );
 
-  final landed = imageView.getUint64(0, Endian.little);
   check(
-    landed == 0,
-    'ordinal width 8: 2^32 is past the writer\'s one variant and lands None',
+    why == fu1home.TableFixedRefusal.outOfRange,
+    'ordinal width 8: the loop names out_of_range — a 32-bit temporary would '
+    'have read 0 and named nothing (got ${fu1home.TableFixedRefusal.name(why)})',
   );
   check(
-    report.clamped >= 1,
-    'ordinal width 8: COUNT clamped — a 32-bit temporary would read 0 and '
-    'count nothing',
-  );
-  check(
-    !report.malformed && report.refused == 0,
-    'ordinal width 8: a hostile ordinal is None and counted, never a refusal',
+    report.unknown == 0,
+    'ordinal width 8: a forged ordinal is a refusal, never an unknown',
   );
   print(
-    'ordinal width 8: 2^32 read whole through the 64-bit temporary, landed '
-    '$landed, clamped ${report.clamped}',
+    'ordinal width 8: 2^32 read whole through the 64-bit temporary, '
+    'refused ${fu1home.TableFixedRefusal.name(why)}',
   );
 }
 
@@ -1607,10 +1545,7 @@ void vCase() {
     back[0].a == 5.0,
     'KIND MOVED: int32 -> float32 leaves the declared default',
   );
-  check(
-    !r.malformed && r.refused == 0,
-    'V2 reads V1: no damage and no refusal',
-  );
+  check(r.refused == 0, 'V2 reads V1: no damage and no refusal');
 }
 
 // 7. AN OPTIONAL AGAINST A VALUE. On FORM 1 those two are wire-identical
@@ -1629,14 +1564,11 @@ void pCase() {
   final back = <p3home.Chain>[p3home.Chain()];
   final r = p3home.TableFixedReport();
   final n = p3.chainFixedLoad(back, 1, w, w.length, p3.chainFixedNewPlan(), r);
-  check(n == 1, 'P3 reads P1: one record');
+  // OPTIONAL vs VALUE is a kind that moved on this form, never a silent
+  // reread: the one read refuses it (docs/plans/strict-only.md).
   check(
-    text(back[0].name, back[0].nameLength) == 'chain',
-    'P3 reads P1: the plain field lands',
-  );
-  check(
-    r.kindMismatch == 1,
-    'OPTIONAL vs VALUE is a reported kind on this form, never a silent reread',
+    n == -1 && r.refused != 0,
+    'P3 reads P1: a moved kind refuses the read',
   );
 }
 
@@ -1885,13 +1817,13 @@ void textLengthClampCase() {
   }
 
   // THE LOOP ALONE. Run the identity plan over the forged body and read the
-  // length word it LANDS in the reader's image, plus the one counter.
+  // length word it LANDS in the reader's image, plus the refusal the run names.
   (int, int) loopRun(int forged) {
     fileView.setInt32(body + labelAt, forged, Endian.little);
     final plan = fx1.fxRootFixedNewPlan();
     plan.image.setRange(0, fx1.fxRootFixedBodyBytes, fx1.fxRootFixedPrefill);
     final r = fx1home.TableFixedReport();
-    fx1home.tableFixedRun(
+    final why = fx1home.tableFixedRun(
       fx1.fxRootFixedIdentity,
       fx1.fxRootFixedIdentityCount,
       file,
@@ -1903,42 +1835,43 @@ void textLengthClampCase() {
       plan.conv,
       r,
     );
-    return (plan.imageView.getInt32(labelAt, Endian.little), r.clamped);
+    return (plan.imageView.getInt32(labelAt, Endian.little), why);
   }
 
-  // C3a: A LENGTH BELOW ZERO. Not a large number — zero, and one clamp.
+  // C3a: A LENGTH BELOW ZERO refuses length_over_bound (the one read clamps
+  // nothing, docs/plans/strict-only.md).
   {
-    final (landed, counted) = loopRun(-1);
-    check(landed == 0, 'C3a: the loop lands a length below zero as ZERO');
-    check(counted == 1, 'C3a: and the loop counts exactly one clamp');
+    final (_, why) = loopRun(-1);
+    check(
+      why == fx1home.TableFixedRefusal.lengthOverBound,
+      'C3a: the loop refuses a length below zero as length_over_bound '
+      '(got ${fx1home.TableFixedRefusal.name(why)})',
+    );
   }
 
   // C3b: A LENGTH PAST THE READER'S OWN CAP, IN BYTES.
   {
-    final (landed, counted) = loopRun(cap + 1);
+    final (_, why) = loopRun(cap + 1);
     check(
-      landed == cap,
-      'C3b: the loop lands a length past the cap AT the cap',
+      why == fx1home.TableFixedRefusal.lengthOverBound,
+      'C3b: the loop refuses a length past the cap as length_over_bound '
+      '(got ${fx1home.TableFixedRefusal.name(why)})',
     );
-    check(counted == 1, 'C3b: and the loop counts exactly one clamp');
   }
 
-  // AND THE CONTROL: EVERY length the rule ADMITS is not a clamp. The cap
-  // itself, zero, and anything between both land WHOLE and count nothing; a
-  // clamp counted here would be a clamp on a clean read. This list is the one
-  // line CONTROL 1 edits: point the case at a legitimate value and it stays
-  // green, because an in-range length has nothing to fire.
+  // AND THE CONTROL: EVERY length the rule ADMITS lands whole. The cap
+  // itself, zero, and anything between land WHOLE and refuse nothing; a
+  // refusal here would be a refusal of a clean read.
   for (final legit in <int>[0, 3, cap]) {
-    final (landed, counted) = loopRun(legit);
+    final (landed, why) = loopRun(legit);
     check(
-      landed == legit && counted == 0,
-      'CONTROL: a length of $legit is in range and counts NOTHING',
+      landed == legit && why == fx1home.TableFixedRefusal.none,
+      'CONTROL: a length of $legit is in range and refuses NOTHING',
     );
   }
 
-  // THE FULL READ, the two paths together: a forged length still READS (a
-  // clamp is not a refusal), the decoded value is the clamped one, and the
-  // report carries the one clamp and no damage.
+  // THE FULL READ, the two paths together: a forged length refuses the whole
+  // read by name and nothing lands.
   {
     fileView.setInt32(body + labelAt, -1, Endian.little);
     final back = <fx1home.FxRoot>[fx1home.FxRoot()];
@@ -1952,14 +1885,13 @@ void textLengthClampCase() {
             fx1.fxRootFixedNewPlan(),
             r,
           ) ==
-          1,
-      'C3: a forged length of -1 still READS — a clamp is not a refusal',
+          -1,
+      'C3: a forged length of -1 refuses the read',
     );
-    check(back[0].labelLength == 0, 'C3: a length below zero clamps to ZERO');
-    check(r.clamped == 1, 'C3: and counts exactly one clamp');
     check(
-      !r.malformed && r.refused == 0,
-      'C3: a clamp is neither malformed nor a refusal',
+      r.refused == fx1home.TableFixedRefusal.lengthOverBound,
+      'C3: the refusal is named length_over_bound '
+      '(got ${fx1home.TableFixedRefusal.name(r.refused)})',
     );
   }
 }
@@ -2054,7 +1986,7 @@ void p3Fx1() {
     final what = 'P3 fx1 byte $at poison 0x${poison.toRadixString(16)}';
     if (n < 0) {
       check(
-        report.refused != 0 || report.malformed,
+        report.refused != 0,
         '$what: a negative read is a named refusal or malformed',
       );
       return;
@@ -2117,7 +2049,7 @@ void p3Optional() {
     final what = 'P3 p3 byte $at poison 0x${poison.toRadixString(16)}';
     if (n < 0) {
       check(
-        report.refused != 0 || report.malformed,
+        report.refused != 0,
         '$what: a negative read is a named refusal or malformed',
       );
       return;
@@ -2174,7 +2106,7 @@ void p3Compiled() {
     final what = 'P3 p1->p3 byte $at poison 0x${poison.toRadixString(16)}';
     if (n < 0) {
       check(
-        report.refused != 0 || report.malformed,
+        report.refused != 0,
         '$what: a negative read is a named refusal or malformed',
       );
       return;
@@ -2457,7 +2389,7 @@ void readSlackUnspecified() {
   );
   check(n == 1, 'read slack: the record reads (got $n)');
   check(
-    !r.malformed && r.refused == 0,
+    r.refused == 0,
     'SLACK IS UNSPECIFIED: stained slack is neither malformed nor a refusal',
   );
   check(
@@ -2465,9 +2397,9 @@ void readSlackUnspecified() {
     'SLACK IS UNSPECIFIED: the USED UNITS land and the slack behind them is not read',
   );
   check(
-    r.clamped == 0,
+    r.refused == 0 && r.unknown == 0 && r.widened == 0,
     'SLACK IS UNSPECIFIED: a reader validates the USED UNITS only and moves no '
-    'counter (clamped ${r.clamped})',
+    'counter (refused ${r.refused})',
   );
 }
 
@@ -3018,20 +2950,14 @@ void negativeControl() {
 
   bool namedOnly(fx1home.TableFixedReport r, int want) =>
       r.refused == want &&
-      !r.malformed &&
       r.unknown == 0 &&
-      r.kindMismatch == 0 &&
-      r.clamped == 0 &&
       r.widened == 0 &&
       r.hash == 0 &&
       r.layoutHash == 0;
 
   bool malformedOnly(fx1home.TableFixedReport r) =>
-      r.malformed &&
-      r.refused == fx1home.TableFixedRefusal.none &&
+      r.refused == fx1home.TableFixedRefusal.damaged &&
       r.unknown == 0 &&
-      r.kindMismatch == 0 &&
-      r.clamped == 0 &&
       r.widened == 0 &&
       r.hash == 0 &&
       r.layoutHash == 0;
@@ -3250,8 +3176,8 @@ void negativeControl() {
     check(
       fx1.fxRootFixedLoad(v, 1, bad, bad.length, fx1.fxRootFixedNewPlan(), r) <
               0 &&
-          r.malformed,
-      'MALFORMED: bytes left over past the last whole record',
+          r.refused == fx1home.TableFixedRefusal.damaged,
+      'DAMAGED: bytes left over past the last whole record',
     );
   }
 
@@ -3343,17 +3269,16 @@ void boundsCase() {
     'bounds: the two live elements land, and the slack\'s stain is never decoded',
   );
   check(
-    r.clamped == 0,
+    r.refused == 0,
     'THE BOUNDS PASS WALKS A COUNTED ARRAY\'S LIVE ELEMENTS AND NEVER ITS '
-    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): clamping storage nobody wrote '
-    'would count a clamp on every clean read — the out-of-range value stained '
-    'into the slack counts no clamp (clamped=${r.clamped})',
+    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): checking storage nobody wrote '
+    'would refuse every clean read — the out-of-range value stained into the '
+    'slack refuses nothing (refused=${r.refused})',
   );
 
   // CONTROL 1 — THE SAME VALUE IN A LIVE ELEMENT. reserves[1] is live, so its
-  // out-of-range value clamps to max, counts EXACTLY one, and an in-range
-  // neighbour is untouched. Without this, a pass that never ran at all would
-  // also report `clamped == 0`.
+  // out-of-range value refuses the whole read as out_of_range. Without this, a
+  // pass that never ran at all would also refuse nothing above.
   final w2 = Uint8List(pack.packConfigFixedMeasure(1));
   check(
     pack.packConfigFixedSave(<demo.PackConfig>[one], 1, w2) == w2.length,
@@ -3372,21 +3297,13 @@ void boundsCase() {
           pack.packConfigFixedNewPlan(),
           r2,
         ) ==
-        1,
-    'bounds: control reads',
+        -1,
+    'CONTROL 1: a live element past max refuses the read',
   );
   check(
-    back2[0].reserves[1].hardpoints[0] == 8,
-    'CONTROL 1: a live element past max lands at max '
-    '(got ${back2[0].reserves[1].hardpoints[0]})',
-  );
-  check(
-    back2[0].reserves[0].hardpoints[0] == 1,
-    'CONTROL 1: an in-range neighbour is untouched',
-  );
-  check(
-    r2.clamped == 1,
-    'CONTROL 1: the live clamp is counted exactly once (clamped=${r2.clamped})',
+    r2.refused == demo.TableFixedRefusal.outOfRange,
+    'CONTROL 1: the refusal is named out_of_range '
+    '(got ${demo.TableFixedRefusal.name(r2.refused)})',
   );
 }
 
@@ -3461,11 +3378,7 @@ void refuses(Uint8List broken, int want, String what) {
   // NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read a
   // record would be the damage the refusal exists to prevent.
   check(
-    r.unknown == 0 &&
-        r.kindMismatch == 0 &&
-        r.widened == 0 &&
-        r.clamped == 0 &&
-        !r.malformed,
+    r.unknown == 0 && r.widened == 0,
     '$what: a layout refusal sets nothing and counts nothing',
   );
 }
@@ -3662,7 +3575,7 @@ void layoutValidation() {
   {
     refuses(
       fileOf(Uint8List(2)),
-      fx1home.TableFixedRefusal.layoutMalformed,
+      fx1home.TableFixedRefusal.layoutDamaged,
       'RULE: fewer bytes than a header is layout_malformed',
     );
   }
@@ -3943,7 +3856,7 @@ void layoutTruncatedCase() {
   ByteData.sublistView(f).setUint32(layoutLengthAt, 100, Endian.little);
   refuses(
     f,
-    fx1home.TableFixedRefusal.layoutMalformed,
+    fx1home.TableFixedRefusal.layoutDamaged,
     'RULE: a layout length that runs past the file is layout_malformed',
   );
 }

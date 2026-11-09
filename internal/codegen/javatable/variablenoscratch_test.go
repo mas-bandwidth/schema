@@ -1,6 +1,7 @@
 package javatable
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -133,4 +134,50 @@ func javaMethodBody(t *testing.T, file, src, sig string) string {
 		t.Fatalf("%s: %q has no closing brace", file, sig)
 	}
 	return src[i : i+end]
+}
+
+// TestVariableOpenWireCheckReuseJava pins that TableVariable.open reuses a
+// per-thread WireCheck with grow-only scratch arrays instead of allocating a
+// fresh WireCheck and per-node arrays on every open call (measured by row 4
+// load in make tables-java-allocator and make tables-java-alloc-negative-control).
+func TestVariableOpenWireCheckReuseJava(t *testing.T) {
+	t.Parallel()
+	u := unitFromDir(t, filepath.Join("..", "..", "..", "tables", "pointers"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(files["TableVariable.java"])
+	openBody := javaMethodBody(t, "TableVariable.java", src, "public static Reader open(byte[] data, Report report) {")
+	if strings.Contains(openBody, "new WireCheck(") {
+		t.Errorf("TableVariable.open allocates a new WireCheck per call:\n%s", openBody)
+	}
+	if !strings.Contains(openBody, "WIRE_CHECK.get()") || !strings.Contains(openBody, "wc.reset(data, ids)") {
+		t.Errorf("TableVariable.open must reuse WIRE_CHECK.get() with wc.reset(data, ids):\n%s", openBody)
+	}
+	for _, bad := range []string{
+		"new int[idCount]",
+		"new int[nodeCount]",
+		"new boolean[nodeCount]",
+		"new int[count]",
+	} {
+		if strings.Contains(src, bad) {
+			t.Errorf("TableVariable.java WireCheck still allocates %q per call or per node", bad)
+		}
+	}
+}
+
+// TestRowPointerSlotSabotageAnchorUniqueJava pins that the pointer-slot
+// emitter line anchored by tools/sabotage -name java-agree-slot-offset
+// (make tables-java-slot-negative-control) appears exactly once in rows.go.
+func TestRowPointerSlotSabotageAnchorUniqueJava(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile("rows.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const anchor = `g.f("    public static int %sSlot(int at) { return at + %d; }\n", name, pieces[0].Offset)`
+	if got := strings.Count(string(raw), anchor); got != 1 {
+		t.Fatalf("rows.go matches java-agree-slot-offset anchor %d times, want 1", got)
+	}
 }

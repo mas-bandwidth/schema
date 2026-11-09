@@ -14,13 +14,11 @@ import (
 // occur EXACTLY once in the file — zero or twice is a failure by name, because
 // a search that is not a locator is not a forge. The SAME forged bytes are read
 // through BOTH plans, the COMPILED plan (reader VNEW, older VOLD) and the
-// IDENTITY plan (reader VOLD, no older), and both must land the tag as None (0)
-// and count `clamped == 1`. `== 1`, never `>= 1`, because a leg that counts the
-// tag in the plan's op AND again in the decode projection lands 2 and passes a
-// looser read. The bound this row guards — the decode default arm in
-// fixeddart.go — was deleted from all nine legs and NOT ONE landed fixed-table
-// test went red: 0 of 72 c, 36 cpp, 70 cs, 69 dart, 72 elixir, 68 go, 41 java,
-// 70 js, 70 rust.
+// IDENTITY plan (reader VOLD, no older), and both must refuse the whole read
+// as out_of_range (docs/plans/strict-only.md). The bound this row guards — the
+// decode default arm in fixeddart.go and the None const in the run loop — is
+// held on both plans; THE CONTROL reads the unforged file through the same two
+// plans and lands the alpha arm, so the refusal is the forge's.
 
 func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 	corpus := fixedCorpus(t)
@@ -50,19 +48,30 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 
 	body := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == 1, 'the forged file carries one record: n=$n ${why(report)}');
-  check(report.refused == 0,
-      'a forged tag is not a refusal: ${why(report)}');
+  check(n == -1, 'a forged tag refuses the whole read: n=$n ${why(report)}');
+  check(report.refused == t.TableFixedRefusal.outOfRange,
+      'the refusal is named out_of_range: ${why(report)}');
   check(values[0].pick.type == 0,
-      'a tag past the arm set lands None (0): ${values[0].pick.type}');
-  check(values[0].pick.type != 9 && values[0].pick.type != 1,
-      'a tag past the arm set never lands the forged 9 nor the writer 1: ${values[0].pick.type}');
-  check(values[0].seq == 15,
-      'the tag that ran past its arm set did not move its neighbour: seq=${values[0].seq}, not 15');
-  check(report.unknown == 1,
-      'the forged tag counts unknown exactly once: ${why(report)}');
-  check(report.widened == 0,
-      'no other counter moved: ${why(report)}');`
+      'nothing lands, not the forged 9 nor the writer 1: ${values[0].pick.type}');
+  check(report.unknown == 0 && report.widened == 0,
+      'a refusal moves no counter: ${why(report)}');`
+	control := `  final data = File(FILE).readAsBytesSync();
+  final n = LOAD(values, values.length, data, data.length, plan, report);
+  check(n == 1, 'CONTROL: the unforged file reads: n=$n ${why(report)}');
+  check(report.refused == 0, 'CONTROL: and refuses nothing: ${why(report)}');
+  check(values[0].pick.type == 1 && values[0].seq == 15,
+      'CONTROL: the alpha arm and its neighbour land: ${values[0].pick.type} ${values[0].seq}');`
+	for _, plan := range []struct {
+		name, build string
+		lineage     []string
+	}{
+		{"COMPILED", "VNEW_union_append", []string{"VOLD_union_append"}},
+		{"IDENTITY", "VOLD_union_append", nil},
+	} {
+		if out, err := runVersionProbe(t, dartBin, plan.build, plan.lineage, 0, old, control); err != nil {
+			t.Fatalf("the %s plan read of the unforged file (the control): %v\n%s", plan.name, err, out)
+		}
+	}
 
 	out, err := runVersionProbe(t, dartBin, "VNEW_union_append", []string{"VOLD_union_append"}, 0, forged, body)
 	if err != nil {

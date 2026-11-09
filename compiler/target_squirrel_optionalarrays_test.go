@@ -41,22 +41,18 @@ table L
 }
 `
 
-// squirrelOptionalArrayMain drives the emitted save and load runtimes for the
-// three presences. A failed assertion prints FAIL and the test reads it as a
+// squirrelOptionalArrayMain drives the emitted save and the strict read
+// (docs/SPEC-TABLES.md §6.5) for the three presences. A failed assertion prints FAIL and the test reads it as a
 // failure; a clean case prints OK, the case and the saved bytes as hex.
-const squirrelOptionalArrayMain = `local schema = dofile("schema_module.nut", true);
+const squirrelOptionalArrayMain = squirrelVerdict + `local schema = dofile("schema_module.nut", true);
 local T = schema.require("ProbeTables");
 local L = schema.require("schema_table_load");
 local S = schema.require("schema_table_save");
-local report = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false };
-};
 local check = function(key, v, present, want) {
   local b = S.save(T, "L", v);
-  local r = report();
-  local back = L.loadTolerant(T, "L", b, r);
-  if (r.malformed || r.refused) { print("FAIL " + key + " load\n"); return; }
+  local r = {};
+  local back = L.load(T, "L", b, r);
+  if (::verdict(back, r) != "accepted") { print("FAIL " + key + " load\n"); return; }
   if (back.MaybePresent != present) { print("FAIL " + key + " present\n"); return; }
   if (present) {
     if (back.Maybe.len() != want.len()) { print("FAIL " + key + " len\n"); return; }
@@ -140,4 +136,8 @@ func TestSquirrelCarriesOptionalArrays(t *testing.T) {
 			t.Errorf("%s: the emitted module saved %x, tablewire saves %x", tc.name, have, want)
 		}
 	}
+
+	// THE STRICT READ REFUSES what the root cannot hold, with its negative
+	// control (docs/SPEC-TABLES.md §6.5).
+	squirrelStrictRefusal(t, u, files, "L", "package probe\n\ntable L\n{\n    maybe string(8)\n}\n", `{"maybe":"x"}`)
 }

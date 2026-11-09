@@ -315,14 +315,11 @@ public final class Driver {
         check("variable-read:retaining-known-field", () -> refusesRetaining(scalar(RootVariable.F_f, 10, 0x7fc00000L), "Root.f"));
 
         // RULING 3: a retained unknown float is tested like a known one; the
-        // plain read retains nothing and skips it as it skips any unknown
+        // plain read retains nothing, and a NaN in bytes it cannot name still
+        // refuses the read (the wire-alone check, as the Go engine's checkFile)
         check("variable-retain-unknown:kind-10", () -> refusesRetaining(scalar(0x1234L, 10, 0x7fc00000L), "Root.0x0000000000001234"));
         check("variable-retain-unknown:kind-11", () -> refusesRetaining(scalar(0xfeedfacecafebeefL, 11, 0xfff0000000000000L), "Root.0xfeedfacecafebeef"));
-        check("variable-retain-exact:plain-read-skips", () -> {
-            TableVariable.Report r = new TableVariable.Report();
-            RootVariable.Value v = RootVariable.load(scalar(0x1234L, 10, 0x7fc00000L), r);
-            return v != null && !r.refused && r.unknown == 1 && v.tail == 7 ? "" : "loaded=" + (v != null) + " refused=" + r.refused + " unknown=" + r.unknown;
-        });
+        check("variable-retain-exact:plain-read-refuses", () -> refusesVariable(scalar(0x1234L, 10, 0x7fc00000L), "a float the wire carries"));
         check("variable-retain-exact:finite-retained", () -> {
             TableVariable.Report r = new TableVariable.Report();
             RootVariable.Value v = RootRetain.loadRetain(scalar(0x1234L, 10, 0x3f800000L), new TableRetain(1 << 16, 1 << 13), r);
@@ -438,7 +435,7 @@ var finiteLabels = []string{
 	"variable-read:f32-plus-inf", "variable-read:f32-minus-inf", "variable-read:f64-nan", "variable-read:f64-minus-inf",
 	"variable-read:f32-into-f64", "variable-read:list-element", "variable-read:nested-type", "variable-read:union-arm",
 	"variable-read:keyed-element", "variable-read:retaining-known-field",
-	"variable-retain-unknown:kind-10", "variable-retain-unknown:kind-11", "variable-retain-exact:plain-read-skips",
+	"variable-retain-unknown:kind-10", "variable-retain-unknown:kind-11", "variable-retain-exact:plain-read-refuses",
 	"variable-retain-exact:finite-retained",
 	"variable-write:scalar", "variable-write:f64", "variable-write:list-element", "variable-write:keyed-element",
 	"variable-write:nested-type", "variable-write:union-arm", "variable-write:retaining-save",

@@ -216,7 +216,9 @@ local check = function(name, wire, expectOK) {
   local unknown = ("unknown" in rep) ? rep.unknown : 0;
   local good;
   if (expectOK) good = !bodyDamaged && !refused && count == 2 && unknown == 1 && values[0].A == 42 && values[1].A == 99;
-  else good = bodyDamaged && !refused && count == 0 && values[0].A == 0 && values[1].A == 0;
+  // the refused batch resets the row it was reading (body 0, the deep one)
+  // and leaves the row it never reached untouched, as the Go engine does
+  else good = bodyDamaged && refused && rep.reason == "wire_damaged" && count == 0 && values[0].A == 0 && values[1].A == -7;
   print((good ? "PASS " : "FAIL ") + name + " count=" + count + " bodyDamaged=" + bodyDamaged + " unknown=" + unknown + "\n");
 };
 `, squirreltable.ModuleName(u))

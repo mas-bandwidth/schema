@@ -125,6 +125,10 @@ func luaVectorAnswer(t *testing.T, c luaVectorCase, u *ir.Unit, wire []byte, who
 	}
 	if plant {
 		editLoad(t, files, c.from, c.to, c.times)
+		// the strict load's wire check holds the graph and framing rules
+		// too (§6.5): the plant switches it off so the walk's rule is the
+		// one the control moves
+		withoutWireCheck(t, files)
 	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
