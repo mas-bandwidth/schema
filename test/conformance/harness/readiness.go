@@ -44,24 +44,27 @@ func readinessProblems(dir, revision string) []string {
 			return nil
 		}
 		data, err := os.ReadFile(path)
-		if err != nil {
+		switch text := string(data); {
+		case err != nil:
 			problems = append(problems, path+": "+err.Error())
-		} else if text := string(data); text != "pass" && text != "pass\n" && text != "pass\r\n" {
+		case text != "pass" && text != "pass\n" && text != "pass\r\n":
 			problems = append(problems, fmt.Sprintf("%s: runtime acceptance requires pass, got %q", lang, text))
 		}
 		revisionPath := strings.TrimSuffix(path, ".txt") + ".revision"
 		info, err := os.Lstat(revisionPath)
-		if err != nil {
+		switch {
+		case err != nil:
 			problems = append(problems, fmt.Sprintf("%s: missing readiness revision: %v", lang, err))
-		} else if !info.Mode().IsRegular() {
+		case !info.Mode().IsRegular():
 			problems = append(problems, revisionPath+": readiness revision must be a regular file")
-		} else {
+		default:
 			data, err := os.ReadFile(revisionPath)
-			if err != nil {
+			switch got := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r"); {
+			case err != nil:
 				problems = append(problems, revisionPath+": "+err.Error())
-			} else if got := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r"); !validReadinessRevision(got) {
+			case !validReadinessRevision(got):
 				problems = append(problems, fmt.Sprintf("%s: invalid readiness revision %q", lang, got))
-			} else if got != revision {
+			case got != revision:
 				problems = append(problems, fmt.Sprintf("%s: readiness revision %s does not match checkout HEAD %s", lang, got, revision))
 			}
 		}
@@ -92,11 +95,17 @@ func checkOriginalNineRoadmap(w io.Writer) error {
 	cmd.Dir = root
 	output, err := cmd.CombinedOutput()
 	if len(output) != 0 {
-		fmt.Fprint(w, "\nRoadmap checker diagnostics:\n\n")
-		for line := range strings.SplitSeq(strings.TrimRight(string(output), "\n"), "\n") {
-			fmt.Fprintf(w, "    %s\n", line)
+		if _, err := fmt.Fprint(w, "\nRoadmap checker diagnostics:\n\n"); err != nil {
+			return err
 		}
-		fmt.Fprintln(w)
+		for line := range strings.SplitSeq(strings.TrimRight(string(output), "\n"), "\n") {
+			if _, err := fmt.Fprintf(w, "    %s\n", line); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(w); err != nil {
+			return err
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("sbcl roadmap graph/freshness check: %w", err)
@@ -109,23 +118,34 @@ func checkOriginalNineRoadmap(w io.Writer) error {
 func originalReadinessProblems(w io.Writer, in string, currentRevision func() (string, error)) []string {
 	revision, err := currentRevision()
 	var problems []string
+	emit := func(ok bool, format string, args ...any) {
+		var werr error
+		if ok {
+			_, werr = fmt.Fprintf(w, format, args...)
+		} else {
+			_, werr = fmt.Fprintln(w, fmt.Sprintf(format, args...))
+		}
+		if werr != nil {
+			problems = append(problems, "readiness report write: "+werr.Error())
+		}
+	}
 	if err != nil {
-		fmt.Fprintln(w, "Expected acceptance revision: unavailable.")
+		emit(false, "Expected acceptance revision: unavailable.")
 		problems = append(problems, "readiness provenance: "+err.Error())
 	} else {
-		fmt.Fprintf(w, "Expected acceptance revision (current checkout HEAD): %s\n", revision)
+		emit(true, "Expected acceptance revision (current checkout HEAD): %s\n", revision)
 	}
 	problems = append(problems, readinessProblems(in, revision)...)
 	if len(problems) == 0 {
-		fmt.Fprintln(w, "Original-nine runtime acceptance: PASS (nine current-run receipts).")
+		emit(false, "Original-nine runtime acceptance: PASS (nine current-run receipts).")
 	} else {
-		fmt.Fprintln(w, "Original-nine runtime acceptance: FAIL.")
+		emit(false, "Original-nine runtime acceptance: FAIL.")
 	}
 	if err := checkOriginalNineRoadmap(w); err != nil {
-		fmt.Fprintln(w, "Original-nine roadmap: FAIL.")
+		emit(false, "Original-nine roadmap: FAIL.")
 		problems = append(problems, "original-nine roadmap: "+err.Error())
 	} else {
-		fmt.Fprintln(w, "Original-nine roadmap: PASS (graph, evidence and rendered-page freshness).")
+		emit(false, "Original-nine roadmap: PASS (graph, evidence and rendered-page freshness).")
 	}
 	return problems
 }
