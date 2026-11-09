@@ -858,8 +858,8 @@
     },
     {
       "name": "cs-block-layout",
-      "when": "pull-request",
-      "why": "the block layout model control, alone: it moves an offset in the compiler's model and requires both the C++ static_asserts and the C# once-run layout check to go red, which is 39 s on the runner.",
+      "when": "nightly",
+      "why": "the block layout model control, alone: it moves an offset in the compiler's model and requires both the C++ static_asserts and the C# once-run layout check to go red, which is 39 s on a quiet runner (37 s wall, green, on run 42556155793). It is a single control with no other control to share a build with, so it cannot be cut further by grouping. On the loaded fleet the same row is killed at the 120 s per-commit rule (run 42554833739, 140 s wall, exit 137), and it moves here (certify.yml's nightly schedule) for that reason.",
       "targets": [
         "tables-block-layout-model-negative-control"
       ],
@@ -958,11 +958,19 @@
       "dotnet": "pin"
     },
     {
-      "name": "cs-leg-6",
+      "name": "cs-leg-builder-discard",
       "when": "pull-request",
-      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder load's discard taken out, so a builder load damaged inside a nested body answers true with the decoded root.",
+      "why": "the C# table leg's builder-discard control (make/cs.mk cs_leg_sabotage): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the builder load's discard taken out of builderload.go, so a builder load damaged inside a nested body answers true with the decoded root. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-6 group when that pair of rebuilds ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 139 s wall, both killed at the rule).",
       "targets": [
-        "tables-cs-leg-builder-discard-negative-control",
+        "tables-cs-leg-builder-discard-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-region-cycle",
+      "when": "pull-request",
+      "why": "the C# table leg's region-cycle control (make/cs.mk cs_leg_sabotage2): the wire-alone walk's cycle check and the region-graph decode behind it taken out at two layers (wirecheck.go and regiongraph.go), so a cycle is not discarded on a region, retaining or builder load. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-6 group when that pair of rebuilds ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 139 s wall, both killed at the rule).",
+      "targets": [
         "tables-cs-leg-region-cycle-negative-control"
       ],
       "dotnet": "pin"
@@ -978,8 +986,8 @@
     },
     {
       "name": "cs-framing",
-      "when": "pull-request",
-      "why": "the C# leg's framing control (docs/LAYERS/1-framing.md, F6): the conformance driver built against a copy of the generated C# tree whose file read has no 4096-entry id-table cap, run through the shared framing gate, which must go red on frame_entries_4097. One dotnet build and one framing-only harness run, about 15 s on vision.",
+      "when": "nightly",
+      "why": "the C# leg's framing control (docs/LAYERS/1-framing.md, F6): the conformance driver built against a copy of the generated C# tree whose file read has no 4096-entry id-table cap, run through the shared framing gate, which must go red on frame_entries_4097. One dotnet build and one framing-only harness run, about 15 s on vision. It is a single control with no other control to share a build with, so it cannot be cut further by grouping. On the loaded fleet the row is killed at the 120 s per-commit rule (run 42556155793 at 132 s wall and run 42554833739 at 140 s wall, both exit 137), and it moves here (certify.yml's nightly schedule) for that reason.",
       "targets": [
         "conformance-negative-control-cs-framing"
       ],
