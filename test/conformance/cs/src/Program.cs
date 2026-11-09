@@ -84,6 +84,7 @@ static partial class Program
         public string Unit;
         public string Root;
         public Func<byte[], Report, object> PartialLoad;
+        public bool Region; // this codec carries a region read (wire-fuzz-region)
         public Func<byte[], Report, object> VariableLoad; // a fixed root's variable-form read; framing only
         public Func<byte[], Report, object> Load;   // null on refusal
         public Func<object, long> Measure;
@@ -2358,6 +2359,9 @@ static partial class Program
             roster[i] = retain == 0 || found?.Retain!=null?found:null;
             // a variable root has no message form, so no form-2 binding
             if (form == 2 && roster[i]?.MessageLoad == null) { roster[i] = null; }
+            // THE REGION ARM IS THE REGION READ'S: a root with no region codec
+            // (a fixed root, or a message) is not this arm's to fuzz.
+            if (regionMode && (roster[i] == null || !roster[i].Region || form == 2)) { roster[i] = null; }
             retaining[i]=retain!=0;
             forms[i] = form;
             output.Write((byte)(roster[i] != null ? 1 : 0));
@@ -2405,7 +2409,7 @@ static partial class Program
         RegisterFixed();
         RegisterNativeCooks();
         if(args.Length==1 && args[0]=="wire-fuzz-builder") { RegisterBuilders(); return WireFuzz(true); }
-        if(args.Length==1 && args[0]=="wire-fuzz-region") { RegisterRegions(); return WireFuzz(); }
+        if(args.Length==1 && args[0]=="wire-fuzz-region") { regionMode=true; RegisterRegions(); return WireFuzz(); }
         if (args.Length == 1 && args[0] == "wire-fuzz") { RegisterRegions(); return WireFuzz(); }
         if (args.Length < 2)
         {

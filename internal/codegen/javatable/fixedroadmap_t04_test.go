@@ -169,7 +169,7 @@ fixed table T
 func t04R19(t *testing.T) {
 	runtime := t04Runtime()
 	for _, want := range []string{
-		"unknown = 0; widened = 0; damaged = false; kindChanged = 0;",
+		"unknown = 0; widened = 0; damaged = false;",
 		"refused = false; reason = Reason.none; layoutHash = 0;",
 	} {
 		t04Has(t, runtime, want, "R19 a clean read moves nothing")

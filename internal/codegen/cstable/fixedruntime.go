@@ -292,6 +292,10 @@ public static class TableFixedWire
     // a zero-extend, 1 for a sign-extend and 2 for f32 into f64; Meta is the
     // WRITER's element width and DstSize the READER's.
     public const byte FlatWiden = 8;
+    // A PRESENCE BYTE OR A BOOL IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): the
+    // fixed form refuses any other value, as the variable form does. Copy
+    // would land a forged byte as truth.
+    public const byte BoolByte = 9;
 
     // Arg on a Text entry
     public const byte TextUtf8 = 1;
@@ -1392,6 +1396,13 @@ public static class TableFixedWire
                 case Flat:
                     {
                         slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                case BoolByte:
+                    {
+                        ulong raw = src[(int)p.Src];
+                        if (raw > 1) { return "wire_damaged"; }
+                        slots[(int)p.Dst].SetRaw?.Invoke(dst, raw);
                         break;
                     }
                 case FlatWiden:

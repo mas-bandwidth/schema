@@ -534,8 +534,6 @@ public final class TableFixed {
         /** framing damage: the two ends of the record met. */
         public boolean damaged;
 
-        int kindChanged;
-
         /** a refusal, which is never damage. */
         public boolean refused;
 
@@ -561,7 +559,6 @@ public final class TableFixed {
             unknown = 0;
             widened = 0;
             damaged = false;
-            kindChanged = 0;
             refused = false;
             reason = Reason.none;
             layoutHash = 0;
@@ -1448,6 +1445,9 @@ public final class TableFixed {
         /** an entry past the writer's record: the plan is refused WHOLE. */
         boolean recordTooLarge;
 
+        /** a writer entry whose kind moved to one it does not widen into: the plan refuses whole. */
+        boolean unlawful;
+
         /** the WRITER's own declared record body size, which bounds every entry. */
         int theirBytes;
 
@@ -1786,10 +1786,9 @@ public final class TableFixed {
                         signedKind(theirKind) ? (byte) 1 : (byte) 0);
                 return;
             }
-            // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-            if (c.report != null) {
-                c.report.kindChanged++;
-            }
+            // A KIND THAT MOVED IS NOT A LAWFUL LINEAGE (docs/plans/strict-only.md):
+            // the plan refuses whole, never reinterpreted and never counted
+            c.unlawful = true;
             return;
         }
         switch (myKind) {
@@ -2046,8 +2045,8 @@ public final class TableFixed {
                                 arg,
                                 (byte) mySize,
                                 (byte) 0);
-                    } else if (c.report != null) {
-                        c.report.kindChanged++;
+                    } else {
+                        c.unlawful = true;
                     }
                     break;
                 }
@@ -2086,6 +2085,14 @@ public final class TableFixed {
         if (c.recordTooLarge) {
             if (report != null) {
                 report.refuse(Reason.layoutRecordTooLarge);
+            }
+            return -1;
+        }
+        // A KIND THAT MOVED REFUSES THE PLAN WHOLE by layoutMalformed, as the
+        // Go leg's tableFixedCompile answers -2 for it: nothing is decoded
+        if (c.unlawful) {
+            if (report != null) {
+                report.refuse(Reason.layoutMalformed);
             }
             return -1;
         }
@@ -2279,7 +2286,7 @@ public final class TableFixed {
      * the lock, the walk happens once per class, off every load path, and a plan that will not
      * build is a refusal this entry CARRIES rather than one a load discovers.
      *
-     * <p>unknown and kindChanged are the COMPILE CENSUS: the plan's own numbers, fixed when it was
+     * <p>unknown is the COMPILE CENSUS: the plan's own number, fixed when it was
      * built, landed on the report ONCE after the record loop and only on a read that returns (5.9
      * #6). remap is this plan's OWN ordinal table -- a static plan cannot borrow the caller's
      * scratch, because the table is part of the plan (5.9 #24).
@@ -2289,17 +2296,15 @@ public final class TableFixed {
         public final int count;
         public final short[] remap;
         public final int unknown;
-        public final int kindChanged;
 
         /** Reason.none, or the name a file selecting this entry is refused by. */
         public final Reason why;
 
-        Plan(Entry[] entries, int count, short[] remap, int unknown, int kindChanged, Reason why) {
+        Plan(Entry[] entries, int count, short[] remap, int unknown, Reason why) {
             this.entries = entries;
             this.count = count;
             this.remap = remap;
             this.unknown = unknown;
-            this.kindChanged = kindChanged;
             this.why = why;
         }
     }
@@ -2336,7 +2341,7 @@ public final class TableFixed {
             }
             final Layout theirs = parse(known[i].layout, 0, known[i].layoutBytes, new Report());
             if (theirs == null || me == null) {
-                out[i] = new Plan(null, 0, null, 0, 0, Reason.layoutMalformed);
+                out[i] = new Plan(null, 0, null, 0, Reason.layoutMalformed);
                 continue;
             }
             // HOW THE BUILD SIZES THE PLAN is shape and not contract (5.9 #4,
@@ -2369,17 +2374,19 @@ public final class TableFixed {
             final Report census = new Report();
             final int made = compile(theirs, me, dest, p, table, census);
             if (made >= 0) {
-                out[i] = new Plan(p, made, table, census.unknown, census.kindChanged, Reason.none);
+                out[i] = new Plan(p, made, table, census.unknown, Reason.none);
             } else {
                 // THE ENTRY'S OWN LANE CARRIES ITS OWN REASON (5.9 #36): an
                 // entry past the writer's record is layoutRecordTooLarge and a
                 // plan that would not fit is planTooLarge. Nothing throws out
                 // of the initializer and a lane nobody selects costs nothing.
                 final Reason why =
-                        (census.refused && census.reason == Reason.layoutRecordTooLarge)
-                                ? Reason.layoutRecordTooLarge
+                        (census.refused
+                                        && (census.reason == Reason.layoutRecordTooLarge
+                                                || census.reason == Reason.layoutMalformed))
+                                ? census.reason
                                 : Reason.planTooLarge;
-                out[i] = new Plan(null, 0, null, 0, 0, why);
+                out[i] = new Plan(null, 0, null, 0, why);
             }
         }
         return out;

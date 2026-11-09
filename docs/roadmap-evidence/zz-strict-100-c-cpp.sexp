@@ -100,4 +100,4 @@
 (:id "vt/cards/c" :state :todo :note "2026-11-08 audit: make cards-c-test and cards-c-conformance do not compile (tables/cards/c/cards_test.c:401 and driver.c:132 read the retired kind_mismatch); the cards-driver-c negative control is red (main CI 42459510328).")
 
 ; ---- packet wire ----
-(:id "packet/cpp/defaults" :state :todo :note "2026-11-08 audit: make packet-defaults-cpp passes, but no negative control holds the C++ defaults gate (only the other legs' controls exist).")
+(:id "packet/cpp/defaults" :state :done :evidence ("internal/codegen/cpp/packet_defaults_control_test.go: TestCppPacketDefaults, TestCppPacketDefaultsNegativeControl" "test/packet-defaults/Defaults.schema and testdata/wire/packet-defaults") :note "2026-11-09: TestCppPacketDefaults generates and compiles the C++ unit, checks the constructors and all eight shared pins, reads each pin to its exact bit count and refuses a one-byte-short buffer; the negative control removes only the generated Sample flags default and requires the constructor-bytes marker. Run under SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 with the whole internal/codegen/cpp package green.")
