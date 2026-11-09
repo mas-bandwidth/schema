@@ -174,7 +174,8 @@ func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 			bad := loadReasons(t, sabotageAll(t, "wire_load.goose", ctl.pairs...))
 			var red []string
 			for _, b := range bad {
-				red = append(red, b[:strings.Index(b, ":")])
+				name, _, _ := strings.Cut(b, ":")
+				red = append(red, name)
 			}
 			slices.Sort(red)
 			want := slices.Clone(ctl.red)

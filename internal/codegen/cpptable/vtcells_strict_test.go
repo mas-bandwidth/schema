@@ -27,6 +27,7 @@ package cpptable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -197,9 +198,7 @@ func TestCppVariableCellsStrictNegativeControl(t *testing.T) {
 
 	for cell, a := range cppVarCellAnchors {
 		planted := map[string]string{}
-		for name, src := range base {
-			planted[name] = src
-		}
+		maps.Copy(planted, base)
 		for _, w := range a.want {
 			planted[a.src] = strings.ReplaceAll(planted[a.src], w, "/* SABOTAGED: the refusal spelling was removed */")
 		}

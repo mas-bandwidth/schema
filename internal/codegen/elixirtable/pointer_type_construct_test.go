@@ -74,7 +74,7 @@ end
 `, hex.EncodeToString(wire), row.Writer, string(row.Input), row.Writer, row.Reader, row.Reader, row.Name)
 			continue
 		}
-		if !ok || e != nil || int(r.Unknown) != row.Unknown || r.Refused {
+		if !ok || e != nil || r.Unknown != row.Unknown || r.Refused {
 			t.Fatalf("%s SPEC3.1 oracle: %+v %v", row.Name, r, e)
 		}
 		canonical, e := m.Write(dest)

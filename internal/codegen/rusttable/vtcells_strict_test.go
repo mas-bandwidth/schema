@@ -125,7 +125,9 @@ func buildVTShapeVectors(t *testing.T, u *ir.Unit) []vtShapeVector {
 			return binary.AppendUvarint(nil, uint64(len(ids)))
 		}
 		unk := append(append(ref(ir.TableWireId("unknown_prefix")), byte(ir.TableKindI32)), 7, 0, 0, 0)
-		body := append(unk, build(ref)...)
+		body := make([]byte, len(unk))
+		copy(body, unk)
+		body = append(body, build(ref)...)
 		body = append(body, 0)
 		wire := append([]byte{1}, body...)
 		for _, id := range ids {

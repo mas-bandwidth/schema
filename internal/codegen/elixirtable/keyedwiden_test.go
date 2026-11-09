@@ -69,7 +69,7 @@ func TestKeyedElementWideningElixir(t *testing.T) {
 			if ok || !tablewire.ReadRefusal(e) || !report.Refused || report.Reason == "" {
 				t.Fatalf("%s oracle: %v %v %+v", tc.name, ok, e, report)
 			}
-		} else if !ok || e != nil || report.Refused || int(report.Widened) != tc.widened {
+		} else if !ok || e != nil || report.Refused || report.Widened != tc.widened {
 			t.Fatalf("%s oracle: %v %v %+v", tc.name, ok, e, report)
 		}
 		text := ""

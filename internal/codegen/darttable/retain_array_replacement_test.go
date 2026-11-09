@@ -49,12 +49,13 @@ func TestDartRetainedArrayReplacementGlobalVector(t *testing.T) {
 			var r tabletext.Report
 			store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
 			refusal := ""
-			if strings.Contains(tc.vector, "retain_list_replaced") {
+			switch {
+			case strings.Contains(tc.vector, "retain_list_replaced"):
 				// The row's wire carries the replaced list field twice: damage.
 				refusal = "wire_damaged"
-			} else if tc.mismatch != 0 {
+			case tc.mismatch != 0:
 				refusal = "kind_mismatch"
-			} else if tc.duplicate != 0 {
+			case tc.duplicate != 0:
 				refusal = "wire_damaged"
 			}
 			ok, derr := tablewire.DecodeRetain(m, v, wire, store, &r)

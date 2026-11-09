@@ -164,7 +164,7 @@ f:close()
 	}
 	stdout, stderr, runErr := luarun.Try(t, dir, "main.lua", map[string][]byte{"wire": wireBytes})
 	if runErr != nil {
-		return nil, fmt.Errorf("%v: %s %s", runErr, strings.TrimSpace(stderr), strings.TrimSpace(stdout))
+		return nil, fmt.Errorf("%w: %s %s", runErr, strings.TrimSpace(stderr), strings.TrimSpace(stdout))
 	}
 	return os.ReadFile(filepath.Join(dir, "resaved.bin"))
 }
@@ -196,7 +196,7 @@ f:close()
 	}
 	stdout, stderr, runErr := luarun.Try(t, dir, "main.lua", nil)
 	if runErr != nil {
-		return nil, fmt.Errorf("%v: %s %s", runErr, strings.TrimSpace(stderr), strings.TrimSpace(stdout))
+		return nil, fmt.Errorf("%w: %s %s", runErr, strings.TrimSpace(stderr), strings.TrimSpace(stdout))
 	}
 	return os.ReadFile(filepath.Join(dir, "out.bin"))
 }

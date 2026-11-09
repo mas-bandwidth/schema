@@ -3,6 +3,7 @@ package cpptable
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -240,9 +241,7 @@ func TestCppDiscardControlsCurrentNamesNegativeControl(t *testing.T) {
 	// so the control's current anchor no longer names the real source.
 	planted = a
 	planted.sources = map[string]string{}
-	for name, source := range a.sources {
-		planted.sources[name] = source
-	}
+	maps.Copy(planted.sources, a.sources)
 	planted.sources["internal/codegen/cpptable/codecs.go"] = strings.Replace(a.sources["internal/codegen/cpptable/codecs.go"],
 		discardAnchor.source,
 		strings.Replace(discardAnchor.source, "to->damaged", "to->malformed", 1), 1)

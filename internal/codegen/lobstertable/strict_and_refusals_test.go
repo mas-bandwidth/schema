@@ -65,14 +65,6 @@ func strictProgram(g *loadUnit, roots []string) string {
 	return b.String()
 }
 
-func goStrictReason(u *loadUnit, rootName string, wire []byte) string {
-	verdict, _ := goLoad(u.u, rootName, wire)
-	if verdict == "read" {
-		return "ok"
-	}
-	return "refused"
-}
-
 type strictResult struct {
 	reason []string
 	line   []string

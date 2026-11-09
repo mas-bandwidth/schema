@@ -180,11 +180,11 @@ func runLuaStrictCorpus(t *testing.T, patch func([]byte) ([]byte, error)) error 
 			}
 			textData, err := os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "json", row.caseName+".json"))
 			if err != nil {
-				return fmt.Errorf("instance %s: read text: %v", row.caseName, err)
+				return fmt.Errorf("instance %s: read text: %w", row.caseName, err)
 			}
 			wireData, err := os.ReadFile(filepath.Join(repo, row.path))
 			if err != nil {
-				return fmt.Errorf("instance %s: read wire: %v", row.caseName, err)
+				return fmt.Errorf("instance %s: read wire: %w", row.caseName, err)
 			}
 			tk := fmt.Sprintf("it_%d", len(items))
 			wk := fmt.Sprintf("iw_%d", len(items))
@@ -208,7 +208,7 @@ func runLuaStrictCorpus(t *testing.T, patch func([]byte) ([]byte, error)) error 
 			}
 			textData, err := os.ReadFile(filepath.Join(repo, row.path, row.root+".json"))
 			if err != nil {
-				return fmt.Errorf("json-hostile %s: read text: %v", row.caseName, err)
+				return fmt.Errorf("json-hostile %s: read text: %w", row.caseName, err)
 			}
 			tk := fmt.Sprintf("ht_%d", len(items))
 			inputs[tk] = textData

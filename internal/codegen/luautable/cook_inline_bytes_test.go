@@ -167,7 +167,7 @@ func runLuauErr(t *testing.T, dir, main string, inputs map[string][]byte) ([]byt
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return stdout.Bytes(), fmt.Errorf("%v: %s", err, stderr.Bytes())
+		return stdout.Bytes(), fmt.Errorf("%w: %s", err, stderr.Bytes())
 	}
 	return stdout.Bytes(), nil
 }

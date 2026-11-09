@@ -145,11 +145,11 @@ print("retain " .. (if R.LoadRetain(%q, inputs.wire, rep, R.newStore(%d, nil)) ~
 }
 
 // the map entry's repeated-id check: removing it brings back the retired
-// last-occurrence-wins rule
+// last-occurrence-wins rule.
 const mapKeyWidenAnchor = "id == NodeTableId or met[id] then"
 
 // the kind-mismatch refusal, which also refuses the vector (its first key
-// occurrence is a foreign kind)
+// occurrence is a foreign kind).
 const mapKindRefusalAnchor = `"blobShared", "outOfRange", "kindChanged" }`
 
 func runMapKeyWiden(t *testing.T, dropKind, dropRepeat bool) string {

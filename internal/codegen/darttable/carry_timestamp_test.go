@@ -80,9 +80,10 @@ check(!wr.refused&&back.at==v.at,'wire roundtrip%d');
 `, tc.Input, i, hex.EncodeToString(wire), i, string(text)+"\n", i, i)
 		if i == 3 || i == 13 || i == 14 {
 			key := "negative"
-			if i == 13 {
+			switch i {
+			case 13:
 				key = "min"
-			} else if i == 14 {
+			case 14:
 				key = "max"
 			}
 			if hex.EncodeToString(wire) != pins[key+"wire"] {

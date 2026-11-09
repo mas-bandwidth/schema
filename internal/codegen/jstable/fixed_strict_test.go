@@ -11,6 +11,7 @@ package jstable
 // checker catches it.
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -126,16 +127,6 @@ func TestJsFixedLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 		t.Fatal("no real RFixedDecode/TableFixedRun was generated")
 	}
 
-	// hasFault reports whether a specific diagnostic is among the checker's.
-	hasFault := func(faults []string, want string) bool {
-		for _, f := range faults {
-			if f == want {
-				return true
-			}
-		}
-		return false
-	}
-
 	// The clean generated artifact holds the strict read; each regression below
 	// must be introduced by mutating it, never by feeding hand-written literals.
 	if faults := checkJsFixedLoadNeverClamps(decodeBody, runBody); len(faults) != 0 {
@@ -150,7 +141,7 @@ func TestJsFixedLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 	if decRangeClamp == decodeBody {
 		t.Fatal("could not find the ranged-scalar refusal to mutate")
 	}
-	if faults := checkJsFixedLoadNeverClamps(decRangeClamp, runBody); !hasFault(faults, "decode still clamps and counts oor") {
+	if faults := checkJsFixedLoadNeverClamps(decRangeClamp, runBody); !slices.Contains(faults, "decode still clamps and counts oor") {
 		t.Fatalf("negative control did not flag the ranged-scalar clamp: %v", faults)
 	}
 
@@ -162,7 +153,7 @@ func TestJsFixedLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 	if decBoolLand == decodeBody {
 		t.Fatal("could not find the bool-byte refusal to mutate")
 	}
-	if faults := checkJsFixedLoadNeverClamps(decBoolLand, runBody); !hasFault(faults, "decode lacks TableFixedRefusal.WireDamaged") {
+	if faults := checkJsFixedLoadNeverClamps(decBoolLand, runBody); !slices.Contains(faults, "decode lacks TableFixedRefusal.WireDamaged") {
 		t.Fatalf("negative control did not flag a bool byte above 1 landing true: %v", faults)
 	}
 
@@ -174,7 +165,7 @@ func TestJsFixedLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 	if runTextClamp == runBody {
 		t.Fatal("could not find the text-length refusal to mutate")
 	}
-	if faults := checkJsFixedLoadNeverClamps(decodeBody, runTextClamp); !hasFault(faults, "runtime still clamps and counts oor") {
+	if faults := checkJsFixedLoadNeverClamps(decodeBody, runTextClamp); !slices.Contains(faults, "runtime still clamps and counts oor") {
 		t.Fatalf("negative control did not flag the runtime text clamp: %v", faults)
 	}
 }

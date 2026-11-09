@@ -199,26 +199,26 @@ func rustCardsBuildAndRun(t *testing.T, rustc, repo string, generated map[string
 	buildTests := exec.Command(rustc, "--edition", "2024", "--test", "--crate-name", "cards", "-o", testBin, filepath.Join(stage, "lib.rs"))
 	buildTests.Dir = stage
 	if out, err := buildTests.CombinedOutput(); err != nil {
-		return fmt.Errorf("rustc --test lib.rs: %v\n%s", err, out)
+		return fmt.Errorf("rustc --test lib.rs: %w\n%s", err, out)
 	}
 	runTests := exec.Command(testBin)
 	runTests.Dir = repo
 	if out, err := runTests.CombinedOutput(); err != nil {
-		return fmt.Errorf("cards unit tests failed: %v\n%s", err, out)
+		return fmt.Errorf("cards unit tests failed: %w\n%s", err, out)
 	}
 
 	rlib := filepath.Join(stage, "libcards.rlib")
 	buildLib := exec.Command(rustc, "--edition", "2024", "--crate-type", "rlib", "--crate-name", "cards", "-o", rlib, filepath.Join(stage, "lib.rs"))
 	buildLib.Dir = stage
 	if out, err := buildLib.CombinedOutput(); err != nil {
-		return fmt.Errorf("rustc rlib lib.rs: %v\n%s", err, out)
+		return fmt.Errorf("rustc rlib lib.rs: %w\n%s", err, out)
 	}
 
 	driverBin := filepath.Join(stage, "cards-driver")
 	buildDriver := exec.Command(rustc, "--edition", "2024", "--extern", "cards="+rlib, "-o", driverBin, filepath.Join(binDir, "cards-driver.rs"))
 	buildDriver.Dir = stage
 	if out, err := buildDriver.CombinedOutput(); err != nil {
-		return fmt.Errorf("rustc cards-driver.rs: %v\n%s", err, out)
+		return fmt.Errorf("rustc cards-driver.rs: %w\n%s", err, out)
 	}
 
 	manifestPath := filepath.Join(repo, "tables", "cards", "conformance", "MANIFEST.txt")
@@ -233,7 +233,7 @@ func rustCardsBuildAndRun(t *testing.T, rustc, repo string, generated map[string
 		cmd := exec.Command(driverBin, manifestPath, surface, outDir)
 		cmd.Dir = repo
 		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("driver surface %s failed: %v\n%s", surface, err, out)
+			return fmt.Errorf("driver surface %s failed: %w\n%s", surface, err, out)
 		}
 		if err := rustCardsCheckSurface(surface, rowsBySurface[surface], outDir, expectedDir); err != nil {
 			return err
@@ -270,11 +270,11 @@ func rustCardsCheckSurface(surface string, rows [][]string, outDir, expectedDir 
 	checkFile := func(name string) error {
 		got, err := os.ReadFile(filepath.Join(outDir, name))
 		if err != nil {
-			return fmt.Errorf("surface %s: missing output %s: %v", surface, name, err)
+			return fmt.Errorf("surface %s: missing output %s: %w", surface, name, err)
 		}
 		want, err := os.ReadFile(filepath.Join(expectedDir, name))
 		if err != nil {
-			return fmt.Errorf("surface %s: missing expected %s: %v", surface, name, err)
+			return fmt.Errorf("surface %s: missing expected %s: %w", surface, name, err)
 		}
 		if !bytes.Equal(got, want) {
 			return fmt.Errorf("surface %s: %s differs from expected:\ngot:\n%s\nwant:\n%s", surface, name, got, want)

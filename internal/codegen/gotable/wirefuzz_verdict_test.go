@@ -671,7 +671,6 @@ func TestGoWireFuzzVerdictPipe(t *testing.T) {
 		{name: "retain", retain: true, builder: false},
 		{name: "builder", retain: false, builder: true},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			out, err := runGoWireFuzzVerdictPipe(t, root, goWireFuzzHarnessBin, goWireFuzzCleanBin, manifest, tc.retain, tc.builder, 100)

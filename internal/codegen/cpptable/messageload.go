@@ -435,12 +435,12 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind string) {
 	g.pf("%sconst int32_t slot%s = named%s ? (int32_t) key%s - 1 : -1;\n", inner, sfx, sfx, sfx)
 	g.pf("%sconst bool in_bounds%s = slot%s >= 0 && slot%s < %d;\n", inner, sfx, sfx, sfx, f.ArrayBound)
 	elem := fmt.Sprintf("( in_bounds%s ? %s[slot%s] : scratch%s )", sfx, slots, sfx, sfx)
-	switch {
-	case kind == tkTable:
+	switch kind {
+	case tkTable:
 		g.pf("%s%s scratch%s;\n", inner, f.Type.Name, sfx)
 		g.pf("%s%sReset( scratch%s );\n", inner, f.Type.Name, sfx)
 		g.pf("%sif ( !%s ) { return false; }\n", inner, g.msgLoadCall(f.Type.Name, "r", elem))
-	case kind == tkEnum:
+	case tkEnum:
 		g.pf("%s%s slot_value%s = %s::None;\n", inner, f.Type.Name, sfx, f.Type.Name)
 		g.emitMessageReadEnum(f, "slot_value"+sfx, inner)
 		g.pf("%sif ( in_bounds%s ) { %s[slot%s] = slot_value%s; }\n", inner, sfx, slots, sfx, sfx)
