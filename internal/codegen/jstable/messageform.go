@@ -22,13 +22,24 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func messageAnnouncementRuntime(u *ir.Unit) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nexport const TableMessageBatchMax = 256;\n")
-	fmt.Fprintf(&b, "export const TableMessageRefBitsHere = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))))
+	// The reader resolves the unit's whole announcement. The canonical
+	// write-back uses the message closure's reference width, which is what
+	// tablewire.EncodeMessages writes. The let is the writer's width; a
+	// caller narrows it for that write and restores it.
+	fmt.Fprintf(&b, "export let TableMessageRefBitsHere = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))))
+	fmt.Fprintf(&b, "export const TableMessageWriteRefBitsHere = %d;\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))))
+	fmt.Fprintf(&b, "export function TableMessageSetRefBits(n) {\n")
+	fmt.Fprintf(&b, "  const prev = TableMessageRefBitsHere;\n")
+	fmt.Fprintf(&b, "  TableMessageRefBitsHere = n;\n")
+	fmt.Fprintf(&b, "  return prev;\n")
+	fmt.Fprintf(&b, "}\n")
 	fmt.Fprintf(&b, "export const TableMessageEntriesHere = %d;\n", len(ir.TableVocabulary(u)))
 	fmt.Fprintf(&b, "export const TableMessageAnnouncement = new Uint8Array([%s]);\n", jsByteLiterals(ir.TableAnnouncement(u)))
 	b.WriteString(jsAnnounceRuntime)

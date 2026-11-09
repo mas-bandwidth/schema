@@ -662,9 +662,10 @@ function TableVariableLoad(c, bytes, report, retain) {
   const table = open.table;
   const v = c.make();
   const raw = TableVariableNodeTableScan(bytes, table, open.end, report);
-  const st = { missingBefore, good: raw !== null, nodes: [], reached: new Set(), root: v, rootCodec: c, pending: [], maps: [] };
+  const st = { missingBefore, good: raw !== null, nodes: [], reached: new Set(), root: v, rootCodec: c, pending: [], maps: [], report: report };
   if (raw !== null) {
     const place = c.variable ? c.place : { str: false, bytes: false, byType: new Map() };
+    const unplaced = [];
     for (const rec of raw) {
       if (rec.tid === TableStringBlobId && place.str) {
         // a text blob's content is refused on the terms a kind 12 payload is:
@@ -683,9 +684,20 @@ function TableVariableLoad(c, bytes, report, retain) {
         report.unknown++;
         if (retain !== null) { report.retainLost++; }
         st.nodes.push(null);
+        // A blob this root does not place is raw bytes, not a field body.
+        // Only an unplaced table record contributes pointer edges.
+        if (rec.tid !== TableStringBlobId && rec.tid !== TableBytesBlobId) { unplaced.push(rec.body); }
         continue;
       }
       st.nodes.push({ kind: "t", codec: nc, v: nc.make(), body: rec.body });
+    }
+    // Edges are noted after every record is pushed: a pointer names a later
+    // record by index, and that index is not in the list until the scan ends.
+    for (const body of unplaced) {
+      if (!TableVariableNoteEdges(body, table, st, report, 0)) {
+        if (!TableVariableCountRefused(report)) { report.damaged = true; }
+        break;
+      }
     }
     for (const n of st.nodes) {
       if (n === null || n.kind !== "t") { continue; }
@@ -886,16 +898,146 @@ function TableVariableCyclic(count, from, to) {
 // skipped by its kind and counted unknown (and retained when the caller opted
 // in, §6.6), a kind that widens decoded at its own width and counted widened,
 // any other kind a kind mismatch skipped whole. Damage stops the body.
+
+// AN UNPLACED RECORD STILL NAMES ITS EDGES (internal/tablewire/wirecheck.go
+// graph): the value is not built, and the unknown was counted once, but every
+// kind-17 index in the record body still reaches its target. A placed record
+// named only from here is not damage.
+function TableVariableNoteIndex(idx, st) {
+  if (idx === 0 || idx === 1) { return true; }
+  if (!Number.isSafeInteger(idx) || !st.good || idx - 2 < 0 || idx - 2 >= st.nodes.length) { return false; }
+  if (st.reached !== undefined) { st.reached.add(idx - 2); }
+  const n = st.nodes[idx - 2];
+  // A kind-17 index names its record wherever it sits: an unknown field, a
+  // map entry, an array element (internal/tablewire/wirecheck.go graph). A
+  // blob record named from two slots is the blob_shared refusal.
+  if (n !== null && (n.kind === "b" || n.kind === "s")) {
+    if (n.named) { st.report.sharedBlob++; } else { n.named = true; }
+  }
+  return true;
+}
+
+function TableVariableNoteEdges(body, table, st, report, depth) {
+  const sub = new TableVariableReader(body, 0, body.length);
+  let rode = null;
+  while (true) {
+    const ref = sub.leb();
+    if (sub.bad) { return false; }
+    if (ref === 0) { return sub.at === sub.end; }
+    if (ref > table.length || sub.at >= sub.end) { return false; }
+    if (rode === null) { rode = [ref]; }
+    else if (rode.includes(ref)) { return false; }
+    else { rode.push(ref); }
+    const id = table[ref - 1];
+    if (id === TableBuildVersionId || id === TableMessageVocabularyId || id === TableNodeTableId) { return false; }
+    if (sub.at >= sub.end) { return false; }
+    const kind = sub.u8();
+    if (!TableVariableNotePayload(sub, kind, table, st, report, depth)) { return false; }
+  }
+}
+
+function TableVariableNotePayload(sub, kind, table, st, report, depth) {
+  if (kind === 17) {
+    const idx = sub.leb();
+    if (sub.bad) { return false; }
+    return TableVariableNoteIndex(idx, st);
+  }
+  if (kind === 30) {
+    const ref = sub.leb();
+    if (sub.bad) { return false; }
+    return ref <= table.length;
+  }
+  if (kind === 15) {
+    const arm = sub.leb();
+    if (sub.bad) { return false; }
+    if (arm === 0) { return true; }
+    if (arm > table.length || sub.at >= sub.end) { return false; }
+    const ak = sub.u8();
+    const L = sub.leb();
+    if (sub.bad || sub.at + L > sub.end) { return false; }
+    const from = sub.at;
+    sub.at += L;
+    const structural = ak === 13 || ak === 14 || ak === 15 || ak === 16;
+    if (structural && depth >= 128) { return false; }
+    return TableVariableNoteContent(sub.b, from, sub.at, ak, table, st, report, structural ? depth + 1 : depth);
+  }
+  if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 31 || kind === 32 || kind === 33) {
+    const L = sub.leb();
+    if (sub.bad || sub.at + L > sub.end) { return false; }
+    const from = sub.at;
+    sub.at += L;
+    if ((kind === 13 || kind === 14 || kind === 16) && depth >= 128) { return false; }
+    const next = (kind === 13 || kind === 14 || kind === 16) ? depth + 1 : depth;
+    return TableVariableNoteContent(sub.b, from, sub.at, kind, table, st, report, next);
+  }
+  return TableVariableSkip(sub, kind);
+}
+
+function TableVariableNoteContent(b, from, to, kind, table, st, report, depth) {
+  if (kind === 13) { return TableVariableNoteEdges(b.subarray(from, to), table, st, report, depth); }
+  if (kind === 14) { return TableVariableNoteArray(new TableVariableReader(b, from, to), table, st, report, depth); }
+  if (kind === 16) { return TableVariableNoteKeyed(new TableVariableReader(b, from, to), table, st, report, depth); }
+  if (kind === 15 || kind === 17 || kind === 30) {
+    const inner = new TableVariableReader(b, from, to);
+    if (!TableVariableNotePayload(inner, kind, table, st, report, depth)) { return false; }
+    return inner.at === inner.end;
+  }
+  if (kind === 12) { return TableVariableUtf8Decode(b.subarray(from, to)).ok; }
+  if (kind === 33) {
+    if (((to - from) & 1) !== 0) { return false; }
+    return TableVariableWideDecode(b.subarray(from, to)) !== null;
+  }
+  if (kind === 32) { return from === to; }
+  return true;
+}
+
+function TableVariableNoteCount(count, report) {
+  if (!Number.isSafeInteger(count) || count > 0x7fffffff) {
+    report.refused = 1;
+    report.reason = "count_over_extent_cap";
+    return false;
+  }
+  return true;
+}
+
+function TableVariableNoteArray(inner, table, st, report, depth) {
+  if (inner.end - inner.at < 2) { return false; }
+  const ek = inner.u8();
+  const count = inner.leb();
+  if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
+  for (let i = 0; i < count; i++) {
+    if (!TableVariableNotePayload(inner, ek, table, st, report, depth)) { return false; }
+  }
+  return inner.at === inner.end;
+}
+
+function TableVariableNoteKeyed(inner, table, st, report, depth) {
+  if (inner.end - inner.at < 2) { return false; }
+  const ek = inner.u8();
+  const count = inner.leb();
+  if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
+  let seen = null;
+  for (let i = 0; i < count; i++) {
+    const key = inner.leb();
+    if (inner.bad || key === 0 || key > table.length) { return false; }
+    if (seen === null) { seen = [key]; }
+    else if (seen.includes(key)) { return false; }
+    else { seen.push(key); }
+    const L = inner.leb();
+    if (inner.bad || inner.at + L > inner.end) { return false; }
+    const from = inner.at;
+    inner.at += L;
+    if (!TableVariableNoteContent(inner.b, from, inner.at, ek, table, st, report, depth)) { return false; }
+  }
+  return inner.at === inner.end;
+}
+
 function TableVariableCheckUnknown(b, from, to, kind, table, st) {
   const sub = new TableVariableReader(b, from, to);
   if (kind === 17) {
     const idx = sub.leb();
     if (sub.bad || sub.at !== to) { return false; }
-    if (idx > 1) {
-      if (!st.good || idx - 2 >= st.nodes.length) { return false; }
-      if (st.reached !== undefined) { st.reached.add(idx - 2); }
-    }
-    return true;
+    return TableVariableNoteIndex(idx, st);
   }
   if (kind === 13) {
     const L = sub.leb();
@@ -912,6 +1054,13 @@ function TableVariableCheckUnknown(b, from, to, kind, table, st) {
       if (!TableVariableSkip(sub, k)) { return false; }
       if (!TableVariableCheckUnknown(b, f, sub.at, k, table, st)) { return false; }
     }
+  }
+  // An unknown union, array or keyed payload still names every pointer it
+  // carries (internal/tablewire/wirecheck.go graph). The field stays unknown.
+  if (kind === 14 || kind === 15 || kind === 16) {
+    const inner = new TableVariableReader(b, from, to);
+    if (!TableVariableNotePayload(inner, kind, table, st, st.report, 0)) { return false; }
+    return inner.at === to;
   }
   return true;
 }
@@ -932,7 +1081,12 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
     if (TableVariableCountRefused(report) || report.missingRequired !== missingBefore || report.missingRequired !== st.missingBefore) { return false; }
     const ref = r.leb();
     if (r.bad) { report.damaged = true; return false; }
-    if (ref === 0) { return TableVariableRequireSeen(c, v, seen, report); }
+    if (ref === 0) {
+      // Bytes after a body's terminator, inside the frame that holds it, are
+      // damage (internal/tablewire/wirecheck.go): no field claims them.
+      if (r.at !== r.end) { report.damaged = true; return false; }
+      return TableVariableRequireSeen(c, v, seen, report);
+    }
     if (ref > table.length) { report.damaged = true; return false; }
     if (rode === null) { rode = [ref]; } else if (rode.includes(ref)) { report.damaged = true; return false; } else { rode.push(ref); }
     if (r.at >= r.end) { report.damaged = true; return false; }
@@ -954,7 +1108,10 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       report.unknown++;
       const from = r.at;
       if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
-      if (!TableVariableCheckUnknown(r.b, from, r.at, kind, table, st)) { report.damaged = true; return false; }
+      if (!TableVariableCheckUnknown(r.b, from, r.at, kind, table, st)) {
+        if (!TableVariableCountRefused(report)) { report.damaged = true; }
+        return false;
+      }
       if (retain !== null) {
         // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.6):
         // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
@@ -1204,7 +1361,8 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
 // arrayBody). A count spelled wide enough therefore leaves the cursor past the
 // end it was framed by, and a bounded array's excess is oor and counts even
 // as that body covers no elements; read is bounded by the body and a count the
-// body cannot cover keeps the decoded prefix.
+// body cannot cover keeps the decoded prefix. Bytes left inside L after the
+// elements are damage.
 function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path) {
   const L = end - r.at;
   if (L >= 2) {
@@ -1233,10 +1391,11 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     const subEnd = Math.max(r.at, end);
     const sub = new TableVariableReader(r.b, subStart, subEnd);
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
+    let filled = true;
     if (fd.s === "bytes") {
       const out = [];
       for (let i = 0; i < keep; i++) {
-        if (sub.at >= sub.end) { report.damaged = true; break; }
+        if (sub.at >= sub.end) { report.damaged = true; filled = false; break; }
         out.push(sub.u8());
       }
       v[fd.n] = new Uint8Array(out);
@@ -1246,22 +1405,25 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       }
       const out = v[fd.n];
       for (let i = 0; i < keep; i++) {
-        if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { break; }
+        if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { filled = false; break; }
       }
     } else {
       const out = [];
       let total = 0;
       for (let i = 0; i < keep; i++) {
         const before = report.oor;
-        if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { break; }
+        if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { filled = false; break; }
         if (fd.tl) {
           if (report.oor !== before && !report.oorField) { report.oorField = fd.field; }
           total += TableVariableTextListLength(out[i]);
-          if (fd.total > 0 && total > fd.total) { out.length = i; TableVariableTextListClamp(fd, report); break; }
+          if (fd.total > 0 && total > fd.total) { out.length = i; TableVariableTextListClamp(fd, report); filled = false; break; }
         }
       }
       v[fd.n] = out;
     }
+    // A full count that leaves bytes in L is damage (decode.go arrayBody).
+    // A count past the bound stops early; the unread tail is that refusal, already counted oor.
+    if (filled && keep === count && sub.at !== sub.end) { report.damaged = true; return false; }
   } else {
     report.damaged = true;
     return false;

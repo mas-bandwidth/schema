@@ -505,12 +505,12 @@ function TableVariableMapKeyScan(fd, bytes, at, end, table) {
   }
 }
 
-// ONE MAP (mapField): ascending against the last entry that LANDED, a repeated
-// key last-wins and counted repeated, a descending key stops the map with what
-// it has and flags damaged, a key past its bound drops its entry and counts
-// oor, and a key kind the reader does not declare empties the map for one
-// kind_mismatch. A pointer inside an entry resolves after the whole load, so
-// the Map is built again then (TableVariableResolve).
+// ONE MAP (mapField): ascending against the last entry that LANDED. A key
+// that does not ascend strictly is damage (decode.go mapField). A key past
+// its bound drops its entry and counts oor, and a key kind the reader does
+// not declare empties the map for one kind_mismatch. A pointer inside an
+// entry resolves after the whole load, so the Map is built again then
+// (TableVariableResolve).
 function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
@@ -544,18 +544,22 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.oor++; continue; }
       let order = -1;
       if (landed) { order = TableVariableKeyOrder(fd, last, scan.key); }
-      if (order > 0) { report.damaged = true; break; }
+      if (order >= 0) { report.damaged = true; break; }
       const entry = fd.c.make();
-      if (path !== null) { path.push({ o: fd.o, i: order === 0 ? ents.length - 1 : ents.length }); }
-      TableVariableBodyRead(fd.c, new TableVariableReader(r.b, eat, eat + elen), table, entry, report, st, true, retain, path);
+      if (path !== null) { path.push({ o: fd.o, i: ents.length }); }
+      const er = new TableVariableReader(r.b, eat, eat + elen);
+      TableVariableBodyRead(fd.c, er, table, entry, report, st, true, retain, path);
       if (path !== null) { path.pop(); }
       if (TableVariableCountRefused(report)) { return false; }
+      // Bytes after a nested body's terminator inside its L are damage (decode.go nested).
+      if (er.at !== er.end) { report.damaged = true; }
       entry.key = scan.key;
-      if (order === 0) { ents[ents.length - 1] = entry; report.repeated++; continue; }
       ents.push(entry);
       last = scan.key;
       landed = true;
     }
+    // Bytes left inside a map's L after its entries are damage (decode.go mapField).
+    if (sub.at !== sub.end) { report.damaged = true; }
     for (const e of ents) { m.set(e.key, e.value); }
     if (st !== null && st.maps !== undefined) { st.maps.push({ m, ents }); }
   } else {
@@ -621,8 +625,12 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (x !== undefined) { arr[slot] = x; }
       }
     }
+    // Bytes left inside a keyed slot after its element are damage (decode.go keyed).
+    if (er.at !== er.end) { report.damaged = true; }
     sub.at += elen;
   }
+  // Bytes left inside a keyed array's L after its slots are damage (decode.go keyed).
+  if (sub.at !== sub.end) { report.damaged = true; }
   r.at = end;
   return true;
 }
@@ -650,6 +658,12 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   if (arm === undefined) {
     report.unknown++;
     if (retain !== null) { report.retainLost++; }
+    // An arm this root does not declare still names the pointers in its
+    // payload (internal/tablewire/wirecheck.go graph). The unknown was
+    // counted; a record those pointers reach is not damage.
+    if (!TableVariableNoteContent(r.b, r.at, end, kind, table, st, report, 0)) {
+      if (!TableVariableCountRefused(report)) { report.damaged = true; }
+    }
   } else if (kind !== arm.k) {
     if (!arm.void && !arm.body && TableVariableWidens(kind, arm.k)) {
       // WIDENED AT AN ARM: decoded at its own width, and an L that is not that
@@ -662,6 +676,9 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
       }
     } else {
       report.mismatch++;
+      if (!TableVariableNoteContent(r.b, r.at, end, kind, table, st, report, 0)) {
+        if (!TableVariableCountRefused(report)) { report.damaged = true; }
+      }
     }
   } else if (arm.body) {
     const inst = arm.c.make();
