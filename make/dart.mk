@@ -1827,3 +1827,30 @@ test-dart: conformance-dart-text-boundary
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# A FORGED ORDINAL REFUSES (STRICT 100; docs/SPEC-TABLES.md §4,
+# docs/plans/strict-only.md). TestFixedVersioningForgedOrdinalBothPlans reads an
+# enum ordinal forged past the writer's variants through the compiled plan and
+# the identity plan and requires an out_of_range refusal on both. The control
+# takes the compiled plan's ordinal refusal out of the Dart fixed runtime
+# through go test -overlay, so the forged ordinal lands None as the retired
+# tolerant read did; the test must go red on exactly that.
+DART_ORDINAL_NC := build/dart-forged-ordinal-nc
+.PHONY: tables-dart-forged-ordinal-negative-control
+tables-dart-forged-ordinal-negative-control: tables-fixedform-corpus
+	@rm -rf $(DART_ORDINAL_NC) && mkdir -p $(DART_ORDINAL_NC)
+	@sed -e 's/if (raw < 0 || raw > remap\[remapAt\]) {/if (raw < 0 || raw > remap[remapAt]) { raw = 0; } else if (false) { \/\/ NEGATIVE CONTROL/' \
+		internal/codegen/darttable/fixedruntime.go > $(DART_ORDINAL_NC)/fixedruntime.go.txt
+	@cmp -s internal/codegen/darttable/fixedruntime.go $(DART_ORDINAL_NC)/fixedruntime.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Dart forged-ordinal sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixedruntime.go":"%s/$(DART_ORDINAL_NC)/fixedruntime.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(DART_ORDINAL_NC)/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test -count=1 -overlay $(DART_ORDINAL_NC)/overlay.json \
+			-run '^TestFixedVersioningForgedOrdinalBothPlans$$' ./internal/codegen/darttable > $(DART_ORDINAL_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the forged-ordinal refusal is gone and the gate stayed green"; \
+		cat $(DART_ORDINAL_NC)/log; exit 1; \
+	fi
+	@grep -q "a forged ordinal refuses the whole read" $(DART_ORDINAL_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(DART_ORDINAL_NC)/log; exit 1; }
+	@echo "negative control: a Dart compiled plan that lands a forged ordinal turns TestFixedVersioningForgedOrdinalBothPlans RED"

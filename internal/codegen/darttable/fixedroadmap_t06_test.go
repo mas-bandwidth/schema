@@ -140,21 +140,20 @@ func t06R30(t *testing.T) {
 	}
 }
 
-// t06C9: C9 "union tag past arms → None". §3.4: the arms run from 1 and tag 0
-// is None, so a tag beyond the last arm names storage no declaration describes.
-// The DECODE default lands None and counts one clamp; the compiled plan lands
-// the same through its own remap and the None const, so both plans agree.
+// t06C9: C9 "union tag past arms". §3.4: the arms run from 1 and tag 0 is
+// None, so a tag beyond the last arm names storage no declaration describes.
+// Under the one read (docs/plans/strict-only.md) the DECODE default refuses the
+// read out_of_range, and the compiled plan's None const refuses the same tag,
+// so both plans agree. The executing row is TestFixedVersioningUnionTagBothPlans.
 func t06C9(t *testing.T) {
 	src := t06Generated(t, "VNEW_union_append")
 	body := t02Block(t, src, "void lineageFixedDecode(", "\n}\n")
 	t02Has(t, body, "default:", "C9 a tag past the last arm takes the switch default")
-	t02Has(t, body, "value.pick.type = PickType.none;", "C9 a tag past the arms lands None (0)")
-	if !strings.Contains(body, "report.unknown++;") {
-		t.Errorf("C9 a forged tag counts unknown")
+	t02Has(t, body, "report.refused = TableFixedRefusal.outOfRange;", "C9 a tag past the arms refuses out_of_range")
+	if strings.Contains(body, "report.unknown++;") {
+		t.Errorf("C9 a forged tag is a refusal, never an unknown")
 	}
-	// THE COMPILED PLAN AGREES: the None const reads the writer's raw tag and a
-	// tag past its arm set lands None and counts.
-	t02Has(t, src, "if (raw < 0 || raw > arms) {",
+	t02Has(t, src, "if (raw < 0 || raw > arms) {\n            return TableFixedRefusal.outOfRange;",
 		"C9 the compiled plan's None const refuses a tag past the arm set")
 }
 
@@ -166,7 +165,7 @@ func t06C10(t *testing.T) {
 	body := t02Block(t, src, "void lineageFixedDecode(", "\n}\n")
 	t02Has(t, body, "value.tier = Tier(view.getUint8(at));", "C10 the ordinal loads at its declared width")
 	t02Has(t, body, "if (value.tier > 4) {", "C10 an ordinal past the last variant is refused")
-	t02Has(t, body, "value.tier = Tier.none;", "C10 an ordinal past the top lands None (0)")
+	t02Has(t, body, "report.refused = TableFixedRefusal.outOfRange;", "C10 an ordinal past the top refuses out_of_range")
 	// THE COMPILED PLAN'S ordinal op makes the same landing and count.
 	t02Has(t, src, "if (raw < 0 || raw > remap[remapAt]) {",
 		"C10 the compiled ordinal op refuses past the writer's variant count")
