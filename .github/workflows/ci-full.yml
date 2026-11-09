@@ -202,9 +202,17 @@ jobs:
     #   slow-gate-codegen — the slowtest accounting (schema#988) over the
     #                     emitter packages
     #   slow-gate-rest  — the same accounting over every other package
-    #   versioning      — §5 on the Go, C, Rust, Java, JavaScript, Dart, C#
-    #                     and Elixir legs, with the three SDKs only that row
-    #                     needs
+    #   versioning-*    — §5 per leg, one row per leg (split 2026-11-09,
+    #                     green-fit-gotest-versioning): the single versioning
+    #                     row was killed at 136 s (conformance-go-rows alone
+    #                     116 s, then every leg in series). Each row below
+    #                     runs one leg only and installs only its own
+    #                     toolchain; conformance-go-rows is split in two by
+    #                     row-name partition (C/E/F vs P/R/W). Nothing was
+    #                     dropped or moved nightly. Every versioning target
+    #                     is run by exactly one row:
+    #                     tools/slowgatescan's TestCIFullVersioningRowsPerLeg
+    #                     holds that.
     #
     # WHY unit-rest WAS CUT AGAIN (2026-10-27). On run 40596125566 the one
     # unit-rest row ran 14m55s against this 15-minute cap: the complement's
@@ -223,7 +231,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning-conformance-1, versioning-conformance-2, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -256,11 +264,11 @@ jobs:
       # same .github/dotnet-version every other C# job reads, so a runner image
       # that ships a different SDK cannot change what this gate compiles.
       - name: read the .NET SDK pin
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-cs'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
+        if: matrix.group == 'versioning-cs' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -512,9 +520,22 @@ jobs:
       # test/conformance/go/rows, which `go test ./...` never sees because they
       # live in the test/conformance/go module. The gate self-provisions its
       # build stamps and the C++ reference corpus.
-      - name: the Go conformance rows
-        if: matrix.group == 'versioning'
-        run: make conformance-go-rows
+      # Split in two by row name (C/E/F vs P/R/W): the unsplit step ran
+      # 116 s alone. Each half builds the same stamps, then runs its half
+      # through the same proof script with its half of the required names
+      # (the two name lists are the make/go.mk conformance-go-rows list,
+      # partitioned, with no name in both or neither).
+      - name: the Go conformance rows, C E and F rows
+        if: matrix.group == 'versioning-conformance-1'
+        run: |
+          make build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+          cd test/conformance/go && SLOWGATE_LOG_DIR="$GITHUB_WORKSPACE/build/slowgate" sh "$GITHUB_WORKSPACE/test/slowgate/proof" conformance-go-rows-1 'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData' ./rows/ -run '^TestRow(C|Counted|E|F)' -count=1 -timeout 600s
+
+      - name: the Go conformance rows, P R and W rows
+        if: matrix.group == 'versioning-conformance-2'
+        run: |
+          make build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+          cd test/conformance/go && SLOWGATE_LOG_DIR="$GITHUB_WORKSPACE/build/slowgate" sh "$GITHUB_WORKSPACE/test/slowgate/proof" conformance-go-rows-2 'TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' ./rows/ -run '^TestRow(P|R|W)' -count=1 -timeout 600s
 
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
       # which the step above does NOT run. Its harness reads the C++
@@ -529,7 +550,7 @@ jobs:
       # minute, and the ../serialize checkout this job already makes is the
       # only thing the C++ dump needs.
       - name: the fixed form's versioning suite reads the reference's bytes
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-go'
         run: make tables-go-versioning
 
       # THE SAME TWO COLUMNS ON THE C LEG (§5, and §5.9 #11: every leg owes both
@@ -539,7 +560,7 @@ jobs:
       # here beside the Go one for the same reason: under SCHEMA_REQUIRE_CORPUS a
       # missing oracle is a failure, never a quiet skip.
       - name: the fixed form's versioning suite on the C leg
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-c'
         run: make tables-c-versioning
 
       # THE SAME SUITE ON THE RUST LEG, and it is in THIS job rather than a Rust
@@ -558,7 +579,7 @@ jobs:
       # suite fails by name on the missing sibling rather than skipping, which is
       # the behaviour this whole gate is for.
       - name: the fixed form's versioning suite on the Rust leg
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-rust'
         run: make tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")"
 
       # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
@@ -569,7 +590,7 @@ jobs:
       # and the JDK pin with it. SCHEMA_REQUIRE_CORPUS=1 lives inside the recipe,
       # so a corpus that failed to build cannot pass here quietly.
       - name: the fixed form's versioning suite reads the reference's bytes, on the Java leg
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-java'
         run: make tables-java-versioning
 
       # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
@@ -577,7 +598,7 @@ jobs:
       # in this job, so NODE=node uses the runner's own — and the corpus is the
       # one the step above already built.
       - name: the fixed form's versioning suite on the JavaScript leg
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-js'
         run: make tables-js-versioning NODE=node
 
       # THE SAME SUITE ON THE DART LEG (§5.7 step 6: every leg owes BOTH gates,
@@ -587,11 +608,11 @@ jobs:
       # SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing SDK a
       # failure rather than a silent skip.
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
-        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
+        if: matrix.group == 'versioning-dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
       - name: the Dart leg reads backward over every versioning row
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-dart'
         run: make tables-dart-versioning DART=dart
 
       # THE SAME TWO COLUMNS ON THE C# LEG (§5, and §5.9 #11: every leg owes both
@@ -605,7 +626,7 @@ jobs:
       # Fast CI keeps Debug on its short path; this full tier retains both
       # configurations alongside the required versioning oracle.
       - name: the C# leg in Debug and Release, and its versioning suite
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-cs'
         run: make tables-cs-leg tables-cs-versioning
 
       # THE SAME SUITE ON THE ELIXIR LEG (§5.7 step 6). Its probes are generated
@@ -616,12 +637,12 @@ jobs:
       # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
       # Elixir a failure rather than a silent skip.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
+        if: matrix.group == 'versioning-elixir' && runner.environment == 'github-hosted'
         with:
           otp-version: '27'
           elixir-version: '1.18'
       - name: the Elixir leg reads backward over every versioning row
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-elixir'
         run: |
           make tables-elixir-versioning \
             ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
@@ -633,7 +654,7 @@ jobs:
       # already built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus a
       # failure rather than a silent skip. A few seconds of probes.
       - name: the Luau leg reads backward over every versioning row
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-luau'
         run: |
           make dist-luau
           make tables-luau-versioning
@@ -647,7 +668,7 @@ jobs:
       # those two skip. `tables-goose-versioning` is §5.7's two columns over
       # every versioning row (make/goose-versioning.mk).
       - name: the Goose leg reads the reference's fixed-form bytes, and reads backward over every versioning row
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-goose'
         run: make dist-goose test-goose tables-goose-versioning tables-goose-message-form
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
