@@ -52,15 +52,16 @@ typedef struct CardsRecord {
 } CardsRecord;
 
 /* cards_load reads wire into a Record using the generated measured load
-   (docs/SPEC-TABLES.md §6.2). Malformed wire refuses; tolerant events ride
-   in the report. The ORIGINAL wire is copied, never rewritten. */
+   (docs/SPEC-TABLES.md §6.2). The strict read returns the whole value or
+   refuses the whole load; the report rides along. The ORIGINAL wire is
+   copied, never rewritten. */
 int cards_load(const uint8_t *wire, int64_t wire_len, CardsRecord *out,
                cards_table_report_t *report, char *err, size_t err_cap);
 
 /* cards_from_json builds a Record from JSON text through the generated
    builder and text read (docs/SPEC-TABLES.md §16), then the generated save.
-   Unknown, mismatched, clamped and malformed inputs refuse, as do the
-   customer bounds. A refused write publishes nothing and mutates nothing. */
+   Unknown fields and every strict-read refusal refuse, as do the customer
+   bounds. A refused write publishes nothing and mutates nothing. */
 int cards_from_json(const uint8_t *text, int64_t text_len, CardsRecord *out,
                     char *err, size_t err_cap);
 

@@ -21,7 +21,7 @@ import (
 // The driver is the reference leg's command (test/conformance/cpp/driver unless
 // --driver names another); its `cook-write` surface writes <instance> and
 // <instance>-be into the work directory.
-func cookDifferential(w io.Writer, m *Manifest, manifest, driverCmd, work string) (bool, error) {
+func cookDifferential(w io.Writer, m *Manifest, driverCmd, work string) (bool, error) {
 	if driverCmd == "" {
 		driverCmd = filepath.ToSlash(filepath.Join(defaultDriversDir, referenceLang, "driver"))
 	}
@@ -32,8 +32,14 @@ func cookDifferential(w io.Writer, m *Manifest, manifest, driverCmd, work string
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return false, err
 	}
+	// the reference is a driver: it reads the DERIVED manifest, the same
+	// normalized form every leg reads, never the corpus manifest
+	derived := filepath.Join(work, "manifest.txt")
+	if err := deriveManifest(m, derived); err != nil {
+		return false, err
+	}
 	d := driver{lang: referenceLang, argv: strings.Fields(driverCmd)}
-	code, stderr, err := runDriver(d, manifest, "cook-write", out)
+	code, stderr, err := runDriver(d, derived, "cook-write", out)
 	if err != nil {
 		return false, err
 	}
@@ -59,24 +65,32 @@ func cookDifferential(w io.Writer, m *Manifest, manifest, driverCmd, work string
 			rows++
 			tool, err := cookRecipe(unit, inst, cw, "", arm.big)
 			if err != nil {
-				fmt.Fprintf(w, "DIFFERS %s: the tool refused it: %v\n", arm.name, err)
+				if _, werr := fmt.Fprintf(w, "DIFFERS %s: the tool refused it: %v\n", arm.name, err); werr != nil {
+					return false, werr
+				}
 				ok = false
 				continue
 			}
 			ref, err := os.ReadFile(filepath.Join(out, arm.name))
 			if err != nil {
-				fmt.Fprintf(w, "DIFFERS %s: the reference wrote nothing: %v\n", arm.name, err)
+				if _, werr := fmt.Fprintf(w, "DIFFERS %s: the reference wrote nothing: %v\n", arm.name, err); werr != nil {
+					return false, werr
+				}
 				ok = false
 				continue
 			}
 			if !bytes.Equal(tool, ref) {
-				fmt.Fprintf(w, "DIFFERS %s\n", describeDiff(arm.name, ref, tool))
+				if _, werr := fmt.Fprintf(w, "DIFFERS %s\n", describeDiff(arm.name, ref, tool)); werr != nil {
+					return false, werr
+				}
 				ok = false
 			}
 		}
 	}
 	if ok {
-		fmt.Fprintf(w, "cook differential: the tool and the C++ reference agree on %d cooks (%d rows, both byte orders)\n", rows, len(m.CookWrites))
+		if _, err := fmt.Fprintf(w, "cook differential: the tool and the C++ reference agree on %d cooks (%d rows, both byte orders)\n", rows, len(m.CookWrites)); err != nil {
+			return false, err
+		}
 	}
 	return ok, nil
 }

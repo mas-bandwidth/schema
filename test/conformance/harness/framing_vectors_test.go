@@ -74,9 +74,6 @@ func u64(v uint64) []byte {
 
 // leb, one canonical LEB128, is messagerules_test.go's helper.
 
-//go:fix inline
-func ptr(v uint64) *uint64 { return new(v) }
-
 func mustHex(s string) []byte {
 	out, err := hex.DecodeString(s)
 	if err != nil {
@@ -192,11 +189,11 @@ var framingVectors = []framingVector{
 	// a root body of no bytes, which has no terminator.
 	{name: "frame_nine_bytes", unit: "tblr1", root: "Cfg", raw: cat(b(1), u64(0))},
 	// F5: a count whose 8 × count + 8 runs past the front of the file.
-	{name: "frame_count_past_front", unit: "tblr1", root: "Cfg", ids: nil, body: b(0), count: ptr(2)},
+	{name: "frame_count_past_front", unit: "tblr1", root: "Cfg", ids: nil, body: b(0), count: new(uint64(2))},
 	// F7: an entry no body references counts nothing.
 	{name: "frame_unreferenced_entry", unit: "tblr1", root: "Cfg", ids: []string{"zzz"}, body: b(0)},
 	// F5: the count one above the entries the file holds.
-	{name: "frame_count_one_over", unit: "tblr1", root: "Cfg", ids: []string{"zzz"}, body: b(0), count: ptr(2)},
+	{name: "frame_count_one_over", unit: "tblr1", root: "Cfg", ids: []string{"zzz"}, body: b(0), count: new(uint64(2))},
 	// F5: a byte between the root's terminator and the first entry.
 	{name: "frame_slack_after_terminator", unit: "tblr1", root: "Cfg", ids: nil, body: b(0, 0)},
 	// F5: one id in two entries.
@@ -242,6 +239,16 @@ var framingVectors = []framingVector{
 	{name: "frame_repeat_last_wins", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(1, 30, 9), b(0))},
 	// R6: the build-version id in a file body is malformed on that body.
 	{name: "frame_reserved_build_version_id", unit: "tblr1", root: "Cfg", ids: []string{"grade", "Silver", "build-version"}, body: cat(gradeSilver, b(3, 4), i32(0), b(0))},
+
+	// ---------------------------------------------------------------- A2. leb128_max_bytes = 10
+	// F10 at the bound (docs/SPEC-TABLES.md §3, `leb128_max_bytes`): ten bytes
+	// with the tenth at 0x01 is 2^64 - 1, the largest legal LEB128 (while under
+	// strict-only an unknown pointer index past the node table is refused by R2,
+	// T7); a tenth byte of 0x02 is a bit above the 64th, and eleven bytes is
+	// past the bound, each malformed at the LEB128 decoder.
+	{name: "frame_leb_ten_bytes_skipped", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(16, 17, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01), gradeSilver, b(0)), held: true},
+	{name: "frame_leb_tenth_byte_overflow_skipped", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(16, 17, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02), gradeSilver, b(0)), held: true},
+	{name: "frame_leb_eleven_bytes_skipped", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(16, 17, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01), gradeSilver, b(0)), held: true},
 
 	// ---------------------------------------------------------------- B. nested bodies
 	// L3: buff's terminator a byte early; the field defaults, grade lands after.

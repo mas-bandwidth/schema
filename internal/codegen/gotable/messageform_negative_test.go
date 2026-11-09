@@ -77,8 +77,10 @@ func messageGoldenRow(t *testing.T, name string) (string, func(func(map[string][
 
 // TestGoMessageFormGoldensNegativeControl: TestGoMessageFormGoldens over the
 // login_full row, once with the WRITER's batch count off by one (the saved
-// batch must differ from the reference's bytes) and once with the READER's
-// (the reference batch must not load as one body).
+// batch must differ from the reference's bytes), once with the READER's
+// (the reference batch must not load as one body), and once with the fixed
+// form's own byte check planted shut (the golden's form 3 must be the artifact
+// the probe reads).
 func TestGoMessageFormGoldensNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated goldens)")
@@ -97,6 +99,14 @@ func TestGoMessageFormGoldensNegativeControl(t *testing.T) {
 			sabotageGenerated(t, files, "batch count read", [2]string{"return r, int64(data[1]) + 1", "return r, int64(data[1]) + 2"})
 		})
 		requireRed(t, "a batch count read one high", out, err, root+"LoadMessages: count=")
+	})
+	t.Run("file form", func(t *testing.T) {
+		t.Parallel()
+		root, run := messageGoldenRow(t, "login_full")
+		out, err := run(func(files map[string][]byte) {
+			sabotageGenerated(t, files, "fixed form byte", [2]string{"if data[0] != TableFixedForm {", "if true {"})
+		})
+		requireRed(t, "the fixed form byte read planted shut", out, err, root+"FixedLoad:")
 	})
 }
 

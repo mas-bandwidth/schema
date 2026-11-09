@@ -296,23 +296,15 @@ func (fg forgery) materialize(t *testing.T, base []byte) (data []byte, lead, ext
 	return out, lead, n, false
 }
 
-func refusalReasons(t *testing.T) map[string]string {
-	out := map[string]string{}
-	for _, r := range manifestLines(t, "refusal") {
-		out[r[1]] = r[2]
-	}
-	return out
-}
-
 // TestMooBlockForgeriesAnswerTheirReasons is §19.2's refusal battery: every
 // `block` forgery of the manifest, materialised as the harness does, opens or
-// refuses as its verdict says, and a refusal names the reason its `refusal`
-// row pins.
+// refuses as its verdict says. The verdict is the contract; which name a
+// refusal gives is a diagnostic, never compared (docs/rulings.json
+// refusal-verdict-only), so a refusal is held to naming some reason.
 func TestMooBlockForgeriesAnswerTheirReasons(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_blockread.moo)")
 	t.Parallel()
 	g := blockUnit(t)
-	reasons := refusalReasons(t)
 	fgs := forgeries(t, "block")
 	if len(fgs) == 0 {
 		t.Fatal("the manifest names no block forgery")
@@ -324,14 +316,20 @@ func TestMooBlockForgeriesAnswerTheirReasons(t *testing.T) {
 		}
 		data, lead, extent, null := fg.materialize(t, base)
 		got := g.run(t, blockMain(g, blockTableOf(fg.subject), lead, extent, null, false), map[string][]byte{"block": data})
-		want := fg.verdict
-		if fg.verdict == "refuse" {
-			want = "refuse " + reasons[fg.name]
-		}
-		if got != want {
-			t.Errorf("%s: moo answers %q, want %q", fg.name, got, want)
+		if forgeryVerdict(got) != fg.verdict {
+			t.Errorf("%s: moo answers %q, want the verdict %q", fg.name, got, fg.verdict)
 		}
 	}
+}
+
+// forgeryVerdict is a probe's answer reduced to its verdict: "refuse" when it
+// refused and named a reason, else the answer itself ("open"). A refusal that
+// names nothing answers "refuse" bare, which no verdict matches.
+func forgeryVerdict(got string) string {
+	if reason, ok := strings.CutPrefix(got, "refuse "); ok && strings.TrimSpace(reason) != "" && reason != "nil" {
+		return "refuse"
+	}
+	return got
 }
 
 // TestMooBlockNegativeControls plants one defect per gate into the emitted

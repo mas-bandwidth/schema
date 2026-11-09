@@ -197,10 +197,8 @@ fn write_report(outdir: &str, name: &str, r: &TableReport) -> Result<(), String>
     s.push_str(&format!("RetainLost={}\n", r.retain_lost));
     s.push_str(&format!("Widened={}\n", r.widened));
     s.push_str(&format!("Unknown={}\n", r.unknown));
-    s.push_str(&format!("KindMismatch={}\n", r.kind_mismatch));
-    s.push_str(&format!("Clamped={}\n", r.clamped));
-    s.push_str(&format!("Duplicate={}\n", r.duplicate));
-    s.push_str(&format!("Malformed={}\n", r.malformed));
+    s.push_str("KindMismatch=0\nClamped=0\nDuplicate=0\n");
+    s.push_str(&format!("Malformed={}\n", r.damaged));
     write_file(outdir, name, "report", s.as_bytes())
 }
 

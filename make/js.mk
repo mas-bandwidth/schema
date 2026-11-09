@@ -1138,7 +1138,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 # arm reads the absent pin through the variable, so the pin lives in one place.
 .PHONY: tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain
 tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --mixed-builder --finite-owed tables-finite/js \
+	@./build/conformance-harness wire-fuzz --mixed-builder \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-plain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-plain.log; \
@@ -1150,7 +1150,7 @@ tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.
 		echo 'tables-js-wire-fuzz-plain FAILED: the absent set is not $(TABLES_JS_WIRE_FUZZ_ABSENT) as pinned in make/js.mk'; exit 1; }
 
 tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --mixed-builder --finite-owed tables-finite/js --retain \
+	@./build/conformance-harness wire-fuzz --mixed-builder --retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-retain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-retain.log; \
@@ -1179,12 +1179,12 @@ tables-js-wire-fuzz-negative-control: build/conformance-harness build/tables-gen
 	done
 	@grep -q 'SABOTAGED enum reference range' build/js-wire-fuzz-sabotage/generated/examples/TabledemoVariable.js || \
 		{ echo 'NEGATIVE CONTROL FAILED: the enum reference range sabotage patched nothing'; exit 1; }
-	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-wire-fuzz-sabotage/generated ./build/conformance-harness wire-fuzz --mixed-builder --finite-owed tables-finite/js \
+	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-wire-fuzz-sabotage/generated ./build/conformance-harness wire-fuzz --mixed-builder \
 			--driver 'test/conformance/js/driver wire-fuzz' --seed 1 --n 0 --failed build/js-wire-fuzz-sabotage/failed.bin \
 			> build/js-wire-fuzz-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: an enum reference past the id table was read as unknown and the differential stayed green'; exit 1; \
 	fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' build/js-wire-fuzz-sabotage/log || \
+	@grep -qE 'read acceptance differs: the leg says true, the oracle says false|the report differs|the oracle discards a damaged load' build/js-wire-fuzz-sabotage/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the differential went red, but not on the report'; cat build/js-wire-fuzz-sabotage/log; exit 1; }
 	@echo 'JavaScript wire negative control: an enum reference past the id table changes the read report'
 
@@ -1433,8 +1433,8 @@ test-js: conformance-negative-control-js-walk
 # framing rule of the generated variable reader is dropped in a COPY of
 # build/tables-generated-js, and the framing surface must go red on exactly the
 # rows that rule owns while the wire surface stays green: entry-bound drops the
-# 4096-entry id-table cap (F6) and turns frame_entries_4097 red. Nothing
-# tracked is written to.
+# 4096-entry id-table cap (F6) and turns frame_entries_4097 red (verified
+# under strict-only after js-2973-driver-fixed). Nothing tracked is written to.
 .PHONY: tables-js-framing-negative-control
 tables-js-framing-negative-control: build/conformance-harness build/tables-generated-js/.stamp
 	sh test/conformance/js/negative-control-framing entry-bound
@@ -1671,6 +1671,7 @@ tables-js-release-negative-control: bin/schema build/tables-generated-js/.stamp 
 conformance-negative-control-js-absent: build/conformance-harness build/tables-generated-js/.stamp
 	@rm -rf build/$@ && mkdir -p build/$@
 	@sed '/\.absent"/s/writeFileSync(/void (/' test/conformance/js/main.mjs > build/$@/main.mjs
+	@cp test/conformance/js/fixed.mjs build/$@/fixed.mjs
 	@[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" = "$$(grep -c 'writeFileSync(join(outDir.*\.absent"' test/conformance/js/main.mjs)" ] && \
 		[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" -gt 0 ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach every absent writer"; exit 1; }
@@ -1683,6 +1684,24 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on a case left with no answer"; cat build/$@/log; exit 1; }
 	@echo "negative control: a JavaScript leg whose per-case absences write nothing turns its conformance run RED"
 
+# The fixed roots are read and written in form 3 (test/conformance/js/fixed.mjs).
+# A driver copy whose bridge hands every fixed root back to the variable form
+# must turn the wire surface RED on a fixed root's golden.
+conformance-negative-control-js-fixed: build/conformance-harness build/tables-generated-js/.stamp
+	@rm -rf build/$@ && mkdir -p build/$@
+	@cp test/conformance/js/main.mjs build/$@/main.mjs
+	@sed 's/  if (row === undefined) { return codec; }/  if (row !== null) { return codec; }/' test/conformance/js/fixed.mjs > build/$@/fixed.mjs
+	@! cmp -s test/conformance/js/fixed.mjs build/$@/fixed.mjs || { echo "NEGATIVE CONTROL FAILED: the sabotage changed nothing"; exit 1; }
+	@printf '#!/bin/sh\nexec "$${NODE:-node}" $(CURDIR)/build/$@/main.mjs "$$@"\n' > build/$@/driver && chmod +x build/$@/driver
+	@printf 'js build/$@/driver\n' > build/$@/drivers.txt
+	@if NODE=$(NODE) ./build/conformance-harness run --drivers build/$@/drivers.txt --work build/$@/work > build/$@/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: fixed roots read in the variable form and the run stayed green"; cat build/$@/log; exit 1; \
+	fi
+	@grep -qF 'root_full: load refused' build/$@/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on a fixed root's wire"; cat build/$@/log; exit 1; }
+	@echo "negative control: a JavaScript driver that reads fixed roots in the variable form turns its wire surface RED on root_full"
+
+test-js: conformance-negative-control-js-fixed
 test-js: tables-js-keyed-shift-negative-control
 test-js: tables-js-variable-class-identity-negative-control
 test-js: tables-js-variable-class-label-negative-control
@@ -1769,3 +1788,16 @@ test-js: tables-js-helper-closure
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-js/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's js-fuzz
+# rows run the enumerated pass and JS_FUZZ_SMOKE_N seeded random mutants per
+# commit, while the full 100,000-mutant tables-js-wire-fuzz-plain and
+# tables-js-wire-fuzz-retain campaigns run in certify.yml's nightly tier.
+JS_FUZZ_SMOKE_N ?= 2000
+
+.PHONY: tables-js-wire-fuzz-plain-smoke tables-js-wire-fuzz-retain-smoke
+tables-js-wire-fuzz-plain-smoke: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	$(MAKE) tables-js-wire-fuzz-plain SEED=$(SEED) N=$(JS_FUZZ_SMOKE_N)
+
+tables-js-wire-fuzz-retain-smoke: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	$(MAKE) tables-js-wire-fuzz-retain SEED=$(SEED) N=$(JS_FUZZ_SMOKE_N)

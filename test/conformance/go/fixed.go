@@ -68,6 +68,8 @@ func fixedForm[T any, R any, E any](
 ) codec {
 	plan := make([]E, fixedPlanCapacity)
 	c.variableLoad = c.load
+	c.variableMeasure = c.measure
+	c.variableSave = c.save
 	c.load = func(value any, wire []byte, rep *report) bool {
 		var inner R
 		n := load(unsafe.Slice(value.(*T), 1), wire, plan, &inner)
@@ -79,6 +81,23 @@ func fixedForm[T any, R any, E any](
 	c.save = func(value any, buffer []byte) int64 {
 		return save(unsafe.Slice(value.(*T), 1), buffer)
 	}
+	return c
+}
+
+// noFileForm rebinds a declared fixed root past §3.4's 65536-byte record
+// bound, which has no file form: every file read refuses and nothing is
+// saved, while variableLoad keeps the form-1 read for surfaceFraming alone.
+func noFileForm(c codec) codec {
+	c.variableLoad = c.load
+	c.variableMeasure = c.measure
+	c.variableSave = c.save
+	c.load = func(value any, wire []byte, rep *report) bool {
+		*rep = report{refused: true}
+		return false
+	}
+	c.measure = func(any) int64 { return -1 }
+	c.measureReason = nil
+	c.save = func(any, []byte) int64 { return -1 }
 	return c
 }
 
@@ -108,6 +127,7 @@ func init() {
 	bind("tabledemo", "KeyedConfig", func(c codec) codec {
 		return fixedForm(c, tabledemo.KeyedConfigFixedLoad, tabledemo.KeyedConfigFixedMeasure, tabledemo.KeyedConfigFixedSave)
 	})
+	bind("tabledemo", "WideBlob", noFileForm)
 	bind("tblv1", "Cfg", func(c codec) codec {
 		return fixedForm(c, tblv1.CfgFixedLoad, tblv1.CfgFixedMeasure, tblv1.CfgFixedSave)
 	})

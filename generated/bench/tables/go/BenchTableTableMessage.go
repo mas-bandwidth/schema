@@ -1893,6 +1893,33 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 			if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
 				return false
 			}
+			{
+				n := int(value.PlayerNameLength)
+				var hi, z uint64
+				p := value.PlayerName[:n]
+				if len(p) >= 8 {
+					x := tableUTF8Word(p)
+					hi |= x
+					z |= (x - 0x0101010101010101) &^ x
+					p = p[8:]
+				}
+				if len(p) > 0 {
+					if n >= 8 {
+						x := tableUTF8Word(value.PlayerName[n-8:])
+						hi |= x
+						z |= (x - 0x0101010101010101) &^ x
+					} else {
+						for _, c := range p {
+							x := uint64(c)
+							hi |= x
+							z |= (x - 1) &^ x
+						}
+					}
+				}
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.PlayerName[:n]) {
+					return false
+				}
+			}
 			w.Put(uint64(value.PlayerNameLength), 4)
 			w.Raw(value.PlayerName[:value.PlayerNameLength])
 		}

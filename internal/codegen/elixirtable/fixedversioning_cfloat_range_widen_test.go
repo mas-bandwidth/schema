@@ -37,7 +37,6 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	}
 	oldAim := aimCheck("old_", manifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"), "the writer's own value, from the corpus manifest")
 	hostileAim := aimCheck("hostile_", manifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"), "the manifest's own forged value, landed WHOLE because the bounds pass is the READER's")
-	pastAim := aimCheck("past_", 0x40000000, "THIS READER'S OWN declared max 2.0, not a manifest value: the file carries 5.0")
 
 	oldFile := filepath.Join(corpus, "old_cfloat_range_widen.bin")
 	hostileFile := filepath.Join(corpus, "hostile_cfloat_range_widen.bin")
@@ -51,14 +50,13 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   check(length(values) == 1, "n == #{length(values)}, want 1")
   v = hd(values)
   leadtrail(v, 1, 2)
-@AIM@
-  check(true, "clamped == #{report.clamped}, want 0: the old value is not clamped")
+  @AIM@
   check(
     report.unknown == 0 and true and report.widened == 0 and
       true,
     "a counter that must not move did: #{why(report)}"
   )
-  check(true, "a clean NEW-READS-OLD is not malformed")`
+  check(true, "a clean NEW-READS-OLD reads whole")`
 	out, err := runVersionProbe(t, elixirBin, "VNEW_cfloat_range_widen",
 		[]string{"VOLD_cfloat_range_widen"}, 0, oldFile, strings.ReplaceAll(oldBody, "@AIM@", oldAim))
 	if err != nil {
@@ -74,8 +72,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
   check(length(values) == 1, "n == #{length(values)}, want 1")
   v = hd(values)
   leadtrail(v, 1, 2)
-@AIM@
-  check(true, "clamped == #{report.clamped}, want 0: inside the reader's range lands whole")
+  @AIM@
   check(
     report.unknown == 0 and true and report.widened == 0 and
       true,
@@ -89,23 +86,18 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	}
 
 	// past_ — the same old bytes with aim forged to 5.0, outside the new
-	// reader's [-2, 2] too: lands the READER's own max 2.0, clamp 1 exactly.
+	// reader's [-2, 2] too: the one strict read refuses the whole load, and the
+	// probe pins that verdict.
 	pastBody := `  data = File.read!(file())
   {tag, values, report} = load(data)
-  check(tag == :ok, "the past file refused on the NEW build: #{inspect(tag)} #{why(report)}")
-  check(length(values) == 1, "n == #{length(values)}, want 1")
-  v = hd(values)
-  leadtrail(v, 1, 2)
-@AIM@
-  check(report.clamped == 1, "clamped == #{report.clamped}, want 1: past the reader's own max clamps once")
-  check(
-    report.unknown == 0 and true and report.widened == 0 and
-      true,
-    "a counter that must not move did: #{why(report)}"
-  )
-  check(true, "a clean clamped read is not malformed")`
+  check(tag == :error,
+    "a value past the reader's own bound must refuse: #{inspect(tag)} #{why(report)}")
+  check(not is_list(values),
+    "the refusal built no value: #{inspect(values)}")
+  check(report.unknown == 0 and report.widened == 0,
+    "the refusal moved nothing: #{why(report)}")`
 	out, err = runVersionProbe(t, elixirBin, "VNEW_cfloat_range_widen",
-		[]string{"VOLD_cfloat_range_widen"}, 0, pastFile, strings.ReplaceAll(pastBody, "@AIM@", pastAim))
+		[]string{"VOLD_cfloat_range_widen"}, 0, pastFile, pastBody)
 	if err != nil {
 		t.Fatalf("past_: %v\n%s", err, out)
 	}

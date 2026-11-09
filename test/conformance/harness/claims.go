@@ -188,6 +188,19 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 			return nil, err
 		}
 	}
+	for _, g := range m.Grown {
+		msg, err := m.LookupMessage(g.Message)
+		if err != nil {
+			return nil, err
+		}
+		conn, err := m.LookupConnection(msg.Connection)
+		if err != nil {
+			return nil, err
+		}
+		if err := add("message", g.Name, conn.Unit, msg.Root); err != nil {
+			return nil, err
+		}
+	}
 	for _, r := range m.Reports {
 		if err := add("report", r.Name, r.Unit, r.Root); err != nil {
 			return nil, err
@@ -232,6 +245,19 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 			if err := add(s, b.Name, b.Unit, ""); err != nil {
 				return nil, err
 			}
+		}
+	}
+	for _, wr := range m.WriteRefusals {
+		unit := wr.Unit
+		if wr.Form == "message" {
+			conn, err := m.LookupConnection(wr.Unit)
+			if err != nil {
+				return nil, err
+			}
+			unit = conn.Unit
+		}
+		if err := add(wr.Surface(), wr.Name, unit, wr.Root); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
@@ -401,7 +427,7 @@ func readCoverage(dir string) ([]coverageRow, map[string]string, error) {
 //
 // A failure count rides as `x<N>`. Glenn, 2026-10-25: a case a port does not
 // carry yet does not fail the night, and this table is how the gap stays seen.
-func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) {
+func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) error {
 	b := &strings.Builder{}
 	b.WriteString("# Cross-language conformance — coverage\n\n")
 	b.WriteString("Cells: `answered/cases`, then `xN` failed, `!N` claimed by the carries registry and answered ABSENT (red), " +
@@ -474,7 +500,8 @@ func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) 
 		}
 		b.WriteString("\n")
 	}
-	_, _ = io.WriteString(w, b.String())
+	_, err := io.WriteString(w, b.String())
+	return err
 }
 
 func coverageCell(r coverageRow) string {

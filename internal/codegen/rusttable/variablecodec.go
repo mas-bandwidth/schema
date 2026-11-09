@@ -1015,9 +1015,13 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    if end > wire.len() { report.damaged = true; return false; }\n")
 	fmt.Fprintf(b, "    // LEBs in this body cannot borrow a byte from the enclosing body.\n")
 	fmt.Fprintf(b, "    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);\n")
-	if hasRequired(st) {
-		fmt.Fprintf(b, "    let mut seen = [false; %d];\n", len(st.Fields))
-	}
+	// A FIELD ID APPEARS AT MOST ONCE IN A BODY (docs/SPEC-TABLES.md §4, §6.5):
+	// `seen` tracks the ids this reader declares, `seen_unknown` the ones it
+	// cannot name, and `seen_node` the reserved node-table id.
+	fmt.Fprintf(b, "    let mut seen = [false; %d];\n", len(st.Fields))
+	fmt.Fprintf(b, "    let mut seen_unknown: Vec<u64> = Vec::new();\n")
+	fmt.Fprintf(b, "    let mut seen_node = false;\n")
+	fmt.Fprintf(b, "    let mut seen_ids: Vec<u64> = Vec::new();\n")
 	fmt.Fprintf(b, "    while *off < end {\n")
 	fmt.Fprintf(b, "        let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };\n")
 	if hasRequired(st) {
@@ -1029,10 +1033,13 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "        if r == 0 { return true; }\n")
 	}
 	fmt.Fprintf(b, "        let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };\n")
+	fmt.Fprintf(b, "        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }\n")
 	fmt.Fprintf(b, "        if *off >= end { report.damaged = true; return false; }\n")
 	fmt.Fprintf(b, "        let kind = wire[*off]; *off += 1;\n")
 	fmt.Fprintf(b, "        if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)\n")
 	fmt.Fprintf(b, "        if id == NODE_TABLE_ID {\n")
+	fmt.Fprintf(b, "            if seen_node { report.damaged = true; return false; }\n")
+	fmt.Fprintf(b, "            seen_node = true;\n")
 	fmt.Fprintf(b, "            // the reserved id inside a NESTED body is malformed (§3.1); a\n")
 	fmt.Fprintf(b, "            // variable-class root steps over its own node table (§3.1).\n")
 	fmt.Fprintf(b, "            // A fixed-class root has no numbering and sees it as unknown (§4).\n")
@@ -1050,9 +1057,12 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	// field and counts one unknown; the retaining read also captures it, or
 	// counts one retain_lost when the walk or the capacity cannot keep it whole.
 	fmt.Fprintf(b, "            _ => {\n")
+	fmt.Fprintf(b, "                if seen_unknown.contains(&id) { report.damaged = true; return false; }\n")
+	fmt.Fprintf(b, "                seen_unknown.push(id);\n")
 	fmt.Fprintf(b, "                report.unknown += 1;\n")
 	fmt.Fprintf(b, "                let start = *off;\n")
 	fmt.Fprintf(b, "                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }\n")
+	fmt.Fprintf(b, "                nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);\n")
 	fmt.Fprintf(b, "                if let Some(ret) = retain.as_deref_mut() {\n")
 	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
 	// §3.3, §6.6, ruling 3 of 2026-10-27): a NaN or an infinity is not kept and
@@ -1136,6 +1146,8 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 	kind := fieldWireKind(f)
 	fmt.Fprintf(b, "%s0x%016x => {\n", ind, id)
 	in := ind + "    "
+	fmt.Fprintf(b, "%sif seen[%d] { report.damaged = true; return false; }\n", in, ordinal)
+	fmt.Fprintf(b, "%sseen[%d] = true;\n", in, ordinal)
 	if f.Required {
 		fmt.Fprintf(b, "%slet mut field_skipped = false;\n", in)
 	}
@@ -1358,14 +1370,19 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet text_len = %s.last().map_or(0, |e| %s) as u64;\n%sif text_len > %d - text_spent { %s.pop(); report.damaged = true; break; }\n%stext_spent += text_len;\n", i5, field, length, i5, f.TextTotal, field, i5)
 	}
 	fmt.Fprintf(b, "%s}\n", i4)
+	// THE WHOLE VALUE OR A REFUSAL (docs/plans/strict-only.md): after its
+	// elements an array's L must be spent whole; bytes left over are damage,
+	// never slack the reader skips.
+	fmt.Fprintf(b, "%sif *off != sub { report.damaged = true; }\n", i4)
 	if f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, "%swhile %s.len() < %d { %s.push(prior.get(%s.len()).cloned()%s); }\n", i4, field, f.ArrayBound, field, field, orElse(fieldDefault(scalarOnly(f))))
 	}
+	fmt.Fprintf(b, "%sif *off != sub { report.damaged = true; }\n", i4)
 	fmt.Fprintf(b, "%s}\n", i3)
 	fmt.Fprintf(b, "%s    }\n", i2)
 	fmt.Fprintf(b, "%s}\n", i2)
-	fmt.Fprintf(b, "%s}\n", i1)
-	fmt.Fprintf(b, "%s*off = sub; // excess elements and slack skip via the length\n", i1)
+	fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i1)
+	fmt.Fprintf(b, "%s*off = sub; // the body's own L is the field's extent\n", i1)
 	fmt.Fprintf(b, "%s}\n", in)
 }
 
@@ -1900,6 +1917,11 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "        } else if scratch.refused && scratch.reason == TableReason::CountOverExtentCap {\n")
 		fmt.Fprintf(b, "            // Preserve the diagnostic prefix the oracle earned before refusal.\n")
 		fmt.Fprintf(b, "            *report = scratch;\n")
+		fmt.Fprintf(b, "        } else {\n")
+		fmt.Fprintf(b, "            // THE STRICT READ NAMES EVERY REFUSAL (docs/plans/strict-only.md):\n")
+		fmt.Fprintf(b, "            // the whole value or a refusal, so a framing the container cannot\n")
+		fmt.Fprintf(b, "            // open is damage and never a silent None.\n")
+		fmt.Fprintf(b, "            report.damaged = true;\n")
 		fmt.Fprintf(b, "        }\n")
 		fmt.Fprintf(b, "        return None;\n")
 		fmt.Fprintf(b, "    }\n")
@@ -1968,6 +1990,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    // its refusal and diagnostic prefix follow the oracle order (§3.1, §4).\n")
 	fmt.Fprintf(b, "    for k in 0..nodes.slots.len() {\n")
 	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { variable_node_decode(wire, ids, &mut nodes, k, report); }\n")
+	fmt.Fprintf(b, "        else if matches!(nodes.slots[k], TableNodeSlot::Null) { let (tid, start, stop) = nodes.recs[k]; if tid != BYTES_TYPE_ID && tid != STRING_TYPE_ID { nodes.note_unknown_content(ids, 13, &wire[start..stop], 0, report); } }\n")
 	fmt.Fprintf(b, "        if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
@@ -1995,6 +2018,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    // pointer slots, the unreached records included. Each vertex is entered\n")
 	fmt.Fprintf(b, "    // once, so the walk is linear; the whole load is refused.\n")
 	fmt.Fprintf(b, "    if report.cycle_on_save { report.damaged = true; return None; }\n")
+	fmt.Fprintf(b, "    if !report.cycle_on_save && nodes.has_unreachable(&edges) { report.damaged = true; return None; }\n")
 	fmt.Fprintf(b, "    // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and outranks\n")
 	fmt.Fprintf(b, "    // any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing\n")
 	fmt.Fprintf(b, "    // lands and nothing retained is kept.\n")

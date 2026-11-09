@@ -566,46 +566,42 @@ func (e *msgEmit) usesDefaults(st *ir.Struct) bool {
 // shape before this reader's own bounds apply. An id this reader cannot name
 // is counted `unknown` and stepped over by its shape; an announced kind below
 // this reader's on the same ladder is `widened` and decodes; any other kind is
-// `kind_mismatch` and is stepped over. The dispatch is a match on the 64-bit
+// `kind_mismatch` and refuses the batch, as does a value outside this reader's
+// range, a text longer than its bound, or an array count past its bound. The dispatch is a match on the 64-bit
 // ids, compile-time constants.
 
-// readClamp emits the declared-bound clamp of one integer value held in the
-// local `x` (i64 for a signed storage, u64 for an unsigned one), counting each
-// clamp (internal/tablewire scalar: a declared range, and a bits(N) below its
-// storage).
+// readClamp emits the declared-bound check of one integer value held in the
+// local `x` (i64 for a signed storage, u64 for an unsigned one). A value
+// outside the range refuses out_of_range (internal/tablewire scalar: a
+// declared range, and a bits(N) below its storage).
 func (e *msgEmit) readClamp(ind int, f *ir.Field, x string) {
 	t := f.Type
 	if lo, hi, ok := ir.TableRawRange(f); ok && (t.Kind == ir.TInt || t.Kind == ir.TFixed) {
 		if t.Signed {
 			l, h := goose.IntLit(lo), goose.IntLit(hi)
 			e.p(ind, "if %s < %s {", x, l)
-			e.p(ind+1, "%s = %s;", x, l)
-			e.p(ind+1, "r.oor += 1;")
+			e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 			e.p(ind, "} else if %s > %s {", x, h)
-			e.p(ind+1, "%s = %s;", x, h)
-			e.p(ind+1, "r.oor += 1;")
+			e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 			e.p(ind, "}")
 			return
 		}
 		l, h := u64Lit(lo), u64Lit(hi)
 		if lo.Sign() > 0 {
 			e.p(ind, "if %s < %s {", x, l)
-			e.p(ind+1, "%s = %s;", x, l)
-			e.p(ind+1, "r.oor += 1;")
+			e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 			e.p(ind, "} else if %s > %s {", x, h)
 		} else {
 			e.p(ind, "if %s > %s {", x, h)
 		}
-		e.p(ind+1, "%s = %s;", x, h)
-		e.p(ind+1, "r.oor += 1;")
+		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 		e.p(ind, "}")
 		return
 	}
 	if t.Kind == ir.TBits && t.Width < 64 {
 		m := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1))
 		e.p(ind, "if %s > %s {", x, m.String())
-		e.p(ind+1, "%s = %s;", x, m.String())
-		e.p(ind+1, "r.oor += 1;")
+		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 		e.p(ind, "}")
 	}
 }
@@ -638,11 +634,9 @@ func (e *msgEmit) readClamp128(ind int, f *ir.Field, v string) {
 	e.p(ind, "let floor%s = schema_rt::Int128 { lo: %s, hi: %s };", v, blo, bhi)
 	e.p(ind, "let ceil%s = schema_rt::Int128 { lo: %s, hi: %s };", v, tlo, thi)
 	e.p(ind, "if %s {", less(v, "floor"+v))
-	e.p(ind+1, "%s = floor%s;", v, v)
-	e.p(ind+1, "r.oor += 1;")
+	e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 	e.p(ind, "} else if %s {", less("ceil"+v, v))
-	e.p(ind+1, "%s = ceil%s;", v, v)
-	e.p(ind+1, "r.oor += 1;")
+	e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 	e.p(ind, "}")
 }
 
@@ -671,17 +665,15 @@ func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) 
 			e.p(ind, "%s = schema_rt::msg_f32(r, %s);", dst, en)
 			return
 		}
-		// THE ONE RULE (§3.3): compared as float64, one past an end clamps
-		// and counts, and a -0 lands as +0, uncounted
+		// THE ONE RULE (§3.3): compared as float64, one past an end refuses
+		// out_of_range, and a -0 lands as +0, uncounted
 		e.p(ind, "var q%s = schema_rt::msg_f32(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
 		e.p(ind, "let wide%s: f64 = q%s;", v, v)
 		e.p(ind, "if wide%s < schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMin))
-		e.p(ind+1, "q%s = %s;", v, f32Lit(float32(f.FMin)))
-		e.p(ind+1, "r.oor += 1;")
+		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 		e.p(ind, "} else if wide%s > schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMax))
-		e.p(ind+1, "q%s = %s;", v, f32Lit(float32(f.FMax)))
-		e.p(ind+1, "r.oor += 1;")
+		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 		e.p(ind, "} else if wide%s == 0.0 {", v)
 		e.p(ind+1, "q%s = 0.0;", v)
 		e.p(ind, "}")
@@ -799,11 +791,10 @@ func (e *msgEmit) getElement(ind int, el *ir.Field, en, dst string) {
 	}
 }
 
-// getValue lands a field's payload from the entry `en`: text (kept to the
-// reader's bound, the excess counted oor), an array's elements (the
-// excess past the bound stepped over by the announced width, or read into a
-// scratch and dropped where each element resolves something), a keyed array's
-// present slots, or one element.
+// getValue lands a field's payload from the entry `en`: text and wstring
+// refuse length_over_bound past this reader's bound, an array refuses
+// count_over_bound past its bound, a keyed array's present slots, or one
+// element.
 func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 	el := elemOf(f)
 	v := e.loopVar()
@@ -814,25 +805,21 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 		e.p(ind, "let at%s = r.pos >> 3;", v)
 		if f.Type.Kind == ir.TString {
 			e.p(ind, "if !schema_rt::fixed_utf8_ok(r.b, at%s, n%s) { return schema_rt::msg_damage(r); }", v, v)
-			e.p(ind, "let k%s = schema_rt::msg_utf8_keep(r.b, at%s, n%s, %d);", v, v, v, f.Type.Size)
-		} else {
-			e.p(ind, "var k%s = n%s;", v, v)
-			e.p(ind, "if k%s > %d { k%s = %d; }", v, f.Type.Size, v, f.Type.Size)
 		}
-		e.p(ind, "if k%s < n%s { r.oor += 1; }", v, v)
+		e.p(ind, "if n%s > %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseLengthOverBound); }", v, f.Type.Size)
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
-		e.p(ind, "while %s < k%s {", i, v)
+		e.p(ind, "while %s < n%s {", i, v)
 		e.p(ind+1, "%s[%s] = r.b[at%s + %s];", pl.val, i, v, i)
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
-		e.p(ind, "%s = k%s as! i32;", pl.length, v)
+		e.p(ind, "%s = n%s as! i32;", pl.length, v)
 		e.p(ind, "r.pos += n%s * 8;", v)
 	case f.Type.Kind == ir.TWString:
 		e.p(ind, "let n%s = schema_rt::msg_wide_len(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
+		e.p(ind, "if n%s > %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseLengthOverBound); }", v, f.Type.Size)
 		e.p(ind, "var high%s = false;", v)
-		e.p(ind, "var k%s: i64 = 0;", v)
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
 		e.p(ind, "while %s < n%s {", i, v)
@@ -846,18 +833,11 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 		e.p(ind+1, "} else if cu >= 0xDC00 && cu <= 0xDFFF {")
 		e.p(ind+2, "return schema_rt::msg_damage(r);")
 		e.p(ind+1, "}")
-		e.p(ind+1, "if %s < %d {", i, f.Type.Size)
-		e.p(ind+2, "%s[%s] = cu;", pl.val, i)
-		e.p(ind+2, "k%s += 1;", v)
-		e.p(ind+1, "}")
+		e.p(ind+1, "%s[%s] = cu;", pl.val, i)
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
 		e.p(ind, "if high%s { return schema_rt::msg_damage(r); }", v)
-		e.p(ind, "if k%s < n%s {", v, v)
-		e.p(ind+1, "r.oor += 1;")
-		e.p(ind+1, "if k%s > 0 && %s[k%s - 1] >= 0xD800 && %s[k%s - 1] <= 0xDBFF { k%s -= 1; }", v, pl.val, v, pl.val, v, v)
-		e.p(ind, "}")
-		e.p(ind, "%s = k%s as! i32;", pl.length, v)
+		e.p(ind, "%s = n%s as! i32;", pl.length, v)
 	case f.KeyEnum != "":
 		slots := slotCount(f)
 		e.p(ind, "let n%s = schema_rt::msg_keyed_count(r, %s);", v, en)
@@ -894,12 +874,9 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 	case f.Array != ir.ArrayNone:
 		e.p(ind, "let n%s = schema_rt::msg_count(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
+		e.p(ind, "if n%s > %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseCountOverBound); }", v, f.ArrayBound)
 		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
-		e.p(ind, "var k%s = n%s;", v, v)
-		e.p(ind, "if k%s > %d {", v, f.ArrayBound)
-		e.p(ind+1, "k%s = %d;", v, f.ArrayBound)
-		e.p(ind+1, "r.oor += 1;")
-		e.p(ind, "}")
+		e.p(ind, "let k%s = n%s;", v, v)
 		// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3); an
 		// element that resolves something is read into a scratch and dropped
 		e.p(ind, "let run%s = schema_rt::msg_run_bits(r, %s);", v, en)
@@ -947,8 +924,9 @@ func (e *msgEmit) scratchInit(el *ir.Field) string {
 }
 
 // accept emits the kind check of one entry `en` against this reader's own
-// entry for the same id; on a mismatch the entry was counted and stepped over
-// and `onSkip` runs.
+// entry for the same id. A mismatch refuses the load (msg_accept returns
+// -1). `onSkip` remains for a counted step-over, which this read no longer
+// takes.
 func (e *msgEmit) accept(ind int, en string, mine ir.TableVocabularyEntry, onSkip string) {
 	v := e.loopVar()
 	e.p(ind, "let acc%s = schema_rt::msg_accept(r, %s, %d, %d);", v, en, mine.Kind, mine.Shape.Elem)

@@ -206,6 +206,10 @@ the edit is a kind change the baseline refuses (§5.1), never every byte after i
 
 ### 3.1 The write
 
+**This is form `3`'s part of the cross-form write algorithm, docs/SPEC-TABLES.md §22**, which pins every byte a
+writer of any form decides: here, the zero header bytes, the zero slack and the live-extent stores below
+(SPEC-TABLES §22.6).
+
 ```
 WRITE( values, out ):
     header: form byte, seven zero bytes, the hash, the layout length, the layout
@@ -222,7 +226,7 @@ value nobody wrote (fix 1). **A union** writes the tag and the taken arm only, z
 absent optional** writes flag `0` and **skips the payload store**: a declared default under a clear flag is
 meaning too (fix 13).
 
-**Write-side bound checks are DEBUG ONLY, by rule, in every language that has a debug-only idiom.** `count <= Max`
+**The whole write contract, per leg and per build, is [SPEC.md](SPEC.md) §5.1.** **Write-side bound checks are DEBUG ONLY, by rule, in every language that has a debug-only idiom.** `count <= Max`
 and `length <= N` are a caller contract; a release build removes them exactly as it removes `assert`, pays nothing,
 and **clamps nothing**. **Go has no debug-only idiom, so the Go fixed writer REFUSES in every build** (Glenn,
 2026-10-15): `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count

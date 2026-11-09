@@ -28,19 +28,61 @@ runs:
         # workspace differs from a hosted one's and from the next runner's.
         ws=$(printf %s "$GITHUB_WORKSPACE" | shasum -a 256 | cut -c1-12)
         echo "key=python-$floor-$current-$(echo "$sums" | shasum -a 256 | cut -c1-16)-$lock-$ws" >> "$GITHUB_OUTPUT"
+    # ON A FLEET RUNNER the built pins persist beside the workspace, keyed as
+    # the Actions cache is: the workspace path is the runner's own and does
+    # not change, so the tree copied back is at the path it was built for.
+    # The Actions cache cost a fleet job minutes (python-toolchain control
+    # rows 230-326 s on vision against 29-75 s warm, 2026-11-08) and the
+    # fleet caps a per-commit job at two minutes; the store is local disk.
+    # The tree is still checked against the pins below before it is used.
+    - name: the runner's stored pins (fleet)
+      id: store
+      if: runner.environment != 'github-hosted'
+      shell: bash
+      env:
+        KEY: ${{ steps.pin.outputs.key }}
+        FLOOR: ${{ steps.pin.outputs.floor }}
+        CURRENT: ${{ steps.pin.outputs.current }}
+      run: |
+        set -euo pipefail
+        store="$(dirname "$RUNNER_WORKSPACE")/_schema-python/$KEY"
+        echo "dir=$store" >> "$GITHUB_OUTPUT"
+        if [ -f "$store/.complete" ]; then
+          mkdir -p dist
+          for v in "$FLOOR" "$CURRENT"; do
+            rm -rf "dist/python-$v" && cp -a "$store/python-$v" "dist/python-$v"
+          done
+          echo "hit=true" >> "$GITHUB_OUTPUT"
+          echo "the Python pins: from the runner store $store"
+        fi
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       id: restore
+      if: runner.environment == 'github-hosted'
       with:
         path: |
           dist/python-${{ steps.pin.outputs.floor }}
           dist/python-${{ steps.pin.outputs.current }}
         key: ${{ steps.pin.outputs.key }}-${{ runner.os }}-${{ runner.arch }}
     - name: build the Python pins (cache miss)
-      if: steps.restore.outputs.cache-hit != 'true'
+      if: steps.restore.outputs.cache-hit != 'true' && steps.store.outputs.hit != 'true'
       shell: bash
       run: make -j2 dist-python PYTHON_BUILD_JOBS="$(getconf _NPROCESSORS_ONLN)"
+    - name: keep the built pins in the runner store (fleet)
+      if: runner.environment != 'github-hosted' && steps.store.outputs.hit != 'true'
+      shell: bash
+      env:
+        STORE: ${{ steps.store.outputs.dir }}
+        FLOOR: ${{ steps.pin.outputs.floor }}
+        CURRENT: ${{ steps.pin.outputs.current }}
+      run: |
+        set -euo pipefail
+        make python-toolchain-check
+        rm -rf "$STORE.tmp" && mkdir -p "$STORE.tmp"
+        for v in "$FLOOR" "$CURRENT"; do cp -a "dist/python-$v" "$STORE.tmp/python-$v"; done
+        touch "$STORE.tmp/.complete"
+        rm -rf "$STORE" && mv "$STORE.tmp" "$STORE"
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: steps.restore.outputs.cache-hit != 'true'
+      if: runner.environment == 'github-hosted' && steps.restore.outputs.cache-hit != 'true'
       with:
         path: |
           dist/python-${{ steps.pin.outputs.floor }}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,19 +37,26 @@ var squirrelFixedCutRows = []string{
 const (
 	squirrelFixedEvolutionFile  = "internal/codegen/squirreltable/fixed_evolution_proof_test.go"
 	squirrelFixedEvolutionFile2 = "internal/codegen/squirreltable/fixed_evolution_proof2_test.go"
+	squirrelFixedTotalFile      = "internal/codegen/squirreltable/fixedtotal_test.go"
 )
 
-// squirrelFixedCutEvidence is the one citation each cut row's :done overlay
-// carries: the strict-proof test that runs the row and its negative controls.
-var squirrelFixedCutEvidence = map[string]string{
-	"numeric-evolution": squirrelFixedEvolutionFile + ": TestSquirrelFixedEvolutionNumericWidening",
-	"reports":           squirrelFixedEvolutionFile + ": TestSquirrelFixedEvolutionReports",
-	"scalar-bounds":     squirrelFixedEvolutionFile + ": TestSquirrelFixedEvolutionScalarBounds",
-	"ordinals":          squirrelFixedEvolutionFile + ": TestSquirrelFixedEvolutionOrdinals",
-	"array-bounds":      squirrelFixedEvolutionFile2 + ": TestSquirrelFixedEvolutionArrayBounds",
-	"text":              squirrelFixedEvolutionFile2 + ": TestSquirrelFixedEvolutionText",
-	"normalization":     squirrelFixedEvolutionFile2 + ": TestSquirrelFixedEvolutionNormalization",
-	"hostile-input":     squirrelFixedEvolutionFile2 + ": TestSquirrelFixedEvolutionHostileInput",
+// squirrelFixedCutEvidence is the citation set each cut row's :done overlay
+// carries, in order: the strict-proof tests that run the row and its negative
+// controls. hostile-input also cites the batch-totality proof (a refusal on
+// the last record leaves every caller row untouched) and its control.
+var squirrelFixedCutEvidence = map[string][]string{
+	"numeric-evolution": {squirrelFixedEvolutionFile + ": TestSquirrelFixedEvolutionNumericWidening"},
+	"reports":           {squirrelFixedEvolutionFile + ": TestSquirrelFixedEvolutionReports"},
+	"scalar-bounds":     {squirrelFixedEvolutionFile + ": TestSquirrelFixedEvolutionScalarBounds"},
+	"ordinals":          {squirrelFixedEvolutionFile + ": TestSquirrelFixedEvolutionOrdinals"},
+	"array-bounds":      {squirrelFixedEvolutionFile2 + ": TestSquirrelFixedEvolutionArrayBounds"},
+	"text":              {squirrelFixedEvolutionFile2 + ": TestSquirrelFixedEvolutionText"},
+	"normalization":     {squirrelFixedEvolutionFile2 + ": TestSquirrelFixedEvolutionNormalization"},
+	"hostile-input": {
+		squirrelFixedEvolutionFile2 + ": TestSquirrelFixedEvolutionHostileInput",
+		squirrelFixedTotalFile + ": TestSquirrelFixedLoadIsTotalOverTheBatch",
+		squirrelFixedTotalFile + ": TestSquirrelFixedLoadIsTotalNegativeControl",
+	},
 }
 
 // TestSquirrelEvidenceFixedRows verifies docs/roadmap-evidence/fixed-squirrel.sexp:
@@ -83,7 +91,7 @@ func TestSquirrelEvidenceFixedRows(t *testing.T) {
 		{"unknown subtest", strings.Replace(overlay, squirrelFixedValues+"/"+fixedproof.Cases()[0].ID, squirrelFixedValues+"/no-such-row", 1)},
 		{"blanket citation", strings.Replace(overlay, squirrelFixedNegative+"/"+fixedproof.Cases()[0].ID, squirrelFixedNegative, 1)},
 		{"cut row done on the suite", cutDone(squirrelFixedSuiteFile + ": " + squirrelFixedValues + "/" + cut)},
-		{"cut row done on another row's proof", cutDone(squirrelFixedCutEvidence["reports"])},
+		{"cut row done on another row's proof", cutDone(squirrelFixedCutEvidence["reports"][0])},
 		{"short revision", strings.Replace(overlay, ":tested-revision \"", ":tested-revision \"zz", 1)},
 	}
 	for _, c := range controls {
@@ -92,8 +100,13 @@ func TestSquirrelEvidenceFixedRows(t *testing.T) {
 		}
 	}
 	// a cut row citing a test its file does not define is refused
-	if err := validateSquirrelFixedCutRow(root, cut, "(:id \""+squirrelFixedIDPrefix+cut+"\" :state :done :evidence (\""+squirrelFixedEvolutionFile+": TestNoSuchProof\") :tested-revision \""+strings.Repeat("a", 40)+"\" :note \"x\")", squirrelFixedEvolutionFile+": TestNoSuchProof"); err == nil {
+	if err := validateSquirrelFixedCutRow(root, cut, "(:id \""+squirrelFixedIDPrefix+cut+"\" :state :done :evidence (\""+squirrelFixedEvolutionFile+": TestNoSuchProof\") :tested-revision \""+strings.Repeat("a", 40)+"\" :note \"x\")", []string{squirrelFixedEvolutionFile + ": TestNoSuchProof"}); err == nil {
 		t.Fatalf("negative control \"undefined proof\": validator accepted the defect")
+	}
+	// hostile-input done without the batch-totality proof is refused
+	hostile := squirrelFixedCutEvidence["hostile-input"][0]
+	if err := validateSquirrelFixedCutRow(root, "hostile-input", "(:id \""+squirrelFixedIDPrefix+"hostile-input\" :state :done :evidence (\""+hostile+"\") :tested-revision \""+strings.Repeat("a", 40)+"\" :note \"x\")", squirrelFixedCutEvidence["hostile-input"]); err == nil {
+		t.Fatalf("negative control \"hostile-input without the totality proof\": validator accepted the defect")
 	}
 }
 
@@ -111,7 +124,7 @@ func dropOverlayRow(overlay, id string) string {
 func validateSquirrelFixedOverlay(root, overlay string) error {
 	suiteSrc, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(squirrelFixedSuiteFile)))
 	if err != nil {
-		return fmt.Errorf("read %s: %v", squirrelFixedSuiteFile, err)
+		return fmt.Errorf("read %s: %w", squirrelFixedSuiteFile, err)
 	}
 	defined := map[string]bool{}
 	for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(suiteSrc), -1) {
@@ -209,9 +222,9 @@ func validateSquirrelFixedOverlay(root, overlay string) error {
 }
 
 // validateSquirrelFixedCutRow holds one strict-cut row's overlay line: :done,
-// a 40-hex tested revision, a note, and exactly the one citation the row owes,
-// whose test the cited file defines.
-func validateSquirrelFixedCutRow(root, cut, line, want string) error {
+// a 40-hex tested revision, a note, and exactly the citations the row owes, in
+// order, each of whose tests its cited file defines.
+func validateSquirrelFixedCutRow(root, cut, line string, want []string) error {
 	id := squirrelFixedIDPrefix + cut
 	if st := squirrelOverlayStateRx.FindStringSubmatch(line); st == nil || st[1] != "done" {
 		return fmt.Errorf("%s: a strict-cut row is recorded only when done", id)
@@ -223,21 +236,28 @@ func validateSquirrelFixedCutRow(root, cut, line, want string) error {
 		return fmt.Errorf("%s: :done row must carry a :note", id)
 	}
 	got := extractSquirrelEvidenceStrings(line)
-	if len(got) != 1 || got[0] != want {
-		return fmt.Errorf("%s: evidence = %q, want [%q]", id, got, want)
+	if !slices.Equal(got, want) {
+		return fmt.Errorf("%s: evidence = %q, want %q", id, got, want)
 	}
-	file, fn, ok := strings.Cut(want, ": ")
-	if !ok {
-		return fmt.Errorf("%s: malformed citation %q", id, want)
-	}
-	src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
-	if err != nil {
-		return fmt.Errorf("%s: read %s: %v", id, file, err)
-	}
-	for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(src), -1) {
-		if m[1] == fn {
-			return nil
+	for _, cite := range want {
+		file, fn, ok := strings.Cut(cite, ": ")
+		if !ok {
+			return fmt.Errorf("%s: malformed citation %q", id, cite)
+		}
+		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+		if err != nil {
+			return fmt.Errorf("%s: read %s: %v", id, file, err)
+		}
+		defined := false
+		for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(src), -1) {
+			if m[1] == fn {
+				defined = true
+				break
+			}
+		}
+		if !defined {
+			return fmt.Errorf("%s: %s does not define %s", id, file, fn)
 		}
 	}
-	return fmt.Errorf("%s: %s does not define %s", id, file, fn)
+	return nil
 }

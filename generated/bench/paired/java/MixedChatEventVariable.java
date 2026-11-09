@@ -449,6 +449,7 @@ public final class MixedChatEventVariable {
             }
         }
         readFields(r, v, nt, report);
+        TableVariable.settleNonFinite(report);
         if (report.refused) {
             return null;
         }
@@ -460,24 +461,17 @@ public final class MixedChatEventVariable {
             }
             return null;
         }
-        nt.from = 1;
         resolveNodes(v, nt, v, TYPE_ID, report);
         if (nt.recs != null && !nt.bad) {
             for (int i = 0; i < nt.recs.length; i++) {
                 TableVariable.NodeRecord rec = nt.recs[i];
                 if (rec.table != null) {
-                    nt.from = i + 2;
                     resolveNodePointers(rec.table, rec.typeId, nt, v, TYPE_ID, report);
                 }
             }
         }
         // DAMAGE DISCARDS THE WHOLE LOAD (§4)
         if (report.damaged) {
-            return null;
-        }
-        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
-        if (TableVariable.cyclic(nt)) {
-            report.damaged = true;
             return null;
         }
         return v;

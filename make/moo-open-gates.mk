@@ -8,9 +8,12 @@
 # the emitters embed (serialize*.moo, schema_tables.moo, table_*.moo, json.moo,
 # textcarrier.moo), named by the runtime and never by the schema file that
 # sorts first, and each schema file's modules are <Base>.moo and
-# <Base>Table.moo, named by its own file. So a file that sorts earlier
-# relocates nothing: every module keeps its name and every runtime module is
-# byte-identical across the two trees.
+# <Base>Table.moo, named by its own file. The unit's view, <Package>View.moo,
+# carries the unit's own registry (docs/SPEC-TABLES.md §8.3), so the joining
+# file changes its text by design; it is held to its NAME only, as the Luau leg
+# holds schema_view.luau. So a file that sorts earlier relocates nothing: every
+# module keeps its name, every runtime module is byte-identical across the two
+# trees, and the view stays at the package's home.
 MOO_HOME_DIR := build/runtime-home-moo
 .PHONY: tables-moo-runtime-home tables-moo-runtime-home-negative-control
 tables-moo-runtime-home: build/schema-moo
@@ -21,7 +24,7 @@ tables-moo-runtime-home: build/schema-moo
 	@./build/schema-moo generate --lang moo --out $(MOO_HOME_DIR)/base $(MOO_HOME_DIR)/base-src
 	@./build/schema-moo generate --lang moo --out $(MOO_HOME_DIR)/added $(MOO_HOME_DIR)/src
 	@sh test/moo-runtime-home/check $(MOO_HOME_DIR)/base $(MOO_HOME_DIR)/added Aaa $(MOO_HOME_DIR)/src
-	@echo "runtime home gate (moo): every schema module keeps its name and the runtime stays byte-identical when an earlier-sorting file joins the unit"
+	@echo "runtime home gate (moo): every schema module keeps its name, the view stays <Package>View.moo, and the runtime stays byte-identical when an earlier-sorting file joins the unit"
 
 # Its NEGATIVE CONTROL: put the file-order rule back (the table runtime named
 # by the file that sorts first, ir.ProtocolIdHome) through `go build -overlay`,

@@ -235,15 +235,21 @@ local blobEqString = function(b, s) {
   return true;
 };
 
-// the numbering's node key for a blob: a *string has no storage identity in
-// Squirrel, and a load hands equal content to equal slots, so content keys it;
-// a *bytes blob is keyed by its bytes for the same reason (blob_shared).
 // a blob's identity for the numbering: a *bytes blob is its object, and a
-// *string is the record token the load noted for its slot, or the string
-// itself (load.nut, stringIdentity)
+// *string is the record token the load noted for its slot. A *string the
+// caller put in a slot (or changed since the load) is ITS OWN record: a
+// Squirrel string is a value, so two slots holding equal strings the caller
+// built are two blobs saved by value (docs/SPEC-TABLES.md §2.5), never one
+// record named twice. Such a slot is given a fresh token here, noted on the
+// slot so the numbering and the writer's index lookup agree on it.
 local blobIdentity = function(kind, val, holder, key) {
   if (kind != "s" || holder == null) return val;
-  return _require("schema_table_load").stringIdentity(holder, key, val);
+  local L = _require("schema_table_load");
+  local id = L.stringIdentity(holder, key, val);
+  if (typeof id != "string") return id;
+  local token = {};
+  L.noteStringOrigin(holder, key, val, token);
+  return token;
 };
 
 local blobKey = function(kind, val) {

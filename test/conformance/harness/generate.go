@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -35,13 +36,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// cookedReportClean holds a cook's report to clean: any count is a reason the
-// fixture is not the tool's.
-func cookedReportClean(inst Instance, r compiler.TableReport) bool {
-	return r.Silent()
-}
-
 type units struct {
+	mu     sync.Mutex
 	c      *compiler.Compiler
 	loaded map[string]*ir.Unit
 	m      *Manifest
@@ -52,6 +48,12 @@ func newUnits(m *Manifest) *units {
 }
 
 func (u *units) get(key string) (*ir.Unit, error) {
+	// The compiler and the cache are shared, and get is called from parallel
+	// subtests, so a load must hold the lock through Compiler.Load rather than
+	// only around the map write.
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
 	if unit, ok := u.loaded[key]; ok {
 		return unit, nil
 	}
@@ -276,6 +278,9 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		return err
 	}
 	if err := framingValues(u, m.Framings, jsonDir); err != nil {
+		return err
+	}
+	if err := generateRewrites(u, m, jsonDir); err != nil {
 		return err
 	}
 
@@ -718,7 +723,10 @@ func oracleRefusesJSONWrite(unit *ir.Unit, wr JSONWriteRefusal) error {
 	value := model.New(root)
 	var report tabletext.Report
 	if ok, err := tablewire.Decode(model, value, wire, &report); !ok || err != nil {
-		return fmt.Errorf("the wire does not load: %v", err)
+		if err != nil {
+			return fmt.Errorf("the wire does not load: %w", err)
+		}
+		return fmt.Errorf("the wire does not load")
 	}
 	if err := applyJSONWriteDamage(value, wr.Damage); err != nil {
 		return err

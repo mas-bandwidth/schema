@@ -15,6 +15,7 @@ const (
 	fixedCountBytes   = int64(4)
 	fixedPresentBytes = int64(1)
 	kFixedOpFlat      = byte(7)
+	kFixedOpBool      = byte(9)
 )
 
 func fixedStorageBytes(t ir.FieldType) int64 {
@@ -425,6 +426,15 @@ func (b *fixedRootBuild) fixedFlatElem(f *ir.Field) bool {
 	return b.g.fixedFlatElem(f)
 }
 
+// scalarOp is the plan op for one scalar leaf: a bool byte is held to 0 or 1
+// by the read, every other scalar is a plain copy (docs/SPEC-TABLES.md §3.4).
+func (b *fixedRootBuild) scalarOp(f *ir.Field) byte {
+	if f.Type.Kind == ir.TBool {
+		return kFixedOpBool
+	}
+	return 0
+}
+
 func (b *fixedRootBuild) flatSpanSetter(fieldExpr, elemType string, elemBytes int64) string {
 	if elemType == "byte" {
 		return fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr)
@@ -798,7 +808,7 @@ func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, 
 			dst:   presentSlot,
 			size:  1,
 			guard: guard,
-			op:    0,
+			op:    kFixedOpBool,
 			arg:   arg,
 		})
 		*wireOff += fixedPresentBytes
@@ -1196,7 +1206,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 		dst:   slot,
 		size:  w,
 		guard: guard,
-		op:    0,
+		op:    b.scalarOp(f),
 		arg:   arg,
 	})
 	*wireOff += w
@@ -1297,7 +1307,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 		dst:   slot,
 		size:  w,
 		guard: guard,
-		op:    0,
+		op:    b.scalarOp(f),
 		arg:   arg,
 	})
 	*wireOff += w
@@ -1320,7 +1330,7 @@ func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, e
 			dst:   presentSlot,
 			size:  1,
 			guard: guard,
-			op:    0,
+			op:    kFixedOpBool,
 			arg:   arg,
 		})
 		*wireOff += fixedPresentBytes
@@ -1907,6 +1917,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 			opName = "TableFixedWire.Text"
 		case kFixedOpFlat:
 			opName = "TableFixedWire.Flat"
+		case kFixedOpBool:
+			opName = "TableFixedWire.BoolByte"
 		}
 		argw := p.argw
 		if argw == 0 {
@@ -2346,6 +2358,11 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                        %sFixedSetWide(dst, p.Dst, new UInt128(hi, lo));\n", name)
 	g.pf("                    }\n")
 	g.pf("                    else { %sFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }\n", name)
+	g.pf("                    break;\n                }\n")
+	g.pf("            case TableFixedWire.BoolByte:\n                {\n")
+	g.pf("                    ulong raw = src[(int)p.Src];\n")
+	g.pf("                    if (raw > 1) { return \"wire_damaged\"; }\n")
+	g.pf("                    %sFixedSetRaw(dst, p.Dst, raw, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Flat:\n                {\n")
 	g.pf("                    %sFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);\n", name)

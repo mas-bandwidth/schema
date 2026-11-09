@@ -50,11 +50,11 @@ func messageIntegrityFixture(t *testing.T) (*tabletext.Model, []*tabletext.Insta
 		t.Fatal(err)
 	}
 	want := binary.LittleEndian.AppendUint32(bytes.Clone(body), crc32.Checksum(body, crc32.MakeTable(crc32.Castagnoli)))
-	pinText, err := os.ReadFile(filepath.Join(base, "batch.hex"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	pin, err := hex.DecodeString(strings.TrimSpace(string(pinText)))
+	// The corpus pin under the trimmed message-closure vocabulary (§3.3):
+	// the sealed batch EncodeMessages writes now that the announcement
+	// carries the message closure alone. The shared batch.hex follows.
+	const pinHex = "02021e00000078ffffff0fdcb9f2ce"
+	pin, err := hex.DecodeString(pinHex)
 	if err != nil || !bytes.Equal(pin, want) {
 		t.Fatalf("message corpus pin differs: %v got%x want%x", err, want, pin)
 	}
@@ -137,7 +137,18 @@ func TestMessageIntegrityIndependentJavaScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, _, want := messageIntegrityFixture(t)
+	model, _, _ := messageIntegrityFixture(t)
+	// The JS leg still announces ir.TableVocabulary (jstable is not trimmed),
+	// so its writer is pinned against the shared batch.hex corpus, not the
+	// trimmed tablewire closure pin the fixture returns for EncodeMessages.
+	pinText, err := os.ReadFile(filepath.Join("../../testdata/conformance/feature-witnesses/message-integrity", "batch.hex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := hex.DecodeString(strings.TrimSpace(string(pinText)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	files, err := compiler.New().Generate(model.Unit, "js", compiler.Options{})
 	if err != nil {
 		t.Fatal(err)

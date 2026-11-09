@@ -94,7 +94,7 @@ func TestAWasRenamedArmSurvivesTheMessageForm(t *testing.T) {
 	// claim is not about a version skew
 	var vocabulary tablewire.Vocabulary
 	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(ir.TableAnnouncement(m.Unit), &announced); err != nil || !vocabulary.Announced() {
+	if err := vocabulary.AnnounceRead(tablewire.Announce(m.Unit), &announced); err != nil || !vocabulary.Announced() {
 		t.Fatalf("the unit's own announcement was refused: %v %+v", err, announced)
 	}
 	back := m.New(m.Lookup("Note"))

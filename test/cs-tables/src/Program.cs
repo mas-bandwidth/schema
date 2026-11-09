@@ -597,11 +597,11 @@ static partial class Program
         byte[] spliced = SharedVocabSplice(a, b);
         Demo.RootConfig got = new Demo.RootConfig();
         Demo.TableReport report = new Demo.TableReport();
-        Check(Demo.Schema.RootConfigLoad(got, spliced, report) && !report.Damaged, "counted tail: load two occurrences");
-        Check(got.WeaponsCount == 1, "counted tail: later count wins");
-        Check(got.Weapons[0].Damage == 5.0f, "counted tail: live prefix kept");
-        Check(got.Weapons[1].Damage == 21.0f, "counted tail: slot 1 restored to default");
-        Check(got.Weapons[2].Damage == 21.0f, "counted tail: slot 2 restored to default");
+        // THE SAME FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §6.5):
+        // the spliced file refuses whole, and nothing of either occurrence lands.
+        Check(!Demo.Schema.RootConfigLoad(got, spliced, report) && report.Damaged, "counted tail: two occurrences refuse the load");
+        Check(got.WeaponsCount == new Demo.RootConfig().WeaponsCount && got.Weapons[0].Damage == 21.0f, "counted tail: the refused load leaves the declared defaults");
+        Check(Demo.Schema.RootConfigLoad(got, b, report) && got.WeaponsCount == 1 && got.Weapons[0].Damage == 5.0f, "counted tail: either file alone loads");
     }
 
     // ---- all-default: everything elides, decode restores every default ----
@@ -874,10 +874,10 @@ static partial class Program
             4,30,6,0                      // same enum, an unknown variant
         }, "effect", "ward", "charge", "grade", "Gold", "unknown");
         V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
-        Check(V1.Schema.CfgLoad(value, wire, report), "repeated variant: load");
-        Check(!report.Damaged && report.Unknown == 2, "repeated variant: two unknown names");
+        // a repeated field id is damage (docs/SPEC-TABLES.md §6.5): the whole load refuses
+        Check(!V1.Schema.CfgLoad(value, wire, report) && report.Damaged, "repeated variant: the repeated ids refuse the load");
         Check(value.Effect.Type == V1.EffectType.None && value.Grade == V1.Grade.None,
-            "repeated variant: last occurrence replaces earlier value");
+            "repeated variant: nothing of either occurrence lands");
     }
 
     // ---- an array's BOUND is not wire identity ----
@@ -1853,67 +1853,94 @@ static partial class Program
             return RunSoak(args);
         }
 
-        TestWireContracts();
-        TestFiniteFloats();
-        TestVocabularyDistinctness();
-        TestLebWireContracts();
-        TestRootPayloadSizes();
-        TestRootReset();
-        TestUnionContracts();
-        TestCollections();
-        TestSurfaces();
-        TestRegions();
-        TestAllocators();
-        TestBuilders();
-        TestBlobJsonAllocation();
-        TestAllocationGate();
-        TestAllocationGateCanGoRed();
-        TestRetention();
-        TestRetentionContracts();
-        TestRetentionPaths();
-        TestCollectionEdges();
-        TestGoldenWireWrite();
-        TestGoldenWireRead();
-        TestGoldenSeamsWrite();
-        TestGoldenSeamsRead();
-        TestOptionalPresence();
-        TestKeyedEvolution();
-        TestKeyedVersusPositional();
-        TestKeyedHostileKeys();
-        TestSeamReflection();
-        TestKeyedIndexerRefusesNone();
-        TestKeyedIteration();
-        TestExactCapacity();
-        TestStorageInvariants();
-        TestBoundedElements();
-        TestCountedArrayShorterReplacement();
-        TestAllDefault();
-        TestGuard();
-        TestEvolutionOldReaderNewData();
-        TestEvolutionNewReaderOldData();
-        TestEvolutionEnumInsertOldData();
-        TestEvolutionEnumInsertNewData();
-        TestEvolutionUnionInsertOldData();
-        TestEvolutionUnionInsertNewData();
-        TestRepeatedIdUnnameableVariant();
-        TestEvolutionArrayBounds();
-        TestUnnameableEnumRefused();
-        TestUnnameableEnumElementRead();
-        TestFlagsArePositional();
-        TestWideExtents();
-        TestClamping();
-        TestMalformed();
-        TestDamageDiscardsTheWholeLoad();
-        TestReflection();
-        TestCrossFile();
-        TestFixedForm();
+        // Shard selection for the per-commit CI rows (make/cs.mk): with no
+        // argument every suite runs, which is what `make tables-cs-leg`,
+        // the negative controls (they invoke the built dll with no argument)
+        // and a workstation run. A named shard runs only its suites, so the
+        // ci-full cs-tables matrix can run the shards in parallel rows each
+        // under the 110 s per-commit bound. An unknown name is a failure,
+        // never a silent pass over zero suites.
+        string shard = args.Length > 0 ? args[0] : "";
+        bool All(string name) => shard.Length == 0 || shard == name;
+        if (shard.Length != 0 && shard != "wire" && shard != "core" && shard != "evolution" && shard != "fixed")
+        {
+            Console.WriteLine("FAILED: unknown cs tables shard \"" + shard + "\" (want wire, core, evolution or fixed)");
+            return 1;
+        }
+
+        if (All("wire"))
+        {
+            TestWireContracts();
+            TestFiniteFloats();
+            TestVocabularyDistinctness();
+            TestLebWireContracts();
+            TestRootPayloadSizes();
+            TestRootReset();
+            TestUnionContracts();
+            TestCollections();
+            TestSurfaces();
+            TestRegions();
+            TestAllocators();
+            TestBuilders();
+            TestBlobJsonAllocation();
+            TestCollectionEdges();
+        }
+        if (All("core"))
+        {
+            TestGoldenWireWrite();
+            TestGoldenWireRead();
+            TestGoldenSeamsWrite();
+            TestGoldenSeamsRead();
+            TestOptionalPresence();
+            TestExactCapacity();
+            TestStorageInvariants();
+            TestBoundedElements();
+            TestCountedArrayShorterReplacement();
+            TestAllDefault();
+            TestGuard();
+            TestReflection();
+            TestCrossFile();
+        }
+        if (All("evolution"))
+        {
+            TestKeyedEvolution();
+            TestKeyedVersusPositional();
+            TestKeyedHostileKeys();
+            TestSeamReflection();
+            TestKeyedIndexerRefusesNone();
+            TestKeyedIteration();
+            TestEvolutionOldReaderNewData();
+            TestEvolutionNewReaderOldData();
+            TestEvolutionEnumInsertOldData();
+            TestEvolutionEnumInsertNewData();
+            TestEvolutionUnionInsertOldData();
+            TestEvolutionUnionInsertNewData();
+            TestRepeatedIdUnnameableVariant();
+            TestEvolutionArrayBounds();
+            TestUnnameableEnumRefused();
+            TestUnnameableEnumElementRead();
+            TestFlagsArePositional();
+            TestWideExtents();
+            TestClamping();
+            TestMalformed();
+        }
+        if (All("fixed"))
+        {
+            TestAllocationGate();
+            TestAllocationGateCanGoRed();
+            TestRetention();
+            TestRetentionContracts();
+            TestRetentionPaths();
+            TestDamageDiscardsTheWholeLoad();
+            TestFixedForm();
+        }
 
         if (failed)
         {
             Console.WriteLine("cs tables test: FAILED");
             return 1;
         }
-        Console.WriteLine("cs tables test passed");
+        Console.WriteLine(shard.Length == 0 ? "cs tables test passed" : "cs tables test passed (shard " + shard + ")");
         return 0;
     }
 }

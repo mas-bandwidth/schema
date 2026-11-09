@@ -495,9 +495,12 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang cs --out generated/bench/cs/realworld bench/corpus/RealWorld.schema
 	@touch $@
 
+# tables-cs-clean runs dotnet format and dotnet build with EnableNETAnalyzers=true
+# over this same project; skipping the analyzer pass here avoids paying it a
+# second time on every conformance and wire-fuzz driver build (card green-fit-fuzz-smoke).
 .PHONY: build-conformance-cs
 build-conformance-cs: build/tables-generated-cs/.stamp cards-cs-generate
-	cd test/conformance/cs && $(DOTNET) build -v q --nologo
+	cd test/conformance/cs && $(DOTNET) build -v q --nologo -p:RunAnalyzers=false
 
 # THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
 # different sabotage from the C++ one above on purpose. That one flips a byte of
@@ -577,6 +580,35 @@ tables-cs-leg-debug: build/tables-generated-cs/.stamp
 tables-cs-leg-release: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release
 
+# PER-COMMIT SHARDS of the leg above (card green-fit-cs-tables-leg): the
+# unsplit leg measured 133 s per configuration in CI run 42554833739
+# (12 s corpus generation + 106 s `run the leg`), over the fleet's 120 s
+# per-commit kill (110 s budget). Program.cs partitions its suites into
+# wire, core, evolution and fixed; each shard target below runs one
+# partition in one configuration, and ci-full.yml runs all eight as
+# parallel matrix rows, so a row pays generation + build + one quarter
+# of the suites instead of the whole leg. Nothing is dropped: with no
+# shard argument the binary still runs every suite, `tables-cs-leg`
+# still runs both configurations whole for `make test` and certify, and
+# every shard is also reachable through the umbrella targets.
+.PHONY: tables-cs-leg-debug-wire tables-cs-leg-debug-core tables-cs-leg-debug-evolution tables-cs-leg-debug-fixed tables-cs-leg-release-wire tables-cs-leg-release-core tables-cs-leg-release-evolution tables-cs-leg-release-fixed
+tables-cs-leg-debug-wire: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- wire
+tables-cs-leg-debug-core: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- core
+tables-cs-leg-debug-evolution: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- evolution
+tables-cs-leg-debug-fixed: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- fixed
+tables-cs-leg-release-wire: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- wire
+tables-cs-leg-release-core: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- core
+tables-cs-leg-release-evolution: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- evolution
+tables-cs-leg-release-fixed: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- fixed
+
 # THE LEG'S NEGATIVE CONTROLS (docs/PORTING.md M5, M6, M10, M14, M17 and M19,
 # and the native region writer's shared-blob refusal, docs/SPEC-TABLES.md §2.5).
 # Each takes ONE rule out of the C# emitter (tools/sabotage, through a go build
@@ -608,6 +640,31 @@ define cs_leg_sabotage
 	@echo "negative control: removing the $(1) rule turns tables-cs-leg red on its own check"
 endef
 
+# cs_leg_sabotage2 is cs_leg_sabotage over two emitter files at once
+# ($(2)/$(3) and $(4)/$(5)): a rule held at two layers (the wire-alone walk and
+# the decode behind it) goes red only when both are taken out.
+define cs_leg_sabotage2
+	@rm -rf build/cs-leg-$(1) && mkdir -p build/cs-leg-$(1)
+	@go run ./tools/sabotage -name $(3) -out build/cs-leg-$(1)/a.gotext internal/codegen/cstable/$(2)
+	@go run ./tools/sabotage -name $(5) -out build/cs-leg-$(1)/b.gotext internal/codegen/cstable/$(4)
+	@printf '{"Replace":{"%s/internal/codegen/cstable/$(2)":"%s/build/cs-leg-$(1)/a.gotext","%s/internal/codegen/cstable/$(4)":"%s/build/cs-leg-$(1)/b.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/cs-leg-$(1)/overlay.json
+	@go build -overlay=build/cs-leg-$(1)/overlay.json -o build/cs-leg-$(1)/schema ./cmd/schema
+	$(call tables_generate_cs,./build/cs-leg-$(1)/schema,build/cs-leg-$(1)/gen)
+	@( cd test/cs-tables && $(DOTNET) build -v q --nologo -p:TablesGeneratedDir=$(CURDIR)/build/cs-leg-$(1)/gen \
+		-p:BaseOutputPath=$(CURDIR)/build/cs-leg-$(1)/bin/ -p:BaseIntermediateOutputPath=$(CURDIR)/build/cs-leg-$(1)/obj/ ) \
+		> build/cs-leg-$(1)/build.log 2>&1 || \
+		{ cat build/cs-leg-$(1)/build.log; echo "NEGATIVE CONTROL FAILED: the $(1) sabotage does not compile"; exit 1; }
+	@if ( cd test/cs-tables && $(DOTNET) $(CURDIR)/build/cs-leg-$(1)/bin/Debug/net10.0/schematablestest.dll ) \
+		> build/cs-leg-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: tables-cs-leg stayed green with the $(1) rule removed"; exit 1; \
+	fi
+	@grep -Eq '$(6)' build/cs-leg-$(1)/log || \
+		{ tail -40 build/cs-leg-$(1)/log; echo "NEGATIVE CONTROL FAILED: tables-cs-leg went red, but not on the $(1) rule"; exit 1; }
+	@grep -Em3 '$(6)' build/cs-leg-$(1)/log
+	@echo "negative control: removing the $(1) rule turns tables-cs-leg red on its own check"
+endef
+
 .PHONY: tables-cs-leg-keyed-negative-control tables-cs-leg-identity-negative-control tables-cs-leg-allocator-negative-control \
 	tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control \
 	tables-cs-leg-region-blob-shared-negative-control
@@ -629,20 +686,23 @@ tables-cs-leg-region-blob-shared-negative-control: bin/schema
 # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), one control per C#
 # load entry point that holds the discard: the managed load, the native region
 # load (the retaining load is derived from it), and the builder load. Each takes
-# that discard out, and the leg's TestDamageDiscardsTheWholeLoad must go red on
-# the body damaged inside a nested body, which the walk otherwise reads past.
+# out the wire-alone walk's refusal at that entry point (WireCheck) and the
+# discard behind it, and the leg's TestDamageDiscardsTheWholeLoad must go red on
+# a damaged vector that entry point otherwise hands back. (The nested kind-37
+# probes no longer localise a discard: the decode refuses them as a kind
+# mismatch whatever the discard does.)
 .PHONY: tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control \
 	tables-cs-leg-cycle-negative-control tables-cs-leg-region-cycle-negative-control
 tables-cs-leg-discard-negative-control: bin/schema
-	$(call cs_leg_sabotage,discard,wire.go,table-cs-discard,FAILED: damage discards the whole load: nested (fixed|variable): managed load answered true on damage)
+	$(call cs_leg_sabotage,discard,wire.go,table-cs-discard,FAILED: damage discards the whole load: [a-z_0-9]+: managed load answers false)
 tables-cs-leg-region-discard-negative-control: bin/schema
-	$(call cs_leg_sabotage,region-discard,region.go,table-cs-region-discard,FAILED: damage discards the whole load: nested variable: (region|retaining) load handed back a root on damage)
+	$(call cs_leg_sabotage2,region-discard,measure.go,table-cs-region-measure-discard,region.go,table-cs-region-discard,FAILED: damage discards the whole load: [a-z_0-9]+: (region|retaining) load hands back no root)
 tables-cs-leg-builder-discard-negative-control: bin/schema
-	$(call cs_leg_sabotage,builder-discard,builderload.go,table-cs-builder-discard,FAILED: damage discards the whole load: nested variable: builder load answered true on damage)
+	$(call cs_leg_sabotage,builder-discard,builderload.go,table-cs-builder-discard,FAILED: damage discards the whole load: [a-z_0-9]+: builder load answers false)
 tables-cs-leg-cycle-negative-control: bin/schema
-	$(call cs_leg_sabotage,cycle,variable.go,table-cs-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: managed load answers false)
+	$(call cs_leg_sabotage2,cycle,wirecheck.go,table-cs-wire-cycle,variable.go,table-cs-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: managed load answers false)
 tables-cs-leg-region-cycle-negative-control: bin/schema
-	$(call cs_leg_sabotage,region-cycle,regiongraph.go,table-cs-region-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: (region|retaining|builder) load)
+	$(call cs_leg_sabotage2,region-cycle,wirecheck.go,table-cs-wire-cycle,regiongraph.go,table-cs-region-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: (region|retaining|builder) load)
 
 # THE C# PER-PATH ALLOCATION GATE (docs/PORTING.md I1, docs/SPEC-TABLES.md
 # "What allocates, and what never does"). C# joins Go's testing.AllocsPerRun
@@ -797,11 +857,40 @@ tables-cs-fixed-rows: tables-fixedform-corpus
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT14CompressedFloats|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
 	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
 
+# THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's cs-fuzz
+# rows run the enumerated pass and CS_FUZZ_SMOKE_N seeded random mutants per
+# commit (the N=100000 rows ran 135 s in run 42556155793, with the C# build
+# step at 117 s capped and 148 s nightly), while the full 100,000-mutant
+# tables-cs-wire-fuzz and tables-cs-region-fuzz campaigns (and the 500,000-mutant
+# tables-cs-release passes) run in certify.yml's nightly tier.
+CS_FUZZ_SMOKE_N ?= 2000
+
+.PHONY: tables-cs-wire-fuzz-smoke tables-cs-region-fuzz-smoke
+tables-cs-wire-fuzz-smoke: build-conformance-cs build/conformance-harness
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
+
+tables-cs-region-fuzz-smoke: build-conformance-cs build/conformance-harness
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(CS_FUZZ_SMOKE_N)
+
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
 tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
+
+# A REPEATED FIELD ID IS DAMAGE (docs/SPEC-TABLES.md §6.5). The wire fuzzer
+# stopped on this rule before the wire-alone walk landed, and the region arm
+# reads through LoadMeasure, so the rule must hold in the walk before either
+# load decodes. These are the emitted artifact's unit checks (no interpreter):
+# the walk's root/nested body and its keyed body each refuse a reference their
+# own seen bitset already carries. The control takes the refusals out of that
+# same artifact and requires the check red.
+.PHONY: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
+tables-cs-wire-fuzz-repeated-id:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldId$$'
+tables-cs-wire-fuzz-repeated-id-negative-control:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldIdNegativeControl$$'
+test-cs: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
 
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin

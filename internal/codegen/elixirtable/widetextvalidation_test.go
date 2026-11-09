@@ -14,7 +14,7 @@ import (
 )
 
 func TestWideTextValidationBeforeClampElixir(t *testing.T) {
-	slowtest.Gate(t, "Elixir UTF-16 fields and arms validate before clamping")
+	slowtest.Gate(t, "Elixir UTF-16 fields and arms validate before the bound refusal")
 	u := unitFrom(t, `package widetext
  union Choice { wide wstring(2) }
  table Root { text wstring(2)
@@ -26,7 +26,7 @@ func TestWideTextValidationBeforeClampElixir(t *testing.T) {
 	for _, tc := range []struct {
 		name, raw string
 		malformed bool
-		clamped   int
+		overBound int
 	}{
 		{"empty", "", false, 0}, {"ascii", "61006200", false, 0},
 		{"nul", "0000", true, 0}, {"odd", "61", true, 0},
@@ -60,11 +60,12 @@ func TestWideTextValidationBeforeClampElixir(t *testing.T) {
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			_, e = tablewire.Decode(m, v, wire, &report)
-			if tablewire.ReadRefusal(e) != tc.malformed {
+			refused := tc.malformed || tc.overBound > 0
+			if tablewire.ReadRefusal(e) != refused || refused != report.Refused || (refused && report.Reason == "") || (!refused && report.Reason != "") {
 				t.Fatalf("%s arm=%v neutral: %v %+v", tc.name, arm, e, report)
 			}
 			want := ""
-			if !tc.malformed {
+			if !refused {
 				b, e := tablewire.Encode(m, v)
 				if e != nil {
 					t.Fatal(e)
@@ -74,19 +75,18 @@ func TestWideTextValidationBeforeClampElixir(t *testing.T) {
 			fmt.Fprintf(&probe, `
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  r=elem(result,2)
- unless r.malformed==%t and r.clamped==%d,do: raise(%q<>" report "<>inspect(result))
  if %t do
-  unless elem(result,0)==:error,do: raise("invalid wide text accepted")
+  unless elem(result,0)==:error and r.reason != "",do: raise(%q<>" refusal "<>inspect(result))
  else
-  unless elem(result,0)==:ok,do: raise("valid wide text rejected "<>inspect(result))
+  unless elem(result,0)==:ok and r.reason=="",do: raise("valid wide text rejected "<>inspect(result))
   {:ok,saved}=T.save("Root",elem(result,1))
-  unless Base.encode16(saved,case: :lower)==%q,do: raise("wide clamp split or changed a code point")
+  unless Base.encode16(saved,case: :lower)==%q,do: raise("wide value changed a code point")
  end
 end
-`, hex.EncodeToString(wire), tc.malformed, tc.clamped, fmt.Sprintf("%s arm=%v", tc.name, arm), tc.malformed, want)
+`, hex.EncodeToString(wire), refused, fmt.Sprintf("%s arm=%v", tc.name, arm), want)
 		}
 	}
 	probe.WriteString("IO.puts(\"WIDE_TEXT_VALID_OK\")\n")
@@ -96,7 +96,7 @@ end
 }
 
 func TestBoundedBytesCountBeforePayloadElixir(t *testing.T) {
-	slowtest.Gate(t, "Elixir bounded bytes clamp count before requiring payload")
+	slowtest.Gate(t, "Elixir bounded bytes over-bound count refuses before payload")
 	u := unitFrom(t, `package widetext
  union Choice { wide bytes(2) }
  table Root { text bytes(2)
@@ -108,7 +108,7 @@ func TestBoundedBytesCountBeforePayloadElixir(t *testing.T) {
 	for _, tc := range []struct {
 		name, raw string
 		malformed bool
-		clamped   int
+		overBound int
 	}{
 		{"empty", "00", false, 0}, {"exact", "020102", false, 0},
 		{"over-bound-prefix", "030102", false, 1},
@@ -139,11 +139,12 @@ func TestBoundedBytesCountBeforePayloadElixir(t *testing.T) {
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			_, e = tablewire.Decode(m, v, wire, &report)
-			if tablewire.ReadRefusal(e) != tc.malformed {
+			refused := tc.malformed || tc.overBound > 0
+			if tablewire.ReadRefusal(e) != refused || refused != report.Refused || (refused && report.Reason == "") || (!refused && report.Reason != "") {
 				t.Fatalf("%s arm=%v neutral: %v %+v", tc.name, arm, e, report)
 			}
 			want := ""
-			if !tc.malformed {
+			if !refused {
 				b, e := tablewire.Encode(m, v)
 				if e != nil {
 					t.Fatal(e)
@@ -153,19 +154,18 @@ func TestBoundedBytesCountBeforePayloadElixir(t *testing.T) {
 			fmt.Fprintf(&probe, `
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  r=elem(result,2)
- unless r.malformed==%t and r.clamped==%d,do: raise(%q<>" report "<>inspect(result))
  if %t do
-  unless elem(result,0)==:error,do: raise("invalid bounded bytes accepted")
+  unless elem(result,0)==:error and r.reason != "",do: raise(%q<>" refusal "<>inspect(result))
  else
-  unless elem(result,0)==:ok,do: raise("valid bounded bytes rejected "<>inspect(result))
+  unless elem(result,0)==:ok and r.reason=="",do: raise("valid bounded bytes rejected "<>inspect(result))
   {:ok,saved}=T.save("Root",elem(result,1))
-  unless Base.encode16(saved,case: :lower)==%q,do: raise("bounded bytes prefix changed")
+  unless Base.encode16(saved,case: :lower)==%q,do: raise("bounded bytes value changed")
  end
 end
-`, hex.EncodeToString(wire), tc.malformed, tc.clamped, fmt.Sprintf("%s arm=%v", tc.name, arm), tc.malformed, want)
+`, hex.EncodeToString(wire), refused, fmt.Sprintf("%s arm=%v", tc.name, arm), want)
 		}
 	}
 	probe.WriteString("IO.puts(\"BOUNDED_BYTES_OK\")\n")

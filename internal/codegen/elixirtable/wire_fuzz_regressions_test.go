@@ -2,7 +2,6 @@ package elixirtable
 
 import (
 	"encoding/hex"
-	"errors"
 	"maps"
 	"os"
 	"path/filepath"
@@ -23,11 +22,11 @@ import (
 //     (mapdemo.Chunks retain mutant 68,210).
 //  3. Retaining capture requires exact content consumption in nested bodies
 //     and arrays (listdemo.Save retain mutant 87,889).
-//  4. A damaged child table element ends there, and the array reads on to a
-//     later element's non-finite float, which refuses the read
+//  4. A damaged child table element refuses the whole load with a named
+//     reason and no value
 //     (docs/SPEC-TABLES.md §4; listdemo.Save retain mutant 91,390,
 //     testdata/wire/tables/fuzz-vectors/list_damaged_child_reads_on.bin).
-//  5. A bool payload byte above 1 sets malformed=true and discards the load
+//  5. A bool payload byte above 1 refuses the whole load with a named reason
 //     (tabledemo.ProfileConfig mutant 162,022,
 //     testdata/wire/tables/fuzz-vectors/bool_byte_above_one.bin).
 func TestWireFuzzRegressionsElixir(t *testing.T) {
@@ -49,8 +48,8 @@ func TestWireFuzzRegressionsElixir(t *testing.T) {
 	var listRep tabletext.Report
 	listRetain := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: (1 << 20) / 8}
 	ok, err := tablewire.DecodeRetain(listModel, listModel.New(listRoot), damagedChild, listRetain, &listRep)
-	if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](err); ok || !refused {
-		t.Fatalf("oracle DecodeRetain(list_damaged_child_reads_on) = (%v, %v, %+v), want ok=false and the non_finite_float refusal", ok, err, listRep)
+	if ok || err == nil || !listRep.Refused || listRep.Reason == "" || !tablewire.ReadRefusal(err) {
+		t.Fatalf("oracle DecodeRetain(list_damaged_child_reads_on) = (%v, %v, %+v), want ok=false and a named refusal", ok, err, listRep)
 	}
 
 	u := unitFrom(t, `package fuzzprobe
@@ -82,10 +81,16 @@ table Root
 `)
 	files := generateElixir(t, u)
 	listFiles := generateElixir(t, listUnit)
-	files["ListTable.ex"] = listFiles["Table.ex"]
+	// Every module the list unit generated rides under a List-prefixed
+	// file name (Elixir does not tie a module to its file's name), so the
+	// two units' same-named files never overwrite each other and no
+	// generated module the Table module calls is left undefined.
+	for name, data := range listFiles {
+		files["List"+name] = data
+	}
 
 	probe := `
-empty = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+empty = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
 store = %{records: [], used: 0, cap: 65536, ids: [], id_cap: 8192}
 
 items_id = Enum.find(Fuzzprobe.Table.descriptors()["Root"].fields, &(&1.name == "items")).id
@@ -93,10 +98,10 @@ flag_id = Enum.find(Fuzzprobe.Table.descriptors()["Root"].fields, &(&1.name == "
 score_id = Enum.find(Fuzzprobe.Table.descriptors()["Root"].fields, &(&1.name == "score")).id
 
 # 1. Non-canonical array count LEB128 (0x80, 0x00) with mismatched element kind (2 != 13)
-# must report malformed=true rather than kind_mismatch=1.
+# must refuse as malformed with a named reason.
 noncanon_array_wire = <<1, 1, 14, 3, 2, 0x80, 0x00, 0, items_id::little-64, 1::little-64>>
 case Fuzzprobe.Table.load("Root", noncanon_array_wire) do
-  {:error, :malformed, %{malformed: true, kind_mismatch: 0}} -> :ok
+  {:error, :malformed, %{reason: reason}} when is_binary(reason) and reason != "" -> :ok
   other -> raise("expected malformed on non-canonical array count LEB128, got " <> inspect(other))
 end
 
@@ -117,51 +122,55 @@ end
 unknown_id = 0x1122334455667788
 early_term_unknown_wire = <<1, 1, 13, 2, 0, 0xFF, 0, unknown_id::little-64, 1::little-64>>
 case Fuzzprobe.Table.load_retain("Root", early_term_unknown_wire, store, empty) do
-  {:ok, _v, %{unknown: 1, retained: 0, retain_lost: 1, malformed: false}, _rt} -> :ok
+  {:ok, _v, %{unknown: 1, retained: 0, retain_lost: 1, reason: ""}, _rt} -> :ok
   other -> raise("expected retain_lost=1 on early-terminated unknown body, got " <> inspect(other))
 end
 
 # 4. list_damaged_child_reads_on vector: a damaged child body in a table array
-# ends there, and the array reads on to a later element's non-finite float.
+# refuses the whole load with a named reason.
 damaged_child_wire = Base.decode16!("` + hex.EncodeToString(damagedChild) + `", case: :lower)
 case Listdemo.Table.load("Save", damaged_child_wire) do
-  {:error, :non_finite_float, _} -> :ok
-  other -> raise("expected plain non_finite_float on list_damaged_child_reads_on, got " <> inspect(other))
+  {:error, _, %{reason: reason}} when is_binary(reason) and reason != "" -> :ok
+  other -> raise("expected plain refusal on list_damaged_child_reads_on, got " <> inspect(other))
 end
 case Listdemo.Table.load_retain("Save", damaged_child_wire, store, empty) do
-  {:error, :non_finite_float, _, _rt} -> :ok
-  other -> raise("expected retain non_finite_float on list_damaged_child_reads_on, got " <> inspect(other))
+  {:error, _, %{reason: reason}, _rt} when is_binary(reason) and reason != "" -> :ok
+  other -> raise("expected retain refusal on list_damaged_child_reads_on, got " <> inspect(other))
 end
 
-# 5. Bool payload byte above 1 (0x11) sets malformed=true and discards the load.
+# 5. Bool payload byte above 1 (0x11) refuses the load with a named reason.
 bad_bool_wire = <<1, 1, 1, 0x11, 0, flag_id::little-64, 1::little-64>>
 case Fuzzprobe.Table.load("Root", bad_bool_wire) do
-  {:error, :malformed, %{malformed: true}} -> :ok
+  {:error, :malformed, %{reason: reason}} when is_binary(reason) and reason != "" -> :ok
   other -> raise("expected plain malformed on bool byte 0x11, got " <> inspect(other))
 end
 case Fuzzprobe.Table.load_retain("Root", bad_bool_wire, store, empty) do
-  {:error, :malformed, %{malformed: true}, _rt} -> :ok
+  {:error, :malformed, %{reason: reason}, _rt} when is_binary(reason) and reason != "" -> :ok
   other -> raise("expected retain malformed on bool byte 0x11, got " <> inspect(other))
 end
 
-# 6. Node table riding twice (framing N7): last occurrence wins even if earlier
-# occurrence had a mismatched inner node count.
+# 6. Node table riding twice is the same field id twice in one body: the
+# whole load refuses with a named reason (§3, §4).
 node_id = 0xFFFFFFFFFFFFFFFF
 node_table_twice_wire = <<1, 1, 12, 1, 99, 1, 12, 1, 0, 0, node_id::little-64, 1::little-64>>
 case Fuzzprobe.Table.load("Root", node_table_twice_wire) do
-  {:ok, _v, %{malformed: false}} -> :ok
-  other -> raise("expected clean load when second node_table overwrites damaged first, got " <> inspect(other))
+  {:error, _, %{reason: reason}} when is_binary(reason) and reason != "" -> :ok
+  other -> raise("expected refusal when the node table rides twice, got " <> inspect(other))
+end
+case Fuzzprobe.Table.load_retain("Root", node_table_twice_wire, store, empty) do
+  {:error, _, %{reason: reason}, _} when is_binary(reason) and reason != "" -> :ok
+  other -> raise("expected retain refusal when the node table rides twice, got " <> inspect(other))
 end
 
 # 7. Unknown union arm inside a union array with L past remaining bytes is malformed.
 choices_id = Enum.find(Fuzzprobe.Table.descriptors()["Root"].fields, &(&1.name == "choices")).id
 bad_unknown_arm_wire = <<1, 1, 14, 6, 15, 1, 2, 8, 55, 0, 0, choices_id::little-64, unknown_id::little-64, 2::little-64>>
 case Fuzzprobe.Table.load("Root", bad_unknown_arm_wire) do
-  {:error, :malformed, %{malformed: true}} -> :ok
+  {:error, :malformed, %{reason: reason}} when is_binary(reason) and reason != "" -> :ok
   other -> raise("expected plain malformed on truncated unknown union arm, got " <> inspect(other))
 end
 case Fuzzprobe.Table.load_retain("Root", bad_unknown_arm_wire, store, empty) do
-  {:error, :malformed, %{malformed: true}, _rt} -> :ok
+  {:error, :malformed, %{reason: reason}, _rt} when is_binary(reason) and reason != "" -> :ok
   other -> raise("expected retain malformed on truncated unknown union arm, got " <> inspect(other))
 end
 
@@ -175,7 +184,7 @@ IO.puts("WIRE_FUZZ_REGRESSIONS_OK")
 
 	// Negative control: accepting any nonzero byte as a clean bool leaves bad_bool_wire green.
 	const target = `  defp read_payload(%{t: :bool}, <<b, _::binary>>, _nodes, _ids, report) do
-    report = if b > 1, do: %{report | malformed: true}, else: report
+    report = if b > 1, do: throw(:wire_damaged), else: report
     {:cont, b != 0, report}
   end`
 	const sabotage = `  defp read_payload(%{t: :bool}, <<b, _::binary>>, _nodes, _ids, report) do

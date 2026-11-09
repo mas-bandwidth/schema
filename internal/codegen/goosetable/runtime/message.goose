@@ -37,6 +37,10 @@ let MsgRefuseBatchTooLarge: i64 = 6;
 let MsgRefuseNonFiniteFloat: i64 = 7;
 let MsgRefuseInvalidValue: i64 = 8;
 let MsgRefuseIntegrityMismatch: i64 = 9;
+let MsgRefuseKindMismatch: i64 = 10;
+let MsgRefuseLengthOverBound: i64 = 11;
+let MsgRefuseCountOverBound: i64 = 12;
+let MsgRefuseOutOfRange: i64 = 13;
 
 fn msg_reason_name(code: i64) -> const u8[:] {
     match code {
@@ -50,6 +54,10 @@ fn msg_reason_name(code: i64) -> const u8[:] {
         7 => "non_finite_float",
         8 => "invalid_value",
         9 => "integrity_mismatch",
+        10 => "kind_mismatch",
+        11 => "length_over_bound",
+        12 => "count_over_bound",
+        13 => "out_of_range",
         _ => "???",
     }
 }
@@ -732,8 +740,9 @@ fn msg_widens(their_kind: u8, their_elem: u8, kind: u8, elem: u8) -> bool {
 
 // msg_accept compares the announced entry with this reader's declaration of
 // the same id: 0 the same kind, 1 WIDENED (counted; the payload decodes at the
-// sender's shape), 2 a KIND MISMATCH, counted and stepped over by the
-// announced shape, -1 damage on that step (§3.3, §4).
+// sender's shape), -1 a KIND MISMATCH, which refuses the batch the way the Go
+// reference does (internal/tablewire bitDecoder.refuse), or damage on the
+// step that found it (§3.3, §4).
 fn msg_accept(r: MsgReader&, e: i64, kind: u8, elem: u8) -> i64 {
     let their_kind = r.voc.entries[e].kind;
     let their_elem = r.voc.entries[e].elem;
@@ -743,11 +752,8 @@ fn msg_accept(r: MsgReader&, e: i64, kind: u8, elem: u8) -> i64 {
         return 1;
     }
     r.mismatch += 1;
-    if !msg_skip(r, e) {
-        r.ok = false;
-        return -1;
-    }
-    return 2;
+    msg_refuse_read(r, MsgRefuseKindMismatch);
+    return -1;
 }
 
 // msg_unknown counts an entry this reader cannot name and steps over it by

@@ -29,7 +29,7 @@ end
 alias ProbeCheck,as: P
 alias Probe.Table,as: T
 store=%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 `)
 	for _, row := range []struct{ root, input string }{
 		{"Tiny", `{"values":["x"]}`},
@@ -63,12 +63,12 @@ zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retain
 		fmt.Fprintf(&p, `name=%q
 wire=Base.decode16!(%q,case: :lower)
 {:ok,v,r}=T.from_json(name,%q)
-P.ok(r.clamped==0 and r.kind_mismatch==0 and true,"unbounded JSON report")
+P.ok(r.reason=="" and true,"unbounded JSON report")
 {:ok,text}=T.to_json(name,v)
 P.ok(text==%q,"unbounded canonical "<>name<>" "<>text)
 {:ok,^wire}=T.save(name,v)
 {:ok,back,r}=T.load(name,wire)
-P.ok(r.clamped==0 and r.kind_mismatch==0 and true,"unbounded wire report")
+P.ok(r.reason=="" and true,"unbounded wire report")
 {:ok,^wire}=T.save(name,back)
 {:ok,rv,rr,ret}=T.load_retain(name,wire,store,zero)
 {:ok,^wire,_,_}=T.save_retain(name,rv,ret,rr)
@@ -115,14 +115,16 @@ for bad<-["x"<><<0>><>"y",<<255>>] do
  P.ok(T.to_json("Keys",value)=={:error,:invalid_value},"bad unbounded key JSON")
  P.ok(T.cook_measure("Keys",value)==-1,"bad unbounded key cook")
 end
-{:ok,v,r}=T.from_json("ArrayRoot","[\"\\ud800\"]")
-P.ok(Enum.map(v["values"],& &1["value"])==["�"] and true,"active surrogate replacement contract")
+case T.from_json("ArrayRoot","[\"\\ud800\"]") do
+ {:error,a,r} -> P.ok(a == :malformed or r.reason != "","lone surrogate refusal")
+ other -> P.ok(false,"lone surrogate refusal "<>inspect(other))
+end
 for field<-["a","b","c","d"] do
  {:ok,wire}=T.save("Lists",%{field=>[%{"value"=>"xyz"}]})
  {at,3}=:binary.match(wire,"xyz")
  <<head::binary-size(^at),_,tail::binary>>=wire
  {:error,:malformed,r}=T.load("Lists",<<head::binary,255,tail::binary>>)
- P.ok(r.malformed,"unbounded malformed UTF8 read")
+ P.ok(not Map.has_key?(r,:clamped) and not Map.has_key?(r,:kind_mismatch) and not Map.has_key?(r,:malformed),"unbounded malformed UTF8 read")
 end
 IO.puts("UNBOUNDED_TEXT_OK")
 `)
@@ -133,7 +135,7 @@ IO.puts("UNBOUNDED_TEXT_OK")
 }
 
 func TestRetainedTextListPathsElixir(t *testing.T) {
-	slowtest.Gate(t, "Elixir retained text-list indices and discarded-element records")
+	slowtest.Gate(t, "Elixir retained text-list indices and over-total refusal")
 	u := unitFrom(t, `package probe
  table Elem { value string(16)
  extra int32 }
@@ -148,7 +150,7 @@ end
 alias ProbeCheck,as: P
 alias Probe.Table,as: T
 store=%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 {:ok,source,_}=T.from_json("Writer",~s({"values":[{"value":"abcde","extra":1},{"value":"xyz","extra":2},{"value":"tail","extra":3}]}))
 {:ok,wire}=T.save("Writer",source)
 {:ok,v,r,ret}=T.load_retain("Plain",wire,store,zero)
@@ -156,11 +158,10 @@ P.ok(r.unknown==3 and r.retained==3 and length(ret.records)==3,"retained all ind
 {:ok,saved,_,_}=T.save_retain("Plain",v,ret,r)
 {:ok,back,_}=T.load("Writer",saved)
 P.ok(Enum.map(back["values"],& &1["extra"])==[1,2,3],"retained records belong to distinct indices")
-{:ok,v,r,ret}=T.load_retain("Limited",wire,store,zero)
-P.ok(r.unknown==2 and r.retained==2 and r.clamped==1 and length(ret.records)==1,"discarded overflow element retains no records "<>inspect({r,ret}))
-{:ok,saved,_,_}=T.save_retain("Limited",v,ret,r)
-{:ok,back,_}=T.load("Writer",saved)
-P.ok(Enum.map(back["values"],& &1["extra"])==[1],"only prefix retained data survives")
+case T.load_retain("Limited",wire,store,zero) do
+ {:error,_,r,ret} -> P.ok(r.reason != "" and ret.records==[] and ret.used==0 and ret.ids==[],"over-total retaining refusal "<>inspect({r,ret}))
+ other -> P.ok(false,"over-total retaining refusal "<>inspect(other))
+end
 IO.puts("RETAINED_TEXT_PATHS_OK")
 `
 	out, e := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe)

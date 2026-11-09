@@ -127,8 +127,8 @@ fn sha256_matches_fips_180_vectors() {
 
 fn report_lines(r: &crate::TableReport) -> String {
     format!(
-        "Retained={}\nRetainLost={}\nWidened={}\nUnknown={}\nKindMismatch={}\nClamped={}\nDuplicate={}\nMalformed={}\n",
-        r.retained, r.retain_lost, r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate, r.malformed
+        "Retained={}\nRetainLost={}\nWidened={}\nUnknown={}\nKindMismatch=0\nClamped=0\nDuplicate=0\nMalformed={}\n",
+        r.retained, r.retain_lost, r.widened, r.unknown, r.damaged
     )
 }
 

@@ -43,9 +43,8 @@ end
 -- TableReport: the runtime counts into the table it is handed.
 local function newReport()
   return {
-    retained = 0, retainLost = 0, widened = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, duplicate = 0, malformed = false, refused = 0, blobShared = 0,
-    missingRequired = 0, wireDamaged = false,
+    retained = 0, retainLost = 0, widened = 0, unknown = 0,
+    refused = 0, blobShared = 0, missingRequired = 0, wireDamaged = false,
   }
 end
 M.NewReport = newReport
@@ -254,7 +253,7 @@ end
 
 -- ---- the owning facade (tables/cards/cards.go) -----------------------------------
 
--- readWire is the one tolerant read every facade read shares: the load
+-- readWire is the one strict read every facade read shares: the load
 -- into a zeroed report. Damaged input never publishes a partial record.
 local function readWire(wire)
   local report = newReport()
@@ -264,7 +263,7 @@ local function readWire(wire)
 end
 
 -- Load reads wire into a Record (docs/SPEC-TABLES.md §6.2). Refusals and
--- malformed wire are errors; tolerant events ride in the returned report. The
+-- malformed wire are errors; unknown and widened counts ride in the returned report. The
 -- ORIGINAL wire is kept, never rewritten, so an old input is preserved byte
 -- for byte.
 function M.Load(wire)
@@ -278,18 +277,17 @@ function M.Load(wire)
   return newRecord(wire, root, report), report
 end
 
--- FromJSON builds a Record from JSON text (docs/SPEC-TABLES.md §16). Unknown,
--- mismatched, clamped and malformed inputs are refused, as are the customer
--- bounds and any body or element that is not well-formed UTF-8 without NUL.
--- Bytes are published only on complete success.
+-- FromJSON builds a Record from JSON text (docs/SPEC-TABLES.md §16). Unknown
+-- fields and every read the strict parser refuses are refused, as are the
+-- customer bounds and any body or element that is not well-formed UTF-8
+-- without NUL. Bytes are published only on complete success.
 function M.FromJSON(text)
   local report = newReport()
   local root = codec.FromJSON(text, report)
-  if root == nil or report.malformed then return nil, refuse("cards: JSON is malformed", "malformed") end
-  if report.unknown > 0 or report.kindMismatch > 0 or report.clamped > 0 then
+  if root == nil or report.reason ~= nil then return nil, refuse("cards: JSON is malformed", "malformed") end
+  if report.unknown > 0 then
     return nil, refuse(
-      string.format("cards: JSON has loss events (unknown=%d kindMismatch=%d clamped=%d): refused, never truncated",
-        report.unknown, report.kindMismatch, report.clamped),
+      string.format("cards: JSON has %d unknown field(s): refused, never truncated", report.unknown),
       "malformed")
   end
   local cerr = checkCard(root)
@@ -622,15 +620,7 @@ local function lossErr(report)
     return refuse(string.format("cards: upgrade: %d retained field(s) lost, refusing to replace", report.retainLost),
       "retain-lost", report)
   end
-  if report.kindMismatch > 0 then
-    return refuse(string.format("cards: upgrade: %d kind mismatch(es), refusing to replace", report.kindMismatch),
-      "malformed", report)
-  end
-  if report.clamped > 0 then
-    return refuse(string.format("cards: upgrade: %d clamped value(s), refusing to replace", report.clamped),
-      "malformed", report)
-  end
-  if report.malformed then return refuse("cards: upgrade: malformed wire, refusing to replace", "malformed", report) end
+  if report.reason ~= nil then return refuse("cards: upgrade: malformed wire, refusing to replace", "malformed", report) end
   return nil
 end
 
@@ -666,8 +656,7 @@ M.upgrade = upgrade
 function M.Upgrade(wire) return upgrade(wire, M.MaxRetainBytes, M.MaxRetainIDs) end
 
 -- ReadStrict reads wire and refuses any data the current declaration cannot
--- support: unknown, kind mismatch, clamped, malformed and every load failure
--- (docs/SPEC-TABLES.md §4).
+-- support: unknown fields and every strict-read refusal (docs/SPEC-TABLES.md §4).
 function M.ReadStrict(wire)
   local record, report = M.Load(wire)
   if record == nil then return nil, report end
@@ -675,15 +664,7 @@ function M.ReadStrict(wire)
     return nil, refuse(string.format("cards: strict: %d unknown field(s), unsupported data", report.unknown),
       "unknown-present", report)
   end
-  if report.kindMismatch > 0 then
-    return nil, refuse(string.format("cards: strict: %d kind mismatch(es), unsupported data", report.kindMismatch),
-      "malformed", report)
-  end
-  if report.clamped > 0 then
-    return nil, refuse(string.format("cards: strict: %d clamped value(s), unsupported data", report.clamped),
-      "malformed", report)
-  end
-  if report.malformed then
+  if report.reason ~= nil then
     return nil, refuse("cards: strict: malformed wire, unsupported data", "malformed", report)
   end
   return record, report
@@ -754,12 +735,11 @@ M.sha256hex = sha256hex
 -- refuseLossy names the read events that make a record unsafe to hash or
 -- rewrite (docs/SPEC-TABLES.md §4, §6.6).
 local function refuseLossy(report)
-  local lost = report.unknown > 0 or report.kindMismatch > 0 or report.clamped > 0 or report.retainLost > 0
-  if lost or report.malformed then
+  local lost = report.unknown > 0 or report.retainLost > 0
+  if lost or report.reason ~= nil then
     return refuse(
-      string.format("cards: record has loss events (unknown=%d kindMismatch=%d clamped=%d retainLost=%d "
-        .. "malformed=%s): refused, never hashed or rewritten",
-        report.unknown, report.kindMismatch, report.clamped, report.retainLost, tostring(report.malformed)),
+      string.format("cards: record has loss events (unknown=%d retainLost=%d): refused, never hashed or rewritten",
+        report.unknown, report.retainLost),
       "unknown-present", report)
   end
   return nil

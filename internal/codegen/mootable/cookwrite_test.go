@@ -20,6 +20,16 @@ import (
 // little-endian file opens and reads back (table_cookread.moo) to a value
 // equal to the load's. A refusal prints "refuse <name> <field>".
 func cookWriteProbe(g *generatedUnit, rootName string) string {
+	return cookWriteProbeShared(g, rootName, "", "")
+}
+
+// cookWriteProbeShared is cookWriteProbe over a manifest recipe `input=<json>
+// share=<from>:<to>` when from is not empty: the value is the canonical JSON
+// text (inputs.text) read through the unit's json module, and the slot to is
+// handed the slot from's very buffer, the in-memory graph Cook preserves and
+// the wire and the text cannot spell (docs/SPEC-TABLES.md §2.5, §7.6), as the
+// leg's conformance driver builds it (test/conformance/moo/cook.moo).
+func cookWriteProbeShared(g *generatedUnit, rootName, from, to string) string {
 	var b strings.Builder
 	b.WriteString("--!strict\n" + valueDump + moorunHex)
 	b.WriteString(g.requireAll())
@@ -27,7 +37,18 @@ func cookWriteProbe(g *generatedUnit, rootName string) string {
 	fmt.Fprintf(&b, `local report = load.newReport()
 local d = St.lookup(%[1]q)
 local value: any
-if d.fixed then
+if %[2]q ~= "" then
+	local J = require("./json")
+	local rec = d.new()
+	if not J.fromJson(d, rec, inputs.text, {}) then print("input text did not read") return end
+	local src: any, dst: any = nil, nil
+	for _, fd in d.fields do
+		if fd.name == %[2]q then src = fd elseif fd.name == %[3]q then dst = fd end
+	end
+	if src == nil or dst == nil or rec[src.slot] == nil then print("the share recipe names no two blob fields") return end
+	rec[dst.slot] = rec[src.slot]
+	value = rec
+elseif d.fixed then
 	local vals = F.load(d, F.lookup(%[1]q) :: any, inputs.wire, report)
 	value = if vals ~= nil then vals[1] else nil
 else
@@ -47,7 +68,7 @@ if h == nil then print("reopen " .. tostring(why)) return end
 local back, refusal = R.read(h)
 if back == nil then print("reread " .. refusal.name .. " " .. refusal.field) return end
 print(if dump(back) == dump(value) then "reread ok" else "reread differs")
-`, rootName)
+`, rootName, from, to)
 	return b.String()
 }
 
@@ -67,6 +88,10 @@ end
 type cookWriteRow struct {
 	row    reportRow
 	le, be string
+	// input and share are the row's recipe (`input=<json> share=<from>:<to>`):
+	// the value is built from the text with one buffer named from two slots,
+	// which no wire spells (a blob_shared instance's wire is refused)
+	input, from, to string
 }
 
 func cookWriteRows(t *testing.T) []cookWriteRow {
@@ -83,10 +108,18 @@ func cookWriteRows(t *testing.T) []cookWriteRow {
 		if !ok {
 			t.Fatalf("cook-write %s names no instance", f[1])
 		}
-		if inst.blobShared {
-			continue
+		cw := cookWriteRow{row: inst, le: f[2], be: f[3]}
+		for _, kv := range f[4:] {
+			if v, ok := strings.CutPrefix(kv, "input="); ok {
+				cw.input = v
+			} else if v, ok := strings.CutPrefix(kv, "share="); ok {
+				cw.from, cw.to, _ = strings.Cut(v, ":")
+			}
 		}
-		out = append(out, cookWriteRow{row: inst, le: f[2], be: f[3]})
+		if inst.blobShared && (cw.input == "" || cw.from == "") {
+			t.Fatalf("cook-write %s: its instance's wire is refused and the row names no input= and share= recipe", f[1])
+		}
+		out = append(out, cw)
 	}
 	if len(out) == 0 {
 		t.Fatal("the manifest carries no cook-write row")
@@ -147,7 +180,12 @@ func cookWriteFailures(t *testing.T, rows []cookWriteRow, mutate func(*testing.T
 		}
 		le := readFile(t, cw.le)
 		be := readFile(t, cw.be)
-		out := strings.Split(g.run(t, cookWriteProbe(g, row.root), map[string][]byte{"wire": rowWire(t, row)}), "\n")
+		var out []string
+		if cw.from != "" {
+			out = strings.Split(g.run(t, cookWriteProbeShared(g, row.root, cw.from, cw.to), map[string][]byte{"text": readFile(t, cw.input)}), "\n")
+		} else {
+			out = strings.Split(g.run(t, cookWriteProbe(g, row.root), map[string][]byte{"wire": rowWire(t, row)}), "\n")
+		}
 		switch {
 		case len(out) != 4:
 			fails = append(fails, fmt.Sprintf("%s (%s/%s): %s", row.caseName, row.unit, row.root, strings.Join(out, " | ")))

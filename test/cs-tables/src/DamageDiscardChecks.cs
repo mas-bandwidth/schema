@@ -399,9 +399,11 @@ static unsafe partial class Program
         byte[] id42 = Join(new byte[] { 1, 4 }, U32(42));
         byte[] leaf = Join(new byte[] { 1, 4 }, U32(10), new byte[] { 0 });
 
-        // 1. Overwritten self-edge in one body: next=&root (node 1) then next=null (node 0) -> acyclic!
+        // 1. Overwritten self-edge in one body: next=&root (node 1) then next=null
+        // (node 0). The repeated field id is damage on its own (§6.5), whatever
+        // the last occurrence names.
         byte[] overwritten = CycleWire(Join(id42, new byte[] { 3, 17, 1, 3, 17, 0 }));
-        DiscardCycleNode("cycle_overwritten_self", overwritten, false);
+        DiscardCycleNode("cycle_overwritten_self", overwritten, true);
 
         // 2. Unreached cycle: root has next=null, while node 2 and node 3 point to each other
         byte[] n2 = new byte[] { 3, 17, 3, 0 };

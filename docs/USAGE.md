@@ -792,14 +792,11 @@ count no reader accepts. It is the one place storage starts at something other
 than zero without a declared default, and `[..N]` is born at 0 as usual.
 
 Writing a count outside its bound is **caller error**, and it is a write-side
-contract like every other (SPEC.md §5): it asserts in DEBUG in each target
-whose language has that idiom, and is refused in every build only in Go and
-Elixir, which have none.
-The count guards the element loop and the pack subtracts the low bound, so
-an out-of-range count wraps and a release build will happily write bytes no
-reader takes — which is why the debug assert is worth having, and why
-keeping the count in range is your job. The READ refuses an out-of-range
-count in every build, in all nine.
+contract like every other (SPEC.md §5.1): it asserts in DEBUG in each target
+whose language has that idiom and is refused in every build in every target
+that has none. A build whose check is compiled out may write bytes no reader
+takes; the READ refuses an out-of-range count in every build, in every target.
+Keeping the count in range is your job.
 
 On a fixed table (SPEC-TABLES.md §3.4) the refusal has a name: a count past
 its bound is `count_over_bound` and a text length past its bound is
@@ -1781,7 +1778,8 @@ opposite shape. Its vocabulary is close to its field count, and the table costs
 48 bytes of a 106-byte message.
 
 **Form byte `2` moves the table one level up, to the connection, and bitpacks
-what is left.** A peer announces its unit's whole vocabulary once, as an
+what is left.** A peer announces its unit's message-closure vocabulary — the
+fixed tables and what they reach by value, and nothing else — once, as an
 ordinary file, and every batch after it is a form byte, a body count, and the
 bodies as one continuous bit stream: references at the width the vocabulary
 needs, values at the widths your declarations state, no kind byte and no length

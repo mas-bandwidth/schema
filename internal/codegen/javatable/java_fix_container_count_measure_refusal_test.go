@@ -16,11 +16,11 @@ import (
 )
 
 // A map count that runs past its body (wire fuzzer cause C3, the count pass)
-// makes the oracle's LoadMeasure refuse with count_over_length; no Load runs
-// (docs/SPEC-TABLES.md §2.9, §6.5). The Java leg used to accept the count and
-// load a short map. Each case is the fuzzer's own mutant at seed 24845619678,
-// for the affected unit's root, embedded as hex: the Java answer must be the
-// oracle's refusal.
+// makes the oracle's LoadMeasure refuse; no Load runs (docs/SPEC-TABLES.md
+// §2.9, §6.5). The Java leg used to accept the count and load a short map.
+// Each case is the fuzzer's own mutant at seed 24845619678, for the affected
+// unit's root, embedded as hex: the Java load hands back no value, and since
+// count_over_length is retired the strict read calls the count damage.
 func TestJavaFixContainerCountMeasureRefusal(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -43,8 +43,10 @@ func TestJavaFixContainerCountMeasureRefusal(t *testing.T) {
 				t.Fatalf("test setup: the oracle does not refuse the %s mutant", c.root)
 			}
 			measure, report, _, loaded := javaCountMeasureVerdict(t, u, c.root, mutant)
-			if measure != "-1" || loaded || !strings.HasSuffix(report, ",true") {
-				t.Errorf("%s.%s: java loadMeasure=%s report=%s loaded=%t, oracle refuses (count_over_length)", c.dir, c.root, measure, report, loaded)
+			// count_over_length is retired: a count its elements cannot
+			// cover is damage (docs/SPEC-TABLES.md, wire_damaged)
+			if measure != "-1" || loaded || !strings.HasSuffix(report, ",true,false") {
+				t.Errorf("%s.%s: java loadMeasure=%s report=%s loaded=%t, want no value and damaged (a count its elements cannot cover)", c.dir, c.root, measure, report, loaded)
 			}
 		})
 	}
@@ -254,24 +256,15 @@ public final class Driver {
 // held through the load (docs/SPEC-TABLES.md §4, §6.5): a row the strict read
 // keeps loads a value, a kind mismatch or an out-of-range value refuses the
 // whole load (no value, refused, not damaged), damage discards the value with
-// damaged set, and a refusal discards it with its name. The measure column is held as its verdict, a size
-// or -1, and the form column as the report's reason. A count its body cannot
-// cover is the one row class where the load answers the measure rather than
-// the strict read: the load refuses wherever loadMeasure answers -1.
+// damaged set, and a refusal discards it with its name. The measure column
+// is held as its verdict, a size or -1, and the form column as the report's
+// reason. A count its elements cannot cover is damage (count_over_length is
+// retired, docs/SPEC-TABLES.md), so the strict column holds those rows too.
 func javaPinFault(p javaPin, v javaPinVerdict) string {
 	bad := func(want string) string {
 		return fmt.Sprintf("measure=%s report=%s reason=%s loaded=%t, want %s", v.measure, v.report, v.reason, v.loaded, want)
 	}
 	r := strings.Split(v.report, ",")
-	if p.measure == "count_over_length" {
-		// THE LOAD REFUSES WHERE loadMeasure ANSWERS -1 (TestJavaFixContainer
-		// CountMeasureRefusal): a count its body cannot cover is the measure's
-		// refusal, and no value lands
-		if v.loaded || v.measure != "-1" || r[2] != "false" || r[3] != "true" {
-			return bad("no value, refused as loadMeasure refuses, not damaged")
-		}
-		return ""
-	}
 	switch p.strict {
 	case "ok":
 		if !v.loaded || r[2] != "false" || r[3] != "false" {

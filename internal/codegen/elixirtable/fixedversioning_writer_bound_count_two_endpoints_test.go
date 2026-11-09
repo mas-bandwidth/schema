@@ -40,21 +40,12 @@ func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
 
 	body := `  data = File.read!(file())
   {tag, values, report} = load(data)
-  check(tag == :ok, "the forged OLD file refused on the NEW build: #{inspect(tag)} #{why(report)}")
-  check(length(values) == 1, "the forged file reads one record, not #{length(values)}")
-  v = hd(values)
-  check(v.vals == [1000, 1001, 1002, 1003],
-    "the writer's four elements landed and only four: #{inspect(v.vals)}")
-  check(v.lead == 0xAAAAAAAA and v.trail == 0xBBBBBBBB,
-    "the forged count moved a neighbour: #{inspect({v.lead, v.trail})}")
-  check(report.clamped == 1,
-    "the count clamped once, not #{report.clamped}: #{why(report)}")
-  check(
-    report.unknown == 0 and true and report.widened == 0 and
-      true,
-    "a count forge is a clamp and nothing else: #{why(report)}"
-  )
-  check(true, "a clean clamped read is not malformed")`
+  check(tag == :error,
+    "the forged OLD file did not refuse on the NEW build: #{inspect(tag)} #{why(report)}")
+  check(not is_list(values),
+    "the refusal built no value: #{inspect(values)}")
+  check(report.unknown == 0 and report.widened == 0,
+    "a forged count refuses and moves nothing: #{why(report)}")`
 
 	out, err := runVersionProbe(t, elixirBin, "VNEW_array_bounded_grow", []string{"VOLD_array_bounded_grow", "VMID_array_bounded_grow"}, 0, forged, body)
 	if err != nil {

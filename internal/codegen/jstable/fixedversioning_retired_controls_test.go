@@ -79,7 +79,7 @@ const data = new Uint8Array(readFileSync(%q));
 const at = 20 + new DataView(data.buffer).getUint32(16, true) + 8;
 const back = [new T(), new T(), new T()];
 const plan = TNewPlan(4096, 4096);
-for (const [flag, present] of [[1,1],[2,7],[255,128],[0,0]]) {
+for (const [flag, present] of [[1,1],[0,0]]) {
   data[at] = flag; data[at+1] = present;
   plan.image.fill(0x5A);
   const r = new TableFixedReport();
@@ -88,7 +88,7 @@ for (const [flag, present] of [[1,1],[2,7],[255,128],[0,0]]) {
       r.repeated || r.widened !== %d) { fail("arm/flag report: " + n + " " + reason(r)); }
   const a = back[0], b = back[1], c = back[2];
   if (a.flag !== (flag !== 0) || a.notePresent !== (present !== 0) ||
-      a.note !== (present ? 44 : 0)) { fail("noncanonical/zero flags: " + show(a)); }
+      a.note !== (present ? 44 : 0)) { fail("canonical/zero flags: " + show(a)); }
   if (a.pick.type !== 2 || a.pick.labelled.lead !== 101 || a.pick.labelled.trail !== 202 ||
       a.pick.labelled.labelLength !== 5 || [104,101,108,108,111,0,0,0].some((v,i) => a.pick.labelled.label[i] !== v) ||
       a.tail !== 11 || a.mark !== -1 || a.heat !== 2 ** -149) { fail("second arm text and neighbours: " + show(a)); }
@@ -97,6 +97,15 @@ for (const [flag, present] of [[1,1],[2,7],[255,128],[0,0]]) {
   if (c.pick.type !== 2 || c.pick.labelled.labelLength !== 0 || c.pick.labelled.lead !== -5 ||
       c.pick.labelled.trail !== 606 || c.tail !== 13) { fail("empty text arm: " + show(c)); }
   %s
+}
+for (const [flag, present] of [[2,1],[1,7],[2,7],[255,128]]) {
+  data[at] = flag; data[at+1] = present;
+  plan.image.fill(0x5A);
+  const r = new TableFixedReport();
+  const n = TLoad(back, 3, data, data.length, plan, r);
+  if (n !== -1 || r.refused !== TableFixedRefusal.WireDamaged || r.damaged || r.oor) {
+    fail("non-boolean flag/present must refuse wire_damaged: " + n + " " + reason(r));
+  }
 }
 `, filepath.Join(corpus, "fu1.bin"), widened, extra)
 			if out, err := jsRunVersionProbe(t, node, reader, lineage, 0, "FuRoot", body); err != nil {
@@ -234,14 +243,20 @@ for (let repeat=0;repeat<2;repeat++) {
       !d.optPresent || d.opt.v !== 402 || d.wrap.leafPresent || d.tail !== 404) { fail("mixed nested presence: " + show(back)); }
   %s
 }
+function refuse(data, wantRefused) {
+  loadIndex++;
+  plan.image.fill(0x5A);
+  const r = new TableFixedReport();
+  const n = TLoad(back,1,data,data.length,plan,r);
+  if (n !== -1 || r.refused !== wantRefused || r.damaged || r.oor) {
+    fail("optional load " + loadIndex + " expected refused=" + wantRefused + ": " + n + " " + reason(r));
+  }
+}
 const body = head+8;
-{
-  const data = one(1), v = new DataView(data.buffer);
-  data[body+20]=7; v.setInt32(body+21,999,true);
-  data[body+48]=255; v.setInt32(body+49,42,true);
-  data[body+37]=2; data[body+42]=128;
-  const got=load(data);
-  if (!got.optPresent || got.opt.v!==999 || !got.wrap.leafPresent || got.wrap.leaf.v!==42 || !got.numberPresent || !got.markPresent) { fail("nonzero presence flags: "+show(got)); }
+for (const [off, bad] of [[20,7],[48,255],[37,2],[42,128]]) {
+  const data = one(1);
+  data[body+off] = bad;
+  refuse(data, TableFixedRefusal.WireDamaged);
 }
 {
   const data = one(1), v = new DataView(data.buffer);
@@ -251,18 +266,21 @@ const body = head+8;
   if (got.optPresent || got.opt.v!==7 || got.wrap.leafPresent || got.wrap.leaf.v!==7 ||
       got.numberPresent || got.number!==0 || got.markPresent || got.mark!==0) { fail("absent poison projected: "+show(got)); }
 }
-for (const [input,want,clamps] of [[9999,1000,1],[-1,0,1],[1000,1000,0],[0,0,0]]) {
+for (const [input,want] of [[1000,1000],[0,0]]) {
   const data=one(1); new DataView(data.buffer).setInt32(body+16,input,true);
-  if (load(data,1,clamps).%s !== want) { fail("integer clamp boundary"); }
+  if (load(data,1,0).%s !== want) { fail("integer range boundary"); }
+}
+for (const input of [9999,-1]) {
+  const data=one(1); new DataView(data.buffer).setInt32(body+16,input,true);
+  refuse(data, TableFixedRefusal.OutOfRange);
 }
 {
   const data=one(0); new DataView(data.buffer).setInt32(body+66,9999,true);
-  if (load(data,1,1).effect.boost.power!==1000) { fail("live union range clamp"); }
+  refuse(data, TableFixedRefusal.OutOfRange);
 }
 for (const [offset,kind] of [[65,"union"],[43,"enum"]]) {
   const data=one(0); data[body+offset]=9;
-  const got=load(data,1,1);
-  if (got.tail!==16 || (kind==="union" ? got.effect.type!==0 : !got.markPresent || got.mark!==0)) { fail("forged ordinal: "+show(got)); }
+  refuse(data, TableFixedRefusal.OutOfRange);
 }
 `, file, plain, extra, plain)
 			if out, err := jsRunVersionProbe(t, node, reader, lineage, 0, "OptRoot", body); err != nil {
@@ -324,18 +342,31 @@ const data = new Uint8Array(readFileSync(%q));
 const at=20+new DataView(data.buffer).getUint32(16,true)+8;
 if ([1,1,1,2].some((v,i)=>data[at+4+i]!==v)) { fail("C++ optional/union fixture positions"); }
 const back=[new T()], plan=TNewPlan(4096,4096);
-for (const [outer,tag,inner,ordinal,clamps] of [[1,1,1,2,0],[0,9,7,9,0],[1,1,0,9,0],[2,1,7,9,1],[2,1,255,2,0],[1,9,1,2,1],[1,2,7,9,0]]) {
+for (const [outer,tag,inner,ordinal] of [[1,1,1,2],[0,9,7,9],[1,1,0,9],[1,2,7,9]]) {
   data.set([outer,tag,inner,ordinal],at+4); plan.image.fill(0x5A);
   const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r), got=back[0];
-  if(n!==1 || r.refused || r.damaged || r.unknown || r.mismatch || r.widened || r.repeated || r.oor!==clamps) {
-    fail("nested guards "+[outer,tag,inner,ordinal]+" expected clamps="+clamps+" "+reason(r));
+  if(n!==1 || r.refused || r.damaged || r.unknown || r.mismatch || r.widened || r.repeated || r.oor) {
+    fail("nested guards "+[outer,tag,inner,ordinal]+" expected clean read "+reason(r));
   }
   if(got.head!==0x11223344 || got.tail!==0x55667788 || got.optPresent!==(outer!==0)) { fail("optional guard neighbours/presence"); }
   if(outer) {
-    if(got.opt.pick.type!==(tag>2 ? 0 : tag)) { fail("selected optional union tag"); }
-    if(tag===1 && (got.opt.pick.data.ePresent!==(inner!==0) || got.opt.pick.data.e!==(inner && ordinal<=2 ? ordinal : 0))) { fail("inner optional enum projection"); }
+    if(got.opt.pick.type!==tag) { fail("selected optional union tag"); }
+    if(tag===1 && (got.opt.pick.data.ePresent!==(inner!==0) || got.opt.pick.data.e!==(inner ? ordinal : 0))) { fail("inner optional enum projection"); }
   }
   %s
+}
+for (const [outer,tag,inner,ordinal,wantRefused] of [
+  [2,1,7,9,TableFixedRefusal.WireDamaged],
+  [2,1,255,2,TableFixedRefusal.WireDamaged],
+  [1,1,255,2,TableFixedRefusal.WireDamaged],
+  [1,1,1,9,TableFixedRefusal.OutOfRange],
+  [1,9,1,2,TableFixedRefusal.OutOfRange],
+]) {
+  data.set([outer,tag,inner,ordinal],at+4); plan.image.fill(0x5A);
+  const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r);
+  if(n!==-1 || r.refused!==wantRefused || r.damaged || r.oor) {
+    fail("nested guards "+[outer,tag,inner,ordinal]+" expected refused="+wantRefused+" "+reason(r));
+  }
 }
 `, filepath.Join(dir, "nested.bin"), extra)
 			if out, err := jsRunVersionProbe(t, node, reader, lineage, 0, "Nested", body); err != nil {

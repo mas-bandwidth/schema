@@ -147,6 +147,8 @@ public final class Driver {
  public static void main(String[] args){
   for(int mode=0;mode<3;mode++){
    TableRetain retain=new TableRetain(4096,128);TableVariable.Report report=new TableVariable.Report();RootVariable.Value v=RootRetain.loadRetain(frame(mode),retain,report);
+   // mode 2 writes every field twice: a repeated field id is damage (docs/plans/strict-only.md #5), never a replacement
+   if(mode==2){check(v==null&&report.damaged&&retain.used==0&&retain.idUsed==0,"a repeated field id is damage, the retain store empty");continue;}
    check(v!=null&&!report.damaged&&!report.refused&&report.unknown==2&&v.tail==17,"retaining load mode "+mode);
    check(report.retainLost==(mode==1?2:0)&&report.retained==(mode==1?0:2),"retained/excluded counters mode "+mode);
    check((retain.used>0)==(mode==0),"replacement tail disposal mode "+mode);
@@ -155,7 +157,7 @@ public final class Driver {
    if(mode!=1)check(loaded.slots.get(0).value==0&&loaded.choice.tag==1&&loaded.choice.item.value==0,"known child values");
   }
   TableVariable.Writer damaged=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));damaged.put8(1);damaged.putLeb(damaged.ref(RootVariable.F_choice));damaged.put8(15);damaged.putLeb(damaged.ref(CHOICE_WORD));damaged.put8(12);damaged.putLeb(1);damaged.put8(0);damaged.putLeb(damaged.ref(RootVariable.F_tail));damaged.put8(4);damaged.put32(17);damaged.put8(0);damaged.trailer();TableVariable.Report bad=new TableVariable.Report();RootVariable.Value empty=RootVariable.load(java.util.Arrays.copyOf(damaged.buf,damaged.off),bad);check(empty==null&&bad.damaged&&!bad.refused,"damaged direct text arm discards the whole load");
-  System.out.println("keyed/union child tails retained, unknown slots/arms excluded, replacements discard old tails");
+  System.out.println("keyed/union child tails retained, unknown slots/arms excluded, a repeated field is damage");
  }
 }`
 	driver = strings.ReplaceAll(driver, "AXIS_X", fmt.Sprintf("0x%016xL", ir.TableWireId(u.Enums["Axis"].VariantWireName(0))))

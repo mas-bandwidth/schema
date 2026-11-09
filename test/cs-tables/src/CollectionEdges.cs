@@ -13,8 +13,11 @@ static partial class Program
         Check(armAt>=0,"map depth fixture carries the named table arm");
         if(armAt>=0)
         {
-            wrongArm[armAt+3]=0;
+            wrongArm[armAt+3]=31;
             Check(Mapdemo.Schema.DepthLoadMeasure(wrongArm)==armExtent,"named arm framing reserves its extent even when decoding rejects the value kind");
+            // an arm under a kind no reader can skip is damage (docs/SPEC-TABLES.md §6.5)
+            wrongArm[armAt+3]=0;
+            Check(Mapdemo.Schema.DepthLoadMeasure(wrongArm)<0,"an arm under a kind no reader can skip refuses the measure");
         }
         var source=new A.Row { Values=new byte[20],ValuesCount=20,Past=91 };
         Array.Fill(source.Values,(byte)0);

@@ -2,14 +2,11 @@ package goosetable
 
 // A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13) in the Goose runtime, both
 // forms over the one FieldDesc fact (text_total) tablewire's descriptors
-// carry: the read keeps the longest prefix whose bytes are within the total
-// and drops the rest, clamped counted once; an element past M clamps first
-// and counts on its own; a count past [..N] is clamped before the total meets
-// it; and the write refuses a value past the total, the text form's -1 with
-// nothing appended and the wire's invalid_value. The text read names the
-// field in its report's clamped-field slot, `clamped: <Table>.<field>`
-// (§6.5). The answers are internal/tabletext's (KeepTextTotal,
-// ValidateTextTotal) and gotable's wire read.
+// carry. UNDER THE STRICT READ (docs/plans/strict-only.md layer 4) a list
+// whose bytes run past the total, an element past M and a count past [..N]
+// each refuse the whole read, in the text form and on the wire; a list
+// exactly at its total reads clean. The write refuses a value past the total,
+// the text form's -1 with nothing appended and the wire's invalid_value.
 //
 // Each probe is one text: the text read reads it, and the WIRE read reads the
 // bytes the engine packs from it under the same unit with no total and a
@@ -18,7 +15,7 @@ package goosetable
 //
 // TestGooseTextTotalNegativeControl takes the total out of the unit's runtime,
 // the text read, the wire load and both writes, and requires exactly the
-// probes that meet it red.
+// probes the total alone refuses to read.
 
 import (
 	"encoding/hex"
@@ -43,16 +40,16 @@ import (
 type textTotalProbe struct{ name, input, verdict, named, text string }
 
 var textTotalProbes = []textTotalProbe{
-	// the prefix: "abc" would carry 6 to 9, so it drops and "a" with it
-	{"prefix", `{"rules": ["abcdef", "abc", "a"]}`, "0,0,0,1,0", "out_of_range: Handover.rules", `{"rules":["abcdef"],"first":[]}`},
+	// the prefix: "abc" would carry 6 to 9, past the total: refused
+	{"prefix", `{"rules": ["abcdef", "abc", "a"]}`, "refused", "-", ``},
 	// exactly the total: kept whole, clean
 	{"at", `{"rules": ["abcd", "abcd"]}`, "0,0,0,0,0", "-", `{"rules":["abcd","abcd"],"first":[]}`},
-	// the element clamps at M first (counted), then the total drops "a"
-	{"clamp", `{"rules": ["abcdefghij", "a"]}`, "0,0,0,2,0", "out_of_range: Handover.rules", `{"rules":["abcdefgh"],"first":[]}`},
-	// a count past [..4] is clamped, and the kept four are within the total
-	{"count", `{"rules": ["a", "b", "c", "d", "e"]}`, "0,0,0,1,0", "-", `{"rules":["a","b","c","d"],"first":[]}`},
-	// an absent element counts zero; "abc" would carry 2 to 5
-	{"optional", `{"first": [null, "ab", null, "abc", "a"]}`, "0,0,0,1,0", "out_of_range: Handover.first", `{"rules":[],"first":[null,"ab",null]}`},
+	// an element past M: refused before the total meets it
+	{"clamp", `{"rules": ["abcdefghij", "a"]}`, "refused", "-", ``},
+	// a count past [..4]: refused by the count's bound
+	{"count", `{"rules": ["a", "b", "c", "d", "e"]}`, "refused", "-", ``},
+	// an absent element counts zero; "abc" would carry 2 to 5, past the total
+	{"optional", `{"first": [null, "ab", null, "abc", "a"]}`, "refused", "-", ``},
 }
 
 // textTotalPast is what the writes answer for a value past its total: the
@@ -116,9 +113,10 @@ func TestGooseTextTotalNegativeControl(t *testing.T) {
 			}
 		}
 	}
-	// every probe whose value meets the total, in both forms, and not the
-	// two that stay within it (count is held by the count's bound alone)
-	want := []string{"text prefix", "wire prefix", "text clamp", "wire clamp", "text optional", "wire optional"}
+	// every probe the total alone refuses, in both forms: not the one that
+	// stays within it, and not clamp and count, which an element past M and a
+	// count past [..4] refuse on their own
+	want := []string{"text prefix", "wire prefix", "text optional", "wire optional"}
 	if !slices.Equal(red, want) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the total taken out turned %v red, want exactly %v", red, want)
 	}
@@ -200,7 +198,7 @@ func runTextTotal(t *testing.T, sabotage func(map[string][]byte)) (map[string]st
 		b.WriteString("import ." + m + ";\n")
 	}
 	b.WriteString("\n" + gooserun.HexProbe + "\n")
-	b.WriteString(strings.ReplaceAll(`// text reads one text tolerantly and prints its counters, the field its
+	b.WriteString(strings.ReplaceAll(`// text reads one text under the strict read and prints its counters, the field its
 // clamped-field slot names, and the text the value writes back
 fn text(name: const u8[:]) {
     var text: u8[>..] = [];
@@ -219,7 +217,7 @@ fn text(name: const u8[:]) {
     hex(out);
 }
 
-// wire loads one file tolerantly and prints its counters and the text the
+// wire loads one file under the strict read and prints its counters and the text the
 // value writes back
 fn wire(name: const u8[:]) {
     var data: u8[>..] = [];

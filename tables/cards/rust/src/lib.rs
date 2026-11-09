@@ -10,6 +10,7 @@
 // (docs/SPEC-TABLES.md §2.5, §2.9), each rule ported from tables/cards/cards.go,
 // parse.go and render.go.
 
+#[allow(clippy::ptr_arg)]
 mod card_table;
 // the file holds `pub mod card_variable`; the file module takes another
 // name so the two do not nest under one (as the generated lib.rs does)
@@ -50,7 +51,7 @@ impl Record {
 
     /// The load/save report.
     pub fn report(&self) -> TableReport {
-        self.report
+        self.report.clone()
     }
 }
 
@@ -63,11 +64,14 @@ pub fn load(wire: &[u8]) -> Result<(Record, TableReport), String> {
         return Err("cards: wire is not a card".to_string());
     }
     let card = card_load(wire, &mut report).ok_or_else(|| "cards: wire is malformed".to_string())?;
+    if report.damaged || report.refused {
+        return Err("cards: wire is malformed".to_string());
+    }
     check_card(&card)?;
     let record = Record {
         wire: wire.to_vec(),
         card,
-        report,
+        report: report.clone(),
     };
     Ok((record, report))
 }
@@ -79,10 +83,13 @@ pub fn load(wire: &[u8]) -> Result<(Record, TableReport), String> {
 pub fn from_json(text: &str) -> Result<Record, String> {
     let mut report = TableReport::default();
     let card = card_from_json(text, &mut report).ok_or_else(|| "cards: JSON is malformed".to_string())?;
-    if report.unknown > 0 || report.kind_mismatch > 0 || report.clamped > 0 {
+    if report.damaged || report.refused {
+        return Err("cards: JSON is malformed".to_string());
+    }
+    if report.unknown > 0 {
         return Err(format!(
-            "cards: JSON has loss events (unknown={} kindMismatch={} clamped={}): refused, never truncated",
-            report.unknown, report.kind_mismatch, report.clamped
+            "cards: JSON has loss events (unknown={}): refused, never truncated",
+            report.unknown
         ));
     }
     check_card(&card)?;
@@ -95,7 +102,7 @@ pub fn from_json(text: &str) -> Result<Record, String> {
 pub fn to_json(record: &Record) -> Result<(String, TableReport), String> {
     let text = card_to_json_checked(&record.card)
         .ok_or_else(|| "cards: the card has no JSON spelling".to_string())?;
-    Ok((text, record.report))
+    Ok((text, record.report.clone()))
 }
 
 /// The checked-write helper: the customer bounds, enforced before bytes are
@@ -816,13 +823,7 @@ fn loss_err(report: &TableReport) -> Option<String> {
     if report.retain_lost > 0 {
         return Some(format!("cards: upgrade: {} retained field(s) lost, refusing to replace", report.retain_lost));
     }
-    if report.kind_mismatch > 0 {
-        return Some(format!("cards: upgrade: {} kind mismatch(es), refusing to replace", report.kind_mismatch));
-    }
-    if report.clamped > 0 {
-        return Some(format!("cards: upgrade: {} clamped value(s), refusing to replace", report.clamped));
-    }
-    if report.malformed {
+    if report.damaged || report.refused {
         return Some("cards: upgrade: malformed wire, refusing to replace".to_string());
     }
     None
@@ -837,13 +838,7 @@ pub fn read_strict(wire: &[u8]) -> Result<Record, String> {
     if report.unknown > 0 {
         return Err(format!("cards: strict: {} unknown field(s), unsupported data", report.unknown));
     }
-    if report.kind_mismatch > 0 {
-        return Err(format!("cards: strict: {} kind mismatch(es), unsupported data", report.kind_mismatch));
-    }
-    if report.clamped > 0 {
-        return Err(format!("cards: strict: {} clamped value(s), unsupported data", report.clamped));
-    }
-    if report.malformed {
+    if report.damaged || report.refused {
         return Err("cards: strict: malformed wire, unsupported data".to_string());
     }
     Ok(record)
@@ -1001,10 +996,10 @@ pub fn task_hash(record: &Record) -> Result<[u8; 32], String> {
 /// rewrite: a silent loss means the "task" the hash would cover is incomplete
 /// (docs/SPEC-TABLES.md §4, §6.6; edit.go refuseLossy).
 fn refuse_lossy(report: &TableReport) -> Result<(), String> {
-    if report.unknown > 0 || report.kind_mismatch > 0 || report.clamped > 0 || report.retain_lost > 0 || report.malformed {
+    if report.unknown > 0 || report.retain_lost > 0 || report.damaged || report.refused {
         return Err(format!(
-            "cards: record has loss events (unknown={} kindMismatch={} clamped={} retainLost={} malformed={}): refused, never hashed or rewritten",
-            report.unknown, report.kind_mismatch, report.clamped, report.retain_lost, report.malformed
+            "cards: record has loss events (unknown={} retainLost={} damaged={}): refused, never hashed or rewritten",
+            report.unknown, report.retain_lost, report.damaged
         ));
     }
     Ok(())

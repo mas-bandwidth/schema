@@ -17,6 +17,7 @@ MANIFEST.txt          the registry: every case, by kind
 reports.txt           read/refused for every evolution case   (generated)
 report-values/<case>.json  the complete accepted evolution value (generated)
 retain-values/<case>.json  the complete accepted known retained value (generated)
+rewrite/<case>.bin    the canonical bytes of every rewrite row  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
 json-hostile/<case>.value.json  the value its read leaves      (generated)
@@ -43,6 +44,7 @@ connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <save or ->
 report       <case> <unit> <root> <wire file>
+rewrite      <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
@@ -50,6 +52,8 @@ cook-write   <instance> <little-endian file> <big-endian file> [input=<JSON path
 block        <name> <unit> <block file> <dump file>
 forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 refusal      <forgery> <reason>
+write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
+write-refusal-fixed, write-refusal-message, write-refusal-json: the same columns
 json-write-refusal <case> <unit> <root> <wire file> <damage>
 ```
 
@@ -81,6 +85,27 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   program can build them, and the writer refuses them rather than writing a
   replacement. A leg whose storage cannot hold the bytes the row names holds
   the nearest value that is not text in that leg and says so in its driver.
+- **`write-refusal`** is one row of the WRITE CONTRACT's battery
+  (docs/SPEC.md §5.1): load `<wire>` as `<root>`, set the one field at `<path>`
+  to `<value>`, and save through the variable-form Save. `<path>` is dotted
+  field names with `[i]` element indexes, from the root. `<kind>` says what the
+  value sets: `int` an integer (a ranged scalar, or `bits(N)`), `count` the used
+  count of the array at `<path>` (a new element is a copy of element 0),
+  `length` the used length of the text at `<path>` (filled with `a`), `ordinal`
+  an enum by its raw ordinal, `tag` a union by its raw tag (a lawful tag takes
+  its arm at the arm's declared defaults), `float` one of `nan`, `inf` or
+  `-inf`, `bytes` a narrow text's exact bytes in hex, and `units` a wide text's
+  exact UTF-16 units, four hex digits each. `<verdict>` is `refused` or `wrote`,
+  and the derived manifest withholds it. The driver writes `refused`, `wrote`
+  or, where the leg's own types cannot hold the value at all, `unrepresentable`,
+  which answers a `refused` row and no other.
+  **The same row drives three more writers, one line kind and one surface
+  each**: `write-refusal-fixed` saves the value through the fixed form's
+  `FixedSave` as a batch of one; `write-refusal-message` saves it through
+  `SaveMessages` as a batch of one, and its `<unit>` column is a `connection`
+  key whose announced vocabulary the batch is written against; and
+  `write-refusal-json` writes it through the text writer, where `wrote` means
+  the text was written and spells the value (a zero byte or unit as `\u0000`).
 - **`connection`** is one CONNECTION's announced id table
   (docs/SPEC-TABLES.md §3.3): the unit whose whole vocabulary it carries, the
   BUILD VERSION that keys it, and the announcement itself, which is an ordinary
@@ -111,6 +136,16 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   `read` or `refused`, keyed by case. An accepted row also owes its complete
   value at `report-values/<case>.json` and its canonical write-back wire at
   `save-wire/<case>.bin`; a refused row has neither.
+- **`rewrite`** is an input every leg READS AND WRITES BACK
+  (docs/SPEC-TABLES.md §22.7): the reader's unit and root and the input wire.
+  The expected answer is `rewrite/<case>.bin`, the canonical bytes, which
+  `harness generate` writes as the oracle's read of the input followed by its
+  write of the value, and refuses to write unless they are a fixed point (read
+  and written again, the same bytes). Every `report` row and `framing` row that
+  reads has a rewrite row of the same name, which the harness's tests hold; the
+  rest are hand-built spellings no conforming writer produces (fields out of
+  declaration order, an id table out of first-use order) and the §22.7 edge
+  vectors.
 - **`framing`** is a hand-built wire and expectation from a framing rule.
   `<verdict>` is `read` or `refused`; legacy `malformed` means refusal, not a
   distinct outcome. `<value file>` holds the complete accepted value or is `-`
@@ -181,6 +216,7 @@ Construction input remains data the driver needs. These derived lines are:
 retain <case> <unit> <root> <wire> <capacity> <ids>
 framing <case> <unit> <root> <wire>
 cook-write <instance> <JSON input or -> <source field or -> <alias field or ->
+write-refusal[-fixed|-message|-json] <case> <unit> <root> <wire> <path> <kind> <value>
 ```
 
 `retain` has seven fields including its keyword. `framing` always has five,

@@ -17,7 +17,7 @@ func TestUnionCountRefusal(t *testing.T){
  wire[body]=byte(w.Offset-body-1);w.Put8(0);wire[arm]=byte(w.Offset-arm-1)
  w.ID(RootTableFields[1].ID);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer()
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();report:=TableReport{Unknown:3}
- if RootLoadBuilder(&b,wire[:w.Offset],&report)||report.Unknown!=0||b.GetRoot().Next!=0||report.Err()!=TableRefuseCountOverExtentCap{t.Fatalf("union count refusal: want count_over_extent_cap with the report overwritten and nothing landed: %+v",report)}
+ if RootLoadBuilder(&b,wire[:w.Offset],&report)||report.Unknown!=0||b.GetRoot().Next!=0||report.Err()!=TableRefuseCountOverExtentCap{t.Fatalf("union count refusal became damage or continued: want count_over_extent_cap with the report overwritten and nothing landed: %+v",report)}
 }
 `)
 }

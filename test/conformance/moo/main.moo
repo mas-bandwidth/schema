@@ -193,6 +193,22 @@ local ctx = {
 		end
 		return v, report
 	end,
+	-- THE FRAMING ROWS' READ (test/conformance/harness/generate.go,
+	-- framingVariableUnit): the framing vectors are form-1 files whose rules
+	-- are the variable form's, so a fixed root reads them through the variable
+	-- form's strict read, table_load.moo's ReadStrict, with the same fields
+	-- and ids; the form byte is still answered first (form 3 and any other
+	-- byte newer_form, form 2 message_form_as_file). The value, or nil, and
+	-- the report. Every other surface reads through ctx.read.
+	readVariable = function(key: string, root: string, bytes: buffer): (any?, any)
+		local L: any = load(ROOT .. generated .. "/" .. key .. "/table_load")
+		local report = L.newReport()
+		local v = L.ReadStrict(root, bytes, report)
+		if report.damaged or report.reason ~= nil then
+			return nil, report
+		end
+		return v, report
+	end,
 	-- THE ONE WRITE: a fixed root's canonical file is form 3, one record,
 	-- through table_fixed.moo; any other root's is form 1 through
 	-- table_save.moo. The bytes, or nil and the writer's refusal.

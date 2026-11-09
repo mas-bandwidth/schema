@@ -67,6 +67,7 @@ type goListPackage struct {
 }
 
 func TestNoTestFileIsExcludedByABuildConstraint(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	args := append([]string{"list", "-json"}, ignoredScanRoots...)

@@ -296,6 +296,12 @@ func anyFixedRoot(u *ir.Unit, closure map[string]bool) bool {
 // plan and the one plan-driven load for every fixed root it declares.
 func (g *gen) fixedModule() []byte {
 	roots := g.fixedRoots()
+	// The ceiling loader rides the unit's fixed surface: a unit with no
+	// fixed root at all emits no fixed module for any table (t03 R6).
+	var ceiling []*ir.Struct
+	if anyFixedRoot(g.unit, g.closure) {
+		ceiling = g.fixedCeilingRoots()
+	}
 	reach, reachUnions := unitFixedClosure(g.unit, g.closure)
 	var members []*ir.Struct
 	for _, st := range g.cookRoots() {
@@ -309,7 +315,7 @@ func (g *gen) fixedModule() []byte {
 			unions = append(unions, un)
 		}
 	}
-	if len(members) == 0 && len(roots) == 0 && len(unions) == 0 {
+	if len(members) == 0 && len(roots) == 0 && len(unions) == 0 && len(ceiling) == 0 {
 		return nil
 	}
 	g.body.Reset()
@@ -359,7 +365,70 @@ use crate::*;
 	for _, st := range roots {
 		g.emitFixedRoot(st)
 	}
+	for _, st := range ceiling {
+		g.emitFixedCeilingRoot(st)
+	}
 	return []byte(g.body.String())
+}
+
+// fixedCeilingRoots is every declared fixed table of this file whose record
+// body is past the fixed form's ceiling (docs/SPEC-TABLES.md §3.4): such a
+// table has no fixed form, so it is not a fixed root, no lineage is consulted
+// for it and no block, plan or record size is emitted for it. What it is owed
+// is a fixed loader that names the refusal, so a read at its fixed root does
+// not fall back to the variable form.
+func (g *gen) fixedCeilingRoots() []*ir.Struct {
+	var out []*ir.Struct
+	for _, st := range orderTables(g.file.Tables) {
+		if !st.FixedDeclared || st.IsMapEntry() || !g.rowable(st.Name) {
+			continue
+		}
+		if ir.TableFixedTypeBytes(st) <= ir.TableFixedRecordMaxBytes {
+			continue
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
+// emitFixedCeilingRoot emits only the refusing fixed loader for a table past
+// the ceiling: form 3 is refused as layout_record_too_large, the older forms
+// are refused by name as at every fixed root, and an empty file is damage.
+// Nothing is decoded on any path and a named refusal leaves the caller's
+// values untouched; damage resets them to the declared defaults, which for
+// a Row is its Default.
+func (g *gen) emitFixedCeilingRoot(st *ir.Struct) {
+	name := ir.RustSnake(st.Name)
+	body := ir.TableFixedTypeBytes(st)
+	g.pf("// ---- %s, past the fixed form's ceiling ----\n\n", st.Name)
+	g.pf("/// %s has no fixed loader that reads: its record body is %d bytes, past\n", st.Name, body)
+	g.pf("/// §3.4's %d-byte ceiling, so no conforming reader decodes a record that\n", ir.TableFixedRecordMaxBytes)
+	g.pf("/// size and the fixed form is not emitted for it. This loader is the\n")
+	g.pf("/// strict read at its fixed root (one read: the whole value or a\n")
+	g.pf("/// refusal): it refuses every form by name and decodes nothing, so the\n")
+	g.pf("/// variable form is never selected at a fixed root. No block, plan,\n")
+	g.pf("/// lineage or record size is emitted for this table.\n")
+	g.pf("pub fn %s_fixed_load(\n", name)
+	g.pf("    values: &mut [%sRow],\n", st.Name)
+	g.pf("    data: &[u8],\n")
+	g.pf("    plan: &mut [TableFixedEntry],\n")
+	g.pf("    remap: &mut [u16],\n")
+	g.pf("    report: &mut TableFixedReport,\n")
+	g.pf(") -> Option<usize> {\n")
+	g.pf("    let _ = (plan, remap);\n")
+	g.pf("    if data.is_empty() {\n")
+	g.pf("        report.damaged = true;\n")
+	g.pf("        for value in values.iter_mut() {\n")
+	g.pf("            *value = %sRow::default();\n", st.Name)
+	g.pf("        }\n")
+	g.pf("        return None;\n    }\n")
+	g.pf("    if data[0] == TABLE_FIXED_FORM {\n")
+	g.pf("        return report.refuse(TableFixedReason::LayoutRecordTooLarge);\n    }\n")
+	g.pf("    report.refuse(match data[0] {\n")
+	g.pf("        1 => TableFixedReason::PreviousForm,\n")
+	g.pf("        2 => TableFixedReason::MessageFormAsFile,\n")
+	g.pf("        _ => TableFixedReason::NewerForm,\n")
+	g.pf("    })\n}\n\n")
 }
 
 func fixedCollectTypes(st *ir.Struct, seen, unions map[string]bool) {

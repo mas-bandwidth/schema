@@ -26,6 +26,7 @@
 import { existsSync, readFileSync, writeFileSync, readSync, writeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { fixedCodec } from "./fixed.mjs";
 
 // The generated tree is a PATH, not a static import, for one reason: the
 // harness's negative control points this same driver at a sabotaged copy of
@@ -761,7 +762,7 @@ async function retainCodec(unit, root) {
   const path = retainUnits[unit];
   if (path === undefined || !existsSync(resolve(generated, path))) { return null; }
   const m = await load(path);
-  for (const f of ["LoadMeasure", "LoadRetain", "MeasureRetain", "SaveRetain"]) {
+  for (const f of ["LoadMeasure", "LoadRetain", "MeasureRetain", "SaveRetain", "ToJson"]) {
     if (typeof m[root + f] !== "function") { return null; }
   }
   return {
@@ -770,6 +771,7 @@ async function retainCodec(unit, root) {
     loadRetain: m[root + "LoadRetain"],
     measureRetain: m[root + "MeasureRetain"],
     saveRetain: m[root + "SaveRetain"],
+    toJson: m[root + "ToJson"],
   };
 }
 
@@ -804,12 +806,12 @@ async function wireFuzzCodec(unit, root) {
       fail(unit + "." + root + ": the variable wire surface " + root + f + " is missing from " + path);
     }
   }
-  return {
+  return fixedCodec(generated, load, unit, root, path, {
     load: m[root + "Load"], loadMeasure: m[root + "LoadMeasure"], save: m[root + "Save"],
     loadRetain: m[root + "LoadRetain"], saveRetain: m[root + "SaveRetain"],
     report: () => new m.TableVariableReport(),
     retainStore: () => new m.TableVariableRetain(new Uint8Array(1 << 20), new Array((1 << 20) / 8)),
-  };
+  });
 }
 
 async function wireCodec(unit, root) {
@@ -818,6 +820,8 @@ async function wireCodec(unit, root) {
   return codecOf(unit, root, row[2]);
 }
 
+// A FIXED ROOT's read and write are its fixed form's (fixed.mjs): its value
+// is still the variable value, so ToJson and FromJson are the unit's own.
 async function codecOf(unit, root, path) {
   const m = await load(path);
   const codec = {
@@ -826,7 +830,26 @@ async function codecOf(unit, root, path) {
     report: () => new m.TableVariableReport(),
   };
   if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + path); }
-  return codec;
+  return fixedCodec(generated, load, unit, root, path, codec);
+}
+
+// THE ONE READ (docs/plans/strict-only.md): the whole value, or a refusal. A
+// read that hands back a value beside a refusal or damage on its report has
+// refused, and the value is not looked at.
+function readOf(read, wire, r) {
+  const v = read(wire, r);
+  return v === null || v === undefined || r.refused || r.damaged ? null : v;
+}
+
+// An accepted read owes the plain verdict, the §16 text of the value and, in
+// <case>.wire, the value saved in the root's own form (test/conformance/README.md).
+function answerRead(outDir, name, codec, v) {
+  const text = codec.toJson(v);
+  if (text === null) { fail(name + ": ToJson refused the value"); }
+  const saved = codec.save(v);
+  if (saved === null) { fail(name + ": save refused the value the read accepted"); }
+  writeFileSync(join(outDir, name), "read\n" + text);
+  writeFileSync(join(outDir, name + ".wire"), saved);
 }
 
 // ---- THE TEXT FORM FOR EVERY TABLE (docs/SPEC-TABLES.md §16, §16.7)
@@ -889,7 +912,7 @@ async function surfaceWire(lines, outDir) {
     const codec = await wireCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
-    const v = codec.load(new Uint8Array(readFileSync(f[4])), r);
+    const v = readOf(codec.load, new Uint8Array(readFileSync(f[4])), r);
     if (v === null) {
       // A BLOB TWO SLOTS NAME IS REFUSED BY THE ONE STRICT READ (§2.5, §6.5),
       // by its own name, which is the wire refusal the harness holds a
@@ -912,38 +935,16 @@ async function surfaceWire(lines, outDir) {
   }
 }
 
-// The report line, then the §16 text of the value the read left when the read
-// reads. A root this leg carries no text writer for answers the line alone
-// beside `<case>.absent`: the verdict is held and the value is the missing
-// feature (test/conformance/README.md).
+// THE REPORT ROWS: the one read's verdict, and on acceptance the value in its
+// two forms (answerRead). A root no codec of this leg carries is absent.
 async function surfaceReport(lines, outDir) {
   for (const f of kind(lines, "report")) {
-    const codec = await wireCodec(f[2], f[3]);
+    const codec = (await wireCodec(f[2], f[3])) ?? (await textCodec(f[2], f[3]));
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
-    const r = codec.report();
-    const wire = new Uint8Array(readFileSync(f[4]));
-    const ok = codec.load(wire, r) !== null;
-    const malformed = r.damaged || (!ok && !r.refused);
-    const verdict = r.refused ? "refused" : "read";
-    let answer = [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, malformed, verdict].join(",") + "\n";
-    if (ok && !r.refused && !malformed) {
-      const text = await valueText(f[2], f[3], wire);
-      if (text === null) { wireAbsent(outDir, f[1]); } else { answer += text; }
-    }
-    writeFileSync(join(outDir, f[1]), answer);
+    const v = readOf(codec.load, new Uint8Array(readFileSync(f[4])), codec.report());
+    if (v === null) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
+    answerRead(outDir, f[1], codec, v);
   }
-}
-
-// valueText is the §16 text of the value a tolerant read of the wire leaves,
-// through the root's text codec, or null when this leg writes no text for it.
-async function valueText(unit, root, wire) {
-  const codec = await textCodec(unit, root);
-  if (codec === null) { return null; }
-  const v = codec.load(wire, codec.report());
-  if (v === null) { fail(unit + "." + root + ": the text codec's load refused a wire the report read"); }
-  const text = codec.toJson(v);
-  if (text === null) { fail(unit + "." + root + ": ToJson refused the value"); }
-  return text;
 }
 
 // THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
@@ -956,17 +957,13 @@ async function surfaceFraming(lines, outDir) {
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const noValue = f.length > 5 && f[5] === "no-value";
-    const r = codec.report();
-    const v = codec.load(new Uint8Array(readFileSync(f[4])), r);
-    const malformed = r.damaged || (v === null && !r.refused);
-    const verdict = r.refused ? "refused" : "read";
-    let answer = [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, malformed, verdict].join(",") + "\n";
-    if (v !== null && !r.refused && !malformed && !noValue) {
-      const text = codec.toJson(v);
-      if (text === null) { fail(f[1] + ": ToJson refused the value"); }
-      answer += text;
-    }
-    writeFileSync(join(outDir, f[1]), answer);
+    // the vectors are form 1 bytes: a fixed root reads them through its
+    // variable form's entry point and writes the value back in its own form
+    const read = codec.variableLoad ?? codec.load, report = codec.variableReport ?? codec.report;
+    const v = readOf(read, new Uint8Array(readFileSync(f[4])), report());
+    if (v === null) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
+    if (noValue) { writeFileSync(join(outDir, f[1]), "read\n"); continue; }
+    answerRead(outDir, f[1], codec, v);
   }
 }
 
@@ -975,11 +972,11 @@ async function surfaceJsonRead(lines, outDir) {
     if (noText(f)) { continue; }
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
-    const r = codec.report();
+    const r = (codec.variableReport ?? codec.report)(); // the text read reports on the variable form
     const text = readJsonTextFile(join("testdata/conformance/tables/json", f[1] + ".json"));
     if (text === null) { fail(f[1] + ": invalid UTF-8 in JSON"); }
     const v = codec.fromJson(text, r);
-    if (r.damaged) { fail(f[1] + ": FromJson refused the text"); }
+    if (v === null || v === undefined || r.damaged || r.refused) { fail(f[1] + ": FromJson refused the text"); }
     const saved = codec.save(v);
     if (saved === null) { fail(f[1] + ": save refused the value"); }
     writeFileSync(join(outDir, f[1]), saved);
@@ -991,11 +988,28 @@ async function surfaceJsonWrite(lines, outDir) {
     if (noText(f)) { continue; }
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1] + ".json"); continue; }
-    const v = codec.load(new Uint8Array(readFileSync(f[4])), codec.report());
+    const v = readOf(codec.load, new Uint8Array(readFileSync(f[4])), codec.report());
     if (v === null) { fail(f[1] + ": load refused " + f[4]); }
     const text = codec.toJson(v);
     if (text === null) { fail(f[1] + ": ToJson refused the value"); }
     writeFileSync(join(outDir, f[1] + ".json"), text);
+  }
+  // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the wire,
+  // then the line's damage put into the value in code, then ToJson, which must
+  // refuse. A string here is UTF-16, so the text no read delivers is the one
+  // with no UTF-8 spelling in either width: 'a', an unpaired U+D800, 'b'.
+  for (const f of kind(lines, "json-write-refusal")) {
+    const codec = await textCodec(f[2], f[3]);
+    if (codec === null) { wireAbsent(outDir, f[1] + ".json"); continue; }
+    const v = readOf(codec.load, new Uint8Array(readFileSync(f[4])), codec.report());
+    if (v === null) { fail(f[1] + ": load refused " + f[4]); }
+    if (f[5] !== "none") {
+      const name = f[5].slice(f[5].indexOf(":") + 1);
+      if (typeof v[name] !== "string") { fail(f[1] + ": damage " + f[5] + " names no text field of " + f[3]); }
+      v[name] = "a\ud800b";
+    }
+    const text = codec.toJson(v);
+    writeFileSync(join(outDir, f[1] + ".json"), text === null ? "refused\n" : text);
   }
 }
 
@@ -1007,7 +1021,7 @@ async function surfaceJsonHostile(lines, outDir) {
   for (const f of kind(lines, "json-hostile")) {
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
-    const r = codec.report();
+    const r = (codec.variableReport ?? codec.report)();
     const text = readJsonTextFile(join(f[4], f[3] + ".json"));
     if (text === null) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
     const v = codec.fromJson(text, r);
@@ -1015,9 +1029,7 @@ async function surfaceJsonHostile(lines, outDir) {
       writeFileSync(join(outDir, f[1]), "refused\n");
       continue;
     }
-    const value = codec.toJson(v);
-    if (value === null) { fail(f[1] + ": ToJson refused the value"); }
-    writeFileSync(join(outDir, f[1]), [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, false, "read"].join(",") + "\n" + value);
+    answerRead(outDir, f[1], codec, v);
   }
 }
 
@@ -1150,14 +1162,17 @@ async function surfaceRetain(lines, outDir, saves) {
   const fullIds = 1 << 17;
   for (const f of lines) {
     if (f[0] !== "retain") { continue; }
-    // retain <case> <unit> <root> <wire> <capacity> <ids>
+    // retain <case> <unit> <root> <wire> <capacity> <ids> [<save>]
     const codec = await retainCodec(f[2], f[3]);
     if (codec === null) {
       retainAbsent(outDir, f[1], "retention is not carried for " + f[2] + ": docs/SPEC-TABLES.md §6.6");
       continue;
     }
     const wire = new Uint8Array(readFileSync(f[4]));
-    if (codec.loadMeasure(wire) < 0) { fail(f[1] + ": load measure refused " + f[4]); }
+    // THE ONE READ'S VERDICT is the answer (test/conformance/README.md): a
+    // refused retaining read owes the refusal alone, and no bytes
+    const refused = () => { if (!saves) { writeFileSync(join(outDir, f[1]), "refused\n"); } };
+    if (codec.loadMeasure(wire) < 0) { refused(); continue; }
     let ids = fullIds;
     if (f[6] !== "full") { ids = Number(f[6]); }
     let capacity = capacityBytes;
@@ -1168,14 +1183,14 @@ async function surfaceRetain(lines, outDir, saves) {
       // ONE BYTE SHORT OF THE LAST RECORD this port wrote: the record's own
       // byte cost is the port's, so the probe measures it and the row travels
       // as the rule rather than as a number.
-      if (codec.loadRetain(wire, store, report) === null) { fail(f[1] + ": capacity probe refused"); }
+      if (readOf((w, r) => codec.loadRetain(w, store, r), wire, report) === null) { refused(); continue; }
       capacity = Math.max(0, store.used - 1);
       store = newStore(capacity, ids);
       report = new codec.m.TableVariableReport();
     }
-    const root = codec.loadRetain(wire, store, report);
-    if (root === null || report.damaged) { fail(f[1] + ": retained load refused " + JSON.stringify(report)); }
-    const retained = report.retained, lost = report.retainLost, unknown = report.unknown;
+    const root = readOf((w, r) => codec.loadRetain(w, store, r), wire, report);
+    if (root === null) { refused(); continue; }
+    const lost = report.retainLost;
     const size = codec.measureRetain(root, store);
     if (size < 0) { fail(f[1] + ": retaining measure refused"); }
     const out = codec.saveRetain(root, store, report);
@@ -1191,7 +1206,12 @@ async function surfaceRetain(lines, outDir, saves) {
       fail(f[1] + ": save is not repeatable");
     }
     if (!saves) {
-      writeFileSync(join(outDir, f[1]), retained + "," + lost + "," + unknown + " " + saveLost + "\n");
+      // the verdict, then the §16 text of the known value the read left:
+      // retention keeps the unknown records for the save and never changes
+      // the value a reader of this build sees
+      const text = codec.toJson(root);
+      if (text === null) { fail(f[1] + ": ToJson refused the retained value"); }
+      writeFileSync(join(outDir, f[1]), "read\n" + text);
     } else {
       writeFileSync(join(outDir, f[1]), out);
     }
@@ -1238,7 +1258,7 @@ async function wireFuzz() {
       // A --retain roster binds only a root whose retaining pair exists, as
       // the Go leg's findRetentionCodec does; it never falls back to Load.
       const codec = await wireFuzzCodec(unit, root);
-      const retaining = codec !== null && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function";
+      const retaining = codec !== null && !codec.fixed && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function";
       if (codec !== null && (retain !== 1 || retaining)) {
         roster[i] = { ...codec, retain: retain === 1 };
         known[i] = 1;
@@ -1350,9 +1370,11 @@ async function wireFuzz() {
       report.oor = rep.oor;
       report.repeated = rep.repeated;
       report.damaged = rep.damaged;
-      // Storage-cap rejection is an out-of-band builder failure, not a
-      // wire-form refusal in the shared report protocol.
-      report.refused = rep.refused && rep.reason !== "count_over_extent_cap";
+      // A variable report names its refusal through err(), as the Go leg's
+      // Report.Refused() (Err() != nil) does, including a count past the
+      // storage cap; damage names itself in the malformed byte, not here.
+      // A fixed report has no err(); its refused flag is the name.
+      report.refused = !rep.damaged && (!loaded || (typeof rep.err === "function" ? rep.err() !== null : Boolean(rep.refused)));
       report.retained = rep.retained;
       report.retainLost = rep.retainLost;
       report.reason = rep.reason;

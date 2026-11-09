@@ -425,71 +425,109 @@ local hostileNull = function(T, name, root) {
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 
-	stdout := sqrun.Run(t, dir, "main.nut", inputs)
-	sections := map[string][]string{}
-	var hostileLines []string
-	current := ""
-	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
-		switch {
-		case strings.HasPrefix(line, "BEGIN "):
-			current = strings.TrimPrefix(line, "BEGIN ")
-		case strings.HasPrefix(line, "END "):
-			current = ""
-		case strings.HasPrefix(line, "HOSTILE "):
-			hostileLines = append(hostileLines, line)
-		case current != "":
-			sections[current] = append(sections[current], line)
-		default:
-			if line != "" {
-				t.Errorf("unexpected output %q", line)
+	// check runs the probe over one directory of emitted modules and answers
+	// every way the read differs from the corpus, with the counts it held.
+	check := func(dir string) (bad []string, count, hostileCount int) {
+		stdout := sqrun.Run(t, dir, "main.nut", inputs)
+		sections := map[string][]string{}
+		var hostileLines []string
+		current := ""
+		for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
+			switch {
+			case strings.HasPrefix(line, "BEGIN "):
+				current = strings.TrimPrefix(line, "BEGIN ")
+			case strings.HasPrefix(line, "END "):
+				current = ""
+			case strings.HasPrefix(line, "HOSTILE "):
+				hostileLines = append(hostileLines, line)
+			case current != "":
+				sections[current] = append(sections[current], line)
+			default:
+				if line != "" {
+					bad = append(bad, fmt.Sprintf("unexpected output %q", line))
+				}
 			}
 		}
+		for _, r := range rows {
+			want, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(r.dump)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Join(sections[r.key], "\n")
+			if got != "" {
+				got += "\n"
+			}
+			if got != string(want) {
+				bad = append(bad, fmt.Sprintf("cook %s: the Squirrel read does not match %s\n--- got ---\n%s--- want ---\n%s", r.key, r.dump, got, want))
+				continue
+			}
+			count++
+		}
+		for _, line := range hostileLines {
+			fields := strings.Fields(line)
+			if len(fields) != 3 {
+				bad = append(bad, fmt.Sprintf("hostile output %q: want name and reason", line))
+				continue
+			}
+			name, got := strings.TrimPrefix(fields[1], "hostile."), fields[2]
+			want, ok := refusals[name]
+			if !ok {
+				bad = append(bad, fmt.Sprintf("hostile %s: no refusal line names it", name))
+				continue
+			}
+			if got == "ok" {
+				bad = append(bad, fmt.Sprintf("hostile %s: opened, want refusal %s", name, want))
+				continue
+			}
+			if got != want && want != "refused" {
+				bad = append(bad, fmt.Sprintf("hostile %s: refusal %s, want %s", name, got, want))
+				continue
+			}
+			hostileCount++
+		}
+		if hostileCount != len(hostiles) {
+			bad = append(bad, fmt.Sprintf("hostile battery: read %d of %d named refusals", hostileCount, len(hostiles)))
+		}
+		return bad, count, hostileCount
 	}
-
-	count := 0
-	for _, r := range rows {
-		want, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(r.dump)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		got := strings.Join(sections[r.key], "\n")
-		if got != "" {
-			got += "\n"
-		}
-		if got != string(want) {
-			t.Errorf("cook %s: the Squirrel read does not match %s\n--- got ---\n%s--- want ---\n%s", r.key, r.dump, got, want)
-			continue
-		}
-		count++
-	}
-
-	hostileCount := 0
-	for _, line := range hostileLines {
-		fields := strings.Fields(line)
-		if len(fields) != 3 {
-			t.Errorf("hostile output %q: want name and reason", line)
-			continue
-		}
-		name, got := strings.TrimPrefix(fields[1], "hostile."), fields[2]
-		want, ok := refusals[name]
-		if !ok {
-			t.Errorf("hostile %s: no refusal line names it", name)
-			continue
-		}
-		if got == "ok" {
-			t.Errorf("hostile %s: opened, want refusal %s", name, want)
-			continue
-		}
-		if got != want && want != "refused" {
-			t.Errorf("hostile %s: refusal %s, want %s", name, got, want)
-			continue
-		}
-		hostileCount++
-	}
-	if hostileCount != len(hostiles) {
-		t.Errorf("hostile battery: read %d of %d named refusals", hostileCount, len(hostiles))
+	bad, count, hostileCount := check(dir)
+	for _, e := range bad {
+		t.Error(e)
 	}
 	t.Logf("read %d cook rows and %d named refusals", count, hostileCount)
+
+	// THE NEGATIVE CONTROLS: the emitted cook reader (schema_table_cook.nut,
+	// runtime/cook.nut) sabotaged in every unit, one clause at a time; the
+	// differential against the corpus must go red. Open answering a region of
+	// no length reds the dumps; a dropped identity check reds the hostile rows
+	// that clause refuses.
+	for _, blade := range []struct{ name, anchor, replace string }{
+		{"region length lost", "return { Bytes = bytes, Region = dataOffset, Length = dataLength };",
+			"return { Bytes = bytes, Region = dataOffset, Length = 0 };"},
+		{"build version unchecked", `if (!eqB(bytes, 8, T.BuildVersionBytes)) return refuse(report, "wrong_build_version");`, ""},
+		{"part lengths unchecked", `if (attribution != bytes.len() - dataOffset - dataLength) return refuse(report, "truncated");`, ""},
+	} {
+		t.Run("negative control "+blade.name, func(t *testing.T) {
+			bladed := t.TempDir()
+			if err := os.CopyFS(bladed, os.DirFS(dir)); err != nil {
+				t.Fatal(err)
+			}
+			for key := range byUnit {
+				path := filepath.Join(bladed, key, "schema_table_cook.nut")
+				src, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n := strings.Count(string(src), blade.anchor); n != 1 {
+					t.Fatalf("the blade's anchor %q is in %s %d times, want 1", blade.anchor, path, n)
+				}
+				writeFile(t, path, []byte(strings.Replace(string(src), blade.anchor, blade.replace, 1)))
+			}
+			if bad, _, _ := check(bladed); len(bad) == 0 {
+				t.Fatal("the sabotaged cook reader still matches the corpus; the differential does not see this clause")
+			}
+		})
+	}
 }
 
 // cookUnitOfCase finds the unit a cook CASE belongs to, so a forgery over that
