@@ -4811,8 +4811,14 @@ func (c *checker) checkSizes() {
 		return
 	}
 	for _, e := range append(ir.CheckSizes(c.unit), ir.CheckBinaryDepth(c.unit)...) {
+		// a generated map entry has no declaration: walk its MapEntryOf
+		// ("<owner>.<field>") up to the table that declares the map
+		owner := e.Owner
+		for c.astDecls[owner] == nil && c.tables[owner] != nil && c.tables[owner].MapEntryOf != "" {
+			owner, _, _ = strings.Cut(c.tables[owner].MapEntryOf, ".")
+		}
 		pos := ast.Pos{}
-		if d, ok := c.astDecls[e.Owner]; ok {
+		if d, ok := c.astDecls[owner]; ok {
 			pos = d.DeclPos()
 		}
 		c.errf(pos, "%s", e.Error())
