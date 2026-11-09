@@ -14,10 +14,7 @@ package jstable
 // module, hands it to the leg's own node (jsNode, $NODE) and writes, reads back
 // and compares the construct at non-default and boundary values, which is what
 // a target `make tables-js-fixed-form` does. A substring match on the emitted
-// source is never the clause. The one capability the compiler refuses —
-// utf16-values, wstring(N), compiler/target_javascript.go's refuseWideText — has
-// no subtest here: it is named UNPORTED and skipped by name (see
-// fixedversioning_test.go's `unported` rows), never folded into a green.
+// source is never the clause.
 
 import (
 	"fmt"

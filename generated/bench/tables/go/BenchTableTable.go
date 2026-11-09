@@ -1967,28 +1967,27 @@ func tableWireSkipValue(r *TableReader, kind uint8) bool {
 	var c tableWireCheck
 	c.ids = len(r.Ids) / 8
 	c.depth = r.Depth
-	if kind == 17 {
-		index, ok := r.Leb()
-		if !ok {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
-		}
-		c.nodes = 0 // tableWireSkipNodes
-		if !c.edge(index) {
-			r.Report.Refuse(c.failed(), "")
-			return false
-		}
-		if c.mark != nil {
-			c.mark(index)
-		}
-		return true
-	}
+	c.nodes = 0 // tableWireSkipNodes
 	at, ok := c.value(*r, kind)
 	if !ok {
 		r.Report.Refuse(c.failed(), "")
 		return false
 	}
 	r.Offset = at
+	return true
+}
+func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
+	var c tableWireCheck
+	c.ids = len(r.Ids) / 8
+	c.depth = r.Depth
+	if arm && (kind == 13 || kind == 14 || kind == 16) {
+		c.depth--
+	}
+	c.nodes = 0 // tableWireSkipNodes
+	if !c.framed(*r, kind) {
+		r.Report.Refuse(c.failed(), "")
+		return false
+	}
 	return true
 }
 
@@ -4289,6 +4288,10 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -4900,6 +4903,10 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5687,6 +5694,10 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -6214,6 +6225,9 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						}
 					default:
 						r.Report.Unknown++
+						if !tableWireSkipFramed(&payload29, armKind, true) {
+							return false
+						}
 					}
 				}
 			}
@@ -6863,6 +6877,10 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -7153,6 +7171,10 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -7391,6 +7413,10 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -8801,7 +8827,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -9055,7 +9081,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -9534,7 +9560,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1

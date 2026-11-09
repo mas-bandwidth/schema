@@ -132,8 +132,6 @@ func validateSquirrelEvidenceOverlay(root, overlayText string) error {
 		"TestSquirrelPacketFiniteNegativeControl",
 		"packet-utf8-squirrel",
 		"packet-utf8-squirrel-negative-control",
-		"packet-wide-squirrel",
-		"packet-wide-squirrel-negative-control",
 		"packet-defaults-squirrel",
 		"packet-defaults-squirrel-negative-control",
 		"packet-finite-squirrel-negative-control",

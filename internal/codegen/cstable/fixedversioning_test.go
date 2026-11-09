@@ -135,7 +135,6 @@ var csVersionRows = []csVersionRow{
 	{row: "uint_widen", widens: true},
 	{row: "union_append"},
 	{row: "union_arm_payload_widen"},
-	{row: "wstring_grow"},
 }
 
 // ---- the one test -----------------------------------------------------------

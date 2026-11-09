@@ -204,35 +204,11 @@ local function default_value(e)
 	return e.def or 0
 end
 
--- a wstring(N) is a buffer of UTF-16LE code units with its Length in code
--- units (docs/PORT-LUAU.md, THE TYPE MAPPING): the text is its UTF-8
-local function utf16_text(b, units)
-	local out = {}
-	local i = 0
-	while i < units do
-		local u = buffer.readu16(b, i * 2)
-		if u >= 0xD800 and u <= 0xDBFF and i + 1 < units then
-			local lo = buffer.readu16(b, (i + 1) * 2)
-			if lo >= 0xDC00 and lo <= 0xDFFF then
-				u = 0x10000 + (u - 0xD800) * 0x400 + (lo - 0xDC00)
-				i = i + 1
-			end
-		end
-		out[#out + 1] = utf8.char(u)
-		i = i + 1
-	end
-	return table.concat(out)
-end
-
 local function str_value(fd, val, owner)
 	if type(val) == "string" then return val end
 	if type(val) == "buffer" then
 		local n = buffer.len(val)
 		if owner ~= nil and fd.slot ~= nil and owner[fd.slot .. "Length"] ~= nil then n = owner[fd.slot .. "Length"] end
-		if fd.wide then
-			if owner == nil or fd.slot == nil or owner[fd.slot .. "Length"] == nil then n = buffer.len(val) / 2 end
-			return utf16_text(val, n)
-		end
 		return buffer.readstring(val, 0, n)
 	end
 	return fd.def or ""

@@ -85,8 +85,6 @@ var vtCells = []vtCell{
 	// the id table: 10 and 20 vocabularies, two peers' tables, the escape
 	// kinds at a field, an element and a payload-free field
 	{"id-table-wire", []string{"vocab_wide", "vocab_low", "peer_a", "peer_b", "vocab9_wide", "vocab9_low", "login_full", "match_full", "escape_unnamed_field", "escape_named_field", "escape_element", "nopayload_named_field"}},
-	// wstring(N), kind 33: captions, a narrow arm, a stamp, a wide list
-	{"wstring", []string{"wide_empty", "wide_title", "wide_sites", "wide_narrow_arm", "wide_stamp", "widelist_wide"}},
 	// []T: tables, scalars, empty, erased, mixed, nested, maps, a migration
 	// from a bounded array, and a widened element
 	{"unbounded-arrays", []string{"list_tables", "list_scalars", "list_empty", "list_erased", "list_mixed", "list_shared", "list_nested", "list_of_maps", "list_migrates", "list_scalar_widen"}},

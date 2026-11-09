@@ -332,8 +332,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
 	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
 	tblg1:test/tables/G1.schema \
-	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9 \
-	widedemo:examples-wide/Caption.schema
+	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9
 
 # THE PAIRED BENCH UNIT is TWO SCHEMA FILES AS ONE UNIT
 # (bench/corpus/FixedTable.schema wraps Bench.schema's own BenchMixed), so it
@@ -344,7 +343,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema examples-wide/Caption.schema $(RUST_TABLE_BENCH_SCHEMAS)
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema $(RUST_TABLE_BENCH_SCHEMAS)
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -624,7 +623,7 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# `debug_assert!` (the 2026-09-07 ruling: "checks are *DEBUG ONLY*"), so
 	# the debug run is the one that proves the contracts FIRE and the release
 	# run is the one that proves they are GONE and the corpus still writes the
-	# pinned wire. Java, Dart and the packet-wide Rust leg already run both.
+	# pinned wire. Java and Dart already run both.
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
 	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release
 	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
@@ -672,37 +671,9 @@ packet-defaults-rust-negative-control: packet-defaults-rust
 	@echo 'packet defaults Rust negative control: missing constructor bytes fail the runtime check'
 
 test-rust: packet-defaults-rust packet-defaults-rust-negative-control
-# Wide packet code units, with independent bounds, tail and composition probes.
-build/packet-wide/rust/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema test/packet-wide/rust/src/main.rs make/rust.mk
-	./bin/schema generate --lang rust --out build/packet-wide/rust/src build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang rust --out build/packet-wide/rust/shapes/src test/packet-wide/Shapes.schema
-	cp test/packet-wide/rust/src/main.rs build/packet-wide/rust/src/main.rs
-	@printf '[package]\nname = "wide"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nwideprobe = { path = "shapes" }\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-wide/rust/Cargo.toml
-	@printf '[package]\nname = "wideprobe"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-wide/rust/shapes/Cargo.toml
-	@touch $@
 
-.PHONY: packet-wide-rust packet-wide-rust-negative-control
-packet-wide-rust: build/packet-wide/rust/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --manifest-path build/packet-wide/rust/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path build/packet-wide/rust/Cargo.toml
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/rust/target/debug/wide
-	PATH="$(RUSTUP_BIN):$$PATH" cargo test --quiet --release --manifest-path build/packet-wide/rust/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/packet-wide/rust/Cargo.toml
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/rust/target/release/wide
 
-packet-wide-rust-negative-control: packet-wide-rust
-	@mkdir -p build/packet-wide/rust-negative
-	go run ./tools/sabotage -name packet-wide-rust-pairing -out build/packet-wide/rust-negative/wstring.gotext internal/codegen/rust/wstring.go
-	@printf '{"Replace":{"%s/internal/codegen/rust/wstring.go":"%s/build/packet-wide/rust-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/rust-negative/overlay.json
-	go run -overlay=build/packet-wide/rust-negative/overlay.json ./cmd/schema generate --lang rust --out build/packet-wide/rust-negative/src build/packet-wide/source/WideText.schema
-	cp test/packet-wide/rust/src/main.rs build/packet-wide/rust-negative/src/main.rs
-	@sed 's|path = "shapes"|path = "../rust/shapes"|' build/packet-wide/rust/Cargo.toml > build/packet-wide/rust-negative/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/packet-wide/rust-negative/Cargo.toml
-	@if ./build/packet-text/harness -wide -mutations-only -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/rust-negative/target/release/wide > build/packet-wide/rust-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Rust wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/rust-negative/log || { cat build/packet-wide/rust-negative/log; exit 1; }
-	@echo 'packet wide Rust negative control: removed pairing fails bit-flip agreement'
-
-test-rust: packet-wide-rust packet-wide-rust-negative-control
+test-rust:
 
 # THE RUST VARIABLE-CLASS GATE (docs/SPEC-TABLES.md §2.5, §2.9, §3, §3.1,
 # §16.7): the constructs the card record does not use but the variable class
@@ -746,8 +717,8 @@ test-rust: tables-rust-block-build
 tables-rust-variable-arms:
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
 		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m \
-		-run 'TestMapsAndUnionArmsOnTheTableWireRust|TestOtherVariableConstructsAreRefusedByName|TestWideTextOnTheTableWireRust' -v
-	@echo 'tables Rust variable arms: maps, union arms and wstring(N) round-trip and the rest is refused by name'
+		-run 'TestMapsAndUnionArmsOnTheTableWireRust|TestOtherVariableConstructsAreRefusedByName' -v
+	@echo 'tables Rust variable arms: maps and union arms round-trip and the rest is refused by name'
 
 test-rust: tables-rust-variable-arms
 
@@ -922,7 +893,7 @@ tables-rust-view: bin/schema test/rust-view/src/main.rs test/rust-view/Cargo.tom
 	@cp test/rust-view/src/main.rs build/rust-view/prog/src/main.rs
 	@set -e; carried=; refused=; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
-		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		source=tables/$$dir; \
 		rm -rf build/rust-view/unit; mkdir -p build/rust-view/unit; \
 		if ! ./bin/schema generate --lang rust --out build/rust-view/unit/src $$source > build/rust-view/$$pkg.generate.log 2>&1; then \
 			if grep -q 'the rust form is a named follow-on' build/rust-view/$$pkg.generate.log; then \

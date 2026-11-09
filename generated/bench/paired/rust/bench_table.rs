@@ -301,6 +301,7 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
+                nodes.note_unknown_payload(kind, &wire[start..*off], report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedChatEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -501,6 +502,7 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
+                nodes.note_unknown_payload(kind, &wire[start..*off], report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedEntity", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -593,6 +595,7 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
+                nodes.note_unknown_payload(kind, &wire[start..*off], report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedHitEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -668,6 +671,7 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
+                nodes.note_unknown_payload(kind, &wire[start..*off], report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedPickupEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -743,6 +747,7 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
+                nodes.note_unknown_payload(kind, &wire[start..*off], report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedStat", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {

@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"unicode/utf16"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
@@ -300,7 +299,6 @@ fixed table Root
     kind   Kind
     plain  float32
     ranged float32 | min = -1, max = 1, resolution = 0.01
-    w      wstring(8)
     s      string(8)
     nums   [4]int32
     list   [..4]int32
@@ -308,12 +306,12 @@ fixed table Root
 }
 `
 
-const covMessageText = `{"kind":"B","plain":1.5,"ranged":0.25,"w":"hi","s":"yo","nums":[1,2,3,4],"list":[5,6],"body":{"tally":42}}`
+const covMessageText = `{"kind":"B","plain":1.5,"ranged":0.25,"s":"yo","nums":[1,2,3,4],"list":[5,6],"body":{"tally":42}}`
 
 // The message form writes and reads every kind a fixed root names: an enum's
-// variant reference, a plain and a quantized f32, wide text at sixteen bits a
-// unit, a string, a fixed and a counted array and a union arm; the scan then
-// reads the same batch without placing a value (§3.3, §4.3, §6.5).
+// variant reference, a plain and a quantized f32, a string, a fixed and a
+// counted array and a union arm; the scan then reads the same batch without
+// placing a value (§3.3, §4.3, §6.5).
 func TestMessageFormCoverage(t *testing.T) {
 	t.Parallel()
 	m := covModel(t, covMessageUnit)
@@ -337,17 +335,14 @@ func TestMessageFormCoverage(t *testing.T) {
 	if err != nil || string(again) != string(batch) {
 		t.Fatalf("message round trip: %v", err)
 	}
-	var wide, text string
+	var text string
 	for i := range back.Fields {
-		switch back.Fields[i].Def.Name {
-		case "w":
-			wide = string(utf16.Decode(back.Fields[i].Cell.Units))
-		case "s":
+		if back.Fields[i].Def.Name == "s" {
 			text = string(back.Fields[i].Cell.Str)
 		}
 	}
-	if wide != "hi" || text != "yo" {
-		t.Fatalf("text = %q, %q; want hi, yo", wide, text)
+	if text != "yo" {
+		t.Fatalf("text = %q; want yo", text)
 	}
 	spots := MessageSpots(m, root, batch, &vocabulary)
 	if len(spots) == 0 {
@@ -612,7 +607,7 @@ union Body
 table Root
 {
     names  map[string(4)]int32
-    wide   map[uint16]wstring(6)
+    wide   map[uint16]string(6)
     blobs  map[int32]bytes(4)
     keyed  [Key]Child
     arr    [..3]Child
@@ -657,7 +652,7 @@ func TestMessageBatch(t *testing.T) {
 	m := covModel(t, covMessageUnit)
 	root := m.Lookup("Root")
 	first := covPlace(t, m, "Root", covMessageText)
-	second := covPlace(t, m, "Root", `{"kind":"C","plain":2.5,"ranged":-0.5,"w":"bye","s":"ok","nums":[4,3,2,1],"list":[7],"body":{"child":{"n":8}}}`)
+	second := covPlace(t, m, "Root", `{"kind":"C","plain":2.5,"ranged":-0.5,"s":"ok","nums":[4,3,2,1],"list":[7],"body":{"child":{"n":8}}}`)
 	batch, err := EncodeMessages(m, []*tabletext.Instance{first, second})
 	if err != nil {
 		t.Fatal(err)

@@ -93,9 +93,6 @@ CONFORMANCE_UNIT_PATHS := $(shell [ -f testdata/conformance/tables/MANIFEST.txt 
 CONFORMANCE_UNIT_SCHEMAS := $(foreach p,$(CONFORMANCE_UNIT_PATHS),$(if $(filter %.schema,$(p)),$(p),$(wildcard $(p)/*.schema)))
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
-# the WIDE TEXT unit (examples-wide/) — wstring(N) and the string(N) read-side
-# UTF-8 rule, both driven from serialize's shared corpus (SPEC §4.12, §4.7)
-SCHEMAS_WIDE := $(wildcard examples-wide/*.schema)
 SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
 SCHEMAS_TABLES := $(wildcard tables/examples/*.schema)
 SCHEMAS_TABLES_POINTERS := $(wildcard tables/pointers/*.schema)
@@ -190,28 +187,6 @@ generated/cpp/ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang cpp --out generated/cpp/ludicrous examples128
 	@touch $@
 
-# The WIDE TEXT corpus (examples-wide/): the wstring(N) proving ground and the
-# string(N) read-side UTF-8 goldens, generated at build time into build/ — its
-# own unit because examples/ pins gate 1 for all nine targets and eight of them
-# refuse wide text today (SPEC §4.12).
-build/wide-generated/.stamp: bin/schema $(SCHEMAS_WIDE)
-	@mkdir -p build/wide-generated
-	./bin/schema generate --lang cpp --out build/wide-generated examples-wide
-	@touch $@
-
-build/schema_test_wide: build/wide-generated/.stamp test/wide/main.cpp
-	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Ibuild/wide-generated test/wide/main.cpp -o $@
-
-# The TABLE half of the wide row (docs/SPEC-TABLES.md §3, kind 33): the same
-# unit's table declarations, gated apart from the packet half because they are
-# two wires — a bit stream with no recovery there, a length-framed body whose
-# answer is a verdict plus five counters here.
-build/schema_test_wide_table: build/wide-generated/.stamp test/wide/table_main.cpp
-	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -Ibuild/wide-generated test/wide/table_main.cpp \
-		build/wide-generated/CaptionTable.cpp -o $@
-
 build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/main.cpp test/second.cpp -o $@
@@ -250,7 +225,6 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VOLD_array_elem_widen.schema \
 	test/tables/VOLD_constant_grow.schema \
 	test/tables/VOLD_string_grow.schema \
-	test/tables/VOLD_wstring_grow.schema \
 	test/tables/VOLD_bytes_grow.schema \
 	test/tables/VOLD_int_widen.schema \
 	test/tables/VOLD_uint_widen.schema \
@@ -267,7 +241,6 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VNEW_array_elem_widen.schema \
 	test/tables/VNEW_constant_grow.schema \
 	test/tables/VNEW_string_grow.schema \
-	test/tables/VNEW_wstring_grow.schema \
 	test/tables/VNEW_bytes_grow.schema \
 	test/tables/VNEW_int_widen.schema \
 	test/tables/VNEW_uint_widen.schema \
@@ -386,10 +359,6 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/rt1 test/tables/RT1.schema
 	$(1) generate --lang cpp --out $(2)/rt2 test/tables/RT2.schema
 	$(1) generate --lang cpp --out $(2)/rt3 test/tables/RT3.schema
-	# the WIDE TEXT unit (docs/SPEC-TABLES.md §3, kind 33): its own directory,
-	# because examples/ pins gate 1 for all nine targets and eight of them
-	# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
-	$(1) generate --lang cpp --out $(2)/wide examples-wide
 	$(1) generate --lang cpp --out $(2)/features testdata/conformance/feature-witnesses/full/Features.schema
 	# ---- rowan/cpp-versioning-numbers: BEGIN ----
 	# the versioning law's rows, every unit into ONE directory (see SCHEMAS_VERSIONING)
@@ -744,7 +713,7 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 # each entry is <generated dir>:<package>
 VIEW_CORPUS := examples:tabledemo pointers:graphdemo block:blockdemo blockhome:blockhome \
 	messages:messagedemo stream:streamdemo blobs:blobdemo scalars:scalardemo \
-	maps:mapdemo lists:listdemo arms:armdemo backend:backenddemo vocab:vocabdemo vocab9:vocab9demo wide:wide
+	maps:mapdemo lists:listdemo arms:armdemo backend:backenddemo vocab:vocabdemo vocab9:vocab9demo
 
 .PHONY: tables-view
 tables-view: build/tables-generated/.stamp test/tables/view_main.cpp
@@ -2814,6 +2783,26 @@ check-enum-bound-negative-control: bin/schema
 	done
 	@echo "negative control: without the constant fold, three folded rows compile clean and the two direct spellings stay refused"
 
+# THE WSTRING REFUSAL'S NEGATIVE CONTROL (SPEC §4.12). `wstring` is a reserved
+# word and every spelling of it is refused by name, naming `string` as the fix
+# (TestWStringIsRefusedByName). Take the bounded spelling's diagnostic out of
+# the parser and the test must go red: `wstring(N)` would otherwise read as a
+# silent `string(N)`.
+.PHONY: check-wstring-refusal-negative-control
+check-wstring-refusal-negative-control:
+	@mkdir -p build/wstring-refusal-negative
+	@grep -q 'p.errf(t.Pos, WStringRefusal, "string(N)")' internal/parser/parser.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage anchor is gone from internal/parser/parser.go"; exit 1; }
+	@sed 's|p.errf(t.Pos, WStringRefusal, "string(N)")|_ = WStringRefusal // SABOTAGED: the bounded spelling is not refused|' \
+		internal/parser/parser.go > build/wstring-refusal-negative/parser.gotext
+	@printf '{"Replace":{"%s/internal/parser/parser.go":"%s/build/wstring-refusal-negative/parser.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/wstring-refusal-negative/overlay.json
+	@if go test -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./internal/check -run '^TestWStringIsRefusedByName$$' > build/wstring-refusal-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: TestWStringIsRefusedByName stayed green with the wstring(N) refusal removed"; cat build/wstring-refusal-negative/log; exit 1; \
+	fi
+	@grep -q 'wstring' build/wstring-refusal-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on a wstring spelling"; cat build/wstring-refusal-negative/log; exit 1; }
+	@echo "negative control: without the parser's wstring(N) diagnostic, TestWStringIsRefusedByName goes red"
+
 # THE VARIANT-ORDER NEGATIVE CONTROL (SPEC §3.1, issue #462). An enum value
 # rides as its declaration ordinal and a flags variant as its bit position, so
 # the projection carries both declarations' variant names in declaration order:
@@ -2887,148 +2876,6 @@ projection-wire-law-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage reddened the variant-order gate too — it is not surgical"; \
 		  cat build/projection-no-wire-law-variants.log; exit 1; }
 	@echo "negative control: without the codec law line both law gates go red, and the variant-order gate stays green"
-
-# ---------------------------------------------------------------------------
-# THE WIDE TEXT NEGATIVE CONTROLS (SPEC §4.12, §4.7; schema#188, schema#519) --
-#
-# build/schema_test_wide replays serialize's shared corpus, and a green run
-# cannot be read for WHICH rule earned it. Each control below removes exactly
-# one rule from a COPY of the C++ emitter (tools/sabotage, applied through a
-# Go overlay so the tree is never written), regenerates examples-wide/ with
-# it, rebuilds the gate and requires the gate to go RED on the vector the rule
-# is named for. The sabotage tool refuses unless its anchor matches exactly
-# once, so an emitter that drifts fails the control rather than passing it.
-#
-# wide-negative-control-body is the shared body: SABOTAGE names the sabotage,
-# EXPECT the text the red run must print.
-define wide-negative-control-body
-	@mkdir -p build
-	@go run ./tools/sabotage -name $(SABOTAGE) -out build/wide-$(SABOTAGE).gotext internal/codegen/cpp/functions.go
-	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/build/wide-$(SABOTAGE).gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/wide-$(SABOTAGE)-overlay.json
-	@rm -rf build/wide-$(SABOTAGE)-generated && mkdir -p build/wide-$(SABOTAGE)-generated
-	@go run -overlay=build/wide-$(SABOTAGE)-overlay.json ./cmd/schema generate \
-		--lang cpp --out build/wide-$(SABOTAGE)-generated examples-wide
-	@$(CXX) $(CXXFLAGS) -Ibuild/wide-$(SABOTAGE)-generated test/wide/main.cpp \
-		-o build/schema_test_wide-$(SABOTAGE)
-	@if ./build/schema_test_wide-$(SABOTAGE) > build/wide-$(SABOTAGE).log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the wide gate passed with $(SABOTAGE) applied"; \
-		cat build/wide-$(SABOTAGE).log; exit 1; \
-	fi
-	@grep -q '$(EXPECT)' build/wide-$(SABOTAGE).log || \
-		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on $(EXPECT)"; \
-		  cat build/wide-$(SABOTAGE).log; exit 1; }
-	@echo "negative control ($(SABOTAGE)): the gate goes red on" \
-		"$$(grep FAILED build/wide-$(SABOTAGE).log | head -1)"
-endef
-
-# The wire has NO alignment between the length and the code units (SPEC
-# §4.12). Put serialize.modern's align back and every byte after the length
-# field moves, so the corpus bytes stop being what the codec produces.
-.PHONY: wide-no-align-negative-control
-wide-no-align-negative-control: SABOTAGE = wstring-align
-wide-no-align-negative-control: EXPECT = on vector wstring-
-wide-no-align-negative-control:
-	$(wide-negative-control-body)
-
-# An unpaired surrogate fails the read, in its three shapes (SPEC §4.12).
-# Remove the pairing rule and the corpus's seven unpaired-surrogate vectors
-# stop being refused.
-.PHONY: wide-surrogate-negative-control
-wide-surrogate-negative-control: SABOTAGE = wstring-accept-unpaired-surrogate
-wide-surrogate-negative-control: EXPECT = surrogate
-wide-surrogate-negative-control:
-	$(wide-negative-control-body)
-
-# A successful read writes the zero unit at index length, always (SPEC §4.12).
-# Drop the store and the harness's terminator check goes red, which it can
-# only do because the harness poisons the buffer before the read.
-.PHONY: wide-terminator-negative-control
-wide-terminator-negative-control: SABOTAGE = wstring-drop-terminator
-wide-terminator-negative-control: EXPECT = out.text\[out.text_length\] == 0
-wide-terminator-negative-control:
-	$(wide-negative-control-body)
-
-# string(N) refuses malformed UTF-8 on READ, in every build mode (SPEC §4.7,
-# schema#519). Restore the write-only stance the amendment replaced and the
-# corpus's UTF-8 refusal vectors stop being refused.
-.PHONY: wide-utf8-read-negative-control
-wide-utf8-read-negative-control: SABOTAGE = string-write-only-utf8
-wide-utf8-read-negative-control: EXPECT = on vector string-refuse-
-wide-utf8-read-negative-control:
-	$(wide-negative-control-body)
-
-
-# ---------------------------------------------------------------------------
-# THE TABLE HALF's negative controls (docs/SPEC-TABLES.md §3, kind 33) --------
-#
-# build/schema_test_wide_table states one row per sentence of §3 and §4, and a
-# green run cannot be read for WHICH rule earned it either. Each control below
-# removes exactly one rule from a COPY of the TABLE emitter, regenerates
-# examples-wide/ with it, rebuilds the gate and requires the gate to go RED on
-# the row the rule is named for. SOURCE names the emitter file the sabotage
-# anchors in: the content rule and the clamp live in the emitted RUNTIME
-# (internal/codegen/cpptable/text.go) and the framing rules in the per-field
-# codec (internal/codegen/cpptable/codecs.go).
-define wide-table-negative-control-body
-	@mkdir -p build
-	@go run ./tools/sabotage -name $(SABOTAGE) -out build/wide-$(SABOTAGE).gotext $(SOURCE)
-	@printf '{"Replace":{"%s/$(SOURCE)":"%s/build/wide-$(SABOTAGE).gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/wide-$(SABOTAGE)-overlay.json
-	@rm -rf build/wide-$(SABOTAGE)-generated && mkdir -p build/wide-$(SABOTAGE)-generated
-	@go run -overlay=build/wide-$(SABOTAGE)-overlay.json ./cmd/schema generate \
-		--lang cpp --out build/wide-$(SABOTAGE)-generated examples-wide
-	@$(CXX) $(CXXFLAGS) -Ibuild/wide-$(SABOTAGE)-generated test/wide/table_main.cpp \
-		build/wide-$(SABOTAGE)-generated/CaptionTable.cpp -o build/schema_test_wide_table-$(SABOTAGE)
-	@if ./build/schema_test_wide_table-$(SABOTAGE) > build/wide-$(SABOTAGE).log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the wide table gate passed with $(SABOTAGE) applied"; \
-		cat build/wide-$(SABOTAGE).log; exit 1; \
-	fi
-	@grep -q '$(EXPECT)' build/wide-$(SABOTAGE).log || \
-		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on $(EXPECT)"; \
-		  cat build/wide-$(SABOTAGE).log; exit 1; }
-	@echo "negative control ($(SABOTAGE)): the gate goes red on" \
-		"$$(grep FAILED build/wide-$(SABOTAGE).log | head -1)"
-endef
-
-# An UNPAIRED SURROGATE in a kind 33 payload is DAMAGE (§3). Take the pairing
-# rule out of the emitted runtime and the gate's surrogate rows stop being
-# refused, while the nul rows beside them stay red-free.
-.PHONY: wide-table-surrogate-negative-control
-wide-table-surrogate-negative-control: SABOTAGE = table-wstring-accept-unpaired-surrogate
-wide-table-surrogate-negative-control: SOURCE = internal/codegen/cpptable/text.go
-wide-table-surrogate-negative-control: EXPECT = on vector wstring-table-refuse-
-wide-table-surrogate-negative-control:
-	$(wide-table-negative-control-body)
-
-# A ZERO CODE UNIT among the units is DAMAGE on the rule kind 12 takes for a
-# zero byte (§3). Take it out and the three nul rows stop being refused.
-.PHONY: wide-table-zero-unit-negative-control
-wide-table-zero-unit-negative-control: SABOTAGE = table-wstring-accept-zero-unit
-wide-table-zero-unit-negative-control: SOURCE = internal/codegen/cpptable/text.go
-wide-table-zero-unit-negative-control: EXPECT = on vector wstring-table-refuse-nul-
-wide-table-zero-unit-negative-control:
-	$(wide-table-negative-control-body)
-
-# An ODD `L` is framing damage on the body that carries it (§3), because the
-# value is `L / 2` code units. Take the check out and half a unit reads as one.
-.PHONY: wide-table-odd-length-negative-control
-wide-table-odd-length-negative-control: SABOTAGE = table-wstring-accept-odd-length
-wide-table-odd-length-negative-control: SOURCE = internal/codegen/cpptable/codecs.go
-wide-table-odd-length-negative-control: EXPECT = FAILED: report.damaged (
-wide-table-odd-length-negative-control:
-	$(wide-table-negative-control-body)
-
-# `L` IS A BYTE LENGTH, twice the code unit count (§3). Write the unit count
-# instead and the field's own bytes stop being what §3 frames, which the
-# default-and-count row reads byte for byte.
-.PHONY: wide-table-byte-length-negative-control
-wide-table-byte-length-negative-control: SABOTAGE = table-wstring-length-in-units
-wide-table-byte-length-negative-control: SOURCE = internal/codegen/cpptable/codecs.go
-wide-table-byte-length-negative-control: EXPECT = buffer\[3\] == 6
-wide-table-byte-length-negative-control:
-	$(wide-table-negative-control-body)
-
 
 # THE UNION ARM-ORDER NEGATIVE CONTROL (SPEC §3.1, §4.8, issue #491). A union's
 # arm order rides in its payload types only while the arms DIFFER in type: two
@@ -3613,32 +3460,16 @@ build/schema_test_bench_table: generated/bench/tables/cpp/.stamp test/bench/tabl
 # THE TOOLCHAIN GATE IS THE FIRST PREREQUISITE (issue #599): a pinned toolchain
 # that does not resolve stops the chain by name here, before an hour of C++,
 # rather than in the middle of a leg with a shell's "command not found".
-test: toolchain build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness build/schema_test_wide build/schema_test_wide_table
+test: toolchain build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness
 	# THE TOOLCHAIN GATE's own control (issue #599): the gate above is what
 	# stands between a missing toolchain and a green run, so it is held to the
 	# same rule as every other gate here. It has to go red on demand, by name.
 	$(MAKE) toolchain-negative-control
 	./build/schema_test
 	./build/schema_test_guard
-	./build/schema_test_wide
-	# THE WIDE TEXT CONTROLS (SPEC §4.12, §4.7): the gate above replays a
-	# shared corpus and a green run cannot be read for WHICH rule earned it,
-	# so each control removes one rule from a copy of the emitter and names
-	# the vector that must go red.
-	$(MAKE) wide-no-align-negative-control
-	$(MAKE) wide-surrogate-negative-control
-	$(MAKE) wide-terminator-negative-control
-	$(MAKE) wide-utf8-read-negative-control
-	./build/schema_test_wide_table
-	# THE TABLE HALF's controls (docs/SPEC-TABLES.md §3, kind 33): the same
-	# discipline one wire over — each removes one rule from a copy of the
-	# TABLE emitter and names the row that must go red.
-	$(MAKE) wide-table-surrogate-negative-control
-	$(MAKE) wide-table-zero-unit-negative-control
-	$(MAKE) wide-table-odd-length-negative-control
-	$(MAKE) wide-table-byte-length-negative-control
 	$(MAKE) check-zero-range-negative-control
 	$(MAKE) check-enum-bound-negative-control
+	$(MAKE) check-wstring-refusal-negative-control
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control
 	$(MAKE) projection-union-arm-order-negative-control
@@ -4938,7 +4769,7 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/conformance-harness
+update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/conformance-harness
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
@@ -4947,9 +4778,8 @@ update-goldens: build/schema_test_retain build/schema_test build/schema_test_lud
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_maps
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_arms
-	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_wide_table
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
-	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms wide; do \
+	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done
@@ -5182,7 +5012,6 @@ docs-check:
 check: bin/schema docs-check
 	./bin/schema check examples
 	./bin/schema check examples128
-	./bin/schema check examples-wide
 	./bin/schema check tables/examples
 	./bin/schema check tables/pointers
 	./bin/schema check tables/block
@@ -5209,14 +5038,12 @@ check: bin/schema docs-check
 id: bin/schema
 	./bin/schema id examples
 	./bin/schema id examples128
-	./bin/schema id examples-wide
 	./bin/schema id bench/corpus/Bench.schema
 	./bin/schema id bench/corpus/RealWorld.schema
 
 fmt: bin/schema
 	./bin/schema fmt examples
 	./bin/schema fmt examples128
-	./bin/schema fmt examples-wide
 	./bin/schema fmt tables/examples
 	./bin/schema fmt tables/pointers
 	./bin/schema fmt tables/block
@@ -5277,11 +5104,11 @@ clean:
 # of the two minutes, and sharding per language leg, the way the type wire's
 # nine legs already are, is what the numbers say to do if that stops holding;
 # it is not needed at this size.
-CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/widelist -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
+CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/listslist -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -Ibuild/tables-generated/features -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/features -I$(SERIALIZE)
 CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildcard build/tables-generated/lists/*Table.cpp) $(wildcard build/tables-generated/widelist/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
@@ -5299,7 +5126,7 @@ CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildc
 	build/tables-generated/k1/K1Table.cpp build/tables-generated/k2/K2Table.cpp \
 	build/tables-generated/g1/G1Table.cpp \
 	build/tables-generated/backend/BackendTable.cpp build/tables-generated/vocab/VocabTable.cpp build/tables-generated/vocab9/Vocab9Table.cpp \
-	build/tables-generated/wide/CaptionTable.cpp build/tables-generated/features/FeaturesTable.cpp
+	CaptionTable.cpp build/tables-generated/features/FeaturesTable.cpp
 
 # the harness LINKS the compiler's own engine — internal/tablewire and
 # internal/tabletext, reached through compiler/ — so its dependencies are the
@@ -5551,17 +5378,7 @@ tables-cpp-release: tables-cpp-release-battery
 	SCHEMA_SLOW=1 SCHEMA_CERTIFY_INT32_MAX=1 go test -count=1 -run '^TestIssue746Base64WriterInt32MaxUBSan$$' ./compiler
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-wide-text-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control
-
-# THE CONTENT RULE ON KIND 33 (docs/SPEC-TABLES.md §3, §4): an unpaired
-# surrogate is DAMAGE, not data. The fuzzer's wide-text pass plants one at
-# every kind 33 position the seeds carry — a field, a `type` a table reaches,
-# an element and a union arm — so removing the pairing rule from the emitted
-# runtime makes the leg STORE what the oracle refuses, and the two reports
-# differ on the mutant that carried it. Without the pass this control could not
-# go red, so it is the pass's own gate as much as the rule's.
-tables-wire-fuzz-wide-text-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,wide-text,internal/codegen/cpptable/text.go,s|if ( unit >= 0xD800 \&\& unit <= 0xDBFF )|if ( false ) // NEGATIVE CONTROL: the pairing rule is gone|,differs|the oracle discards a damaged load)
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control
 
 # the string read's `room( len )`. THE ONE CONTENT RULE THE WIRE HAS
 # (docs/SPEC-TABLES.md §3, §4) reads a kind `12` payload AS IT ARRIVES, over
@@ -6075,7 +5892,6 @@ MESSAGE_FORM_CONTROLS := \
 	message-offset-past-max-is-damage:internal/tablewire/messagedecode.go:TestARangedOffsetAboveTheSendersMax \
 	message-clamp-drops-surplus:internal/tablewire/messagedecode.go:TestAnOverLongArrayOfNonFixedElements \
 	message-skip-string-no-align:internal/tablewire/messagedecode.go:TestTheShapesOneRowAKind \
-	message-wide-string-thirty-two:internal/tablewire/messagedecode.go:TestTheWideStringsWidth \
 	message-reader-own-width:internal/tablewire/messagedecode.go:TestARangeThatMoved \
 	message-reads-own-vocabulary:internal/tablewire/messagedecode.go:TestPerDirectionIndependence \
 	message-second-announcement-accepted:internal/tablewire/message.go:TestTheMessageFormRefusesByName \
@@ -6901,28 +6717,17 @@ tables-fixedform-run-copy-negative-control:
 # every port's oracle and none of theirs: a corpus one leg owns is a corpus the
 # next leg re-derives, and a golden a generator has to re-derive is not a
 # golden.
-# THE WIDE-TEXT UNIT GETS ITS OWN GENERATION, for the reason examples-wide/
-# already has its own directory: kind 33 in a table closure is C, C++, C#, Dart
-# and Go today, and every SHARED schema list is pinned to targets that refuse
-# it. Naming the unit here rather than in tables_generate keeps it out of the
-# nine negative controls that regenerate that whole corpus.
-build/tables-generated-fxw/.stamp: bin/schema test/tables/FXW.schema
-	@rm -rf build/tables-generated-fxw
-	@mkdir -p build/tables-generated-fxw
-	./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
-	@touch $@
-
 # The runtime check is ORDER-ONLY: it runs first on every invocation, but a
 # phony prerequisite would relink the dump every time, and the corpus rule
 # below would then rewrite build/fixedform-corpus under every port's tests
 # that are reading it at the same moment (`go test -p N` over the *table
 # packages, one of which runs `make tables-rust-fixedform`).
-build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp | tables-fixedform-corpus-check
+build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp | tables-fixedform-corpus-check
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
-	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
+	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \
 	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@
@@ -7658,7 +7463,7 @@ tables-go-checked-cook:
 #   - pins-source:            testdata/golden/ (pure-Go + C++, C and C# table sources)
 #   - pins-wire-packet:       testdata/wire/*.bin, *.bits, packet-defaults/, bench_*.bin
 #   - pins-wire-tables:       testdata/wire/tables/ from test/tables/main.cpp
-#   - pins-wire-tables-forms: testdata/wire/tables/ (block/maps/lists/arms/wide/retain)
+#   - pins-wire-tables-forms: testdata/wire/tables/ (block/maps/lists/arms/retain)
 #                             plus testdata/conformance/tables/ (harness generate)
 #   - pins-conformance:       testdata/conformance/tables/cook/ and forgeries.txt
 
@@ -7773,7 +7578,7 @@ PINS_WIRE_FORMS_DIRS := block maps lists arms rt1 rt2 rt3
 
 .PHONY: pins-wire-tables-forms
 pins-wire-tables-forms: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
-pins-wire-tables-forms: bin/schema build/conformance-harness build/schema_test_wide_table
+pins-wire-tables-forms: bin/schema build/conformance-harness
 	@mkdir -p build/tables-generated testdata/wire/tables
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_WIRE_FORMS_DIRS),wire-forms)
 	@touch build/tables-generated/.stamp
@@ -7786,11 +7591,10 @@ pins-wire-tables-forms: bin/schema build/conformance-harness build/schema_test_w
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_maps
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_arms
-	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_wide_table
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	./build/conformance-harness generate
 
-PINS_CONFORMANCE_DIRS := maps lists widelist examples v1 v2 p1 p2 p3 block pointers messages stream m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 blobs scalars scalars2 backend vocab vocab9 arms rt1 wide features
+PINS_CONFORMANCE_DIRS := maps lists widelist examples v1 v2 p1 p2 p3 block pointers messages stream m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 blobs scalars scalars2 backend vocab vocab9 arms rt1 features
 PINS_CONFORMANCE_SOURCES = $$(ls build/tables-generated/maps/*Table.cpp build/tables-generated/lists/*Table.cpp build/tables-generated/widelist/*Table.cpp) $(filter-out build/tables-generated/maps/% build/tables-generated/lists/% build/tables-generated/widelist/%,$(CONFORMANCE_SOURCES))
 
 .PHONY: pins-conformance

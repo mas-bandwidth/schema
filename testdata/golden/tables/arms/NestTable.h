@@ -9699,6 +9699,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
@@ -9706,6 +9707,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -9724,10 +9726,16 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                     else
                     {
@@ -9750,6 +9758,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
@@ -9757,6 +9766,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -9774,13 +9784,19 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xffffffffffffffffull:
@@ -12978,6 +12994,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
@@ -12985,6 +13002,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -13003,10 +13021,16 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                     else
                     {
@@ -13029,6 +13053,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
@@ -13036,6 +13061,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -13053,13 +13079,19 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xffffffffffffffffull:

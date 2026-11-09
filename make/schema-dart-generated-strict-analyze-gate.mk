@@ -148,7 +148,7 @@ build/dart-view/.stamp: bin/schema
 	@rm -rf build/dart-view && mkdir -p build/dart-view
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; \
-		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		source=tables/$$dir; \
 		./bin/schema generate --lang dart --out build/dart-view/$$dir $$source; \
 	done
 	@touch $@

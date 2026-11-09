@@ -6285,7 +6285,11 @@ inline bool UserLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -6714,7 +6718,11 @@ inline bool ScriptLoadMessageBody( TableBitReader & r, const TableVocabulary & v
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -7211,7 +7219,11 @@ inline bool SelectionLoadMessageBody( TableBitReader & r, const TableVocabulary 
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -8569,7 +8581,11 @@ inline bool InsertTextLoadMessageBody( TableBitReader & r, const TableVocabulary
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -9265,7 +9281,11 @@ inline bool RemoveTextLoadMessageBody( TableBitReader & r, const TableVocabulary
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -10133,7 +10153,11 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -10843,7 +10867,11 @@ inline bool OpenDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -11291,7 +11319,11 @@ inline bool SaveDocumentLoadMessageBody( TableBitReader & r, const TableVocabula
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -12699,7 +12731,11 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -15673,7 +15709,11 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -16787,7 +16827,11 @@ inline bool CursorLoadMessageBody( TableBitReader & r, const TableVocabulary & v
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -17209,7 +17253,11 @@ inline bool PingLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -18796,6 +18844,46 @@ inline int64_t UserFixedLoadWalk( User * values, int64_t capacity, const uint8_t
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = UserFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { UserReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
@@ -19147,6 +19235,46 @@ inline int64_t ScriptFixedLoadWalk( Script * values, int64_t capacity, const uin
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = ScriptFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { ScriptReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
@@ -19496,6 +19624,46 @@ inline int64_t SelectionFixedLoadWalk( Selection * values, int64_t capacity, con
             for ( int64_t j = 0; j < k; ++j ) { SelectionReset( values[j] ); }
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = SelectionFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { SelectionReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SelectionFixedGuards );
@@ -20001,6 +20169,46 @@ inline int64_t InsertTextFixedLoadWalk( InsertText * values, int64_t capacity, c
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = InsertTextFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { InsertTextReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
@@ -20355,6 +20563,46 @@ inline int64_t RemoveTextFixedLoadWalk( RemoveText * values, int64_t capacity, c
             for ( int64_t j = 0; j < k; ++j ) { RemoveTextReset( values[j] ); }
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = RemoveTextFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { RemoveTextReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RemoveTextFixedGuards );
@@ -20985,6 +21233,46 @@ inline int64_t EditFixedLoadWalk( Edit * values, int64_t capacity, const uint8_t
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = EditFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { EditReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
@@ -21363,6 +21651,46 @@ inline int64_t OpenDocumentFixedLoadWalk( OpenDocument * values, int64_t capacit
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = OpenDocumentFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { OpenDocumentReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
@@ -21713,6 +22041,46 @@ inline int64_t SaveDocumentFixedLoadWalk( SaveDocument * values, int64_t capacit
             for ( int64_t j = 0; j < k; ++j ) { SaveDocumentReset( values[j] ); }
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = SaveDocumentFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { SaveDocumentReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
@@ -22950,6 +23318,46 @@ inline int64_t TransactionFixedLoadWalk( Transaction * values, int64_t capacity,
             for ( int64_t j = 0; j < k; ++j ) { TransactionReset( values[j] ); }
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = TransactionFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { TransactionReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
@@ -26160,6 +26568,46 @@ inline int64_t ToolMessageFixedLoadWalk( ToolMessage * values, int64_t capacity,
             for ( int64_t j = 0; j < k; ++j ) { ToolMessageReset( values[j] ); }
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = ToolMessageFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { ToolMessageReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md

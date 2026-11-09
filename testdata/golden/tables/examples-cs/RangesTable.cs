@@ -1200,6 +1200,13 @@ namespace Tabledemo
                             else { RangedSignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            RangedSignedFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             RangedSignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -1852,6 +1859,13 @@ namespace Tabledemo
                             else { RangedUnsignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            RangedUnsignedFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             RangedUnsignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -2441,6 +2455,13 @@ namespace Tabledemo
                                 RangedWidthsFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
                             }
                             else { RangedWidthsFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
+                        }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            RangedWidthsFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
                     case TableFixedWire.Flat:

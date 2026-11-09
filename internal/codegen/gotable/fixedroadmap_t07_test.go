@@ -114,7 +114,7 @@ func t07GoC14(t *testing.T) {
 func t07GoW4(t *testing.T) {
 	block := funcSource(tableFixedRuntime, "func tableFixedTextRefusal(")
 	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
-	if !strings.Contains(block, "capn := p.Size / unit") {
+	if !strings.Contains(block, "capn := p.Size") {
 		t.Error("W4: the used length is held to the plan's own capacity (§3.1)")
 	}
 	if !strings.Contains(block, "if v < 0 || uint32(v) > capn") || !strings.Contains(block, "return TableRefuseLengthOverBound.Error()") {

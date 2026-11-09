@@ -32,8 +32,6 @@ package elixirtable
 //
 // elixir/C3 [weak]: text length clamp.
 //
-// elixir/C5 [weak]: wide text code units.
-//
 // elixir/C4 [weak]: text content refuses BY NAME. elixir/R24 [owed]: ill-formed
 // text in the USED units refuses by name (`text_ill_formed`), text is counted in
 // bytes with the clamp in units, and slack is unspecified on read and not a
@@ -298,14 +296,13 @@ fixed table Cfg
 // ---- elixir/C3 ---------------------------------------------------------------
 
 // t05C3 holds elixir/C3: a text length is clamped ONCE in the bounds pass, at
-// the field's declared capacity, for `string(N)` and `wstring(N)` alike.
+// the field's declared capacity.
 func t05C3(t *testing.T) {
 	out, err := Generate(unitFrom(t, `package probe
 
 fixed table T
 {
     label string(8)
-    wide  wstring(8)
 }
 `))
 	if err != nil {
@@ -313,49 +310,19 @@ fixed table T
 	}
 	body := string(out["ProbeFixed.ex"])
 	t05Has(t, body, "R.clamps(c, n_label, 0, 8)", "C3 a string(N)'s length clamps to its bound")
-	t05Has(t, body, "R.clamps(c, n_wide, 0, 8)", "C3 a wstring(N)'s length clamps to its bound")
 	t05Has(t, t05Runtime(t), "def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1", "C3 the clamp counts once")
-}
-
-// ---- elixir/C5 ---------------------------------------------------------------
-
-// t05C5 holds elixir/C5: a wstring(N) rides in UTF-16 CODE UNITS — the length is
-// a byte length over paired units, an odd length or an unpaired surrogate is
-// damage, and the reader decodes two bytes a unit.
-func t05C5(t *testing.T) {
-	runtime := t05Runtime(t)
-	for _, want := range []string{
-		"def wtext(used, default, m), do: wtext(used, default, m, true)",
-		"defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)",
-		"defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false",
-		"when u >= 0xD800 and u <= 0xDBFF",
-		"when u >= 0xDC00 and u <= 0xDFFF",
-	} {
-		t05Has(t, runtime, want, "C5 wide text code units")
-	}
-	out, err := Generate(unitFrom(t, `package probe
-
-fixed table T
-{
-    wide wstring(8)
-}
-`))
-	if err != nil {
-		t.Fatalf("C5: Generate: %v", err)
-	}
-	t05Has(t, string(out["ProbeFixed.ex"]), "R.wtext(", "C5 the wide field reads through the wide-text helper")
 }
 
 // ---- elixir/C4 ---------------------------------------------------------------
 
-// t05C4 holds elixir/C4 to §4.5 fix 11: text content refuses BY NAME. Both text
-// kinds and the compiled plan's text op throw the named refusal on a content
+// t05C4 holds elixir/C4 to §4.5 fix 11: text content refuses BY NAME. The text
+// kind and the compiled plan's text op throw the named refusal on a content
 // violation, and the generated load catches it rather than landing a default.
 func t05C4(t *testing.T) {
 	runtime := t05Runtime(t)
 	t05Has(t, runtime, "do: throw({:refuse, :text_ill_formed}), else: {used, m}", "C4 the text content rule refuses by name")
-	if n := strings.Count(runtime, "throw({:refuse, :text_ill_formed})"); n != 3 {
-		t.Errorf("C4: the named refusal is thrown %d times, want text/1, wtext/2 and the compiled text op", n)
+	if n := strings.Count(runtime, "throw({:refuse, :text_ill_formed})"); n != 2 {
+		t.Errorf("C4: the named refusal is thrown %d times, want text/1 and the compiled text op", n)
 	}
 	t05No(t, runtime, "do: {default, true}", "C4 ill-formed text no longer defaults in silence")
 	out, err := Generate(unitFrom(t, `package probe
@@ -363,7 +330,6 @@ func t05C4(t *testing.T) {
 fixed table T
 {
     label string(8)
-    wide  wstring(8)
 }
 `))
 	if err != nil {
@@ -376,23 +342,22 @@ fixed table T
 // ---- elixir/R24 --------------------------------------------------------------
 
 // t05R24 holds elixir/R24 to all three clauses: ill-formed text in the USED
-// units refuses by name (`text_ill_formed`); the length is counted in BYTES
-// with the clamp in UNITS; and slack is unspecified on read and not a refusal.
+// units refuses by name (`text_ill_formed`); the length and its clamp are
+// counted in BYTES; and slack is unspecified on read and not a refusal.
 func t05R24(t *testing.T) {
 	runtime := t05Runtime(t)
 	// (1) the used units alone refuse by name, on both plans.
 	t05Has(t, runtime, "throw({:refuse, :text_ill_formed})", "R24 ill-formed text refuses by name")
 	// (3) slack is unspecified on read and not a refusal: the content check
 	// reads the USED units only, never the slack.
-	t05Has(t, runtime, "if text_ok?(flavour, binary_part(take, 0, v * unit)) do", "R24 the content check holds the USED units and not the slack")
-	// (2) the length is BYTES, the clamp is in UNITS.
-	t05Has(t, runtime, "cap = div(size, unit)", "R24 the clamp is in units")
+	t05Has(t, runtime, "if text_ok?(flavour, binary_part(take, 0, v)) do", "R24 the content check holds the USED units and not the slack")
+	// (2) the length and the clamp are BYTES: the cap is the span.
+	t05Has(t, runtime, "cap = size", "R24 the clamp is the byte span")
 	out, err := Generate(unitFrom(t, `package probe
 
 fixed table T
 {
     label string(8)
-    wide  wstring(8)
 }
 `))
 	if err != nil {
@@ -400,9 +365,7 @@ fixed table T
 	}
 	body := string(out["ProbeFixed.ex"])
 	t05Has(t, body, "R.clamps(c, n_label, 0, 8)", "R24 a byte string's length clamps to its unit bound")
-	t05Has(t, body, "R.clamps(c, n_wide, 0, 8)", "R24 a wide string's length clamps in code units")
 	t05Has(t, body, "binary_part(b_label, 0, min(max(n_label, 0), 8))", "R24 the used bytes are the length's own, never the slack")
-	t05Has(t, body, "binary_part(b_wide, 0, 2 * min(max(n_wide, 0), 8))", "R24 the wide used units ride two bytes each")
 }
 
 // ---- the card's test --------------------------------------------------------
@@ -421,7 +384,6 @@ func TestFixedRoadmapElixirT05Evolution(t *testing.T) {
 		{id: "elixir/R18", check: t05R18},
 		{id: "elixir/C3", check: t05C3},
 		{id: "elixir/C4", check: t05C4},
-		{id: "elixir/C5", check: t05C5},
 		{id: "elixir/R24", check: t05R24},
 	}
 	for _, task := range tasks {

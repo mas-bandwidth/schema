@@ -10615,7 +10615,11 @@ inline bool SampleLoadMessageBody( TableBitReader & r, const TableVocabulary & v
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -10935,6 +10939,7 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             Sample * slot = TableListFillNext( fill );
@@ -10942,6 +10947,7 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -10960,13 +10966,19 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0x39f7fcec8fcb623dull: // label
@@ -11226,6 +11238,7 @@ inline bool SheetLoadBody( TableReader & r, const TableNodeMap & nodes, Sheet & 
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             Row * slot = TableListFillNext( fill );
@@ -11233,6 +11246,7 @@ inline bool SheetLoadBody( TableReader & r, const TableNodeMap & nodes, Sheet & 
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -11252,13 +11266,19 @@ inline bool SheetLoadBody( TableReader & r, const TableNodeMap & nodes, Sheet & 
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0x5f82477707ad620full: // pinned
@@ -11566,7 +11586,11 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -12315,6 +12339,7 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             Squad * slot = TableListFillNext( fill );
@@ -12322,6 +12347,7 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -12341,13 +12367,19 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xbf82010f6f71eae9ull: // past
@@ -12976,6 +13008,46 @@ inline int64_t SampleFixedLoadWalk( Sample * values, int64_t capacity, const uin
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = SampleFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { SampleReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SampleFixedGuards );
         TableFixedClampKnownRanges( SampleFixedKnownRanges[lineage_at], SampleFixedKnownRangeCounts[lineage_at],
@@ -13291,6 +13363,46 @@ inline int64_t ItemFixedLoadWalk( Item * values, int64_t capacity, const uint8_t
             for ( int64_t j = 0; j < k; ++j ) { ItemReset( values[j] ); }
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = ItemFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { ItemReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ItemFixedGuards );
@@ -19510,6 +19622,7 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             Sample * slot = TableListFillNext( fill );
@@ -19517,6 +19630,7 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -19535,13 +19649,19 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0x39f7fcec8fcb623dull: // label
@@ -19806,6 +19926,7 @@ inline bool SheetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sh
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             Row * slot = TableListFillNext( fill );
@@ -19813,6 +19934,7 @@ inline bool SheetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sh
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -19832,13 +19954,19 @@ inline bool SheetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sh
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0x5f82477707ad620full: // pinned
@@ -20639,6 +20767,7 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             Squad * slot = TableListFillNext( fill );
@@ -20646,6 +20775,7 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
                             {
                                 if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -20665,13 +20795,19 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xbf82010f6f71eae9ull: // past

@@ -149,6 +149,18 @@ export const TableFixedRefusal = Object.freeze({
   // refuses one (the save answers -1).
   NonFiniteFloat: 18,
   IntegrityMismatch: 19,
+  // THE FOUR CONTENT BOUND RULINGS (docs/FIXED-FORM-ALGORITHM.md §4.5,
+  // §4.6): a count past the plan's bound, a text length past its cap, and a
+  // ranged scalar, a bits(N), a union tag or an enum ordinal past the set.
+  // Each REFUSES BY NAME and writes not one destination byte. They are not
+  // §4's six events: nothing was decoded and there is nothing to count.
+  CountOverBound: 20,
+  LengthOverBound: 21,
+  OutOfRange: 22,
+  // A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 REFUSES BY NAME (docs/SPEC-TABLES.md
+  // §4, §6.5, §4.5): no writer emits one, and 0x02 is neither stored verbatim
+  // nor normalized to true. It is a check-loop refusal, not a bounds-pass one.
+  WireDamaged: 23,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -174,6 +186,10 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
     case TableFixedRefusal.IntegrityMismatch: return "integrity_mismatch";
+    case TableFixedRefusal.CountOverBound: return "count_over_bound";
+    case TableFixedRefusal.LengthOverBound: return "length_over_bound";
+    case TableFixedRefusal.OutOfRange: return "out_of_range";
+    case TableFixedRefusal.WireDamaged: return "wire_damaged";
     default: return "???";
   }
 }
@@ -419,6 +435,16 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
             TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (expected >>> 0)) { holds = false; break; }
       }
       if (!holds) { continue; }
+      for (let j = 0, at = e[b + TableFixedLaneGuards]; j < links - 1; j++, at += 3) {
+        if (remap[at + 1] === -1 && src[srcAt + remap[at]] > 1) {
+          report.refused = TableFixedRefusal.WireDamaged;
+          return;
+        }
+      }
+    }
+    if (guard !== TableFixedNoGuard && expected === -1 && src[srcAt + guard] > 1) {
+      report.refused = TableFixedRefusal.WireDamaged;
+      return;
     }
     const s = srcAt + e[b + TableFixedLaneSrc];
     const d = e[b + TableFixedLaneDst];
@@ -452,9 +478,12 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         break;
       }
       case TableFixedOpCount: {
-        let v = TableFixedGetU32(src, s) | 0;
-        if (v < 0) { v = 0; report.oor++; }
-        else if (v > size) { v = size; report.oor++; }
+        // A COUNT PAST THE PLAN'S BOUND IS A REFUSAL BY NAME (§4.5), never a
+        // clamp: the bound is the WRITER's own for the lineage entry, and a
+        // forged count is not a number this writer could have written. It
+        // refuses before any destination byte is written.
+        const v = TableFixedGetU32(src, s) | 0;
+        if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }
         dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
         dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
         break;
@@ -467,9 +496,12 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // (docs/SPEC-TABLES.md §3.4).
         const unit = e[b + TableFixedLaneMeta] === TableFixedTextWide ? 2 : 1;
         const cap = (size / unit) | 0;
-        let v = TableFixedGetU32(src, s) | 0;
-        if (v < 0) { v = 0; report.oor++; }
-        else if (v > cap) { v = cap; report.oor++; }
+        // A TEXT LENGTH PAST THE CAP IS A REFUSAL BY NAME (§4.5), never a
+        // clamp: the cap is the WRITER's own for the lineage entry, and a
+        // forged length is not a count this writer could have written. It
+        // refuses before any destination byte is written.
+        const v = TableFixedGetU32(src, s) | 0;
+        if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }
         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE (§4.5 fix
         // 11): UTF-8 validity over v bytes, never over N; wide code units over
         // v, never 2N. A violation REFUSES BY NAME with nothing decoded past it.
@@ -501,14 +533,14 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         const extent = remap[table];
         let v = 0;
         if (hi !== 0 || lo > extent) {
-          // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT OF RANGE, as a
-          // count past its bound is: it lands None AND COUNTS ONE oor, on
-          // THIS plan exactly as the identity plan's projection counts it
-          // (§5.4, §4.6, and §5.8 row 12 — the reference counts on neither
-          // compiled path). A variant the writer DOES carry and this reader
-          // cannot name is a different thing: it resolves to None through the
-          // table and counts nothing, because nothing was out of range.
-          report.oor++;
+          // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT OF RANGE
+          // (§4.6): it refuses BY NAME and writes not one destination byte,
+          // exactly as the identity plan's bounds pass refuses the same forged
+          // bytes. A variant the writer DOES carry and this reader cannot name
+          // is a different thing: it resolves to None through the table and
+          // refuses nothing, because nothing was out of range.
+          report.refused = TableFixedRefusal.OutOfRange;
+          return;
         } else if (lo !== 0) {
           v = remap[table + lo];
         }
@@ -548,10 +580,8 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         const v = e[b + TableFixedLaneAux];
         for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
         // A None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
-        // that set lands None (already written just above) and COUNTS, so the
-        // compiled plan counts it exactly as the identity plan's decode bound
-        // does and the SAME forged bytes land the SAME oor == 1 on either
-        // plan (schema#1254, §5.4, §5.8 row 12). The source read is bounded
+        // that set refuses out_of_range (§4.6), exactly as the identity plan's
+        // bounds pass refuses the same forged bytes. The source read is bounded
         // here rather than at the push: TableFixedPush on this leg takes no
         // record bound at all, so the entry that reads a record byte carries
         // its own.
@@ -559,7 +589,9 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         if (v === 0 && arms !== 0 && s + size <= src.length) {
           let raw = 0;
           for (let k = 0; k < size; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
-          if (raw > arms) { report.oor++; }
+          // A TAG PAST THE WRITER'S OWN ARM SET IS OUT OF RANGE (§4.6): it
+          // refuses BY NAME, never a silent oor count.
+          if (raw > arms) { report.refused = TableFixedRefusal.OutOfRange; return; }
         }
         break;
       }
@@ -2140,28 +2172,30 @@ export function MixedEntityFixedWriteBody(view, at, value) {
 // MixedEntity's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedEntityFixedDecode(value, view, at, report) {
+  { const b = view.getUint8(at + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+  { const b = view.getUint8(at + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   value.entityId = view.getUint32(at, true);
-  if (value.entityId > 4095) { value.entityId = 4095; report.oor++; }
+  if (value.entityId > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.posX = view.getInt32(at + 4, true);
-  if (value.posX < -16383) { value.posX = -16383; report.oor++; } else if (value.posX > 16383) { value.posX = 16383; report.oor++; }
+  if (value.posX < -16383 || value.posX > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.posY = view.getInt32(at + 8, true);
-  if (value.posY < -16383) { value.posY = -16383; report.oor++; } else if (value.posY > 16383) { value.posY = 16383; report.oor++; }
+  if (value.posY < -16383 || value.posY > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.posZ = view.getInt32(at + 12, true);
-  if (value.posZ < -16383) { value.posZ = -16383; report.oor++; } else if (value.posZ > 16383) { value.posZ = 16383; report.oor++; }
+  if (value.posZ < -16383 || value.posZ > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.yaw = view.getUint32(at + 16, true);
-  if (value.yaw > 511) { value.yaw = 511; report.oor++; }
+  if (value.yaw > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.pitch = view.getUint32(at + 20, true);
-  if (value.pitch > 511) { value.pitch = 511; report.oor++; }
+  if (value.pitch > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.velX = view.getInt32(at + 24, true);
-  if (value.velX < -2048) { value.velX = -2048; report.oor++; } else if (value.velX > 2047) { value.velX = 2047; report.oor++; }
+  if (value.velX < -2048 || value.velX > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.velY = view.getInt32(at + 28, true);
-  if (value.velY < -2048) { value.velY = -2048; report.oor++; } else if (value.velY > 2047) { value.velY = 2047; report.oor++; }
+  if (value.velY < -2048 || value.velY > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.velZ = view.getInt32(at + 32, true);
-  if (value.velZ < -2048) { value.velZ = -2048; report.oor++; } else if (value.velZ > 2047) { value.velZ = 2047; report.oor++; }
+  if (value.velZ < -2048 || value.velZ > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.health = view.getInt32(at + 36, true);
-  if (value.health < 0) { value.health = 0; report.oor++; } else if (value.health > 1000) { value.health = 1000; report.oor++; }
+  if (value.health < 0 || value.health > 1000) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.weapon = view.getUint8(at + 40);
-  if (value.weapon > 15) { value.weapon = 0; report.oor++; }
+  if (value.weapon > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.damage = view.getBigUint64(at + 41, true);
   value.moving = view.getUint8(at + 49) !== 0;
   value.firing = view.getUint8(at + 50) !== 0;
@@ -2178,9 +2212,9 @@ export function MixedStatFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedStatFixedDecode(value, view, at, report) {
   value.statId = view.getUint32(at, true);
-  if (value.statId > 255) { value.statId = 255; report.oor++; }
+  if (value.statId > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.delta = view.getInt32(at + 4, true);
-  if (value.delta < -512) { value.delta = -512; report.oor++; } else if (value.delta > 511) { value.delta = 511; report.oor++; }
+  if (value.delta < -512 || value.delta > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
 }
 
 // MixedHitEvent's stores. Every offset is a constant of the type and nothing is
@@ -2195,12 +2229,13 @@ export function MixedHitEventFixedWriteBody(view, at, value) {
 // MixedHitEvent's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedHitEventFixedDecode(value, view, at, report) {
+  { const b = view.getUint8(at + 12); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   value.targetId = view.getUint32(at, true);
-  if (value.targetId > 4095) { value.targetId = 4095; report.oor++; }
+  if (value.targetId > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.damage = view.getInt32(at + 4, true);
-  if (value.damage < 0) { value.damage = 0; report.oor++; } else if (value.damage > 4095) { value.damage = 4095; report.oor++; }
+  if (value.damage < 0 || value.damage > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.hitKind = view.getInt32(at + 8, true);
-  if (value.hitKind < 0) { value.hitKind = 0; report.oor++; } else if (value.hitKind > 7) { value.hitKind = 7; report.oor++; }
+  if (value.hitKind < 0 || value.hitKind > 7) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.crit = view.getUint8(at + 12) !== 0;
 }
 
@@ -2215,9 +2250,9 @@ export function MixedChatEventFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedChatEventFixedDecode(value, view, at, report) {
   value.channel = view.getInt32(at, true);
-  if (value.channel < 0) { value.channel = 0; report.oor++; } else if (value.channel > 3) { value.channel = 3; report.oor++; }
+  if (value.channel < 0 || value.channel > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.speaker = view.getUint32(at + 4, true);
-  if (value.speaker > 4095) { value.speaker = 4095; report.oor++; }
+  if (value.speaker > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
 }
 
 // MixedPickupEvent's stores. Every offset is a constant of the type and nothing is
@@ -2231,9 +2266,9 @@ export function MixedPickupEventFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedPickupEventFixedDecode(value, view, at, report) {
   value.itemId = view.getUint32(at, true);
-  if (value.itemId > 1023) { value.itemId = 1023; report.oor++; }
+  if (value.itemId > 1023) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.amount = view.getInt32(at + 4, true);
-  if (value.amount < 0) { value.amount = 0; report.oor++; } else if (value.amount > 255) { value.amount = 255; report.oor++; }
+  if (value.amount < 0 || value.amount > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
 }
 
 // BenchMixed's stores. Every offset is a constant of the type and nothing is
@@ -2309,8 +2344,33 @@ export function BenchMixedFixedCheckBody(value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function BenchMixedFixedDecode(value, view, at, report) {
   {
-    let n = view.getInt32(at + 1126, true);
-    if (n < 0) { n = 0; } else if (n > 15) { n = 15; }
+    const n = view.getInt32(at + 52, true);
+    if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    for (let i = 0; i < n; i++) {
+      { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+      { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+    }
+  }
+  {
+    const n = view.getInt32(at + 464, true);
+    if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    for (let i = 0; i < n; i++) {
+    }
+  }
+  {
+    let tag = 0;
+    tag = view.getUint8(at + 1108);
+    switch (tag) {
+      case 1: {
+        { const b = view.getUint8(at + 1121); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+        break;
+      }
+      default: break;
+    }
+  }
+  {
+    const n = view.getInt32(at + 1126, true);
+    if (n < 0 || n > 15) { report.refused = TableFixedRefusal.LengthOverBound; return; }
     if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }
   }
   if ((view.getUint32(at + 1165, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
@@ -2318,34 +2378,30 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   if ((view.getUint32(at + 1173, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
   if ((view.getUint32(at + 1177, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
   if ((view.getUint32(at + 1185, true) & 0x7ff00000) === 0x7ff00000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { const b = view.getUint8(at + 1227); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   value.sequence = view.getUint32(at, true);
-  if (value.sequence > 65535) { value.sequence = 65535; report.oor++; }
+  if (value.sequence > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.ackSequence = view.getInt32(at + 4, true);
-  if (value.ackSequence < 0) { value.ackSequence = 0; report.oor++; } else if (value.ackSequence > 65535) { value.ackSequence = 65535; report.oor++; }
+  if (value.ackSequence < 0 || value.ackSequence > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.ackBits = view.getUint32(at + 8, true);
   value.sessionId = view.getBigUint64(at + 12, true);
   value.clientId = view.getUint32(at + 20, true);
   value.nonce = view.getBigUint64(at + 24, true);
   {
     const n = view.getInt32(at + 32 + 4, true) * 4294967296 + view.getUint32(at + 32, true);
-    if (n < -1000000000000) { value.worldTime = -1000000000000n; report.oor++; }
-    else if (n > 1000000000000) { value.worldTime = 1000000000000n; report.oor++; }
-    else {
+    if (n < -1000000000000 || n > 1000000000000) { report.refused = TableFixedRefusal.OutOfRange; return; }
       value.worldTime = view.getBigInt64(at + 32, true);
-    }
   }
   {
     const n = view.getUint32(at + 40 + 4, true) * 4294967296 + view.getUint32(at + 40, true);
-    if (n > 281474976710655) { value.frameTick = 281474976710655n; report.oor++; }
-    else {
+    if (n > 281474976710655) { report.refused = TableFixedRefusal.OutOfRange; return; }
       value.frameTick = view.getBigUint64(at + 40, true);
-    }
   }
   value.serverTime = view.getInt32(at + 48, true);
-  if (value.serverTime < 0) { value.serverTime = 0; report.oor++; } else if (value.serverTime > 16776960) { value.serverTime = 16776960; report.oor++; }
+  if (value.serverTime < 0 || value.serverTime > 16776960) { report.refused = TableFixedRefusal.OutOfRange; return; }
   {
     let n = view.getInt32(at + 52, true);
-    if (n < 0) { n = 0; report.oor++; } else if (n > 8) { n = 8; report.oor++; }
+    if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
     value.entitiesCount = n;
   }
   {
@@ -2354,27 +2410,27 @@ export function BenchMixedFixedDecode(value, view, at, report) {
       {
         const e1 = ai[i];
         e1.entityId = view.getUint32(oi, true);
-        if (e1.entityId > 4095) { e1.entityId = 4095; report.oor++; }
+        if (e1.entityId > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.posX = view.getInt32(oi + 4, true);
-        if (e1.posX < -16383) { e1.posX = -16383; report.oor++; } else if (e1.posX > 16383) { e1.posX = 16383; report.oor++; }
+        if (e1.posX < -16383 || e1.posX > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.posY = view.getInt32(oi + 8, true);
-        if (e1.posY < -16383) { e1.posY = -16383; report.oor++; } else if (e1.posY > 16383) { e1.posY = 16383; report.oor++; }
+        if (e1.posY < -16383 || e1.posY > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.posZ = view.getInt32(oi + 12, true);
-        if (e1.posZ < -16383) { e1.posZ = -16383; report.oor++; } else if (e1.posZ > 16383) { e1.posZ = 16383; report.oor++; }
+        if (e1.posZ < -16383 || e1.posZ > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.yaw = view.getUint32(oi + 16, true);
-        if (e1.yaw > 511) { e1.yaw = 511; report.oor++; }
+        if (e1.yaw > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.pitch = view.getUint32(oi + 20, true);
-        if (e1.pitch > 511) { e1.pitch = 511; report.oor++; }
+        if (e1.pitch > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.velX = view.getInt32(oi + 24, true);
-        if (e1.velX < -2048) { e1.velX = -2048; report.oor++; } else if (e1.velX > 2047) { e1.velX = 2047; report.oor++; }
+        if (e1.velX < -2048 || e1.velX > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.velY = view.getInt32(oi + 28, true);
-        if (e1.velY < -2048) { e1.velY = -2048; report.oor++; } else if (e1.velY > 2047) { e1.velY = 2047; report.oor++; }
+        if (e1.velY < -2048 || e1.velY > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.velZ = view.getInt32(oi + 32, true);
-        if (e1.velZ < -2048) { e1.velZ = -2048; report.oor++; } else if (e1.velZ > 2047) { e1.velZ = 2047; report.oor++; }
+        if (e1.velZ < -2048 || e1.velZ > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.health = view.getInt32(oi + 36, true);
-        if (e1.health < 0) { e1.health = 0; report.oor++; } else if (e1.health > 1000) { e1.health = 1000; report.oor++; }
+        if (e1.health < 0 || e1.health > 1000) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.weapon = view.getUint8(oi + 40);
-        if (e1.weapon > 15) { e1.weapon = 0; report.oor++; }
+        if (e1.weapon > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.damage = view.getBigUint64(oi + 41, true);
         e1.moving = view.getUint8(oi + 49) !== 0;
         e1.firing = view.getUint8(oi + 50) !== 0;
@@ -2383,7 +2439,7 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   }
   {
     let n = view.getInt32(at + 464, true);
-    if (n < 0) { n = 0; report.oor++; } else if (n > 80) { n = 80; report.oor++; }
+    if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
     value.statsCount = n;
   }
   {
@@ -2392,24 +2448,24 @@ export function BenchMixedFixedDecode(value, view, at, report) {
       {
         const e2 = ai[i];
         e2.statId = view.getUint32(oi, true);
-        if (e2.statId > 255) { e2.statId = 255; report.oor++; }
+        if (e2.statId > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e2.delta = view.getInt32(oi + 4, true);
-        if (e2.delta < -512) { e2.delta = -512; report.oor++; } else if (e2.delta > 511) { e2.delta = 511; report.oor++; }
+        if (e2.delta < -512 || e2.delta > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
       }
     }
   }
   value.gameEvent.type = view.getUint8(at + 1108);
-  if (value.gameEvent.type > 3) { value.gameEvent.type = 0; report.oor++; }
+  if (value.gameEvent.type > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
   switch (value.gameEvent.type) {
     case 1: {
       {
         const e3 = value.gameEvent.hit;
         e3.targetId = view.getUint32(at + 1109, true);
-        if (e3.targetId > 4095) { e3.targetId = 4095; report.oor++; }
+        if (e3.targetId > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e3.damage = view.getInt32(at + 1113, true);
-        if (e3.damage < 0) { e3.damage = 0; report.oor++; } else if (e3.damage > 4095) { e3.damage = 4095; report.oor++; }
+        if (e3.damage < 0 || e3.damage > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e3.hitKind = view.getInt32(at + 1117, true);
-        if (e3.hitKind < 0) { e3.hitKind = 0; report.oor++; } else if (e3.hitKind > 7) { e3.hitKind = 7; report.oor++; }
+        if (e3.hitKind < 0 || e3.hitKind > 7) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e3.crit = view.getUint8(at + 1121) !== 0;
       }
       break;
@@ -2418,9 +2474,9 @@ export function BenchMixedFixedDecode(value, view, at, report) {
       {
         const e4 = value.gameEvent.chat;
         e4.channel = view.getInt32(at + 1109, true);
-        if (e4.channel < 0) { e4.channel = 0; report.oor++; } else if (e4.channel > 3) { e4.channel = 3; report.oor++; }
+        if (e4.channel < 0 || e4.channel > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e4.speaker = view.getUint32(at + 1113, true);
-        if (e4.speaker > 4095) { e4.speaker = 4095; report.oor++; }
+        if (e4.speaker > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
       }
       break;
     }
@@ -2428,9 +2484,9 @@ export function BenchMixedFixedDecode(value, view, at, report) {
       {
         const e5 = value.gameEvent.pickup;
         e5.itemId = view.getUint32(at + 1109, true);
-        if (e5.itemId > 1023) { e5.itemId = 1023; report.oor++; }
+        if (e5.itemId > 1023) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e5.amount = view.getInt32(at + 1113, true);
-        if (e5.amount < 0) { e5.amount = 0; report.oor++; } else if (e5.amount > 255) { e5.amount = 255; report.oor++; }
+        if (e5.amount < 0 || e5.amount > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
       }
       break;
     }
@@ -2441,22 +2497,22 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   }
   {
     let n = view.getInt32(at + 1126, true);
-    if (n < 0) { n = 0; report.oor++; } else if (n > 15) { n = 15; report.oor++; }
+    if (n < 0 || n > 15) { report.refused = TableFixedRefusal.LengthOverBound; return; }
     value.playerNameLength = n;
   }
   for (let i = 0; i < 15; i++) { value.playerName[i] = view.getUint8(at + 1130 + i); }
   {
     let n = view.getInt32(at + 1145, true);
-    if (n < 0) { n = 0; report.oor++; } else if (n > 16) { n = 16; report.oor++; }
+    if (n < 0 || n > 16) { report.refused = TableFixedRefusal.LengthOverBound; return; }
     value.payloadLength = n;
   }
   for (let i = 0; i < 16; i++) { value.payload[i] = view.getUint8(at + 1149 + i); }
   value.aimX = view.getFloat32(at + 1165, true);
-  if (value.aimX < -1) { value.aimX = -1; report.oor++; } else if (value.aimX > 1) { value.aimX = 1; report.oor++; }
+  if (value.aimX < -1 || value.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.aimY = view.getFloat32(at + 1169, true);
-  if (value.aimY < -1) { value.aimY = -1; report.oor++; } else if (value.aimY > 1) { value.aimY = 1; report.oor++; }
+  if (value.aimY < -1 || value.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.aimZ = view.getFloat32(at + 1173, true);
-  if (value.aimZ < -1) { value.aimZ = -1; report.oor++; } else if (value.aimZ > 1) { value.aimZ = 1; report.oor++; }
+  if (value.aimZ < -1 || value.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.recoil = view.getFloat32(at + 1177, true);
   value.drift = view.getFloat64(at + 1181, true);
   value.wideKey = (view.getUint32(at + 1189 + 8, true) | view.getUint32(at + 1189 + 12, true)) === 0
@@ -2464,23 +2520,20 @@ export function BenchMixedFixedDecode(value, view, at, report) {
     : (view.getBigUint64(at + 1189 + 8, true) << 64n) | view.getBigUint64(at + 1189, true);
   {
     const n = view.getInt32(at + 1205 + 12, true) * 4294967296 + view.getUint32(at + 1205 + 8, true);
-    if (n < -68719476736) { value.flux = -1267650600228229401496703205376n; report.oor++; }
-    else if (n > 68719476736 || (n === 68719476736 && (view.getUint32(at + 1205, true) | view.getUint32(at + 1205 + 4, true)) !== 0)) { value.flux = 1267650600228229401496703205376n; report.oor++; }
-    else {
+    if (n < -68719476736 || n > 68719476736 || (n === 68719476736 && (view.getUint32(at + 1205, true) | view.getUint32(at + 1205 + 4, true)) !== 0)) { report.refused = TableFixedRefusal.OutOfRange; return; }
       value.flux = (view.getUint32(at + 1205 + 8, true) | view.getUint32(at + 1205 + 12, true)) === 0
         ? view.getBigUint64(at + 1205, true)
         : (view.getBigInt64(at + 1205 + 8, true) << 64n) | view.getBigUint64(at + 1205, true);
-    }
   }
   value.ping = view.getUint16(at + 1221, true);
-  if (value.ping > 64000) { value.ping = 64000; report.oor++; }
+  if (value.ping > 64000) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.crcHint = view.getUint32(at + 1223, true);
-  if (value.crcHint > 16777215) { value.crcHint = 16777215; report.oor++; }
+  if (value.crcHint > 16777215) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.hasExtra = view.getUint8(at + 1227) !== 0;
   value.extra = view.getInt32(at + 1228, true);
-  if (value.extra < 0) { value.extra = 0; report.oor++; } else if (value.extra > 255) { value.extra = 255; report.oor++; }
+  if (value.extra < 0 || value.extra > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.idleTicks = view.getInt32(at + 1232, true);
-  if (value.idleTicks < 0) { value.idleTicks = 0; report.oor++; } else if (value.idleTicks > 15) { value.idleTicks = 15; report.oor++; }
+  if (value.idleTicks < 0 || value.idleTicks > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
 }
 
 // FixedTable's stores. Every offset is a constant of the type and nothing is
@@ -2499,8 +2552,33 @@ export function FixedTableFixedCheckBody(value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function FixedTableFixedDecode(value, view, at, report) {
   {
-    let n = view.getInt32(at + 1126, true);
-    if (n < 0) { n = 0; } else if (n > 15) { n = 15; }
+    const n = view.getInt32(at + 52, true);
+    if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    for (let i = 0; i < n; i++) {
+      { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+      { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+    }
+  }
+  {
+    const n = view.getInt32(at + 464, true);
+    if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    for (let i = 0; i < n; i++) {
+    }
+  }
+  {
+    let tag = 0;
+    tag = view.getUint8(at + 1108);
+    switch (tag) {
+      case 1: {
+        { const b = view.getUint8(at + 1121); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+        break;
+      }
+      default: break;
+    }
+  }
+  {
+    const n = view.getInt32(at + 1126, true);
+    if (n < 0 || n > 15) { report.refused = TableFixedRefusal.LengthOverBound; return; }
     if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }
   }
   if ((view.getUint32(at + 1165, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
@@ -2508,36 +2586,32 @@ export function FixedTableFixedDecode(value, view, at, report) {
   if ((view.getUint32(at + 1173, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
   if ((view.getUint32(at + 1177, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
   if ((view.getUint32(at + 1185, true) & 0x7ff00000) === 0x7ff00000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { const b = view.getUint8(at + 1227); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   {
     const e1 = value.value;
     e1.sequence = view.getUint32(at, true);
-    if (e1.sequence > 65535) { e1.sequence = 65535; report.oor++; }
+    if (e1.sequence > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.ackSequence = view.getInt32(at + 4, true);
-    if (e1.ackSequence < 0) { e1.ackSequence = 0; report.oor++; } else if (e1.ackSequence > 65535) { e1.ackSequence = 65535; report.oor++; }
+    if (e1.ackSequence < 0 || e1.ackSequence > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.ackBits = view.getUint32(at + 8, true);
     e1.sessionId = view.getBigUint64(at + 12, true);
     e1.clientId = view.getUint32(at + 20, true);
     e1.nonce = view.getBigUint64(at + 24, true);
     {
       const n = view.getInt32(at + 32 + 4, true) * 4294967296 + view.getUint32(at + 32, true);
-      if (n < -1000000000000) { e1.worldTime = -1000000000000n; report.oor++; }
-      else if (n > 1000000000000) { e1.worldTime = 1000000000000n; report.oor++; }
-      else {
+      if (n < -1000000000000 || n > 1000000000000) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.worldTime = view.getBigInt64(at + 32, true);
-      }
     }
     {
       const n = view.getUint32(at + 40 + 4, true) * 4294967296 + view.getUint32(at + 40, true);
-      if (n > 281474976710655) { e1.frameTick = 281474976710655n; report.oor++; }
-      else {
+      if (n > 281474976710655) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.frameTick = view.getBigUint64(at + 40, true);
-      }
     }
     e1.serverTime = view.getInt32(at + 48, true);
-    if (e1.serverTime < 0) { e1.serverTime = 0; report.oor++; } else if (e1.serverTime > 16776960) { e1.serverTime = 16776960; report.oor++; }
+    if (e1.serverTime < 0 || e1.serverTime > 16776960) { report.refused = TableFixedRefusal.OutOfRange; return; }
     {
       let n = view.getInt32(at + 52, true);
-      if (n < 0) { n = 0; report.oor++; } else if (n > 8) { n = 8; report.oor++; }
+      if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
       e1.entitiesCount = n;
     }
     {
@@ -2546,27 +2620,27 @@ export function FixedTableFixedDecode(value, view, at, report) {
         {
           const e2 = ai[i];
           e2.entityId = view.getUint32(oi, true);
-          if (e2.entityId > 4095) { e2.entityId = 4095; report.oor++; }
+          if (e2.entityId > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.posX = view.getInt32(oi + 4, true);
-          if (e2.posX < -16383) { e2.posX = -16383; report.oor++; } else if (e2.posX > 16383) { e2.posX = 16383; report.oor++; }
+          if (e2.posX < -16383 || e2.posX > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.posY = view.getInt32(oi + 8, true);
-          if (e2.posY < -16383) { e2.posY = -16383; report.oor++; } else if (e2.posY > 16383) { e2.posY = 16383; report.oor++; }
+          if (e2.posY < -16383 || e2.posY > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.posZ = view.getInt32(oi + 12, true);
-          if (e2.posZ < -16383) { e2.posZ = -16383; report.oor++; } else if (e2.posZ > 16383) { e2.posZ = 16383; report.oor++; }
+          if (e2.posZ < -16383 || e2.posZ > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.yaw = view.getUint32(oi + 16, true);
-          if (e2.yaw > 511) { e2.yaw = 511; report.oor++; }
+          if (e2.yaw > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.pitch = view.getUint32(oi + 20, true);
-          if (e2.pitch > 511) { e2.pitch = 511; report.oor++; }
+          if (e2.pitch > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.velX = view.getInt32(oi + 24, true);
-          if (e2.velX < -2048) { e2.velX = -2048; report.oor++; } else if (e2.velX > 2047) { e2.velX = 2047; report.oor++; }
+          if (e2.velX < -2048 || e2.velX > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.velY = view.getInt32(oi + 28, true);
-          if (e2.velY < -2048) { e2.velY = -2048; report.oor++; } else if (e2.velY > 2047) { e2.velY = 2047; report.oor++; }
+          if (e2.velY < -2048 || e2.velY > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.velZ = view.getInt32(oi + 32, true);
-          if (e2.velZ < -2048) { e2.velZ = -2048; report.oor++; } else if (e2.velZ > 2047) { e2.velZ = 2047; report.oor++; }
+          if (e2.velZ < -2048 || e2.velZ > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.health = view.getInt32(oi + 36, true);
-          if (e2.health < 0) { e2.health = 0; report.oor++; } else if (e2.health > 1000) { e2.health = 1000; report.oor++; }
+          if (e2.health < 0 || e2.health > 1000) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.weapon = view.getUint8(oi + 40);
-          if (e2.weapon > 15) { e2.weapon = 0; report.oor++; }
+          if (e2.weapon > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.damage = view.getBigUint64(oi + 41, true);
           e2.moving = view.getUint8(oi + 49) !== 0;
           e2.firing = view.getUint8(oi + 50) !== 0;
@@ -2575,7 +2649,7 @@ export function FixedTableFixedDecode(value, view, at, report) {
     }
     {
       let n = view.getInt32(at + 464, true);
-      if (n < 0) { n = 0; report.oor++; } else if (n > 80) { n = 80; report.oor++; }
+      if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
       e1.statsCount = n;
     }
     {
@@ -2584,24 +2658,24 @@ export function FixedTableFixedDecode(value, view, at, report) {
         {
           const e3 = ai[i];
           e3.statId = view.getUint32(oi, true);
-          if (e3.statId > 255) { e3.statId = 255; report.oor++; }
+          if (e3.statId > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e3.delta = view.getInt32(oi + 4, true);
-          if (e3.delta < -512) { e3.delta = -512; report.oor++; } else if (e3.delta > 511) { e3.delta = 511; report.oor++; }
+          if (e3.delta < -512 || e3.delta > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
         }
       }
     }
     e1.gameEvent.type = view.getUint8(at + 1108);
-    if (e1.gameEvent.type > 3) { e1.gameEvent.type = 0; report.oor++; }
+    if (e1.gameEvent.type > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
     switch (e1.gameEvent.type) {
       case 1: {
         {
           const e4 = e1.gameEvent.hit;
           e4.targetId = view.getUint32(at + 1109, true);
-          if (e4.targetId > 4095) { e4.targetId = 4095; report.oor++; }
+          if (e4.targetId > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e4.damage = view.getInt32(at + 1113, true);
-          if (e4.damage < 0) { e4.damage = 0; report.oor++; } else if (e4.damage > 4095) { e4.damage = 4095; report.oor++; }
+          if (e4.damage < 0 || e4.damage > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e4.hitKind = view.getInt32(at + 1117, true);
-          if (e4.hitKind < 0) { e4.hitKind = 0; report.oor++; } else if (e4.hitKind > 7) { e4.hitKind = 7; report.oor++; }
+          if (e4.hitKind < 0 || e4.hitKind > 7) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e4.crit = view.getUint8(at + 1121) !== 0;
         }
         break;
@@ -2610,9 +2684,9 @@ export function FixedTableFixedDecode(value, view, at, report) {
         {
           const e5 = e1.gameEvent.chat;
           e5.channel = view.getInt32(at + 1109, true);
-          if (e5.channel < 0) { e5.channel = 0; report.oor++; } else if (e5.channel > 3) { e5.channel = 3; report.oor++; }
+          if (e5.channel < 0 || e5.channel > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e5.speaker = view.getUint32(at + 1113, true);
-          if (e5.speaker > 4095) { e5.speaker = 4095; report.oor++; }
+          if (e5.speaker > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
         }
         break;
       }
@@ -2620,9 +2694,9 @@ export function FixedTableFixedDecode(value, view, at, report) {
         {
           const e6 = e1.gameEvent.pickup;
           e6.itemId = view.getUint32(at + 1109, true);
-          if (e6.itemId > 1023) { e6.itemId = 1023; report.oor++; }
+          if (e6.itemId > 1023) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e6.amount = view.getInt32(at + 1113, true);
-          if (e6.amount < 0) { e6.amount = 0; report.oor++; } else if (e6.amount > 255) { e6.amount = 255; report.oor++; }
+          if (e6.amount < 0 || e6.amount > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
         }
         break;
       }
@@ -2633,22 +2707,22 @@ export function FixedTableFixedDecode(value, view, at, report) {
     }
     {
       let n = view.getInt32(at + 1126, true);
-      if (n < 0) { n = 0; report.oor++; } else if (n > 15) { n = 15; report.oor++; }
+      if (n < 0 || n > 15) { report.refused = TableFixedRefusal.LengthOverBound; return; }
       e1.playerNameLength = n;
     }
     for (let i = 0; i < 15; i++) { e1.playerName[i] = view.getUint8(at + 1130 + i); }
     {
       let n = view.getInt32(at + 1145, true);
-      if (n < 0) { n = 0; report.oor++; } else if (n > 16) { n = 16; report.oor++; }
+      if (n < 0 || n > 16) { report.refused = TableFixedRefusal.LengthOverBound; return; }
       e1.payloadLength = n;
     }
     for (let i = 0; i < 16; i++) { e1.payload[i] = view.getUint8(at + 1149 + i); }
     e1.aimX = view.getFloat32(at + 1165, true);
-    if (e1.aimX < -1) { e1.aimX = -1; report.oor++; } else if (e1.aimX > 1) { e1.aimX = 1; report.oor++; }
+    if (e1.aimX < -1 || e1.aimX > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.aimY = view.getFloat32(at + 1169, true);
-    if (e1.aimY < -1) { e1.aimY = -1; report.oor++; } else if (e1.aimY > 1) { e1.aimY = 1; report.oor++; }
+    if (e1.aimY < -1 || e1.aimY > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.aimZ = view.getFloat32(at + 1173, true);
-    if (e1.aimZ < -1) { e1.aimZ = -1; report.oor++; } else if (e1.aimZ > 1) { e1.aimZ = 1; report.oor++; }
+    if (e1.aimZ < -1 || e1.aimZ > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.recoil = view.getFloat32(at + 1177, true);
     e1.drift = view.getFloat64(at + 1181, true);
     e1.wideKey = (view.getUint32(at + 1189 + 8, true) | view.getUint32(at + 1189 + 12, true)) === 0
@@ -2656,23 +2730,20 @@ export function FixedTableFixedDecode(value, view, at, report) {
       : (view.getBigUint64(at + 1189 + 8, true) << 64n) | view.getBigUint64(at + 1189, true);
     {
       const n = view.getInt32(at + 1205 + 12, true) * 4294967296 + view.getUint32(at + 1205 + 8, true);
-      if (n < -68719476736) { e1.flux = -1267650600228229401496703205376n; report.oor++; }
-      else if (n > 68719476736 || (n === 68719476736 && (view.getUint32(at + 1205, true) | view.getUint32(at + 1205 + 4, true)) !== 0)) { e1.flux = 1267650600228229401496703205376n; report.oor++; }
-      else {
+      if (n < -68719476736 || n > 68719476736 || (n === 68719476736 && (view.getUint32(at + 1205, true) | view.getUint32(at + 1205 + 4, true)) !== 0)) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.flux = (view.getUint32(at + 1205 + 8, true) | view.getUint32(at + 1205 + 12, true)) === 0
           ? view.getBigUint64(at + 1205, true)
           : (view.getBigInt64(at + 1205 + 8, true) << 64n) | view.getBigUint64(at + 1205, true);
-      }
     }
     e1.ping = view.getUint16(at + 1221, true);
-    if (e1.ping > 64000) { e1.ping = 64000; report.oor++; }
+    if (e1.ping > 64000) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.crcHint = view.getUint32(at + 1223, true);
-    if (e1.crcHint > 16777215) { e1.crcHint = 16777215; report.oor++; }
+    if (e1.crcHint > 16777215) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.hasExtra = view.getUint8(at + 1227) !== 0;
     e1.extra = view.getInt32(at + 1228, true);
-    if (e1.extra < 0) { e1.extra = 0; report.oor++; } else if (e1.extra > 255) { e1.extra = 255; report.oor++; }
+    if (e1.extra < 0 || e1.extra > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.idleTicks = view.getInt32(at + 1232, true);
-    if (e1.idleTicks < 0) { e1.idleTicks = 0; report.oor++; } else if (e1.idleTicks > 15) { e1.idleTicks = 15; report.oor++; }
+    if (e1.idleTicks < 0 || e1.idleTicks > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
   }
 }
 

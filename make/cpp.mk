@@ -318,8 +318,8 @@ tables-cpp-release-flags-negative-control:
 # under SCHEMA_REQUIRE_CLANG_FORMAT=1 / SCHEMA_REQUIRE_CLANGXX=1 (CI sets both):
 # a gate that always skips is no gate.
 CLANGXX ?= clang++
-CPP_CLEAN_TREES := build/tables-generated build/wide-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp
-CPP_CLEAN_STAMPS := build/tables-generated/.stamp build/wide-generated/.stamp generated/cpp/.stamp generated/cpp/ludicrous/.stamp generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp generated/bench/paired/cpp/.stamp
+CPP_CLEAN_TREES := build/tables-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp
+CPP_CLEAN_STAMPS := build/tables-generated/.stamp generated/cpp/.stamp generated/cpp/ludicrous/.stamp generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp generated/bench/paired/cpp/.stamp
 CPP_FORMAT_ALLOW := make/cpp-format-allow.txt
 CPP_WARN_ALLOW   := make/cpp-warn-allow.txt
 

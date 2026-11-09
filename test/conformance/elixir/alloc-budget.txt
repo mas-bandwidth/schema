@@ -71,11 +71,6 @@ blob_large 619322 13 349831
 blob_str8 4142 13 2671
 blob_str16 4311 13 2707
 blob_equal_bytes 1823 3 1153
-wide_empty 2150 7 1704
-wide_title 2343 11 1803
-wide_sites 4946 42 3831
-wide_narrow_arm 2846 14 2139
-wide_stamp 1151 8 919
 guard_false_no_edge 1504 2 1100
 guard_true_both_edges 2596 3 1733
 optional_absent_no_edge 1504 2 1101

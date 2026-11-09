@@ -503,42 +503,6 @@ func measureMalformedKeyedProbe() string {
 `
 }
 
-// measureMalformedWStringSchema holds wstring values in each place the load
-// checks their UTF-16 (read.go emitReadField and emitReadArm through
-// wstring.go emitReadWString): a field, a field of a list element (v1 has no
-// bare wstring element) and a union arm. The load reports Malformed on an odd length,
-// a NUL unit or an unpaired surrogate, so the strict measure must refuse
-// those wires too (the read of w6 found an odd-byte wstring the measure
-// accepted).
-var measureMalformedWStringSchema = `package probe
-table W {
- s wstring(3)
-}
-union U0 {
- w wstring(3)
- n int8 | min = -128, max = 127
-}
-table Root {
- a wstring(4)
- l []W
- u U0
-}
-`
-
-func measureMalformedWStringProbe() string {
-	probe := measureMalformedSeed2Probe
-	before, _, _ := strings.Cut(probe, " var docs = []string{\n")
-	end := strings.Index(probe, " // tolerant is the oracle")
-	return before + ` var docs = []string{
-  "{}",
-  "{\"a\":\"ab\"}",
-  "{\"a\":\"\\ud83c\\udf0d\",\"l\":[{\"s\":\"x\"},{\"s\":\"\\u03a9\"}],\"u\":{\"w\":\"yz\"}}",
-  "{\"l\":[{\"s\":\"abc\"},{}],\"u\":{\"w\":\"\\ud83c\\udf0d\"}}",
-  "{\"u\":{\"n\":-3}}",
- }
-` + probe[end:]
-}
-
 // measureMalformedDigests are the tolerant load's recovery digests at BASE
 // (sprint/schema-go 454596324; the wire-bool-not-0-or-1 landing moved them), one per unit: a change to the strict measure
 // that moves any of them changed what the tolerant load recovers. Seeds 4 and 1

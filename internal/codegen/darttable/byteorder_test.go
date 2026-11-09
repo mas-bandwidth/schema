@@ -101,7 +101,7 @@ func byteOrderScan(src string) (int, []string) {
 }
 
 // byteOrderCorpus is every generated Dart file of every corpus unit under
-// tables/ and examples-wide, keyed unit/file.
+// tables/, keyed unit/file.
 func byteOrderCorpus(t *testing.T) map[string][]byte {
 	t.Helper()
 	root := filepath.Join("..", "..", "..")
@@ -109,7 +109,6 @@ func byteOrderCorpus(t *testing.T) map[string][]byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dirs = append(dirs, filepath.Join(root, "examples-wide"))
 	out := map[string][]byte{}
 	for _, dir := range dirs {
 		schemas, _ := filepath.Glob(filepath.Join(dir, "*.schema"))

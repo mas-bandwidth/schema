@@ -101,8 +101,7 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # evolution rows; mapdemo (tables/maps) the maps (§2.8); messagedemo
 # (tables/messages) union arms of every field type, arrays of unions and
 # optional arrays (§2.3, §2.6); scalars (tables/scalars) the fixed-point and
-# 128-bit kinds and an enum-keyed array (§2.4, §3); widedemo (examples-wide)
-# wstring(N) on the variable wire (§3); vocabdemo, vocab9demo and backenddemo
+# 128-bit kinds and an enum-keyed array (§2.4, §3); vocabdemo, vocab9demo and backenddemo
 # (tables/vocab, tables/vocab9, tables/backend) the message surface's three
 # connections (§3.3); streamdemo (tables/stream) a variable-length arm, a
 # pointer arm and arrays of pointers (§2.1, §2.6); tblm1/tblm2 and tbla1/tbla2
@@ -121,7 +120,6 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblp3:test/tables/P3.schema tblrt1:test/tables/RT1.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
-	widedemo:examples-wide \
 	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend \
 	streamdemo:tables/stream tblm1:test/tables/M1.schema tblm2:test/tables/M2.schema \
 	tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema \
@@ -131,7 +129,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -1019,28 +1017,8 @@ packet-finite-elixir-negative-control: packet-finite-elixir
 test-elixir: packet-finite-elixir packet-finite-elixir-negative-control
 
 
-build/packet-wide/elixir/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
-	./bin/schema generate --lang elixir --out build/packet-wide/elixir build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang elixir --out build/packet-wide/elixir/shapes test/packet-wide/Shapes.schema
-	@touch $@
 
-.PHONY: packet-wide-elixir packet-wide-elixir-negative-control
-packet-wide-elixir: build/packet-wide/elixir/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(MIX) format --check-formatted build/packet-wide/elixir/*.ex build/packet-wide/elixir/shapes/*.ex test/packet-wide/elixir/*.exs
-	$(ELIXIR) test/packet-wide/elixir/main.exs --contracts
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver env $(ELIXIR) test/packet-wide/elixir/main.exs
-
-packet-wide-elixir-negative-control: packet-wide-elixir
-	@mkdir -p build/packet-wide/elixir-negative/beam
-	go run ./tools/sabotage -name packet-wide-elixir-pairing -out build/packet-wide/elixir-negative/runtime.gotext internal/codegen/elixir/runtime.go
-	@printf '{"Replace":{"%s/internal/codegen/elixir/runtime.go":"%s/build/packet-wide/elixir-negative/runtime.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/elixir-negative/overlay.json
-	go run -overlay=build/packet-wide/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-wide/elixir-negative build/packet-wide/source/WideText.schema
-	$(ELIXIRC_STRICT) -o build/packet-wide/elixir-negative/beam build/packet-wide/elixir-negative/*.ex
-	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only env $(ELIXIR) test/packet-wide/elixir/main.exs "$(CURDIR)/build/packet-wide/elixir-negative" > build/packet-wide/elixir-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Elixir wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/elixir-negative/log || { cat build/packet-wide/elixir-negative/log; exit 1; }
-	@echo 'packet wide Elixir negative control: removed pairing fails bit-flip agreement'
-
-test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
+test-elixir:
 
 # ---------------------------------------------------------------------------
 # THE VARIABLE CLASS ON THE TABLE WIRE (docs/SPEC-TABLES.md §2, §3, §16)
@@ -1181,17 +1159,17 @@ tables-elixir-finite-float-negative-control:
 test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-control
 
 # THE VARIABLE CLASS'S REMAINING CONSTRUCTS (docs/SPEC-TABLES.md §2.3, §2.4,
-# §2.6, §2.8, §3, §3.2, §4.12): maps, union arms of every field type and
-# arrays of unions, optional fields and optional arrays, enum-keyed arrays,
-# the fixed-point and 128-bit kinds, and wstring(N).
+# §2.6, §2.8, §3, §3.2): maps, union arms of every field type and arrays of
+# unions, optional fields and optional arrays, enum-keyed arrays, and the
+# fixed-point and 128-bit kinds.
 # TestMapsAndUnionArmsOnTheTableWireElixir generates tables/maps,
-# tables/messages, tables/scalars and examples-wide through the COMPILER path
+# tables/messages and tables/scalars through the COMPILER path
 # (`schema generate --lang elixir`) and round-trips every committed instance,
 # and the tables/arms goldens, through the generated Elixir against the Go
 # oracle's wire and text byte for byte. It is a FUNCTIONAL test (it runs the
 # leg's own toolchain), so SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain
 # into a failure, never a skip. The conformance run answers wire, report,
-# json-read and json-write for the mapdemo, messagedemo, scalars and widedemo
+# json-read and json-write for the mapdemo, messagedemo and scalars
 # instances.
 .PHONY: tables-elixir-variable-arms
 tables-elixir-variable-arms: build/conformance/manifest.txt
@@ -2003,7 +1981,7 @@ test-elixir: cards-elixir-conformance-upgrade-negative-control cards-elixir-conf
 # emitted by test/elixir-view/emit, the same unitViewModule the generator
 # calls, so the listing still covers them. The --unflattened run on tabledemo
 # is the negative control: a damaged listing must turn the oracle red.
-VIEW_ELIXIR_REGISTRY_ONLY := messages stream arms backend wide
+VIEW_ELIXIR_REGISTRY_ONLY := messages stream arms backend
 
 .PHONY: tables-elixir-view
 tables-elixir-view: bin/schema test/elixir-view/view_main.exs
@@ -2012,7 +1990,7 @@ tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 	go build -o build/elixir-view/emit ./test/elixir-view/emit
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
-		source=tables/$$dir; [ "$$dir" != wide ] || source=examples-wide; \
+		source=tables/$$dir; \
 		gen=build/elixir-view/generated/$$dir; mkdir -p $$gen; \
 		case " $(VIEW_ELIXIR_REGISTRY_ONLY) " in \
 			*" $$dir "*) ./build/elixir-view/emit "$$source" $$gen/UnitView.ex ;; \

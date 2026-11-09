@@ -187,11 +187,6 @@ def dcell(v:schema_rt.Value, fd:schema_rt.FieldDescriptor, kind:int) -> string:
         return "i{v.i}"
     if s == "float":
         return dfloat(v.f, fd.f32)
-    if s == "str" and fd.wide:
-        let us:[string] = []
-        for(v.units) u:
-            push(us, "{u}")
-        return "u" + concat_string(us, ",")
     if s == "str" or s == "text" or s == "bytes":
         return "s" + hexs(v.s)
     if s == "enum":
@@ -395,12 +390,6 @@ func (d *goDumper) cell(c *tabletext.Cell, f *ir.Field) string {
 		return "b0"
 	case t.Kind == ir.TFloat32 || t.Kind == ir.TFloat64:
 		return goFloat(c.F, t.Kind == ir.TFloat32)
-	case t.Kind == ir.TWString:
-		us := make([]string, len(c.Units))
-		for i, u := range c.Units {
-			us[i] = fmt.Sprint(u)
-		}
-		return "u" + strings.Join(us, ",")
 	case t.Kind == ir.TString || t.Kind == ir.TBytes:
 		return "s" + hex.EncodeToString(c.Str)
 	}

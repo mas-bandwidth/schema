@@ -105,7 +105,7 @@ type versionRow struct {
 	// writer already wrote — so the prefill owns no byte of it — or opens a slot
 	// whose DECLARED DEFAULT IS ZERO (`array_bounded_grow`, `bytes_grow`,
 	// `constant_grow`, `enum_append`, `flags_append`, `optional_add`,
-	// `string_grow`, `union_append`, `wstring_grow`), and over a zeroed image a
+	// `string_grow`, `union_append`), and over a zeroed image a
 	// zero default passes whether the prefill ran or not. Those rows owe §5.9
 	// #32 instead, and the bracket check below is how they pay it.
 	//
@@ -194,7 +194,6 @@ var versionRows = []versionRow{
   check(elem(v.pick, 1).x == 21, "the old writer's arm payload did not land: #{inspect(elem(v.pick, 1).x)}")
   check(v.seq == 18, "the scalar after the union moved: #{inspect(v.seq)}")
   check(elem(v.pick, 1).y == 55, "the field appended to the SELECTED arm's payload is not its declared default: #{inspect(elem(v.pick, 1).y)}")`},
-	{row: "wstring_grow"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------

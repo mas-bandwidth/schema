@@ -338,6 +338,7 @@ defmodule Bench.WrapFixed do
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
             {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
+            report = R.forged_check(report)
             {value, c, m} = fixed_table_fixed_decode(image, 0, false)
             {value, R.damage_check(R.range_check(report, c), m)}
           end)

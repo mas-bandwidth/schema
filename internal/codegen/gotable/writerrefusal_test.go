@@ -290,7 +290,6 @@ fixed table Root {
     note  ?int32 | min = 0, max = 10
     pick  Pick
     grade Grade
-    wide  wstring(4)
     raw   bytes(4)
 }
 `, `package probe
@@ -306,8 +305,6 @@ func good() Root {
 	v.Pick.Type = PickTypeA
 	v.Pick.A.N = 10
 	v.Grade = GradeGold
-	v.WideLength = 2
-	v.Wide[0], v.Wide[1] = 0xD83D, 0xDE00
 	return v
 }
 
@@ -330,7 +327,6 @@ func TestFixedShapes(t *testing.T) {
 		{"the None tag", func(v *Root) { v.Pick.Type = PickTypeNone }},
 		{"the enum's None", func(v *Root) { v.Grade = GradeNone }},
 		{"raw bytes carry no text rule", func(v *Root) { v.RawLength = 4; v.Raw = [4]byte{0xff, 0, 0xfe, 0} }},
-		{"slack behind the used text", func(v *Root) { v.WideLength = 0; v.Wide[0] = 0xD800 }},
 	}
 	for _, c := range accepted {
 		v := good()
@@ -358,9 +354,6 @@ func TestFixedShapes(t *testing.T) {
 		{"a union tag past the arm set", func(v *Root) { v.Pick.Type = PickType(7) }},
 		{"the selected arm off its range", func(v *Root) { v.Pick.Type = PickTypeA; v.Pick.A.N = 99 }},
 		{"an enum ordinal past the set", func(v *Root) { v.Grade = Grade(9) }},
-		{"an unpaired surrogate", func(v *Root) { v.WideLength = 1; v.Wide[0] = 0xD800 }},
-		{"a zero unit", func(v *Root) { v.WideLength = 2; v.Wide[0], v.Wide[1] = 0x41, 0 }},
-		{"a wide length past N", func(v *Root) { v.WideLength = 5 }},
 		{"a bytes length past N", func(v *Root) { v.RawLength = 5 }},
 	}
 	for _, c := range refused {
@@ -547,7 +540,6 @@ table V {
     ratio float32 = 0.5 | min = 0, max = 1, resolution = 0.5
     mask  bits(12)
     marks [..4]int32 | min = 0, max = 10
-    wide  wstring(4)
 }
 `, `package probe
 import ("testing")
@@ -559,8 +551,6 @@ func good() V {
 	v.Mask = 4095
 	v.MarksCount = 2
 	v.Marks[0], v.Marks[1] = 10, 3
-	v.WideLength = 2
-	v.Wide[0], v.Wide[1] = 0xD83D, 0xDE00
 	return v
 }
 
@@ -590,9 +580,6 @@ func TestVariableShapes(t *testing.T) {
 		{"a live element off its range", func(v *V) { v.Marks[1] = 11 }},
 		{"a count past Max", func(v *V) { v.MarksCount = 5 }},
 		{"a negative count", func(v *V) { v.MarksCount = -1 }},
-		{"an unpaired surrogate", func(v *V) { v.WideLength = 1; v.Wide[0] = 0xDC00 }},
-		{"a zero unit", func(v *V) { v.WideLength = 2; v.Wide[0], v.Wide[1] = 0x41, 0 }},
-		{"a wide length past N", func(v *V) { v.WideLength = 5 }},
 	}
 	for _, c := range cases {
 		v := good()

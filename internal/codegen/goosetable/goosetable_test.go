@@ -336,7 +336,7 @@ func valueChecks(b *strings.Builder, acc string, f *ir.Field, def bool, where st
 	case t.TextUnbounded():
 		shape("ShapeText")
 		noDef()
-	case t.Kind == ir.TString || t.Kind == ir.TWString || t.Kind == ir.TBytes:
+	case t.Kind == ir.TString || t.Kind == ir.TBytes:
 		if t.Kind == ir.TBytes {
 			shape("ShapeBytes")
 			c(fmt.Sprintf("%s.ek == %d", acc, ir.TableKindU8), "bytes element kind")
@@ -344,7 +344,6 @@ func valueChecks(b *strings.Builder, acc string, f *ir.Field, def bool, where st
 			shape("ShapeStr")
 		}
 		c(fmt.Sprintf("%s.bound == %d", acc, t.Size), "bound")
-		c(fmt.Sprintf("%s.wide == %v", acc, t.Kind == ir.TWString), "wide")
 		if def && f.HasDefault {
 			c(fmt.Sprintf("%s.has_def && %s.def_s == %q", acc, acc, string(f.DefBytes)), "default")
 		} else {

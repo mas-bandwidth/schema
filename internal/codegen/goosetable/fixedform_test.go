@@ -48,7 +48,6 @@ var fixedVectors = []struct {
 	{"p3.bin", "test/tables/P3.schema", "Chain"},
 	{"keyed.bin", "tables/examples/Keyed.schema", "KeyedConfig"},
 	{"pack.bin", "tables/examples/Pack.schema", "PackConfig"},
-	{"fxw.bin", "test/tables/FXW.schema", "FxWide"},
 	{"fu1.bin", "test/tables/FU1.schema", "FuRoot"},
 	{"fu2.bin", "test/tables/FU2.schema", "FuRoot"},
 }
@@ -522,9 +521,6 @@ func (m *fixedImage) elem(f *ir.Field) {
 		return
 	case ir.TString:
 		m.text(t.Size, 1)
-		return
-	case ir.TWString:
-		m.text(t.Size, 2)
 		return
 	case ir.TBytes:
 		n := int64(m.next() % uint64(t.Size+1))

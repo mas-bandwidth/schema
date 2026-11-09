@@ -20,13 +20,13 @@ import (
 // maps (docs/SPEC-TABLES.md §2.8), unions whose arms are tables, arrays of
 // unions and union arms of any field type (§2.6, §3), optional fields and
 // optional arrays (§2.3), enum-keyed arrays (§2.4), the fixed-point and
-// 128-bit scalars (§3, §15) and wstring(N) (§3, kind 33).
+// 128-bit scalars (§3, §15).
 //
 // Each case is one corpus unit. The unit must generate (never a refusal), the
 // generated <Home>Wire.dart must hold a codec for every root the oracle rows
 // name, and every oracle wire must survive Load then Save byte for byte. The
-// rows come from the conformance manifest for the four units it registers
-// (mapdemo, messagedemo, scalars, widedemo) and from the committed arms_*.bin
+// rows come from the conformance manifest for the three units it registers
+// (mapdemo, messagedemo, scalars) and from the committed arms_*.bin
 // oracles for tables/arms, so a row added to the data is a row this test reads.
 func TestMapsAndUnionArmsOnTheTableWireDart(t *testing.T) {
 	t.Parallel()
@@ -52,7 +52,6 @@ func TestMapsAndUnionArmsOnTheTableWireDart(t *testing.T) {
 		}},
 		{name: "messages", unit: "tables/messages", wire: "MessagedemoWire.dart", rows: manifestRows(t, repo, "messagedemo")},
 		{name: "scalars", unit: "tables/scalars", wire: "ScalardemoWire.dart", rows: manifestRows(t, repo, "scalars")},
-		{name: "wide", unit: "examples-wide", wire: "WideWire.dart", rows: manifestRows(t, repo, "widedemo")},
 	}
 
 	for _, c := range cases {

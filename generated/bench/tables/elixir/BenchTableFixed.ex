@@ -1091,6 +1091,7 @@ defmodule Benchtable.BenchTableFixed do
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
             {image, report} = R.run(plan, R.detach(body, copy), @table_entity_prefill, report)
+            report = R.forged_check(report)
             {value, c, m} = table_entity_fixed_decode(image, 0, false)
             {value, R.damage_check(R.range_check(report, c), m)}
           end)
@@ -1338,6 +1339,7 @@ defmodule Benchtable.BenchTableFixed do
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
             {image, report} = R.run(plan, R.detach(body, copy), @table_stat_prefill, report)
+            report = R.forged_check(report)
             {value, c, m} = table_stat_fixed_decode(image, 0, false)
             {value, R.damage_check(R.range_check(report, c), m)}
           end)
@@ -1657,6 +1659,7 @@ defmodule Benchtable.BenchTableFixed do
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
             {image, report} = R.run(plan, R.detach(body, copy), @table_mixed_prefill, report)
+            report = R.forged_check(report)
             {value, c, m} = table_mixed_fixed_decode(image, 0, false)
             {value, R.damage_check(R.range_check(report, c), m)}
           end)

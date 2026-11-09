@@ -2,28 +2,25 @@ package cpptable
 
 // TestFixedRoadmapCppT05Evolution proves this card's rows of the `fixed-tables`
 // roadmap node on the cpp leg: the text tasks cpp/C3 (text length clamp), cpp/C4
-// (text content refuses BY NAME), cpp/C5 (wide text code units) and cpp/R24
-// (ill-formed text in the USED units). The law is docs/FIXED-FORM-ALGORITHM.md
+// (text content refuses BY NAME) and cpp/R24 (ill-formed text in the USED
+// units). The law is docs/FIXED-FORM-ALGORITHM.md
 // §4.5's `text` row and docs/SPEC-TABLES.md §3.4:
 //
 //   `v := SLE(4, record+src)` out_of_range into `[0, cap]`, `COUNT out_of_range` if it
 //   fired. ... The CONTENT RULES apply to the USED UNITS and nothing else:
-//   UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`,
-//   never `2N`, an astral pair counting two. A content violation REFUSES BY
-//   NAME.
+//   UTF-8 validity over `v` bytes, never over `N`. A content violation
+//   REFUSES BY NAME.
 //
-// THE PRODUCTION PATH, not a helper: the generated cpp fixed-form readers of
-// test/tables/FX1.schema (`FxRoot.label string(8)`) and test/tables/FXW.schema
-// (`FxWide.caption wstring(8)`), reached through cpptable's own Generate.
+// THE PRODUCTION PATH, not a helper: the generated cpp fixed-form reader of
+// test/tables/FX1.schema (`FxRoot.label string(8)`), reached through
+// cpptable's own Generate.
 //
-// ONE SUBTEST PER TASK THIS CARD PROVES, four of them. The cpp emitter now
+// ONE SUBTEST PER TASK THIS CARD PROVES, three of them. The cpp emitter now
 // rules a content violation a REFUSAL BY NAME (TableMessageReason::text_ill_formed), the verdict
 // the packet reader gives, where the reference set `malformed`: the shared
 // vocabulary member lives in cpptable.go and the clamp that raises it is this
-// leg's own. test/conformance/cpp/rows/C5.cpp states the same refusal-by-name
-// verdict for the wide in-range case and is in this card's PATHS; the leg's
-// fixed-form harnesses (test/tables/fixedform_main.cpp, fixedform_properties.cpp)
-// carry the verdict for the narrow case.
+// leg's own. The leg's fixed-form harnesses (test/tables/fixedform_main.cpp,
+// fixedform_properties.cpp) carry the same verdict.
 
 import (
 	"fmt"
@@ -297,26 +294,23 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
 	t.Run("cpp/R24", func(t *testing.T) {
 		t.Parallel()
 		body := `
-    // A lawful one-record file: caption wstring(8) with 8 USED units "wxyzWXYZ"
-    // (16 BYTES). Text is COUNTED IN BYTES and the clamp is in UNITS; the
-    // content rule walks the USED UNITS and nothing else.
+    // A lawful one-record file whose label carries 4 USED bytes "QWER"; the
+    // content rule walks the USED bytes and nothing else.
     {
-        FxWide v;
-        FxWideReset( v );
-        const char16_t u[8] = { u'w',u'x',u'y',u'z',u'W',u'X',u'Y',u'Z' };
-        memcpy( v.caption, u, sizeof( u ) ); v.caption_length = 8;
-        v.seq = 900;
-        n = FxWideFixedSave( &v, 1, data, (int64_t) sizeof( data ) );
+        FxRoot v;
+        FxRootReset( v );
+        memcpy( v.label, "QWER", 4 ); v.label_length = 4;
+        v.keep = 5; v.narrow = 6; v.renamed = 7;
+        n = FxRootFixedSave( &v, 1, data, (int64_t) sizeof( data ) );
         if ( n <= 0 ) { printf( "R24: save failed\n" ); return 1; }
     }
     const int64_t filelen = n;
-    static const uint8_t cu[16] = { 'w',0,'x',0,'y',0,'z',0,'W',0,'X',0,'Y',0,'Z',0 };
-    int64_t at = find_bytes( data, n, cu, 16 );
-    if ( at < 0 ) { printf( "R24: the wide payload is not locatable: %lld\n", (long long) at ); return 1; }
+    static const uint8_t mark[4] = { 'Q','W','E','R' };
+    int64_t at = find_bytes( data, n, mark, 4 );
+    if ( at < 4 ) { printf( "R24: the label payload is not locatable: %lld\n", (long long) at ); return 1; }
 
-    // BYTES vs UNITS: the stored length is 8 CODE UNITS (16 payload BYTES),
-    // in [0, cap 8] — no clamp.
-    TableFixedPut32( data + at - 4, 8 );
+    // ILL-FORMED TEXT IN THE USED BYTES REFUSES BY NAME (TableMessageReason::text_ill_formed).
+    data[at + 2] = 0xC0;
     {
         memset( &r, 0, sizeof( r ) );
         for ( int k = 0; k < 4; ++k ) { FxWideReset( back[k] ); }
@@ -361,7 +355,7 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
             { printf( "R24: a refusal moved a counter: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
     // THE LENGTH REFUSAL AND THE CONTENT REFUSAL ON THE SAME RECORD: the length
-    // word forged ONE PAST THE CAP (9 units) AND the used units ill-formed. The
+    // word forged ONE PAST THE CAP (9 bytes) AND the used bytes ill-formed. The
     // count/length pre-scan runs first and refuses length_over_bound by name —
     // a count or length past the PLAN's bound is checked before any destination
     // byte is written (docs/SPEC-TABLES.md §3.4). REFUSE is total: no counter
@@ -376,9 +370,9 @@ func TestFixedRoadmapCppT05Evolution(t *testing.T) {
         if ( r.unknown != 0 || r.widened != 0 )
             { printf( "R24: the length+content refusal moved a counter: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
-    printf( "R24 ill-formed used units refuse by name\n" );
+    printf( "R24 ill-formed used bytes refuse by name\n" );
 `
-		out, err := cppRunFixedProbe(t, filepath.Join("..", "..", "..", "test", "tables", "FXW.schema"), "FxWide", body)
+		out, err := cppRunFixedProbe(t, filepath.Join("..", "..", "..", "test", "tables", "FX1.schema"), "FxRoot", body)
 		if err != nil {
 			t.Fatalf("cpp/R24: %v\n%s", err, out)
 		}

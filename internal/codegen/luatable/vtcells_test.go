@@ -76,7 +76,6 @@ var luaVTCells = []luaVTCell{
 	{"renames", []string{"r1_cfg", "r1_ping", "r2_cfg", "r1_cfg_as_r2", "r1_ping_as_r2", "r2_cfg_as_r1"}, nil},
 	{"id-table-wire", []string{"vocab_wide", "vocab_low", "peer_a", "peer_b", "vocab9_wide", "vocab9_low", "login_full", "match_full",
 		"escape_unnamed_field", "escape_named_field", "escape_element", "nopayload_named_field"}, nil},
-	{"wstring", []string{"wide_empty", "wide_title", "wide_sites", "wide_narrow_arm", "wide_stamp", "widelist_wide"}, []string{"wide_text"}},
 	{"unbounded-arrays", []string{"list_tables", "list_scalars", "list_empty", "list_erased", "list_mixed", "list_shared", "list_nested",
 		"list_of_maps", "list_migrates", "list_scalar_widen"}, []string{"blobs_pointers"}},
 }

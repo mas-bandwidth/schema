@@ -18,8 +18,7 @@ import (
 
 // wideKindsSchema declares every construct this card carries: a timestamp
 // (kind 36, SPEC.md §4.13, docs/SPEC-TABLES.md §2.11), a one-sided minimum
-// and a one-sided maximum range (§4.3), an enum (kind 30), wide text (kind
-// 33) and a plain float64 whose -0 and subnormal ride bit for bit (a NaN or an
+// and a one-sided maximum range (§4.3), an enum (kind 30) and a plain float64 whose -0 and subnormal ride bit for bit (a NaN or an
 // infinity is refused, finite_test.go). A single table holds them so one wire
 // exercises them all.
 const wideKindsSchema = `package widekinds
@@ -32,13 +31,12 @@ table Sample
     lower  int64  | min = 0
     upper  uint32 | max = 100
     mode   Mode
-    label  wstring(4)
     plain  float64
 }
 `
 
 // wideWire is one synthetic wire built through the Go reference writer.
-func wideWire(t *testing.T, g *loadUnit, opened uint64, lower int64, upper uint64, mode uint64, units []uint16, f float64) []byte {
+func wideWire(t *testing.T, g *loadUnit, opened uint64, lower int64, upper uint64, mode uint64, f float64) []byte {
 	t.Helper()
 	m := tabletext.NewModel(g.u)
 	inst := m.New(m.Lookup("Sample"))
@@ -54,8 +52,6 @@ func wideWire(t *testing.T, g *loadUnit, opened uint64, lower int64, upper uint6
 			inst.Fields[i].Cell.U = upper
 		case "mode":
 			inst.Fields[i].Cell.U = mode
-		case "label":
-			inst.Fields[i].Cell.Units = units
 		case "plain":
 			inst.Fields[i].Cell.F = f
 		}
@@ -165,8 +161,8 @@ func compareWideRows(t *testing.T, g *loadUnit, rows []loadRow, constructs []str
 }
 
 // wideUnitConstructs names the wide kinds a unit's declarations use: a
-// timestamp (kind 36), a one-sided integer range, an enum (kind 30) and
-// wstring(N) (kind 33). TestLobsterWideKinds generates every manifest unit
+// timestamp (kind 36), a one-sided integer range and an enum (kind 30).
+// TestLobsterWideKinds generates every manifest unit
 // whose declarations name one, so no construct rides an ungenerated unit.
 func wideUnitConstructs(u *ir.Unit) []string {
 	seen := map[string]bool{}
@@ -176,9 +172,6 @@ func wideUnitConstructs(u *ir.Unit) []string {
 		}
 		if f.Type.Kind == ir.TInt && f.Type.Timestamp {
 			seen["timestamp"] = true
-		}
-		if f.Type.Kind == ir.TWString {
-			seen["wstring"] = true
 		}
 		if f.Type.Kind == ir.TNamed {
 			if _, ok := f.Type.Ref.(*ir.Enum); ok {
@@ -221,8 +214,8 @@ func wideUnitConstructs(u *ir.Unit) []string {
 
 // TestLobsterWideKinds carries the wide kinds across each declared table wire
 // (docs/SPEC-TABLES.md §2.11, §3, §4; SPEC.md §4.13; docs/PORT-LOBSTER.md,
-// THE LOAD): a timestamp, both one-sided ranges, an enum, an escape and
-// wstring(N) on every manifest unit that uses them, plus the card's own
+// THE LOAD): a timestamp, both one-sided ranges, an enum and an escape on
+// every manifest unit that uses them, plus the card's own
 // sample whose plain float64 carries -0 and a subnormal. Each construct is
 // named with its count, and load, save and re-load agree with Go's engine
 // byte for byte and report for report.
@@ -276,7 +269,6 @@ func TestLobsterWideKinds(t *testing.T) {
 	}
 	var negativeTime int64 = -1234567890123
 	opened := uint64(negativeTime)
-	labelUnits := []uint16{'A', 0xD83D, 0xDE00}
 	sample := func(name string, f float64) loadRow {
 		return loadRow{kind: "instance", name: name, unit: "widekinds", root: "Sample",
 			data: wideWire(t, g, opened, 5, 50, 2, labelUnits, f)}
@@ -286,9 +278,9 @@ func TestLobsterWideKinds(t *testing.T) {
 		sample("subnormal", math.Float64frombits(1)),
 	}
 	// every finite-float row carries the sample's timestamp, both one-sided
-	// ranges, its enum and its wstring, so one pass names all six. A NaN or
-	// an infinity is refused by every read and the save (finite_test.go).
-	compareWideRows(t, g, finite, []string{"finite-float (-0, subnormal)", "timestamp", "one-sided-range (minimum and maximum)", "enum", "wstring"}, counts, refusals)
+	// ranges and its enum, so one pass names all four. A NaN or an infinity
+	// is refused by every read and the save (finite_test.go).
+	compareWideRows(t, g, finite, []string{"finite-float (-0, subnormal)", "timestamp", "one-sided-range (minimum and maximum)", "enum"}, counts, refusals)
 
 	// Invalid reader values are made by damaging lawful writer output; the
 	// writer itself must never be asked to manufacture an out-of-range value.
@@ -307,7 +299,7 @@ func TestLobsterWideKinds(t *testing.T) {
 	}
 	compareWideRows(t, g, []loadRow{escape}, []string{"escape"}, counts, refusals)
 
-	for _, name := range []string{"timestamp", "one-sided-range (minimum and maximum)", "enum", "escape", "wstring", "finite-float (-0, subnormal)"} {
+	for _, name := range []string{"timestamp", "one-sided-range (minimum and maximum)", "enum", "escape", "finite-float (-0, subnormal)"} {
 		if counts[name] == 0 {
 			t.Errorf("%s: no row was compared, so the construct is not carried", name)
 		}
@@ -336,7 +328,7 @@ func TestLobsterWideKindsNegativeControl(t *testing.T) {
 		t.Fatalf("the surface refuses the wide-kind sample: %v", err)
 	}
 	row := loadRow{kind: "instance", name: "negative_time", unit: "widekinds", root: "Sample",
-		data: wideWire(t, g, negativeTimeOpened(), 1, 2, 1, []uint16{'A'}, 1.0)}
+		data: wideWire(t, g, negativeTimeOpened(), 1, 2, 1, 1.0)}
 	if got, want := runUnit(t, g, []loadRow{row}).lob[1], goLoadDump(g, row); got != want {
 		t.Fatalf("the control, unpatched: the dump is not the reference's at byte %s", divergence(got, want))
 	}

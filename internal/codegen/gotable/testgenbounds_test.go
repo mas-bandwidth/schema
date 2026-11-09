@@ -124,7 +124,7 @@ func TestGoTestgenBoundProbes(t *testing.T) {
 		}
 	})
 
-	// The kinds the corpus does not declare: a fixed-point range, wstring(N),
+	// The kinds the corpus does not declare: a fixed-point range,
 	// bytes(N), a plain text list (its count and an element's length), a
 	// 128-bit range, a fixed [N] count, a required field beside the probe, a
 	// guarded field, a scalar union arm, a pointer, a map and a compressed
@@ -139,7 +139,6 @@ type Inner { k uint8 = 1 | min = 1, max = 9 }
 table Leaf { v int32 }
 table Kinds {
     fx    fixed(8, 8) | min = -2, max = 3
-    ws    wstring(4)
     bs    bytes(3)
     tags  [..2]string(3)
     big   int128 | min = -10, max = 10
@@ -170,7 +169,7 @@ table Var {
 		}
 		want := []string{
 			"Var/must:below", "Var/must:above", "Kinds/fx:below", "Kinds/fx:above",
-			"Kinds/ws:above", "Kinds/bs:above", "Kinds/tags:count", "Kinds/tags[0]:above",
+			"Kinds/bs:above", "Kinds/tags:count", "Kinds/tags[0]:above",
 			"Kinds/big:below", "Kinds/big:above", "Kinds/gated:below", "Kinds/gated:above",
 			"Kinds/trio:count", "Kinds/pick.n:below", "Kinds/pick.n:above", "Kinds/inner.k:below", "Kinds/inner.k:above",
 			"Var/name:above", "Var/n:below", "Var/n:above",
@@ -193,8 +192,8 @@ table Var {
 
 // boundProbesDeclared counts, from the declaration alone, the probes §16.11
 // owes for every root table's own field lines: each integer range end its own
-// wire kind can step past, a bits(N) narrower than its kind, a string(N),
-// wstring(N) or bytes(N), and a [..N] or [N] count.
+// wire kind can step past, a bits(N) narrower than its kind, a string(N) or
+// bytes(N), and a [..N] or [N] count.
 func boundProbesDeclared(u *ir.Unit) []string {
 	var out []string
 	for _, f := range u.Files {
@@ -214,7 +213,7 @@ func boundProbesDeclared(u *ir.Unit) []string {
 					continue
 				}
 				switch fd.Type.Kind {
-				case ir.TString, ir.TWString, ir.TBytes:
+				case ir.TString, ir.TBytes:
 					out = append(out, name+":above")
 				case ir.TBits:
 					if fd.Type.Width < 8*ir.TableKindWidth(ir.TableScalarKind(fd)) {

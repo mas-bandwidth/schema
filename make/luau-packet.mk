@@ -1,12 +1,9 @@
 # make/luau-packet.mk — the Luau leg's packet-runtime gates, beside the nine
-# ports' own (test/packet-text, test/packet-wide, test/packet-defaults):
+# ports' own (test/packet-text, test/packet-defaults):
 #
 #   packet-utf8-luau      the shared string corpus and every bit flip of it,
 #                         verdicts, code units, consumed bits and canonical
 #                         bytes against the C++ oracle (build/packet-text/harness)
-#   packet-wide-luau      the wstring corpus and the six SPEC §4.12 interop
-#                         cases the same way, then the writer contract and the
-#                         composition rules (--contracts)
 #   packet-defaults-luau  constructors, Init, the eight C++ pins of
 #                         testdata/wire/packet-defaults and reused storage
 #
@@ -59,34 +56,6 @@ packet-utf8-luau-negative-control: packet-utf8-luau
 		{ cat build/packet-text/luau-negative/log; exit 1; }
 	@echo 'packet UTF-8 Luau negative control: removed read validation fails bit-flip agreement'
 
-# ---------------------------------------------------------------- wide text
-build/packet-wide/luau/.stamp: $(LUAU_PACKET_SCHEMA) build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema test/packet-wide/luau/main.luau
-	$(call luau-packet-generate,build/packet-wide/luau,build/packet-wide/source/WideText.schema)
-	$(call luau-packet-generate,build/packet-wide/luau/shapes,test/packet-wide/Shapes.schema)
-	cp test/packet-wide/luau/main.luau build/packet-wide/luau/main.luau
-	@touch $@
-
-.PHONY: packet-wide-luau packet-wide-luau-negative-control
-packet-wide-luau: toolchain-luau build/packet-wide/luau/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	sh $(LUAU_PACKET_STDIN) build/packet-wide/luau main.luau --contracts </dev/null
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver \
-		sh $(LUAU_PACKET_STDIN) build/packet-wide/luau main.luau
-	cd build/packet-wide/luau && $(LUAU_ANALYZE) *.luau shapes/*.luau
-
-packet-wide-luau-negative-control: packet-wide-luau
-	@rm -rf build/packet-wide/luau-negative && mkdir -p build/packet-wide/luau-negative
-	go run ./tools/sabotage -name packet-wide-luau-pairing -out build/packet-wide/luau-negative/read.gotext internal/codegen/luau/read.go
-	@printf '{"Replace":{"%s/internal/codegen/luau/read.go":"%s/build/packet-wide/luau-negative/read.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/packet-wide/luau-negative/overlay.json
-	go build -overlay=build/packet-wide/luau-negative/overlay.json -o build/packet-wide/luau-negative/schema ./cmd/schema
-	$(call luau-packet-generate,build/packet-wide/luau-negative/generated,build/packet-wide/source/WideText.schema,./build/packet-wide/luau-negative/schema)
-	cp test/packet-wide/luau/main.luau build/packet-wide/luau-negative/generated/main.luau
-	@if ./build/packet-text/harness -wide -mutations-only -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver \
-		sh $(LUAU_PACKET_STDIN) build/packet-wide/luau-negative/generated main.luau > build/packet-wide/luau-negative/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: Luau surrogate pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/luau-negative/log || \
-		{ cat build/packet-wide/luau-negative/log; exit 1; }
-	@echo 'packet wide Luau negative control: removed surrogate pairing fails bit-flip agreement'
 
 # ---------------------------------------------------------------- defaults
 # pins.luau carries testdata/wire/packet-defaults in as source: one entry per
@@ -127,7 +96,6 @@ packet-defaults-luau-negative-control: packet-defaults-luau
 	@echo 'packet defaults Luau negative control: missing constructor bytes fail the constructor check'
 
 test-luau: packet-utf8-luau packet-utf8-luau-negative-control \
-	packet-wide-luau packet-wide-luau-negative-control \
 	packet-defaults-luau packet-defaults-luau-negative-control
 
 # ---------------------------------------------------------------- ludicrous

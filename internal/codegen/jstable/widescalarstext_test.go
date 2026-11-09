@@ -2,12 +2,10 @@ package jstable
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -19,28 +17,18 @@ import (
 // TestFixedPointAndWideTextOnTheTableWireJavaScript is the card's carry
 // (docs/SPEC-TABLES.md §2, §3, §4, §15, §16.2; SPEC.md §4.6, §4.12): the
 // JavaScript variable form carries fixed/ufixed scalars (the raw integer at
-// the declared width, BigInt at 64 and 128 bits) and wstring(N) (a length in
-// BYTES, twice the UTF-16 code units, then the units little-endian), as direct
-// fields, as union arms, as map values and inside a nested `type`, BYTE FOR
-// BYTE against the Go oracle (internal/tablewire, internal/tabletext):
+// the declared width, BigInt at 64 and 128 bits) as direct fields, as union
+// arms, as map values and inside a nested `type`, BYTE FOR BYTE against the Go
+// oracle (internal/tablewire, internal/tabletext):
 //
 //   - the corpus of testdata/conformance/tables/MANIFEST.txt: scalars_full,
 //     scalars_default and scalars_edges (tables/scalars SimState), map_text
-//     (tables/maps Text, a wstring(6) map value), the widedemo instances
-//     (examples-wide Caption and Stamp) and the messagedemo instances
-//     (tables/messages ToolMessage), each loaded and saved back, measured,
-//     written as text and read back from the text;
+//     (tables/maps Text, text and byte-buffer map values) and the messagedemo
+//     instances (tables/messages ToolMessage), each loaded and saved back,
+//     measured, written as text and read back from the text;
 //   - a probe unit whose wires and texts the oracle writes here, covering a
-//     fixed/ufixed and a wstring as an arm and a map value, a fixed as an
-//     optional (the front end refuses ?wstring(N), §15), a
-//     surrogate pair at the bound and a nested `type` holding wide text;
-//   - the READ REPORT over damaged and over-long payloads (§3, §4): an
-//     over-long wstring clamps at a code-point boundary, an unpaired surrogate
-//     or a zero unit is malformed and reads the default, and an odd L is
-//     framing damage — each counted as the Go leg counts it, and the value the
-//     load leaves saved back to the bytes the Go leg saves;
-//   - the WRITE refusal (SPEC.md §4.12): a value longer than N code units is
-//     refused (Save null, Measure -1) as a field, an arm and a map value.
+//     fixed/ufixed as an arm and a map value, a fixed as an optional and a
+//     nested `type`.
 func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
@@ -68,7 +56,6 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 	}
 	scalars := loadUnitPaths(t, []string{filepath.Join(repo, "tables", "scalars")})
 	maps := loadUnitPaths(t, []string{filepath.Join(repo, "tables", "maps")})
-	wide := loadUnitPaths(t, []string{filepath.Join(repo, "examples-wide")})
 	messages := loadUnitPaths(t, []string{filepath.Join(repo, "tables", "messages")})
 	units := []*unit{
 		{"scalars", scalars, []*vcCase{
@@ -77,13 +64,6 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 			corpus("scalars_edges", "SimState"),
 		}},
 		{"mapdemo", maps, []*vcCase{corpus("map_text", "Text")}},
-		{"widedemo", wide, []*vcCase{
-			corpus("wide_empty", "Caption"),
-			corpus("wide_title", "Caption"),
-			corpus("wide_sites", "Caption"),
-			corpus("wide_narrow_arm", "Caption"),
-			corpus("wide_stamp", "Stamp"),
-		}},
 		{"messagedemo", messages, []*vcCase{
 			corpus("message_open", "ToolMessage"),
 			corpus("message_transaction", "ToolMessage"),
@@ -234,8 +214,7 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 
 	var all []*vcCase
 	var want []string
-	modules := map[string]string{}
-	for _, u := range append(units, &unit{"widereader", reader, nil}) {
+	for _, u := range units {
 		files, err := generateVariableFiles(u.unit, nil)
 		if err != nil {
 			t.Fatalf("%s: the variable form was refused: %v", u.name, err)
@@ -252,7 +231,6 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 		if err := os.WriteFile(module, data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		modules[u.name] = module
 		for _, c := range u.cases {
 			c.Module = module
 			c.Wire = filepath.Join(work, c.Name+".wire")
@@ -267,27 +245,7 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 			all = append(all, c)
 		}
 	}
-	for _, d := range damages {
-		d.Module = modules["widereader"]
-		d.Wire = filepath.Join(work, d.Name+".wire")
-		if err := os.WriteFile(d.Wire, d.bytes, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		want = append(want, "DAMAGE "+d.Name+" OK")
-	}
-	// THE WRITE REFUSAL: past N code units is refused, never truncated
-	refusals := []map[string]string{
-		{"name": "refuse_field", "set": `v.title = "ABCDEFG";`},
-		{"name": "refuse_arm", "set": `v.pick = { arm: "wide", value: "ABCDE" };`},
-		{"name": "refuse_map_value", "set": `v.w_map.set(1, "ABCDE");`},
-		{"name": "refuse_nested", "set": `v.inner.w = "ABCD";`},
-		{"name": "fits_pair", "set": `v.title = "ab\u{1F4A9}cd";`, "fits": "1"},
-	}
-	for _, r := range refusals {
-		r["module"] = modules["wideprobe"]
-		want = append(want, "WRITE "+r["name"]+" OK")
-	}
-	spec, err := json.Marshal(map[string]any{"cases": all, "damages": damages, "refusals": refusals})
+	spec, err := json.Marshal(map[string]any{"cases": all})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +254,7 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := filepath.Join(work, "probe.mjs")
-	if err := os.WriteFile(script, []byte(mapsArmsDriver+wideTextDriver), 0o600); err != nil {
+	if err := os.WriteFile(script, []byte(mapsArmsDriver), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(node, script, specPath)
@@ -321,13 +279,13 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 	}
 }
 
-// wideProbeSrc is the probe unit: fixed/ufixed and wstring(N) in every place a
-// field line rides on the variable wire.
+// wideProbeSrc is the probe unit: fixed/ufixed in every place a field line
+// rides on the variable wire.
 const wideProbeSrc = `package wideprobe
 
 type Inner
 {
-    w wstring(3)
+    n int16
 }
 
 // a map value cannot carry a range (internal/check refuses one on a map), and
@@ -344,19 +302,16 @@ union Pick
     fx     fixed(16, 16)  | min = -100, max = 100
     ufx    ufixed(48, 16) | min = 0, max = 1000000
     big    fixed(112, 16) | min = -1000000, max = 1000000
-    wide   wstring(4)
     narrow string(4)
     off
 }
 
 table Probe
 {
-    title   wstring(6)
     pick    Pick
     picks   [..3]Pick
     fx_map  map[uint8]Gauge
     ufx_map map[string(4)]Gauge
-    w_map   map[int16]wstring(4)
     o_fx    ?fixed(32, 32)                | min = -1000, max = 1000
     inner   Inner
     inners  [..2]Inner
@@ -367,21 +322,16 @@ table Probe
 // wideProbeTexts are the probe's instances, as the oracle reads them.
 var wideProbeTexts = []struct{ name, text string }{
 	{"wide_probe_empty", `{}`},
-	{"wide_probe_title", `{"title": "мир", "past": 1}`},
-	{"wide_probe_title_pair_at_bound", `{"title": "ab💩cd"}`},
-	{"wide_probe_title_escapes", `{"title": "\"\\\n\u0001é"}`},
 	{"wide_probe_arm_fx", `{"pick": {"fx": -1.5}}`},
 	{"wide_probe_arm_fx_zero", `{"pick": {"fx": 0}}`},
 	{"wide_probe_arm_ufx", `{"pick": {"ufx": 12345.25}}`},
 	{"wide_probe_arm_big", `{"pick": {"big": -99999.0625}}`},
-	{"wide_probe_arm_wide", `{"pick": {"wide": "😀a"}}`},
-	{"wide_probe_arm_wide_empty", `{"pick": {"wide": ""}}`},
 	{"wide_probe_arm_narrow", `{"pick": {"narrow": "ok"}}`},
-	{"wide_probe_arm_array", `{"picks": [{"wide": "中"}, {"fx": 2.25}, {"off": null}]}`},
-	{"wide_probe_maps", `{"fx_map": {"2": {"level": -3.25}, "1": {"level": 0.5, "mass": 7.75}}, "ufx_map": {"a": {"mass": 1000.5}, "b": {}}, "w_map": {"-1": "中😀", "3": "", "7": "wxyz"}}`},
+	{"wide_probe_arm_array", `{"picks": [{"narrow": "中"}, {"fx": 2.25}, {"off": null}]}`},
+	{"wide_probe_maps", `{"fx_map": {"2": {"level": -3.25}, "1": {"level": 0.5, "mass": 7.75}}, "ufx_map": {"a": {"mass": 1000.5}, "b": {}}}`},
 	{"wide_probe_optionals_present", `{"o_fx": 0}`},
 	{"wide_probe_optionals_values", `{"o_fx": -42.125}`},
-	{"wide_probe_nested", `{"inner": {"w": "xyz"}, "inners": [{"w": "a"}, {}]}`},
+	{"wide_probe_nested", `{"inner": {"n": -3}, "inners": [{"n": 1}, {}]}`},
 }
 
 // the damage pair: the WRITER's bounds are wider than the READER's, so a

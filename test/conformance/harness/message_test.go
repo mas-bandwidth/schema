@@ -166,7 +166,7 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 }
 
 // TestTheTailIsUnconditional holds §3.3's stated choice: a unit with no
-// pointer announces the reserved node-table id and the three blob type ids all
+// pointer announces the reserved node-table id and the two blob type ids all
 // the same, so an ordinary edit only ever grows the tail at its END and never
 // moves a slot a generated field header carries as a literal.
 func TestTheTailIsUnconditional(t *testing.T) {
@@ -191,15 +191,15 @@ func TestTheTailIsUnconditional(t *testing.T) {
 				tables = append(tables, ir.TableWireId(unit.Tables[name].WireName()))
 			}
 		}
-		// the tail is the last 4 + one-per-table entries, in the fixed order
-		want := len(tables) + 4
+		// the tail is the last 3 + one-per-table entries, in the fixed order
+		want := len(tables) + 3
 		if len(entries) < want {
 			t.Fatalf("%s: %d entries cannot hold a tail of %d", c.Key, len(entries), want)
 		}
 		tail := entries[len(entries)-want:]
 		if tail[0].Id != ir.TableNodeWireId || tail[1].Id != ir.BytesWireTypeId ||
-			tail[2].Id != ir.StringWireTypeId || tail[3].Id != ir.WstringWireTypeId {
-			t.Errorf("%s: the tail does not open with the node-table id and bytes, string, wstring", c.Key)
+			tail[2].Id != ir.StringWireTypeId {
+			t.Errorf("%s: the tail does not open with the node-table id and bytes, string", c.Key)
 		}
 		for i, e := range tail {
 			if e.Kind != 0 {
@@ -209,7 +209,7 @@ func TestTheTailIsUnconditional(t *testing.T) {
 		// and the table name ids beyond them are the projection's sorted
 		// record order, which is what makes the tail grow only at its end
 		have := map[uint64]bool{}
-		for _, e := range tail[4:] {
+		for _, e := range tail[3:] {
 			have[e.Id] = true
 		}
 		for _, id := range tables {
@@ -285,11 +285,11 @@ func TestTheCostRows(t *testing.T) {
 	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, model, vocabulary := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
-	if got := len(wireBytes(t, c.Wire)); got != 361 {
-		t.Errorf("the announcement is %d bytes, the page prints 361", got)
+	if got := len(wireBytes(t, c.Wire)); got != 352 {
+		t.Errorf("the announcement is %d bytes, the page prints 352", got)
 	}
-	if got := len(vocabulary.Entries()); got != 33 {
-		t.Errorf("the vocabulary has %d entries, the page prints 33", got)
+	if got := len(vocabulary.Entries()); got != 32 {
+		t.Errorf("the vocabulary has %d entries, the page prints 32", got)
 	}
 	if got := vocabulary.RefBits(); got != 6 {
 		t.Errorf("a reference is %d bits, the page prints 6", got)
@@ -540,25 +540,25 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 	// A VOCABULARY PAST A BOUND, refused before an entry is touched: the bound
 	// is two numbers
 	{
-		bounded := tablewire.Vocabulary{MaxEntries: 32}
+		bounded := tablewire.Vocabulary{MaxEntries: 31}
 		var report tabletext.Report
 		derr := bounded.AnnounceRead(announcement, &report)
 		refusal("vocabulary_too_large (entries)", derr, tablewire.ReasonVocabularyTooLarge, report)
 		if bounded.Announced() || len(bounded.Entries()) != 0 {
 			t.Error("vocabulary_too_large: an entry was touched")
 		}
-		exact := tablewire.Vocabulary{MaxEntries: 33}
+		exact := tablewire.Vocabulary{MaxEntries: 32}
 		if err := exact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !exact.Announced() {
 			t.Errorf("the entry bound's own value must be accepted: %v", err)
 		}
-		bytesBound := tablewire.Vocabulary{MaxBytes: 317}
+		bytesBound := tablewire.Vocabulary{MaxBytes: 308}
 		var bytesReport tabletext.Report
 		derr = bytesBound.AnnounceRead(announcement, &bytesReport)
 		refusal("vocabulary_too_large (bytes)", derr, tablewire.ReasonVocabularyTooLarge, bytesReport)
 		if bytesBound.Announced() {
 			t.Error("vocabulary_too_large: the byte bound set a vocabulary")
 		}
-		bytesExact := tablewire.Vocabulary{MaxBytes: 318}
+		bytesExact := tablewire.Vocabulary{MaxBytes: 309}
 		if err := bytesExact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !bytesExact.Announced() {
 			t.Errorf("the byte bound's own value must be accepted: %v", err)
 		}
@@ -783,8 +783,8 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 	}
 }
 
-// TestAReferenceAtAndAboveTheEntryCount: E is 33 and a reference is six
-// bits, so 34, 35 and 63 are spellable and damage; the entry count itself is
+// TestAReferenceAtAndAboveTheEntryCount: E is 32 and a reference is six
+// bits, so 33, 34 and 63 are spellable and damage; the entry count itself is
 // the last legal slot and must resolve. Red if a leg resolves past E, refuses
 // E, or hands back anything from a batch a bad reference damaged (§4).
 func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
@@ -800,7 +800,7 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	if want := 1 + (8+6+64+6+7)/8; len(one) != want {
 		t.Fatalf("the vector is %d bytes, the arithmetic says %d", len(one), want)
 	}
-	for _, past := range []uint64{34, 35, 63} {
+	for _, past := range []uint64{33, 34, 63} {
 		damaged := append([]byte(nil), one...)
 		setBits(damaged, 1, 78, 6, past)
 		if past == 63 {
@@ -821,7 +821,7 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 			t.Errorf("reference %d: the returned count reads %d", past, count)
 		}
 	}
-	// the entry count itself, 33, names StorePurchase's own type id, a kind-0
+	// the entry count itself, 32, names StorePurchase's own type id, a kind-0
 	// entry no field of LoginRequest carries: §4's ordinary unknown, and then
 	// a terminator at bit 84
 	last := wireBytes(t, "testdata/wire/tables/message_reference_last_slot.bin")
@@ -911,8 +911,8 @@ func TestAWideVocabulary(t *testing.T) {
 		low, wide string
 		lowBytes  int
 	}{
-		{"vocab_conn", 144, 8, "vocab_low", "vocab_wide", 1 + (8+8+32+8+7)/8},
-		{"vocab9_conn", 284, 9, "vocab9_low", "vocab9_wide", 1 + (8+9+32+9+7)/8},
+		{"vocab_conn", 143, 8, "vocab_low", "vocab_wide", 1 + (8+8+32+8+7)/8},
+		{"vocab9_conn", 283, 9, "vocab9_low", "vocab9_wide", 1 + (8+9+32+9+7)/8},
 	}
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {

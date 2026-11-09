@@ -46,7 +46,6 @@ table Root
     f float32 | min = 0, max = 1, resolution = 0.5
     g float32
     s string(8)
-    w wstring(8)
     y bytes(4)
     xs [..3]int32
     fs [2]int32
@@ -283,12 +282,6 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 				"string-past-bound",
 				`{"s": "123456789"}`,
 				"v.S = buffer.fromstring(\"123456789\"); v.SLength = 9",
-				nil,
-			},
-			{
-				"wstring-holds-zero",
-				`{"w": "\u0000"}`,
-				"v.W = buffer.fromstring(string.char(0, 0)); v.WLength = 1",
 				nil,
 			},
 			{

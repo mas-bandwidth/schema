@@ -17,7 +17,7 @@ import (
 // conformance rows reach:
 //
 //   - text_holds_zero: a U+0000 the read would PLACE in text storage refuses
-//     the read — a string(N), wstring(N) or *string value, a string map key
+//     the read — a string(N) or *string value, a string map key
 //     (over its bound too) and an integer map key, whose key is a JSON string
 //     whatever its kind (text lists are not a Rust construct yet, §2.13). A zero the read only
 //     SKIPS (an unknown key's value, an object key) or compares is not the
@@ -90,7 +90,6 @@ const jsonHostileProbeSrc = `package probe
 table Probe
 {
     name  string(8)
-    wide  wstring(8)
     blob  *string
     names map[string(8)]int32
     by_id map[uint16]int32
@@ -114,7 +113,6 @@ fn verdict(text: &[u8]) -> String {
 fn main() {
     let cases: &[(&str, &[u8], &str)] = &[
         ("zero-string", b"{\"name\": \"a\\u0000b\"}", "refused"),
-        ("zero-wstring", b"{\"wide\": \"a\\u0000b\"}", "refused"),
         ("zero-blob", b"{\"blob\": \"a\\u0000b\"}", "refused"),
         ("zero-map-key", b"{\"names\": {\"a\\u0000b\": 1}}", "refused"),
         ("zero-map-key-over-bound", b"{\"names\": {\"aaaaaaaaa\\u0000\": 1}}", "refused"),

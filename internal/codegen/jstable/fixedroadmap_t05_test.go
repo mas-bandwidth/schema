@@ -400,7 +400,7 @@ fixed table T
 		`case TableFixedRefusal.TextIllFormed: return "text_ill_formed";`,
 		"C4 the refusal is named text_ill_formed")
 	t02Has(t, t02Norm(src),
-		"if (!TableFixedTextOk(unit === 2 ? TableFixedTextWide : TableFixedTextUtf8, srcView, s + 4, v * unit)) { report.refused = TableFixedRefusal.TextIllFormed; return; }",
+		"if (!TableFixedTextOk(TableFixedTextUtf8, srcView, s + 4, v)) { report.refused = TableFixedRefusal.TextIllFormed; return; }",
 		"C4 the compiled text op refuses by name on a content violation")
 	// UTF-8 that is over-range, a surrogate, truncated or overlong is damage and
 	// refuses; the packet reader refuses the same bytes.

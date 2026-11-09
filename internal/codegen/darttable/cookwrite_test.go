@@ -141,8 +141,8 @@ void main(){
 // variable root and its writer is emitCookWriteVariable's.
 //
 // A text array is spelled the one way v1 admits it: an array of a record that
-// holds string(N) and bytes(N), since a direct array of string(N), bytes(N) or
-// wstring(N) is a compile error ("wrap the element in a type"). Shelf is the
+// holds string(N) and bytes(N), since a direct array of string(N) or bytes(N)
+// is a compile error ("wrap the element in a type"). Shelf is the
 // fixed-class root, Rack the variable-class root with a reference beside it.
 func TestCookWriteGuardedAndTextArrayRootsDart(t *testing.T) {
 	t.Parallel()

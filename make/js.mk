@@ -79,7 +79,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
+build/tables-generated-js/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
@@ -93,16 +93,11 @@ build/tables-generated-js/.stamp: bin/schema testdata/conformance/feature-witnes
 	# (BlobdemoVariable.js).
 	./bin/schema generate --lang js --out build/tables-generated-js/blobs tables/blobs
 	# the MAP unit (§2.8), whole: MapdemoVariable.js carries Cells (a [N]T map
-	# value), Pairs (an [N]*T map value) and Text (a wstring(N) map value, kind
-	# 33, §3), which the conformance driver's wire surfaces answer
+	# value), Pairs (an [N]*T map value) and Text (a string(N) and a bytes(N)
+	# map value), which the conformance driver's wire surfaces answer
 	# (js-carries-nested-types-and-fixed-arrays,
 	# js-carries-fixed-point-and-wide-text-on-the-table-wire).
 	./bin/schema generate --lang js --out build/tables-generated-js/maps tables/maps
-	# the WIDE-TEXT unit (examples-wide, SPEC.md §4.12): Caption and Stamp carry
-	# wstring(N) as a field, inside a type, in a counted array of that type and
-	# as a union arm; WideVariable.js answers the widedemo rows on the variable
-	# wire (docs/SPEC-TABLES.md §3).
-	./bin/schema generate --lang js --out build/tables-generated-js/wide examples-wide
 	# the LIST unit (tables/lists, docs/SPEC-TABLES.md §2.7): ListdemoVariable.js
 	# carries the listdemo roots, so their instances answer the text form
 	# (json-read, json-write, json-hostile, §16) like every other generated unit.
@@ -685,10 +680,9 @@ test-js: tables-js-variable-class
 # `type` by value (§2), a fixed-length array [N]T as a field, an optional ?[N]T,
 # a map value and a union arm, and a flags arm do too, over keyed_config,
 # keyed_default, map_cells and map_pairs
-# (TestNestedTypesAndFixedArraysOnTheTableWireJavaScript); fixed/ufixed and
-# wstring(N) as fields, arms and map values, over scalars_*, map_text, the
-# widedemo and the messagedemo instances, with wide text's read report and its
-# write refusal (TestFixedPointAndWideTextOnTheTableWireJavaScript); and the
+# (TestNestedTypesAndFixedArraysOnTheTableWireJavaScript); fixed/ufixed as
+# fields, arms and map values, over scalars_* and the messagedemo instances
+# (TestFixedPointAndWideTextOnTheTableWireJavaScript); and the
 # refusal test no longer names those constructs
 # (TestOtherVariableConstructsAreRefusedByName); and the map WRITER holds the
 # sort: a Map built out of key order saves, measures and writes text in
@@ -698,7 +692,7 @@ test-js: tables-js-variable-class
 .PHONY: tables-js-variable-arms
 tables-js-variable-arms:
 	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestFixedPointAndWideTextOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName|TestMapWriterSortJavaScript)$$'
-	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types, fixed-length arrays [N]T, fixed-point scalars and wstring(N) round-trip the oracle bytes and are no longer refused by name'
+	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types, fixed-length arrays [N]T, fixed-point scalars round-trip the oracle bytes and are no longer refused by name'
 
 test-js: tables-js-variable-arms
 
@@ -808,7 +802,7 @@ test-js: tables-js-message-form
 .PHONY: tables-js-fixed-roadmap-all
 tables-js-fixed-roadmap-all: build/fixedform-corpus/.stamp
 	@mkdir -p build
-	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals|TestFixedRoadmapJsT15GuardChain|TestFixedRoadmapJsT19WideText)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
+	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals|TestFixedRoadmapJsT15GuardChain)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
 		cat build/js-fixed-roadmap-all.log; \
 		if [ $$rc -ne 0 ]; then echo "tables-js-fixed-roadmap-all: go test exited $$rc"; exit $$rc; fi; \
 		if grep -Eq '^ *--- SKIP' build/js-fixed-roadmap-all.log; then \
@@ -991,10 +985,8 @@ tables-js-union-arm-text-negative-control: build/fixedform-corpus/.stamp
 	@rm -rf build/js-armtext-sabotage && mkdir -p build/js-armtext-sabotage
 	@sed 's|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst\[row + TableFixedDstArg\]);|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED|' \
 		internal/codegen/jstable/fixedruntime.go > build/js-armtext-sabotage/fixedruntime.go.txt
-	@sed -i.bak 's|const unit = e\[b + TableFixedLaneMeta\] === TableFixedTextWide ? 2 : 1;|const unit = e[b + TableFixedLaneArg] === TableFixedTextWide ? 2 : 1; // SABOTAGED|' \
-		build/js-armtext-sabotage/fixedruntime.go.txt
-	@test $$(grep -c SABOTAGED build/js-armtext-sabotage/fixedruntime.go.txt) -eq 2 || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both halves of the lane"; exit 1; }
+	@test $$(grep -c SABOTAGED build/js-armtext-sabotage/fixedruntime.go.txt) -eq 1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not put the flavour in the guard's lane"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedruntime.go":"%s/build/js-armtext-sabotage/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-armtext-sabotage/overlay.json
 	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
@@ -1333,34 +1325,8 @@ packet-utf8-js-negative-control: packet-utf8-js
 test-js: packet-utf8-js packet-utf8-js-negative-control
 
 
-build/packet-wide/js/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
-	./bin/schema generate --lang js --out build/packet-wide/js build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang js --out build/packet-wide/js/shapes test/packet-wide/Shapes.schema
-	@printf '{"type":"module"}\n' > build/packet-wide/js/package.json
-	@touch $@
 
-.PHONY: packet-wide-js packet-wide-js-negative-control
-packet-wide-js: build/packet-wide/js/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	@for mode in development production; do for tier in runtime flat; do \
-		NODE_ENV=$$mode $(NODE) test/packet-wide/js/main.mjs $$tier --contracts || exit 1; \
-		NODE_ENV=$$mode ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(NODE) test/packet-wide/js/main.mjs $$tier || exit 1; \
-	done; done
-
-packet-wide-js-negative-control: packet-wide-js
-	@mkdir -p build/packet-wide/js-negative
-	go run ./tools/sabotage -name packet-wide-js-pairing -out build/packet-wide/js-negative/wstring.gotext internal/codegen/js/wstring.go
-	@printf '{"Replace":{"%s/internal/codegen/js/wstring.go":"%s/build/packet-wide/js-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/js-negative/overlay.json
-	go run -overlay=build/packet-wide/js-negative/overlay.json ./cmd/schema generate --lang js --out build/packet-wide/js-negative build/packet-wide/source/WideText.schema
-	cp build/packet-wide/js/package.json build/packet-wide/js-negative/package.json
-	$(NODE) --check build/packet-wide/js-negative/WideText.js
-	$(NODE) --check build/packet-wide/js-negative/WideTextFlat.js
-	@for tier in runtime flat; do \
-		if NODE_ENV=production ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only $(NODE) test/packet-wide/js/main.mjs $$tier "$(CURDIR)/build/packet-wide/js-negative" > build/packet-wide/js-negative/$$tier.log 2>&1; then echo 'NEGATIVE CONTROL FAILED: JS wide pairing removal passed'; exit 1; fi; \
-		grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/js-negative/$$tier.log || { cat build/packet-wide/js-negative/$$tier.log; exit 1; }; \
-	done
-	@echo 'packet wide JS negative control: removed pairing fails both tiers in bit-flip agreement'
-
-test-js: packet-wide-js packet-wide-js-negative-control
+test-js:
 
 # ---------------------------------------------------------------------------
 # THE UNIT REGISTRY'S JAVASCRIPT LEG (docs/SPEC-TABLES.md §8.7): the same
@@ -1376,7 +1342,7 @@ tables-js-view: bin/schema test/js-view/view_main.mjs
 	@mkdir -p build/js-view
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
-		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		source=tables/$$dir; \
 		./bin/schema generate --lang js --out build/js-view/$$dir $$source; \
 		$(NODE) test/js-view/view_main.mjs build/js-view/$$dir/*View.js > build/js-view/$$pkg.listing; \
 	done; \

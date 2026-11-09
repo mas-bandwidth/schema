@@ -46,7 +46,6 @@ func TestLuaPacketGatesWiredWithControls(t *testing.T) {
 	}
 	for _, want := range []string{
 		"packet-utf8-lua", "packet-utf8-lua-negative-control",
-		"packet-wide-lua", "packet-wide-lua-negative-control",
 		"packet-defaults-lua", "packet-defaults-lua-negative-control",
 		"packet-finite-lua",
 	} {
@@ -56,7 +55,6 @@ func TestLuaPacketGatesWiredWithControls(t *testing.T) {
 	}
 	for _, gate := range []string{
 		"packet-utf8-lua packet-utf8-lua-negative-control",
-		"packet-wide-lua packet-wide-lua-negative-control",
 		"packet-defaults-lua packet-defaults-lua-negative-control",
 	} {
 		carries("make/lua.mk", lua, ".PHONY: "+gate)
@@ -64,7 +62,6 @@ func TestLuaPacketGatesWiredWithControls(t *testing.T) {
 
 	for _, driver := range []string{
 		"test/packet-text/lua/main.lua",
-		"test/packet-wide/lua/main.lua",
 		"test/packet-defaults/lua/main.lua",
 	} {
 		txt := read(driver)
@@ -76,7 +73,6 @@ func TestLuaPacketGatesWiredWithControls(t *testing.T) {
 	sabotage := read("tools/sabotage/packet_lua.go")
 	carries("tools/sabotage/packet_lua.go", sabotage,
 		`sabotages["packet-utf8-lua-read"]`,
-		`sabotages["packet-wide-lua-pairing"]`,
 		`sabotages["packet-defaults-lua-constructor-bytes"]`)
 
 	controls := read("make/negative-controls.json")
@@ -88,7 +84,6 @@ func TestLuaPacketGatesWiredWithControls(t *testing.T) {
 	carries("make/negative-controls.json (the lua group)", group,
 		`"when": "pull-request"`,
 		`"packet-utf8-lua-negative-control"`,
-		`"packet-wide-lua-negative-control"`,
 		`"packet-defaults-lua-negative-control"`)
 }
 

@@ -633,6 +633,7 @@ fixed table Root {
     a int32
     b bool
     c uint8
+    d uint8
 }
 `)
 	out, err := runBatchProbe(t, u, "Root", dartSkipDepthBody)
@@ -642,7 +643,7 @@ fixed table Root {
 }
 
 const dartSkipDepthBody = `
-  // Slot 8 is the Root name, not a field of this root (a, b, c are 1..3).
+  // Slot 8 is the Root name, not a field of this root (a, b, c, d are 1..4).
   // A reference width below 4 cannot spell it.
   check(h.tableMessageRefBits >= 4, 'skip depth slot needs four reference bits, got ${h.tableMessageRefBits}');
   final width = h.tableMessageRefBits;

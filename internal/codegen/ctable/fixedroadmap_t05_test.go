@@ -11,7 +11,7 @@ package ctable
 // and c/R16 compile and RUN the generated C through cRunVersionProbe
 // (fixedversioning_test.go), whose OLD file is built here in Go from the same
 // IR the emitter lays down. The self-contained rows c/C3, c/C4 and c/R24
-// compile and RUN through runCGenerated; c/R18, c/C5 and c/E9 read the C the
+// compile and RUN through runCGenerated; c/R18 and c/E9 read the C the
 // leg EMITS. The rows that DO need the oracle are the other fixedversioning_*
 // tests, which skip themselves without it.
 
@@ -225,17 +225,6 @@ int main(void)
 `)
 	})
 
-	// c/C5 "wide text code units" (docs/SPEC-TABLES.md §3.4: a wstring(N)'s
-	// length is in UTF-16 CODE UNITS and the payload is two bytes each): the
-	// wide-text content check rides in the unit that declares the field and the
-	// length is scaled by the two bytes of a unit.
-	t.Run("c/C5", func(t *testing.T) {
-		t.Parallel()
-		body := t05All(generate(t, "package probe\nfixed table Wide { w wstring(8) }\n"))
-		t05Want(t, body, "static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )")
-		t05Want(t, body, "2 * value->w_length")
-	})
-
 	// c/R16 "§5.4's counters exactly" (docs/FIXED-FORM-ALGORITHM.md §5.4): the
 	// compile census counts unknown once per endpoint and lands once, after the
 	// record loop, never per record; a widened field counts one widened per
@@ -351,7 +340,7 @@ int main(void)
 	// (docs/FIXED-FORM-ALGORITHM.md §4.5, docs/SPEC-TABLES.md §3.4).
 	t.Run("c/R24", func(t *testing.T) {
 		t.Parallel()
-		// narrow: clause 1 (refuse by name), clause 2 (bytes, clamp in bytes),
+		// clause 1 (refuse by name), clause 2 (bytes, clamp in bytes),
 		// clause 3 (slack not judged), and clauses 1+2 together (the clamp and
 		// the refusal on the SAME record, the counter staying zero)
 		runCGenerated(t, "package probe\nfixed table Texty { s string(8) }\n", `

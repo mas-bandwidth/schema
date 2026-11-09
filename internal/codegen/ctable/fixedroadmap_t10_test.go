@@ -1,7 +1,7 @@
 package ctable
 
 // TestFixedRoadmapCT10FloatsUnions is the c leg's card
-// schema-c-t10-floats-unions, rows enum-values, utf16-values, byte-buffers,
+// schema-c-t10-floats-unions, rows enum-values, byte-buffers,
 // keyed-arrays, nested-keyed-arrays, union-field-arms, payload-free-arms and
 // union-arrays of docs/roadmap.sexp's node `fixed-tables`. One subtest per task
 // id, table-driven, t.Parallel() first.
@@ -22,7 +22,7 @@ package ctable
 // The law is docs/SPEC-TABLES.md §3.4: "A FIXED-TABLE RECORD IS AN EIGHT-BYTE
 // HASH OF THE WRITER'S LAYOUT, AND THEN THE VALUES IN DECLARED ORDER, EVERY
 // FIELD AT ITS BOUND", and the kind-by-kind constant-size table that follows it
-// (enum ordinal, wstring code units, bytes, `[Enum]T`, a union's tag-then-arm
+// (enum ordinal, bytes, `[Enum]T`, a union's tag-then-arm
 // and `[N]T`), plus §2.6 "An ARRAY OF UNIONS is a union slot per element".
 
 import (
@@ -116,7 +116,6 @@ func TestFixedRoadmapCT10FloatsUnions(t *testing.T) {
 		run func(t *testing.T)
 	}{
 		{"enum-values/c/valid-data", cT10EnumValues},
-		{"utf16-values/c/valid-data", cT10UTF16Values},
 		{"byte-buffers/c/valid-data", cT10ByteBuffers},
 		{"keyed-arrays/c/valid-data", cT10KeyedArrays},
 		{"nested-keyed-arrays/c/valid-data", cT10NestedKeyedArrays},

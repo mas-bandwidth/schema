@@ -14,6 +14,7 @@ fixed table Root {
 	a int32
 	b bool
 	c uint8
+	d uint8
 }
 `
 	clauses := []struct {
@@ -347,7 +348,8 @@ func TestDamageInsideBody(t *testing.T) {
 		t.Fatalf("announce: %+v", announced)
 	}
 	// M is three: body 1 is empty, body 2's first reference is 0xF, above the
-	// announced entry count E = 8, and body 3 is empty. A reference is four
+	// announced entry count E = 8 (four fields, the three-entry tail and the
+	// table's name), and body 3 is empty. A reference is four
 	// bits, low bit first, so byte 0 holds body 1's low nibble and body 2's
 	// high nibble.
 	wire := []byte{2, 2, 0xF0, 0x00}

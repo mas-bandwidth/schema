@@ -650,7 +650,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 76;
+    static const int32_t kCapacity = 74;
     static const int32_t kBuckets = 256;
 
     uint64_t ids[kCapacity];
@@ -1174,59 +1174,6 @@ inline int64_t TableUtf8Clamp( const uint8_t * bytes, uint64_t length, int64_t b
     return cut;
 }
 
-// ONE CODE UNIT off the wire: two bytes LITTLE-ENDIAN, this wire's order for
-// every fixed-width number (docs/SPEC-TABLES.md §3). No unit can exceed
-// 0xFFFF, because two bytes cannot spell one.
-inline uint16_t TableUtf16Unit( const uint8_t * bytes, int64_t index )
-{
-    return uint16_t( uint16_t( bytes[index * 2] ) | ( uint16_t( bytes[index * 2 + 1] ) << 8 ) );
-}
-
-// ILL-FORMED WIDE TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 33
-// payload carrying an UNPAIRED SURROGATE or a ZERO CODE UNIT among its units,
-// checked AS IT ARRIVES and before the reader's own bound, on the rule kind 12
-// takes for UTF-8. An ODD L is framing damage and the caller rejects it ahead
-// of this, because units is L / 2. SPEC.md §4.12 refuses the same content
-// TERMINALLY on the packet wire, and the table read refuses it whole too:
-// malformed counts, and damage discards the whole load (§4).
-inline bool TableUtf16Valid( const uint8_t * bytes, int64_t units )
-{
-    int64_t i = 0;
-    while ( i < units )
-    {
-        const uint16_t unit = TableUtf16Unit( bytes, i );
-        if ( unit == 0 ) { return false; }
-        if ( unit >= 0xD800 && unit <= 0xDBFF )
-        {
-            if ( i + 1 >= units ) { return false; } // a high surrogate with no low half
-            const uint16_t low = TableUtf16Unit( bytes, i + 1 );
-            if ( low < 0xDC00 || low > 0xDFFF ) { return false; }
-            i += 2;
-            continue;
-        }
-        if ( unit >= 0xDC00 && unit <= 0xDFFF ) { return false; } // a low surrogate first
-        i++;
-    }
-    return true;
-}
-
-// A CLAMP CUTS AT A CODE UNIT BOUNDARY AND NEVER SPLITS A PAIR (§3, §16.2):
-// the first bound units of a payload the check above already accepted, and
-// where the last kept unit is a HIGH SURROGATE whose low half did not fit,
-// that unit is dropped with it. So a clamp can never invent an unpaired
-// surrogate, exactly as kind 12's clamp can never invent a broken sequence.
-inline int64_t TableUtf16Clamp( const uint8_t * bytes, int64_t units, int64_t bound )
-{
-    if ( units <= bound ) { return units; }
-    int64_t cut = bound;
-    if ( cut > 0 )
-    {
-        const uint16_t last = TableUtf16Unit( bytes, cut - 1 );
-        if ( last >= 0xD800 && last <= 0xDBFF ) { cut--; }
-    }
-    return cut;
-}
-
 // The RESERVED node-table id, the one id the language holds back
 // (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
 // because every body has to know that a NESTED body claiming one is damaged.
@@ -1410,7 +1357,7 @@ static const int64_t kTableMessageRefBitsHere = 7;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 75;
+static const int64_t kTableMessageEntriesHere = 73;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1985,7 +1932,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 75 entries and 901 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 73 entries and 875 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -2003,7 +1950,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 901;
+static const int64_t kTableAnnounceBytes = 875;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -2016,20 +1963,20 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x24,
-    0x69,
-    0x6a,
-    0xfd,
-    0x26,
-    0xca,
-    0x28,
-    0x9f,
+    0xa1,
+    0x8a,
+    0x4b,
+    0x32,
+    0x79,
+    0xc3,
+    0x52,
+    0xe6,
     0x02,
     0x0e,
-    0xdd,
+    0xc3,
     0x06,
     0x06,
-    0xda,
+    0xc0,
     0x06,
     0xec,
     0x10,
@@ -2173,26 +2120,6 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x0a,
     0x06,
     0x00,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x07,
-    0x00,
-    0xea,
-    0x0c,
-    0xe8,
-    0x30,
-    0x94,
-    0xfd,
-    0xe4,
-    0x7c,
-    0x21,
-    0x06,
     0xea,
     0x0c,
     0xe8,
@@ -2514,6 +2441,16 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0xff,
     0x0f,
     0x0d,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x07,
+    0x00,
     0xea,
     0x0c,
     0xe8,
@@ -2598,22 +2535,6 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x39,
     0x84,
     0x1c,
-    0x0e,
-    0x00,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0x0f,
-    0x0d,
-    0xca,
-    0x5c,
-    0x71,
-    0x55,
-    0xf6,
-    0xf1,
-    0x33,
-    0xa6,
     0x0e,
     0x00,
     0xff,
@@ -7175,7 +7096,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 76;
+static const int32_t kTableRetainKnownIds = 74;
 // INLINE, not static: TableRetainNameable below is an inline function
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
@@ -7229,7 +7150,6 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0xa013e119fec906fbull,
     0xa0b562a796b69487ull,
     0xa3a7061ff10a8138ull,
-    0xa633f1f655715ccaull,
     0xab01daa76a48769full,
     0xaf05dfb30c5ca3deull,
     0xafb728fff268814full,
@@ -7242,7 +7162,6 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0xc5b2a72c0845a253ull,
     0xc85b940060088651ull,
     0xd5c2bb95d63e6331ull,
-    0xda73c178dfcf57b7ull,
     0xdcdbddf89c9310a1ull,
     0xde1c38d5bac1485dull,
     0xe1185043515c812bull,
@@ -9966,7 +9885,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x9f28ca26fd6a6924ull;
+static const uint64_t BuildVersion = 0xe652c379324b8aa1ull;
 
 } // namespace mapdemo
 
@@ -11078,7 +10997,7 @@ inline int64_t ShipConfigMeasureBody( TableIds & ids, const ShipConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 64 ) { return -1; } // storage invariant
-    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 57, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     return bytes;
 }
@@ -11096,7 +11015,7 @@ MAPDEMO_TABLE_INLINE bool ShipConfigSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.header( ids.ref_at( 57, 0xc4bcadba8e631b86ull ), 12 ); // name
+        w.header( ids.ref_at( 56, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -11361,14 +11280,14 @@ inline bool ShipConfigSaveMessageBody( TableBitWriter & w, const ShipConfig & va
     if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.put( 41, kTableMessageRefBitsHere );
+        w.put( 40, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.name_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
     }
     if ( value.health != 0 )
     {
-        w.put( 42, kTableMessageRefBitsHere );
+        w.put( 41, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.health ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -11386,7 +11305,11 @@ inline bool ShipConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -11556,7 +11479,7 @@ inline bool ShipConfigLoadMessages( ShipConfig * values, int64_t * count, const 
 inline int64_t ItemMeasureBody( TableIds & ids, const Item & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.count != 0 ) { bytes += TableLebBytes( ids.ref_at( 52, 0xb1e5e28e4479a274ull ) ) + 1 + 4; } // count
+    if ( value.count != 0 ) { bytes += TableLebBytes( ids.ref_at( 51, 0xb1e5e28e4479a274ull ) ) + 1 + 4; } // count
     return bytes;
 }
 
@@ -11572,7 +11495,7 @@ MAPDEMO_TABLE_INLINE bool ItemSaveBody( TableWriter & w, TableIds & ids, const I
 {
     if ( value.count != 0 )
     {
-        w.header( ids.ref_at( 52, 0xb1e5e28e4479a274ull ), 4 ); // count
+        w.header( ids.ref_at( 51, 0xb1e5e28e4479a274ull ), 4 ); // count
         w.put32( uint32_t( value.count ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -11789,7 +11712,7 @@ inline bool ItemSaveMessageBody( TableBitWriter & w, const Item & value )
 {
     if ( value.count != 0 )
     {
-        w.put( 36, kTableMessageRefBitsHere );
+        w.put( 34, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.count ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -11807,7 +11730,11 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -13986,6 +13913,46 @@ inline int64_t ShipConfigFixedLoadWalk( ShipConfig * values, int64_t capacity, c
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = ShipConfigFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { ShipConfigReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
@@ -14310,6 +14277,46 @@ inline int64_t ItemFixedLoadWalk( Item * values, int64_t capacity, const uint8_t
             for ( int64_t j = 0; j < k; ++j ) { ItemReset( values[j] ); }
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = ItemFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { ItemReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ItemFixedGuards );
@@ -16722,7 +16729,7 @@ inline int64_t ShipConfigMeasureBodyRetain( TableRetainIds & ids, const ShipConf
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 64 ) { return -1; } // storage invariant
-    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 57, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -16733,7 +16740,7 @@ MAPDEMO_TABLE_INLINE bool ShipConfigSaveBodyRetain( TableWriter & w, TableRetain
     if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.header( ids.ref_at( 57, 0xc4bcadba8e631b86ull ), 12 ); // name
+        w.header( ids.ref_at( 56, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -16880,7 +16887,7 @@ MAPDEMO_TABLE_INLINE bool ShipConfigLoadBodyRetain( TableReader & r, ShipConfig 
 inline int64_t ItemMeasureBodyRetain( TableRetainIds & ids, const Item & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.count != 0 ) { bytes += TableLebBytes( ids.ref_at( 52, 0xb1e5e28e4479a274ull ) ) + 1 + 4; } // count
+    if ( value.count != 0 ) { bytes += TableLebBytes( ids.ref_at( 51, 0xb1e5e28e4479a274ull ) ) + 1 + 4; } // count
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -16889,7 +16896,7 @@ MAPDEMO_TABLE_INLINE bool ItemSaveBodyRetain( TableWriter & w, TableRetainIds & 
 {
     if ( value.count != 0 )
     {
-        w.header( ids.ref_at( 52, 0xb1e5e28e4479a274ull ), 4 ); // count
+        w.header( ids.ref_at( 51, 0xb1e5e28e4479a274ull ), 4 ); // count
         w.put32( uint32_t( value.count ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

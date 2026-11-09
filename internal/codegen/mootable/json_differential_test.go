@@ -238,7 +238,7 @@ func (d *redraw) instance(inst *tabletext.Instance) {
 					d.scalar(v.Def, &v.Cell)
 				}
 			}
-		case f.IsTextList(), f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+		case f.IsTextList(), f.Type.Kind == ir.TBytes:
 		case f.Array != ir.ArrayNone:
 			e := *f
 			e.Array = ir.ArrayNone

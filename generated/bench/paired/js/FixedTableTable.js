@@ -386,6 +386,16 @@ export function FixedTableFixedSave(values, count, bytes) {
   return need;
 }
 
+// A REFUSAL AT RECORD k KEEPS NOTHING OF THE BATCH (docs/SPEC-TABLES.md §4,
+// §6.5): every record this read wrote, k included, goes back to its declared
+// defaults, and the refusal and the damage are the report's; no counter moves.
+function FixedTableFixedRefuseBatch(values, k, stage, report) {
+  for (let j = 0; j <= k; j++) { InitFixedTable(values[j]); }
+  report.refused = stage.refused;
+  report.damaged = stage.damaged;
+  return -1;
+}
+
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
 // writer's layout otherwise. Every COMPILED plan runs the same loop; there
@@ -482,7 +492,7 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     }
     if (identity) {
       FixedTableFixedDecode(values[k], srcView, at + 8, stage);
-      if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }
+      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
       at += recordBytes;
       continue;
     }
@@ -493,12 +503,12 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, stage);
     // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the
     // projection: refuse is total, no counter moves and no record lands.
-    if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }
+    if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
     FixedTableFixedDecode(values[k], imageView, 0, stage);
     // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries
     // no text op, so the decode is where a byte string or a wide string
     // refuses by name, here and at the in-place door alike.
-    if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }
+    if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
     at += recordBytes;
   }
   // THE COMPILE CENSUS AND THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on

@@ -42,13 +42,6 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 			field: &ir.Field{Name: "words", Type: ir.FieldType{Kind: ir.TString, Size: 8}, Array: ir.ArrayList},
 			want:  "an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)",
 		},
-		// a wstring(N) is CARRIED (docs/SPEC-TABLES.md §3, SPEC.md §4.12;
-		// widescalarstext_test.go TestFixedPointAndWideTextOnTheTableWireJavaScript),
-		// as fixed/ufixed are, so neither is a case here any more
-		{
-			field: &ir.Field{Name: "titles", Type: ir.FieldType{Kind: ir.TWString, Size: 8}, Array: ir.ArrayList},
-			want:  "an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)",
-		},
 	} {
 		st := &ir.Struct{Name: "Probe", IsTable: true, Fields: []*ir.Field{tc.field}}
 		got := tableVariableRefusals(st)

@@ -114,11 +114,6 @@ previous_form_vocab9_wide refused
 previous_form_vocab_low refused
 previous_form_vocab_wide refused
 previous_form_wide_blob refused
-previous_form_wide_empty refused
-previous_form_wide_narrow_arm refused
-previous_form_wide_sites refused
-previous_form_wide_stamp refused
-previous_form_wide_title refused
 r1_cfg_as_r2       refused
 r1_ping_as_r2      refused
 r2_cfg_as_r1       refused

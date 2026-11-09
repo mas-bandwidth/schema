@@ -104,28 +104,8 @@ packet-utf8-moo-negative-control: packet-utf8-moo
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/moo-negative/log || { cat build/packet-text/moo-negative/log; exit 1; }
 	@echo 'packet UTF-8 moo negative control: the unchecked read fails bit-flip agreement'
 
-# PACKET WIDE (test/packet-wide/README.md): the composition contracts, then
-# the 26 wstring corpus rows, the six SPEC §4.12 interop cases and their 1,016
-# single-bit mutations against the C++ oracle. The control drops the surrogate
-# pairing check and must fail mutation agreement.
-MOO_PACKET_WIDE_SCHEMA = -schema build/packet-wide/source/WideText.schema
-MOO_PACKET_WIDE_HARNESS = ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver
-
-.PHONY: packet-wide-moo packet-wide-moo-negative-control
-packet-wide-moo: toolchain-moo moo-packet-driver build/packet-wide/source/WideText.schema build/packet-wide/cpp/driver build/packet-text/harness
-	$(MOO_PACKET_DRIVER) -analyze $(MOO_PACKET_WIDE_SCHEMA) -schema test/packet-wide/Shapes.schema -main test/packet-wide/moo/contracts.moo
-	$(MOO_PACKET_WIDE_HARNESS) $(MOO_PACKET_DRIVER) -analyze -stdin $(MOO_PACKET_WIDE_SCHEMA) -main test/packet-wide/moo/main.moo
-
-packet-wide-moo-negative-control: packet-wide-moo
-	$(call moo-packet-sabotaged-driver,build/packet-wide/moo-negative,packet-wide-moo-pairing,moo.go)
-	@if $(MOO_PACKET_WIDE_HARNESS) -mutations-only ./build/packet-wide/moo-negative/driver -analyze -stdin $(MOO_PACKET_WIDE_SCHEMA) -main test/packet-wide/moo/main.moo > build/packet-wide/moo-negative/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: moo wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/moo-negative/log || { cat build/packet-wide/moo-negative/log; exit 1; }
-	@echo 'packet wide moo negative control: removed pairing fails bit-flip agreement'
-
 # Every gate and its control ride test-moo (make/moo.mk), which make test
 # reaches through TEST_LEGS.
 test-moo: packet-defaults-moo packet-defaults-moo-negative-control \
 	packet-finite-moo packet-finite-moo-negative-control \
-	packet-utf8-moo packet-utf8-moo-negative-control \
-	packet-wide-moo packet-wide-moo-negative-control
+	packet-utf8-moo packet-utf8-moo-negative-control

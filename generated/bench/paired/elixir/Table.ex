@@ -6,11 +6,12 @@
 
 defmodule Bench.Table do
   @moduledoc """
-  The VARIABLE FORM's wire (docs/SPEC-TABLES.md §3), form byte 1: the
-  id-table file a table round-trips byte for byte as the Go, C, C++ and C#
-  backends do. `save/2` writes one value; `load/2` reads one strictly and
-  reports the unknown and widened events (§4). Identity is the
-  name hash and `was` (§5).
+  The VARIABLE FORM's wire (docs/SPEC-TABLES.md §3), form byte 1, for a
+  variable root: the id-table file it round-trips as the Go, C, C++ and C#
+  backends do. A declared fixed root's save and load are form 3, one
+  record or a refusal, and sit ahead of this codec. `load/2` reads one
+  value strictly and reports unknown and widened events (§4). Identity
+  is the name hash and `was` (§5).
   """
 
   import Bitwise
@@ -1395,6 +1396,363 @@ defmodule Bench.Table do
   @cook_build_version 0x41D3559378BFA852
   @cook_magic 0x4B4F4F434D484353
 
+  # A declared fixed root's file is form 3 (docs/SPEC-TABLES.md §3, §3.4).
+  # The write is the fixed form's own. The variable codec below is for
+  # variable roots, including one that holds a fixed table.
+
+  # A fixed root's Table value is the Table API's value: the fixed record
+  # converted by the descriptors above, so the text form, the cook writer
+  # and a re-save walk the same string-keyed map a variable root returns.
+  defp fixed_class_report(report) do
+    %{
+      unknown: Map.get(report, :unknown, 0),
+      widened: Map.get(report, :widened, 0),
+      retained: Map.get(report, :retained, 0),
+      retain_lost: Map.get(report, :retain_lost, 0),
+      layout_hash: Map.get(report, :layout_hash, 0),
+      missing_required: Map.get(report, :missing_required, 0),
+      blob_shared: Map.get(report, :blob_shared, 0),
+      reason: Map.get(report, :reason, "")
+    }
+  end
+
+  defp fixed_class_snake(name) do
+    name
+    |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
+    |> String.replace(~r/([a-z0-9])([A-Z])/, "\\1_\\2")
+    |> String.downcase()
+  end
+
+  defp fixed_class_to_table(table, value) when is_map(value) do
+    desc = Map.fetch!(@tables, table)
+
+    Map.new(desc.fields, fn f ->
+      {f.name, fixed_class_field_to_table(f, value)}
+    end)
+  end
+
+  defp fixed_class_field_to_table(f, value) do
+    raw = Map.get(value, String.to_atom(f.name))
+
+    if Map.get(f, :optional, false) do
+      present = Map.get(value, String.to_atom(f.name <> "_present"), false)
+      if present, do: fixed_class_value_to_table(f, raw), else: nil
+    else
+      fixed_class_value_to_table(f, raw)
+    end
+  end
+
+  defp fixed_class_value_to_table(f, value) do
+    case Map.get(f, :t) do
+      :table ->
+        if is_map(value),
+          do: fixed_class_to_table(Map.fetch!(f, :elem), value),
+          else: nil
+
+      :list ->
+        if is_list(value),
+          do: Enum.map(value, fn e -> fixed_class_elem_to_table(f, e) end),
+          else: []
+
+      :union ->
+        fixed_class_union_to_table(f, value)
+
+      :enum ->
+        fixed_class_enum_to_table(f, value)
+
+      :wstring ->
+        fixed_class_wide_to_table(value)
+
+      :keyed ->
+        fixed_class_keyed_to_table(f, value)
+
+      _ ->
+        value
+    end
+  end
+
+  defp fixed_class_wide_to_table(value) when is_binary(value) do
+    case :unicode.characters_to_binary(value, {:utf16, :little}, :utf8) do
+      text when is_binary(text) -> text
+      _ -> value
+    end
+  end
+
+  defp fixed_class_wide_to_table(value), do: value
+
+  defp fixed_class_elem_to_table(f, value) do
+    cond do
+      Map.get(f, :elem_kind) == 13 and is_map(value) ->
+        fixed_class_to_table(Map.fetch!(f, :elem), value)
+
+      Map.get(f, :elem_kind) == 15 ->
+        fixed_class_union_to_table(f, value)
+
+      Map.get(f, :elem_kind) == 33 ->
+        fixed_class_wide_to_table(value)
+
+      Map.has_key?(f, :by_name) ->
+        fixed_class_enum_to_table(f, value)
+
+      true ->
+        value
+    end
+  end
+
+  defp fixed_class_enum_to_table(f, value) when is_atom(value) do
+    if value == :none do
+      if Map.get(f, :optional, false), do: "None", else: nil
+    else
+      snake = Atom.to_string(value)
+      names = Map.keys(Map.get(f, :by_name, %{}))
+      Enum.find(names, snake, fn n -> fixed_class_snake(n) == snake end)
+    end
+  end
+
+  defp fixed_class_enum_to_table(_f, value), do: value
+
+  defp fixed_class_keyed_to_table(f, value) when is_list(value) do
+    item = Map.fetch!(f, :item)
+
+    Map.new(Enum.with_index(Map.fetch!(f, :key_names)), fn {name, i} ->
+      {name, fixed_class_value_to_table(item, Enum.at(value, i))}
+    end)
+  end
+
+  defp fixed_class_keyed_to_table(f, value) when is_map(value) do
+    item = Map.fetch!(f, :item)
+
+    Map.new(value, fn {k, v} ->
+      {to_string(k), fixed_class_value_to_table(item, v)}
+    end)
+  end
+
+  defp fixed_class_keyed_to_table(_f, _value), do: %{}
+
+
+  defp fixed_class_union_to_table(f, value) do
+    case value do
+      nil ->
+        nil
+
+      {arm, payload} when is_atom(arm) ->
+        union = Map.fetch!(@unions, Map.fetch!(f, :elem))
+        snake = Atom.to_string(arm)
+
+        name =
+          Enum.find(Map.keys(union.by_name), snake, fn n ->
+            fixed_class_snake(n) == snake
+          end)
+
+        case Map.get(union.by_name, name) do
+          nil -> {name, payload}
+          desc -> {name, fixed_class_value_to_table(desc, payload)}
+        end
+
+      arm when is_atom(arm) ->
+        union = Map.fetch!(@unions, Map.fetch!(f, :elem))
+        snake = Atom.to_string(arm)
+
+        name =
+          Enum.find(Map.keys(union.by_name), snake, fn n ->
+            fixed_class_snake(n) == snake
+          end)
+
+        {name, nil}
+
+      _ ->
+        value
+    end
+  end
+
+  defp fixed_class_union_from_table(f, value) do
+    case value do
+      nil ->
+        nil
+
+      {arm, payload} when is_binary(arm) ->
+        union = Map.fetch!(@unions, Map.fetch!(f, :elem))
+        atom = String.to_atom(fixed_class_snake(arm))
+
+        case Map.get(union.by_name, arm) do
+          nil ->
+            {atom, payload}
+
+          desc ->
+            {atom, fixed_class_value_from_table(desc, payload)}
+        end
+
+      {arm, payload} when is_atom(arm) ->
+        {arm, payload}
+
+      _ ->
+        value
+    end
+  end
+
+  defp fixed_class_from_table(table, value) when is_map(value) do
+    desc = Map.fetch!(@tables, table)
+
+    Enum.reduce(desc.fields, %{}, fn f, acc ->
+      atom = String.to_atom(f.name)
+
+      raw =
+        cond do
+          Map.has_key?(value, f.name) -> Map.get(value, f.name)
+          Map.has_key?(value, atom) -> Map.get(value, atom)
+          true -> Map.get(f, :default)
+        end
+
+      if Map.get(f, :optional, false) do
+        present = String.to_atom(f.name <> "_present")
+
+        payload =
+          if raw == nil,
+            do: fixed_class_absent_payload(f),
+            else: fixed_class_value_from_table(f, raw)
+
+        acc
+        |> Map.put(atom, payload)
+        |> Map.put(present, raw != nil)
+      else
+        Map.put(acc, atom, fixed_class_value_from_table(f, raw))
+      end
+    end)
+  end
+
+  defp fixed_class_absent_payload(f) do
+    case Map.get(f, :t) do
+      :table -> fixed_class_from_table(Map.fetch!(f, :elem), %{})
+      :list -> []
+      :enum -> :none
+      :keyed -> fixed_class_keyed_from_table(f, %{})
+      :string -> <<>>
+      :wstring -> <<>>
+      :bytes -> <<>>
+      :bool -> false
+      :float -> 0.0
+      _ -> 0
+    end
+  end
+
+  defp fixed_class_value_from_table(f, value) do
+    case Map.get(f, :t) do
+      :table ->
+        if is_map(value),
+          do: fixed_class_from_table(Map.fetch!(f, :elem), value),
+          else: fixed_class_from_table(Map.fetch!(f, :elem), %{})
+
+      :list ->
+        if is_list(value),
+          do: fixed_class_list_from_table(f, value),
+          else: []
+
+      :union ->
+        fixed_class_union_from_table(f, value)
+
+      :enum ->
+        fixed_class_enum_from_table(f, value)
+
+      :wstring ->
+        fixed_class_wide_from_table(value)
+
+      :keyed ->
+        fixed_class_keyed_from_table(f, value)
+
+      _ ->
+        if value == nil, do: Map.get(f, :default), else: value
+    end
+  end
+
+  defp fixed_class_list_from_table(f, value) do
+    elems = Enum.map(value, fn e -> fixed_class_elem_from_table(f, e) end)
+
+    case Map.get(f, :fixed_array) do
+      n when is_integer(n) ->
+        kept = Enum.take(elems, n)
+        kept ++ List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), max(n - length(kept), 0))
+
+      _ ->
+        elems
+    end
+  end
+
+  defp fixed_class_wide_from_table(value) when is_binary(value) do
+    case :unicode.characters_to_binary(value, :utf8, {:utf16, :little}) do
+      text when is_binary(text) -> text
+      _ -> value
+    end
+  end
+
+  defp fixed_class_wide_from_table(_value), do: <<>>
+
+  defp fixed_class_elem_from_table(f, value) do
+    cond do
+      Map.get(f, :elem_kind) == 13 and is_map(value) ->
+        fixed_class_from_table(Map.fetch!(f, :elem), value)
+
+      Map.get(f, :elem_kind) == 13 ->
+        fixed_class_from_table(Map.fetch!(f, :elem), %{})
+
+      Map.get(f, :elem_kind) == 15 ->
+        fixed_class_union_from_table(f, value)
+
+      Map.get(f, :elem_kind) == 33 ->
+        fixed_class_wide_from_table(value)
+
+      Map.has_key?(f, :by_name) ->
+        fixed_class_enum_from_table(f, value)
+
+      true ->
+        value
+    end
+  end
+
+  defp fixed_class_enum_from_table(_f, nil), do: :none
+
+  defp fixed_class_enum_from_table(_f, value) when is_atom(value), do: value
+
+  defp fixed_class_enum_from_table(_f, "None"), do: :none
+
+  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
+    do: String.to_atom(fixed_class_snake(value))
+
+  defp fixed_class_enum_from_table(_f, value), do: value
+
+  defp fixed_class_keyed_from_table(f, value) when is_map(value) do
+    item = Map.fetch!(f, :item)
+
+    Enum.map(Map.fetch!(f, :key_names), fn name ->
+      raw =
+        cond do
+          Map.has_key?(value, name) -> Map.get(value, name)
+          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) -> Map.get(value, String.to_atom(fixed_class_snake(name)))
+          true -> Map.get(item, :default)
+        end
+
+      fixed_class_value_from_table(item, raw)
+    end)
+  end
+
+  defp fixed_class_keyed_from_table(f, value) when is_list(value) do
+    item = Map.fetch!(f, :item)
+    Enum.map(value, fn v -> fixed_class_value_from_table(item, v) end)
+  end
+
+  defp fixed_class_keyed_from_table(f, _value) do
+    item = Map.fetch!(f, :item)
+
+    Enum.map(Map.fetch!(f, :key_names), fn _name ->
+      fixed_class_value_from_table(item, Map.get(item, :default))
+    end)
+  end
+
+  def save("FixedTable", value) when is_map(value) do
+    value = fixed_class_from_table("FixedTable", value)
+    data = Bench.WrapFixed.fixed_table_fixed_save([value])
+    {:ok, IO.iodata_to_binary(data)}
+  end
+
   # ---- the write side (docs/SPEC-TABLES.md §3) ----
 
   def save(table, value) when is_map(value),
@@ -2116,6 +2474,98 @@ defmodule Bench.Table do
     {IO.iodata_to_binary([body, <<0>>]), ids, order}
   end
 
+  # variable_load is the strict variable-form read for the framing
+  # vectors; strict_load is that read beside the fixed roots' own form.
+
+  def variable_load(table, data) when is_binary(data) do
+    Process.put(:elixir_strict_framing, true)
+
+    try do
+      variable_load_impl(table, data)
+    after
+      Process.delete(:elixir_strict_framing)
+    end
+  end
+
+  def strict_load("FixedTable", data) when is_binary(data), do: load("FixedTable", data)
+
+  def strict_load(table, data) when is_binary(data), do: variable_load(table, data)
+
+  defp strict_flag?, do: Process.get(:elixir_strict_framing, false)
+
+  defp strict_unknown!(13, payload, _nodes, ids) do
+    case leb(payload) do
+      {l, body} when byte_size(body) >= l ->
+        case entries(binary_part(body, 0, l), ids, false, :nested) do
+          {:ok, _fields, []} -> :ok
+          _ -> throw(:wire_damaged)
+        end
+
+      _ ->
+        throw(:wire_damaged)
+    end
+  end
+
+  defp strict_unknown!(kind, payload, nodes, _ids) when kind in [17, 30] do
+    case leb(payload) do
+      {idx, _rest} when idx <= length(nodes) + 1 -> :ok
+      _ -> throw(:wire_damaged)
+    end
+  end
+
+  defp strict_unknown!(kind, payload, _nodes, _ids) when kind in [14, 16] do
+    case leb(payload) do
+      {_l, body} when byte_size(body) >= 2 -> :ok
+      _ -> throw(:wire_damaged)
+    end
+  end
+
+  defp strict_unknown!(_kind, _payload, _nodes, _ids), do: :ok
+
+  defp strict_reachable!(records, root) do
+    all = Map.put(records, 1, root)
+    seen = strict_reach([1], all, MapSet.new())
+
+    if Enum.any?(Map.keys(all), fn idx -> not MapSet.member?(seen, idx) end),
+      do: throw(:wire_damaged)
+
+    :ok
+  end
+
+  defp strict_reach([], _all, seen), do: seen
+
+  defp strict_reach([idx | rest], all, seen) do
+    if MapSet.member?(seen, idx) do
+      strict_reach(rest, all, seen)
+    else
+      refs =
+        case Map.fetch(all, idx) do
+          {:ok, value} -> stored_references(value, [])
+          :error -> []
+        end
+
+      strict_reach(refs ++ rest, all, MapSet.put(seen, idx))
+    end
+  end
+
+  # A declared fixed root is read as form 3, one record or a refusal.
+  # Form 1 is previous_form: the form byte is named and nothing is decoded.
+
+  def load("FixedTable", <<1, _::binary>>) do
+    report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
+    {:error, :previous_form, fixed_class_report(report)}
+  end
+
+  def load("FixedTable", data) when is_binary(data) do
+    case Bench.WrapFixed.fixed_table_fixed_load(data) do
+      {:ok, [value], report} ->
+        {:ok, fixed_class_to_table("FixedTable", value), fixed_class_report(report)}
+      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}
+      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}
+      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}
+    end
+  end
+
   # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----
 
   def load(table, data) when is_binary(data) do
@@ -2164,9 +2614,70 @@ defmodule Bench.Table do
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
 
+    # A bits(N) value past the range its WIDTH implies refuses the read (§4),
+    # and the reason names the field.
+    {:out_of_range, name} ->
+      {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
     :wire_damaged ->
       {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
+
+  defp variable_load_impl(table, data) when is_binary(data) do
+    desc = Map.fetch!(@tables, table)
+
+    case open(data) do
+      {:error, reason} ->
+        {:error, reason, reasoned(empty_report(), reason)}
+
+      {:ok, body, ids} ->
+        {fields, nodes, terminated} =
+          case entries(body, ids, desc, true) do
+            {:ok, fields, nodes} -> {fields, nodes, true}
+            {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
+          end
+
+        {{value, report}, shared} =
+          with_node_directory(table, nodes, fn ->
+            blob_namings(fn -> decode_directory(desc, fields, nodes, ids, terminated) end)
+          end)
+
+        if not terminated, do: throw(:wire_damaged)
+
+        report = Map.put(report, :blob_shared, shared)
+
+        # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
+        # that met damage anywhere returns no value, only its report
+        cond do
+          Map.get(report, :missing_required, 0) > 0 ->
+            {:error, :missing_required, report}
+
+          true ->
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+        end
+    end
+  catch
+    {:missing_required, report} ->
+      {:error, :missing_required, report}
+
+    {:count_over_extent_cap, report} ->
+      {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
+
+    # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
+    # strict one too, and outranks any damage the walk would have met after
+    # it: nothing lands, and the reason names the first such field.
+    {:non_finite_float, name} ->
+      {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
+
+    # A bits(N) value past the range its WIDTH implies refuses the read (§4),
+    # and the reason names the field.
+    {:out_of_range, name} ->
+      {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+    :wire_damaged ->
+      {:error, :malformed, reasoned(empty_report(), :malformed)}
+  end
+
 
   # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
   # verdict word beside its counters, spelled with the reference leg's
@@ -2190,6 +2701,9 @@ defmodule Bench.Table do
 
   defp reasoned(report, {:non_finite_float, name}),
     do: Map.put(report, :reason, "non_finite_float: " <> name)
+
+  defp reasoned(report, {:out_of_range, name}),
+    do: Map.put(report, :reason, "out_of_range: " <> name)
 
   defp reasoned(report, _damage),
     do: Map.put(report, :reason, "wire_damaged")
@@ -2331,6 +2845,7 @@ defmodule Bench.Table do
                         # kind damages the numbering and discards the load.
                         # A fixed root has no such transport arm.
                         if kind == 12 do
+                          if strict_flag?() and node_bin != nil, do: throw(:wire_damaged)
                           # a node table riding twice: the LAST is the
                           # numbering (§3 last-wins; framing N7)
                           entries(rest3, ids, allowed, transport, acc, payload)
@@ -2651,6 +3166,8 @@ defmodule Bench.Table do
 
     report = merge_report(report, own_report)
 
+    if strict_flag?(), do: strict_reachable!(records, root)
+
     records = records |> Map.put(1, root) |> final_blob_slots(desc)
     {assemble_directory(records), report}
   end
@@ -2733,6 +3250,11 @@ defmodule Bench.Table do
   # events — an unknown id, a kind mismatch, an out-of-range value, a reference
   # a reader cannot name — read on, and the halt is the one exception.
   defp decode(desc, fields, nodes, ids, terminated) do
+    # the same field id twice in one body is damage (§3, §4): no field
+    # lands, however well each occurrence would read on its own
+    if length(fields) != length(Enum.uniq_by(fields, fn {id, _kind, _payload} -> id end)),
+      do: throw(:wire_damaged)
+
     {status, value, report} =
       Enum.reduce_while(fields, {:cont, Map.new(), empty_report()}, fn {id, kind, payload},
                                                                        {_status, value, report} ->
@@ -2740,11 +3262,16 @@ defmodule Bench.Table do
           nil ->
             report = %{report | unknown: report.unknown + 1}
 
+            if strict_flag?() and payload != :unframed,
+              do: strict_unknown!(kind, payload, nodes, ids)
+
             if payload == :unframed,
               do: {:halt, {:halt, value, report}},
               else: {:cont, {:cont, value, report}}
 
           f ->
+            if strict_flag?() and Map.has_key?(value, f.name), do: throw(:wire_damaged)
+
             cond do
               payload == :unframed ->
                 # The field header was read, but its payload never framed.
@@ -2764,6 +3291,7 @@ defmodule Bench.Table do
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
                   {:cont, :inert, report} ->
+                    if strict_flag?(), do: throw(:wire_damaged)
                     {:cont, {:cont, inert_required_field(f, value), report}}
 
                   {:cont, v, report} ->
@@ -3494,8 +4022,10 @@ defmodule Bench.Table do
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(_f, _rest, 0, _nodes, _ids, acc, report),
-    do: {Enum.reverse(acc), report}
+  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
+    if strict_flag?() and rest != <<>>, do: throw(:wire_damaged)
+    {Enum.reverse(acc), report}
+  end
 
   defp read_list_elements(%{text_list: true, elem_kind: 12} = f, rest, n, nodes, ids, acc, report) do
     case leb(rest) do
@@ -3802,6 +4332,14 @@ defmodule Bench.Table do
         end
       end
 
+      if Map.get(f, :t) in [:string, :wstring] and field_active?(f, desc, value) do
+        text = Map.get(value, f.name, f.default)
+
+        unless Map.get(f, :optional, false) and text == nil do
+          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+        end
+      end
+
       if Map.get(f, :required, false) and field_active?(f, desc, value) do
         required_value(f, Map.get(value, f.name, f.default))
       end
@@ -4067,6 +4605,16 @@ defmodule Bench.Table do
   defp clamp_int(v, %{min: _lo, max: hi}, _report) when v > hi,
     do: {hi, throw(:wire_damaged)}
 
+  # A bits(N) field RIDES AS THE NARROWEST UNSIGNED KIND THAT HOLDS IT (§3), so
+  # its payload can carry a value above 2^N - 1 that the declaration cannot.
+  # THE READ NEVER CLAMPS (§4): the value past the range the WIDTH implies
+  # refuses the whole load, out_of_range, naming the field.
+  defp clamp_int(v, %{bits: bits, name: name}, report) when is_integer(bits) and bits > 0 do
+    if v > Bitwise.bsl(1, bits) - 1,
+      do: throw({:out_of_range, name}),
+      else: {v, report}
+  end
+
   defp clamp_int(v, _f, report), do: {v, report}
 
   defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
@@ -4275,6 +4823,7 @@ defmodule Bench.Table do
       end
     catch
       {:missing_required, report} -> {:error, :missing_required, report}
+      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
       :wire_damaged -> {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
@@ -4668,6 +5217,8 @@ defmodule Bench.Table do
     end
   end
 
+  defp json_float_reads_back?(text, v, 4), do: json_float32_direct(text) == v
+
   defp json_float_reads_back?(text, v, width) do
     case Float.parse(text) do
       {back, ""} -> json_float_narrow(back, width) == v
@@ -4683,6 +5234,107 @@ defmodule Bench.Table do
   end
 
   defp json_float_narrow(back, _), do: back
+
+  # A float32 read-back parses the decimal directly to float32, never
+  # through a float64: the twice-rounded parse lands on the neighbour for
+  # the two values docs/SPEC-TABLES.md §16 names, so the check is exact
+  # integer arithmetic on the decimal the %g loop spelled.
+  defp json_float32_direct(text) do
+    {sign, rest} =
+      case text do
+        "-" <> r -> {-1, r}
+        "+" <> r -> {1, r}
+        r -> {1, r}
+      end
+
+    {mant_text, exp} =
+      case String.split(rest, ["e", "E"]) do
+        [m] -> {m, 0}
+        [m, e] -> {m, String.to_integer(e)}
+      end
+
+    {int_part, frac_part} =
+      case String.split(mant_text, ".") do
+        [i] -> {i, ""}
+        [i, f] -> {i, f}
+      end
+
+    case Integer.parse(int_part <> frac_part) do
+      {0, ""} -> if sign < 0, do: -0.0, else: 0.0
+      {m, ""} -> json_float32_from_decimal(sign, m, exp - String.length(frac_part))
+      _ -> nil
+    end
+  end
+
+  defp json_float32_from_decimal(sign, m, e10) do
+    {num, den} =
+      if e10 >= 0,
+        do: {m * Integer.pow(10, e10), 1},
+        else: {m, Integer.pow(10, -e10)}
+
+    e0 = json_int_bits(num) - json_int_bits(den)
+
+    e =
+      cond do
+        json_ge_pow2?(num, den, e0 + 1) -> e0 + 1
+        json_ge_pow2?(num, den, e0) -> e0
+        true -> e0 - 1
+      end
+
+    sign_bit = if sign < 0, do: 1, else: 0
+
+    bits =
+      cond do
+        e > 127 ->
+          nil
+
+        e >= -126 ->
+          q = json_round_scaled(num, den, e - 23)
+          {q, e} = if q >= 1 <<< 24, do: {div(q, 2), e + 1}, else: {q, e}
+
+          if e > 127,
+            do: nil,
+            else: (sign_bit <<< 31) + ((e + 127) <<< 23) + (q - (1 <<< 23))
+
+        true ->
+          q = json_round_scaled(num, den, -149)
+
+          if q >= 1 <<< 23,
+            do: (sign_bit <<< 31) + (1 <<< 23) + (q - (1 <<< 23)),
+            else: (sign_bit <<< 31) + q
+      end
+
+    case bits do
+      nil ->
+        nil
+
+      b ->
+        <<n::float-32>> = <<b::32>>
+        n
+    end
+  end
+
+  defp json_int_bits(n), do: byte_size(Integer.to_string(n, 2))
+
+  defp json_ge_pow2?(num, den, e) when e >= 0, do: num >= den <<< e
+  defp json_ge_pow2?(num, den, e), do: num <<< -e >= den
+
+  defp json_round_scaled(num, den, shift) when shift >= 0,
+    do: json_round_div(num, den <<< shift)
+
+  defp json_round_scaled(num, den, shift), do: json_round_div(num <<< -shift, den)
+
+  defp json_round_div(num, den) do
+    q = div(num, den)
+    r = rem(num, den)
+
+    cond do
+      2 * r > den -> q + 1
+      2 * r < den -> q
+      rem(q, 2) == 1 -> q + 1
+      true -> q
+    end
+  end
 
   # json_format_g is C's %.*g for a finite double: the exponent form when the
   # decimal exponent is below -4 or at least the precision, the plain form

@@ -2334,7 +2334,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 //	"the length (i32 LE) ... clamped into [0, cap], COUNT clamped if it fired"
 //
 // and §4.5's table gives the cap: "the payload's BYTE span, min(mine, theirs)",
-// so the cap is the span read in UNITS — `cap := size / unit`. The reader keeps
+// so the cap is the span — `cap := size`. The reader keeps
 // this check in every build, release included, and a clamp counts ONCE for the
 // field. The forged word is read as a SIGNED i32, so an all-ones word is -1 and
 // clamps UP to zero; a word past the cap clamps DOWN to it.
@@ -2345,8 +2345,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 // field is bracketed by `lead` and `trail`, so a clamp that mislaid the size
 // moves a neighbour and this says so.
 //
-// THE SITE IS fixedruntime.go's `case tableFixedText`: `capn := p.Size / unit`
-// then `if v < 0 { v = 0; report.Clamped++ } else if uint32(v) > capn { v =
+// THE SITE IS fixedruntime.go's `case tableFixedText`: `capn := p.Size` then `if v < 0 { v = 0; report.Clamped++ } else if uint32(v) > capn { v =
 // int32(capn); report.Clamped++ }`. DISABLING that `else if` leaves the forged
 // length standing and the counters silent — a silently WRONG REPORT, measured
 // in CONTROL 2 below.

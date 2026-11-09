@@ -17,6 +17,8 @@ let FixedProbeDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xdc03279d6cf4214d, // FNV-1a 64 of FixedProbe (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -40,6 +42,8 @@ let UnsignedProbeDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xdd94ca0b56633948, // FNV-1a 64 of UnsignedProbe (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -65,6 +69,8 @@ let WideProbeDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xd4c484b50fb0ed34, // FNV-1a 64 of WideProbe (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -88,6 +94,8 @@ let LudicrousStateDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x03de2ae8a79efc6e, // FNV-1a 64 of LudicrousState (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -112,6 +120,8 @@ let DegenerateProbeDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x95624587ddc4acb1, // FNV-1a 64 of DegenerateProbe (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -134,6 +144,8 @@ let FixedVecDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x9e0514a24a733e51, // FNV-1a 64 of FixedVec (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -155,6 +167,8 @@ let FixedQuatDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x3513a688ccb4ac62, // FNV-1a 64 of FixedQuat (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
