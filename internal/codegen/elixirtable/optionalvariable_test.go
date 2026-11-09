@@ -1,8 +1,10 @@
 package elixirtable
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestOptionalVariableClosureElixir holds docs/SPEC-TABLES.md §2.3's `?T` and
@@ -275,10 +278,13 @@ table Holder
 // its last byte is DAMAGE (docs/SPEC-TABLES.md §3: a body ends at its
 // terminator or it is damage), and a read that meets damage reports it. The
 // leg read this mutant clean. The VALUE a damaged read returns is undefined
-// (the discard-on-damage ruling), so only the report is held.
+// (the discard-on-damage ruling), so only the report is held. Chain is loaded
+// as a variable root (same fields, the `fixed` keyword removed) so the mutant
+// rides the id-table codec. A declared fixed Chain refuses form 1 before this
+// walk.
 //
 // THE REVERSED WITNESS disables the early-terminator check and the probe must
-// go red.
+// go red. Functional: it runs the generated Elixir.
 func TestNestedBodyEndingEarlyIsDamageElixir(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
@@ -287,7 +293,7 @@ func TestNestedBodyEndingEarlyIsDamageElixir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u := loadUnit(t, filepath.Join(root, "test", "tables", "P1.schema"))
+	u := loadVariableP1(t, root)
 	// chain_value with the nested body's first reference turned into the zero
 	// reference: the body ends at its first byte, twelve bytes inside its L
 	const mutant = "01010c05636861696e020d0d000407000000040c037469700000861b638ebaadbcc409484f69ad9b4bbfea0ce83094fde47cf3a4484419abd7560400000000000000"
@@ -329,9 +335,11 @@ IO.puts("ok")
 // §3.1); named inside a nested body it is a second numbering, which cannot
 // exist, so it is DAMAGE the report names, never an unknown field skipped. The
 // value a damaged read returns is undefined (the discard-on-damage ruling).
+// Chain is a variable root here, same as TestNestedBodyEndingEarlyIsDamageElixir,
+// so the id-table walk sees the byte. A fixed Chain would refuse the form first.
 //
 // THE REVERSED WITNESS lets a nested body carry the id again, and the probe
-// must go red.
+// must go red. Functional: it runs the generated Elixir.
 func TestReservedNodeIdInANestedBodyIsDamageElixir(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
@@ -340,7 +348,7 @@ func TestReservedNodeIdInANestedBodyIsDamageElixir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u := loadUnit(t, filepath.Join(root, "test", "tables", "P1.schema"))
+	u := loadVariableP1(t, root)
 	// chain_value with the nested body's third id-table entry turned into the
 	// reserved node id
 	const mutant = "01010c05636861696e020d0d030407000000040c037469700000861b638ebaadbcc409484f69ad9b4bbffffffffffffffffff3a4484419abd7560400000000000000"
@@ -374,4 +382,26 @@ IO.puts("ok")
 	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
 		t.Fatalf("the reader without its nested node-id check still passed: the probe does not see the rule\n%s", out)
 	}
+}
+
+// loadVariableP1 reads P1 with `fixed table` rewritten to `table`, under the
+// name P1.schema so the module stays Tblp1. The nested-body rules belong to
+// the variable wire. A fixed root's file is form 3 and refuses these bytes
+// before the walk.
+func loadVariableP1(t *testing.T, root string) *ir.Unit {
+	t.Helper()
+	src, err := os.ReadFile(filepath.Join(root, "test", "tables", "P1.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := bytes.ReplaceAll(src, []byte("fixed table"), []byte("table"))
+	if bytes.Equal(rewritten, src) {
+		t.Fatal("P1.schema has no fixed table to move onto the variable wire")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "P1.schema")
+	if err := os.WriteFile(path, rewritten, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return loadUnit(t, path)
 }
