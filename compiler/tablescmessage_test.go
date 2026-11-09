@@ -49,7 +49,7 @@ func TestCTableMessageSave(t *testing.T) {
 			t.Fatalf("fixture %d: %+v", i, report)
 		}
 		instances = append(instances, v)
-		fmt.Fprintf(&setup, "CHECK(root_from_json_tolerant(values+%d,%q,%d,&report));\n", i, s, len(s))
+		fmt.Fprintf(&setup, "CHECK(root_from_json(values+%d,%q,%d,&report));\n", i, s, len(s))
 	}
 	expected, err := tablewire.EncodeMessages(m, instances)
 	if err != nil {
@@ -71,18 +71,18 @@ int main(void) {
  Root values[3],decoded[3]; TableReport report={0}; TableMessageEntry entries[kTableMessageEntriesHere];
  TableVocabulary vocabulary=table_vocabulary(entries,kTableMessageEntriesHere);uint8_t output[4096];int64_t n,count;
  %s
- CHECK(!report.malformed && !report.clamped && !report.unknown);
+  CHECK(!report.refused && !report.unknown && report.refuse_reason==SCHEMA_TABLE_REFUSE_OK);
  CHECK(announce_measure()==sizeof(announcement));CHECK(announce(output,sizeof(output))==sizeof(announcement));CHECK(!memcmp(output,announcement,sizeof(announcement)));
  CHECK(announce_read(&vocabulary,announcement,sizeof(announcement),&report));CHECK(vocabulary.announced && vocabulary.count==kTableMessageEntriesHere);
- CHECK(!report.refused && !report.malformed);
+  CHECK(!report.refused);
  n=root_measure_messages(values,3,&report);CHECK(n==sizeof(expected));
  CHECK(root_save_messages(values,3,output,n,&report)==n);CHECK(!memcmp(output,expected,sizeof(expected)));
- count=3;CHECK(root_load_messages_tolerant(decoded,&count,&vocabulary,expected,sizeof(expected),&report));CHECK(count==3);
- CHECK(!report.malformed&&!report.refused&&!report.unknown&&!report.clamped&&!report.widened&&!report.kind_mismatch);
+  count=3;CHECK(root_load_messages(decoded,&count,&vocabulary,expected,sizeof(expected),&report));CHECK(count==3);
+  CHECK(!report.refused&&!report.unknown&&!report.widened&&report.refuse_reason==SCHEMA_TABLE_REFUSE_OK);
  CHECK(root_save_messages(decoded,3,output,n,&report)==n);CHECK(!memcmp(output,expected,sizeof(expected)));
  output[n-1]=0xa5;CHECK(root_save_messages(values,3,output,n-1,&report)==-1);CHECK(output[n-1]==0xa5);
  CHECK(root_measure_messages(values,0,&report)==-1);CHECK(root_measure_messages(values,257,&report)==-1);
- CHECK(report.refused && report.reason==SCHEMA_TABLE_BATCH_TOO_LARGE && !report.malformed);
+  CHECK(report.refused && report.reason==SCHEMA_TABLE_BATCH_TOO_LARGE);
  return 0;
 }`, octets(expected), octets(tablewire.Announce(u)), setup.String())
 	runCTableWireProbe(t, u, source)
@@ -105,7 +105,7 @@ int main(void) {
  TableReport report={0};uint8_t bytes[kTableAnnounceBytes];
  if(sizeof(TableMessageEntry)!=96)return 2;
  if(announce(bytes,sizeof(bytes))!=sizeof(bytes))return 1;
- if(!announce_read(&v,bytes,sizeof(bytes),&report)){fprintf(stderr,"own announcement: malformed=%d refused=%d\n",report.malformed,report.refused);return 1;}
+  if(!announce_read(&v,bytes,sizeof(bytes),&report)){fprintf(stderr,"own announcement: refused=%d\n",report.refused);return 1;}
 	return 0;
 }`)
 }
@@ -209,10 +209,10 @@ choice Payload }
 static const uint8_t announcement[]={%s},wire[]={%s},expected[]={%s};
 int main(void){
  Root value;TableMessageEntry entries[128];TableVocabulary v=table_vocabulary(entries,128);TableReport report={0};int64_t count=1,n;uint8_t saved[4096];
- CHECK(announce_read(&v,announcement,sizeof(announcement),&report));CHECK(root_load_messages_tolerant(&value,&count,&v,wire,sizeof(wire),&report));
- CHECK(!report.malformed&&!report.refused&&report.widened==%d&&report.clamped==%d&&report.kind_mismatch==%d&&report.unknown==%d);
+  CHECK(announce_read(&v,announcement,sizeof(announcement),&report));CHECK(root_load_messages(&value,&count,&v,wire,sizeof(wire),&report));
+  CHECK(!report.refused&&report.widened==%d&&report.unknown==%d);
  n=root_save(&value,saved,sizeof(saved));CHECK(n==sizeof(expected));CHECK(!memcmp(saved,expected,sizeof(expected)));return 0;
-}`, octets(announcement), octets(wire), octets(expected), report.Widened, 0, 0, report.Unknown)
+}`, octets(announcement), octets(wire), octets(expected), report.Widened, report.Unknown)
 	runCTableWireProbe(t, receiver, source)
 }
 

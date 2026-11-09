@@ -123,29 +123,29 @@ int main(void) {
 #include <stdio.h>
 
 int main(void) {
-    // 1. Malformed Base64 body: must report kind_mismatch == 1 and preserve declared default "ab" (len 2)
+    // 1. Malformed Base64 body: the strict read refuses the whole load, keeps
+    // the declared default "ab" (len 2), and loads nothing past it.
     {
         const char * text = "{\"tag\":\"not_valid_base64!!!\",\"past\":42}";
         Ship s;
         TableReport r = {0};
-        int ok = ship_from_json_tolerant( &s, text, (int64_t) strlen(text), &r );
-        if ( !ok ) { fprintf(stderr, "C case 1: from_json failed\n"); return 1; }
-        if ( r.kind_mismatch != 1 ) { fprintf(stderr, "C case 1: kind_mismatch=%d, want 1\n", r.kind_mismatch); return 2; }
-        if ( r.malformed ) { fprintf(stderr, "C case 1: malformed is true\n"); return 3; }
-        if ( s.past != 42 ) { fprintf(stderr, "C case 1: after=%d, want 42\n", s.past); return 4; }
+        int ok = ship_from_json( &s, text, (int64_t) strlen(text), &r );
+        if ( ok ) { fprintf(stderr, "C case 1: from_json accepted malformed Base64\n"); return 1; }
+        if ( !r.refused || r.refuse_reason == SCHEMA_TABLE_REFUSE_OK ) { fprintf(stderr, "C case 1: refuse_reason=%d\n", r.refuse_reason); return 2; }
+        if ( s.past != 0 ) { fprintf(stderr, "C case 1: past=%d, want 0\n", s.past); return 4; }
         if ( s.tag_length != 2 ) { fprintf(stderr, "C case 1: tag_length=%d, want 2 (default wiped!)\n", s.tag_length); return 5; }
         if ( s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "C case 1: tag content corrupted\n"); return 6; }
     }
 
-    // 2. Mid-string '=' padding ("YQ=B"): must report kind_mismatch == 1 and preserve default
+    // 2. Mid-string '=' padding ("YQ=B"): refused, default preserved
     {
         const char * text = "{\"tag\":\"YQ=B\",\"past\":42}";
         Ship s;
         TableReport r = {0};
-        int ok = ship_from_json_tolerant( &s, text, (int64_t) strlen(text), &r );
-        if ( !ok ) { fprintf(stderr, "C case 2: from_json failed\n"); return 7; }
-        if ( r.kind_mismatch != 1 ) { fprintf(stderr, "C case 2: kind_mismatch=%d, want 1 (mid-string padding accepted!)\n", r.kind_mismatch); return 8; }
-        if ( s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "C case 2: tag default not preserved\n"); return 9; }
+        int ok = ship_from_json( &s, text, (int64_t) strlen(text), &r );
+        if ( ok ) { fprintf(stderr, "C case 2: mid-string padding accepted!\n"); return 7; }
+        if ( !r.refused || r.refuse_reason == SCHEMA_TABLE_REFUSE_OK ) { fprintf(stderr, "C case 2: refuse_reason=%d\n", r.refuse_reason); return 8; }
+        if ( s.past != 0 || s.tag_length != 2 || s.tag[0] != 'a' || s.tag[1] != 'b' ) { fprintf(stderr, "C case 2: tag default not preserved\n"); return 9; }
     }
 
     return 0;
@@ -239,29 +239,29 @@ using P;
 
 class Program {
     static int Main() {
-        // 1. Malformed Base64 body: must report kind_mismatch == 1 and preserve declared default "ab" (len 2)
+        // 1. Malformed Base64 body: the strict read refuses the whole load, keeps
+        // the declared default "ab" (len 2), and loads nothing past it.
         {
             byte[] text = Encoding.UTF8.GetBytes("{\"tag\":\"not_valid_base64!!!\",\"past\":42}");
             Ship s = new Ship();
             TableReport r = new TableReport();
             bool ok = Schema.ShipFromJson(s, text, r);
-            if (!ok) { Console.Error.WriteLine("CS case 1: FromJson failed"); return 1; }
-            if (r.KindMismatch != 1) { Console.Error.WriteLine($"CS case 1: kind_mismatch={r.KindMismatch}, want 1"); return 2; }
-            if (r.Malformed) { Console.Error.WriteLine("CS case 1: malformed is true"); return 3; }
-            if (s.Past != 42) { Console.Error.WriteLine($"CS case 1: after={s.Past}, want 42"); return 4; }
+            if (ok) { Console.Error.WriteLine("CS case 1: FromJson accepted malformed Base64"); return 1; }
+            if (!r.Refused) { Console.Error.WriteLine("CS case 1: not refused"); return 2; }
+            if (s.Past != 0) { Console.Error.WriteLine($"CS case 1: past={s.Past}, want 0"); return 4; }
             if (s.TagLength != 2) { Console.Error.WriteLine($"CS case 1: tag_length={s.TagLength}, want 2 (default wiped!)"); return 5; }
             if (s.Tag[0] != (byte)'a' || s.Tag[1] != (byte)'b') { Console.Error.WriteLine("CS case 1: tag content corrupted"); return 6; }
         }
 
-        // 2. Mid-string '=' padding ("YQ=B"): must report kind_mismatch == 1 and preserve default
+        // 2. Mid-string '=' padding ("YQ=B"): refused, default preserved
         {
             byte[] text = Encoding.UTF8.GetBytes("{\"tag\":\"YQ=B\",\"past\":42}");
             Ship s = new Ship();
             TableReport r = new TableReport();
             bool ok = Schema.ShipFromJson(s, text, r);
-            if (!ok) { Console.Error.WriteLine("CS case 2: FromJson failed"); return 7; }
-            if (r.KindMismatch != 1) { Console.Error.WriteLine($"CS case 2: kind_mismatch={r.KindMismatch}, want 1 (mid-string padding accepted!)"); return 8; }
-            if (s.TagLength != 2 || s.Tag[0] != (byte)'a' || s.Tag[1] != (byte)'b') { Console.Error.WriteLine("CS case 2: tag default not preserved"); return 9; }
+            if (ok) { Console.Error.WriteLine("CS case 2: mid-string padding accepted!"); return 7; }
+            if (!r.Refused) { Console.Error.WriteLine("CS case 2: not refused"); return 8; }
+            if (s.Past != 0 || s.TagLength != 2 || s.Tag[0] != (byte)'a' || s.Tag[1] != (byte)'b') { Console.Error.WriteLine("CS case 2: tag default not preserved"); return 9; }
         }
 
         return 0;
