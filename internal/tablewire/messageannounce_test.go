@@ -1,6 +1,11 @@
 package tablewire_test
 
 import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -49,6 +54,7 @@ table VarRoot
     vlabel string(8)
     vcount uint32
     vroot  *Root
+    redHit int32 | was = "Red"
 }
 `
 
@@ -121,6 +127,40 @@ func TestMessageAnnounceCarriesMessageClosureAlone(t *testing.T) {
 			t.Errorf("the announcement misses variant %s", shade.Variants[i])
 		}
 	}
+	// redHit is a variable-table field whose wire name is the reached
+	// variant Shade.Red. The kind-0 name stays; the field entry does not.
+	redWire := shade.VariantWireNameOf("Red")
+	var redHit *ir.Field
+	for _, f := range varRoot.Fields {
+		if f.Name == "redHit" {
+			redHit = f
+			break
+		}
+	}
+	if redHit == nil {
+		t.Fatal("redHit was not declared")
+	}
+	if got := ir.TableFieldWireName(redHit); got != redWire {
+		t.Fatalf("redHit wire name %q, want Shade variant %q", got, redWire)
+	}
+	redID := ir.TableWireId(redWire)
+	nameEntry := false
+	for _, e := range entries {
+		if e.Id != redID {
+			continue
+		}
+		if e.Kind == 0 {
+			nameEntry = true
+			continue
+		}
+		t.Errorf("announced kind %d at Shade.%s wire id; a field or arm is not the variant name", e.Kind, redWire)
+	}
+	if !nameEntry {
+		t.Errorf("Shade.%s kind-0 name entry is missing", redWire)
+	}
+	if keys[ir.TableFieldEntry(redHit).Key()] {
+		t.Errorf("variable field redHit announced at Shade.%s wire id", redWire)
+	}
 
 	// A body written against the trimmed vocabulary reads back under the
 	// announced one.
@@ -156,4 +196,57 @@ func TestMessageAnnounceEmptyWithoutFixedTable(t *testing.T) {
 	if len(vocab.Entries()) != 0 {
 		t.Fatalf("the empty announcement resolved %d entries", len(vocab.Entries()))
 	}
+}
+
+// TestMessageAnnounceIdMatchNegativeControl plants the fault in the real
+// predicate: the id match accepts a field (names[e.Id] with no kind check).
+// The closure test must go red on redHit. Reverting the filter removes the
+// kind check, so the planted text is no longer there and this control goes
+// red instead of patching nothing.
+func TestMessageAnnounceIdMatchNegativeControl(t *testing.T) {
+	const (
+		from = "keep[e.Key()] || (names[e.Id] && e.Kind == 0)"
+		to   = "keep[e.Key()] || names[e.Id]"
+		run  = "^TestMessageAnnounceCarriesMessageClosureAlone$"
+	)
+	out, failed := sabotageMessagePredicate(t, from, to, run)
+	if !failed || !strings.Contains(out, "variable field redHit") {
+		t.Fatalf("id match accepting a field did not turn the closure test red\n%s", out)
+	}
+}
+
+// sabotageMessagePredicate rebuilds tablewire with one predicate edit and
+// runs run. From must occur once, so a control cannot pass by patching nothing.
+func sabotageMessagePredicate(t *testing.T, from, to, run string) (string, bool) {
+	t.Helper()
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcPath := filepath.Join(root, "internal/tablewire/messageclosure.go")
+	data, err := os.ReadFile(srcPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := strings.Count(string(data), from)
+	if n != 1 {
+		t.Fatalf("negative control: %q occurs %d times in messageclosure.go, want once", from, n)
+	}
+	dir := t.TempDir()
+	copyPath := filepath.Join(dir, "messageclosure.go")
+	if err := os.WriteFile(copyPath, []byte(strings.Replace(string(data), from, to, 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	overlay, err := json.Marshal(map[string]any{"Replace": map[string]string{srcPath: copyPath}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlayPath := filepath.Join(dir, "overlay.json")
+	if err := os.WriteFile(overlayPath, overlay, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(t.Context(), "go", "test", "-count=1", "-timeout", "15m", "-overlay", overlayPath, "-run", run, "./internal/tablewire")
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	return string(out), err != nil
 }

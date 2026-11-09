@@ -82,7 +82,9 @@ func MessageClosure(u *ir.Unit) map[string]bool {
 // same cook-projection order, and nothing else. A variable table's fields,
 // every table's name id, the reserved node-table id, the three blob type
 // ids, and an enum variant or union arm that only a variable table reaches
-// take no slot, because no body can carry them.
+// take no slot, because no body can carry them. A field or an arm whose
+// wire id equals a reached variant name takes none either: the id match
+// keeps a kind-0 name entry and nothing else.
 func MessageVocabulary(u *ir.Unit) []ir.TableVocabularyEntry {
 	closure := MessageClosure(u)
 	keep := map[string]bool{}
@@ -140,7 +142,9 @@ func MessageVocabulary(u *ir.Unit) []ir.TableVocabularyEntry {
 	}
 	var out []ir.TableVocabularyEntry
 	for _, e := range ir.TableVocabulary(u) {
-		if keep[e.Key()] || names[e.Id] {
+		// Kind 0 is a variant name (ir.TableVocabulary places it with no
+		// kind). A field or an arm can share that wire id; keep holds those.
+		if keep[e.Key()] || (names[e.Id] && e.Kind == 0) {
 			out = append(out, e)
 		}
 	}
