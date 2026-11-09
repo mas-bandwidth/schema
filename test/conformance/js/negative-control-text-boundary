@@ -9,6 +9,8 @@ out=build/js-text-boundary/$mode
 source=test/conformance/js/main.mjs
 rm -rf "$out"
 mkdir -p "$out"
+# a driver copy imports the fixed-root bridge from beside it
+cp test/conformance/js/fixed.mjs "$out/fixed.mjs"
 main="$root/$source"
 if [ "$mode" = replacement ]; then
     anchor='const jsonUTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });'
@@ -36,6 +38,7 @@ if [ "$mode" = positive ]; then
     # The reader accepts exactly one leading BOM. Preserve the byte boundary:
     # stripping one here would let the reader incorrectly accept a double BOM.
     mkdir -p "$out/bom/single" "$out/bom/double" "$out/bom/strict" "$out/bom/buffer" "$out/bom/stripped"
+    cp test/conformance/js/fixed.mjs "$out/bom/fixed.mjs"
     printf '\357\273\277{}\n' > "$out/bom/single/RootConfig.json"
     printf '\357\273\277\357\273\277{}\n' > "$out/bom/double/RootConfig.json"
     printf 'json-hostile bom-single tabledemo RootConfig %s/bom/single 0,0,0,0,0,false,read\njson-hostile bom-double tabledemo RootConfig %s/bom/double refused\n' "$out" "$out" > "$out/bom/manifest"
@@ -47,19 +50,27 @@ if [ "$mode" = positive ]; then
     "${NODE:-node}" "$out/bom/stripped-main.mjs" "$out/bom/manifest" json-hostile "$out/bom/stripped"
     cmp "$out/bom/strict/bom-single" "$out/bom/buffer/bom-single"
     cmp "$out/bom/strict/bom-double" "$out/bom/buffer/bom-double"
-    grep -qx '0,0,0,0,0,false,read' "$out/bom/strict/bom-single"
+    [ "$(head -n 1 "$out/bom/strict/bom-single")" = read ]
     grep -qx 'refused' "$out/bom/strict/bom-double"
-    grep -qx '0,0,0,0,0,false,read' "$out/bom/stripped/bom-double"
+    [ "$(head -n 1 "$out/bom/stripped/bom-double")" = read ]
     echo 'JavaScript UTF-8 BOM: exactly one leading BOM reads; stripping at the adapter would incorrectly accept a double BOM'
     echo 'JavaScript strict UTF-8 boundary: all text claims pass'
     exit 0
 fi
-[ "$rc" -ne 0 ] || { cat "$out/log"; echo 'negative control left replacement decoding green' >&2; exit 1; }
-grep -q 'js / json-hostile: str-illformed-at-bound:' "$out/log" || { cat "$out/log"; echo 'negative control missed the invalid UTF-8 row' >&2; exit 1; }
+# Under the one strict read the corpus row str-illformed-at-bound is refused
+# with or without replacement (U+FFFD is three bytes, which carries the string
+# past its bound), so the row the replacement owns is one whose 0xFF sits well
+# inside the bound: a strict boundary refuses it, a replacing one reads it.
+mkdir -p "$out/inbound/text" "$out/inbound/strict" "$out/inbound/replaced"
+printf '{ "version_note": "a\377b" }\n' > "$out/inbound/text/RootConfig.json"
+printf 'json-hostile illformed-in-bound tabledemo RootConfig %s/inbound/text refused\n' "$out" > "$out/inbound/manifest"
+"${NODE:-node}" "$source" "$out/inbound/manifest" json-hostile "$out/inbound/strict"
+"${NODE:-node}" "$main" "$out/inbound/manifest" json-hostile "$out/inbound/replaced"
+[ "$(head -n 1 "$out/inbound/strict/illformed-in-bound")" = refused ] || { echo 'the strict boundary read an ill-formed byte' >&2; exit 1; }
+[ "$(head -n 1 "$out/inbound/replaced/illformed-in-bound")" = read ] || { echo 'negative control left replacement decoding refusing the in-bound row' >&2; exit 1; }
 if grep '^  js / ' "$out/log" | grep -v 'js / json-hostile: str-illformed-at-bound:'; then
     cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
 fi
 grep -Eq '^json-read +pass ' "$out/log"
 grep -Eq '^json-write +pass ' "$out/log"
-grep 'js / json-hostile: str-illformed-at-bound:' "$out/log"
-echo 'JavaScript text boundary negative control: replacement decoding fails only the invalid UTF-8 row; text read/write remain green'
+echo 'JavaScript text boundary negative control: replacement decoding reads an ill-formed byte the strict boundary refuses; text read/write remain green'
