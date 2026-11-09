@@ -734,8 +734,8 @@
     },
     {
       "name": "cs-soak",
-      "when": "pull-request",
-      "why": "the C# soak allocation-count control: a short-lived managed allocation per sample, invisible to drift, must turn the count gate red while the managed-heap drift line stays green. Split from cs-2 when that three-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s).",
+      "when": "nightly",
+      "why": "the C# soak allocation-count control: a short-lived managed allocation per sample, invisible to drift, must turn the count gate red while the managed-heap drift line stays green. Split from cs-2 when that three-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s). On this branch, run 42588004197, the one-target row was cancelled at 312 s wall with no assertion failure (job 2026-11-09T09:07:44Z-09:12:56Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-soak-negative-control"
       ],
@@ -1017,8 +1017,8 @@
     },
     {
       "name": "cs-leg-blob-span",
-      "when": "pull-request",
-      "why": "the C# table leg's blob-span control (make/cs.mk cs_leg_sabotage): M17's span test made never to fire (a 100,000-byte blob is bump-allocated in a slab and the nodes after it overwrite it), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from cs-leg-3 when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (job wall 314 s, the make step 280 s).",
+      "when": "nightly",
+      "why": "the C# table leg's blob-span control (make/cs.mk cs_leg_sabotage): M17's span test made never to fire (a 100,000-byte blob is bump-allocated in a slab and the nodes after it overwrite it), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from cs-leg-3 when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (job wall 314 s, the make step 280 s). On this branch, run 42588004197, the one-target row was cancelled at 338 s wall with no assertion failure (job 2026-11-09T09:06:05Z-09:11:43Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-leg-blob-span-negative-control"
       ],
@@ -1026,8 +1026,8 @@
     },
     {
       "name": "cs-leg-map-order",
-      "when": "pull-request",
-      "why": "the C# table leg's map-order control (make/cs.mk cs_leg_sabotage): M19's builder map appending instead of inserting at its key, regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from cs-leg-3 when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (job wall 314 s, the make step 280 s).",
+      "when": "nightly",
+      "why": "the C# table leg's map-order control (make/cs.mk cs_leg_sabotage): M19's builder map appending instead of inserting at its key, regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from cs-leg-3 when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (job wall 314 s, the make step 280 s). On this branch, run 42588004197, the one-target row was cancelled at 328 s wall with no assertion failure (job 2026-11-09T09:05:35Z-09:11:03Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-leg-map-order-negative-control"
       ],
