@@ -1428,9 +1428,10 @@
     {
       "name": "rust-strict",
       "when": "pull-request",
-      "why": "the Rust leg's strict-read controls (STRICT 100), in a group of their own because the rust group already runs past the per-commit cap. The writer's-range control takes the fixed load's held refusal out through go test -overlay and requires TestFixedVersioningRangeWidenHostile red on a value past the writer's range: about 5 s on the studio once the fixed-form corpus is built.",
+      "why": "the Rust leg's strict-read controls (STRICT 100), in a group of their own because the rust group already runs past the per-commit cap. The writer's-range control takes the fixed load's held refusal out through go test -overlay and requires TestFixedVersioningRangeWidenHostile red on a value past the writer's range: about 5 s on the studio once the fixed-form corpus is built. The bool-byte control takes the fixed scatter's two byte checks out and requires TestFixedBoolByteIsDamageRust red on a live byte of 2.",
       "targets": [
-        "tables-rust-range-widen-negative-control"
+        "tables-rust-range-widen-negative-control",
+        "tables-rust-bool-byte-negative-control"
       ],
       "rust": "stable"
     },
