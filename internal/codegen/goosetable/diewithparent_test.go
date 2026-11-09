@@ -78,12 +78,16 @@ func TestGooseDieWithParent(t *testing.T) {
 	_ = cmd.Wait()
 	helperDone = true
 
-	deadline := time.Now().Add(10 * time.Second)
+	timeout := time.NewTimer(10 * time.Second)
+	defer timeout.Stop()
+	poll := time.NewTicker(10 * time.Millisecond)
+	defer poll.Stop()
 	for dieWithParentRunning(pid) {
-		if time.Now().After(deadline) {
+		select {
+		case <-timeout.C:
 			t.Fatalf("the driver %d outlived its parent; helper output:\n%s", pid, output.String())
+		case <-poll.C:
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -128,15 +132,19 @@ func readDieWithParentPID(path string) int {
 
 func waitForDieWithParentPID(t *testing.T, path string, output *strings.Builder) int {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	timeout := time.NewTimer(10 * time.Second)
+	defer timeout.Stop()
+	poll := time.NewTicker(10 * time.Millisecond)
+	defer poll.Stop()
 	for {
 		if pid := readDieWithParentPID(path); pid > 0 {
 			return pid
 		}
-		if time.Now().After(deadline) {
+		select {
+		case <-timeout.C:
 			t.Fatalf("the helper never wrote its driver's pid; helper output:\n%s", output.String())
+		case <-poll.C:
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 
