@@ -72,8 +72,8 @@ int main(void) {
  TableVocabulary vocabulary=table_vocabulary(entries,kTableMessageEntriesHere);uint8_t output[4096];int64_t n,count;
   %s
   CHECK(!report.refused && !report.unknown);
-  CHECK(announce_measure()==sizeof(announcement));CHECK(announce(output,sizeof(output))==sizeof(announcement));CHECK(!memcmp(output,announcement,sizeof(announcement)));
-  CHECK(announce_read(&vocabulary,announcement,sizeof(announcement),&report));CHECK(vocabulary.announced && vocabulary.count==kTableMessageEntriesHere);
+  CHECK(announce_measure()==kTableAnnounceBytes);CHECK(announce(output,sizeof(output))==kTableAnnounceBytes);CHECK(!memcmp(output,kTableAnnounce,kTableAnnounceBytes));
+  CHECK(announce_read(&vocabulary,announcement,sizeof(announcement),&report));CHECK(vocabulary.announced && vocabulary.count==%d);
   CHECK(!report.refused);
  n=root_measure_messages(values,3,&report);CHECK(n==sizeof(expected));
  CHECK(root_save_messages(values,3,output,n,&report)==n);CHECK(!memcmp(output,expected,sizeof(expected)));
@@ -84,7 +84,7 @@ int main(void) {
  CHECK(root_measure_messages(values,0,&report)==-1);CHECK(root_measure_messages(values,257,&report)==-1);
   CHECK(report.refused && report.reason==SCHEMA_TABLE_BATCH_TOO_LARGE);
  return 0;
-}`, octets(expected), octets(tablewire.Announce(u)), setup.String())
+}`, octets(expected), octets(tablewire.Announce(u)), setup.String(), len(tablewire.MessageVocabulary(u)))
 	runCTableWireProbe(t, u, source)
 }
 
@@ -211,7 +211,7 @@ int main(void){
  Root value;TableMessageEntry entries[128];TableVocabulary v=table_vocabulary(entries,128);TableReport report={0};int64_t count=1,n;uint8_t saved[4096];
   CHECK(announce_read(&v,announcement,sizeof(announcement),&report));CHECK(root_load_messages(&value,&count,&v,wire,sizeof(wire),&report));
   CHECK(!report.refused&&report.widened==%d&&report.unknown==%d);
-  n=root_save(&value,saved,sizeof(saved));CHECK(n==sizeof(expected));CHECK(!memcmp(saved,expected,sizeof(expected)));return 0;
+  n=root_fixed_save(&value,1,saved,sizeof(saved));CHECK(n==sizeof(expected));CHECK(!memcmp(saved,expected,sizeof(expected)));return 0;
 }`, octets(announcement), octets(wire), octets(expected), report.Widened, report.Unknown)
 	runCTableWireProbe(t, receiver, source)
 }

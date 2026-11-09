@@ -245,7 +245,7 @@ class Program {
             TableReport r = new TableReport();
             bool ok = Schema.ShipFromJson(s, text, r);
             if (ok) { Console.Error.WriteLine("CS case 1: FromJson accepted the malformed body"); return 1; }
-            if (!r.Refused) { Console.Error.WriteLine("CS case 1: refused=false"); return 2; }
+            if (r.Reason == null || !r.Reason.StartsWith("kind_mismatch")) { Console.Error.WriteLine($"CS case 1: reason={r.Reason}, want kind_mismatch"); return 2; }
             if (s.Past != 0) { Console.Error.WriteLine($"CS case 1: past={s.Past}, want the default 0"); return 3; }
             if (s.TagLength != 2) { Console.Error.WriteLine($"CS case 1: tag_length={s.TagLength}, want 2 (default wiped!)"); return 4; }
             if (s.Tag[0] != (byte)'a' || s.Tag[1] != (byte)'b') { Console.Error.WriteLine("CS case 1: tag content corrupted"); return 5; }
@@ -258,7 +258,7 @@ class Program {
             TableReport r = new TableReport();
             bool ok = Schema.ShipFromJson(s, text, r);
             if (ok) { Console.Error.WriteLine("CS case 2: FromJson accepted the mid-string padding"); return 6; }
-            if (!r.Refused) { Console.Error.WriteLine("CS case 2: refused=false"); return 7; }
+            if (r.Reason == null || !r.Reason.StartsWith("kind_mismatch")) { Console.Error.WriteLine($"CS case 2: reason={r.Reason}, want kind_mismatch"); return 7; }
             if (s.Past != 0 || s.TagLength != 2 || s.Tag[0] != (byte)'a' || s.Tag[1] != (byte)'b') { Console.Error.WriteLine("CS case 2: tag default not preserved"); return 8; }
         }
 

@@ -192,10 +192,10 @@ func TestIssue710TableRecovery(t *testing.T) {
 		}
 	}
 	checks := []string{
-		`Text v; TableReport r={0}; if(text_load(&v,wire,sizeof(wire),&r) || !r.refused) return 11;`,
-		`Rows v; TableReport r={0}; if(rows_load(&v,wire,sizeof(wire),&r) || !r.refused) return 12;`,
+		`uint8_t region[4096]; TableReport r={0}; if(text_load(region,sizeof(region),wire,sizeof(wire),&r) || !r.refused) return 11;`,
+		`uint8_t region[4096]; TableReport r={0}; if(rows_load(region,sizeof(region),wire,sizeof(wire),&r) || !r.refused) return 12;`,
 		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 13; ok=mapping_load_builder(&b,wire,sizeof(wire),&r); mapping_builder_shutdown(&b); if(ok || !r.refused) return 14;`,
-		`Keyed v; TableReport r={0}; if(keyed_load(&v,wire,sizeof(wire),&r) || !r.refused) return 15;`,
+		`uint8_t region[4096]; TableReport r={0}; if(keyed_load(region,sizeof(region),wire,sizeof(wire),&r) || !r.refused) return 15;`,
 	}
 	var csrc strings.Builder
 	csrc.WriteString("#include \"ProbeTable.h\"\nint main(void){\n")
