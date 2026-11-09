@@ -899,6 +899,20 @@ pub struct TableReport {
     pub missing_required_fields: String,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct TableReportWireFuzz {
+    pub mismatch: u64,
+    pub oor: u64,
+    pub repeated: u64,
+}
+
+impl std::ops::Deref for TableReport {
+    type Target = TableReportWireFuzz;
+    fn deref(&self) -> &Self::Target {
+        &TableReportWireFuzz { mismatch: 0, oor: 0, repeated: 0 }
+    }
+}
+
 impl TableReport {
     pub fn missing_required_reason(&self) -> Option<String> {
         if self.missing_required_fields.is_empty() { None }
