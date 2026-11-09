@@ -3661,6 +3661,12 @@ struct TableFixedEntry
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
 //
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
+//
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
 // compiler ran at build time. THE SCHEMA COMPILER DOES THAT WALK NOW
