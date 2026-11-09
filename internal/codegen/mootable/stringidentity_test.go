@@ -81,10 +81,21 @@ local function identity(name: string, edit: string)
 	local v = load.load("Root", wire, report)
 	if v == nil then
 		print(name .. "/" .. edit .. " refused")
+		if edit == "plain" then
+			local rr = load.newReport()
+			local store = Rt.newStore(1048576)
+			local rv = Rt.LoadRetain("Root", wire, rr, store)
+			if rv == nil then
+				print(name .. "/retain refused")
+			else
+				print(name .. "/retain loaded")
+			end
+		end
 		return
 	end
 	if edit == "copy" then
-		-- the second slot gets a buffer of its own over the same bytes
+		-- share the first slot's buffer, then give the second slot its own
+		v.B = v.A
 		v.B = buffer.fromstring(buffer.tostring(v.A))
 	elseif edit == "one-buffer" then
 		-- the caller names the first slot's buffer from the second
@@ -171,6 +182,8 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 		if text == `{"a":"same","b":"same"}` {
 			fmt.Fprintf(&main, "identity(%q, \"one-buffer\")\n", name)
 			want[name+"/one-buffer"] = identityRow{refusal: "blob_shared"}
+			fmt.Fprintf(&main, "identity(%q, \"copy\")\n", name)
+			want[name+"/copy"] = identityRow{wire: wire}
 		}
 	}
 	for _, text := range []string{"", "same"} {
@@ -194,6 +207,7 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 	main.WriteString("identity(\"shared\", \"plain\")\nidentity(\"shared\", \"copy\")\n")
 	want["shared/plain"] = identityRow{loadRefusal: true}
 	want["shared/copy"] = identityRow{loadRefusal: true}
+	want["shared/retain"] = identityRow{loadRefusal: true}
 
 	got := map[string][]string{}
 	for line := range strings.SplitSeq(g.run(t, main.String(), in), "\n") {
