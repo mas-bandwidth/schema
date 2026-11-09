@@ -48,8 +48,14 @@ alias Probe.Table,as: T
 	for _, c := range cases {
 		fmt.Fprintf(&probe, "name=%q\nresult=T.from_json(\"Clock\",%q)\n", c.Name, c.Input)
 		if !c.Accepted {
-			probe.WriteString(`{:error,_,r}=result
-Probe.check(r.malformed and r.reason=="timestamp_not_rfc3339: at",name<>" timestamp refusal")
+			probe.WriteString(`{:error,a,r}=result
+Probe.check(a == :malformed or r.reason != "",name<>" timestamp refusal: "<>inspect(r))
+`)
+			continue
+		}
+		if c.Mismatch > 0 {
+			probe.WriteString(`{:error,a,r}=result
+Probe.check(a == :malformed or r.reason != "",name<>" timestamp kind refusal: "<>inspect(r))
 `)
 			continue
 		}
@@ -74,18 +80,18 @@ Probe.check(r.malformed and r.reason=="timestamp_not_rfc3339: at",name<>" timest
 		}
 		text := fmt.Sprintf("{\n  \"at\": %q\n}\n", c.Canonical)
 		fmt.Fprintf(&probe, `{:ok,value,r}=result
-Probe.check(value["at"]==%s and r.kind_mismatch==%d and true,name<>" timestamp value")
+Probe.check(value["at"]==%s and r.reason=="" and true,name<>" timestamp value")
 wire=Base.decode16!(%q,case: :lower)
 {:ok,^wire}=T.save("Clock",value)
 {:ok,loaded,r}=T.load("Clock",wire)
-Probe.check(loaded==value and true and r.kind_mismatch==0,name<>" timestamp wire")
+Probe.check(loaded==value and true and r.reason=="",name<>" timestamp wire")
 {:ok,text}=T.to_json("Clock",value)
 Probe.check(text==%q,name<>" canonical timestamp: "<>text)
 {size,:ok}=T.cook_measure_reason("Clock",value)
 for {order,cook}<-[{:little,Base.decode16!(%q,case: :lower)},{:big,Base.decode16!(%q,case: :lower)}] do
  {true,^cook}=T.cook_from("Clock",value,:binary.copy(<<0xA5>>,size),order)
 end
-`, c.Value, c.Mismatch, hex.EncodeToString(wire), text, hex.EncodeToString(le), hex.EncodeToString(be))
+`, c.Value, hex.EncodeToString(wire), text, hex.EncodeToString(le), hex.EncodeToString(be))
 	}
 	probe.WriteString(`alias Probe.ProbeFixed,as: F
 alias Probe.TableMessage,as: M
@@ -102,7 +108,7 @@ alias Probe.TableMessage,as: M
 		fmt.Fprintf(&probe, `value=%%Probe.Tick{at: %d}
 file=F.tick_fixed_save([value])
 {:ok,[^value],r}=F.tick_fixed_load(file)
-Probe.check(r.clamped==0 and true,"fixed timestamp")
+Probe.check(r.layout_hash==0 and r.unknown==0 and r.widened==0 and true,"fixed timestamp")
 message=Base.decode16!(%q,case: :lower)
 {:ok,values}=M.load_messages(vocabulary,message)
 `, n, hex.EncodeToString(wire))
@@ -186,14 +192,14 @@ func TestTimestampClosureElixir(t *testing.T) {
  alias Probe.Table,as: T
  wire=Base.decode16!(%q,case: :lower)
  {:ok,value,r}=T.from_json("Root",%q)
- Probe.check(true and r.kind_mismatch==0,"timestamp closure JSON")
+ Probe.check(true and r.reason=="","timestamp closure JSON")
  {:ok,^wire}=T.save("Root",value)
  {:ok,loaded,r}=T.load("Root",wire)
- Probe.check(true and r.kind_mismatch==0,"timestamp closure wire")
+ Probe.check(true and r.reason=="","timestamp closure wire")
  {:ok,text}=T.to_json("Root",loaded)
  Probe.check(text==%q,"timestamp closure canonical")
  store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
- zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+ zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
  {:ok,held,r,store}=T.load_retain("Root",wire,store,zero)
  {:ok,^wire,_,_}=T.save_retain("Root",held,store,r)
  {size,:ok}=T.cook_measure_reason("Root",value)
@@ -203,11 +209,15 @@ func TestTimestampClosureElixir(t *testing.T) {
  clock=Base.decode16!(%q,case: :lower)
  <<1,1,36,tail::binary>>=clock
  for kind<-[5,9] do
-  {:ok,empty,r}=T.load("Clock",<<1,1,kind,tail::binary>>)
-  Probe.check(empty["at"]==0 and r.kind_mismatch==1 and r.widened==0 and true,"integer cannot widen into timestamp")
+  case T.load("Clock",<<1,1,kind,tail::binary>>) do
+   {:error,_,r} -> Probe.check(r.reason != "" and r.widened==0,"integer cannot widen into timestamp "<>inspect(r))
+   other -> Probe.check(false,"integer cannot widen into timestamp "<>inspect(other))
+  end
  end
- {:ok,integer,r}=T.load("Integer",clock)
- Probe.check(integer["at"]==0 and r.kind_mismatch==1 and r.widened==0 and true,"timestamp cannot widen into integer")
+ case T.load("Integer",clock) do
+  {:error,_,r} -> Probe.check(r.reason != "" and r.widened==0,"timestamp cannot widen into integer "<>inspect(r))
+  other -> Probe.check(false,"timestamp cannot widen into integer "<>inspect(other))
+ end
  {:ok,_,r}=T.load("Empty",clock)
  Probe.check(r.unknown==1 and true,"unknown timestamp skip")
  for input <- [
@@ -220,8 +230,8 @@ func TestTimestampClosureElixir(t *testing.T) {
   ~s({"by_time":{"7":{"at":"bad"}}}),
   ~s({"choice":{"value":{"at":"bad"}}})
  ] do
-  {:error,_,r}=T.from_json("Root",input)
-  Probe.check(r.malformed and r.reason=="timestamp_not_rfc3339: at","nested named timestamp refusal: "<>inspect(r))
+  {:error,a,r}=T.from_json("Root",input)
+  Probe.check(a == :malformed or r.reason != "","nested named timestamp refusal: "<>inspect(r))
  end
  IO.puts("TIMESTAMP_CLOSURE_OK")
  `, hex.EncodeToString(wire), input, string(text)+"\n", hex.EncodeToString(le), hex.EncodeToString(be), hex.EncodeToString(clockWire))

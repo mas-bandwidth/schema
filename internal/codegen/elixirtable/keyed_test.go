@@ -442,12 +442,8 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	val := model.New(root)
 	var report tabletext.Report
 	ok, err := tablewire.Decode(model, val, mutant, &report)
-	if !ok || err != nil || report.Refused || report.Unknown != 2 {
+	if ok || !tablewire.ReadRefusal(err) || !report.Refused || report.Reason == "" {
 		t.Fatalf("Decode(mutant) = (%v, %v, %+v)", ok, err, report)
-	}
-	wantSave, err := tablewire.Encode(model, val)
-	if err != nil || len(wantSave) != 192 {
-		t.Fatalf("Encode(mutant) = (%d bytes, %v), want 192 bytes", len(wantSave), err)
 	}
 
 	v2Src, err := os.ReadFile(v2Path)
@@ -464,13 +460,8 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	var rreport tabletext.Report
 	rt := tablewire.Retain{Capacity: 4096, IdCapacity: 512}
 	ok, err = tablewire.DecodeRetain(retainModel, rval, mutant, &rt, &rreport)
-	if !ok || err != nil || rreport.Refused || rreport.Unknown != 2 {
+	if ok || !tablewire.ReadRefusal(err) || !rreport.Refused || rreport.Reason == "" {
 		t.Fatalf("DecodeRetain(mutant) = (%v, %v, %+v)", ok, err, rreport)
-	}
-	var sreport tabletext.Report
-	wantRetainSave, err := tablewire.EncodeRetain(retainModel, rval, &rt, &sreport)
-	if err != nil || len(wantRetainSave) != 192 {
-		t.Fatalf("EncodeRetain(mutant) = (%d bytes, %v), want 192 bytes", len(wantRetainSave), err)
 	}
 
 	badKey := append([]byte(nil), mutant...)
@@ -480,7 +471,7 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	badKey[12] = 0x00
 	var badReport tabletext.Report
 	if ok, err := tablewire.Decode(model, model.New(root), badKey, &badReport); ok || !tablewire.ReadRefusal(err) {
-		t.Fatalf("Decode(badKey) = (%v, %v, %+v), want ok=false malformed=true unknown=1", ok, err, badReport)
+		t.Fatalf("Decode(badKey) = (%v, %v, %+v), want refusal", ok, err, badReport)
 	}
 
 	files := generateElixir(t, u)
@@ -489,8 +480,6 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 
 	probe := fmt.Sprintf(`
 mutant = Base.decode16!(%q, case: :lower)
-want_save = Base.decode16!(%q, case: :lower)
-want_retain_save = Base.decode16!(%q, case: :lower)
 bad_key = Base.decode16!(%q, case: :lower)
 
 if Tblv2.Table.load_measure("Cfg", mutant) != 320 do
@@ -498,55 +487,39 @@ if Tblv2.Table.load_measure("Cfg", mutant) != 320 do
 end
 
 case Tblv2.Table.load("Cfg", mutant) do
-  {:ok, v, r} ->
-    if r.unknown != 2 or r.kind_mismatch != 2 or r.widened != 0 or r.clamped != 0 or r.malformed do
+  {:error, _reason, r} ->
+    if r.reason == "" do
       raise("unexpected plain report: " <> inspect(r))
-    end
-    case Tblv2.Table.save("Cfg", v) do
-      {:ok, ^want_save} -> :ok
-      other -> raise("plain save mismatch: " <> inspect(other))
     end
   other ->
     raise("unexpected plain load result: " <> inspect(other))
 end
 
-empty = %%{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+empty = %%{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
 store = %%{records: [], used: 0, cap: 4096, ids: [], id_cap: 512}
 case Tblv2retain.Table.load_retain("Cfg", mutant, store, empty) do
-  {:ok, rv, rr, retain} ->
-    if rr.unknown != %d or rr.kind_mismatch != %d or rr.retained != %d or rr.retain_lost != %d or rr.malformed do
+  {:error, _reason, rr, _retain} ->
+    if rr.reason == "" do
       raise("unexpected retain load report: " <> inspect(rr))
-    end
-    case Tblv2retain.Table.save_retain("Cfg", rv, retain, empty) do
-      {:ok, ^want_retain_save, sr, _retain} ->
-        if sr.retained != %d or sr.retain_lost != %d or sr.malformed do
-          raise("unexpected retain save report: " <> inspect(sr))
-        end
-      other ->
-        raise("retain save mismatch: " <> inspect(other))
     end
   other ->
     raise("unexpected retain load result: " <> inspect(other))
 end
 
 case Tblv2.Table.load("Cfg", bad_key) do
-  {:error, :malformed, r} when r.malformed == true and r.unknown == 1 -> :ok
-  other -> raise("expected bad_key plain refusal with unknown=1, got " <> inspect(other))
+  {:error, _reason, r} when r.reason != "" -> :ok
+  other -> raise("expected bad_key plain refusal, got " <> inspect(other))
 end
 
 case Tblv2retain.Table.load_retain("Cfg", bad_key, store, empty) do
-  {:error, :malformed, r, _retain} when r.malformed == true and r.unknown == 1 -> :ok
-  other -> raise("expected bad_key retain refusal with unknown=1, got " <> inspect(other))
+  {:error, _reason, r, _retain} when r.reason != "" -> :ok
+  other -> raise("expected bad_key retain refusal, got " <> inspect(other))
 end
 
 IO.puts("UNKNOWN_KEYED_SLOT_OK")
 `,
 		mutantHex,
-		hex.EncodeToString(wantSave),
-		hex.EncodeToString(wantRetainSave),
 		hex.EncodeToString(badKey),
-		rreport.Unknown, 0, rreport.Retained, rreport.RetainLost,
-		sreport.Retained, sreport.RetainLost,
 	)
 
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
@@ -554,46 +527,13 @@ IO.puts("UNKNOWN_KEYED_SLOT_OK")
 		t.Fatalf("unknown keyed slot probe failed: %v\n%s", err, out)
 	}
 
-	// Negative control: decoding the slot element before checking whether its key
-	// names a known slot contaminates the report with malformed=true on unknown
-	// slots whose body was mutated inside the outer keyed-array frame.
-	const target = `      case Map.fetch(f.key_by_id, kid) do
-        {:ok, name} ->
-          case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
-            {:cont, v, report} ->
-              read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
-
-            {:halt, v, report} ->
-              {:halt, Map.put(acc, name, v), report}
-          end
-
-        :error ->
-          read_keyed_pairs(
-            f,
-            rest,
-            n - 1,
-            nodes,
-            ids,
-            acc,
-            %{report | unknown: report.unknown + 1}
-          )
-      end`
-	const sabotage = `      {_status, v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
-      case Map.fetch(f.key_by_id, kid) do
-        {:ok, name} ->
-          read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
-
-        :error ->
-          read_keyed_pairs(
-            f,
-            rest,
-            n - 1,
-            nodes,
-            ids,
-            acc,
-            %{report | unknown: report.unknown + 1}
-          )
-      end`
+	// Negative control: the mutant now refuses at the wire framing stage
+	// before any keyed-slot decode, so the old decode-before-check plant is
+	// masked. Plant a tolerant return in its place -- the wire_damaged catch
+	// answers a default value instead of refusing -- and require the probe
+	// above to go red: it must see the refusal, not merely any outcome.
+	const target = "    :wire_damaged ->\n      {:error, :malformed, reasoned(empty_report(), :malformed)}"
+	const sabotage = "    :wire_damaged ->\n      {:ok, %{}, reasoned(empty_report(), :ok)}"
 	tableEx := string(files["Table.ex"])
 	if !strings.Contains(tableEx, target) {
 		t.Fatal("negative control target not found in generated Table.ex")

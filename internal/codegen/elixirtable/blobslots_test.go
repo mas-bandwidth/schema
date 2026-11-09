@@ -75,6 +75,33 @@ func TestBlobOwnershipUsesFinalSlotsElixir(t *testing.T) {
 		var report tabletext.Report
 		ok, e := tablewire.Decode(m, value, c.wire, &report)
 		if e != nil || !ok || report.Refused {
+			if strings.Contains(report.Reason, "the same field id twice") {
+				// A field id twice in one body is damage (SPEC-TABLES
+				// §3, §4): both Elixir readers refuse the whole load.
+				fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
+ check.(elem(result,0)==:error and elem(result,2).reason=="wire_damaged",%q<>inspect(result))
+end
+`, hex.EncodeToString(c.wire), c.name+" strict refusal ")
+				continue
+			}
+			if strings.Contains(report.Reason, "blob_shared") {
+				// One blob named from two slots: the Elixir load lands
+				// the value and counts the sharing, and its writer
+				// refuses the save by name (§2.5).
+				fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
+ check.(elem(result,0)==:ok and elem(result,2).blob_shared==%d,%q<>inspect(result))
+ written=if tuple_size(result)==4,do: T.save_retain("Catalog",elem(result,1),elem(result,3),zero),else: T.save("Catalog",elem(result,1))
+ check.(elem(written,0)==:error and elem(written,1)==:blob_shared,%q<>inspect(written))
+end
+`, hex.EncodeToString(c.wire), c.shared, c.name+" shared load ", c.name+" shared refusal ")
+				continue
+			}
 			t.Fatalf("%s independent slot count: %v %v %+v", c.name, ok, e, report)
 		}
 		want, e := tablewire.Encode(m, value)
@@ -83,7 +110,7 @@ func TestBlobOwnershipUsesFinalSlotsElixir(t *testing.T) {
 		}
 		fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
  check.(elem(result,0)==:ok and elem(result,2).blob_shared==%d,%q<>inspect(result))
  value=elem(result,1)
@@ -134,19 +161,28 @@ func TestBlobOwnershipUsesLiveGuardsElixir(t *testing.T) {
 		value := m.New(u.Tables["Catalog"])
 		var report tabletext.Report
 		ok, e := tablewire.Decode(m, value, b, &report)
-		if e != nil || !ok || report.Refused {
-			t.Fatalf("guard %v oracle: %v %v %+v", bits, ok, e, report)
-		}
 		shared := bits[0] == 1 && bits[1] == 1
-		want, e := tablewire.Encode(m, value)
-		if (e != nil) != shared {
-			t.Fatalf("guard %v writer %v", bits, e)
+		var want []byte
+		if ok {
+			if e != nil || report.Refused {
+				t.Fatalf("guard %v oracle: %v %v %+v", bits, ok, e, report)
+			}
+			want, e = tablewire.Encode(m, value)
+			if (e != nil) != shared {
+				t.Fatalf("guard %v writer %v", bits, e)
+			}
+		} else if e == nil || !report.Refused || report.Reason == "" || !tablewire.ReadRefusal(e) {
+			// The Go reader refuses a blob named from two slots outright;
+			// the Elixir reader still loads it, counts blob_shared, and
+			// only its writer refuses when both slots are live.
+			t.Fatalf("guard %v oracle refusal: %v %v %+v", bits, ok, e, report)
 		}
-		fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+		if ok {
+			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
- unless elem(result,0)==:ok and elem(result,2).blob_shared==1,do: raise("guard load "<>inspect(result))
+ unless elem(result,0)==:ok and elem(result,2).blob_shared==1 and elem(result,2).reason=="",do: raise("guard load "<>inspect(result))
  value=elem(result,1)
  written=if tuple_size(result)==4,do: T.save_retain("Catalog",value,elem(result,3),zero),else: T.save("Catalog",value)
  if %t do
@@ -156,6 +192,26 @@ for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
  end
 end
 `, hex.EncodeToString(b), shared, hex.EncodeToString(want))
+		} else {
+			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
+ unless elem(result,0)==:ok and elem(result,2).blob_shared==1 and elem(result,2).reason=="",do: raise("guard load "<>inspect(result))
+ value=elem(result,1)
+ written=if tuple_size(result)==4,do: T.save_retain("Catalog",value,elem(result,3),zero),else: T.save("Catalog",value)
+ if %t do
+  unless elem(written,0)==:error and elem(written,1)==:blob_shared,do: raise("guard shared "<>inspect(written))
+ else
+  unless elem(written,0)==:ok,do: raise("guard write "<>inspect(written))
+  {:ok,reloaded,_}=T.load("Catalog",elem(written,1))
+  {:ok,text}=T.to_json("Catalog",value)
+  {:ok,text2}=T.to_json("Catalog",reloaded)
+  unless text2==text,do: raise("guard roundtrip "<>inspect({text,text2}))
+ end
+end
+`, hex.EncodeToString(b), shared)
+		}
 	}
 	probe.WriteString("IO.puts(\"LIVE_BLOB_GUARDS_OK\")\n")
 	out := runCompleteUnitProbe(t, u, probe.String())

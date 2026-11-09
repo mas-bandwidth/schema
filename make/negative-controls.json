@@ -264,7 +264,7 @@
     {
       "name": "base-c-skip-timestamp",
       "when": "nightly",
-      "why": "the C reader's kind-36 skip control (docs/SPEC-TABLES.md \u00a73): the timestamp kind taken out of the generated skip table in a scratch copy, the wire-fuzz driver rebuilt against it, and the pinned root_full mutant replayed against the engine. Alone for the reason base-c-wire is: a complete C driver compile is the floor of the job. Moved nightly: its control step measured 75 s on run 42556155793 and 106 s on run 42554833739 (96-126 s wall), on top of the shared setup and build. It is already a single control whose floor is one complete C wire-fuzz driver compile, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
+      "why": "the C reader's kind-36 skip control (docs/SPEC-TABLES.md \u00a73): the timestamp kind taken out of the generated skip table in a scratch copy, the wire-fuzz driver rebuilt against it, and a pinned featurewitnesses ArrayRoot body carrying one unknown kind-36 field replayed against the engine. Alone for the reason base-c-wire is: a complete C driver compile is the floor of the job. Moved nightly: its control step measured 75 s on run 42556155793 and 106 s on run 42554833739 (96-126 s wall), on top of the shared setup and build. It is already a single control whose floor is one complete C wire-fuzz driver compile, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
       "targets": [
         "tables-c-skip-timestamp-kind-negative-control"
       ]
@@ -1457,7 +1457,7 @@
     {
       "name": "elixir-nightly-accessors",
       "when": "nightly",
-      "why": "the rest of the Elixir corpus-rebuild controls: the accessor, slot and retain agreement gates (each a sabotaged full-corpus compile, as the old elixir-1/-2 carried them), the two json-hostile rows (each a sabotaged corpus compile, about 60 s on the studio), the hostile-corpus plant (a planted reader rebuilt over the whole corpus plus two runner passes), reach (a copied ebin recompiled under a sabotaged emitter) and wire-fuzz-refusal (which pays the corpus compile its row owns). These moved to the nightly tier with elixir-nightly-conformance and elixir-nightly-emitter on 2026-11-09 because each exceeds the per-commit control budget on its own.",
+      "why": "the rest of the Elixir corpus-rebuild controls: the accessor, slot and retain agreement gates (each a sabotaged full-corpus compile, as the old elixir-1/-2 carried them), the two json-hostile rows (each a sabotaged corpus compile, about 60 s on the studio), the hostile-corpus plant (a planted reader rebuilt over the whole corpus plus two runner passes), reach (a copied ebin recompiled under a sabotaged emitter) and wire-fuzz-refusal (which pays the corpus compile its row owns). These moved to the nightly tier with elixir-nightly-conformance and elixir-nightly-emitter on 2026-11-09 because each exceeds the per-commit control budget on its own. REACH RETIRED (green-negctl-elixir-anchors-2): the rule it watched is gone from the code — since the whole-load discard landed, nested damage throws :wire_damaged and discards the load, so a non-finite float after that damage is never reached as a non-finite refusal (variable_load answers malformed/wire_damaged for all three reach_ vectors, and load answers :previous_form under the now-fixed ProfileConfig), and the harness wireVerdict compares only read acceptance, its non-finite verdict no longer existing; the superseding discard rule keeps its own elixir-discard control, and the retired reach target only checks the three vectors still refuse on the plain build.",
       "targets": [
         "tables-elixir-accessor-negative-control",
         "tables-elixir-slot-negative-control",
@@ -1658,7 +1658,7 @@
     {
       "name": "go-containers",
       "when": "pull-request",
-      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4).",
+      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4). The counted-tail and counted-work controls are re-anchored onto the strict read's Reset loops in internal/codegen/gotable/codecs.go (the whole-value reset at LoadBody entry now clears counted struct and union array tails, the rule the old per-field loops held), held by TestCountedUnionTailReset and TestCountedStructTailResetWork. The arm-framing control is re-anchored onto the strict measure's root framing and root extent walk in internal/codegen/gotable/regions.go, which must refuse a damaged arm reference before any body resolves it.",
       "targets": [
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",
