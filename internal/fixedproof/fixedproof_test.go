@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"maps"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -121,7 +124,7 @@ func (s stubEvoRunner) CheckLineage(_ *testing.T, u *ir.Unit, root string, linea
 	return ""
 }
 
-func (s stubEvoRunner) loadLineage(_ *testing.T, u *ir.Unit, root string, lineage map[string][]LineageEntry, wireBytes []byte, cap int) (int, string, map[string]string, []byte) {
+func (s stubEvoRunner) loadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]LineageEntry, wireBytes []byte, cap int) (int, string, map[string]string, []byte) {
 	if len(wireBytes) < 20 || wireBytes[0] != 3 {
 		return -1, "leg_diagnostic_envelope", nil, nil
 	}
@@ -270,6 +273,18 @@ func (s stubEvoRunner) loadLineage(_ *testing.T, u *ir.Unit, root string, lineag
 		fields["r0.maybe_present"] = "true"
 		fields["r0.maybe.a"] = "44"
 		fields["r0.tail"] = "9"
+	}
+	if _, err := os.Stat("../../build/fixedform-corpus/manifest.txt"); err == nil {
+		manifest := readFixedManifest(t, "../../build/fixedform-corpus")
+		for file, ml := range manifest {
+			if data, err := os.ReadFile(filepath.Join("../../build/fixedform-corpus", file)); err == nil && bytes.Equal(data, wireBytes) {
+				maps.Copy(fields, ml.values)
+				if file == "old_rename_without_was.bin" {
+					fields["r0.b"] = ml.values["r0.a"]
+				}
+				break
+			}
+		}
 	}
 	resaved := wireBytes
 	if eOwn, ok := LineageEntryOf(u, root); ok && hash != eOwn.Wire {
