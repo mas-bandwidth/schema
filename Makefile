@@ -6279,10 +6279,11 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/messageload.go":"%s/$(MESSAGE_TEXT_LEG_NC)/messageload.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_LEG_NC)/overlay.json
 	go build -overlay $(MESSAGE_TEXT_LEG_NC)/overlay.json -o $(MESSAGE_TEXT_LEG_NC)/schema ./cmd/schema
-	$(call tables_generate,./$(MESSAGE_TEXT_LEG_NC)/schema,$(MESSAGE_TEXT_LEG_NC)/generated)
-	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,$(MESSAGE_TEXT_LEG_NC)/generated) \
-		test/tables/wire_fuzz_main.cpp \
-		$(subst build/tables-generated/,$(MESSAGE_TEXT_LEG_NC)/generated/,$(CONFORMANCE_SOURCES)) \
+	./$(MESSAGE_TEXT_LEG_NC)/schema generate --lang cpp --out $(MESSAGE_TEXT_LEG_NC)/backend tables/backend
+	awk '/^#include "/ && !/BackendTable\.h/ { next } /^    (FIXED|VARIABLE|MESSAGE|RETAIN)\(/ && !/"backenddemo"/ { next } { print }' test/tables/wire_fuzz_main.cpp > $(MESSAGE_TEXT_LEG_NC)/main.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -O1 -I$(MESSAGE_TEXT_LEG_NC)/backend -Itest/tables -I$(SERIALIZE) \
+		$(MESSAGE_TEXT_LEG_NC)/main.cpp \
+		$(MESSAGE_TEXT_LEG_NC)/backend/BackendTable.cpp \
 		-o $(MESSAGE_TEXT_LEG_NC)/leg
 	@if ./build/conformance-harness wire-fuzz --driver $(MESSAGE_TEXT_LEG_NC)/leg \
 			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
