@@ -617,10 +617,18 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// the retained store included.
 	g.pf("\t_collectNodeEdges(r);\n")
 	g.pf("\tif (r.cyclic()) {\n\t\tr.report.refuse('wire_damaged');\n\t\tretain.reset();\n\t\treturn %s();\n\t}\n", n)
-	g.pf("\tif (r.trailingReached()) { r.report.refuse('wire_damaged'); }\n")
-	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.6): nothing
-	// decoded lands and nothing is retained.
-	g.pf("\tif (r.report.refused) {\n")
+ 	g.pf("\tif (r.trailingReached()) { r.report.refuse('wire_damaged'); }\n")
+ 	// A RECORD NO POINTER REACHES IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4;
+ 	// internal/tablewire/wirecheck.go graph), as the plain read judges it: a
+ 	// load that cannot frame a body whole refuses the whole load, the retained
+ 	// store included. The one read holds for the retaining read too.
+ 	g.pf("\tif (r.wireUnreachedNode()) { r.report.refuse('wire_damaged'); }\n")
+ 	g.pf("\tif (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }\n")
+ 	g.pf("\tif (r.wireBlobShared()) { r.report.refuse('blob_shared'); }\n")
+ 	g.pf("\tif (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }\n")
+ 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.6): nothing
+ 	// decoded lands and nothing is retained.
+ 	g.pf("\tif (r.report.refused) {\n")
 	g.pf("\t\tretain.reset();\n")
 	g.pf("\t\treturn %s();\n", n)
 	g.pf("\t}\n")
