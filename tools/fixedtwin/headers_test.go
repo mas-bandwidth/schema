@@ -100,6 +100,16 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		}
 	}
 
+	// Deleting the whole scan is not a weakened scan: nothing is left for
+	// the diff to catch, so the gate must name the absence itself.
+	deleted := stripFuncsWithPrefix(cppSrc, "inline bool TableFixedRefuseScan")
+	if deleted == cppSrc {
+		t.Fatal("the planted C++ fault did not apply: the whole strict scan was not deleted")
+	}
+	if left := twinLeftover(t, cSrc, deleted, root); len(left) == 0 {
+		t.Fatal("a deleted strict read in the real C++ artifact passed the twin gate: the whole count/text scan is gone")
+	}
+
 	cFaults := []struct{ name, from, to string }{
 		{
 			"the C count refusal loses its count",

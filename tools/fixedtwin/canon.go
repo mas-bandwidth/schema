@@ -764,6 +764,28 @@ func stripPendingCBoundScan(s string) string {
 	return s
 }
 
+// hasStrictCountTextScan reports whether s carries the strict count/text
+// scan at all. A missing scan is not a weakened one: stripPendingCBoundScan
+// leaves nothing behind to diff, so the gate must name its absence itself.
+func hasStrictCountTextScan(s string) bool {
+	for _, name := range []string{"TableFixedRefuseScan", "table_fixed_refuse_scan"} {
+		i := strings.Index(s, name+"(")
+		if i < 0 {
+			continue
+		}
+		open := strings.Index(s[i:], "{")
+		if open < 0 {
+			continue
+		}
+		end := matchingBrace(s, i+open)
+		if end < 0 {
+			continue
+		}
+		return strictCountTextScan(s[i : end+1])
+	}
+	return false
+}
+
 // strictCountTextScan reports whether fn is the whole count/text bound rule:
 // a count past the plan size and a text length past the plan's unit capacity
 // each refuse by name. The names are mapped first so the C spelling, if it
