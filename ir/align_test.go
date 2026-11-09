@@ -122,6 +122,32 @@ type MarkedAfterCountedBytePrefix {
     counted [..255]uint16
     data    [2]uint8
 }
+
+type Small {
+    v uint8 | min = 0, max = 127
+}
+
+union U {
+    a Small
+}
+
+type UnmarkedAfterUnion {
+    align
+    u    U
+    data [4]uint8
+}
+
+type UnmarkedAfterUnionArray {
+    align
+    u    [2]U
+    data [4]uint8
+}
+
+type UnmarkedAfterCountedUnion {
+    align
+    u    [..255]U
+    data [4]uint8
+}
 `
 
 // want: type name -> may the data field take the bulk path?
@@ -151,10 +177,15 @@ var want = map[string]bool{
 	"UnmarkedAfterCountedPrefix": false,
 	// count prefix [0, 255] is 8 bits — data back on a boundary
 	"MarkedAfterCountedBytePrefix": true,
+	// union wire width depends on the active arm
+	"UnmarkedAfterUnion":        false,
+	"UnmarkedAfterUnionArray":   false,
+	"UnmarkedAfterCountedUnion": false,
 	// the exit-shape helper types have no data field at all
 	"EndsAligned":     false,
 	"EndsOffBoundary": false,
 	"EndsUnknown":     false,
+	"Small":           false,
 }
 
 func loadAlignCorpus(t *testing.T) *ir.Unit {
