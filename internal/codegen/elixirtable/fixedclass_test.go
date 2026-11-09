@@ -13,13 +13,15 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestFixedClassOnTableWireElixir pins docs/SPEC-TABLES.md §3 (the id-table
-// wire, form byte 1) for the fixed class: a closure that HOLDS a fixed table
-// still rides form 1. tblw1's Fleet reaches Vessel by pointer and by value,
-// tblr1's Cfg IS a fixed table, and tblw2's Fleet reaches the renamed Ship
-// (`was = "Vessel"`, §5) — the table-declaration rename the fixed class
-// already carries on form 1 alone. The string, bytes and flags defaults and
-// the variant, arm and type-field renames are the sibling cards
+// TestFixedClassOnTableWireElixir pins docs/SPEC-TABLES.md §3 for a variable
+// root that HOLDS a fixed table: that root still rides form 1. tblw1's Fleet
+// reaches Vessel by pointer and by value, and tblw2's Fleet reaches the
+// renamed Ship (`was = "Vessel"`, §5) — the table-declaration rename the
+// variable wire already carries. tblr1's Cfg IS a fixed table, so its file is
+// form 3 (TestElixirFixedClassFormThree, a unit test); the form-1 corpus is
+// previous_form and is not loaded here. The makefile still lists tblr1, and
+// this test still generates it. The string, bytes and flags defaults and the
+// variant, arm and type-field renames are the sibling cards
 // (vt/defaults-and-table-rename/elixir and vt/renames/elixir).
 //
 // The COMMITTED oracle bytes are the reference's own wire, so every instance
@@ -53,7 +55,7 @@ func TestFixedClassOnTableWireElixir(t *testing.T) {
 	// tblr2 is DELIBERATELY absent: its Cfg carries an enum-variant, a
 	// union-arm and a type-field `was`, which the sibling card
 	// elixir-renames-variants-arms-and-type-fields registers in
-	// wasRowTargets. This card's fixed class rides form 1 without it.
+	// wasRowTargets. tblr1 is generated and not probed: its root is fixed.
 	type instance struct{ name, root string }
 	units := []struct {
 		name, schema string
@@ -65,9 +67,7 @@ func TestFixedClassOnTableWireElixir(t *testing.T) {
 		{"tblw2", "test/tables/W2.schema", []instance{
 			{"w2_fleet", "Fleet"},
 		}},
-		{"tblr1", "test/tables/R1.schema", []instance{
-			{"r1_cfg", "Cfg"}, {"r1_ping", "Cfg"},
-		}},
+		{"tblr1", "test/tables/R1.schema", nil},
 	}
 
 	// Generate every unit through the COMPILER path (`schema generate --lang
