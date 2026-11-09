@@ -59,18 +59,11 @@ if build/conformance-harness wire-fuzz --driver "$host $out/test/conformance/lua
 	echo "NEGATIVE CONTROL FAILED: a load that does not count a string frame past its body left the wire fuzz green" >&2
 	exit 1
 fi
-# EXACTLY the plant's row: a report divergence, and the two tuples (unknown,
-# kind_mismatch, widened, clamped, duplicate, malformed, verdict) equal in
-# every field but the sixth, which is false on the leg and true in the oracle.
-line=$(grep '^harness: FAILED after [0-9]* mutants: the report differs: ' "$out/log" || true)
-leg=$(printf '%s\n' "$line" | sed -n 's/.*the leg says \([^ ]*\), the oracle says .*/\1/p')
-oracle=$(printf '%s\n' "$line" | sed -n 's/.*the oracle says \([^ ]*\)$/\1/p')
-if [ -z "$leg" ] || [ -z "$oracle" ] \
-	|| [ "$(printf '%s' "$leg" | cut -d, -f6)" != false ] \
-	|| [ "$(printf '%s' "$oracle" | cut -d, -f6)" != true ] \
-	|| [ "$(printf '%s' "$leg" | cut -d, -f1-5,7-)" != "$(printf '%s' "$oracle" | cut -d, -f1-5,7-)" ]; then
+# Under the strict read, the planted load accepts the damaged wire while the
+# Go oracle refuses it (read acceptance differs: the leg says true, the oracle says false).
+if ! grep -q '^harness: FAILED after [0-9]* mutants: read acceptance differs: the leg says true, the oracle says false' "$out/log"; then
 	cat "$out/log"
-	echo "NEGATIVE CONTROL FAILED: the wire fuzz went red, but not on the malformed count the plant removed" >&2
+	echo "NEGATIVE CONTROL FAILED: the wire fuzz went red, but not on the acceptance divergence the plant caused" >&2
 	exit 1
 fi
 echo "luau wire-fuzz negative control: planted in $planted schema_load.luau copies; the harness stops on the malformed count the plant removed"

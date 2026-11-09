@@ -837,16 +837,6 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 	return true
 end
 
--- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
--- (docs/PORT-LUAU.md, THE TYPE MAPPING)
-local function put(dst: any, i: number, x: any)
-	if typeof(dst) == "buffer" then
-		buffer.writeu8(dst, i - 1, x)
-	else
-		dst[i] = x
-	end
-end
-
 -- AN ENUM-KEYED ARRAY (§2.4, §3.2): its own kind 16, each element a key
 -- reference and then its framed payload. A key this reader cannot name is
 -- skipped; an element kind the declaration does not name is one kind_mismatch.
@@ -913,7 +903,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			else
 				x = scalar_at(payload, e or {}, ek, report)
 			end
-			if at > 0 and dst ~= nil and x ~= nil then put(dst, at, x) end
+			if at > 0 and dst ~= nil and x ~= nil then dst[at] = x end
 		end
 	end
 	r.at = endpos
@@ -1057,6 +1047,16 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	-- its live length rides as n, the table.pack convention, and the save reads it
 	if fd.array == "list" and fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob") then dst.n = got end
 	return true
+end
+
+-- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
+-- (docs/PORT-LUAU.md, THE TYPE MAPPING)
+local function put(dst: any, i: number, x: any)
+	if typeof(dst) == "buffer" then
+		buffer.writeu8(dst, i - 1, x)
+	else
+		dst[i] = x
+	end
 end
 
 -- the bytes one text-list element contributes to its total
@@ -1839,7 +1839,7 @@ function L.loadWalk(root: string, bytes: buffer, report: any): any
 		report.duplicate = (report.duplicate or 0) + (fx.duplicate or 0)
 		return out[1]
 	end
-	if d.integrity ~= nil and d.integrity ~= "" then
+	if d.integrity ~= nil and d.integrity ~= "" and bytes ~= nil and buffer.len(bytes) >= 1 and buffer.readu8(bytes, 0) == 1 then
 		local body = integrityOpen(bytes)
 		if body == nil then
 			report.malformed = true
@@ -2267,7 +2267,7 @@ end
 -- index is judged against the numbering wherever it rides, and the node
 -- table's own framing (its count, its records' type references and bodies)
 -- is checked even at a root whose descriptor is not of the variable class.
-local function wireDamage(b: buffer, top: any, ids: { integer }): boolean
+local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): boolean
 	local recordCount = 0
 	local recs: { any } = {}
 	local nodeSegs = 0
@@ -2292,20 +2292,54 @@ local function wireDamage(b: buffer, top: any, ids: { integer }): boolean
 			recordCount = #recs
 		end
 	end
-	local edges: { [number]: boolean } = {}
+	local edges: { [number]: number } = {}
+	local children: { { number } } = table.create(recordCount + 1)
+	local curEdges: { number } = {}
+	local depth = 0
 	local checkFields: any
 	local scanPayload: any
 	local scanContent: any
+	local function scanScalar(at: number, kind: number): boolean
+		if kind == 1 then
+			return buffer.readu8(b, at) > 1
+		elseif kind == 10 then
+			if bit32.band(buffer.readu32(b, at), 0x7F800000) == 0x7F800000 then
+				refuseNonFinite({ name = "?" })
+				rep.nonFiniteFloat = _nonFinite
+			end
+		elseif kind == 11 then
+			if bit32.band(buffer.readu32(b, at + 4), 0x7FF00000) == 0x7FF00000 then
+				refuseNonFinite({ name = "?" })
+				rep.nonFiniteFloat = _nonFinite
+			end
+		end
+		return false
+	end
 	local function scanArrayBody(s: number, e: number): boolean
 		if e - s < 2 then return true end
 		local ek = buffer.readu8(b, s)
 		local count, p = leb(b, s + 1, e)
 		if count == nil then return true end
-		for _ = 1, count do
-			local nxt = stepOver(b, p, e, ek)
-			if nxt == nil then return true end
-			if scanPayload(p, nxt, ek) then return true end
-			p = nxt
+		if count > 0x7fffffff then
+			refuseCount(rep)
+			return false
+		end
+		local w = width_of(ek)
+		if w > 0 then
+			if p + count * w > e then return true end
+			if ek == 1 or ek == 10 or ek == 11 then
+				for i = 0, count - 1 do
+					if scanScalar(p + i * w, ek) then return true end
+				end
+			end
+			p += count * w
+		else
+			for _ = 1, count do
+				local nxt = stepOver(b, p, e, ek)
+				if nxt == nil then return true end
+				if scanPayload(p, nxt, ek) then return true end
+				p = nxt
+			end
 		end
 		-- bytes left inside an array's or map's L after its elements are damage
 		return p ~= e
@@ -2315,6 +2349,10 @@ local function wireDamage(b: buffer, top: any, ids: { integer }): boolean
 		local ek = buffer.readu8(b, s)
 		local count, p = leb(b, s + 1, e)
 		if count == nil then return true end
+		if count > 0x7fffffff then
+			refuseCount(rep)
+			return false
+		end
 		local seenKeys: { [number]: boolean } = {}
 		for _ = 1, count do
 			local key, q = leb(b, p, e)
@@ -2330,78 +2368,88 @@ local function wireDamage(b: buffer, top: any, ids: { integer }): boolean
 		return p ~= e
 	end
 	scanContent = function(s: number, e: number, kind: number): boolean
-		-- an L-framed fixed-width payload is exactly its kind's width: a
-		-- keyed slot, union arm or array-of-framed payload carrying extra
-		-- or missing bytes is damage, for wide scalars (fixed-point and
-		-- 128-bit kinds included) as for any other fixed-width kind
 		local w = width_of(kind)
-		if w > 0 then return e - s ~= w end
+		if w > 0 then
+			if e - s ~= w then return true end
+			return scanScalar(s, kind)
+		end
 		if kind == 12 then
 			return not utf8_ok(b, s, e - s)
 		elseif kind == 33 then
-			if (e - s) % 2 ~= 0 then return true end
-			return not wide_ok(b, s, e - s)
-		elseif kind == 32 then
-			return e ~= s
+			return (e - s) % 2 ~= 0 or not wide_ok(b, s, e - s)
 		elseif kind == 31 then
 			return false
-		elseif kind == 13 then
-			local inner = walkBody(b, s, e, ids)
-			if inner == nil or inner.term + 1 ~= e then return true end
-			return checkFields(inner.fields)
-		elseif kind == 14 then
-			return scanArrayBody(s, e)
-		elseif kind == 16 then
-			return scanKeyedBody(s, e)
-		elseif kind == 17 then
-			local idx, p = leb(b, s, e)
-			if idx == nil or p ~= e or idx > recordCount + 1 then return true end
-			edges[idx] = true
-			return false
-		elseif kind == 30 then
-			local ref, p = leb(b, s, e)
-			if ref == nil or p ~= e or ref > #ids then return true end
-			return false
-		elseif kind == 15 then
-			local ref, p = leb(b, s, e)
-			if ref == nil then return true end
-			if ref == 0 then return p ~= e end
-			if ref > #ids or p >= e then return true end
-			local kb = buffer.readu8(b, p)
-			local n, after = leb(b, p + 1, e)
-			if n == nil or after + n ~= e then return true end
-			return scanContent(after, after + n, kb)
+		elseif kind == 32 then
+			return e ~= s
+		elseif kind == 13 or kind == 14 or kind == 16 then
+			if depth >= 128 then return true end
+			depth += 1
+			local bad = false
+			if kind == 13 then
+				local inner = walkBody(b, s, e, ids)
+				bad = inner == nil or inner.term + 1 ~= e or checkFields(inner.fields, false)
+			elseif kind == 14 then
+				bad = scanArrayBody(s, e)
+			else
+				bad = scanKeyedBody(s, e)
+			end
+			depth -= 1
+			return bad
+		elseif kind == 17 or kind == 30 or kind == 15 then
+			return scanPayload(s, e, kind)
 		end
 		return true
 	end
 	scanPayload = function(at: number, e: number, kind: number): boolean
+		local w = width_of(kind)
+		if w > 0 then
+			if e - at ~= w then return true end
+			return scanScalar(at, kind)
+		end
 		if kind == 17 then
-			local idx = leb(b, at, e)
-			if idx == nil or idx > recordCount + 1 then return true end
-			edges[idx] = true
+			local idx, nxt = leb(b, at, e)
+			if idx == nil or nxt ~= e or idx > recordCount + 1 then return true end
+			if idx ~= 0 then
+				edges[idx] = (edges[idx] or 0) + 1
+				curEdges[#curEdges + 1] = idx
+			end
 			return false
-		elseif kind == 13 or kind == 14 or kind == 16 then
+		elseif kind == 30 then
+			local ref, nxt = leb(b, at, e)
+			return ref == nil or nxt ~= e or ref > #ids
+		elseif kind == 12 or kind == 33 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
 			local n, bs = leb(b, at, e)
-			if n == nil or bs + n > e then return true end
+			if n == nil or bs + n ~= e then return true end
 			return scanContent(bs, bs + n, kind)
 		elseif kind == 15 then
 			local ref, p = leb(b, at, e)
-			if ref == nil then return true end
-			if ref == 0 then return false end
+			if ref == nil or ref > #ids then return true end
+			if ref == 0 then return p ~= e end
 			if p >= e then return true end
 			local kb = buffer.readu8(b, p)
 			local n, after = leb(b, p + 1, e)
-			if n == nil or after + n > e then return true end
-			return scanContent(after, after + n, kb)
+			if n == nil or after + n ~= e then return true end
+			local structural = kb == 13 or kb == 14 or kb == 16 or kb == 15
+			if structural then
+				if depth >= 128 then return true end
+				depth += 1
+			end
+			local bad = scanContent(after, after + n, kb)
+			if structural then
+				depth -= 1
+			end
+			return bad
 		end
-		return false
+		return true
 	end
-	checkFields = function(fields: any): boolean
+	checkFields = function(fields: any, isRoot: boolean): boolean
 		local seen: { [integer]: boolean } = {}
 		for _, f in fields do
 			if seen[f.id] then return true end
 			seen[f.id] = true
+			if f.id == BuildVersionId or f.id == MessageVocabularyId then return true end
 			if f.id == NodeTableId then
+				if not isRoot or f.kind ~= 12 then return true end
 				continue
 			elseif scanPayload(f.ps, f.e, f.kind) then
 				return true
@@ -2409,18 +2457,58 @@ local function wireDamage(b: buffer, top: any, ids: { integer }): boolean
 		end
 		return false
 	end
-	if checkFields(top.fields) then return true end
-	for _, rec in recs do
-		if rec.tid ~= StringBlobId and rec.tid ~= BytesBlobId then
+	children[1] = curEdges
+	if checkFields(top.fields, true) then return true end
+	for i, rec in recs do
+		curEdges = {}
+		children[i + 1] = curEdges
+		if rec.tid == StringBlobId or rec.tid == BytesBlobId then
+			if rec.e - rec.s > 0xffffffff then
+				rep.reason = "blob_over_size_cap"
+				return true
+			end
+			if rec.tid == StringBlobId and not utf8_ok(b, rec.s, rec.e - rec.s) then
+				return true
+			end
+		else
 			local inner = walkBody(b, rec.s, rec.e, ids)
 			if inner == nil or inner.term + 1 ~= rec.e then return true end
-			if checkFields(inner.fields) then return true end
+			if checkFields(inner.fields, false) then return true end
 		end
 	end
-	-- a node record no pointer reaches is damage (wirecheck's graph):
-	-- record k is named by wire index k + 1, from any body, known or not
 	for i = 1, recordCount do
-		if not edges[i + 1] then return true end
+		local rec = recs[i]
+		if (rec.tid == StringBlobId or rec.tid == BytesBlobId) and (edges[i + 1] or 0) > 1 then
+			rep.blobShared = math.max(rep.blobShared or 0, 1)
+		end
+	end
+	local mark: { number } = table.create(recordCount + 1, 0)
+	local stackNode: { number } = { 1 }
+	local stackNext: { number } = { 1 }
+	mark[1] = 1
+	while #stackNode > 0 do
+		local topIdx = #stackNode
+		local u = stackNode[topIdx]
+		local out = children[u]
+		local nxt = stackNext[topIdx]
+		if nxt > #out then
+			mark[u] = 2
+			stackNode[topIdx] = nil
+			stackNext[topIdx] = nil
+		else
+			stackNext[topIdx] = nxt + 1
+			local vIdx = out[nxt]
+			if mark[vIdx] == 1 then
+				return true
+			elseif mark[vIdx] == 0 then
+				mark[vIdx] = 1
+				stackNode[topIdx + 1] = vIdx
+				stackNext[topIdx + 1] = 1
+			end
+		end
+	end
+	for i = 1, recordCount do
+		if mark[i + 1] == 0 then return true end
 	end
 	return false
 end
@@ -2469,10 +2557,22 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 	-- array/map count (count_over_extent_cap, §2.9) and a NaN or infinity
 	-- (non_finite_float, §3.3) answer their own names and never fall through to
 	-- wire_damaged.
-	if top ~= nil and wireDamage(b, top, fr.ids) then
-		rep.malformed = true
-		rep.reason = "wire_damaged"
-		return nil
+	if top ~= nil then
+		local damaged = wireDamage(b, top, fr.ids, rep)
+		if rep.nonFiniteFloat ~= nil then
+			rep.reason = "non_finite_float"
+			rep.field = rep.nonFiniteFloat
+			return nil
+		end
+		if _countRefused then
+			return nil
+		end
+		if damaged then
+			if rep.reason == "blob_over_size_cap" then return nil end
+			rep.malformed = true
+			rep.reason = "wire_damaged"
+			return nil
+		end
 	end
 	for _, k in REFUSING do
 		if moved(rep, k) then
