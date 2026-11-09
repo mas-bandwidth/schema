@@ -1514,6 +1514,14 @@
       ]
     },
     {
+      "name": "goose-wire-verdict",
+      "when": "pull-request",
+      "why": "The Goose variable-table wire-fuzz verdict control (make/goose.mk) was defined and in no group, so the plan test was red. It is one target with no measured wall.",
+      "targets": [
+        "tables-goose-wire-fuzz-verdict-negative-control"
+      ]
+    },
+    {
       "name": "goose-gates",
       "when": "pull-request",
       "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the strict gate's plant and its emitter sabotage, and the runtime home's file-order control, and the claimed-names control (Declare made to let every <T>CookOpen through, under go test -overlay; Go only). Each installs the pinned Goose compiler itself (make dist-goose) where it needs it; two rebuild the compiler under a go build -overlay. Go and nothing else. Measured at 3.2 s of control time together on the author's machine off a warm build (2026-10-28); its own group so the fixed-form control's corpus build in group goose stays apart from it.",
