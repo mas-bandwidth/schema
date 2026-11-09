@@ -15,7 +15,7 @@ import (
 
 // TestDamageDiscardsTheWholeLoadElixir holds docs/SPEC-TABLES.md §4, DAMAGE
 // DISCARDS THE WHOLE LOAD, at the Elixir leg's read entry points: every framing
-// vector the conformance manifest answers `malformed`
+// vector the conformance manifest answers `refused`
 // (testdata/conformance/tables/MANIFEST.txt, docs/LAYERS/1-framing.md) is
 // loaded through the plain read and the retaining read, and each must return
 // NO VALUE: `{:error, :malformed, report}` with the report malformed, and the
@@ -47,7 +47,7 @@ func TestDamageDiscardsTheWholeLoadElixir(t *testing.T) {
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	for sc.Scan() {
 		w := strings.Fields(sc.Text())
-		if len(w) >= 6 && w[0] == "framing" && w[5] == "malformed" {
+		if len(w) >= 6 && w[0] == "framing" && w[5] == "refused" {
 			if _, ok := units[w[2]]; !ok {
 				t.Fatalf("framing row %s names unit %s, which this gate does not build", w[1], w[2])
 			}

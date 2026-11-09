@@ -266,11 +266,10 @@ test-elixir: tables-elixir-emit-format-negative-control
 #        midpoint is stored instead of a kind mismatch (num-float32-midpoint
 #        by integer token, num-float32-overflow by decimal token).
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP := build/elixir-hostile-dup-negative
-ELIXIR_HOSTILE_DUP_SED := -e 's|if Map.has_key?(acc, name),$$|if false and Map.has_key?(acc, name),|'
+ELIXIR_HOSTILE_DUP_SED := -e 's|if MapSet.member?(seen, name), do: throw(:wire_damaged)|if false and MapSet.member?(seen, name), do: throw(:wire_damaged)|'
 ELIXIR_HOSTILE_DUP_ROWS := dup-key-rejected-keyed keyed-duplicate-mixed keyed-duplicate-slot
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32 := build/elixir-hostile-f32-negative
-ELIXIR_HOSTILE_F32_SED := -e 's|abs(raw) >= 340_282_356_779_733_661_637_539_395_458_142_568_448|abs(raw) >= 3_402_823_567_797_336_616_375_393_954_581_425_684_480|' \
-	-e 's|if abs(raw) >= 3.4028235677973366e38, do: :error|if abs(raw) >= 3.4028235677973366e48, do: :error|'
+ELIXIR_HOSTILE_F32_SED := -e 's|e > 127 -> :error|e > 127 -> json_f32_bits(sign <<< 31 ||| 0x7F7FFFFF)|'
 ELIXIR_HOSTILE_F32_ROWS := num-float32-midpoint num-float32-overflow
 
 # $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what)
@@ -1758,7 +1757,7 @@ tables-elixir-discard:
 
 tables-elixir-discard-negative-control:
 	@rm -rf $(ELIXIR_DISCARD_NC) && mkdir -p $(ELIXIR_DISCARD_NC)
-	@sed -e 's|            if Map.get(report, :malformed) do|            if false do # NEGATIVE CONTROL: the discard is gone|' \
+	@sed -e 's|      {:error, :malformed, reasoned(empty_report(), :malformed)}|      {:ok, %{}, reasoned(empty_report(), :ok)} # NEGATIVE CONTROL: the discard is gone|' \
 		internal/codegen/elixirtable/variableform.go > $(ELIXIR_DISCARD_NC)/variableform.go.txt
 	@cmp -s internal/codegen/elixirtable/variableform.go $(ELIXIR_DISCARD_NC)/variableform.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || true
