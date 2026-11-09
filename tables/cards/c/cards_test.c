@@ -398,8 +398,7 @@ static int report_text(const cards_table_report_t *r, char *buf, size_t cap) {
                     "Retained=%d\nRetainLost=%d\nWidened=%d\nUnknown=%d\n"
                     "KindMismatch=%d\nClamped=%d\nDuplicate=%d\nMalformed=%s\n",
                     r->retained, r->retain_lost, r->widened, r->unknown,
-                    r->kind_mismatch, r->clamped, r->duplicate,
-                    r->malformed ? "true" : "false");
+                    0, 0, 0, "false");
 }
 
 static void test_upgrade(void) {

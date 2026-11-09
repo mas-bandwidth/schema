@@ -25,7 +25,6 @@ import (
 // keep the value, the same unknown and widened counts and the same saved
 // value bytes. Reason names are never compared.
 func TestJavaFixMapTextMalformedOverflag(t *testing.T) {
-	t.Skip("generator bug, re-pinned and red: the oracle refuses this mutant (wire_damaged: a map body too short for its header, inside a field the reader skips as unknown; §4 \"skipped is not unread\"), but javatable's Reader.skip (variableform.go) steps over an L-framed kind without walking its content, so the Java load keeps a value with unknown=1")
 	t.Parallel()
 	const mutantHex = "01010e260d0211020c05616c706861030c0566697273740011020c0462657461030c067365636f6e6400040e150d01120207050003210a4100e9002d4e3dd800de00050e240d02100204fdffffff030e000604deadbeef0010020402000000030e060604000180ff00060409000000004f8168f2ff28b7afec105b36194ac93dea0ce83094fde47cca5c7155f6f133a65b92de9cabeae214e9ea716f0f0182bf0600000000000000"
 	wire, err := hex.DecodeString(mutantHex)

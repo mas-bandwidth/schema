@@ -16,7 +16,7 @@ export type Known = { hash: integer, layout: { LayoutEntry }, layoutBytes: numbe
 -- a root's fixed facts: its own hash, record BODY size and layout, and the
 -- lineage the build laid down with its floor (nil: the one entry, its own)
 export type Fixed = { hash: integer, recordBytes: number, layout: { LayoutEntry }, lineage: { Known }?, floor: number? }
-export type Refusal = { name: string, malformed: boolean?, field: string? }
+export type Refusal = { name: string, field: string? }
 
 local HEADER = 16
 local HASH_AT = 8
@@ -28,8 +28,8 @@ local COUNT = 4
 local PRESENT = 1
 local TRAILER = 4
 
-local function refuse(name: string, malformed: boolean?): Refusal
-	return { name = name, malformed = malformed == true }
+local function refuse(name: string): Refusal
+	return { name = name }
 end
 
 -- crc32c is CRC-32C, the Castagnoli polynomial (docs/SPEC-TABLES.md §2.14):
@@ -95,7 +95,20 @@ end
 local _owner = "?"
 local _field = "?"
 local function nonFinite(f: any): Refusal
-	return { name = "non_finite_float", malformed = false, field = _owner .. "." .. (f.name or _field) }
+	return { name = "non_finite_float", field = _owner .. "." .. (f.name or _field) }
+end
+
+-- A VALUE OUTSIDE THE WRITER'S RANGE OR SET (docs/FIXED-FORM-ALGORITHM.md §4.6):
+-- out_of_range, naming the field. The pass REFUSES; it never clamps.
+local function outOfRange(f: any): Refusal
+	return { name = "out_of_range", field = _owner .. "." .. ((f and f.name) or _field) }
+end
+
+-- A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 (§4.5): wire_damaged.
+local function boolByte(buf: buffer, at: number): boolean
+	local b = buffer.readu8(buf, at)
+	if b > 1 then error({ name = "wire_damaged", field = _owner .. "." .. _field }, 0) end
+	return b == 1
 end
 
 local function asInt(v: any): integer
@@ -305,7 +318,7 @@ end
 -- keeps the default the constructor gave it.
 local MISSING = table.freeze({})
 
-type Cx = { widened: number, clamped: number }
+type Cx = { widened: number }
 
 -- THE LADDER (docs/FIXED-FORM-ALGORITHM.md §5.1, Go's TableFixedWidens): a
 -- wider integer of the same signedness, a wider fixed-point rung at equal F,
@@ -352,7 +365,7 @@ end
 local function readScalar(f: any, w: Node, buf: buffer, at: number): any
 	local k = w.kind
 	if f.s == "bool" then
-		return buffer.readu8(buf, at) ~= 0
+		return boolByte(buf, at)
 	elseif f.s == "float" then
 		if k == 10 then
 			local bits = buffer.readu32(buf, at)
@@ -394,11 +407,11 @@ local function lessThan(a: any, b: any, isSigned: boolean): boolean
 end
 
 -- THE BOUNDS PASS (docs/FIXED-FORM-ALGORITHM.md §4.6), run on the value as it
--- lands: a ranged scalar clamps to the declared range (a fixed-point bound is
--- in value units and the storage is raw, so it shifts by F), a bits(N) to
--- 2^N - 1, each counting `clamped`. A compressed float's bound is the
--- READER's (schema#1164, statement B); an integer range is the reader's too,
--- which on a lawful lineage contains the writer's.
+-- lands: a ranged scalar outside the declared range (a fixed-point bound is in
+-- value units and the storage is raw, so it shifts by F) or a bits(N) past
+-- 2^N - 1 REFUSES out_of_range, naming the field; nothing is clamped. The
+-- range held here is the reader's, which on a lawful lineage contains the
+-- writer's; an older writer's own narrower ranges ride its lineage entry.
 local function bounds(f: any, v: any, cx: Cx): any
 	local lo, hi = f.lo, f.hi
 	if lo ~= nil and hi ~= nil and typeof(lo) ~= "table" then
@@ -416,20 +429,15 @@ local function bounds(f: any, v: any, cx: Cx): any
 		end
 		local isSigned = f.signed ~= false
 		if f.s == "float" then
-			if v == v then
-				if v < lo then v = lo; cx.clamped += 1
-				elseif v > hi then v = hi; cx.clamped += 1 end
-			end
-		elseif lessThan(v, lo, isSigned) then
-			v = lo; cx.clamped += 1
-		elseif lessThan(hi, v, isSigned) then
-			v = hi; cx.clamped += 1
+			if v == v and (v < lo or v > hi) then error(outOfRange(f), 0) end
+		elseif lessThan(v, lo, isSigned) or lessThan(hi, v, isSigned) then
+			error(outOfRange(f), 0)
 		end
 	end
 	if f.bits ~= nil and f.bits > 0 and f.bits < 53 then
 		local top: any = 2 ^ f.bits - 1
 		if typeof(v) == "integer" then top = integer.create(top) end
-		if lessThan(top, v, false) then v = top; cx.clamped += 1 end
+		if lessThan(top, v, false) then error(outOfRange(f), 0) end
 	end
 	return v
 end
@@ -449,7 +457,7 @@ local function readTable(d: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 			local got, companion = MISSING, nil
 			if f.present ~= nil then
 				if wc.kind == 35 and rc.kind == 35 then
-					local present = buffer.readu8(buf, wc.off + at) ~= 0
+					local present = boolByte(buf, wc.off + at)
 					v[f.present] = present
 					if present then
 						got, companion = readPair(f, wc.children[1], rc.children[1], buf, at, cx, v[slot])
@@ -500,9 +508,9 @@ local function readEnum(f: any, w: Node, r: Node, buf: buffer, at: number, cx: C
 	local v = 0
 	if raw ~= 0 then
 		if raw > #w.children then
-			-- one past the WRITER's own variant count lands None and counts
-			-- (§4.6, §5.4), on the compiled plan exactly as on the identity one
-			cx.clamped += 1
+			-- past the WRITER's own variant count is a FORGED ordinal: out_of_range
+			-- (§4.6, §5.8 row 12), on the compiled plan exactly as on the identity one
+			error(outOfRange(f), 0)
 		elseif w.size < r.size then
 			-- a grown ordinal width (bill §12.7): widened, unsigned
 			cx.widened += 1
@@ -529,10 +537,8 @@ local function readUnion(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		return v
 	end
 	if tag > #w.children then
-		-- a tag past the WRITER's arm count lands None and counts (§4.6)
-		v.Type = 0
-		cx.clamped += 1
-		return v
+		-- a tag past the WRITER's arm count names no arm: out_of_range (§4.6)
+		error(outOfRange(f), 0)
 	end
 	local k = if w == r then tag else childIndexById(r.children, w.children[tag].id)
 	v.Type = k
@@ -550,6 +556,38 @@ local function readUnion(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		end
 	end
 	return v
+end
+
+-- A [N]uint8 or [E]uint8 is a buffer, 0-based; every other array is a
+-- 1-based list (docs/PORT-LUAU.md, THE TYPE MAPPING). The constructor's value
+-- says which: slots is the reader's mine slots at their defaults, in the same
+-- shape, and slotAt / setSlot read and write one 1-based slot of either.
+local function slots(def: any, mine: number): any
+	if typeof(def) == "buffer" then
+		local b = buffer.create(mine)
+		buffer.copy(b, 0, def, 0, math.min(mine, buffer.len(def)))
+		return b
+	end
+	local out = table.create(mine)
+	for i = 1, mine do
+		out[i] = if def ~= nil then def[i] else nil
+	end
+	return out
+end
+
+local function slotAt(x: any, i: number): any
+	if typeof(x) == "buffer" then
+		return if i <= buffer.len(x) then buffer.readu8(x, i - 1) else nil
+	end
+	return x[i]
+end
+
+local function setSlot(x: any, i: number, v: any)
+	if typeof(x) == "buffer" then
+		buffer.writeu8(x, i - 1, v)
+	else
+		x[i] = v
+	end
 end
 
 local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx, def: any): (any, any)
@@ -573,25 +611,19 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
 		if count > mine then count = mine end
-		local out = table.create(mine)
-		for i = 1, mine do
-			out[i] = if def ~= nil then def[i] else nil
-		end
+		local out = slots(def, mine)
 		for i = 1, count do
-			local got = readPair(e, we, re, buf, at + head + (i - 1) * we.size, cx, out[i])
-			if got ~= MISSING then out[i] = got end
+			local got = readPair(e, we, re, buf, at + head + (i - 1) * we.size, cx, slotAt(out, i))
+			if got ~= MISSING then setSlot(out, i, got) end
 		end
 		return out, count
 	end
 	-- a fixed array: the writer's elements land, the reader's slots past them
 	-- keep THE ELEMENT'S DEFAULTS (§5.2 EMIT kind 14, bill §12.6)
-	local out = table.create(mine)
-	for i = 1, mine do
-		out[i] = if def ~= nil then def[i] else nil
-	end
+	local out = slots(def, mine)
 	for i = 1, math.min(theirs, mine) do
-		local got = readPair(e, we, re, buf, at + (i - 1) * we.size, cx, out[i])
-		if got ~= MISSING then out[i] = got end
+		local got = readPair(e, we, re, buf, at + (i - 1) * we.size, cx, slotAt(out, i))
+		if got ~= MISSING then setSlot(out, i, got) end
 	end
 	return out, nil
 end
@@ -599,18 +631,14 @@ end
 local function readKeyed(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx, def: any): any
 	local wkey, we = w.children[1], w.children[2]
 	local rkey, re = r.children[1], r.children[2]
-	local slots = #rkey.children
-	local out = table.create(slots)
-	for i = 1, slots do
-		out[i] = if def ~= nil then def[i] else nil
-	end
+	local out = slots(def, #rkey.children)
 	-- per reader slot, the writer's slot of the key variant with the same id
 	-- (§5.2 EMIT kind 16); a slot an appended key opened keeps its default
-	for i = 1, slots do
+	for i = 1, #rkey.children do
 		local j = if w == r then i else childIndexById(wkey.children, rkey.children[i].id)
 		if j ~= 0 then
-			local got = readPair(f.e, we, re, buf, at + (j - 1) * we.size, cx, out[i])
-			if got ~= MISSING then out[i] = got end
+			local got = readPair(f.e, we, re, buf, at + (j - 1) * we.size, cx, slotAt(out, i))
+			if got ~= MISSING then setSlot(out, i, got) end
 		end
 	end
 	return out
@@ -789,21 +817,21 @@ function writeOne(f: any, n: Node, value: any, buf: buffer)
 			local c = childAt(n, 1) :: Node
 			shift(c, COUNT)
 			for i = 1, count do
-				writeOne(e, c, value[slot][i], buf)
+				writeOne(e, c, slotAt(value[slot], i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(COUNT + count * c.size))
 		elseif f.array == "keyed" then
 			local c = childAt(n, 2) :: Node
 			for i = 1, f.bound or 0 do
-				writeOne(e, c, value[slot][i], buf)
+				writeOne(e, c, slotAt(value[slot], i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(f.bound or 0) * c.size)
 		else
 			local c = childAt(n, 1) :: Node
 			for i = 1, f.bound or 0 do
-				writeOne(e, c, value[slot][i], buf)
+				writeOne(e, c, slotAt(value[slot], i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(f.bound or 0) * c.size)
@@ -990,7 +1018,7 @@ end
 -- (none is `layout_unknown` — `layout_newer` is reserved, §21.3 — and below the
 -- floor `layout_unsupported`, both reporting the file's hash in
 -- report.layoutHash and nothing else), the layout bytes compared with the
--- lock's (`layout_malformed`), the record arithmetic (`truncated`, malformed),
+-- lock's (`layout_malformed`), the record arithmetic (`truncated`),
 -- and per record its own hash (`no_layout`) before anything lands. A declaring
 -- root's CRC-32C trailer is checked first (docs/SPEC-TABLES.md §2.14).
 --
@@ -1003,13 +1031,11 @@ end
 function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 	local rep: any = report or {}
 	rep.reason = nil
-	rep.malformed = false
-	rep.unknown, rep.kindMismatch, rep.clamped, rep.widened, rep.duplicate = 0, 0, 0, 0, 0
+	rep.unknown, rep.kindMismatch, rep.widened = 0, 0, 0
 	rep.layoutHash = 0i
 	rep.field = nil
-	local function no(name: string, malformed: boolean?): nil
+	local function no(name: string): nil
 		rep.reason = name
-		rep.malformed = malformed == true
 		return nil
 	end
 	if declaresIntegrity(d) and buffer.len(file) >= 1 and buffer.readu8(file, 0) == 3 then
@@ -1017,7 +1043,7 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 		file = withoutTrailer(file)
 	end
 	-- 1, 2: the form byte, then the header (§5.3; docs/SPEC-TABLES.md §3.4)
-	if buffer.len(file) < 1 then return no("truncated", true) end
+	if buffer.len(file) < 1 then return no("truncated") end
 	local form = buffer.readu8(file, 0)
 	if form == 1 then return no("previous_form") end
 	if form == 2 then return no("message_form_as_file") end
@@ -1026,9 +1052,9 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 		fixed = fixedFor(d) :: any
 		if fixed == nil then return no("unknown_form") end
 	end
-	if buffer.len(file) < HEADER + LAYOUT_HEADER then return no("truncated", true) end
+	if buffer.len(file) < HEADER + LAYOUT_HEADER then return no("truncated") end
 	for at = 1, HASH_AT - 1 do
-		if buffer.readu8(file, at) ~= 0 then return no("reserved_not_zero", true) end
+		if buffer.readu8(file, at) ~= 0 then return no("reserved_not_zero") end
 	end
 	-- 3: the layout's length
 	local length = u32(file, HEADER)
@@ -1060,14 +1086,14 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 	local at0 = HEADER + 4 + length
 	local rest = buffer.len(file) - at0
 	local stride = k.recordBytes
-	if stride <= 8 or rest % stride ~= 0 then return no("truncated", true) end
+	if stride <= 8 or rest % stride ~= 0 then return no("truncated") end
 	local count = rest // stride
 	-- 11: EVERY record's hash before the first one lands (§5.3, TOTAL OVER
 	-- THE BATCH)
 	for r = 0, count - 1 do
 		if buffer.readinteger(file, at0 + r * stride) ~= h then return no("no_layout") end
 	end
-	local cx: Cx = { widened = 0, clamped = 0 }
+	local cx: Cx = { widened = 0 }
 	local out = table.create(count)
 	local ok, err = pcall(function()
 		for r = 0, count - 1 do
@@ -1078,38 +1104,38 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 		if type(err) == "table" and (err :: any).name ~= nil then
 			-- non_finite_float names its field (docs/SPEC-TABLES.md §3.3)
 			rep.field = (err :: any).field
-			return no((err :: any).name, (err :: any).malformed)
+			return no((err :: any).name)
 		end
 		error(err, 0)
 	end
-	rep.widened, rep.clamped = cx.widened, cx.clamped
+	rep.widened = cx.widened
 	rep.unknown, rep.kindMismatch = plan.census.unknown, plan.census.kindMismatch
 	return out
 end
 
 -- read is the PLAIN fixed-form read, and it is STRICT (docs/SPEC-TABLES.md
 -- §6.5, Go's <T>FixedLoad over <T>FixedLoadWalk): nil for every refusal
--- of loadWalk and for a read whose report the strict read refuses —
--- clamped, then kind_mismatch, TableReport.Err()'s order — with report.reason
--- that name and nothing handed back. unknown and widened alone never refuse.
--- A fixed refusal keeps its own §3.4 name (Strict error identity).
+-- of loadWalk (out_of_range and wire_damaged among them, raised as the
+-- record is read) and for a plan whose census moved a kind off every ladder
+-- (kind_mismatch), with report.reason that name and nothing handed back.
+-- unknown and widened alone never refuse. The verdict is the contract; the
+-- name is this leg's diagnostic (docs/rulings.json refusal-verdict-only).
 function F.read(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 	local rep: any = report or {}
 	local out = F.loadWalk(d, fixed, file, rep)
 	if out == nil then return nil end
-	if rep.clamped > 0 then rep.reason = "clamped"; return nil end
 	if rep.kindMismatch > 0 then rep.reason = "kind_mismatch"; return nil end
 	return out
 end
 
 -- load is the plain strict read for a caller that wants the refusal raised:
--- the values, or an error { name, malformed, layoutHash } carrying the name
+-- the values, or an error { name, layoutHash, field } carrying the name
 -- read reports.
 function F.load(d: any, fixed: Fixed, file: buffer, report: any?): { any }
 	local rep: any = report or {}
 	local out = F.read(d, fixed, file, rep)
 	if out == nil then
-		error({ name = rep.reason, malformed = rep.malformed == true, layoutHash = rep.layoutHash, field = rep.field }, 0)
+		error({ name = rep.reason, layoutHash = rep.layoutHash, field = rep.field }, 0)
 	end
 	return out
 end

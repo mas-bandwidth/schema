@@ -19,11 +19,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// blobProbe loads the oracle's wire through the emitted load runtime, saves
+// blobProbe loads the oracle's wire through the emitted strict read, saves
 // it, loads the save back, and saves the loaded value again: the two saves are
 // the value's round trip, and the first is compared with the oracle's bytes
 // (docs/SPEC-TABLES.md §3, §3.1).
-const blobProbe = `local schema = dofile("schema_module.nut", true);
+const blobProbe = squirrelVerdict + `local schema = dofile("schema_module.nut", true);
 local T = schema.require("ProbeTables");
 local L = schema.require("schema_table_load");
 local S = schema.require("schema_table_save");
@@ -33,25 +33,18 @@ local hex = function(b) {
   for (local i = 0; i < b.len(); i++) s += format("%02x", b[i] & 0xff);
   return s;
 };
-local report = function() {
-  return {
-    unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false
-  };
-};
-local firstReport = report();
-local value = L.loadTolerant(T, "L", inputs["value"], firstReport);
+local firstReport = {};
+local value = L.load(T, "L", inputs["value"], firstReport);
 local first = S.save(T, "L", value);
-local secondReport = report();
-local reloaded = L.loadTolerant(T, "L", first, secondReport);
+local secondReport = {};
+local reloaded = L.load(T, "L", first, secondReport);
 local second = S.save(T, "L", reloaded);
 local a = hex(first);
 local b = hex(second);
 print("first " + a + "\n");
 print("second " + b + "\n");
 print("roundtrip " + (a == b ? "equal" : "different") + "\n");
-print("report " + firstReport.refused.tostring() + " " + firstReport.malformed.tostring() +
-      " " + secondReport.refused.tostring() + " " + secondReport.malformed.tostring() + "\n");
+print("report " + ::verdict(value, firstReport) + " " + ::verdict(reloaded, secondReport) + "\n");
 `
 
 // TestSquirrelCarriesByteAndStringBuffers: the refusal test's probe unit for
@@ -62,18 +55,21 @@ print("report " + firstReport.refused.tostring() + " " + firstReport.malformed.t
 func TestSquirrelCarriesByteAndStringBuffers(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name, src, value string
+		name, src, value     string
+		wrongSrc, wrongValue string // the same field at another kind
 	}{
 		{
 			"byte buffer",
 			"package probe\n\ntable L\n{\n    b *bytes\n}\n",
 			// one node with a zero byte, a 0xff byte and a short tail, base64
 			`{"b":"AAH/gA=="}`,
+			"package probe\n\ntable L\n{\n    b int32\n}\n", `{"b":5}`,
 		},
 		{
 			"string buffer",
 			"package probe\n\ntable L\n{\n    s *string\n}\n",
 			`{"s":"hello, 世界"}`,
+			"package probe\n\ntable L\n{\n    s int32\n}\n", `{"s":5}`,
 		},
 	}
 	for _, tc := range cases {
@@ -133,9 +129,10 @@ func TestSquirrelCarriesByteAndStringBuffers(t *testing.T) {
 			if rows["roundtrip"] != "equal" {
 				t.Errorf("the value's round trip is %q, want equal; saves %s and %s", rows["roundtrip"], first, rows["second"])
 			}
-			if rows["report"] != "false false false false" {
-				t.Errorf("a load of a save refused or found it malformed: %s", rows["report"])
+			if rows["report"] != "accepted accepted" {
+				t.Errorf("the strict read refused the oracle's wire or the save: %s", rows["report"])
 			}
+			squirrelStrictRefusal(t, u, files, "L", tc.wrongSrc, tc.wrongValue)
 			t.Logf("%s saved %d bytes, equal to tablewire and to its own reload", tc.name, len(got))
 		})
 	}

@@ -28,19 +28,26 @@ func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
 	cases := []struct {
 		name, src, root, json string
 		array                 bool
+		// wrongSrc and wrongJSON write the same root and field at another
+		// kind: the strict read's refusal case
+		wrongSrc, wrongJSON string
 	}{
 		{
-			name: "text list",
-			src:  "package probe\n\ntable Lists\n{\n    rules [..4]string(8)\n}\n",
-			root: "Lists",
-			json: `{"rules": ["alpha", "beta"]}`,
+			name:      "text list",
+			src:       "package probe\n\ntable Lists\n{\n    rules [..4]string(8)\n}\n",
+			root:      "Lists",
+			json:      `{"rules": ["alpha", "beta"]}`,
+			wrongSrc:  "package probe\n\ntable Lists\n{\n    rules int32\n}\n",
+			wrongJSON: `{"rules": 5}`,
 		},
 		{
-			name:  "array root",
-			src:   "package probe\n\ntable Goal\n{\n    x int32\n}\n\ntable GoalList | json = \"array\"\n{\n    goals [..4]Goal\n}\n",
-			root:  "GoalList",
-			json:  `[{"x": 1}, {"x": 2}]`,
-			array: true,
+			name:      "array root",
+			src:       "package probe\n\ntable Goal\n{\n    x int32\n}\n\ntable GoalList | json = \"array\"\n{\n    goals [..4]Goal\n}\n",
+			root:      "GoalList",
+			json:      `[{"x": 1}, {"x": 2}]`,
+			array:     true,
+			wrongSrc:  "package probe\n\ntable GoalList\n{\n    goals int32\n}\n",
+			wrongJSON: `{"goals": 5}`,
 		},
 	}
 	c := New()
@@ -114,6 +121,7 @@ func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
 			if tc.array && !bytes.Equal(gotJSON, wantJSON) {
 				t.Fatalf("the Squirrel ToJson differs from tabletext.Write\n got  %q\n want %q", gotJSON, wantJSON)
 			}
+			squirrelStrictRefusal(t, u, files, tc.root, tc.wrongSrc, tc.wrongJSON)
 		})
 	}
 	if !carries("squirrel", carryTextList) || !carries("squirrel", carryArrayRoot) {
@@ -140,9 +148,10 @@ local T = schema.require(%q);
 local L = schema.require("schema_table_load");
 local S = schema.require("schema_table_save");
 local J = schema.require("schema_table_json");
-local fresh = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-    duplicate = 0, malformed = false, refused = false };
+local strict = function(root, b) {
+  local r = {};
+  local v = L.load(T, root, b, r);
+  return (v != null && r.reason == null) ? v : null;
 };
 local hex = function(b) {
   local s = "";
@@ -155,11 +164,11 @@ local same = function(a, b) {
   return true;
 };
 local run = function() {
-  local a = L.loadTolerant(T, %q, inputs["wire"], fresh());
+  local a = strict(%q, inputs["wire"]);
   if (a == null) { print("load:null\n"); return; }
   local one = S.save(T, %q, a);
   if (one == null) { print("save:null\n"); return; }
-  local back = L.loadTolerant(T, %q, one, fresh());
+  local back = strict(%q, one);
   if (back == null) { print("reload:null\n"); return; }
   local two = S.save(T, %q, back);
   if (two == null) { print("resave:null\n"); return; }

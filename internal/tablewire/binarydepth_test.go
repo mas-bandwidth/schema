@@ -18,7 +18,6 @@ import (
 // framed payload an array body (kind 14) holding that many int32 elements
 // instead, so the array body itself sits at level `levels`.
 func nestedUnknownFile(levels int, array bool) []byte {
-	leb := func(out []byte, v uint64) []byte { return binary.AppendUvarint(out, v) }
 	var inner []byte
 	kind := byte(ir.TableKindTable)
 	if array {
@@ -29,7 +28,7 @@ func nestedUnknownFile(levels int, array bool) []byte {
 	}
 	for level := levels - 1; level >= 0; level-- {
 		body := []byte{1, kind}
-		body = leb(body, uint64(len(inner)))
+		body = binary.AppendUvarint(body, uint64(len(inner)))
 		body = append(body, inner...)
 		body = append(body, 0)
 		inner, kind = body, byte(ir.TableKindTable)

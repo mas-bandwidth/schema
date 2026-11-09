@@ -1937,6 +1937,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 		g.pf("            {image, report} =\n")
 		g.pf("              R.run(plan, R.detach(body, copy), @%s_prefill, report)\n\n", snake)
 	}
+	g.pf("            report = R.forged_check(report)\n")
 	if writerBounds {
 		// THE WRITER'S RANGE, THEN THIS READER'S (§4.6): the lane's own
 		// ranges on the image, then the projection's clamp.

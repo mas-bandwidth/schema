@@ -676,29 +676,29 @@ local function float64Parts(hi: number, lo: number): (Big, number)
 end
 
 -- readsBack(d, E, single, bits, hi, lo): whether the text of the digits d at
--- decimal exponent E reads back as the value: parsed to the nearest double
--- and, for a float32, narrowed to the nearest float32, exactly as write.go's
--- `float32(strconv.ParseFloat(text, 64))` does (two roundings, on purpose).
+-- decimal exponent E reads back as the value under ONE correctly rounded
+-- conversion at the field's own width, as write.go's
+-- `strconv.ParseFloat(text, bits)` does: a float32 field's text parsed as a
+-- double and then narrowed rounds twice, and for two float32 magnitudes the
+-- answers part (docs/SPEC-TABLES.md §16.14, W12).
 local function readsBack(d: string, E: number, single: boolean, bits: number, hi: number, lo: number): boolean
 	local last = #d
 	while string.byte(d, last) == 48 do
 		last -= 1
 	end
 	local q = E - #d + 1 + (#d - last)
-	local kind, qh, ql, e = decimalBinary(string.sub(d, 1, last), q, F64)
+	local kind, qh, ql, e = decimalBinary(string.sub(d, 1, last), q, if single then F32 else F64)
 	if kind ~= 1 then
 		return false
+	end
+	if single then
+		return float32Bits(qh, ql, e) == bits -- an overflow is the infinity's pattern, never a finite bits
 	end
 	local bh, bl = float64Bits(qh, ql, e)
 	if bh >= 0x7FF00000 then
 		return false -- past the largest double: ParseFloat's range error
 	end
-	if not single then
-		return bh == hi and bl == lo
-	end
-	local M, me = float64Parts(bh, bl)
-	local nh, nl, ne = roundBinary(M, { 1 }, me, 24, -149)
-	return float32Bits(nh, nl, ne) == bits
+	return bh == hi and bl == lo
 end
 
 local function shortest(negative: boolean, M: Big, e: number, single: boolean, bits: number, hi: number, lo: number): string
@@ -1270,7 +1270,9 @@ local function put(w: Out, s: string)
 end
 
 -- writeString: one JSON string, the seven short escapes, every other control
--- byte as \u00xx, and an ill-formed sequence as U+FFFD per maximal subpart
+-- byte as \u00xx; ill-formed UTF-8 is a value no text spells, and the writer
+-- refuses it invalid_value rather than replacing it (docs/SPEC-TABLES.md
+-- §16.3, §16.14 W0): w.err is set and toJson answers nil
 local function writeString(w: Out, s: string)
 	put(w, "\"")
 	local n = #s
@@ -1296,7 +1298,9 @@ local function writeString(w: Out, s: string)
 		else
 			local width = utf8Sequence(s, at)
 			if width < 0 then
-				put(w, "\u{FFFD}")
+				if w.err == nil then
+					w.err = "invalid_value: ill-formed UTF-8 in a text field has no JSON spelling (docs/SPEC-TABLES.md §16.3)"
+				end
 				i = at - width
 			else
 				put(w, string.sub(s, at, at + width - 1))
@@ -1308,7 +1312,8 @@ local function writeString(w: Out, s: string)
 end
 
 -- writeWString: a wide field's UTF-16 code units back to UTF-8; a pair is one
--- code point, an unpaired surrogate one U+FFFD, a zero unit \u0000
+-- code point, a zero unit \u0000, and an unpaired surrogate a value no text
+-- spells: the writer refuses it invalid_value (§16.3, §16.14 W0), as writeString
 local function writeWString(w: Out, b: buffer, units: number)
 	put(w, "\"")
 	local i = 0
@@ -1322,6 +1327,9 @@ local function writeWString(w: Out, b: buffer, units: number)
 			end
 		end
 		if code >= 0xD800 and code <= 0xDFFF then
+			if w.err == nil then
+				w.err = "invalid_value: an unpaired surrogate in a wide text field has no JSON spelling (docs/SPEC-TABLES.md §16.3)"
+			end
 			code = 0xFFFD
 		end
 		local short = SHORT_ESCAPE[code]
@@ -1840,6 +1848,9 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 	end
 	r.pos += 1
 	local first = true
+	-- a skipped object's keys are held to the layer's rule too: a repeated
+	-- key refuses in every object of the text (§16.2, §16.12)
+	local keys: { [string]: boolean }? = nil
 	while true do
 		local c = peek(r)
 		if c == close then
@@ -1861,6 +1872,14 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 				return false
 			end
 			r.pos += 1
+			if keys == nil then
+				keys = { [key] = true }
+			elseif keys[key] then
+				r.bad = true -- a repeated key refuses
+				return false
+			else
+				keys[key] = true
+			end
 			if #key > 0 and string.byte(key, 1) == 38 and r.graph ~= nil then
 				if not first or not skippedAmpersand(r, key) then
 					r.bad = true
@@ -2927,6 +2946,9 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 	end
 	local want = elementShape(e)
 	local seen: { [number]: boolean } = {}
+	-- the keys that name no slot (an unknown variant, `"None"`): a repeat of
+	-- one is a repeated key like any other, and refuses (§16.2)
+	local unknownSeen: { [string]: boolean }? = nil
 	while true do
 		local c = peek(r)
 		if c == 125 then
@@ -2963,6 +2985,13 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 				r.report.repeatedKey += 1
 			end
 			seen[at] = true
+		elseif unknownSeen == nil then
+			unknownSeen = { [name] = true }
+		elseif unknownSeen[name] then
+			r.bad = true -- a repeated key refuses
+			return false
+		else
+			unknownSeen[name] = true
 		end
 		if at < 0 then
 			r.report.unknown += 1
@@ -3214,6 +3243,9 @@ end
 readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: string?): boolean
 	local keys = keyIndex(d)
 	local seen: { [number]: boolean } = {}
+	-- the keys no field takes: a repeat of one is a repeated key like any
+	-- other, and refuses (§16.2); a field's key repeats through seen
+	local unknownSeen: { [string]: boolean }? = nil
 	local first = firstKey
 	while true do
 		local key: string
@@ -3247,6 +3279,14 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 		end
 		local i = keys[key]
 		if i == nil then
+			if unknownSeen == nil then
+				unknownSeen = { [key] = true }
+			elseif unknownSeen[key] then
+				r.bad = true -- a repeated key refuses
+				return false
+			else
+				unknownSeen[key] = true
+			end
 			r.report.unknown += 1
 			if not skipValue(r, depth + 1) then
 				return false
@@ -3872,8 +3912,8 @@ function J.toJson(d: any, rec: any): (string?, string?)
 	if not countFields(w, d, rec, open) then
 		return nil, w.err
 	end
-	if not writeValue(w, d, rec, 0) then
-		return nil, w.err
+	if not writeValue(w, d, rec, 0) or w.err ~= nil then
+		return nil, w.err -- w.err also holds a text field's refusal (writeString)
 	end
 	emit(w, "\n")
 	return table.concat(w.parts), nil

@@ -696,7 +696,7 @@ fn json_encode_utf8(code: i64, unit: u8[4]&) -> i64 {
 
 // json_scan decodes one JSON string and hands it to F ONE CODE POINT AT A
 // TIME (the code point's UTF-8 bytes and their count), so a sink that clamps
-// cuts at a code point boundary. A lone surrogate escape reads as U+FFFD; a
+// cuts at a code point boundary. A lone surrogate escape refuses the read, a
 // byte sequence that is not UTF-8 refuses the read by name, and so does a
 // U+0000 bound for text storage (store), docs/SPEC-TABLES.md §16.3.
 fn json_scan<F>(jr: JsonIn&, store: bool) -> bool {
@@ -744,7 +744,7 @@ fn json_scan<F>(jr: JsonIn&, store: bool) -> bool {
                         jr.pos = mark;
                     }
                 }
-                if code >= 0xD800 && code <= 0xDFFF { code = 0xFFFD; }
+                if code >= 0xD800 && code <= 0xDFFF { return json_fail(jr); } // a lone surrogate is ill-formed text (§16.3)
                 if code == 0 && store {
                     jr.zero = true;
                     return json_fail(jr);
@@ -1544,6 +1544,12 @@ fn json_finish(jr: JsonIn&, ok: bool, report: JsonReport&) -> bool {
         json_space(jr);
         if jr.bad || jr.pos != jr.text.len { good = false; }
     }
+    // THE STRICT TEXT READ REFUSES AT ITS END (docs/SPEC-TABLES.md §6.5,
+    // §16.2; docs/plans/strict-only.md layer 4): a key named twice in one
+    // object or map, a value outside its declaration's range and a value of
+    // the wrong shape refuse the whole read, as the wire read refuses them.
+    // Only a key this reader does not declare leaves a value.
+    if good && (jr.rep.mismatch > 0 || jr.rep.oor > 0 || jr.rep.repeated > 0) { good = false; }
     report = jr.rep;
     report.damaged = !good;
     return good;

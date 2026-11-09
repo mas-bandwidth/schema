@@ -62,11 +62,32 @@ static partial class Program
     // compiler cannot prove the value does not reach it and elide the work.
     static object allocSink;
 
+    static void WarmAllocRow(Action step)
+    {
+        for (int i = 0; i < 4000; i++) { step(); }
+        int zeroBatches = 0;
+        long prev = GC.GetAllocatedBytesForCurrentThread();
+        for (int b = 0; b < 512 && zeroBatches < 16; b++)
+        {
+            for (int i = 0; i < 256; i++) { step(); }
+            long now = GC.GetAllocatedBytesForCurrentThread();
+            if (now == prev)
+            {
+                zeroBatches++;
+            }
+            else
+            {
+                zeroBatches = 0;
+                prev = now;
+            }
+        }
+    }
+
     // Load, with the caller's report supplied. Reused value and report: only
     // the read itself is charged.
     static long AllocLoad(byte[] golden, Demo.RootConfig value, Demo.TableReport report, bool plant)
     {
-        for (int i = 0; i < 2000; i++) { Demo.Schema.RootConfigLoad(value, golden, report); }
+        WarmAllocRow(() => Demo.Schema.RootConfigLoad(value, golden, report));
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 10000; i++)
         {
@@ -80,7 +101,7 @@ static partial class Program
     // the caller's behalf (it caches one ignored ledger instead).
     static long AllocNullReportLoad(byte[] golden, Demo.RootConfig value, bool plant)
     {
-        for (int i = 0; i < 2000; i++) { Demo.Schema.RootConfigLoad(value, golden, null); }
+        WarmAllocRow(() => Demo.Schema.RootConfigLoad(value, golden, null));
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 10000; i++)
         {
@@ -92,7 +113,7 @@ static partial class Program
 
     static long AllocMeasure(Demo.RootConfig value, bool plant)
     {
-        for (int i = 0; i < 2000; i++) { Demo.Schema.RootConfigMeasure(value); }
+        WarmAllocRow(() => Demo.Schema.RootConfigMeasure(value));
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 10000; i++)
         {
@@ -104,7 +125,7 @@ static partial class Program
 
     static long AllocSave(Demo.RootConfig value, byte[] buffer, bool plant)
     {
-        for (int i = 0; i < 2000; i++) { Demo.Schema.RootConfigSave(value, buffer); }
+        WarmAllocRow(() => Demo.Schema.RootConfigSave(value, buffer));
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 10000; i++)
         {
@@ -122,7 +143,7 @@ static partial class Program
             long need = Demo.Schema.RootConfigMeasure(value);
             Demo.Schema.RootConfigSave(value, buffer.AsSpan(0, (int)need));
         }
-        for (int i = 0; i < 2000; i++) { Body(); }
+        WarmAllocRow(Body);
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 10000; i++)
         {

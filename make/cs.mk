@@ -608,6 +608,31 @@ define cs_leg_sabotage
 	@echo "negative control: removing the $(1) rule turns tables-cs-leg red on its own check"
 endef
 
+# cs_leg_sabotage2 is cs_leg_sabotage over two emitter files at once
+# ($(2)/$(3) and $(4)/$(5)): a rule held at two layers (the wire-alone walk and
+# the decode behind it) goes red only when both are taken out.
+define cs_leg_sabotage2
+	@rm -rf build/cs-leg-$(1) && mkdir -p build/cs-leg-$(1)
+	@go run ./tools/sabotage -name $(3) -out build/cs-leg-$(1)/a.gotext internal/codegen/cstable/$(2)
+	@go run ./tools/sabotage -name $(5) -out build/cs-leg-$(1)/b.gotext internal/codegen/cstable/$(4)
+	@printf '{"Replace":{"%s/internal/codegen/cstable/$(2)":"%s/build/cs-leg-$(1)/a.gotext","%s/internal/codegen/cstable/$(4)":"%s/build/cs-leg-$(1)/b.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/cs-leg-$(1)/overlay.json
+	@go build -overlay=build/cs-leg-$(1)/overlay.json -o build/cs-leg-$(1)/schema ./cmd/schema
+	$(call tables_generate_cs,./build/cs-leg-$(1)/schema,build/cs-leg-$(1)/gen)
+	@( cd test/cs-tables && $(DOTNET) build -v q --nologo -p:TablesGeneratedDir=$(CURDIR)/build/cs-leg-$(1)/gen \
+		-p:BaseOutputPath=$(CURDIR)/build/cs-leg-$(1)/bin/ -p:BaseIntermediateOutputPath=$(CURDIR)/build/cs-leg-$(1)/obj/ ) \
+		> build/cs-leg-$(1)/build.log 2>&1 || \
+		{ cat build/cs-leg-$(1)/build.log; echo "NEGATIVE CONTROL FAILED: the $(1) sabotage does not compile"; exit 1; }
+	@if ( cd test/cs-tables && $(DOTNET) $(CURDIR)/build/cs-leg-$(1)/bin/Debug/net10.0/schematablestest.dll ) \
+		> build/cs-leg-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: tables-cs-leg stayed green with the $(1) rule removed"; exit 1; \
+	fi
+	@grep -Eq '$(6)' build/cs-leg-$(1)/log || \
+		{ tail -40 build/cs-leg-$(1)/log; echo "NEGATIVE CONTROL FAILED: tables-cs-leg went red, but not on the $(1) rule"; exit 1; }
+	@grep -Em3 '$(6)' build/cs-leg-$(1)/log
+	@echo "negative control: removing the $(1) rule turns tables-cs-leg red on its own check"
+endef
+
 .PHONY: tables-cs-leg-keyed-negative-control tables-cs-leg-identity-negative-control tables-cs-leg-allocator-negative-control \
 	tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control \
 	tables-cs-leg-region-blob-shared-negative-control
@@ -629,20 +654,23 @@ tables-cs-leg-region-blob-shared-negative-control: bin/schema
 # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), one control per C#
 # load entry point that holds the discard: the managed load, the native region
 # load (the retaining load is derived from it), and the builder load. Each takes
-# that discard out, and the leg's TestDamageDiscardsTheWholeLoad must go red on
-# the body damaged inside a nested body, which the walk otherwise reads past.
+# out the wire-alone walk's refusal at that entry point (WireCheck) and the
+# discard behind it, and the leg's TestDamageDiscardsTheWholeLoad must go red on
+# a damaged vector that entry point otherwise hands back. (The nested kind-37
+# probes no longer localise a discard: the decode refuses them as a kind
+# mismatch whatever the discard does.)
 .PHONY: tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control \
 	tables-cs-leg-cycle-negative-control tables-cs-leg-region-cycle-negative-control
 tables-cs-leg-discard-negative-control: bin/schema
-	$(call cs_leg_sabotage,discard,wire.go,table-cs-discard,FAILED: damage discards the whole load: nested (fixed|variable): managed load answered true on damage)
+	$(call cs_leg_sabotage,discard,wire.go,table-cs-discard,FAILED: damage discards the whole load: [a-z_0-9]+: managed load answers false)
 tables-cs-leg-region-discard-negative-control: bin/schema
-	$(call cs_leg_sabotage,region-discard,region.go,table-cs-region-discard,FAILED: damage discards the whole load: nested variable: (region|retaining) load handed back a root on damage)
+	$(call cs_leg_sabotage2,region-discard,measure.go,table-cs-region-measure-discard,region.go,table-cs-region-discard,FAILED: damage discards the whole load: [a-z_0-9]+: (region|retaining) load hands back no root)
 tables-cs-leg-builder-discard-negative-control: bin/schema
-	$(call cs_leg_sabotage,builder-discard,builderload.go,table-cs-builder-discard,FAILED: damage discards the whole load: nested variable: builder load answered true on damage)
+	$(call cs_leg_sabotage,builder-discard,builderload.go,table-cs-builder-discard,FAILED: damage discards the whole load: [a-z_0-9]+: builder load answers false)
 tables-cs-leg-cycle-negative-control: bin/schema
-	$(call cs_leg_sabotage,cycle,variable.go,table-cs-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: managed load answers false)
+	$(call cs_leg_sabotage2,cycle,wirecheck.go,table-cs-wire-cycle,variable.go,table-cs-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: managed load answers false)
 tables-cs-leg-region-cycle-negative-control: bin/schema
-	$(call cs_leg_sabotage,region-cycle,regiongraph.go,table-cs-region-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: (region|retaining|builder) load)
+	$(call cs_leg_sabotage2,region-cycle,wirecheck.go,table-cs-wire-cycle,regiongraph.go,table-cs-region-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: (region|retaining|builder) load)
 
 # THE C# PER-PATH ALLOCATION GATE (docs/PORTING.md I1, docs/SPEC-TABLES.md
 # "What allocates, and what never does"). C# joins Go's testing.AllocsPerRun

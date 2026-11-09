@@ -223,12 +223,11 @@ roundtrip = fn name, load, save ->
       # last member of the report and it carries a number on exactly two paths,
       # `layout_newer` and `layout_unsupported`. Asserting it here is what keeps
       # it from riding on every clean read.
-      Leg.eq("#{name}: a clean read moves no counter", Map.delete(report, :malformed), %{
+      Leg.eq("#{name}: a clean read moves no counter", report, %{
         unknown: 0,
-        kind_mismatch: 0,
-        clamped: 0,
         widened: 0,
-        duplicate: 0,
+        retained: 0,
+        retain_lost: 0,
         layout_hash: 0
       })
 
@@ -417,8 +416,7 @@ plan_path = fn ->
   Leg.eq("newer over older: the second record too", {n1.narrow, n1.renamed_to}, {2, 3})
   Leg.eq("newer over older: one `unknown`, counted ONCE per writer", newer.unknown, 1)
   Leg.eq("newer over older: one `widened` per record", newer.widened, 2)
-  Leg.eq("newer over older: nothing else moved", {newer.kind_mismatch, newer.clamped}, {0, 0})
-  Leg.eq("newer over older: `malformed` does not fire", newer.malformed, false)
+  Leg.eq("newer over older: nothing else moved", {newer.retained, newer.retain_lost}, {0, 0})
 
   # AN FX1 READER OVER AN FX2 FILE. Coming back DOWN the ladder is a kind that
   # MOVED and is reported rather than reinterpreted (§4).
@@ -428,9 +426,7 @@ plan_path = fn ->
   Leg.eq("older over newer: the rename resolves both ways", o0.renamed, 808)
   Leg.eq("older over newer: a field the writer dropped defaults", o0.gone, 9)
   Leg.eq("older over newer: nested", {o0.nested.a, o0.nested.b}, {33, 44})
-  Leg.eq("older over newer: one `kind_mismatch`", older.kind_mismatch, 1)
   Leg.eq("older over newer: `added` and `extra` are two `unknown`", older.unknown, 2)
-  Leg.eq("older over newer: nothing was damaged", older.malformed, false)
 
   # AN OPTIONAL AGAINST A VALUE. §2.3 makes `?T` and a plain `T` wire-identical in
   # form 1; ON THIS FORM THEY ARE ONE BYTE APART, and the layout's kind 35 is what
@@ -439,12 +435,12 @@ plan_path = fn ->
   {:ok, [v0, _v1], value_side} = Tblp1.P1Fixed.chain_fixed_load(read.("p3.bin"))
   Leg.eq("value reader over an optional writer: name still lands", v0.name, "present")
   Leg.eq("value reader over an optional writer: the payload defaults", v0.link.value, 0)
-  Leg.eq("value reader over an optional writer: one `kind_mismatch`", value_side.kind_mismatch, 1)
+  Leg.eq("value reader over an optional writer: one `unknown`", value_side.unknown, 1)
 
   {:ok, [w0], opt_side} = Tblp3.P3Fixed.chain_fixed_load(read.("p1.bin"))
   Leg.eq("optional reader over a value writer: name still lands", w0.name, "chain-one")
   Leg.eq("optional reader over a value writer: absent", w0.link_present, false)
-  Leg.eq("optional reader over a value writer: one `kind_mismatch`", opt_side.kind_mismatch, 1)
+  Leg.eq("optional reader over a value writer: one `unknown`", opt_side.unknown, 1)
 
   # THE PLAN IS COMPILED ONCE PER PEER AND CACHED BY HASH, and the second read of
   # the same peer's file has to answer the same thing out of the cache.
@@ -542,7 +538,7 @@ plan_cache = fn ->
   # written nowhere, so the cost is an attacker's and never this node's memory.
   {:ok, [past | _], past_report} = Tblfx2.FX2Fixed.fx_root_fixed_load(records.(mint.(9_999)))
   Leg.eq("a read past the bound still lands its values", past.keep, 7)
-  Leg.eq("and moves no `malformed`", past_report.malformed, false)
+  Leg.eq("and moves no `unknown`", past_report.unknown, 0)
 
   Tblfx2.FixedRuntime.forget(Tblfx2.FX2Fixed)
 
@@ -652,47 +648,33 @@ compiled_is_identity = fn name, layout, dst, plan, prefill, decode, values ->
   {:ok, made, _n, _} =
     Tblp1.FixedRuntime.compile(mine, mine, dst, 4096, Tblp1.FixedRuntime.report())
 
-  run_both = fn body ->
-    {img_a, ra} = Tblp1.FixedRuntime.run(plan, body, prefill, Tblp1.FixedRuntime.report())
-    {img_b, rb} = Tblp1.FixedRuntime.run(made, body, prefill, Tblp1.FixedRuntime.report())
+  run_one = fn p, body ->
+    try do
+      {img, r} = Tblp1.FixedRuntime.run(p, body, prefill, Tblp1.FixedRuntime.report())
+      {v, c, m} = decode.(img, 0)
+      r = Tblp1.FixedRuntime.damage_check(Tblp1.FixedRuntime.range_check(r, c), m)
+      {:ok, v, r}
+    catch
+      :throw, {:refuse, why} -> {:refuse, why}
+    end
+  end
 
-    {{img_a, ra.clamped + elem(decode.(img_a, 0), 1)},
-     {img_b, rb.clamped + elem(decode.(img_b, 0), 1)}}
+  run_both = fn body ->
+    {run_one.(plan, body), run_one.(made, body)}
   end
 
   both = Enum.map(values, run_both)
 
   Leg.check(
     "#{name}: a plan compiled from MY OWN layout lands what the identity plan lands",
-    Enum.all?(both, fn {{a, _}, {b, _}} -> decode.(a, 0) == decode.(b, 0) end)
+    Enum.all?(both, fn {{:ok, a, ra}, {:ok, b, rb}} -> a == b and ra == rb end)
   )
 
-  # THE COUNTER MOVES THE SAME ON BOTH PLANS, AND THE PROPERTY IS `==`. Both
-  # count only what a read can have written — a counted array's LIVE elements
-  # and never its slack, the reference's own rule (docs/SPEC-TABLES.md §3.4:
-  # slack is unspecified on read and moves no counter). The projection walks
-  # the live run; the interpreter's counter-moving ops ride inside `:live` and
-  # `:present` wrappers so slack and an absent optional's payload never fire
-  # one. A `<=` here would admit a compiled plan counting slack, which is what
-  # that wrapping exists to make impossible.
-  #
-  # A HOSTILE BODY RIDES BESIDE THE REAL ONES: every byte 0x7F, so the
-  # declared bounds are crossed at once. A corpus whose values are all in range
-  # would let both sides count nothing and call it agreement. It is 0x7F and
-  # not 0xFF because a float is finite (docs/SPEC-TABLES.md §3.3): an all-ones
-  # exponent is a NaN, which refuses the read as non_finite_float before any
-  # counter moves, and 0x7F7F... is the largest finite exponent short of it.
   hostile = :binary.copy(<<0x7F>>, byte_size(prefill))
-  counted = both ++ [run_both.(hostile)]
 
   Leg.check(
-    "#{name}: a compiled plan counts the `clamped` the identity plan counts, slack and all",
-    Enum.all?(counted, fn {{_, a}, {_, b}} -> a == b end)
-  )
-
-  Leg.check(
-    "#{name}: and a body of nothing but 0xFF actually crossed a bound",
-    match?({{_, n}, {_, _}} when n > 0, List.last(counted))
+    "#{name}: and a body of nothing but 0x7F refuses on both plans",
+    match?({{:refuse, _}, {:refuse, _}}, run_both.(hostile))
   )
 end
 
@@ -898,7 +880,7 @@ ordinal_slide = fn ->
 
   Leg.eq("the arm's payload", elem(s1.effect, 1).power, 17)
   Leg.eq("the tail past the union is undisturbed", {s0.tail, s1.tail}, {99, 100})
-  Leg.eq("a slide is not a `kind_mismatch`", slide_report.kind_mismatch, 0)
+  Leg.eq("a slide moves no `widened`", slide_report.widened, 0)
 
   Leg.eq(
     "`shield` is a field this writer does not carry, so nothing counts",
@@ -906,7 +888,7 @@ ordinal_slide = fn ->
     0
   )
 
-  Leg.eq("a slide does not damage", slide_report.malformed, false)
+  Leg.eq("a slide moves no `retained`", slide_report.retained, 0)
 
   # and BACK: FE1 reading FE2. Electrum and shield are variants this reader has no
   # name for, so the ordinal resolves to NONE and the arm is simply never a source.
@@ -923,7 +905,7 @@ ordinal_slide = fn ->
   Leg.eq("a variant this reader cannot name resolves to None", b0.grade, :none)
   Leg.eq("an arm this reader cannot name leaves the tag at None", b0.effect, nil)
   Leg.eq("and the tail past it still lands", b0.tail, 8)
-  Leg.eq("nothing was damaged coming back", back_report.malformed, false)
+  Leg.eq("nothing was retained coming back", back_report.retained, 0)
 end
 
 Leg.retired(
@@ -990,8 +972,8 @@ Leg.eq("arm 2, identity: the tail past the union", i_arm2.tail, 3)
 # an arm ordinal of 1 survives being confused with a utf8 flavour of 1.
 Leg.eq("arm 1, identity", {i_arm1.pick, i_arm1.tail}, {{:plain, %Tblfu1.Plain{n: 7}}, 4})
 
-Leg.eq("text under an arm moves no counter, identity", fu_ident.clamped, 0)
-Leg.eq("nothing was damaged on the identity read", fu_ident.malformed, false)
+Leg.eq("text under an arm moves no counter, identity", fu_ident.unknown, 0)
+Leg.eq("nothing was retained on the identity read", fu_ident.retained, 0)
 
 # THE TWO RUNGS' IDENTITY SIDE: an int16 that stays an int16, and a negative
 # zero whose sign bit is untouched.
@@ -1029,8 +1011,8 @@ union_arm_text_compiled = fn fu ->
   Leg.eq("arm 1, compiled", {c_arm1.pick, c_arm1.tail}, {{:plain, %Tblfu1.Plain{n: 7}}, 4})
   Leg.eq("arm 1, compiled: `extra` takes its declared default", c_arm1.extra, 11)
 
-  Leg.eq("text under an arm moves no counter, compiled", fu_comp.clamped, 0)
-  Leg.eq("nothing was damaged either way", fu_comp.malformed, false)
+  Leg.eq("text under an arm moves no counter, compiled", fu_comp.unknown, 0)
+  Leg.eq("nothing was retained either way", fu_comp.retained, 0)
 
   # THE SIGNED WIDENING RUNG (SPEC §4). FU1 declares `mark` an `int16` and FU2 an
   # `int32`, so FU2's COMPILED plan reads the writer's two bytes SIGN-EXTENDED and
@@ -1078,11 +1060,21 @@ end
 
 # A UNION TAG BEYOND THE DECLARED ARM COUNT lands None and counts one `clamped`
 # on the identity path: the tag is an ordinal like any other and 0 is None.
-{:ok, [t0], tag_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(3, 9)))
-Leg.eq("a tag past the last arm lands None", t0.effect, nil)
-Leg.eq("and COUNTS one clamped", tag_report.clamped, 1)
-Leg.eq("the tail past the union still lands", t0.tail, 99)
-Leg.eq("a held tag is not damage", tag_report.malformed, false)
+tag_out = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(3, 9)))
+
+Leg.eq(
+  "a tag past the last arm refuses on the strict read",
+  tag_out,
+  {:error, :out_of_range, Tblfe1.FixedRuntime.report()}
+)
+
+{t0, t0_c, t0_m} = Tblfe1.FE1Fixed.fe_root_fixed_decode(fe_body.(3, 9), 0)
+
+Leg.eq(
+  "projection: a tag past the last arm decodes None and increments the range count",
+  {t0.effect, t0.tail, t0_c, t0_m},
+  {nil, 99, 1, false}
+)
 
 # RETIRED BY §5.6: the COMPILED half of this pair reads FE1's file under FE2,
 # whose lineage does not hold FE1's hash, so the file is `layout_newer` before a
@@ -1092,7 +1084,7 @@ Leg.eq("a held tag is not damage", tag_report.malformed, false)
 compiled_tag_past_the_last_arm = fn ->
   {:ok, [t1], compiled_tag} = Tblfe2.FE2Fixed.fe_root_fixed_load(fe_file.(fe_body.(3, 9)))
   Leg.eq("compiled: a tag matching no arm of the writer's lands None", t1.effect, nil)
-  Leg.eq("compiled: and fires no entry, so nothing is counted", compiled_tag.clamped, 0)
+  Leg.eq("compiled: and fires no entry, so nothing is counted", compiled_tag.unknown, 0)
 end
 
 Leg.retired(
@@ -1105,10 +1097,21 @@ _ = compiled_tag_past_the_last_arm
 # AN ENUM ORDINAL PAST THE LAST VARIANT lands 0 (None) and counts one
 # `clamped`, on BOTH paths — the identity plan holds it against the variant
 # count it was built from, a compiled plan against the writer's own table.
-{:ok, [e0], enum_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(99, 2)))
-Leg.eq("identity: an ordinal past the last variant lands None", e0.grade, :none)
-Leg.eq("identity: and COUNTS one clamped", enum_report.clamped, 1)
-Leg.eq("identity: the arm behind a good tag is undisturbed", elem(e0.effect, 1).charge, 41)
+enum_out = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(99, 2)))
+
+Leg.eq(
+  "identity: an ordinal past the last variant refuses on the strict read",
+  enum_out,
+  {:error, :out_of_range, Tblfe1.FixedRuntime.report()}
+)
+
+{e0, e0_c, e0_m} = Tblfe1.FE1Fixed.fe_root_fixed_decode(fe_body.(99, 2), 0)
+
+Leg.eq(
+  "projection: an ordinal past the last variant decodes None and increments the range count",
+  {e0.grade, elem(e0.effect, 1).charge, e0_c, e0_m},
+  {:none, 41, 1, false}
+)
 
 # AND THE SAME SPLIT FOR THE ENUM (§5.6): the identity half above holds the
 # ordinal against the variant count the plan was built from and RUNS; the
@@ -1118,7 +1121,7 @@ Leg.eq("identity: the arm behind a good tag is undisturbed", elem(e0.effect, 1).
 compiled_enum_past_the_last_variant = fn ->
   {:ok, [e1], compiled_enum} = Tblfe2.FE2Fixed.fe_root_fixed_load(fe_file.(fe_body.(99, 2)))
   Leg.eq("compiled: an ordinal past the last variant lands None", e1.grade, :none)
-  Leg.eq("compiled: and COUNTS one clamped", compiled_enum.clamped, 1)
+  Leg.eq("compiled: and COUNTS one unknown", compiled_enum.unknown, 1)
 end
 
 Leg.retired(
@@ -1131,7 +1134,7 @@ _ = compiled_enum_past_the_last_variant
 # ORDINAL 0 IS None AND IS NOT A CLAMP, which is what keeps the counter honest.
 {:ok, [z0], none_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(0, 0)))
 Leg.eq("None is a value and not a clamp", {z0.grade, z0.effect}, {:none, nil})
-Leg.eq("so nothing is counted", none_report.clamped, 0)
+Leg.eq("so nothing is counted", none_report.unknown, 0)
 
 # THE 64-BIT TEMPORARY (schema#876 C6): a width-8 ordinal is read WHOLE through
 # a 64-bit temporary, never truncated to a narrower one. A 32-bit temp reads the
@@ -1161,8 +1164,8 @@ whole_prefill = <<0::little-unsigned-64>>
 Leg.eq("a width-8 ordinal of 2^32 is past the writer's one variant", whole_landed, 0)
 
 Leg.check(
-  "and COUNT clamped — a 32-bit temp would read 0 and count nothing",
-  whole_report.clamped >= 1
+  "and COUNT unknown — a 32-bit temp would read 0 and count nothing",
+  whole_report.unknown >= 1
 )
 
 # A PRESENT BYTE AND A BOOL BYTE ARE BOTH `!= 0` AND NEVER `== 1`, which is
@@ -1204,7 +1207,7 @@ hostile_opt =
   Enum.reduce(0..3//1, absent_bytes, fn i, data -> plant.(data, value_at + i, 0xFF) end)
 
 {:ok, [_], opt_ident} = Tblp3.P3Fixed.chain_fixed_load(hostile_opt)
-Leg.eq("identity: absent optional payload 0xFF moves no counter", opt_ident.clamped, 0)
+Leg.eq("identity: absent optional payload 0xFF moves no counter", opt_ident.unknown, 0)
 
 opt_body =
   bodies_of.(hostile_opt, Tblp3.P3Fixed.chain_fixed_body_bytes())
@@ -1229,7 +1232,7 @@ opt_body =
     Tblp3.FixedRuntime.report()
   )
 
-Leg.eq("compiled: absent optional payload 0xFF moves no counter", opt_comp.clamped, 0)
+Leg.eq("compiled: absent optional payload 0xFF moves no counter", opt_comp.unknown, 0)
 
 # Sibling: counted [..4]int32 live=1, slack 0xFF. Pack.ships[0].hardpoints is
 # that shape (| min = 0, max = 8). A live 1 is in range; slack -1 is not.
@@ -1252,7 +1255,7 @@ hostile_hp =
   Enum.reduce(0..11//1, hp1, fn i, data -> plant.(data, hp_at + 4 + i, 0xFF) end)
 
 {:ok, [_], hp_ident} = Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp)
-Leg.eq("identity: counted-array slack 0xFF moves no counter", hp_ident.clamped, 0)
+Leg.eq("identity: counted-array slack 0xFF moves no counter", hp_ident.unknown, 0)
 
 hp_body = bodies_of.(hostile_hp, Tabledemo.PackFixed.pack_config_fixed_body_bytes()) |> hd()
 
@@ -1276,7 +1279,7 @@ hp_body = bodies_of.(hostile_hp, Tabledemo.PackFixed.pack_config_fixed_body_byte
     Tabledemo.FixedRuntime.report()
   )
 
-Leg.eq("compiled: counted-array slack 0xFF moves no counter", hp_comp.clamped, 0)
+Leg.eq("compiled: counted-array slack 0xFF moves no counter", hp_comp.unknown, 0)
 
 track = fn v, on ->
   ships =
@@ -1488,7 +1491,7 @@ refuse = fn name, bad ->
   {:error, why, report} = Tblfx1.FX1Fixed.fx_root_fixed_load(file.(bad_hash))
   Leg.eq("#{name}, under an UNKNOWN hash: `layout_newer`", why, :layout_newer)
   Leg.eq("#{name}: and `layout_newer` reports THE FILE's hash", report.layout_hash, bad_hash)
-  Leg.eq("#{name}: a refusal by name never sets `malformed` too", report.malformed, false)
+  Leg.eq("#{name}: a refusal by name moves no counter", report.unknown, 0)
 end
 
 <<_count::little-unsigned-32, entries::binary>> = layout
@@ -1688,7 +1691,7 @@ Leg.eq(
   )
 
 Leg.eq("a hash naming no layout is `no_layout`", why, :no_layout)
-Leg.eq("`no_layout` moves no counter", no_layout_report.malformed, false)
+Leg.eq("`no_layout` moves no counter", no_layout_report.unknown, 0)
 
 # A COUNT AND A LENGTH ARE CLAMPED TO THIS READER'S OWN BOUND, counting one
 # `clamped` each — the `count` and `text` ops, on the identity path as well as
@@ -1712,7 +1715,7 @@ hostile =
 # NULs, and a `string(N)`'s bytes have no zero among them (§3) — so the read
 # refuses by name (`:text_ill_formed`, §4.5 fix 11).
 Leg.eq("the clamped span is then held to the CONTENT rule", clamp_why, :text_ill_formed)
-Leg.eq("a refusal by name does not set `malformed`", clamp_report.malformed, false)
+Leg.eq("a refusal by name moves no counter", clamp_report.unknown, 0)
 
 # A CLAMP ON ITS OWN IS NOT DAMAGE. The same hostile length over a field whose
 # whole declared bound IS well-formed text: the clamp counts and nothing else
@@ -1730,10 +1733,13 @@ full =
      head <> <<9999::little-signed-32, rest::binary>>
    end).()
 
-{:ok, [full_back], full_report} = Tblp1.P1Fixed.chain_fixed_load(full)
-Leg.eq("a clamp alone lands the whole declared bound", full_back.name, "sixteen-bytes!!!")
-Leg.check("and is COUNTED", full_report.clamped >= 1)
-Leg.eq("a clamp is not `malformed`", full_report.malformed, false)
+full_out = Tblp1.P1Fixed.chain_fixed_load(full)
+
+Leg.eq(
+  "a length past the declared bound refuses on the strict read",
+  full_out,
+  {:error, :out_of_range, Tblp1.FixedRuntime.report()}
+)
 
 # ---------------------------------------------------------------------------
 # THE ONE CONTENT RULE THE WIRE HAS (§3, §4), on this form's terms
@@ -1763,14 +1769,14 @@ for {bytes, what} <- [
     ] do
   {:error, why, r} = Tblfx1.FX1Fixed.fx_root_fixed_load(poison.(bytes))
   Leg.eq(what, why, :text_ill_formed)
-  Leg.eq("#{what}: a refusal by name does not set `malformed`", r.malformed, false)
+  Leg.eq("#{what}: a refusal by name moves no counter", r.unknown, 0)
 end
 
 # AND WELL-FORMED TEXT IS UNTOUCHED, which is what makes the five above
 # discriminating: multi-byte UTF-8 inside the bound reads back whole.
 {:ok, [ete], ete_report} = Tblfx1.FX1Fixed.fx_root_fixed_load(poison.("été"))
 Leg.eq("well-formed multi-byte UTF-8 rides whole", ete.label, "été")
-Leg.eq("and moves no counter", {ete_report.malformed, ete_report.clamped}, {false, 0})
+Leg.eq("and moves no counter", {ete_report.unknown, ete_report.widened}, {0, 0})
 
 # THE NEGATIVE CONTROL: the read loop with the content rule taken out of the
 # `text` op, which is what this leg did before. The same record, the same plan,
@@ -1801,7 +1807,7 @@ Leg.eq(
   <<0xFF>>
 )
 
-Leg.eq("NEGATIVE CONTROL: and says nothing about it", loose_report.malformed, false)
+Leg.eq("NEGATIVE CONTROL: and says nothing about it", loose_report.unknown, 0)
 
 # THE OVERLOADED LANE, PLANTED BY HAND. The bug this leg is pinned against is a
 # plan entry that spends ONE lane on both the arm ordinal and the text flavour.
@@ -1855,7 +1861,7 @@ Leg.check(
 
     elem(elem(Tblfu1.FU1Fixed.fu_root_fixed_decode(image, 0), 0).pick, 1).label
   catch
-    :throw, {:refuse, :text_ill_formed} -> :refused
+    :throw, {:refuse, why} when why in [:count_over_bound, :text_ill_formed] -> :refused
   end != "hello"
 )
 
@@ -1882,7 +1888,7 @@ unchecked =
 
 Leg.check(
   "an ordinal riding as a plain copy is held by the PROJECTION, not the plan",
-  loose.grade == :none and loose_report.clamped == 0 and loose_count == 1
+  loose.grade == :none and loose_report.unknown == 0 and loose_count == 1
 )
 
 # ---------------------------------------------------------------------------
@@ -1927,7 +1933,7 @@ sweep_clean = read.("fx1.bin")
 
 Leg.check(
   "sweep CONTROL 1: the untouched fx1.bin reads clean and lands its values",
-  sweep_report.malformed == false and length(sweep_values) == 2 and
+  sweep_report.unknown == 0 and length(sweep_values) == 2 and
     hd(sweep_values).keep == 4242
 )
 
@@ -1937,11 +1943,17 @@ Leg.check(
 # the damaged projection of a positional record, which is the second answer
 # here. Anything outside the table is the fourth.
 classify = fn
-  {:error, :malformed, %{malformed: true}} -> :malformed
-  {:error, name, %{malformed: false}} when name != :malformed -> {:refusal, name}
-  {:ok, _values, %{malformed: false}} -> :landed
-  {:ok, _values, %{malformed: true}} -> :malformed
-  other -> {:fourth, other}
+  {:error, :malformed, %{unknown: 0, widened: 0}} ->
+    :malformed
+
+  {:error, name, %{unknown: 0, widened: 0}} when is_atom(name) and name != :malformed ->
+    {:refusal, name}
+
+  {:ok, _values, %{}} ->
+    :landed
+
+  other ->
+    {:fourth, other}
 end
 
 # ONE BIT, FLIPPED. The XOR is `:binary.at/2` and a shift so the byte is read
@@ -2108,8 +2120,8 @@ wide_buf = fn image -> binary_part(image, 4, 8) end
 
 Leg.eq(
   "C5: hostile slack is not read — the rule is over the USED units",
-  {wide_report.malformed, wide_report.clamped},
-  {false, 0}
+  {wide_report.unknown, wide_report.widened},
+  {0, 0}
 )
 
 Leg.eq("C5: and the used length lands", wide_len.(wide_image), <<2::little-signed-32>>)
@@ -2120,22 +2132,22 @@ Leg.eq(
   <<0x41, 0, 0x42, 0, 0xFF, 0xFF, 0xFF, 0xFF>>
 )
 
-{cap_image, cap_report} = wide_run.(6, <<0x41, 0, 0x42, 0, 0x43, 0, 0x44, 0>>)
-
 Leg.eq(
-  "C5: the cap is span / unit — 6 over an 8-byte span clamps to 4",
-  {wide_len.(cap_image), cap_report.clamped},
-  {<<4::little-signed-32>>, 1}
+  "C5: the cap is span / unit — 6 over an 8-byte span refuses by name (:count_over_bound)",
+  try do
+    wide_run.(6, <<0x41, 0, 0x42, 0, 0x43, 0, 0x44, 0>>)
+  catch
+    :throw, v -> v
+  end,
+  {:refuse, :count_over_bound}
 )
-
-Leg.eq("C5: a clamp is not damage", cap_report.malformed, false)
 
 {_, pair_report} = wide_run.(2, <<0x34, 0xD8, 0x1E, 0xDD, 0xFF, 0xFF, 0xFF, 0xFF>>)
 
 Leg.eq(
   "C5: an astral pair under the op rides whole, slack and all",
-  pair_report.malformed,
-  false
+  pair_report.unknown,
+  0
 )
 
 Leg.eq(

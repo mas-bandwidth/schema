@@ -95,14 +95,14 @@ void fixed_fx1_slack( void )
                  "C NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
 
     memset( &r, 0, sizeof( r ) );
-    n = tblfx1_fx_root_fixed_load_tolerant( &back, 1, file, need, plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "C slack: the record reads" );
     fixed_check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
                  "C slack: the used length reads, and the buffer terminates at it" );
     fixed_check( back.marks_count == 1 && back.marks[0] == 7, "C slack: the live count reads" );
     fixed_check( back.marks[1] == 0 && back.marks[2] == 0 && back.marks[3] == 0,
                  "C slack: an unused slot lands as the wire's zero" );
-    fixed_check( r.clamped == 0 && !r.malformed && !r.refused, "C slack: a clean read moves no counter" );
+    fixed_check( !r.refused && r.unknown == 0 && r.widened == 0, "C slack: a clean read moves no counter" );
 }
 
 int64_t fixed_fx1_bytes( void ) { return tblfx1_fx_root_fixed_measure( 1 ); }
@@ -122,21 +122,21 @@ void fixed_fx1_read_own( const uint8_t * data, int64_t bytes )
     tblfx1_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = tblfx1_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "same schema: one record" );
     fixed_check( back.keep == 4242u && back.narrow == 40000u && back.renamed == 321 && back.gone == 654,
                  "same schema: the scalars" );
     fixed_check( back.nested.a == 111 && back.nested.b == 222, "same schema: the nesting" );
-    fixed_check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+    fixed_check( r.unknown == 0 && r.widened == 0 && !r.refused &&
+                 r.reason == SCHEMA_TBLFX1_TABLE_NO_REFUSAL && r.refuse_reason == SCHEMA_TBLFX1_TABLE_REFUSE_OK,
                  "same schema: a silent report" );
 }
 
 /* ONE FORM-HEADER PROBE: the destination is POISONED before the load and
    compared unchanged after it, so a refusal that wrote one byte is caught, and
-   the report has to name the reason and claim nothing else. `want_refused` is
-   1 for a named form-byte refusal and 0 for the residue, `malformed`. */
+   the report has to name the reason and claim nothing else. */
 static void form_case( const char * name, const uint8_t * file, int64_t bytes,
-                       int want_refused, int want_reason, int want_malformed )
+                       int want_reason, int want_refuse_reason )
 {
     tblfx1_fx_root_t before, after;
     tblfx1_table_report_t r;
@@ -147,18 +147,16 @@ static void form_case( const char * name, const uint8_t * file, int64_t bytes,
     memset( &after, 0xAB, sizeof( after ) );
     memset( &r, 0, sizeof( r ) );
 
-    got = tblfx1_fx_root_fixed_load_tolerant( &after, 1, file, bytes, g_plan, PlanCapacity, NULL, &r );
+    got = tblfx1_fx_root_fixed_load( &after, 1, file, bytes, g_plan, PlanCapacity, NULL, &r );
 
     snprintf( why, sizeof( why ), "C FORM HEADER: %s returns a refusal, never a record", name );
     fixed_check( got < 0, why );
 
     snprintf( why, sizeof( why ), "C FORM HEADER: %s names the reason and nothing else", name );
-    fixed_check( r.refused == want_refused && r.malformed == want_malformed &&
-                 ( want_refused ? r.reason == want_reason : 1 ), why );
+    fixed_check( r.refused == 1 && r.reason == want_reason && r.refuse_reason == want_refuse_reason, why );
 
     snprintf( why, sizeof( why ), "C FORM HEADER: %s claims no success", name );
-    fixed_check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 &&
-                 r.duplicate == 0 && r.layout_hash == 0, why );
+    fixed_check( r.unknown == 0 && r.widened == 0 && r.layout_hash == 0, why );
 
     snprintf( why, sizeof( why ), "C FORM HEADER: %s writes no destination byte", name );
     fixed_check( memcmp( &before, &after, sizeof( before ) ) == 0, why );
@@ -167,7 +165,7 @@ static void form_case( const char * name, const uint8_t * file, int64_t bytes,
 /* THE FIVE FORM-HEADER PROBES (docs/FIXED-FORM-ALGORITHM.md §5.3 step 1 and 2,
    docs/SPEC-TABLES.md §3.4). THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH:
    a committed form-1 file is TEN bytes and a form-2 batch THREE, and a reader
-   that measured first would answer malformed for every real file of the two
+   that measured first would answer wire_damaged for every real file of the two
    forms it is supposed to name. Cases 2 and 3 take exactly those lengths and
    never a full-length buffer. */
 void fixed_fx1_form_headers( const uint8_t * data, int64_t bytes )
@@ -178,57 +176,50 @@ void fixed_fx1_form_headers( const uint8_t * data, int64_t bytes )
     static uint8_t form0[8192];
     static uint8_t reserved[8192];
 
-    /* ZERO BYTES IS THE RESIDUE: malformed, with no byte to earn a name. */
-    form_case( "zero bytes", none, 0, 0, SCHEMA_TBLFX1_TABLE_NO_REFUSAL, 1 );
+    /* ZERO BYTES IS THE RESIDUE: wire_damaged, with no byte to earn a name. */
+    form_case( "zero bytes", none, 0, SCHEMA_TBLFX1_TABLE_NO_REFUSAL, SCHEMA_TBLFX1_TABLE_REFUSE_WIRE_DAMAGED );
 
     /* THE TEN- AND THREE-BYTE FILES of the two forms this reader NAMES: the
        form byte earns its name before the twenty-byte minimum is measured. */
-    form_case( "a ten-byte form-1 file", form1, 10, 1, SCHEMA_TBLFX1_TABLE_PREVIOUS_FORM, 0 );
-    form_case( "a three-byte form-2 batch", form2, 3, 1, SCHEMA_TBLFX1_TABLE_MESSAGE_FORM_AS_FILE, 0 );
+    form_case( "a ten-byte form-1 file", form1, 10, SCHEMA_TBLFX1_TABLE_PREVIOUS_FORM, SCHEMA_TBLFX1_TABLE_REFUSE_OK );
+    form_case( "a three-byte form-2 batch", form2, 3, SCHEMA_TBLFX1_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_TBLFX1_TABLE_REFUSE_OK );
 
-    /* FORM BYTE 0 IS NOT A FORM AND IS STILL NOT MALFORMED: the registry is
+    /* FORM BYTE 0 IS NOT A FORM AND IS STILL NOT WIRE DAMAGE: the registry is
        ORDERED, so the otherwise valid fixture with its form byte zeroed is
        named by where its byte sits — newer_form. */
     memcpy( form0, data, (size_t) bytes );
     form0[0] = 0;
-    form_case( "form byte 0 on a valid tail", form0, bytes, 1, SCHEMA_TBLFX1_TABLE_NEWER_FORM, 0 );
+    form_case( "form byte 0 on a valid tail", form0, bytes, SCHEMA_TBLFX1_TABLE_NEWER_FORM, SCHEMA_TBLFX1_TABLE_REFUSE_OK );
 
     /* THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3 step 2):
-       the valid form-3 fixture with reserved byte 3 set nonzero is malformed. */
+       the valid form-3 fixture with reserved byte 3 set nonzero is wire_damaged. */
     memcpy( reserved, data, (size_t) bytes );
     reserved[3] = 1;
-    form_case( "reserved byte 3 nonzero", reserved, bytes, 0, SCHEMA_TBLFX1_TABLE_NO_REFUSAL, 1 );
+    form_case( "reserved byte 3 nonzero", reserved, bytes, SCHEMA_TBLFX1_TABLE_NO_REFUSAL, SCHEMA_TBLFX1_TABLE_REFUSE_WIRE_DAMAGED );
 }
 
-/* CASE 3: A NEWER WRITER — a field this reader cannot name, stepped over by
-   the size its layout entry states; a whole nested TYPE it cannot name, stepped
-   over by its layout size; a field the writer dropped, which keeps this
-   reader's declared default; and a kind that MOVED, which is reported and
-   never reinterpreted. */
+/* CASE 3: A NEWER WRITER — under §5.6 a file whose hash this build's lineage
+   does not hold refuses as layout_newer before any record is touched. */
 void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
 {
     tblfx1_fx_root_t back;
     tblfx1_table_report_t r;
     int64_t n;
+    tblfx1_fx_root_reset( &back );
     memset( &r, 0, sizeof( r ) );
-    n = tblfx1_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
-    fixed_check( n == 1, "newer writer: one record" );
-    fixed_check( back.keep == 5150u, "newer writer: an unmoved field lands past the unknowns" );
-    fixed_check( back.renamed == 808, "newer writer: `was =` reads the other way too" );
-    fixed_check( back.gone == 9, "newer writer: a field the writer dropped takes its declared default" );
-    fixed_check( back.nested.a == 33 && back.nested.b == 44, "newer writer: the nesting lands past the unknown type" );
-    fixed_check( r.unknown == 2, "newer writer: two names this reader does not have" );
-    fixed_check( r.kind_mismatch == 1, "newer writer: uint32 into uint16 is a kind that moved, not a widening" );
-    fixed_check( back.narrow == 3, "newer writer: a narrowing leaves the declared default" );
-    fixed_check( !r.malformed && !r.refused, "newer writer: no damage and no refusal" );
+    n = tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    fixed_check( n < 0 && r.refused && r.reason == SCHEMA_TBLFX1_TABLE_LAYOUT_NEWER,
+                 "newer writer: layout_newer refuses the read" );
 }
 
-/* THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4). A fixed
-   record is a positional image and the one read loop moves bytes: it asks
+/* THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4, §6.5). A
+   fixed record is a positional image and the one read loop moves bytes: it asks
    nothing about what they mean. A RANGED SCALAR's declared min and max are held
    by STRAIGHT-LINE CODE in the generated decode, after the copy, and never by
    plan entries — an entry per bounded field is a test on every read of every
-   record, which is the cost the identity plan exists to avoid.
+   record, which is the cost the identity plan exists to avoid. Under the strict
+   read, a value past its bound refuses the whole read as out_of_range and
+   resets the caller's storage.
 
    THE POISON IS WRITTEN THROUGH THE WRITER and not poked into the bytes: the
    write side's own bounds are debug-only by rule and a range is not one of
@@ -248,17 +239,22 @@ int64_t fixed_fx1_write_out_of_range( uint8_t * buffer, int64_t capacity )
 
 void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
 {
-    tblfx1_fx_root_t back, loose;
+    tblfx1_fx_root_t defaults, back, loose;
     tblfx1_table_report_t r;
     const uint8_t * body;
 
+    tblfx1_fx_root_reset( &defaults );
+    tblfx1_fx_root_reset( &back );
+    back.renamed = 77; /* poison: the refusal must put every field back */
+    back.nested.a = 77;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx1_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
-                 "C bounds: the record reads" );
-    fixed_check( back.renamed == 1000, "C RANGE: a value past max lands at max" );
-    fixed_check( back.gone == 0, "C RANGE: a value under min lands at min" );
-    fixed_check( r.clamped == 2, "C RANGE: two clamps, counted" );
-    fixed_check( back.nested.a == 111 && back.nested.b == 222, "C RANGE: an in-range neighbour is untouched" );
+    fixed_check( tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == -1,
+                 "C RANGE: a value past max and one under min refuse the whole read" );
+    fixed_check( r.refused && r.refuse_reason == SCHEMA_TBLFX1_TABLE_REFUSE_OUT_OF_RANGE,
+                 "C RANGE: the refusal is named out_of_range" );
+    fixed_check( back.renamed == defaults.renamed && back.gone == defaults.gone &&
+                 back.nested.a == defaults.nested.a && back.nested.b == defaults.nested.b,
+                 "C RANGE: nothing lands — not a clamped value, not the in-range neighbour" );
 
     /* THE NEGATIVE CONTROL: the read loop ALONE, with no straight-line pass
        after it. The same record, the same plan, and the out-of-range value
@@ -271,13 +267,13 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
                      body, (uint8_t *) &loose, &r, tblfx1_fx_root_fixed_guards );
     fixed_check( loose.renamed == 5000 && loose.gone == -7,
                  "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
-    fixed_check( r.clamped == 0, "C NEGATIVE CONTROL: and counts nothing" );
+    fixed_check( !r.refused, "C NEGATIVE CONTROL: and refuses nothing" );
 
     /* THE SAME CONTROL ON A COMPILED PLAN. A plan compiled from this build's
        OWN layout is the compiled path with nothing else moving, and it behaves
        the same way in kind: the loop alone leaves the out-of-range value
-       standing, because NO PLAN OP CLAMPS. The pass after the loop is the
-       clamp, and it is the same pass for either plan. */
+       standing, because NO PLAN OP HOLDS A RANGE. The pass after the loop is
+       the bound, and it is the same pass for either plan. */
     {
         tblfx1_table_fixed_layout_view_t parsed;
         static tblfx1_table_fixed_entry_t compiled[1024];
@@ -287,12 +283,12 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
         int32_t guarded = 0;
         int32_t made;
         int32_t i, past_the_set = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
 
         fixed_check( tblfx1_table_fixed_parse_layout( tblfx1_fx_root_fixed_layout, (int64_t) sizeof( tblfx1_fx_root_fixed_layout ), &parsed, &why ) != 0,
                      "C bounds, compiled-own: this build's layout parses" );
         memset( &cr, 0, sizeof( cr ) );
-        uint32_t fill_at = 0;
-        int32_t fill_count = 0;
         made = tblfx1_table_fixed_compile( &parsed, tblfx1_fx_root_fixed_layout, (int32_t) sizeof( tblfx1_fx_root_fixed_layout ),
                                     tblfx1_fx_root_fixed_dst, tblfx1_fx_root_fixed_cover, tblfx1_fx_root_fixed_cover_count,
                                     compiled, 1024, &guarded, &fill_at, &fill_count, &cr );
@@ -301,20 +297,20 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
         {
             if ( compiled[i].op > (uint8_t) TBLFX1_K_TABLE_FIXED_BOOL ) { past_the_set++; }
         }
-        fixed_check( past_the_set == 0, "C bounds, compiled-own: the ops are the whole set and none of them clamps" );
+        fixed_check( past_the_set == 0, "C bounds, compiled-own: the ops are the whole set and none of them holds a range" );
 
         tblfx1_fx_root_reset( &held );
         memset( &r, 0, sizeof( r ) );
-        tblfx1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r, NULL );
+        tblfx1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r, tblfx1_fx_root_fixed_guards );
         fixed_check( held.renamed == 5000 && held.gone == -7,
                      "C COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
-        fixed_check( r.clamped == 0, "C COMPILED, NEGATIVE CONTROL: and counts nothing" );
+        fixed_check( !r.refused, "C COMPILED, NEGATIVE CONTROL: and refuses nothing" );
 
-        schema_tblfx1_fx_root_fixed_clamp_( &held, &r );
-        fixed_check( held.renamed == 1000 && held.gone == 0,
-                     "C COMPILED: THE PASS IS THE CLAMP — the same pass, after the compiled plan" );
-        fixed_check( r.clamped == 2, "C COMPILED: and it counts the same two the identity path counted" );
-        fixed_check( held.nested.a == 111 && held.nested.b == 222, "C COMPILED: an in-range neighbour is untouched" );
+        fixed_check( schema_tblfx1_fx_root_fixed_clamp_( &held, &r ) == -1,
+                     "C COMPILED: the pass refuses the out-of-range storage" );
+        fixed_check( r.refused && r.refuse_reason == SCHEMA_TBLFX1_TABLE_REFUSE_OUT_OF_RANGE &&
+                     r.reason == SCHEMA_TBLFX1_TABLE_NO_REFUSAL,
+                     "C COMPILED: THE PASS IS THE BOUND — the same pass, after the compiled plan, names out_of_range" );
     }
 }
 
@@ -322,9 +318,9 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
    the reference's. A `string(N)`'s used bytes are well-formed UTF-8 with no
    zero among them — the same rule SPEC.md §4.7 puts on the packet wire. A
    payload that is not text refuses by name (docs/FIXED-FORM-ALGORITHM.md §4.5,
-   fix 11): the load answers -1, `refused` is set, `malformed` is not, the name
-   is `text_ill_formed`, and no counter moves. The damaged field does NOT read a
-   declared default; nothing past the refusal is decoded.
+   fix 11): the load answers -1, `refused` is set, the name is `text_ill_formed`,
+   and no counter moves. The damaged field does NOT read a declared default;
+   nothing past the refusal is decoded.
 
    The poison is written THROUGH THE WRITER, because it can be: the write side's
    bounds are the used length and the live count, both debug-only, and neither
@@ -357,12 +353,12 @@ void fixed_fx1_text_content( void )
         fixed_check( n == tblfx1_fx_root_fixed_measure( 1 ), "C text content: the record saves" );
 
         memset( &r, 0, sizeof( r ) );
-        fixed_check( tblfx1_fx_root_fixed_load_tolerant( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == -1,
+        fixed_check( tblfx1_fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == -1,
                      "C text content: ill-formed content refuses the read" );
-        fixed_check( r.refused && !r.malformed, cases[k].what );
+        fixed_check( r.refused && r.refuse_reason == SCHEMA_TBLFX1_TABLE_REFUSE_OK, cases[k].what );
         fixed_check( r.reason == SCHEMA_TBLFX1_TABLE_TEXT_ILL_FORMED,
                      "C TEXT CONTENT: the refusal carries the name text_ill_formed" );
-        fixed_check( r.clamped == 0 && r.widened == 0,
+        fixed_check( r.unknown == 0 && r.widened == 0,
                      "C TEXT CONTENT: a refusal moves no counter" );
 
         if ( k == 0 )
@@ -379,7 +375,7 @@ void fixed_fx1_text_content( void )
                              body, (uint8_t *) &loose, &r2, tblfx1_fx_root_fixed_guards );
             fixed_check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
                          "C NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
-            fixed_check( !r2.malformed, "C NEGATIVE CONTROL: and says nothing about it" );
+            fixed_check( !r2.refused, "C NEGATIVE CONTROL: and says nothing about it" );
         }
     }
 
@@ -393,11 +389,11 @@ void fixed_fx1_text_content( void )
         v.label_length = 5;
         n = tblfx1_fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
         memset( &r, 0, sizeof( r ) );
-        fixed_check( tblfx1_fx_root_fixed_load_tolerant( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
+        fixed_check( tblfx1_fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
                      "C text content: the well-formed record reads" );
         fixed_check( back.label_length == 5 && memcmp( back.label, "\xC3\xA9t\xC3\xA9", 5 ) == 0,
                      "C TEXT CONTENT: well-formed multi-byte UTF-8 rides whole" );
-        fixed_check( !r.malformed && r.clamped == 0, "C TEXT CONTENT: and moves no counter" );
+        fixed_check( !r.refused && r.widened == 0, "C TEXT CONTENT: and moves no counter" );
     }
 }
 

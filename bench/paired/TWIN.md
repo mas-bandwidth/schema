@@ -143,6 +143,24 @@ reference lands §5.8 row 3, and the gate then compares them too.
 | `TableFixedRefuseHash` — the refusal that carries THE FILE'S hash onto the report | §5.3, `layout_newer` / `layout_unsupported` | `reAheadRefuseHash` |
 | `struct TableFixedLineagePlan` — one older peer's plan, its prefill and its COMPILE census | §5.2, §5.4 (the census once per peer), §5.8 row 3 | `reAheadLineage` |
 
+## The C counter and one rule owed by both legs
+
+C names the read loop's counter `out_of_range`. C++ cannot, because
+`out_of_range` is the reason enumerator that the same loop refuses with, so
+it says `oor_count`. `rewriteCCounter` in `canon.go` maps only the C
+counter's own spellings: the pointer parameter, the dereferenced increment,
+the address argument, and the local and its test. It also maps C's
+two-field refusal, written as one comma expression, to the two stores C++
+writes. TestCCounterRenameAgrees holds the rewrite. TestCCounterDroppedIncrementReds
+is its negative control.
+
+`reOwedBoolByte` strips the C runtime's `if ( s[i] > 1 ) (*out_of_range)++;`
+from the Apply bool case. That rule is OWED BY BOTH LEGS. Under
+docs/FIXED-FORM-ALGORITHM.md §4.5 (the 2026-11-03 ruling, row 16), a bool or
+present byte other than 0 or 1 refuses `wire_damaged` in LOAD's check pass.
+Today C counts it `out_of_range` and C++ counts nothing. The strip goes when
+both legs refuse in the check pass.
+
 ## Paired rows
 
 The paired runner accepts `--twin-tolerance` (default 10). A C row and a

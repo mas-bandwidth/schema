@@ -56,7 +56,7 @@ static partial class Program
         byte[] field = Join(new byte[] { 1,4 }, U32(42));
         Load(Fixture(Join(field, new byte[] { 0 }), "a"), V1.Schema.TableWire.Verdict.Ok, 42, "present scalar");
         // DAMAGE DISCARDS THE WHOLE LOAD (§4): the walk's prefix is reset away
-        Load(Fixture(field, "a"), V1.Schema.TableWire.Verdict.Damaged, 5, "unterminated body discards the whole load", 2);
+        Load(Fixture(field, "a"), V1.Schema.TableWire.Verdict.Damaged, 5, "unterminated body discards the whole load");
         Load(Array.Empty<byte>(), V1.Schema.TableWire.Verdict.Damaged, 5, "empty input");
         Load(new byte[] { 2 }, V1.Schema.TableWire.Verdict.Refused, 5, "message form");
         Load(new byte[] { 3 }, V1.Schema.TableWire.Verdict.Refused, 5, "newer form");
@@ -64,11 +64,14 @@ static partial class Program
         Load(Fixture(new byte[] { 0 }, "a", "a"), V1.Schema.TableWire.Verdict.Damaged, 5, "duplicate vocabulary");
         Load(Fixture(Join(field, new byte[] { 0,99 }), "a"), V1.Schema.TableWire.Verdict.Damaged, 5, "root framing slack before overlay");
 
-        // Two occurrences replace the SAME nested target. The second, empty
-        // body must restore factor's declared default, not retain the first 9.
+        // THE SAME FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §6.5):
+        // two occurrences of a nested table refuse the whole load.
         byte[] first = Join(new byte[] { 2,10 }, U32(0x41100000), new byte[] { 0 });
         Load(Fixture(Join(new byte[] { 1,13 }, Var((ulong)first.Length), first,
-            new byte[] { 1,13,1,0,0 }), "inner", "factor"), V1.Schema.TableWire.Verdict.Ok, 5, "duplicate nested replacement");
+            new byte[] { 1,13,1,0,0 }), "inner", "factor"), V1.Schema.TableWire.Verdict.Damaged, 5, "a repeated nested table id");
+        V1.TableReport once = new V1.TableReport();
+        Check(V1.Schema.TableWire.Load(value, type, Fixture(Join(new byte[] { 1,13 }, Var((ulong)first.Length), first, new byte[] { 0 }), "inner", "factor"), once) ==
+            V1.Schema.TableWire.Verdict.Ok && !once.Damaged, "the nested table once loads");
         TestGraphRootReset();
     }
 

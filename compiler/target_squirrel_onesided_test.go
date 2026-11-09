@@ -34,17 +34,15 @@ const squirrelOneSidedSchema = "package probe\n\ntable OneSided\n{\n    a int64 
 // writer of the out-of-range wires.
 const squirrelOneSidedWideSchema = "package probe\n\ntable OneSided\n{\n    a int64\n    b uint16\n}\n"
 
-const squirrelOneSidedProbe = `local inputs = dofile("inputs.nut", true);
+const squirrelOneSidedProbe = squirrelVerdict + `local inputs = dofile("inputs.nut", true);
 local schema = dofile("probe/schema_module.nut", true);
 local T = schema.require("ProbeTables");
 local L = schema.require("schema_table_load");
 local S = schema.require("schema_table_save");
-local report = {
-  unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-  duplicate = 0, malformed = false, refused = false
-};
-local v = L.loadTolerant(T, "OneSided", inputs.wire, report);
-print("accepted " + ((v != null && !report.malformed && !report.refused && report.clamped == 0 && report.kindMismatch == 0) ? "true" : "false") + "\n");
+local report = {};
+local v = L.load(T, "OneSided", inputs.wire, report);
+print("accepted " + (::verdict(v, report) == "accepted" ? "true" : "false") + "\n");
+if (v == null) return;
 print("a " + v.A.tostring() + "\n");
 print("b " + v.B.tostring() + "\n");
 local b = S.save(T, "OneSided", v);
@@ -106,19 +104,28 @@ func TestSquirrelCarriesOneSidedIntegerRanges(t *testing.T) {
 	if !carries("squirrel", carryOneSidedRange) {
 		t.Fatal("squirrel generated the construct without registering it as carried")
 	}
-	dir := t.TempDir()
-	unitDir := filepath.Join(dir, "probe")
-	if err := os.MkdirAll(unitDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(unitDir, name), data, 0o644); err != nil {
+	// write lays one set of emitted files out under a directory the run owns.
+	write := func(files map[string][]byte) string {
+		dir := t.TempDir()
+		unitDir := filepath.Join(dir, "probe")
+		if err := os.MkdirAll(unitDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
+		for name, data := range files {
+			if err := os.WriteFile(filepath.Join(unitDir, name), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(squirrelOneSidedProbe), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
 	}
-	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(squirrelOneSidedProbe), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	dir := write(files)
+	// THE NEGATIVE CONTROL'S FILES: the strict read bladed back into the walk
+	// load, which keeps an out-of-range value; every case the Go engine
+	// refuses must then answer accepted, so the verdict is the strict read's.
+	walkDir := write(squirrelWalkBladed(t, files))
 
 	model := tabletext.NewModel(u)
 	cases := []squirrelOneSidedCase{
@@ -134,14 +141,21 @@ func TestSquirrelCarriesOneSidedIntegerRanges(t *testing.T) {
 			wire, wantSaved, wantAccepted, wantA, wantB := squirrelOneSidedOracle(t, model, u, tc)
 			out := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": wire})))
 			lines := strings.Split(out, "\n")
+			if !wantAccepted {
+				if lines[0] != "accepted false" {
+					t.Errorf("the Squirrel strict read answered %q on a wire schema-go refuses", lines[0])
+				}
+				walk := strings.Split(strings.TrimSpace(string(sqrun.Run(t, walkDir, "main.nut", map[string][]byte{"wire": wire}))), "\n")
+				if walk[0] != "accepted true" {
+					t.Errorf("negative control: the walk-bladed read answered %q on the out-of-range wire; the verdict is not the strict read's", walk[0])
+				}
+				return
+			}
 			if len(lines) != 4 {
 				t.Fatalf("the probe printed %d lines, want 4:\n%s", len(lines), out)
 			}
 			if want := "accepted " + strconv.FormatBool(wantAccepted); lines[0] != want {
 				t.Errorf("the Squirrel load verdict is %q, schema-go's is %q", lines[0], want)
-			}
-			if !wantAccepted {
-				return
 			}
 			if want := "a " + strconv.FormatInt(wantA, 10); lines[1] != want {
 				t.Errorf("the Squirrel load's a is %q, schema-go's is %q", lines[1], want)
