@@ -207,7 +207,7 @@ timing tools/treelock/treelock_test.go 7 Bounded subprocess readiness/release an
 timing internal/codegen/darttable/cycle_test.go 1 the generated Dart cycle check's linear deadline (a Stopwatch bounds a diamond-chain load at 10 s); a correctness bound, no rate reported
 timing internal/codegen/elixirtable/cycle_test.go 2 the generated Elixir cycle check's linear deadline (System.monotonic_time bounds a diamond-chain load); a correctness bound, no rate reported
 timing internal/codegen/rusttable/cycle_test.go 1 the generated Rust cycle check's linear deadline (Instant::now bounds a diamond-chain load at 10 s); a correctness bound, no rate reported
-timing internal/codegen/goosetable/diewithparent_test.go 4 the parent-death check's wall deadline (time.Now bounds how long a killed helper's driver may outlive it); a correctness bound, no rate reported
+timing internal/codegen/goosetable/diewithparent_test.go 4 the parent-death check's wall deadline, the same correctness bound as the three cycle tests above (time.Now bounds how long a killed helper's driver may outlive it); no rate reported
 timing test/rust-hostile/src/main.rs 1 the hostile runner's per-case subprocess budget: Instant::now bounds how long a child may run before it is killed; no shape measured
 timing tools/pgroup/pgroup_test.go 1 pgroup's wall test: the time a 1 s wall takes to stop a process group, bounded at 30 s; no benchmark
 paths test/conformance/harness/wirefuzz_profile_test.go 1 "profile" is the wire fuzzer's roster profile (which vectors it mutates), not a performance profile; no timing

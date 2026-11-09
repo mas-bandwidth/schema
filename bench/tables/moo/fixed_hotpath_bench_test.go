@@ -3,8 +3,8 @@ package moo_test
 // THE FIXED FORM'S HOT-PATH EVIDENCE for the one-read cut of
 // runtime/table_fixed.moo (docs/plans/strict-only.md): a bool and a present
 // byte are checked 0-or-1, a ranged value refuses instead of clamping, an
-// ordinal or tag past the writer's set refuses. The load and the save of a
-// representative record are timed against the runtime before the cut
+// ordinal or tag past the writer's set refuses. The load and the save of the
+// bench's own fixed corpus are timed against the runtime before the cut
 // (testdata/table_fixed_before.moo, sha256 pinned below), interleaved pairs,
 // median ns per record. moo has no clock (it is deterministic), so each run
 // times the interpreter process from Go and subtracts a run of zero
@@ -15,10 +15,13 @@ package moo_test
 //     -tags schema_leg_moo ./bench/tables/moo/ \
 //     -run '^TestMooFixedHotPathBench$'
 //
-// The measurement lives in the moo runner directory (bench/tables/moo) so the
-// shape gate sees it as the sanctioned runner machinery it is, not a second
-// benchmark parked under the compiler internals. It keeps the card
-// moo-bench-fixed-hot-path's owed before/after numbers reproducible.
+// THE WORKLOAD IS THE BENCH'S CORPUS, not a probe written down here. The unit
+// is generated from bench/corpus/Bench.schema and the paired fixed-form
+// wrapper schema, and the timed file is bench/paired/corpus/bench_fixed.bin — the C++
+// reference's form-3 save of the paired corpus's sixty-four logical records.
+// No field, pinned value or record batch is written down in this file, so it
+// is a runner of the sanctioned benchmark rather than a second, hand-written
+// measurement of a schema shape (bench/README.md, "The shape gate").
 
 import (
 	"crypto/sha256"
@@ -39,26 +42,10 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-const benchSchema = `package probe
-enum Tier { Bronze, Silver, Gold }
-union Pick
-{
-    a int32
-    b uint16
-}
-fixed table Rec
-{
-    flag  bool
-    live  bool
-    hp    int32 = 50 | min = 0, max = 100
-    tier  Tier
-    pick  Pick
-    opt   ?uint16 | min = 0, max = 9000
-    marks [..8]int32 | min = -1000, max = 1000
-    name  string(16)
-    seq   uint64
-}
-`
+// benchCorpus is the paired bench corpus's fixed form: the same sixty-four
+// logical records the packet and tolerant-wire passes measure, written by the
+// C++ reference (test/bench/fixedform_corpus.cpp).
+const benchCorpus = "../../paired/corpus/bench_fixed.bin"
 
 const benchBefore = "5c18749305062aade552862f1d1745df172a923adeaf11810197839555bad290"
 
@@ -80,16 +67,19 @@ func writeUnit(t *testing.T, files map[string][]byte) *generatedUnit {
 	return g
 }
 
-// unitFromSource loads one schema source as a unit.
-func unitFromSource(t *testing.T, src string) *ir.Unit {
+// unitFromCorpus loads the bench's own fixed-form unit.
+func unitFromCorpus(t *testing.T) *ir.Unit {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "Probe.schema")
-	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+	paths, err := compiler.GatherPaths([]string{
+		filepath.Join("..", "..", "corpus", "Bench.schema"),
+		filepath.Join("..", "..", "corpus", "FixedTable.schema"),
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := compiler.New().Load([]string{p})
+	u, err := compiler.New().Load(paths)
 	if err != nil {
-		t.Fatalf("the unit does not load: %v", err)
+		t.Fatalf("the bench corpus does not load: %v", err)
 	}
 	return u
 }
@@ -126,46 +116,49 @@ func (g *generatedUnit) requireAll() string {
 	return b.String()
 }
 
-// benchProgram loads (or saves) a batch of records `iters` times.
+// benchProgram loads (or saves) the corpus's batch `iters` times. The root
+// descriptor is discovered from the generated module rather than named here.
 func benchProgram(g *generatedUnit, op string, iters int) string {
-	return "--!strict\nlocal F = require(\"./table_fixed\")\n" + g.requireAll() + fmt.Sprintf(`local T = require("./ProbeTable")
-local d, fixed = T.RecDescriptor, T.RecFixed
-local values: { any } = {}
-for i = 1, 64 do
-	local v = T.NewRec()
-	v.Flag = true
-	v.Hp = 70
-	v.Tier = 2
-	v.Pick.Type = 1
-	v.Pick.A = i
-	v.OptPresent = true
-	v.Opt = 42
-	v.Marks = { 1, -2, 3, -4, 5, 0, 0, 0 }
-	v.MarksCount = 5
-	v.Name = "player"
-	values[i] = v
-end
-local file = F.save(d, fixed, values) :: buffer
-local n = 0
-for _ = 1, %[2]d do
-	if %[1]q == "load" then
-		n += #(F.load(d, fixed, file) :: { any })
-	else
-		n += buffer.len(F.save(d, fixed, values) :: buffer)
+	return "--!strict\nlocal F = require(\"./table_fixed\")\n" + g.requireAll() + fmt.Sprintf(`local T = require("./FixedTableTable")
+local d: any, fixed: any
+for name, value in pairs(T) do
+	if string.sub(name, -10) == "Descriptor" then
+		d = value
+	elseif string.sub(name, -5) == "Fixed" then
+		fixed = value
 	end
 end
-print(n)
-`, op, iters)
+local values = F.load(d, fixed, inputs.file) :: { any }
+if values == nil then
+	print("the bench corpus does not load")
+	return
+end
+local total = 0
+for _ = 1, %d do
+	if %q == "load" then
+		local loaded = F.load(d, fixed, inputs.file) :: { any }
+		if loaded == nil then
+			print("the bench corpus does not load")
+			return
+		end
+		total += #loaded
+	else
+		local out = F.save(d, fixed, values) :: buffer
+		total += buffer.len(out)
+	end
+end
+print(total)
+`, iters, op)
 }
 
-func benchRun(t *testing.T, g *generatedUnit, op string, iters int) time.Duration {
+func benchRun(t *testing.T, g *generatedUnit, op string, iters int, inputs map[string][]byte) time.Duration {
 	t.Helper()
 	main := "bench_" + op + fmt.Sprint(iters) + ".moo"
 	if err := os.WriteFile(filepath.Join(g.dir, main), []byte(benchProgram(g, op, iters)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	moorun.Run(t, g.dir, main, nil)
+	moorun.Run(t, g.dir, main, inputs)
 	return time.Since(start)
 }
 
@@ -187,15 +180,20 @@ func TestMooFixedHotPathBench(t *testing.T) {
 	if got := fmt.Sprintf("%x", sha256.Sum256(before)); got != benchBefore {
 		t.Fatalf("the baseline is not the runtime before the cut: sha256=%s", got)
 	}
-	u := unitFromSource(t, benchSchema)
+	corpus, err := os.ReadFile(benchCorpus)
+	if err != nil {
+		t.Fatalf("the paired bench corpus is absent (%s): %v", benchCorpus, err)
+	}
+	u := unitFromCorpus(t)
 	gb, ga := fixedUnit(t, u), fixedUnit(t, u)
 	if err := os.WriteFile(filepath.Join(gb.dir, "table_fixed.moo"), before, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	const iters, pairs, records = 2000, 8, 64
+	inputs := map[string][]byte{"file": corpus}
 	for _, op := range []string{"load", "save"} {
 		per := func(g *generatedUnit) float64 {
-			d := benchRun(t, g, op, iters) - benchRun(t, g, op, 0)
+			d := benchRun(t, g, op, iters, inputs) - benchRun(t, g, op, 0, inputs)
 			return float64(d.Nanoseconds()) / float64(iters*records)
 		}
 		var b, a []float64
