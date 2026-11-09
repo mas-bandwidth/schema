@@ -26,7 +26,7 @@
 import { existsSync, readFileSync, writeFileSync, readSync, writeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { fixedCodec } from "./fixed.mjs";
+import { fixedCodec, fixedRoots } from "./fixed.mjs";
 
 // The generated tree is a PATH, not a static import, for one reason: the
 // harness's negative control points this same driver at a sabotaged copy of
@@ -806,12 +806,30 @@ async function wireFuzzCodec(unit, root) {
       fail(unit + "." + root + ": the variable wire surface " + root + f + " is missing from " + path);
     }
   }
-  return fixedCodec(generated, load, unit, root, path, {
+  const variable = {
     load: m[root + "Load"], loadMeasure: m[root + "LoadMeasure"], save: m[root + "Save"],
     loadRetain: m[root + "LoadRetain"], saveRetain: m[root + "SaveRetain"],
     report: () => new m.TableVariableReport(),
     retainStore: () => new m.TableVariableRetain(new Uint8Array(1 << 20), new Array((1 << 20) / 8)),
-  });
+  };
+  // A fixed root's file read is the fixed codec (docs/SPEC-TABLES.md §3.4):
+  // form 3 is that file, and form 1 is previous_form. The wire-fuzz arm
+  // calls fixedLoad for both. A generated tree that has only the variable
+  // module (a unit test) has no fixed codec to bind, so that read stays
+  // variable.
+  const spec = fixedRoots.find((r) => r[0] === unit && r[1] === root);
+  if (spec !== undefined && spec[2] !== null && !existsSync(resolve(generated, spec[2]))) {
+    return variable;
+  }
+  const fixed = await fixedCodec(generated, load, unit, root, path, variable);
+  if (!fixed.fixed) { return variable; }
+  return {
+    ...variable,
+    fixedForm: true,
+    fixedLoad: fixed.load,
+    fixedSave: fixed.save,
+    fixedReport: fixed.report,
+  };
 }
 
 async function wireCodec(unit, root) {
@@ -1258,7 +1276,7 @@ async function wireFuzz() {
       // A --retain roster binds only a root whose retaining pair exists, as
       // the Go leg's findRetentionCodec does; it never falls back to Load.
       const codec = await wireFuzzCodec(unit, root);
-      const retaining = codec !== null && !codec.fixed && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function";
+      const retaining = codec !== null && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function";
       if (codec !== null && (retain !== 1 || retaining)) {
         roster[i] = { ...codec, retain: retain === 1 };
         known[i] = 1;
@@ -1287,35 +1305,54 @@ async function wireFuzz() {
           fail(unit + "." + root + ": own announcement was refused");
         }
         const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new RootClass());
-        const single = [values[0]];
         roster[i] = {
           message: true,
           run(wire) {
             for (let j = 0; j < values.length; j++) { initRoot(values[j]); }
             const rep = {};
             const n = loadMessages(values, vocabulary, wire, rep);
-            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat);
+            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat) || ((rep.Mismatch | 0) + (rep.Oor | 0) > 0 && !rep.Damaged);
+            // A batch that delivers no body is damage: no form byte, a short
+            // count, or a body the reader discards. A named verdict is a
+            // refusal. The pipe reads damaged, not malformed, and a default
+            // body saved after a failed load would be an accepted wire.
             const malformed = Boolean(rep.Damaged) || (n < 1 && !refused);
+            const delivered = n >= 1 && !malformed && !refused;
             let saved = null;
-            const ignored = {};
-            const size = measureMessages(single, ignored);
-            if (size >= 0) {
-              const out = new Uint8Array(size);
-              if (saveMessages(single, out, ignored) === size) {
-                saved = out;
+            if (delivered) {
+              // EncodeMessages writes the message closure's reference width.
+              // The announcement the read resolved is wider, and saving at
+              // that width is a different batch.
+              const prevBits = runtime.TableMessageSetRefBits(runtime.TableMessageWriteRefBitsHere);
+              try {
+                const ignored = {};
+                const batch = values.slice(0, n);
+                const size = measureMessages(batch, ignored);
+                if (size >= 0) {
+                  const out = new Uint8Array(size);
+                  if (saveMessages(batch, out, ignored) === size) {
+                    saved = out;
+                  }
+                }
+              } finally {
+                runtime.TableMessageSetRefBits(prevBits);
               }
             }
             return {
-              loaded: true,
+              loaded: delivered,
               saved,
               report: {
                 reason: rep.Reason ?? "",
                 unknown: rep.Unknown | 0,
+                mismatch: rep.Mismatch | 0,
                 kindMismatch: rep.Mismatch | 0,
                 widened: rep.Widened | 0,
+                oor: rep.Oor | 0,
                 clamped: rep.Oor | 0,
+                repeated: 0,
                 duplicate: 0,
                 malformed,
+                damaged: malformed,
                 refused,
                 retained: 0,
                 retainLost: 0,
@@ -1350,9 +1387,17 @@ async function wireFuzz() {
       measure = codec.loadMeasure(wire);
       // Measurement and loading are independent observations; even an
       // unframed file must reach Load so its damage report is preserved.
-      const rep = codec.report();
+      // A fixed root's file is the fixed read (docs/SPEC-TABLES.md §3.4).
+      // Form 3 is that file. Form 1 is previous_form: the variable loader
+      // would accept it, and the oracle refuses it.
+      const fixedFile = codec.fixedForm === true && wire.length > 0 && (wire[0] === 1 || wire[0] === 3);
+      const rep = fixedFile ? codec.fixedReport() : codec.report();
       let card = null;
-      if (codec.retain) {
+      if (fixedFile) {
+        card = codec.fixedLoad(wire, rep);
+        loaded = card !== null;
+        if (loaded) { saved = codec.fixedSave(card); }
+      } else if (codec.retain) {
         const retainStore = codec.retainStore();
         card = codec.loadRetain(wire, retainStore, rep);
         loaded = card !== null;
@@ -1364,20 +1409,23 @@ async function wireFuzz() {
         loaded = card !== null;
         if (loaded) { saved = codec.save(card); }
       }
-      report.unknown = rep.unknown;
-      report.mismatch = rep.mismatch;
-      report.widened = rep.widened;
-      report.oor = rep.oor;
-      report.repeated = rep.repeated;
-      report.damaged = rep.damaged;
-      // A variable report names its refusal through err(), as the Go leg's
-      // Report.Refused() (Err() != nil) does, including a count past the
-      // storage cap; damage names itself in the malformed byte, not here.
-      // A fixed report has no err(); its refused flag is the name.
-      report.refused = !rep.damaged && (!loaded || (typeof rep.err === "function" ? rep.err() !== null : Boolean(rep.refused)));
-      report.retained = rep.retained;
-      report.retainLost = rep.retainLost;
-      report.reason = rep.reason;
+      report.unknown = rep.unknown | 0;
+      report.mismatch = rep.mismatch | 0;
+      report.widened = rep.widened | 0;
+      report.oor = rep.oor | 0;
+      report.repeated = rep.repeated | 0;
+      report.damaged = !!rep.damaged;
+      // err() is the variable strict read's one typed reason
+      // (docs/SPEC-TABLES.md §6.5): a kind mismatch, a non-finite float, a
+      // bound, a missing field, a count past the extent cap. A fixed report
+      // has no err(); its refused field is that verdict. Damage stays the
+      // malformed bit.
+      const named = typeof rep.err === "function" ? rep.err() : null;
+      const damage = named === "wire_damaged";
+      report.refused = !damage && (named !== null || (rep.refused !== 0 && rep.refused !== false));
+      report.retained = rep.retained | 0;
+      report.retainLost = rep.retainLost | 0;
+      report.reason = rep.reason ?? "";
     }
 
     // EVERY REPLY IS FLUSHED BEFORE THE NEXT MUTANT IS READ

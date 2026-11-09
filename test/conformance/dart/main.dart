@@ -4202,8 +4202,8 @@ MessageCodec _messageRow<T, V, R>({
   // THE FUZZ ARM (docs/SPEC-TABLES.md §3.3, §4.2), as messageRow in
   // test/conformance/go/messages.go runs it with fuzz=true: the batch is read
   // into the same 256 bodies of caller storage the Go reference reads it into,
-  // so a batch of up to 256 bodies is never refused as too large, and the
-  // first body is saved back whatever the batch claims. A message root has no
+  // so a batch of up to 256 bodies is never refused as too large, and every
+  // body read is saved back as one batch. A message root has no
   // LoadMeasure, so the reply carries loaded=1 and measure=-1, as the Go
   // leg's does.
   V? ownVocabulary;
@@ -4239,10 +4239,11 @@ MessageCodec _messageRow<T, V, R>({
     }
     final ok = count >= 0;
     List<int>? saved;
-    final n = measure(first, report());
+    final bodies = count >= 1 && count <= 256 ? storage.sublist(0, count) : first;
+    final n = measure(bodies, report());
     if (n >= 0) {
       final out = Uint8List(n);
-      if (save(first, out, report()) == n) {
+      if (save(bodies, out, report()) == n) {
         saved = out;
       }
     }

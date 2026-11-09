@@ -240,8 +240,8 @@ export function tableMessageReadScalar(r, s) {
     lo = sum & 0xffffffffffffffffn;
     hi = (hi + s.Base[1] + carry) & 0xffffffffffffffffn;
   } else if (s.Packing === 2) {
-    let index = Number(lo & 0xffffffffn);
-    if (index > s.QCount) { index = s.QCount; }
+    const index = Number(lo & 0xffffffffn);
+    if (s.QCount <= 0 || index > s.QCount) { return [null, false]; }
     const ratio = Math.fround(index / s.QCount);
     const scaled = Math.fround(ratio * s.QDelta);
     lo = BigInt(Math.fround(scaled + s.QMin) === 0 ? 0 : TableMessageFloat32Bits(Math.fround(scaled + s.QMin)));
@@ -631,12 +631,14 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 	}
 	g.pf("export function %sLoadMessageBody(r, value) {\n", st.Name)
 	g.pf("  Init%s(value);\n", st.Name)
+	g.pf("  const seen = [];\n")
 	g.pf("  for (;;) {\n")
 	g.pf("    const [ref, ok] = r.Bits.Get(r.RefBits);\n")
 	g.pf("    if (!ok) { r.Report.Damaged = true; return false; }\n")
 	g.pf("    if (ref === 0n) { return true; }\n")
 	g.pf("    const entry = tableMessageEntry(r.Vocabulary, ref);\n")
-	g.pf("    if (entry === null || entry.Id >= 0xfffffffffffffffdn) { r.Report.Damaged = true; return false; }\n")
+	g.pf("    if (entry === null || entry.Id >= 0xfffffffffffffffdn || seen.includes(entry.Id)) { r.Report.Damaged = true; return false; }\n")
+	g.pf("    seen.push(entry.Id);\n")
 	g.pf("    switch (entry.Id) {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -650,7 +652,7 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 
 func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyEntry, ind string) {
 	mem := "value." + js.MemberName(f.Name)
-	g.pf("%sif (entry.Shape.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind)
+	g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind, mine.Shape.Elem)
 	g.emitMessageReadValue(f, mem, ind, "entry.Shape")
 	if f.Type.Optional {
 		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))
@@ -730,10 +732,12 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
 	g.pf("%s  if (keep > %d) { keep = %d; r.Report.Oor++; }\n", ind, bound, bound)
 	e := messageElementField(f)
 	if f.KeyEnum != "" {
+		g.pf("%s  const seenKeys = [];\n", ind)
 		g.pf("%s  for (let i = 0n; i < n; i++) {\n", ind)
 		g.pf("%s    const [kref, kok] = r.Bits.Get(r.RefBits); if (!kok) { %s; }\n", ind, bad)
 		g.pf("%s    const ken = tableMessageEntry(r.Vocabulary, kref);\n", ind)
-		g.pf("%s    if (ken === null || ken.Shape.Kind !== 0 || ken.Id >= 0xfffffffffffffffdn) { %s; }\n", ind, bad)
+		g.pf("%s    if (ken === null || ken.Shape.Kind !== 0 || ken.Id >= 0xfffffffffffffffdn || seenKeys.includes(ken.Id)) { %s; }\n", ind, bad)
+		g.pf("%s    seenKeys.push(ken.Id);\n", ind)
 		g.pf("%s    let key = 0;\n", ind)
 		g.pf("%s    switch (ken.Id) {\n", ind)
 		ke := f.KeyEnumRef
@@ -883,6 +887,7 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 	for i, v := range un.Variants {
 		arm := ir.TableArmEntry(v)
 		g.pf("%s      case 0x%016xn: {\n", ind, arm.Id)
+		g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, arm.Kind, arm.Shape.Elem, mem)
 		g.pf("%s        %s.type = %d;\n", ind, mem, i+1)
 		if !v.Void() {
 			g.emitMessageReadValue(v.F, mem+"."+js.MemberName(v.Name), ind+"        ", "arm.Shape")
