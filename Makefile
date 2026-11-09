@@ -7302,7 +7302,10 @@ release-refuses-on-differential:
 	@printf '{"commit":"%s","cells":1,"red":[]}\n' "$$(git rev-parse HEAD)" > $(RELEASE_GATE_TEST)/green.json
 	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema
 	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_GATE_TEST)/encode.gotext internal/tablewire/encode.go
-	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
+	@awk '/case ir\.TBool:/{f=1} f&&/b\[0\] = 1/{sub(/b\[0\] = 1/, "b[0] = 2 // SABOTAGED: true is written as 2"); f=0} {print}' internal/tablewire/fixed.go > $(RELEASE_GATE_TEST)/fixed.gotext
+	@! cmp -s internal/tablewire/fixed.go $(RELEASE_GATE_TEST)/fixed.gotext || \
+		{ echo "FAILED: the fixed-form bool sabotage no longer matches internal/tablewire/fixed.go"; exit 1; }
+	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext","%s/internal/tablewire/fixed.go":"%s/$(RELEASE_GATE_TEST)/fixed.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
 	go build -overlay $(RELEASE_GATE_TEST)/table.json -o $(RELEASE_GATE_TEST)/schema-table ./cmd/schema
 	@$(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -corpus . -work $(RELEASE_GATE_TEST)/guard" > $(RELEASE_GATE_TEST)/guard.out 2>&1 || \
 		{ echo "FAILED: make release with no difference did not reach its tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
@@ -7350,7 +7353,10 @@ release-differential-negative-control:
 	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json
 	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-packet ./cmd/schema
 	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext internal/tablewire/encode.go
-	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/table.json
+	@awk '/case ir\.TBool:/{f=1} f&&/b\[0\] = 1/{sub(/b\[0\] = 1/, "b[0] = 2 // SABOTAGED: true is written as 2"); f=0} {print}' internal/tablewire/fixed.go > $(RELEASE_DIFFERENTIAL_CONTROL)/fixed.gotext
+	@! cmp -s internal/tablewire/fixed.go $(RELEASE_DIFFERENTIAL_CONTROL)/fixed.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed-form bool sabotage no longer matches internal/tablewire/fixed.go"; exit 1; }
+	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext","%s/internal/tablewire/fixed.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/fixed.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/table.json
 	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/table.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-table ./cmd/schema
 	@for s in packet table; do \
 		test "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean id examples)" = "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-$$s id examples)" || \
