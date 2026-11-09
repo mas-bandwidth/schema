@@ -709,8 +709,12 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 			// storage pass holds after the run, over live elements only —
 			// never a plan entry, which would cover slack slots of a counted
 			// array of unions and count them (docs/SPEC-TABLES.md §3.4).
-			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag\n",
-				ind, src, dst, g.offGo(f.Type.Name, "Type"), tag)
+			// The copy's DstSize names the tag's STORAGE width, which is
+			// wider than the wire's tag where the storage type is (a
+			// uint32 Type in a table unit), so the read lands the tag at
+			// the storage's own width on any host.
+			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, DstSize: uint8(unsafe.Sizeof(%s{}.Type)), Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag\n",
+				ind, src, dst, g.offGo(f.Type.Name, "Type"), tag, f.Type.Name)
 			g.pf("%sn++\n", ind)
 			for i, v := range r.Variants {
 				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
