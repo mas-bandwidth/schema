@@ -5309,17 +5309,6 @@ build/conformance-harness: $(wildcard test/conformance/harness/*.go) $(GO_SOURCE
 	@mkdir -p build
 	go build -o $@ ./test/conformance/harness
 
-# THE SHARED CONFORMANCE INPUTS (ci-full.yml's conformance legs): the
-# compiler, the harness and the generated tables tree every leg builds
-# from. Built once by the conformance-matrix job and handed to the legs
-# as an artifact, so a leg builds only its own driver; `make
-# conformance-shared` locally is the same tree. The legs touch
-# bin/schema, then the harness, then the stamp after downloading, so
-# make sees the shared tree as newer than a fresh checkout.
-.PHONY: conformance-shared
-conformance-shared: bin/schema build/conformance-harness build/tables-generated/.stamp
-	@echo "conformance-shared: bin/schema, build/conformance-harness and build/tables-generated are built"
-
 build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
@@ -6581,6 +6570,17 @@ CONFORMANCE_BOM_OUT ?= build/conformance-bom-entry/$(CONFORMANCE_BOM_LANG)
 .PHONY: conformance-bom-entry
 conformance-bom-entry: $(CONFORMANCE_BOM_HARNESS)
 	sh test/conformance/bom-entry "$(CONFORMANCE_BOM_LANG)" "$(CONFORMANCE_BOM_HARNESS)" "$(CONFORMANCE_BOM_OUT)"
+
+# THE SHARED CONFORMANCE INPUTS (ci-full.yml's conformance legs): the
+# compiler, the harness and the generated tables tree every leg builds
+# from. Built once by the conformance-matrix job and handed to the legs
+# as an artifact, so a leg builds only its own driver; `make
+# conformance-shared` locally is the same tree. The legs touch
+# bin/schema, then the harness, then the stamp after downloading, so
+# make sees the shared tree as newer than a fresh checkout.
+.PHONY: conformance-shared
+conformance-shared: bin/schema build/conformance-harness build/tables-generated/.stamp
+	@echo "conformance-shared: bin/schema, build/conformance-harness and build/tables-generated are built"
 
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
